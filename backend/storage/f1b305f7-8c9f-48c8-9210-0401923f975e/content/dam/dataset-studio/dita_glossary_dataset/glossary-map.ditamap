@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="glossary_map">
+  <title>Glossary Map</title>
+  <topicref href="api.dita" keys="api" type="glossentry"/>
+  <topicref href="aem.dita" keys="aem" type="glossentry"/>
+  <topicref href="dita.dita" keys="dita" type="glossentry"/>
+  <topicref href="cms.dita" keys="cms" type="glossentry"/>
+  <topicref href="crm.dita" keys="crm" type="glossentry"/>
+  <topicref href="sdk.dita" keys="sdk" type="glossentry"/>
+  <topicref href="ui.dita" keys="ui" type="glossentry"/>
+  <topicref href="ux.dita" keys="ux" type="glossentry"/>
+  <topicref href="html.dita" keys="html" type="glossentry"/>
+  <topicref href="xml.dita" keys="xml" type="glossentry"/>
+  <topicref href="json.dita" keys="json" type="glossentry"/>
+  <topicref href="rest.dita" keys="rest" type="glossentry"/>
+  <topicref href="url.dita" keys="url" type="glossentry"/>
+  <topicref href="id.dita" keys="id" type="glossentry"/>
+  <topicref href="pdf.dita" keys="pdf" type="glossentry"/>
+</map>

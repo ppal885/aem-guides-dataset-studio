@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="inline_formatting_map_cdf6d44f" xmlns="http://www.oasis-open.org/committees/entity/release/1.1/catalog" xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/">
+  <title>Inline Formatting Map</title>
+  <topicref href="topics/inline_formatting_nested.dita" />
+</map>

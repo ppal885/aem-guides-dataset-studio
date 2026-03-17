@@ -1,0 +1,10 @@
+{
+  "generator_invocation_planner": {
+    "prefer_recipes": [],
+    "deprioritize_recipes": [
+      "heavy_topics_tables_codeblocks",
+      "media_rich_content"
+    ],
+    "append_rules": []
+  }
+}

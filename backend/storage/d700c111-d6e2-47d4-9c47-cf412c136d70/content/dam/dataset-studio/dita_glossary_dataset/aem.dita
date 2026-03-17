@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_aem-entry" xml:lang="en">
+  <glossterm>Adobe Experience Manager</glossterm>
+  <glossdef>
+    <p>Enterprise content management platform.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>AEM</glossAbbreviation>
+  </glossAlt>
+</glossentry>

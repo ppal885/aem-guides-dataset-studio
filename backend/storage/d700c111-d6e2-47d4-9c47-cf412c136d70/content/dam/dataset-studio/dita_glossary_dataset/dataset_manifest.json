@@ -1,0 +1,40 @@
+{
+  "dataset_name": "dita_glossary_dataset",
+  "entry_count": 15,
+  "usage_topic_count": 10,
+  "dita_feature": "glossary_abbrev",
+  "purpose": "Glossary term and abbreviated-form keyref testing",
+  "recipe_name": "dita_glossary_abbrev_dataset_recipe",
+  "files": [
+    "content/dam/dataset-studio/dita_glossary_dataset/api.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/aem.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/dita.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/cms.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/crm.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/sdk.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/ui.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/ux.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/html.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/xml.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/json.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/rest.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/url.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/id.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/pdf.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/glossary-map.ditamap",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_01.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_02.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_03.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_04.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_05.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_06.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_07.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_08.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_09.dita",
+    "content/dam/dataset-studio/dita_glossary_dataset/topic_glossary_usage_10.dita"
+  ],
+  "stats": {
+    "entry_count": 15,
+    "usage_topic_count": 10
+  }
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_pdf-entry" xml:lang="en">
+  <glossterm>Portable Document Format</glossterm>
+  <glossdef>
+    <p>Document format for sharing.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>PDF</glossAbbreviation>
+  </glossAlt>
+</glossentry>

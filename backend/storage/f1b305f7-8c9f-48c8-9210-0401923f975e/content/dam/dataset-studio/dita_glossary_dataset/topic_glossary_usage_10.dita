@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="topic_glossary_usage_10" xml:lang="en">
+  <title>Glossary Usage</title>
+  <body>
+    <p>
+      The 
+      <term keyref="xml"/>
+       enables integration.
+    </p>
+    <p>
+      The abbreviation 
+      <abbreviated-form keyref="xml"/>
+       is widely used.
+    </p>
+    <p>
+      Content platforms such as 
+      <term keyref="json"/>
+       manage documentation.
+    </p>
+  </body>
+</topic>

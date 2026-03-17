@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_url-entry" xml:lang="en">
+  <glossterm>Uniform Resource Locator</glossterm>
+  <glossdef>
+    <p>Address of a resource on the web.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>URL</glossAbbreviation>
+  </glossAlt>
+</glossentry>

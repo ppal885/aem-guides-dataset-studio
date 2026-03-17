@@ -1,0 +1,2 @@
+CVE,Vulnerable_Package_Name,Vulnerable_Package_Detail,Priority,CVSS_Score,First_Seen,Last_Seen,In_CISA_KEV,Risk_Source,Minimum_Remediation,vuln_count
+CVE-2025-46835,git,git 1:2.34.1-1ubuntu1.10,R3,8.5,2025-11-07T14:34:37+00:00,2026-03-02T00:53:53+00:00,No,spotlight: ExPRT,Update ubuntu git to version 1:2.34.1-1ubuntu1.15 or newer,3

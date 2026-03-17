@@ -1,0 +1,59 @@
+{
+  "base_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides",
+  "use_playwright": false,
+  "urls": [
+    "",
+    "/using/overview",
+    "/using/user-guide/about-aem-guide/intro",
+    "/using/install-guide/on-prem-ig/download-install-upgrade-aemg/download-install",
+    "/using/release-info/release-notes/on-prem-release-notes/latest-release-info",
+    "/using/knowledge-base/kb-articles/authoring/define-icon-for-custom-ditatypes",
+    "/using/knowledge-base/kb-articles/extention-framework/aem-guides-framework/basic-customisation",
+    "/using/knowledge-base/kb-articles/extention-framework/aem-guides-framework/jui-framework",
+    "/using/user-guide/author-content/work-with-editor/create-preview-topics/web-editor-create-topics",
+    "/using/user-guide/author-content/work-with-editor/create-preview-topics/web-editor-preview-topics",
+    "/using/user-guide/author-content/work-with-editor/editor-interface-features/intro-editor-interface",
+    "/using/user-guide/author-content/work-with-editor/editor-interface-features/web-editor-header-bar",
+    "/using/user-guide/author-content/work-with-editor/editor-interface-features/web-editor-tab-bar",
+    "/using/user-guide/manage-metadata/manage-metadata",
+    "/using/user-guide/manage-metadata/metadata-dita",
+    "/using/user-guide/manage-metadata/web-editor-smart-tagging",
+    "/using/user-guide/manage-metadata/map-editor-bulk-tagging",
+    "/using/user-guide/author-content/ditaval-editor/ditaval-editor",
+    "/using/user-guide/review/authoring-create-dita-project",
+    "/using/user-guide/author-content/map-editor/map-editor-create-map",
+    "/using/user-guide/author-content/map-editor/authoring-download-assets",
+    "/using/user-guide/map-management-publishing/output-gen/generate-output",
+    "/using/user-guide/map-management-publishing/output-gen/work-with-baseline/generate-output-use-baseline-for-publishing",
+    "/using/user-guide/map-management-publishing/output-gen/generate-output-use-variables",
+    "/using/user-guide/map-management-publishing/output-gen/pass-metadata-dita-ot",
+    "/using/user-guide/map-management-publishing/output-gen/generate-output-basic-troubleshooting",
+    "/using/user-guide/map-management-publishing/output-gen/publishing-scalability-faq",
+    "/using/user-guide/map-management-publishing/bulk-activation/conf-bulk-activation",
+    "/using/user-guide/map-management-publishing/bulk-activation/conf-bulk-activation-create-map-collection",
+    "/using/user-guide/map-management-publishing/bulk-activation/conf-bulk-activation-publish-map-collection",
+    "/using/user-guide/map-management-publishing/bulk-activation/conf-bulk-activation-edit-map-collection",
+    "/using/user-guide/map-management-publishing/bulk-activation/conf-bulk-activation-delete-map-collection",
+    "/using/user-guide/generate-fm-output/fm-output-generatation",
+    "/using/user-guide/generate-fm-output/fm-docs-generating-presets/fm-output-understand-presets",
+    "/using/user-guide/generate-fm-output/fm-docs-generating-presets/fm-output-pdf-preset",
+    "/using/user-guide/generate-fm-output/fm-docs-generating-presets/fm-output-html5-preset",
+    "/using/user-guide/ai-assistant-aem/adobe-generative-ai-disclosures",
+    "/using/user-guide/ai-assistant-aem/ai-assistant",
+    "/using/user-guide/ai-assistant-aem/ai-based-smart-help",
+    "/using/user-guide/ai-assistant-aem/ai-assistant-right-panel",
+    "/using/user-guide/ai-assistant-aem/authoring-ai-based-smart-suggestions",
+    "https://experienceleaguecommunities.adobe.com/adobe-experience-manager-guides-11/use-aem-metadata-in-dita-ot-pdf-output-14223"
+  ],
+  "recursive": {
+    "enabled": false,
+    "max_depth": 2,
+    "exclude_dirs": ["/communities/", "/t5/"]
+  },
+  "dita_pdf": {
+    "urls": [
+      "https://docs.oasis-open.org/dita/v1.2/spec/DITA1.2-spec.pdf",
+      "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/dita-v1.3-os-part1-base.pdf"
+    ]
+  }
+}

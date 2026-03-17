@@ -1,0 +1,116 @@
+[
+  {
+    "jira_text": "Conref resolution fails when keyref points to content in another map. Minimal repro: create topic with conref to key defined in map A, reference from map B.",
+    "expected_domain": "conref",
+    "expected_recipe": "conref_pack",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Keyscope inheritance breaks when multiple maps define same key. Need boundary test with nested scopes.",
+    "expected_domain": "keyscope",
+    "expected_recipe": "keys.keyscope_nested_resolution",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Heavy content with tables and codeblocks causes slow rendering. Stress test needed.",
+    "expected_domain": "content",
+    "expected_recipe": "heavy_topics_tables_codeblocks",
+    "expected_scenarios": ["MIN_REPRO", "STRESS"]
+  },
+  {
+    "jira_text": "Output pages under topichead not getting opened. TOC shows topichead but child topicrefs don't open in preview.",
+    "expected_domain": "map",
+    "expected_recipe": "maps.topichead_basic",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Subject scheme validation fails for audience attribute. Need dataset with valid and invalid audience values.",
+    "expected_domain": "metadata",
+    "expected_recipe": "dita_subject_scheme_dataset_recipe",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Glossary term and abbreviated-form keyref resolution broken. Need minimal repro with glossentry, term, abbreviated-form.",
+    "expected_domain": "glossary",
+    "expected_recipe": "dita_glossary_abbrev_dataset_recipe",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Audience filter in ditaval not working. Topics with audience attribute should be filtered correctly.",
+    "expected_domain": "conditional",
+    "expected_recipe": "conditionals.audience_filter",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Xref to another topic fails. Cross-topic link broken. Minimal repro: two topics, one xref to the other.",
+    "expected_domain": "xref",
+    "expected_recipe": "xref_topic_basic",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Conref and keyref together. Topic uses conref to variable ph and keyref to glossary. Both mechanisms need testing.",
+    "expected_domain": "conref",
+    "expected_recipe": "dita_conref_keyref_dataset_recipe",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Deep map hierarchy causes timeout. Stress test: map with 100+ topicrefs in nested structure.",
+    "expected_domain": "map",
+    "expected_recipe": "maps.deep_hierarchy_stress",
+    "expected_scenarios": ["STRESS"]
+  },
+  {
+    "jira_text": "Xref to section inside another topic. Fragment #topicId/sectionId not resolving.",
+    "expected_domain": "xref",
+    "expected_recipe": "xref_section_target",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Platform-specific content filtering. DITAVAL with platform attribute. Need boundary test with multiple platforms.",
+    "expected_domain": "conditional",
+    "expected_recipe": "conditionals.platform_filter",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "Nested keydef chain resolution fails. Map A to Map B to Topic C. Key defined in parent map, used in child map. Keyscope inheritance.",
+    "expected_domain": "keyref",
+    "expected_recipe": "keyref_nested_keydef_chain_map_to_map_to_topic",
+    "expected_scenarios": ["MIN_REPRO", "BOUNDARY"]
+  },
+  {
+    "jira_text": "External link to PDF. xref format=pdf scope=local not rendering. Need minimal dataset.",
+    "expected_domain": "xref",
+    "expected_recipe": "xref_external_pdf",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Same-file xref to section. Right panel link to section in same topic broken.",
+    "expected_domain": "xref",
+    "expected_recipe": "xref_self_section",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Conrefend and cyclic references cause false duplicate ID warnings. Topic A conrefs to B, B conrefs back to A.",
+    "expected_domain": "conref",
+    "expected_recipe": "conrefend_cyclic_duplicate_id",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Map stress: many topicrefs. Performance degradation with large map. Map parsing stress test.",
+    "expected_domain": "map",
+    "expected_recipe": "map_parse_stress",
+    "expected_scenarios": ["STRESS"]
+  },
+  {
+    "jira_text": "Simple typo fix in documentation. No DITA-specific features. Just text update.",
+    "expected_domain": "general",
+    "expected_recipe": "evidence_to_dita",
+    "expected_scenarios": ["MIN_REPRO"]
+  },
+  {
+    "jira_text": "Broken xref href. Validator should catch non-existent target. Negative validation test.",
+    "expected_domain": "xref",
+    "expected_recipe": "xref_broken_href",
+    "expected_scenarios": ["NEGATIVE"]
+  }
+]

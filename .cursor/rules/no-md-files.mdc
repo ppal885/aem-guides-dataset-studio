@@ -1,0 +1,46 @@
+# No Markdown Files Rule
+
+## Rule: Do Not Create MD Files for Simple Queries
+
+### When NOT to Create MD Files
+
+**DO NOT** create markdown documentation files for:
+- Simple step-by-step instructions
+- Quick reference guides
+- One-time setup instructions
+- Troubleshooting steps that can be explained directly
+- Code copy instructions
+- Basic Git operations
+- Simple configuration steps
+
+### When TO Create MD Files
+
+**ONLY** create markdown files for:
+- Complex architecture documentation
+- API documentation
+- User manuals
+- Comprehensive guides that will be referenced multiple times
+- Project-wide standards and conventions
+- When explicitly requested by user
+
+### Response Pattern
+
+Instead of creating MD files, provide:
+- Direct, concise answers in the response
+- Inline code examples
+- Step-by-step instructions in the response itself
+- Quick reference in the response
+
+### Examples
+
+**BAD:**
+- User asks: "How to copy files to VM?"
+- Response: Creates `COPY_FILES_GUIDE.md` with instructions
+
+**GOOD:**
+- User asks: "How to copy files to VM?"
+- Response: Directly provides commands and steps in response, no MD file
+
+**Exception:**
+- If user explicitly asks: "Create a guide/documentation for X"
+- Then create MD file

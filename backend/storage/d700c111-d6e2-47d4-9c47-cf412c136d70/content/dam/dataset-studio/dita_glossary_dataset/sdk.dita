@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_sdk-entry" xml:lang="en">
+  <glossterm>Software Development Kit</glossterm>
+  <glossdef>
+    <p>Set of development tools.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>SDK</glossAbbreviation>
+  </glossAlt>
+</glossentry>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_api-entry" xml:lang="en">
+  <glossterm>Application Programming Interface</glossterm>
+  <glossdef>
+    <p>A mechanism for software communication.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>API</glossAbbreviation>
+  </glossAlt>
+</glossentry>

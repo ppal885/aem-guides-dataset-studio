@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_dita-entry" xml:lang="en">
+  <glossterm>Darwin Information Typing Architecture</glossterm>
+  <glossdef>
+    <p>XML-based architecture for technical documentation.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>DITA</glossAbbreviation>
+  </glossAlt>
+</glossentry>

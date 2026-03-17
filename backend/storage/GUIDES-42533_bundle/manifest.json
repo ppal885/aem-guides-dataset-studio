@@ -1,0 +1,26 @@
+{
+  "jira_id": "GUIDES-42533",
+  "run_id": "6dd9f143-3604-44cc-9442-e79167424119",
+  "scenarios": [
+    {
+      "scenario_id": "S1_MIN_REPRO",
+      "scenario_dir": "S1_MIN_REPRO",
+      "metadata_path": "S1_MIN_REPRO/metadata.json",
+      "recipes_executed": [
+        "self_reference"
+      ],
+      "validation_passed": true,
+      "warnings": []
+    }
+  ],
+  "created_at": "2026-03-06T19:17:43.856803",
+  "stats": {
+    "evidence_primary": "GUIDES-42533"
+  },
+  "prompt_versions": {
+    "domain_classifier": "v1",
+    "scenario_expander": "v1",
+    "generator_invocation_planner": "v1",
+    "planner": "v1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "jira_id": "TEXT-5f5be19e",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "llm_generated_dita"
+  ],
+  "created_at": "2026-03-15T14:14:53.177565Z",
+  "evidence": []
+}

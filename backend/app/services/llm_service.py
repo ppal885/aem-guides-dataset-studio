@@ -1,0 +1,968 @@
+"""LLM service for JSON generation and chat streaming via Anthropic, AWS Bedrock, or Groq API."""
+import json
+import os
+import re
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import AsyncGenerator, Optional, Tuple
+
+from app.core.agentic_config import agentic_config
+from app.core.observability import get_observability_logger
+from app.utils.rate_limiter import get_llm_limiter
+from app.core.structured_logging import get_structured_logger
+
+logger = get_structured_logger(__name__)
+obs_log = get_observability_logger("llm")
+
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+ANTHROPIC_FALLBACK_MODEL = os.getenv("ANTHROPIC_FALLBACK_MODEL", "claude-3-haiku-20240307").strip() or None
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+# Bedrock (Claude Code setup at Adobe: Shared Bedrock or Project Turnkey)
+# Uses AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) or default chain
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+BEDROCK_REGION = os.getenv("AWS_REGION", os.getenv("BEDROCK_REGION", "us-west-2"))
+USE_BEDROCK = os.getenv("CLAUDE_CODE_USE_BEDROCK", "").lower() in ("1", "true", "yes")
+
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
+LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "groq").lower().strip()
+
+# Circuit breaker (env-gated, default off)
+CIRCUIT_BREAKER_ENABLED = os.getenv("LLM_CIRCUIT_BREAKER_ENABLED", "").lower() in ("true", "1", "yes")
+CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD", "5"))
+CIRCUIT_BREAKER_WINDOW_SEC = float(os.getenv("LLM_CIRCUIT_BREAKER_WINDOW_SEC", "60"))
+
+_llm_failure_count = 0
+_llm_last_failure_time: float = 0.0
+_circuit_lock = threading.Lock()
+
+
+def _circuit_breaker_record_failure() -> None:
+    """Record an LLM failure. Call on exception."""
+    global _llm_failure_count, _llm_last_failure_time
+    if not CIRCUIT_BREAKER_ENABLED:
+        return
+    with _circuit_lock:
+        _llm_failure_count += 1
+        _llm_last_failure_time = time.monotonic()
+
+
+def _circuit_breaker_record_success() -> None:
+    """Reset circuit on successful LLM call."""
+    global _llm_failure_count
+    if not CIRCUIT_BREAKER_ENABLED:
+        return
+    with _circuit_lock:
+        _llm_failure_count = 0
+
+
+def _circuit_breaker_is_open() -> bool:
+    """Return True if circuit is open (too many failures in window)."""
+    if not CIRCUIT_BREAKER_ENABLED:
+        return False
+    with _circuit_lock:
+        if _llm_failure_count < CIRCUIT_BREAKER_THRESHOLD:
+            return False
+        elapsed = time.monotonic() - _llm_last_failure_time
+        if elapsed > CIRCUIT_BREAKER_WINDOW_SEC:
+            _llm_failure_count = 0
+            return False
+        return True
+
+
+def _is_bedrock_available() -> bool:
+    """Bedrock uses AWS credential chain. For Adobe: Project Turnkey gives AWS keys from CAMP."""
+    has_explicit = bool(
+        os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
+    has_bearer = bool(os.getenv("AWS_BEARER_TOKEN_BEDROCK", "").strip())
+    has_profile = bool(os.getenv("AWS_PROFILE"))
+    # Allow if explicit creds, bearer (Adobe shared), profile, or default chain (~/.aws/credentials)
+    if has_explicit or has_bearer or has_profile:
+        return True
+    # Check for default credentials file
+    aws_creds = Path.home() / ".aws" / "credentials"
+    return aws_creds.exists()
+
+
+def _effective_provider() -> str:
+    """Resolve provider: bedrock if LLM_PROVIDER=bedrock or CLAUDE_CODE_USE_BEDROCK=1."""
+    if LLM_PROVIDER == "bedrock" or USE_BEDROCK:
+        return "bedrock"
+    return LLM_PROVIDER
+
+
+def is_llm_available() -> bool:
+    """Return True if the configured LLM provider has credentials; False enables mock mode.
+    Set AI_USE_MOCK_LLM=true to force mock mode (no API key needed).
+    Use LLM_PROVIDER=anthropic|bedrock|groq|openai. For Bedrock (Claude Code setup): LLM_PROVIDER=bedrock + AWS_REGION."""
+    if os.getenv("AI_USE_MOCK_LLM", "").lower() in ("true", "1", "yes"):
+        return False
+    provider = _effective_provider()
+    if provider == "groq":
+        return bool(GROQ_API_KEY and GROQ_API_KEY.strip())
+    if provider == "openai":
+        return bool(OPENAI_API_KEY and OPENAI_API_KEY.strip())
+    if provider == "bedrock":
+        return _is_bedrock_available()
+    return bool(ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip())
+
+PROMPTS_VERSIONS_PATH = str(Path(__file__).resolve().parent.parent / "templates" / "prompts" / "versions.json")
+
+_prompt_versions_cache: Optional[dict] = None
+
+
+def _get_prompt_versions() -> dict:
+    global _prompt_versions_cache
+    if _prompt_versions_cache is None:
+        try:
+            with open(PROMPTS_VERSIONS_PATH, encoding="utf-8") as f:
+                _prompt_versions_cache = json.load(f)
+        except Exception as e:
+            logger.warning_structured("Failed to load prompt versions", extra_fields={"path": PROMPTS_VERSIONS_PATH, "error": str(e)})
+            _prompt_versions_cache = {}
+    return _prompt_versions_cache
+
+
+def _extract_json(text: str) -> Optional[dict]:
+    """Extract JSON object from response text."""
+    text = text.strip()
+    match = re.search(r"\{[\s\S]*\}", text)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError as e:
+            logger.debug("JSON decode failed in LLM response", extra_fields={"error": str(e), "snippet": match.group()[:200]})
+    return None
+
+
+def _store_llm_run(
+    trace_id: Optional[str],
+    jira_id: Optional[str],
+    step_name: str,
+    model: str,
+    prompt: str,
+    response: Optional[str],
+    tokens_input: Optional[int],
+    tokens_output: Optional[int],
+    latency_ms: Optional[int],
+    error_type: Optional[str] = None,
+    prompt_version: Optional[str] = None,
+    retry_count: Optional[int] = None,
+) -> None:
+    """Store LLMRun row. Non-fatal on failure."""
+    try:
+        from app.db.session import SessionLocal
+        from app.db.llm_models import LLMRun
+        db = SessionLocal()
+        try:
+            run = LLMRun(
+                trace_id=trace_id,
+                jira_id=jira_id,
+                step_name=step_name,
+                prompt_version=prompt_version,
+                model=model,
+                prompt=prompt[:50000] if prompt else None,
+                response=response[:50000] if response else None,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                latency_ms=latency_ms,
+                retry_count=retry_count,
+                error_type=error_type,
+            )
+            db.add(run)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning_structured(
+            "Failed to store LLMRun",
+            extra_fields={"step_name": step_name, "error": str(e)},
+        )
+
+
+def store_chat_llm_run(
+    session_id: str,
+    tokens_input: int,
+    tokens_output: int,
+    model: str = "chat",
+) -> None:
+    """Store chat LLM usage for observability. Non-fatal on failure."""
+    _store_llm_run(
+        trace_id=session_id,
+        jira_id=None,
+        step_name="chat_turn",
+        model=model,
+        prompt=None,
+        response=None,
+        tokens_input=tokens_input,
+        tokens_output=tokens_output,
+        latency_ms=None,
+    )
+
+
+def _is_retryable_llm_error(e: Exception) -> bool:
+    """Return True if error is rate limit (429) or server error (503) and fallback may help."""
+    err_str = str(e).lower()
+    if "429" in err_str or "rate" in err_str or "overloaded" in err_str:
+        return True
+    if "503" in err_str or "service" in err_str or "unavailable" in err_str:
+        return True
+    status = getattr(e, "status_code", None)
+    if status in (429, 503):
+        return True
+    return False
+
+
+def _is_langsmith_tracing_enabled() -> bool:
+    """Return True when LangSmith tracing should be used."""
+    return (
+        os.getenv("LANGSMITH_TRACING", "").lower() in ("true", "1", "yes")
+        and bool(os.getenv("LANGSMITH_API_KEY", "").strip())
+    )
+
+
+def _wrap_for_tracing(client):
+    """Wrap Anthropic/Bedrock client for LangSmith tracing when enabled."""
+    if not _is_langsmith_tracing_enabled():
+        return client
+    try:
+        from langsmith.wrappers import wrap_anthropic
+        return wrap_anthropic(client)
+    except ImportError:
+        return client
+
+
+def _get_bedrock_client():
+    """Create AsyncAnthropicBedrock client. Uses AWS creds or default chain."""
+    from anthropic import AsyncAnthropicBedrock
+    kwargs = {"aws_region": BEDROCK_REGION, "timeout": 120.0}
+    if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
+        kwargs["aws_access_key"] = os.getenv("AWS_ACCESS_KEY_ID")
+        kwargs["aws_secret_key"] = os.getenv("AWS_SECRET_ACCESS_KEY")
+    if os.getenv("AWS_SESSION_TOKEN"):
+        kwargs["aws_session_token"] = os.getenv("AWS_SESSION_TOKEN")
+    client = AsyncAnthropicBedrock(**kwargs)
+    return _wrap_for_tracing(client)
+
+
+async def _generate_bedrock(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    timeout_sec: float,
+    model: Optional[str] = None,
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """Call Claude via AWS Bedrock. Returns (content, input_tokens, output_tokens)."""
+    client = _get_bedrock_client()
+    model_to_use = model or BEDROCK_MODEL
+    response = await client.messages.create(
+        model=model_to_use,
+        max_tokens=max_tokens,
+        temperature=0.1,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        timeout=timeout_sec,
+    )
+    content = ""
+    if response.content:
+        for block in response.content:
+            if hasattr(block, "text"):
+                content += block.text
+    usage = getattr(response, "usage", None)
+    input_tok = getattr(usage, "input_tokens", None) if usage else None
+    output_tok = getattr(usage, "output_tokens", None) if usage else None
+    return content, input_tok, output_tok
+
+
+async def _generate_anthropic(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    timeout_sec: float,
+    model: Optional[str] = None,
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """Call Anthropic API. Returns (content, input_tokens, output_tokens)."""
+    try:
+        import anthropic
+    except ImportError:
+        raise ImportError("anthropic package is required. Install with: pip install anthropic")
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
+    client = _wrap_for_tracing(client)
+    model_to_use = model or ANTHROPIC_MODEL
+    response = await client.messages.create(
+        model=model_to_use,
+        max_tokens=max_tokens,
+        temperature=0.1,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        timeout=timeout_sec,
+    )
+
+    content = ""
+    if response.content:
+        for block in response.content:
+            if hasattr(block, "text"):
+                content += block.text
+
+    usage = getattr(response, "usage", None)
+    input_tok = getattr(usage, "input_tokens", None) if usage else None
+    output_tok = getattr(usage, "output_tokens", None) if usage else None
+
+    return content, input_tok, output_tok
+
+
+async def _generate_groq(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    timeout_sec: float,
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """Call Groq API (OpenAI-compatible). Returns (content, input_tokens, output_tokens)."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for Groq. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        base_url=GROQ_BASE_URL,
+        api_key=GROQ_API_KEY,
+        timeout=timeout_sec,
+    )
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.wrappers import wrap_openai
+            client = wrap_openai(client)
+        except ImportError:
+            pass
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=0.1,
+    )
+
+    content = ""
+    if response.choices and len(response.choices) > 0:
+        msg = response.choices[0].message
+        if msg and hasattr(msg, "content") and msg.content:
+            content = msg.content
+
+    input_tok = output_tok = None
+    if response.usage:
+        input_tok = getattr(response.usage, "prompt_tokens", None)
+        output_tok = getattr(response.usage, "completion_tokens", None)
+
+    return content, input_tok, output_tok
+
+
+async def _generate_openai(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    timeout_sec: float,
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """Call OpenAI API. Returns (content, input_tokens, output_tokens)."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        api_key=OPENAI_API_KEY,
+        timeout=timeout_sec,
+    )
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.wrappers import wrap_openai
+            client = wrap_openai(client)
+        except ImportError:
+            pass
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    response = await client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=0.1,
+    )
+
+    content = ""
+    if response.choices and len(response.choices) > 0:
+        msg = response.choices[0].message
+        if msg and hasattr(msg, "content") and msg.content:
+            content = msg.content
+
+    input_tok = output_tok = None
+    if response.usage:
+        input_tok = getattr(response.usage, "prompt_tokens", None)
+        output_tok = getattr(response.usage, "completion_tokens", None)
+
+    return content, input_tok, output_tok
+
+
+async def generate_chat_stream(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int = 4096,
+    timeout_sec: float | None = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Stream chat completion. Yields text chunks as they arrive.
+    messages: list of {"role": "user"|"assistant", "content": str}
+    """
+    if not is_llm_available():
+        raise RuntimeError(
+            "LLM unavailable: set ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or LLM_PROVIDER=bedrock with AWS credentials. "
+            "For Bedrock (Claude Code setup): LLM_PROVIDER=bedrock, AWS_REGION=us-west-2."
+        )
+    if _circuit_breaker_is_open():
+        raise RuntimeError(
+            "LLM temporarily unavailable (circuit open). Set LLM_CIRCUIT_BREAKER_ENABLED=false to disable, or wait and retry."
+        )
+    timeout_sec = timeout_sec or agentic_config.llm_timeout_seconds
+    await get_llm_limiter().acquire_async()
+
+    provider = _effective_provider()
+    try:
+        if provider == "groq":
+            async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
+                yield chunk
+        elif provider == "openai":
+            async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
+                yield chunk
+        elif provider == "bedrock":
+            async for chunk in _generate_chat_stream_bedrock(system_prompt, messages, max_tokens, timeout_sec):
+                yield chunk
+        else:
+            async for chunk in _generate_chat_stream_anthropic(system_prompt, messages, max_tokens, timeout_sec):
+                yield chunk
+        _circuit_breaker_record_success()
+    except Exception as e:
+        _circuit_breaker_record_failure()
+        raise
+
+
+async def generate_chat_stream_with_tools(
+    system_prompt: str,
+    messages: list[dict],
+    tools: list[dict],
+    max_tokens: int = 4096,
+    timeout_sec: float | None = None,
+) -> AsyncGenerator[Tuple[str, object], None]:
+    """
+    Stream chat with tool support. Yields ("chunk", text) for text, then ("tool_use_blocks", [blocks])
+    if model requested tools, or ("done",) when finished.
+    Only supports Anthropic and Bedrock; Groq falls back to no tools.
+    """
+    if not is_llm_available():
+        raise RuntimeError(
+            "LLM unavailable: set ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or LLM_PROVIDER=bedrock with AWS credentials."
+        )
+    if _circuit_breaker_is_open():
+        raise RuntimeError(
+            "LLM temporarily unavailable (circuit open). Set LLM_CIRCUIT_BREAKER_ENABLED=false to disable, or wait and retry."
+        )
+    timeout_sec = timeout_sec or agentic_config.llm_timeout_seconds
+    await get_llm_limiter().acquire_async()
+
+    provider = _effective_provider()
+    try:
+        if provider == "groq":
+            async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
+                yield ("chunk", chunk)
+            yield ("done",)
+            _circuit_breaker_record_success()
+            return
+
+        if provider == "openai":
+            async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
+                yield ("chunk", chunk)
+            yield ("done",)
+            _circuit_breaker_record_success()
+            return
+
+        if provider == "bedrock":
+            async for evt in _stream_with_tools_bedrock(system_prompt, messages, tools, max_tokens, timeout_sec):
+                yield evt
+        else:
+            async for evt in _stream_with_tools_anthropic(system_prompt, messages, tools, max_tokens, timeout_sec):
+                yield evt
+        _circuit_breaker_record_success()
+    except Exception as e:
+        _circuit_breaker_record_failure()
+        raise
+
+
+async def _stream_with_tools_anthropic(
+    system_prompt: str,
+    messages: list[dict],
+    tools: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[Tuple[str, object], None]:
+    """Stream with tools via Anthropic API. Yields (chunk, text) or (tool_use_blocks, blocks) or (done,)."""
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
+    async with client.messages.stream(
+        model=ANTHROPIC_MODEL,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        system=system_prompt,
+        messages=messages,
+        tools=tools,
+        tool_choice={"type": "auto"},
+        timeout=timeout_sec,
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                yield ("chunk", text)
+        msg = await stream.get_final_message()
+        usage = None
+        if getattr(msg, "usage", None):
+            u = msg.usage
+            usage = {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or getattr(u, "completion_tokens", 0) or 0,
+            }
+        if msg.stop_reason == "tool_use":
+            blocks = [
+                {"id": b.id, "name": b.name, "input": b.input}
+                for b in msg.content
+                if getattr(b, "type", None) == "tool_use"
+            ]
+            if blocks:
+                if usage:
+                    yield ("usage", usage)
+                yield ("tool_use_blocks", blocks)
+                return
+        if usage:
+            yield ("usage", usage)
+        yield ("done",)
+
+
+async def _stream_with_tools_bedrock(
+    system_prompt: str,
+    messages: list[dict],
+    tools: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[Tuple[str, object], None]:
+    """Stream with tools via Bedrock. Same yield format as Anthropic."""
+    client = _get_bedrock_client()
+    async with client.messages.stream(
+        model=BEDROCK_MODEL,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        system=system_prompt,
+        messages=messages,
+        tools=tools,
+        tool_choice={"type": "auto"},
+        timeout=timeout_sec,
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                yield ("chunk", text)
+        msg = await stream.get_final_message()
+        usage = None
+        if getattr(msg, "usage", None):
+            u = msg.usage
+            usage = {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or getattr(u, "completion_tokens", 0) or 0,
+            }
+        if msg.stop_reason == "tool_use":
+            blocks = [
+                {"id": b.id, "name": b.name, "input": b.input}
+                for b in msg.content
+                if getattr(b, "type", None) == "tool_use"
+            ]
+            if blocks:
+                if usage:
+                    yield ("usage", usage)
+                yield ("tool_use_blocks", blocks)
+                return
+        if usage:
+            yield ("usage", usage)
+        yield ("done",)
+
+
+async def _generate_chat_stream_anthropic(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via Anthropic API."""
+    try:
+        import anthropic
+    except ImportError:
+        raise ImportError("anthropic package is required. Install with: pip install anthropic")
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
+    model_to_use = ANTHROPIC_MODEL
+
+    async with client.messages.stream(
+        model=model_to_use,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        system=system_prompt,
+        messages=messages,
+        timeout=timeout_sec,
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                yield text
+
+
+async def _generate_chat_stream_bedrock(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via AWS Bedrock (Claude Code setup at Adobe)."""
+    client = _get_bedrock_client()
+    model_to_use = BEDROCK_MODEL
+    async with client.messages.stream(
+        model=model_to_use,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        system=system_prompt,
+        messages=messages,
+        timeout=timeout_sec,
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                yield text
+
+
+async def _generate_chat_stream_groq(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via Groq API (OpenAI-compatible)."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for Groq. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        base_url=GROQ_BASE_URL,
+        api_key=GROQ_API_KEY,
+        timeout=timeout_sec,
+    )
+
+    # Convert to OpenAI format: system + alternating user/assistant
+    openai_messages = [{"role": "system", "content": system_prompt}]
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role in ("user", "assistant"):
+            openai_messages.append({"role": role, "content": content})
+
+    stream = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=openai_messages,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if delta and hasattr(delta, "content") and delta.content:
+                yield delta.content
+
+
+async def _generate_chat_stream_openai(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via OpenAI API."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        api_key=OPENAI_API_KEY,
+        timeout=timeout_sec,
+    )
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.wrappers import wrap_openai
+            client = wrap_openai(client)
+        except ImportError:
+            pass
+
+    openai_messages = [{"role": "system", "content": system_prompt}]
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role in ("user", "assistant"):
+            openai_messages.append({"role": role, "content": content})
+
+    stream = await client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=openai_messages,
+        max_tokens=max_tokens,
+        temperature=0.2,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if delta and hasattr(delta, "content") and delta.content:
+                yield delta.content
+
+
+async def _generate_json_impl(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    step_name: str,
+    trace_id: Optional[str],
+    jira_id: Optional[str],
+) -> dict:
+    """Internal implementation of generate_json."""
+    trace_id = trace_id or str(uuid.uuid4())
+    provider = _effective_provider()
+
+    def _get_primary():
+        if provider == "groq":
+            if not GROQ_API_KEY or not GROQ_API_KEY.strip():
+                raise ValueError("GROQ_API_KEY is not set (LLM_PROVIDER=groq)")
+            return GROQ_MODEL, _generate_groq, None
+        if provider == "openai":
+            if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
+                raise ValueError("OPENAI_API_KEY is not set (LLM_PROVIDER=openai)")
+            return OPENAI_MODEL, _generate_openai, None
+        if provider == "bedrock":
+            if not _is_bedrock_available():
+                raise ValueError("Bedrock: set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (or AWS_PROFILE)")
+            return BEDROCK_MODEL, _generate_bedrock, None
+        if not ANTHROPIC_API_KEY or not ANTHROPIC_API_KEY.strip():
+            raise ValueError("ANTHROPIC_API_KEY is not set")
+        return ANTHROPIC_MODEL, _generate_anthropic, None
+
+    def _get_fallback():
+        if LLM_FALLBACK_PROVIDER == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
+            return GROQ_MODEL, _generate_groq, None
+        if LLM_FALLBACK_PROVIDER == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
+            return OPENAI_MODEL, _generate_openai, None
+        if LLM_FALLBACK_PROVIDER == "bedrock" and _is_bedrock_available():
+            return BEDROCK_MODEL, _generate_bedrock, None
+        if ANTHROPIC_FALLBACK_MODEL and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip():
+            return ANTHROPIC_FALLBACK_MODEL, _generate_anthropic, ANTHROPIC_FALLBACK_MODEL
+        return None, None, None
+
+    model_name, generate_fn, model_override = _get_primary()
+    fallback_model, fallback_fn, fallback_override = _get_fallback()
+
+    timeout_sec = agentic_config.llm_timeout_seconds
+    last_error = None
+    trace_id = trace_id or str(uuid.uuid4())
+    full_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
+    prompt_version = _get_prompt_versions().get(step_name)
+    used_fallback = False
+
+    async def _try_generate(fn, mname: str, model_param: Optional[str] = None):
+        await get_llm_limiter().acquire_async()
+        if model_param and fn in (_generate_anthropic, _generate_bedrock):
+            return await fn(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                timeout_sec=timeout_sec,
+                model=model_param,
+            )
+        return await fn(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            timeout_sec=timeout_sec,
+        )
+
+    for attempt in range(3):
+        start_time = time.perf_counter()
+        input_tok = output_tok = None
+        try:
+            content, input_tok, output_tok = await _try_generate(
+                generate_fn, model_name, model_override
+            )
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+
+            result = _extract_json(content)
+            if result is not None:
+                _store_llm_run(
+                    trace_id=trace_id,
+                    jira_id=jira_id,
+                    step_name=step_name,
+                    model=model_name,
+                    prompt=full_prompt,
+                    response=content,
+                    tokens_input=input_tok,
+                    tokens_output=output_tok,
+                    latency_ms=elapsed_ms,
+                    prompt_version=prompt_version,
+                    retry_count=attempt,
+                )
+                logger.info_structured(
+                    "LLM run completed",
+                    extra_fields={
+                        "trace_id": trace_id,
+                        "step_name": step_name,
+                        "tokens_input": input_tok,
+                        "tokens_output": output_tok,
+                        "latency_ms": elapsed_ms,
+                        "used_fallback": used_fallback,
+                    },
+                )
+                if _is_langsmith_tracing_enabled():
+                    try:
+                        from langsmith.run_helpers import set_run_metadata
+                        set_run_metadata(
+                            prompt_tokens=input_tok,
+                            completion_tokens=output_tok,
+                            latency_ms=elapsed_ms,
+                            retry_count=attempt,
+                            step_name=step_name,
+                        )
+                    except Exception:
+                        pass
+                return result
+
+            last_error = ValueError("No valid JSON in response")
+            _store_llm_run(
+                trace_id=trace_id,
+                jira_id=jira_id,
+                step_name=step_name,
+                model=model_name,
+                prompt=full_prompt,
+                response=content,
+                tokens_input=input_tok,
+                tokens_output=output_tok,
+                latency_ms=elapsed_ms,
+                error_type=type(last_error).__name__,
+                prompt_version=prompt_version,
+                retry_count=attempt,
+            )
+            logger.warning_structured(
+                "LLM run invalid JSON",
+                extra_fields={
+                    "trace_id": trace_id,
+                    "step_name": step_name,
+                    "latency_ms": elapsed_ms,
+                    "error_type": type(last_error).__name__,
+                },
+            )
+        except Exception as e:
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            last_error = e
+            _store_llm_run(
+                trace_id=trace_id,
+                jira_id=jira_id,
+                step_name=step_name,
+                model=model_name,
+                prompt=full_prompt,
+                response=None,
+                tokens_input=None,
+                tokens_output=None,
+                latency_ms=elapsed_ms,
+                error_type=type(e).__name__,
+                prompt_version=prompt_version,
+                retry_count=attempt,
+            )
+            logger.error_structured(
+                "LLM run failed",
+                extra_fields={
+                    "trace_id": trace_id,
+                    "step_name": step_name,
+                    "latency_ms": elapsed_ms,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            if (
+                not used_fallback
+                and _is_retryable_llm_error(e)
+                and fallback_fn is not None
+                and fallback_model
+            ):
+                logger.info_structured(
+                    "LLM fallback: retrying with fallback model",
+                    extra_fields={
+                        "trace_id": trace_id,
+                        "step_name": step_name,
+                        "fallback_model": fallback_model,
+                    },
+                )
+                used_fallback = True
+                model_name = fallback_model
+                generate_fn = fallback_fn
+                model_override = fallback_override
+                last_error = None
+                continue
+
+        if attempt < 2:
+            time.sleep(0.5 * (attempt + 1))
+
+    raise last_error or ValueError("Failed to get valid JSON from LLM")
+
+
+async def generate_json(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 1200,
+    step_name: str = "llm_generate",
+    trace_id: Optional[str] = None,
+    jira_id: Optional[str] = None,
+) -> dict:
+    """
+    Call configured LLM provider (Anthropic, Bedrock, or Groq) and return parsed JSON.
+    Retries up to 2 times on invalid JSON. On 429/503, falls back to fallback model/provider.
+    When LANGSMITH_TRACING=true, traces each call with tokens, latency, retry_count.
+    """
+    impl = _generate_json_impl
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.run_helpers import traceable
+            impl = traceable(run_type="llm", name="LLM generate_json")(_generate_json_impl)
+        except ImportError:
+            pass
+    return await impl(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=max_tokens,
+        step_name=step_name,
+        trace_id=trace_id,
+        jira_id=jira_id,
+    )

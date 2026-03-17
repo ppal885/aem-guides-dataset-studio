@@ -1,0 +1,10 @@
+{
+  "jira_id": "GUIDES-42885",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "map_parse_stress",
+    "conditional_content"
+  ],
+  "created_at": "2026-03-06T09:10:57.605320Z",
+  "evidence": []
+}

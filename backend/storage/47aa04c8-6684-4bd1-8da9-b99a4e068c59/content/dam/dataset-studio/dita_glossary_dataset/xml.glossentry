@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_xml-entry" xml:lang="en">
+  <glossterm>eXtensible Markup Language</glossterm>
+  <glossdef>
+    <p>Markup language for structured data.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>XML</glossAbbreviation>
+  </glossAlt>
+</glossentry>

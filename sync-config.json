@@ -1,0 +1,26 @@
+{
+  "vm": {
+    "ip": "192.168.1.100",
+    "user": "ubuntu",
+    "path": "/home/ubuntu/aem-guides-dataset-studio",
+    "ssh_key": "~/.ssh/id_rsa"
+  },
+  "exclude": [
+    "node_modules",
+    "__pycache__",
+    "*.pyc",
+    ".git",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".next",
+    ".vscode",
+    "*.log",
+    "*.swp",
+    ".DS_Store"
+  ],
+  "watch": false,
+  "auto_restart": false,
+  "restart_command": "docker-compose restart"
+}

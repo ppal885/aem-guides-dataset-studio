@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_ui-entry" xml:lang="en">
+  <glossterm>User Interface</glossterm>
+  <glossdef>
+    <p>Visual elements for user interaction.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>UI</glossAbbreviation>
+  </glossAlt>
+</glossentry>

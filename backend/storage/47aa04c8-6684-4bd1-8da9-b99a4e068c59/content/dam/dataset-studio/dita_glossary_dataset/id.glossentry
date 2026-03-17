@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_id-entry" xml:lang="en">
+  <glossterm>Identifier</glossterm>
+  <glossdef>
+    <p>Unique reference to an entity.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>ID</glossAbbreviation>
+  </glossAlt>
+</glossentry>

@@ -1,0 +1,82 @@
+# Jira-to-Recipe Selection Rules
+
+## Recipe: keyref_nested_keydef_chain_map_to_map_to_topic
+
+### SELECT this recipe when Jira PRIMARILY describes:
+- nested keydef chain resolution across outer map -> intermediate keymap -> keyword/topic source
+- especially when DITA-OT resolves correctly but Web Editor author/preview does not
+
+### Also select when Jira describes:
+- nested key resolution failure in AEM Guides Web Editor / Author / Preview
+- Map A contains keydef pointing to Map B; Map B contains keydefs and/or keydef pointing to Topic C
+- Topic C contains keyword definitions; Topic D uses keyref values
+- When Map A is opened as context map, nested keys are NOT resolved in editor
+- When Map B is manually opened as root context, keys resolve
+- DITA-OT publishing resolves correctly
+- Problem limited to Web Editor key-resolution pipeline, not content validity
+
+### Strong positive signals:
+- nested key resolution, keydef chain, keydef points to keymap, keydef points to topic with keywords
+- map A -> map B -> topic C
+- keys resolve only when intermediate keymap is opened
+- web editor does not resolve nested keys
+- author/preview unresolved keyref but DITA-OT output correct
+- recursive key loading missing
+- parity issue between editor and DITA-OT
+- intermediate map as root is a workaround
+- direct keys in outer map resolve; nested keys in inner keymap do not
+
+### DO NOT select this recipe when Jira is mainly about:
+- xref href resolution
+- conref/conkeyref reuse
+- ditaval profiling
+- glossary display only
+- duplicate keys in same scope without recursive chain
+- reltable navigation
+- publishing-only issue
+- broken external links
+- map hierarchy without nested keydefs
+- heavy performance topic generation
+
+### Anti-blending:
+- This recipe is keyref family only. Do NOT include conref, xref, or ditaval unless Jira explicitly mentions them.
+- Do NOT broaden into "generic link resolution".
+
+---
+
+## Recipe: heavy_conditional_topic_6000_lines
+
+### SELECT this recipe when the Jira or similar request PRIMARILY asks for:
+- a very large single DITA topic with heavy conditional profiling using audience/platform/otherprops
+- especially for stress, filtering, rendering, or performance testing
+
+### Also select when Jira asks for:
+- a heavy topic or condition-heavy topic
+- audience/platform/otherprops profiling dataset
+- filtering/performance/rendering/save/load stress on one topic
+- 6000+ line topic for stress testing
+- author loading issue with large files
+- source view slow for heavy topic
+- editor stress on large conditional content
+
+### DO NOT select this recipe when Jira is mainly about:
+- keyref (key resolution, keydef, keyscope)
+- conref (content reuse, conrefend)
+- xref (cross-references, linking)
+- nested map resolution
+- duplicate keys
+- glossary term resolution
+- reltable behavior
+
+### Anti-Confusion Guidance:
+- "Conditional heavy topic" is NOT the same as: keyref recipe, conref recipe, xref recipe, or ditaval-only recipe.
+- heavy_conditional_topic_6000_lines produces ONE huge topic with many audience/platform/otherprops attributes—for stress testing editor, filter, save/load.
+- If Jira mentions audience/platform/otherprops AND large topic AND performance/filtering/stress, PREFER heavy_conditional_topic_6000_lines over generic ditaval or conditional_content recipes.
+- If Jira is about key resolution, conref correctness, or xref linking—do NOT use heavy_conditional_topic_6000_lines.
+
+### Structured Recipe-Selection Output:
+When returning recipe selection, include:
+- selected_recipe: "heavy_conditional_topic_6000_lines"
+- confidence: 0.0–1.0
+- selection_reason: ["Jira requests very large topic", "Jira mentions audience/platform/otherprops", "Jira intent is stress/performance/filtering, not reference resolution"]
+- rejected_recipes: [{"recipe": "keyref_duplicate_keys", "reason": "Jira is not about key resolution"}, {"recipe": "conref_pack", "reason": "Jira is not about content reuse"}]

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_crm-entry" xml:lang="en">
+  <glossterm>Customer Relationship Management</glossterm>
+  <glossdef>
+    <p>System for managing customer interactions.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>CRM</glossAbbreviation>
+  </glossAlt>
+</glossentry>

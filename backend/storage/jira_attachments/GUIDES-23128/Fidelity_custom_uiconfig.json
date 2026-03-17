@@ -1,0 +1,1324 @@
+{
+  "topbar": {
+    "component": "blockGroup",
+    "extraclass": "toolbar views spectrum--dark",
+    "items": [
+      {
+        "component": "buttonGroup",
+        "extraclass": "app-title",
+        "items": [
+          {
+            "component": "button",
+            "icon": "adobeExperienceManager",
+            "title": "XML Editor",
+            "label": "XML Editor",
+            "variant": "action",
+            "quiet": true,
+            "iconsize": "M"
+          }
+        ]
+      },
+      {
+        "component": "buttonGroup",
+        "label": "Standard",
+        "show": "@isDocumentOpen",
+        "items": [
+          {
+            "component": "button",
+            "icon": "save",
+            "variant": "action",
+            "quiet": true,
+            "title": "@titles.APP_SAVE_ALL",
+            "hide": "@isPreviewMode",
+            "on-click": "APP_SAVE_ALL"
+          },
+          {
+            "component": "button",
+            "icon": "dataUpload",
+            "variant": "action",
+            "quiet": true,
+            "title": "Save as New Version",
+            "hide": "@isPreviewMode",
+            "on-click": "APP_SAVE_REVISION"
+          },
+          {
+            "component": "button",
+            "icon": "undo",
+            "variant": "action",
+            "quiet": true,
+            "title": "Undo",
+            "enabled": "@canUndo",
+            "hide": "@isPreviewMode",
+            "on-click": "AUTHOR_UNDO"
+          },
+          {
+            "component": "button",
+            "icon": "redo",
+            "variant": "action",
+            "quiet": true,
+            "title": "Redo",
+            "enabled": "@canRedo",
+            "hide": "@isPreviewMode",
+            "on-click": "AUTHOR_REDO"
+          },
+          {
+            "component": "button",
+            "icon": "delete",
+            "variant": "action",
+            "quiet": true,
+            "title": "Delete Element",
+            "show": "@isAuthorMode",
+            "on-click": "AUTHOR_DELETE_ELEMENT"
+          },
+          {
+            "component": "button",
+            "icon": "findAndReplace",
+            "variant": "action",
+            "quiet": true,
+            "hide": "@isPreviewMode",
+            "title": "@titles.APP_SHOW_FIND_REPLACE_DIALOG",
+            "on-click": "APP_SHOW_FIND_REPLACE_DIALOG"
+          }
+        ]
+      },
+      {
+        "component": "buttonGroup",
+        "label": "Standard",
+        "items": [
+          {
+            "component": "button",
+            "icon": "pageGear",
+            "variant": "action",
+            "quiet": true,
+            "title": "User Preferences",
+            "on-click": "APP_SHOW_USER_PREFERENCES"
+          }
+        ]
+      },
+      {
+        "component": "buttonGroup",
+        "label": "Standard",
+        "show": "@isFolderProfileAdmin",
+        "items": [
+          {
+            "component": "button",
+            "icon": "settings",
+            "variant": "action",
+            "quiet": true,
+            "title": "Editor Settings",
+            "on-click": "APP_SHOW_ADMIN_PREFERENCES"
+          }
+        ]
+      },
+      {
+        "component": "buttonGroup",
+        "extraclass": "right-topbar",
+        "items": [
+          {
+            "component": "buttonGroup",
+            "extraclass": "editor-views",
+            "show": "@isDocumentOpen",
+            "value": "@editorMode",
+            "items": [
+              {
+                "component": "button",
+                "icon": "edit",
+                "title": "Author",
+                "label": "Author",
+                "variant": "action",
+                "quiet": true,
+                "hide": [
+                  "@isTabReadMode",
+                  "@isMarkdownMode"
+                ],
+                "value": "author",
+                "on-click": "APP_SHOW_AUTHOR_VIEW"
+              },
+              {
+                "component": "button",
+                "icon": "code",
+                "title": "Source",
+                "label": "Source",
+                "variant": "action",
+                "quiet": true,
+                "hide": [
+                  "@isTabReadMode",
+                  "@isPresetMode"
+                ],
+                "value": "source",
+                "on-click": "APP_SHOW_SOURCE_VIEW"
+              },
+              {
+                "component": "button",
+                "icon": "preview",
+                "title": "Preview",
+                "label": "Preview",
+                "variant": "action",
+                "quiet": true,
+                "hide": [
+                  "@isDitaValMode",
+                  "@isPresetMode",
+                  "@isTranslationMode"
+                ],
+                "value": "preview",
+                "on-click": "APP_SHOW_PREVIEW"
+              }
+            ]
+          },
+          {
+            "component": "buttonGroup",
+            "extraclass": "app-close",
+            "items": [
+              {
+                "component": "button",
+                "title": "Close",
+                "label": "Close",
+                "variant": "action",
+                "quiet": true,
+                "on-click": "APP_CLOSE"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "toolbar": {
+    "component": "blockGroup",
+    "extraclass": "toolbar operations",
+    "items": [
+      {
+        "component": "blockGroup",
+        "extraclass": "left-controls",
+        "label": "Left Controls",
+        "show": [
+          "@features.knowledgeBase",
+          "@hasPageDitamap"
+        ],
+        "items": [
+          {
+            "component": "tabList",
+            "activeTabId": "@activeAppModeTabId",
+            "extraclass": [
+              "app-mode",
+              "separator"
+            ],
+            "items": [
+              {
+                "component": "tab",
+                "id": "author",
+                "title": "Author",
+                "on-click": "APP_MODE_CHANGE",
+                "items": [
+                  {
+                    "component": "label",
+                    "label": "Author"
+                  }
+                ]
+              },
+              {
+                "component": "tab",
+                "id": "workflow",
+                "title": "Manage",
+                "on-click": "APP_MODE_CHANGE",
+                "items": [
+                  {
+                    "component": "label",
+                    "label": "Manage"
+                  }
+                ]
+              },
+              {
+                "component": "tab",
+                "id": "publish",
+                "title": "Output",
+                "on-click": "APP_MODE_CHANGE",
+                "items": [
+                  {
+                    "component": "label",
+                    "label": "Output"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "show": "@isDocumentOpen",
+        "component": "buttonGroup",
+        "extraclass": "center-controls",
+        "items": [
+          {
+            "component": "buttonGroup",
+            "items": [
+              {
+                "component": "buttonGroup",
+                "show": [
+                  "@isPresetMode"
+                ],
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "export",
+                    "title": "Generate Preset",
+                    "on-click": "APP_PRESET_GENERATE",
+                    "variant": "action",
+                    "quiet": "true"
+                  }
+                ]
+              },
+              {
+                "component": "buttonGroup",
+                "show": [
+                  "@isDitaValMode",
+                  "@isAuthorMode"
+                ],
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "addCircle",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Add prop",
+                    "on-click": "APP_ADD_PROP"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "multipleAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Add All props",
+                    "on-click": "APP_ADD_PROPS"
+                  }
+                ]
+              },
+              {
+                "component": "buttonGroup",
+                "label": "Tools",
+                "show": "@isSourceMode",
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "textIndentIncrease",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Auto Indent",
+                    "on-click": "SOURCE_AUTO_INDENT"
+                  }
+                ]
+              },
+              {
+                "component": "buttonGroup",
+                "label": "Insert",
+                "show": [
+                  "@isXmlMode",
+                  "@isAuthorMode"
+                ],
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "add",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Element",
+                    "on-click": "AUTHOR_SHOW_INSERT_ELEMENT_UI"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "textParagraph",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Paragraph",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "p"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "textNumbered",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Numbered List",
+                    "on-click": "AUTHOR_INSERT_REMOVE_NUMBERED_LIST"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "textBulleted",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Bulleted List",
+                    "on-click": "AUTHOR_INSERT_REMOVE_BULLETED_LIST"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "table",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Table",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": [
+                        "simpletable",
+                        "table",
+                        "choicetable"
+                      ]
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "image",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Image",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "image"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "extraclass": "insert-multimedia",
+                    "icon": "playCircle",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Multimedia",
+                    "elementID": "toolbar_insert_multimedia",
+                    "on-click": {
+                      "name": "APP_SHOW_OPTIONS_POPOVER",
+                      "args": {
+                        "target": "toolbar_insert_multimedia",
+                        "extraclass": "insert-multimedia-options",
+                        "items": [
+                          {
+                            "name": "audio_file",
+                            "displayName": "Audio File",
+                            "icon": "play",
+                            "iconClass": "local-audio",
+                            "on-click": {
+                              "name": "AUTHOR_INSERT_ELEMENT",
+                              "args": "object"
+                            }
+                          },
+                          {
+                            "name": "video_file",
+                            "displayName": "Video File",
+                            "icon": "playCircle",
+                            "iconClass": "local-video",
+                            "class": "menu-separator",
+                            "on-click": {
+                              "name": "AUTHOR_INSERT_ELEMENT",
+                              "args": "object"
+                            }
+                          },
+                          {
+                            "name": "youtube",
+                            "displayName": "YouTube",
+                            "icon": "youTube",
+                            "on-click": {
+                              "name": "AUTHOR_INSERT_XML",
+                              "args": "<object data='http://youtube.com'></object>"
+                            }
+                          },
+                          {
+                            "name": "vimeo",
+                            "displayName": "Vimeo",
+                            "icon": "playCircle",
+                            "iconClass": "vimeo-video",
+                            "class": "menu-separator",
+                            "on-click": {
+                              "name": "AUTHOR_INSERT_XML",
+                              "args": "<object data='http://vimeo.com'></object>"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "component": "div",
+                    "extraclass": "button-separator",
+                    "hide": [
+                      "@isPresetMode",
+                      "@isTranslationMode"
+                    ],
+                    "items": []
+                  },
+                  {
+                    "type": "button",
+                    "icon": "linkGlobe",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Internal Global Link",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_XML",
+                      "args": "<xref href='' scope='peer' outputclass='global' targetMap='' format = 'dita' ></xref>"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "linkGlobe",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Internal Global Link New Tab",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_XML",
+                      "args": "<xref href='' scope='peer' outputclass='global' targetMap='' format = 'dita' otherprops = 'New Tab' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "link",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "External Cross Reference Link",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='external' format = 'dita' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "linkOff",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "External Cross Reference Link NewTab",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='external' format = 'dita' otherprops = 'New Tab' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "link",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Peer Cross Reference Link",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='peer' format = 'dita' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "linkOff",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Peer Cross Reference Link NewTab",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='peer' format = 'dita' otherprops = 'New Tab' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "linkNav",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Popup",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' outputclass='popup' scope='local' format = 'dita' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "filePDF",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert PDF",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' format = 'pdf'  otherprops = 'New Tab'></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileWord",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Word Doc",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' format = 'docx' otherprops = 'New Tab'></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileExcel",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Excel Sheet",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' format = 'xlsx' otherprops = 'New Tab'></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileTemplate",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert PowerPoint Presentation",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' format = 'pptx'  otherprops = 'New Tab'></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileEmail",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Email",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='external' format = 'msg' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "linkPage",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "@titles.AUTHOR_INSERT_REUSABLE_CONTENT",
+                    "on-click": "AUTHOR_INSERT_REUSABLE_CONTENT"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileHTML",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "External URL Link",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='external' format = 'html' otherprops = 'New Tab' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "crosshairs",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Cross-Audience Reference Link",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='peer' format = 'dita' outputclass = 'global' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "crosshairs",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Cross-Audience Reference Link New Tab",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<xref href='' scope='peer' format = 'dita' otherprops = 'New Tab' outputclass = 'global' ></xref>"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "starburst",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "@titles.AUTHOR_INSERT_SYMBOL",
+                    "on-click": "AUTHOR_INSERT_SYMBOL"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "brackets",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Keyword",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "keyword"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "documentFragment",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "@titles.AUTHOR_SHOW_INSERT_SNIPPET_UI",
+                    "on-click": "AUTHOR_SHOW_INSERT_SNIPPET_UI"
+                  },
+                  {
+                    "type": "button",
+                    "icon": "textBold",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Bold",
+                    "on-click": {
+                      "name": "AUTHOR_APPLY_BOLD",
+                      "args": "b"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "textUnderline",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Underline",
+                    "on-click": {
+                      "name": "AUTHOR_APPLY_UNDERLINE",
+                      "args": "u"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "textItalic",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Italic",
+                    "on-click": {
+                      "name": "AUTHOR_APPLY_ITALIC",
+                      "args": "i"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "imageMapRectangle",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert/Edit Image Map",
+                    "on-click": "AUTHOR_MANAGE_IMAGE_MAP",
+                    "show": "@isImageMode"
+                  },
+                  {
+                    "type": "button",
+                    "icon": "note",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Note",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<note></note>"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "noteAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Important Note",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<note type='important'></note>"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "noteAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Rationale Note",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<note type='rationale'></note>"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "noteAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Exception Note",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "<note type='exception'></note>"
+                    }
+                  }
+                ]
+              },
+              {
+                "component": "buttonGroup",
+                "label": "DitamapEdit",
+                "show": [
+                  "@isAuthorMode",
+                  "@isMapEditMode"
+                ],
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "textSpaceBefore",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Before",
+                    "on-click": "AUTHOR_SHOW_INSERT_ELEMENT_BEFORE_BLOCK_UI"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "textSpaceAfter",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert After",
+                    "on-click": "AUTHOR_SHOW_INSERT_ELEMENT_AFTER_BLOCK_UI"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "arrowLeft",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Move the selected item left",
+                    "enabled": "@canMoveLeft",
+                    "on-click": "AUTHOR_MOVE_LEFT"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "arrowRight",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Move the selected item right",
+                    "enabled": "@canMoveRight",
+                    "on-click": "AUTHOR_MOVE_RIGHT"
+                  },
+                  {
+                    "component": "div",
+                    "extraclass": "button-separator",
+                    "hide": [
+                      "@isTranslationMode"
+                    ],
+                    "items": []
+                  },
+                  {
+                    "component": "button",
+                    "icon": "add",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Element",
+                    "on-click": "AUTHOR_SHOW_INSERT_ELEMENT_UI"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "fileAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Topic Reference",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "topicref"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "textBulletedHierarchy",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Topic head",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "topichead"
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "icon": "viewList",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Nav Title",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "topicmeta"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "breakdownAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Topic Group",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "topicgroup"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "projectAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "show": "@isBookmapEditMode",
+                    "title": "Insert Chapter",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "chapter"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "key",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Key Definition",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "keydef"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "tableAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Insert Relationship Table",
+                    "on-click": {
+                      "name": "AUTHOR_INSERT_ELEMENT",
+                      "args": "reltable"
+                    }
+                  },
+                  {
+                    "component": "button",
+                    "icon": "linkPage",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "@titles.AUTHOR_INSERT_REUSABLE_CONTENT",
+                    "on-click": "AUTHOR_INSERT_REUSABLE_CONTENT"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "refresh",
+                    "variant": "action",
+                    "quiet": true,
+                    "show": "@canRefreshNavTitle",
+                    "title": "Refresh Navigation Title Attribute",
+                    "on-click": "AUTHOR_REFRESH_NAV_TITLE"
+                  }
+                ]
+              },
+              {
+                "component": "div",
+                "extraclass": "button-separator",
+                "hide": [
+                  "@isTranslationMode"
+                ],
+                "items": []
+              },
+              {
+                "component": "buttonGroup",
+                "label": "Lock Buttons",
+                "show": "@hasFilePath",
+                "items": [
+                  {
+                    "component": "button",
+                    "icon": "lockClosed",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Lock",
+                    "on-click": "editorCheckout",
+                    "show": "@canCheckOut"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "lockOpen",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "@checkOutBy",
+                    "on-click": "editorCheckin",
+                    "show": "@canCheckIn"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "viewAllTags",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Toggle Tags view",
+                    "on-click": "AUTHOR_TOGGLE_TAG_VIEW",
+                    "show": [
+                      "@isXmlMode",
+                      "@isAuthorMode"
+                    ]
+                  },
+                  {
+                    "component": "button",
+                    "icon": "viewAllTags",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Toggle Tags view",
+                    "on-click": "AUTHOR_TOGGLE_TAG_VIEW",
+                    "show": [
+                      "@isMapEditMode",
+                      "@isAuthorMode"
+                    ]
+                  },
+                  {
+                    "component": "buttonGroup",
+                    "value": "@trackChangeMode",
+                    "items": [
+                      {
+                        "component": "button",
+                        "icon": "annotate",
+                        "variant": "action",
+                        "quiet": true,
+                        "title": "Enable/ Disable Track Changes",
+                        "value": "track",
+                        "on-click": "APP_TOGGLE_TRACK_CHANGE",
+                        "show": [
+                          "@isHtmlContentMode",
+                          "@isAuthorMode"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "component": "button",
+                    "icon": "merge",
+                    "extraclass": "merge-icon",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Merge",
+                    "on-click": "EDITOR_MERGE_WITH_VERSION",
+                    "hide": "@isPreviewMode",
+                    "show": [
+                      "@hasFilePath"
+                    ]
+                  },
+                  {
+                    "component": "button",
+                    "icon": "history",
+                    "extraclass": "history-icon",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Version History",
+                    "on-click": "EDITOR_VERSION_HISTORY",
+                    "hide": "@isPreviewMode"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "tag",
+                    "extraclass": "tag-icon",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Version Label",
+                    "on-click": "EDITOR_VERSION_LABELS",
+                    "hide": "@isPreviewMode"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "projectAdd",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Create Review Task",
+                    "on-click": "CREATE_REVIEW_TASK",
+                    "show": [
+                      "@hasFilePath",
+                      "@isAuthorMode"
+                    ]
+                  },
+                  {
+                    "component": "button",
+                    "icon": "checkmark",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Mark Approved",
+                    "on-click": "EDITOR_MARK_TOPIC_APPROVED",
+                    "hide": "@isPreviewMode",
+                    "show": "@features.approvalWorkflow"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "spellcheck",
+                    "variant": "action",
+                    "quiet": true,
+                    "show": [
+                      "@isHtmlContentMode",
+                      "@isAuthorMode",
+                      "@canRunSpellCheck"
+                    ],
+                    "title": "Check Spelling",
+                    "on-click": "EDITOR_CHECK_SPELLING"
+                  },
+                  {
+                    "component": "button",
+                    "icon": "filePDF",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Export as PDF",
+                    "on-click": "DOWNLOAD_TOPIC_PDF",
+                    "show": [
+                      "@isPreviewMode",
+                      "@isXmlMode"
+                    ]
+                  },
+                  {
+                    "component": "button",
+                    "icon": "playCircle",
+                    "variant": "action",
+                    "quiet": true,
+                    "title": "Start a new release",
+                    "on-click": "EDITOR_START_NEW_RELEASE",
+                    "show": [
+                      "@isPreviewMode",
+                      "@features.approvalWorkflow"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "show": "@isDocumentOpen",
+        "component": "div",
+        "label": "Right Controls",
+        "extraclass": "right-controls",
+        "hide": "@isDitaValMode",
+        "items": [
+          {
+            "component": "div",
+            "show": [
+              "@isTranslationMode"
+            ],
+            "items": [
+              {
+                "extraclass": "send-for-translation-button",
+                "component": "button",
+                "label": "Send for Translation",
+                "title": "Send for Translation",
+                "on-click": "APP_SUBMIT_FOR_TRANSLATION",
+                "variant": "cta",
+                "hide": "@disableTranslationButton"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "shortcuts": [
+    {
+      "shortcut": [
+        "CTRL+SHIFT+S",
+        "CMD+SHIFT+S"
+      ],
+      "event": "APP_SAVE",
+      "title": "SAVE (CTRL+SHIFT+S)"
+    },
+    {
+      "shortcut": [
+        "CTRL+S",
+        "CMD+S"
+      ],
+      "event": "APP_SAVE_ALL",
+      "title": "SAVE ALL (CTRL+S)"
+    },
+    {
+      "shortcut": "ALT+ENTER",
+      "event": "AUTHOR_SHOW_INSERT_ELEMENT_UI"
+    },
+    {
+      "shortcut": [
+        "CTRL+1",
+        "CMD+1"
+      ],
+      "event": "AUTHOR_SHOW_INSERT_SNIPPET_UI",
+      "title": "Insert Snippet (CTRL+1)"
+    },
+    {
+      "shortcut": [
+        "CTRL+2",
+        "CMD+2"
+      ],
+      "event": "AUTHOR_INSERT_REUSABLE_CONTENT",
+      "title": "Insert Reusable Content (CTRL+2)"
+    },
+    {
+      "shortcut": [
+        "CTRL+3",
+        "CMD+3"
+      ],
+      "event": "AUTHOR_INSERT_SYMBOL",
+      "title": "Insert Special Character (CTRL+3)"
+    },
+    {
+      "shortcut": "ALT+SHIFT+ENTER",
+      "event": "AUTHOR_SHOW_INSERT_ELEMENT_BEFORE_UI"
+    },
+    {
+      "shortcut": "CTRL+ALT+ENTER",
+      "event": "AUTHOR_SHOW_INSERT_ELEMENT_AFTER_UI"
+    },
+    {
+      "shortcut": [
+        "CTRL+ALT+L",
+        "CMD+ALT+L"
+      ],
+      "event": "SOURCE_AUTO_INDENT"
+    },
+    {
+      "shortcut": [
+        "CTRL+Z",
+        "CMD+Z"
+      ],
+      "event": "AUTHOR_UNDO"
+    },
+    {
+      "shortcut": [
+        "CTRL+Y",
+        "CMD+Y"
+      ],
+      "event": "AUTHOR_REDO"
+    },
+    {
+      "shortcut": [
+        "CTRL+F",
+        "CMD+F"
+      ],
+      "event": "APP_SHOW_FIND_REPLACE_DIALOG",
+      "title": "Find and Replace (CTRL+F)"
+    },
+    {
+      "shortcut": [
+        "CTRL+SHIFT+F",
+        "CMD+SHIFT+F"
+      ],
+      "event": "APP_OPEN_FIND_REPLACE_PANEL",
+      "title": "Search (CTRL+SHIFT+F)"
+    }
+  ],
+  "ditaElements": {
+    "elements": [],
+    "constraint": false
+  },
+  "ditaAttributes": {
+    "attributes": [],
+    "constraint": false,
+    "required": {}
+  },
+  "browseFilters": [
+    {
+      "title": "Partial Name Search",
+      "property": "jcr:content/cq:name",
+      "operation": "like",
+      "itemConfig": {
+        "component": "textfield",
+        "placeholder": "Partial Name"
+      },
+      "children": [
+        {
+          "title": "Partial Name"
+        }
+      ]
+    },
+    {
+      "title": "Partial Title Search",
+      "property": "jcr:content/metadata/dc:title",
+      "operation": "like",
+      "itemConfig": {
+        "component": "textfield",
+        "placeholder": "Partial Title"
+      },
+      "children": [
+        {
+          "title": "Partial Title"
+        }
+      ]
+    },
+    {
+      "title": "DITA files",
+      "property": "jcr:content/metadata/dita_class",
+      "operation": "like",
+      "children": [
+        {
+          "title": "DITA Topics",
+          "value": "- topic/topic",
+          "checked": true
+        },
+        {
+          "title": "DITA Maps",
+          "value": "- map/map",
+          "checked": true
+        }
+      ]
+    },
+    {
+      "title": "Non-DITA files",
+      "property": "jcr:content/metadata/dc:format",
+      "children": [
+        {
+          "title": "Image Files",
+          "value": [
+            "image/jpeg",
+            "image/gif",
+            "image/png",
+            "image/pjpeg",
+            "image/tiff",
+            "image/vnd.adobe.photoshop",
+            "image/x-xcf",
+            "image/x-bmp",
+            "image/vnd.microsoft.icon",
+            "image/bmp",
+            "image/x-ppm",
+            "image/x-pbm",
+            "image/pbm",
+            "application/postscript",
+            "application/vnd.oasis.opendocument.graphics",
+            "image/svg+xml",
+            "image/x-adobe-dng",
+            "image/x-dcraw",
+            "image/x-dcraw",
+            "image/x-raw-nikon"
+          ]
+        },
+        {
+          "title": "Multimedia",
+          "value": [
+            "audio/x-aac",
+            "audio/mp3",
+            "video/mpeg"
+          ]
+        },
+        {
+          "title": "Documents",
+          "value": [
+            "application/pdf",
+            "text/html",
+            "application/vnd.oasis.opendocument.presentation"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "DITA elements",
+      "property": "jcr:content/ditameta",
+      "widgetId": "dita_filter",
+      "operation": "like"
+    },
+    {
+      "title": "Checked out by",
+      "property": "jcr:content/cq:drivelock",
+      "operation": "like",
+      "itemConfig": {
+        "component": "textfield",
+        "placeholder": "Checked out by"
+      },
+      "children": [
+        {
+          "title": "Check out"
+        }
+      ]
+    }
+  ],
+  "features": {
+    "approvalWorkflow": false,
+    "knowledgeBase": true
+  },
+  "defaultValues": {
+    "tagsView": true,
+    "largeFileTagCount": 100
+  },
+  "templates": {
+    "default": {
+      "p": "<p>New Paragrph</p>",
+      "simpletable": "<simpletable relcolwidth='1*1*'><strow><stentry></stentry><stentry></stentry></strow><strow><stentry></stentry><stentry></stentry></strow><strow><stentry></stentry><stentry></stentry></strow></simpletable>",
+      "table": "<table><tgroup cols='2'><colspec colname='col0' colwidth='25%'></colspec><colspec colname='col1' colwidth='35%'></colspec><tbody><row><entry></entry><entry></entry></row><row><entry></entry><entry></entry></row><row><entry></entry><entry></entry></row></tbody></tgroup></table>",
+      "body": "<body><p></p></body>",
+      "reltable": "<reltable><relrow><relcell></relcell><relcell></relcell><relcell></relcell></relrow></reltable>",
+      "topichead": "<topichead navtitle='[Insert Nav Title]'><topicmeta><navtitle></navtitle></topicmeta></topichead>",
+      "topicmeta": "<topicmeta><navtitle></navtitle></topicmeta>"
+    }
+  }
+}

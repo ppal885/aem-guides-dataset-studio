@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_html-entry" xml:lang="en">
+  <glossterm>HyperText Markup Language</glossterm>
+  <glossdef>
+    <p>Markup language for web pages.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>HTML</glossAbbreviation>
+  </glossAlt>
+</glossentry>

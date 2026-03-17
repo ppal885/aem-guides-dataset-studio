@@ -1,0 +1,21 @@
+{
+  "recipe_name": "dita_conref_title_dataset_recipe",
+  "files": [
+    "content/dam/dataset-studio/dita_conref_titles/variables.dita",
+    "content/dam/dataset-studio/dita_conref_titles/topic_1.dita",
+    "content/dam/dataset-studio/dita_conref_titles/topic_2.dita",
+    "content/dam/dataset-studio/dita_conref_titles/topic_3.dita"
+  ],
+  "stats": {
+    "topic_count": 3,
+    "variable_count": 3,
+    "generated_files": [
+      "content/dam/dataset-studio/dita_conref_titles/variables.dita",
+      "content/dam/dataset-studio/dita_conref_titles/topic_1.dita",
+      "content/dam/dataset-studio/dita_conref_titles/topic_2.dita",
+      "content/dam/dataset-studio/dita_conref_titles/topic_3.dita"
+    ]
+  },
+  "assumptions": [],
+  "warnings": []
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="map_cyclic_map_b">
+  <title>Map B (references Map A)</title>
+  <topicref href="../topics/topic_b.dita" type="topic"/>
+  <mapref href="map_a.ditamap"/>
+</map>

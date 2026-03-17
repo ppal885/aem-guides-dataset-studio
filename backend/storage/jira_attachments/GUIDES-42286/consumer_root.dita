@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="t_consumer_root">
+  <title>Consumer (root scope) Edited</title>
+  <shortdesc>Exercises URI-bared sed addressing: fragments, conref, keyref, external URIs, and queries.</shortdesc>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword>uri-based addressing</keyword>
+        <keyword>fragment identifier</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <body>
+    <section id="sec_local">
+      <title>Same-topic fragment identifiers</title>
+      <p id="p_local_source">This is a local element with an id.</p>
+      <p>Same-topic (topic) reference: <xref href="#."/> (points to this topic).</p>
+      <p>Same-topic (non-topic element) reference: <xref href="#./p_local_source"/>.</p>
+      <p>Same-document (element by id, fragment-only): <xref href="#sec_local"/>.</p>
+    </section>
+    <section id="sec_cross_file">
+      <title>Cross-file fragment identifiers</title>
+      <p>Topic-level reference: <xref href="GUID-7a6bb7c7-0587-48ba-9cdc-edda2f240871.dita#t_target"/>.</p>
+      <p>Element-level reference (topic/element): <xref href="GUID-7a6bb7c7-0587-48ba-9cdc-edda2f240871.dita#t_target/p_reuse"/>.</p>
+      <p>Another element reference: <xref href="GUID-7a6bb7c7-0587-48ba-9cdc-edda2f240871.dita#t_target/tbl_cov"/>.</p>
+      <p>CONREF pulls a local copy of the target element:</p>
+      <p conref="GUID-7a6bb7c7-0587-48ba-9cdc-edda2f240871.dita#t_target/p_reuse"/>
+    </section>
+    <section id="sec_query_external">
+      <title>Query + external resources</title>
+      <p> Example with query (processors may ignore query on DITA resources): . </p>
+      <p> External HTTP URI (note XML escaping of '&amp;'): <xref format="html" href="https://example.com/claims/api?version=1&amp;format=json#top" scope="external"/>. </p>
+      <p>Local non-DITA target with fragment: <xref format="html" href="GUID-47c9090c-c239-44f1-965d-cfaa6e5d0d7b.html#section1"/>.</p>
+      <p>Local JSON file referenced: <xref format="json" href="GUID-c6304e87-a7e0-4ddf-999e-523951666b46.json"/>.</p>
+      <p><image href="GUID-243f124c-33ee-44c6-8494-dfb981c4aeb8.png" placement="break">
+        </image></p>
+    </section>
+    <section id="sec_keyref">
+      <title>Key-based indirection (still URI underneath)</title>
+      <p>The root map defines key <codeph>prod</codeph> pointing to target_topic.dita#t_target.</p>
+      <p>Using keyref: <xref keyref="prod"/> (processor should resolve to the key target).</p>
+    </section>
+  </body>
+</topic>

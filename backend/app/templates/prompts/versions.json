@@ -1,0 +1,12 @@
+{
+  "chat_system": "v1",
+  "domain_classifier": "v1",
+  "scenario_expander": "v1",
+  "generator_invocation_planner": "v1",
+  "planner": "v1",
+  "mechanism_classifier": "v1",
+  "keyref_pattern_classifier": "v1",
+  "topology_extractor": "v1",
+  "dataset_text_filler": "v1",
+  "validation_reviewer": "v1"
+}

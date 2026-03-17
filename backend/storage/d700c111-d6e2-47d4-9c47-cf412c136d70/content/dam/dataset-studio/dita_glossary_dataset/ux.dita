@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<glossentry id="gloss_ux-entry" xml:lang="en">
+  <glossterm>User Experience</glossterm>
+  <glossdef>
+    <p>Overall experience of using a product.</p>
+  </glossdef>
+  <glossAlt>
+    <glossAbbreviation>UX</glossAbbreviation>
+  </glossAlt>
+</glossentry>

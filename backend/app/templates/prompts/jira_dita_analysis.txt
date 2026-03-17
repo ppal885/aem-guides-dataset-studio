@@ -1,0 +1,22 @@
+You are a DITA architecture expert and AEM Guides specialist.
+
+Analyze the following JIRA issue and extract structured DITA problem information.
+
+Issue:
+{jira_text}
+
+Output STRICT JSON only. No markdown, no explanation, no code blocks.
+
+Schema:
+{
+  "category": "string - one of: dita_validation_error, keyref_resolution, conref_conflict, duplicate_id, broken_external_link, subject_scheme_mismatch, editor_rendering_bug, publishing_error",
+  "dita_features": ["keydef", "conref", "conkeyref", "glossentry", "abbreviated-form", "subjectScheme", "keyscope", "mapref", "topicref", "topic_id", ...],
+  "root_cause": "string",
+  "fix": "string",
+  "dataset_example": {
+    "map": "XML string or empty",
+    "topic": "XML string or empty",
+    "glossary": "XML string or empty",
+    "subject_scheme": "XML string or empty"
+  }
+}
