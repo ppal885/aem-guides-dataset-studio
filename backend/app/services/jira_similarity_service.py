@@ -10,8 +10,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from backend.app.db.jira_models import JiraIssue, JiraAttachment
-from backend.app.core.structured_logging import get_structured_logger
+from app.db.jira_models import JiraIssue, JiraAttachment
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

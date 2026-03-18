@@ -4,11 +4,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
-from backend.app.storage import get_storage
-from backend.app.services.jira_dita_fetch_service import fetch_jira_issues
-from backend.app.services.llm_analyzer import normalize_issue_text, analyze_issue
-from backend.app.services.dataset_generator import generate_dataset_record
-from backend.app.core.structured_logging import get_structured_logger
+from app.storage import get_storage
+from app.services.jira_dita_fetch_service import fetch_jira_issues
+from app.services.llm_analyzer import normalize_issue_text, analyze_issue
+from app.services.dataset_generator import generate_dataset_record
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 
