@@ -1,6 +1,6 @@
 # mcp_server.py
 # Place at: C:\Users\prashantp\Videos\aem-guides-dataset-studio\mcp_server.py
-
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +21,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("aem-dataset-studio")
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 # All imports are lazy (inside each tool function) so a single missing
 # dependency never kills the entire MCP server — only that one tool fails.
@@ -1474,6 +1476,1239 @@ Start with Step 1 now: generate_dita_from_jira('{pending[0].get("issue_key")}')
         return f"Error creating batch plan: {e}"
 
 
+@mcp.tool()
+def get_jira_issue_images(issue_key: str) -> str:
+    """
+    Fetch and download all image attachments from a Jira issue.
+    Saves images to output/images/{issue_key}/ folder.
+    Returns image metadata so Cursor can insert them into DITA as fig elements.
+
+    Supports: PNG, JPG, GIF, SVG, BMP, WEBP
+    Also detects: architecture diagrams, screenshots, flowcharts
+    """
+    try:
+        import mimetypes
+        from pathlib import Path
+        from backend.app.services.jira_client import JiraClient
+        from backend.app.services.jira_attachment_service import (
+            ensure_attachment_cached,
+            extract_excerpt,
+        )
+        from backend.app.db.session import SessionLocal
+        from backend.app.db.jira_models import JiraAttachment, JiraIssue
+
+        IMAGE_MIMES = {
+            "image/png", "image/jpeg", "image/jpg", "image/gif",
+            "image/svg+xml", "image/bmp", "image/webp", "image/tiff",
+        }
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp", ".webp", ".tiff"}
+
+        jira = JiraClient()
+
+        # ── Get attachments from Jira API directly ────────────────────────────
+        raw_attachments = jira.get_issue_attachments(issue_key)
+        if not raw_attachments:
+            return f"No attachments found for {issue_key}"
+
+        # Filter images only
+        image_attachments = []
+        for att in raw_attachments:
+            mime = (att.get("mimeType") or "").lower()
+            filename = att.get("filename") or ""
+            ext = Path(filename).suffix.lower()
+            if mime in IMAGE_MIMES or ext in IMAGE_EXTS:
+                image_attachments.append(att)
+
+        if not image_attachments:
+            return (
+                f"No image attachments found for {issue_key}.\n"
+                f"Total attachments: {len(raw_attachments)}\n"
+                f"Types found: {', '.join(set(a.get('mimeType','unknown') for a in raw_attachments))}"
+            )
+
+        # ── Download images to output/images/{issue_key}/ ─────────────────────
+        output_dir = PROJECT_ROOT / "output" / "images" / issue_key
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        results = []
+        for att in image_attachments:
+            filename  = att.get("filename", "image.png")
+            mime_type = att.get("mimeType", "image/png")
+            size      = att.get("size", 0)
+            content_url = att.get("content", "")
+
+            # Download
+            filepath = output_dir / filename
+            if not filepath.exists():
+                try:
+                    content = jira.download_attachment(content_url)
+                    filepath.write_bytes(content)
+                except Exception as e:
+                    results.append({
+                        "filename": filename,
+                        "error": str(e),
+                        "downloaded": False,
+                    })
+                    continue
+
+            # Detect image type for DITA alt text suggestion
+            img_type = _detect_image_type(filename, mime_type)
+
+            results.append({
+                "filename": filename,
+                "mime_type": mime_type,
+                "size_bytes": size,
+                "local_path": str(filepath),
+                "relative_path": f"output/images/{issue_key}/{filename}",
+                "aem_dam_path": f"/content/dam/dita-images/{issue_key}/{filename}",
+                "image_type": img_type,
+                "suggested_alt": _suggest_alt_text(filename, img_type),
+                "suggested_title": _suggest_title(filename, img_type),
+                "downloaded": True,
+            })
+
+        # Format output for Cursor
+        lines = [
+            f"✅ Found {len(results)} image(s) for {issue_key}",
+            f"Saved to: {output_dir}",
+            "",
+            "IMAGES — Use these to insert fig elements in DITA:",
+            "=" * 50,
+            ]
+
+        for i, r in enumerate(results, 1):
+            if r.get("error"):
+                lines.append(f"{i}. ❌ {r['filename']}: {r['error']}")
+                continue
+            lines.append(f"""
+{i}. {r['filename']}
+   Type:          {r['image_type']}
+   Size:          {r['size_bytes']} bytes
+   Local path:    {r['relative_path']}
+   AEM DAM path:  {r['aem_dam_path']}
+   Suggested alt: {r['suggested_alt']}
+   Suggested title: {r['suggested_title']}
+
+   DITA fig element to insert:
+   <fig>
+     <title>{r['suggested_title']}</title>
+     <image href="{r['aem_dam_path']}"
+            format="{r['mime_type'].split('/')[-1]}"
+            scope="external">
+       <alt>{r['suggested_alt']}</alt>
+     </image>
+   </fig>
+""")
+
+        lines.append("=" * 50)
+        lines.append(
+            "INSERT INSTRUCTION FOR CURSOR:\n"
+            "For each image above, insert the fig element at the\n"
+            "appropriate location in the DITA topic:\n"
+            "- Screenshots → after the relevant step/context\n"
+            "- Architecture diagrams → in concept body or section\n"
+            "- Flowcharts → after context or before steps\n"
+            "- Product images → in shortdesc context or section"
+        )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error fetching images for {issue_key}: {e}"
+
+
+@mcp.tool()
+def save_dita_with_images(
+        filename: str,
+        content: str,
+        issue_key: str,
+) -> str:
+    """
+    Save a DITA file that references images.
+    Validates that all <image href> paths exist locally.
+    Reports any missing images so Cursor can fix them.
+
+    filename: e.g. 'AEM-123-task.dita'
+    content:  full DITA XML with fig/image elements
+    issue_key: Jira issue key to find downloaded images
+    """
+    try:
+        import re
+
+        output_dir = PROJECT_ROOT / "output" / "dita"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filepath = output_dir / filename
+
+        # ── Check all image hrefs ─────────────────────────────────────────────
+        image_refs = re.findall(r'<image[^>]+href="([^"]+)"', content)
+        missing = []
+        found   = []
+
+        images_dir = PROJECT_ROOT / "output" / "images" / issue_key
+
+        for href in image_refs:
+            img_filename = href.split("/")[-1]
+            local = images_dir / img_filename
+            if local.exists():
+                found.append(img_filename)
+            else:
+                missing.append(href)
+
+        # Save the file
+        filepath.write_text(content, encoding="utf-8")
+
+        status_lines = [f"✅ Saved: {filepath}"]
+
+        if found:
+            status_lines.append(f"✅ Images verified: {', '.join(found)}")
+        if missing:
+            status_lines.append(f"⚠️ Missing images: {', '.join(missing)}")
+            status_lines.append(
+                "Run get_jira_issue_images to download missing images"
+            )
+
+        return "\n".join(status_lines)
+
+    except Exception as e:
+        return f"Error saving {filename}: {e}"
+
+
+@mcp.tool()
+def list_issue_images(issue_key: str) -> str:
+    """
+    List all downloaded images for a Jira issue.
+    Use this to check what images are available before inserting into DITA.
+    """
+    try:
+        images_dir = PROJECT_ROOT / "output" / "images" / issue_key
+        if not images_dir.exists():
+            return (
+                f"No images downloaded for {issue_key} yet.\n"
+                f"Run get_jira_issue_images('{issue_key}') first."
+            )
+
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp", ".webp"}
+        files = [
+            f for f in images_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTS
+        ]
+
+        if not files:
+            return f"No image files found in output/images/{issue_key}/"
+
+        lines = [f"Images available for {issue_key}:", ""]
+        for f in sorted(files):
+            size = f.stat().st_size
+            img_type = _detect_image_type(f.name, "")
+            lines.append(
+                f"  {f.name} ({size} bytes) — {img_type}\n"
+                f"  AEM path: /content/dam/dita-images/{issue_key}/{f.name}"
+            )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error listing images: {e}"
+
+
+@mcp.tool()
+def generate_fig_elements(issue_key: str) -> str:
+    """
+    Generate ready-to-paste DITA fig elements for all downloaded images.
+    Cursor can copy these directly into the DITA topic.
+    """
+    try:
+        images_dir = PROJECT_ROOT / "output" / "images" / issue_key
+        if not images_dir.exists():
+            return f"No images for {issue_key}. Run get_jira_issue_images first."
+
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp", ".webp"}
+        files = [
+            f for f in images_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTS
+        ]
+
+        if not files:
+            return "No images found."
+
+        lines = [
+            f"DITA fig elements for {issue_key}:",
+            "Copy and paste into appropriate location in your topic:",
+            "",
+        ]
+
+        for f in sorted(files):
+            img_type = _detect_image_type(f.name, "")
+            alt      = _suggest_alt_text(f.name, img_type)
+            title    = _suggest_title(f.name, img_type)
+            fmt      = f.suffix.lower().strip(".")
+            dam_path = f"/content/dam/dita-images/{issue_key}/{f.name}"
+
+            lines.append(f"<!-- {f.name} — {img_type} -->")
+            lines.append(f"""<fig>
+  <title>{title}</title>
+  <image href="{dam_path}"
+         format="{fmt}"
+         placement="break"
+         scope="external">
+    <alt>{alt}</alt>
+  </image>
+</fig>
+""")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error generating fig elements: {e}"
+
+
+# ── Helper functions ──────────────────────────────────────────────────────────
+
+def _detect_image_type(filename: str, mime_type: str) -> str:
+    """Detect what kind of image this is from filename."""
+    name = filename.lower()
+    if any(x in name for x in ["screenshot", "screen", "capture", "snap"]):
+        return "screenshot"
+    if any(x in name for x in ["arch", "architecture", "diagram", "design"]):
+        return "architecture_diagram"
+    if any(x in name for x in ["flow", "flowchart", "process", "workflow"]):
+        return "flowchart"
+    if any(x in name for x in ["product", "ui", "interface", "portal"]):
+        return "product_image"
+    if mime_type == "image/svg+xml" or name.endswith(".svg"):
+        return "diagram"
+    return "screenshot"  # default assumption
+
+
+def _suggest_alt_text(filename: str, img_type: str) -> str:
+    """Generate a sensible alt text from filename and type."""
+    # Remove extension and clean up
+    name = filename.rsplit(".", 1)[0]
+    name = name.replace("-", " ").replace("_", " ").strip()
+
+    suggestions = {
+        "screenshot":          f"Screenshot showing {name}",
+        "architecture_diagram": f"Architecture diagram of {name}",
+        "flowchart":           f"Flowchart illustrating {name}",
+        "product_image":       f"Product interface showing {name}",
+        "diagram":             f"Diagram of {name}",
+    }
+    return suggestions.get(img_type, f"Image showing {name}")
+
+
+def _suggest_title(filename: str, img_type: str) -> str:
+    """Generate a sensible fig title from filename."""
+    name = filename.rsplit(".", 1)[0]
+    name = name.replace("-", " ").replace("_", " ").strip()
+    name = name.capitalize()
+
+    titles = {
+        "screenshot":           name,
+        "architecture_diagram": f"{name} architecture",
+        "flowchart":            f"{name} flow",
+        "product_image":        name,
+        "diagram":              f"{name} diagram",
+    }
+    return titles.get(img_type, name)
+
+DITA_TRUSTED_SOURCES = [
+    "docs.oasis-open.org",
+    "experienceleague.adobe.com",
+    "helpx.adobe.com",
+    "dita-ot.org",
+    "github.com/oasis-tcs",
+]
+
+
+def _get_tavily_client(TAVILY_API_KEY):
+    """Get Tavily client. Raises clear error if not configured."""
+    if not TAVILY_API_KEY:
+        raise ValueError(
+            "TAVILY_API_KEY not set in .env\n"
+            "Get free key at: https://tavily.com\n"
+            "Then add: TAVILY_API_KEY=tvly-xxxx to your .env"
+        )
+    try:
+        from tavily import TavilyClient
+        return TavilyClient(api_key=TAVILY_API_KEY)
+    except ImportError:
+        raise ImportError(
+            "tavily-python not installed.\n"
+            "Run: pip install tavily-python"
+        )
+
+
+@mcp.tool()
+def research_dita_spec(query: str, max_results: int = 5) -> str:
+    """
+    Search OASIS DITA specification website for latest spec rules.
+    Searches docs.oasis-open.org for DITA 1.2, 1.3, and 2.0 content.
+
+    Use this when:
+    - You need the latest DITA element rules
+    - Validating element nesting or attributes
+    - Checking if something changed in recent spec versions
+
+    query: e.g. 'keyref resolution keyscope DITA 1.3'
+            or 'task topic required elements'
+            or 'conref push mechanism'
+    """
+    try:
+        client = _get_tavily_client()
+
+        # Focus search on OASIS and DITA spec sites
+        result = client.search(
+            query=f"DITA specification {query}",
+            search_depth="advanced",
+            include_domains=["docs.oasis-open.org", "dita-ot.org", "github.com/oasis-tcs"],
+            max_results=max_results,
+            include_answer=True,
+        )
+
+        return _format_research_result(
+            result,
+            title=f"DITA Spec Research: {query}",
+            source_type="OASIS DITA Specification",
+        )
+
+    except Exception as e:
+        return f"Research error: {e}"
+
+
+@mcp.tool()
+def research_aem_guides(query: str, max_results: int = 5) -> str:
+    """
+    Search Adobe Experience League for latest AEM Guides documentation.
+    Searches experienceleague.adobe.com for current AEM Guides content.
+
+    Use this when:
+    - You need current AEM Guides features or behavior
+    - Checking release notes for a specific version
+    - Finding AEM-specific DITA authoring patterns
+    - Looking for AEM Guides API documentation
+
+    query: e.g. 'AEM Guides 4.2 release notes'
+            or 'keyref resolution AEM Guides'
+            or 'DITA map publishing AEM'
+    """
+    try:
+        client = _get_tavily_client()
+
+        result = client.search(
+            query=f"AEM Guides Adobe {query}",
+            search_depth="advanced",
+            include_domains=[
+                "experienceleague.adobe.com",
+                "helpx.adobe.com",
+                "adobe.com",
+            ],
+            max_results=max_results,
+            include_answer=True,
+        )
+
+        return _format_research_result(
+            result,
+            title=f"AEM Guides Research: {query}",
+            source_type="Adobe Experience League",
+        )
+
+    except Exception as e:
+        return f"Research error: {e}"
+
+
+@mcp.tool()
+def research_for_jira_issue(issue_key: str, custom_query: str = "") -> str:
+    """
+    Research web content relevant to a Jira issue.
+    Automatically builds search query from issue content.
+    Searches DITA spec + AEM Guides + technical articles.
+
+    Useful for:
+    - Finding known solutions for reported bugs
+    - Understanding the technical context of an issue
+    - Finding examples of the problematic DITA construct
+    - Getting latest release notes that address the issue
+
+    issue_key:    e.g. 'AEM-456'
+    custom_query: optional extra search terms
+    """
+    try:
+        from backend.app.services.jira_client import JiraClient, extract_description_from_issue
+
+        # Fetch issue for context
+        jira = JiraClient()
+        raw = jira.get_issue(issue_key)
+        fields = raw.get("fields", {})
+        summary = fields.get("summary", "")
+        description = extract_description_from_issue(raw)
+        labels = fields.get("labels", [])
+
+        # Build smart search query from issue content
+        query_parts = [summary[:100]]
+        if labels:
+            query_parts.extend(labels[:3])
+        if custom_query:
+            query_parts.append(custom_query)
+
+        query = " ".join(query_parts)
+
+        client = _get_tavily_client()
+
+        # Search across DITA + AEM sources
+        result = client.search(
+            query=f"AEM Guides DITA {query}",
+            search_depth="advanced",
+            include_domains=DITA_TRUSTED_SOURCES,
+            max_results=5,
+            include_answer=True,
+        )
+
+        output = ["Research for {issue_key}: {summary[:60]}", f"Search query: {query[:100]}", "=" * 60,
+                  _format_research_result(
+                      result,
+                      title="Web Research for {issue_key}",
+                      source_type="DITA/AEM Sources",
+                  )]
+
+        # Suggest indexing if useful content found
+        if result.get("results"):
+            output.append(
+                "\n💡 Tip: Run research_and_index_to_rag() to add "
+                "this content to your RAG knowledge base"
+            )
+
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"Research error for {issue_key}: {e}"
+
+
+@mcp.tool()
+def research_aem_release_notes(version: str = "") -> str:
+    """
+    Search for latest AEM Guides release notes.
+    Finds what changed, what bugs were fixed, new features.
+
+    version: e.g. '4.2', '4.3', '2024.2' — leave empty for latest
+    """
+    try:
+        client = _get_tavily_client()
+
+        query = f"AEM Guides release notes {version}".strip()
+
+        result = client.search(
+            query=query,
+            search_depth="advanced",
+            include_domains=[
+                "experienceleague.adobe.com",
+                "helpx.adobe.com",
+            ],
+            max_results=5,
+            include_answer=True,
+        )
+
+        return _format_research_result(
+            result,
+            title=f"AEM Guides Release Notes {version}".strip(),
+            source_type="Adobe Experience League",
+        )
+
+    except Exception as e:
+        return f"Release notes research error: {e}"
+
+
+@mcp.tool()
+def research_and_index_to_rag(query: str, topic: str = "general") -> str:
+    """
+    Research a topic AND index the results into your ChromaDB RAG.
+    This makes future DITA generation smarter for this topic.
+
+    Steps:
+    1. Searches Tavily for relevant content
+    2. Embeds the results using your sentence-transformers model
+    3. Stores in ChromaDB collection 'research_cache'
+    4. Future query_combined_context() calls will include this
+
+    query: search query
+    topic: category tag e.g. 'dita-spec', 'aem-guides', 'release-notes'
+    """
+    try:
+        client = _get_tavily_client()
+
+        result = client.search(
+            query=f"DITA AEM {query}",
+            search_depth="advanced",
+            include_domains=DITA_TRUSTED_SOURCES,
+            max_results=5,
+            include_answer=True,
+        )
+
+        raw_results = result.get("results", [])
+        if not raw_results:
+            return "No results found to index."
+
+        # Prepare documents for ChromaDB
+        from backend.app.services.embedding_service import embed_texts, is_embedding_available
+        from backend.app.services.vector_store_service import add_documents, is_chroma_available
+
+        if not is_chroma_available():
+            return "ChromaDB not available — results shown but not indexed.\n" + \
+                _format_research_result(result, query, "Web")
+
+        if not is_embedding_available():
+            return "Embedding model not available — results shown but not indexed.\n" + \
+                _format_research_result(result, query, "Web")
+
+        documents = []
+        metadatas = []
+        ids       = []
+
+        for i, r in enumerate(raw_results):
+            content = f"{r.get('title', '')}\n{r.get('content', '')}"
+            if len(content.strip()) < 50:
+                continue
+            documents.append(content[:4000])
+            metadatas.append({
+                "url":   r.get("url", ""),
+                "title": r.get("title", ""),
+                "topic": topic,
+                "query": query[:100],
+                "source": "tavily_research",
+            })
+            ids.append(f"research_{topic}_{i}_{hash(r.get('url', str(i))) % 100000}")
+
+        if not documents:
+            return "No indexable content found."
+
+        embeddings = embed_texts(documents)
+        if embeddings is None:
+            return "Embedding failed."
+
+        success = add_documents(
+            "research_cache",
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas,
+            embeddings=[e.tolist() for e in embeddings],
+        )
+
+        status = "✅ Indexed" if success else "⚠️ Index failed"
+
+        return f"""
+{status} {len(documents)} research results into RAG (collection: research_cache)
+Topic tag: {topic}
+Query: {query}
+
+{_format_research_result(result, f'Research: {query}', 'Web')}
+"""
+
+    except Exception as e:
+        return f"Research + index error: {e}"
+
+
+@mcp.tool()
+def query_research_cache(query: str, k: int = 3) -> str:
+    """
+    Search previously researched content from Tavily that was indexed into RAG.
+    Faster than live web search — uses your local ChromaDB.
+
+    Use this to retrieve previously researched content
+    without making a new web search API call.
+    """
+    try:
+        from backend.app.services.embedding_service import embed_query, is_embedding_available
+        from backend.app.services.vector_store_service import query_collection, is_chroma_available
+
+        if not is_chroma_available() or not is_embedding_available():
+            return "ChromaDB or embedding not available."
+
+        q_emb = embed_query(query)
+        if q_emb is None:
+            return "Embedding failed."
+
+        rows = query_collection(
+            "research_cache",
+            query_embedding=q_emb.tolist(),
+            k=k,
+        )
+
+        if not rows:
+            return (
+                "No cached research found for this query.\n"
+                "Run research_and_index_to_rag() to populate the cache."
+            )
+
+        parts = []
+        for i, row in enumerate(rows, 1):
+            meta = row.get("metadata") or {}
+            doc  = row.get("document") or ""
+            parts.append(
+                f"[{i}] {meta.get('title', 'Untitled')}\n"
+                f"     {meta.get('url', '')}\n"
+                f"     Topic: {meta.get('topic', 'general')}\n\n"
+                f"{doc[:1000]}"
+            )
+
+        return f"Cached research for '{query}':\n\n" + "\n\n---\n\n".join(parts)
+
+    except Exception as e:
+        return f"Cache query error: {e}"
+
+
+# ── Formatter helper ──────────────────────────────────────────────────────────
+
+def _format_research_result(result: dict, title: str, source_type: str) -> str:
+    """Format Tavily search result for Cursor consumption."""
+    lines = [f"=== {title} ===", f"Source: {source_type}", ""]
+
+    # AI-generated answer (best summary)
+    answer = result.get("answer", "")
+    if answer:
+        lines.append("SUMMARY:")
+        lines.append(answer)
+        lines.append("")
+
+    # Individual results
+    raw_results = result.get("results", [])
+    if raw_results:
+        lines.append(f"SOURCES ({len(raw_results)} found):")
+        for i, r in enumerate(raw_results, 1):
+            url     = r.get("url", "")
+            rtitle  = r.get("title", "")
+            content = r.get("content", "")[:500]
+            score   = r.get("score", 0)
+            lines.append(f"""
+[{i}] {rtitle}
+     {url}
+     Relevance: {score:.2f}
+     {content}
+""")
+
+    if not answer and not raw_results:
+        lines.append("No results found.")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# SECTION 8 — AUTO RAG INDEXING FROM RESEARCH
+# Research automatically indexes to RAG — future generation improves
+# Add these to mcp_server.py above if __name__ == "__main__":
+# =============================================================================
+
+import json
+import hashlib
+from datetime import datetime
+from pathlib import Path
+
+# Track what's already been indexed to avoid duplicates
+RAG_INDEX_LOG = PROJECT_ROOT / "output" / "rag_index_log.json"
+
+# Topics to auto-research and index
+AUTO_RESEARCH_TOPICS = [
+    {
+        "id":    "dita_spec_task",
+        "query": "DITA 1.3 task topic required elements structure",
+        "tag":   "dita-spec",
+        "domains": ["docs.oasis-open.org", "dita-ot.org"],
+    },
+    {
+        "id":    "dita_spec_concept",
+        "query": "DITA 1.3 concept topic conbody section structure",
+        "tag":   "dita-spec",
+        "domains": ["docs.oasis-open.org"],
+    },
+    {
+        "id":    "dita_spec_keyref",
+        "query": "DITA 1.3 keyref keyscope resolution rules",
+        "tag":   "dita-spec",
+        "domains": ["docs.oasis-open.org", "dita-ot.org"],
+    },
+    {
+        "id":    "dita_spec_conref",
+        "query": "DITA 1.3 conref content reference push mechanism",
+        "tag":   "dita-spec",
+        "domains": ["docs.oasis-open.org"],
+    },
+    {
+        "id":    "aem_guides_latest",
+        "query": "AEM Guides latest release notes features 2024",
+        "tag":   "aem-guides",
+        "domains": ["experienceleague.adobe.com", "helpx.adobe.com"],
+    },
+    {
+        "id":    "aem_guides_authoring",
+        "query": "AEM Guides DITA authoring best practices",
+        "tag":   "aem-guides",
+        "domains": ["experienceleague.adobe.com"],
+    },
+    {
+        "id":    "aem_guides_maps",
+        "query": "AEM Guides ditamap management publishing",
+        "tag":   "aem-guides",
+        "domains": ["experienceleague.adobe.com"],
+    },
+    {
+        "id":    "aem_guides_keyrefs",
+        "query": "AEM Guides key references keyscopes configuration",
+        "tag":   "aem-guides",
+        "domains": ["experienceleague.adobe.com"],
+    },
+]
+
+
+def _load_index_log() -> dict:
+    """Load the RAG index log to track what's been indexed."""
+    if not RAG_INDEX_LOG.exists():
+        return {}
+    try:
+        return json.loads(RAG_INDEX_LOG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_index_log(log: dict) -> None:
+    """Save the RAG index log."""
+    RAG_INDEX_LOG.parent.mkdir(parents=True, exist_ok=True)
+    RAG_INDEX_LOG.write_text(json.dumps(log, indent=2), encoding="utf-8")
+
+
+def _is_already_indexed(topic_id: str, max_age_days: int = 7) -> bool:
+    """Check if a topic was indexed recently (within max_age_days)."""
+    log = _load_index_log()
+    if topic_id not in log:
+        return False
+    indexed_at = log[topic_id].get("indexed_at", "")
+    if not indexed_at:
+        return False
+    try:
+        indexed_dt = datetime.fromisoformat(indexed_at)
+        age_days = (datetime.utcnow() - indexed_dt).days
+        return age_days < max_age_days
+    except Exception:
+        return False
+
+
+def _mark_as_indexed(topic_id: str, query: str, chunks: int) -> None:
+    """Mark a topic as indexed in the log."""
+    log = _load_index_log()
+    log[topic_id] = {
+        "query":      query,
+        "indexed_at": datetime.utcnow().isoformat(),
+        "chunks":     chunks,
+    }
+    _save_index_log(log)
+
+
+@mcp.tool()
+def auto_index_research_to_rag(force: bool = False) -> str:
+    """
+    Automatically research and index ALL standard DITA/AEM topics into RAG.
+    Skips topics already indexed in last 7 days (unless force=True).
+
+    This is the CORE tool that makes your RAG smarter over time.
+    Run once → future generations grounded in latest DITA spec + AEM docs.
+
+    Topics indexed:
+    - DITA 1.3 task/concept/reference/map structure
+    - DITA keyref, conref, keyscope rules
+    - AEM Guides latest release notes
+    - AEM Guides authoring best practices
+    - AEM Guides ditamap management
+
+    force: True to re-index even if recently indexed
+    """
+    if not TAVILY_API_KEY:
+        return (
+            "❌ TAVILY_API_KEY not set.\n"
+            "Get free key at https://tavily.com\n"
+            "Add to .env: TAVILY_API_KEY=tvly-xxxx"
+        )
+
+    try:
+        from tavily import TavilyClient
+        from backend.app.services.embedding_service import (
+            embed_texts_batched, embed_texts, is_embedding_available
+        )
+        from backend.app.services.vector_store_service import (
+            add_documents, is_chroma_available
+        )
+
+        if not is_chroma_available():
+            return "❌ ChromaDB not available. Start ChromaDB first."
+        if not is_embedding_available():
+            return "❌ Embedding model not available."
+
+        client = TavilyClient(api_key=TAVILY_API_KEY)
+        results_log = []
+        total_chunks = 0
+        skipped = 0
+
+        for topic in AUTO_RESEARCH_TOPICS:
+            topic_id = topic["id"]
+
+            # Skip if recently indexed
+            if not force and _is_already_indexed(topic_id):
+                skipped += 1
+                results_log.append(f"⏭️  Skipped (recent): {topic_id}")
+                continue
+
+            try:
+                # Search
+                result = client.search(
+                    query=topic["query"],
+                    search_depth="advanced",
+                    include_domains=topic["domains"],
+                    max_results=5,
+                    include_answer=True,
+                )
+
+                raw_results = result.get("results", [])
+                answer      = result.get("answer", "")
+
+                if not raw_results and not answer:
+                    results_log.append(f"⚠️  No results: {topic_id}")
+                    continue
+
+                # Build documents to index
+                documents = []
+                metadatas = []
+                ids       = []
+
+                # Index the AI-generated answer first (highest quality)
+                if answer:
+                    doc_id = f"research_{topic_id}_answer"
+                    documents.append(f"[SUMMARY] {topic['query']}\n\n{answer}")
+                    metadatas.append({
+                        "topic_id":  topic_id,
+                        "tag":       topic["tag"],
+                        "query":     topic["query"],
+                        "type":      "answer",
+                        "source":    "tavily_answer",
+                        "url":       "",
+                        "indexed_at": datetime.utcnow().isoformat(),
+                    })
+                    ids.append(doc_id)
+
+                # Index individual search results
+                for i, r in enumerate(raw_results):
+                    content = r.get("content", "").strip()
+                    if len(content) < 100:
+                        continue
+
+                    url     = r.get("url", "")
+                    rtitle  = r.get("title", "")
+                    doc_text = f"{rtitle}\n{url}\n\n{content}"
+
+                    # Use URL hash for deduplication
+                    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+                    doc_id   = f"research_{topic_id}_{url_hash}"
+
+                    documents.append(doc_text[:4000])
+                    metadatas.append({
+                        "topic_id":  topic_id,
+                        "tag":       topic["tag"],
+                        "query":     topic["query"],
+                        "type":      "result",
+                        "source":    "tavily_search",
+                        "url":       url,
+                        "title":     rtitle,
+                        "indexed_at": datetime.utcnow().isoformat(),
+                    })
+                    ids.append(doc_id)
+
+                if not documents:
+                    results_log.append(f"⚠️  No indexable content: {topic_id}")
+                    continue
+
+                # Embed
+                embeddings = (
+                    embed_texts_batched(documents)
+                    if len(documents) > 8
+                    else embed_texts(documents)
+                )
+                if embeddings is None:
+                    results_log.append(f"❌ Embedding failed: {topic_id}")
+                    continue
+
+                # Store in ChromaDB collection 'research_cache'
+                success = add_documents(
+                    "research_cache",
+                    ids=ids,
+                    documents=documents,
+                    metadatas=metadatas,
+                    embeddings=[e.tolist() for e in embeddings],
+                )
+
+                if success:
+                    _mark_as_indexed(topic_id, topic["query"], len(documents))
+                    total_chunks += len(documents)
+                    results_log.append(
+                        f"✅ Indexed: {topic_id} ({len(documents)} chunks)"
+                    )
+                else:
+                    results_log.append(f"❌ Index failed: {topic_id}")
+
+            except Exception as e:
+                results_log.append(f"❌ Error {topic_id}: {str(e)[:100]}")
+
+        return f"""
+AUTO RAG INDEXING COMPLETE
+{'='*50}
+Topics processed: {len(AUTO_RESEARCH_TOPICS)}
+Newly indexed:    {len(AUTO_RESEARCH_TOPICS) - skipped}
+Skipped (recent): {skipped}
+Total chunks:     {total_chunks}
+
+Results:
+{chr(10).join(results_log)}
+
+{'='*50}
+Your RAG now includes latest:
+✅ DITA 1.3 spec rules from OASIS
+✅ AEM Guides documentation from Experience League
+✅ Keyref, conref, keyscope rules
+✅ AEM Guides release notes
+
+Next generation will automatically use this knowledge.
+Run weekly to keep RAG fresh (force=True to refresh now).
+"""
+
+    except ImportError:
+        return "❌ tavily-python not installed. Run: pip install tavily-python"
+    except Exception as e:
+        return f"❌ Auto indexing failed: {e}"
+
+
+@mcp.tool()
+def research_jira_issue_and_index(issue_key: str) -> str:
+    """
+    Research web content for a specific Jira issue AND index to RAG.
+    Automatically improves future generation for similar issues.
+
+    This is the SMART workflow:
+    1. Reads your Jira issue
+    2. Searches relevant DITA/AEM content
+    3. Indexes results into ChromaDB
+    4. Future issues of same type get better DITA
+
+    Run this BEFORE generate_dita_from_jira for best results.
+    """
+    if not TAVILY_API_KEY:
+        return "❌ TAVILY_API_KEY not set in .env"
+
+    try:
+        from tavily import TavilyClient
+        from backend.app.services.jira_client import JiraClient, extract_description_from_issue
+        from backend.app.services.embedding_service import embed_texts, is_embedding_available
+        from backend.app.services.vector_store_service import add_documents, is_chroma_available
+
+        # Fetch issue
+        jira    = JiraClient()
+        raw     = jira.get_issue(issue_key)
+        fields  = raw.get("fields", {})
+        summary = fields.get("summary", "")
+        labels  = fields.get("labels", [])
+        desc    = extract_description_from_issue(raw)
+
+        # Build targeted queries from issue content
+        queries = []
+
+        # Base query from summary
+        queries.append(f"DITA AEM Guides {summary[:80]}")
+
+        # Label-based queries
+        dita_labels = [l for l in labels if any(
+            x in l.lower() for x in
+            ["dita", "keyref", "conref", "map", "topic", "aem", "guides"]
+        )]
+        if dita_labels:
+            queries.append(f"DITA {' '.join(dita_labels[:3])} AEM Guides")
+
+        # Content-based query
+        if desc:
+            queries.append(f"AEM Guides {desc[:100]}")
+
+        client = TavilyClient(api_key=TAVILY_API_KEY)
+        all_documents = []
+        all_metadatas = []
+        all_ids       = []
+        search_log    = []
+
+        for i, query in enumerate(queries[:3]):  # Max 3 queries per issue
+            try:
+                result = client.search(
+                    query=query,
+                    search_depth="advanced",
+                    include_domains=DITA_TRUSTED_SOURCES,
+                    max_results=3,
+                    include_answer=True,
+                )
+
+                answer = result.get("answer", "")
+                if answer:
+                    all_documents.append(f"[Q: {query}]\n{answer}")
+                    all_metadatas.append({
+                        "issue_key": issue_key,
+                        "query":     query,
+                        "type":      "answer",
+                        "source":    "tavily_answer",
+                        "url":       "",
+                        "tag":       "issue-research",
+                        "indexed_at": datetime.utcnow().isoformat(),
+                    })
+                    all_ids.append(
+                        f"issue_{issue_key}_q{i}_answer"
+                    )
+
+                for j, r in enumerate(result.get("results", [])):
+                    content = r.get("content", "").strip()
+                    if len(content) < 100:
+                        continue
+                    url_hash = hashlib.md5(
+                        r.get("url", str(j)).encode()
+                    ).hexdigest()[:8]
+                    all_documents.append(
+                        f"{r.get('title','')}\n{r.get('url','')}\n\n{content[:3000]}"
+                    )
+                    all_metadatas.append({
+                        "issue_key": issue_key,
+                        "query":     query,
+                        "type":      "result",
+                        "source":    "tavily_search",
+                        "url":       r.get("url", ""),
+                        "title":     r.get("title", ""),
+                        "tag":       "issue-research",
+                        "indexed_at": datetime.utcnow().isoformat(),
+                    })
+                    all_ids.append(f"issue_{issue_key}_q{i}_{url_hash}")
+
+                search_log.append(
+                    f"  ✅ Query {i+1}: {len(result.get('results',[]))} results"
+                )
+
+            except Exception as e:
+                search_log.append(f"  ⚠️ Query {i+1} failed: {str(e)[:60]}")
+
+        if not all_documents:
+            return f"No research content found for {issue_key}"
+
+        # Index to ChromaDB
+        indexed = 0
+        if is_chroma_available() and is_embedding_available():
+            embeddings = embed_texts(all_documents)
+            if embeddings is not None:
+                success = add_documents(
+                    "research_cache",
+                    ids=all_ids,
+                    documents=all_documents,
+                    metadatas=all_metadatas,
+                    embeddings=[e.tolist() for e in embeddings],
+                )
+                if success:
+                    indexed = len(all_documents)
+
+        return f"""
+RESEARCH + INDEX for {issue_key}
+{'='*50}
+Issue:   {summary[:80]}
+Labels:  {', '.join(labels) or 'None'}
+Queries: {len(queries)}
+
+Search results:
+{chr(10).join(search_log)}
+
+Indexed: {indexed} chunks into research_cache
+
+{'='*50}
+✅ RAG updated for {issue_key}
+Now run: generate_dita_from_jira('{issue_key}')
+
+The generation will use:
+→ Your DITA spec RAG (ChromaDB)
+→ Your Experience League RAG (ChromaDB)
+→ This fresh research (research_cache)
+→ Expert DITA examples (dita_examples)
+"""
+
+    except ImportError:
+        return "❌ tavily-python not installed. Run: pip install tavily-python"
+    except Exception as e:
+        return f"❌ Research + index failed: {e}"
+
+
+@mcp.tool()
+def show_rag_index_status() -> str:
+    """
+    Show what research has been indexed into RAG and when.
+    See which topics are fresh vs need refresh.
+    """
+    log = _load_index_log()
+
+    if not log:
+        return (
+            "No research indexed yet.\n"
+            "Run auto_index_research_to_rag() to populate."
+        )
+
+    lines = [
+        "RAG Research Index Status",
+        "=" * 50,
+        f"Total topics indexed: {len(log)}",
+        "",
+        ]
+
+    now = datetime.utcnow()
+    fresh   = []
+    stale   = []
+    missing = []
+
+    for topic in AUTO_RESEARCH_TOPICS:
+        tid = topic["id"]
+        if tid in log:
+            entry = log[tid]
+            try:
+                dt   = datetime.fromisoformat(entry["indexed_at"])
+                days = (now - dt).days
+                info = (
+                    f"{'✅' if days < 7 else '⚠️ '} {tid}\n"
+                    f"   Indexed: {days} days ago | "
+                    f"Chunks: {entry.get('chunks', '?')}"
+                )
+                if days < 7:
+                    fresh.append(info)
+                else:
+                    stale.append(info)
+            except Exception:
+                missing.append(f"❓ {tid} — date parse error")
+        else:
+            missing.append(f"❌ {tid} — not indexed yet")
+
+    if fresh:
+        lines.append("FRESH (indexed < 7 days ago):")
+        lines.extend(fresh)
+        lines.append("")
+
+    if stale:
+        lines.append("STALE (needs refresh):")
+        lines.extend(stale)
+        lines.append("")
+
+    if missing:
+        lines.append("NOT INDEXED:")
+        lines.extend(missing)
+        lines.append("")
+
+    lines.append("=" * 50)
+    if stale or missing:
+        lines.append(
+            "Run auto_index_research_to_rag() to refresh stale topics\n"
+            "Run auto_index_research_to_rag(force=True) to re-index all"
+        )
+    else:
+        lines.append("✅ All topics fresh — RAG is up to date!")
+
+    return "\n".join(lines)
 
 
 

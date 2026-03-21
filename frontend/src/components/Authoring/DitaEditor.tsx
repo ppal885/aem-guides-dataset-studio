@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { Button } from '../ui/button.tsx'
 import { Input } from '../ui/input.tsx'
+import { ReviewMode } from './ReviewMode'
+
 import type { JiraIssue, GeneratedDita } from '../../pages/AuthoringPage.tsx'
 
 const API_BASE = '/api/v1'
