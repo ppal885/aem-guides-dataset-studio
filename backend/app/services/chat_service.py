@@ -3,18 +3,25 @@ import asyncio
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 from uuid import uuid4
 
 from app.db.session import SessionLocal
 from app.db.chat_models import ChatSession, ChatMessage
-from app.services.llm_service import generate_chat_stream, generate_chat_stream_with_tools, is_llm_available, store_chat_llm_run
+from app.services.llm_service import (
+    format_llm_error_for_user,
+    generate_chat_stream,
+    generate_chat_stream_with_tools,
+    is_llm_available,
+    store_chat_llm_run,
+)
 from app.services.chat_tools import get_tool_definitions, run_tool
 from app.services.doc_retriever_service import retrieve_relevant_docs, format_docs_for_prompt
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
 from app.services.claude_code_retriever import retrieve_claude_code_context
+from app.services.tenant_service import retrieve_tenant_context, retrieve_tenant_examples
 from app.core.prompt_interface import PromptBuilder, load_prompt_spec
 from app.core.structured_logging import get_structured_logger
 from app.services.llm_service import _get_prompt_versions
@@ -58,7 +65,14 @@ def _get_chat_prompt_builder() -> PromptBuilder:
     fallback = PromptSpec(
         id="chat_system",
         version="fallback",
-        sections={"base": "You are a friendly AI assistant for AEM Guides Dataset Studio. Help with DITA, recipes, and dataset generation. Use generate_dita when user pastes Jira content or asks to create DITA."},
+        sections={
+            "base": (
+                "You are a friendly AI assistant for AEM Guides Dataset Studio. "
+                "Help with DITA, recipes, and dataset generation. Use generate_dita when user pastes Jira content or asks to create DITA. "
+                "Never invent download URLs, external links, file sizes, or bundle contents. "
+                "Only reference a download when a tool result provides a verified app URL."
+            )
+        },
         section_order=["base"],
     )
     _CHAT_PROMPT_BUILDER = PromptBuilder(fallback)
@@ -67,7 +81,16 @@ def _get_chat_prompt_builder() -> PromptBuilder:
 
 def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
     """Build full chat system prompt from spec + dynamic blocks."""
-    return _get_chat_prompt_builder().build(user_context=user_context, rag_context=rag_context)
+    prompt = _get_chat_prompt_builder().build(user_context=user_context, rag_context=rag_context)
+    safety_rules = (
+        "\n\nTOOL RESULT SAFETY RULES:\n"
+        "- Never invent or rewrite download URLs.\n"
+        "- Never use placeholder links like example.com.\n"
+        "- If a generate_dita tool result exists, use only its returned download_url and prefer telling the user to use the in-app download action.\n"
+        "- Do not claim a bundle was generated unless the tool result says it was.\n"
+        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
+    )
+    return prompt + safety_rules
 
 
 _tiktoken_encoder = None
@@ -152,7 +175,7 @@ def _build_context_block(
     if _detect_jira_style_text(user_content):
         parts.append(
             "The user has pasted Jira-style content. Call generate_dita immediately with the pasted text. "
-            "Do not just summarize—generate DITA and provide the download link."
+            "Do not just summarize. If generation succeeds, direct the user to the in-app download action from the tool result."
         )
     # Conversational refinement: last generation in this session
     if session_id:
@@ -170,7 +193,401 @@ def _build_context_block(
     return "\n\nUSER CONTEXT:\n" + "\n".join(parts) + "\n\n"
 
 
-def _build_rag_context(query: str) -> str:
+def _tool_result_download_url(result: dict | None) -> str:
+    if not isinstance(result, dict):
+        return ""
+    download_url = str(result.get("download_url") or "").strip()
+    if download_url.startswith("/api/v1/ai/bundle/") and download_url.endswith("/download"):
+        return download_url
+    return ""
+
+
+def _build_post_tool_assistant_text(tool_results_by_name: dict[str, dict]) -> str:
+    lines: list[str] = []
+
+    dita_result = tool_results_by_name.get("generate_dita")
+    if isinstance(dita_result, dict):
+        if dita_result.get("error"):
+            lines.append(f"DITA bundle generation failed: {dita_result.get('error')}")
+        else:
+            jira_id = str(dita_result.get("jira_id") or "generated bundle").strip()
+            run_id = str(dita_result.get("run_id") or "").strip()
+            download_url = _tool_result_download_url(dita_result)
+            lines.append(f"DITA bundle generated for `{jira_id}`.")
+            if download_url:
+                lines.append("Use the Download DITA Bundle action below to fetch the real ZIP from this app.")
+            else:
+                lines.append("The bundle was created, but no verified download URL is available yet.")
+            if run_id:
+                lines.append(f"Run ID: `{run_id}`")
+            scenarios = dita_result.get("scenarios")
+            if isinstance(scenarios, list) and scenarios:
+                lines.append(f"Scenarios generated: {len(scenarios)}")
+
+    job_result = tool_results_by_name.get("create_job")
+    if isinstance(job_result, dict):
+        if job_result.get("error"):
+            lines.append(f"Dataset job creation failed: {job_result.get('error')}")
+        else:
+            job_id = str(job_result.get("job_id") or "").strip()
+            recipe_type = str(job_result.get("recipe_type") or "").strip()
+            lines.append(
+                f"Dataset job created{f' for `{recipe_type}`' if recipe_type else ''}."
+                f"{f' Job ID: `{job_id}`.' if job_id else ''} Check Job History for downloads."
+            )
+
+    return "\n\n".join(line for line in lines if line).strip()
+
+
+def _is_capability_prompt(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    patterns = [
+        r"\bwhat can you do\b",
+        r"\bhow can you help\b",
+        r"\bwhat is your use\b",
+        r"\bwhat are you for\b",
+        r"\bhelp me use\b",
+        r"\bhow do i use (this|you|ai chat)\b",
+        r"\bwhat do you do\b",
+        r"\bwho are you\b",
+        r"^\s*help\s*$",
+    ]
+    return any(re.search(pattern, lowered) for pattern in patterns)
+
+
+def _builtin_capability_response(tenant_id: str) -> str:
+    return (
+        "I can help in a few practical ways even without a live model reply:\n\n"
+        "- Summarize Jira issues and comments into author-ready guidance.\n"
+        "- Suggest DITA improvements like conref, conkeyref, keyref, keywords, reuse, and stronger structure.\n"
+        "- Help turn issue text into task, concept, or reference-topic direction.\n"
+        "- Guide research using AEM Guides docs, DITA references, tenant knowledge, and imported examples.\n"
+        "- Start DITA bundle generation when you paste Jira-style content.\n\n"
+        f"Current workspace: `{tenant_id}`.\n\n"
+        "Try one of these prompts:\n"
+        "- Summarize the Jira comments into author-ready guidance.\n"
+        "- Review this DITA topic for conref, keyref, and keyword improvements.\n"
+        "- Convert this issue into a clean task topic outline.\n"
+        "- Suggest how to make this topic more reusable across AEM Guides content."
+    )
+
+
+def _builtin_unavailable_response(user_content: str, tenant_id: str) -> str:
+    trimmed = (user_content or "").strip()
+    if _is_capability_prompt(trimmed):
+        return _builtin_capability_response(tenant_id)
+    return (
+        "Live AI responses are temporarily unavailable right now, but the chat workspace is still ready for structured authoring tasks.\n\n"
+        "You can retry in a few minutes, or ask in a more directed way such as:\n"
+        "- Summarize these Jira comments into author guidance.\n"
+        "- Suggest conref, conkeyref, keyref, and keyword improvements for this XML.\n"
+        "- Convert this issue into a task topic outline.\n"
+        "- Review this draft for reuse and AEM Guides readiness.\n\n"
+        f"Workspace: `{tenant_id}`"
+    )
+
+
+def _extract_issue_key(user_content: str, context: Optional[dict] = None) -> str:
+    if isinstance(context, dict):
+        candidate = str(context.get("issue_key") or "").strip()
+        if candidate:
+            return candidate
+    match = re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", user_content or "")
+    return match.group(0) if match else ""
+
+
+def _looks_like_dita_xml(text: str) -> bool:
+    return bool(re.search(r"<(task|concept|reference|topic|glossentry)\b", text or "", re.IGNORECASE))
+
+
+def _fallback_issue_stub(issue_key: str, context: Optional[dict] = None) -> dict:
+    summary = ""
+    if isinstance(context, dict):
+        summary = str(context.get("issue_summary") or "").strip()
+    return {
+        "issue_key": issue_key,
+        "summary": summary or issue_key or "Documentation issue",
+        "description": "",
+        "components": [],
+        "labels": [],
+        "comments": [],
+        "attachments": [],
+    }
+
+
+def _extract_rag_highlights(rag_context: str, limit: int = 4) -> list[str]:
+    if not rag_context:
+        return []
+    blocks = [block.strip() for block in rag_context.split("\n\n") if block.strip()]
+    highlights: list[str] = []
+    for block in blocks:
+        if block.startswith("RELEVANT CONTEXT"):
+            continue
+        if block.startswith("Base your answer on this context"):
+            continue
+        if block.endswith(":") and "\n" not in block:
+            continue
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        if lines[0].startswith("["):
+            label = lines[0]
+            detail = " ".join(lines[1:])
+            if detail:
+                highlights.append(f"{label}: {detail[:220]}")
+            else:
+                highlights.append(label[:220])
+        else:
+            highlights.append(" ".join(lines)[:220])
+        if len(highlights) >= limit:
+            break
+    return highlights[:limit]
+
+
+def _build_rag_grounded_fallback_response(
+    user_content: str,
+    rag_context: str,
+    tenant_id: str,
+    issue_key: str = "",
+) -> str:
+    highlights = _extract_rag_highlights(rag_context, limit=4)
+    if not highlights:
+        return _builtin_unavailable_response(user_content, tenant_id)
+
+    lines = [
+        "Using local indexed knowledge while live providers recover.",
+        "",
+    ]
+    if issue_key:
+        lines.append(f"Issue reference: `{issue_key}`")
+        lines.append("")
+    lines.append("Best available guidance:")
+    for item in highlights:
+        lines.append(f"- {item}")
+    lines.extend(
+        [
+            "",
+            "Good next prompts:",
+            "- Review this XML for conref, conkeyref, keyref, and keyword improvements.",
+            "- Turn this issue into a task topic outline with context, steps, and result.",
+            "- Summarize the Jira discussion into user-facing author guidance.",
+            f"",
+            f"Workspace: `{tenant_id}`",
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
+def _build_fallback_notice(
+    *,
+    exc: Exception | None = None,
+    provider_configured: bool = True,
+) -> dict:
+    if not provider_configured:
+        return {
+            "type": "notice",
+            "code": "provider_unavailable",
+            "level": "warning",
+            "title": "Live AI provider is not configured",
+            "message": "Showing a local fallback response from indexed knowledge because no live chat provider is currently available.",
+        }
+
+    friendly = format_llm_error_for_user(exc or RuntimeError("The assistant is temporarily unavailable."))
+    lowered = friendly.lower()
+    if "rate-limit" in lowered or "rate limit" in lowered:
+        return {
+            "type": "notice",
+            "code": "provider_rate_limited",
+            "level": "warning",
+            "title": "Live AI providers are rate-limited",
+            "message": "Showing a local fallback response from indexed knowledge while the configured providers recover.",
+        }
+    if "quota" in lowered:
+        return {
+            "type": "notice",
+            "code": "provider_quota_exhausted",
+            "level": "warning",
+            "title": "Live AI provider quota is exhausted",
+            "message": "Showing a local fallback response from indexed knowledge until provider quota is available again.",
+        }
+    return {
+        "type": "notice",
+        "code": "provider_unavailable",
+        "level": "warning",
+        "title": "Live AI response is unavailable",
+        "message": "Showing a local fallback response from indexed knowledge for this reply.",
+    }
+
+
+def _build_issue_guidance_fallback(
+    user_content: str,
+    issue: dict,
+    rag_context: str,
+    tenant_id: str,
+) -> str:
+    lowered = (user_content or "").lower()
+    issue_key = str(issue.get("issue_key") or "").strip()
+    summary = str(issue.get("summary") or issue_key or "the issue").strip()
+    highlights = _extract_rag_highlights(rag_context, limit=3)
+
+    lines = ["Using local issue guidance while live providers recover.", ""]
+    if issue_key:
+        lines.append(f"Issue reference: `{issue_key}`")
+    if summary and summary != issue_key:
+        lines.append(f"Working summary: {summary}")
+    lines.append("")
+
+    if "outline" in lowered or "task topic" in lowered or "convert" in lowered:
+        lines.extend(
+            [
+                "Task topic outline:",
+                f"- Title: resolve the user-facing problem behind {summary}.",
+                "- Shortdesc: describe the successful outcome for the author or reader.",
+                "- Context: explain when the issue appears and why the task is needed.",
+                "- Steps: verify the environment, apply the change, and confirm the expected behavior.",
+                "- Result: describe the corrected behavior after the fix.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "Author guidance:",
+                f"- Treat `{issue_key or summary}` as a user-facing documentation update, not a Jira bug report.",
+                "- Pull the problem statement into context, then rewrite the resolution as clear procedural steps.",
+                "- Keep the result focused on the corrected behavior rather than the ticket itself.",
+            ]
+        )
+
+    if highlights:
+        lines.append("")
+        lines.append("Relevant indexed context:")
+        for item in highlights:
+            lines.append(f"- {item}")
+
+    if "comment" in lowered or "discussion" in lowered:
+        lines.append("")
+        lines.append("If you paste the Jira comments or the draft XML next, I can give a more exact local review even while providers are busy.")
+
+    lines.extend(["", f"Workspace: `{tenant_id}`"])
+    return "\n".join(lines).strip()
+
+
+async def _build_xml_review_fallback_response(
+    xml: str,
+    issue: dict,
+    tenant_id: str,
+    rag_context: str = "",
+) -> str:
+    from app.services.smart_suggestions_service import analyse_content
+
+    report = await analyse_content(xml, issue, tenant_id=tenant_id)
+    suggestions = report.suggestions[:4]
+    lines = [
+        "Using local XML analysis while live providers recover.",
+        "",
+        f"Detected topic type: `{issue.get('dita_type') or ('task' if '<task' in xml.lower() else 'topic')}`",
+        f"Suggestions found: {report.total}",
+    ]
+    if suggestions:
+        lines.append("")
+        lines.append("Best next fixes:")
+        for suggestion in suggestions:
+            after = suggestion.after.strip()
+            detail = f" {after}" if after else ""
+            lines.append(f"- {suggestion.title}.{detail}")
+    else:
+        lines.append("")
+        lines.append("This topic already looks structurally clean against the current local rule set.")
+
+    if report.refine_completions:
+        lines.append("")
+        lines.append("Good follow-up asks:")
+        for completion in report.refine_completions[:3]:
+            lines.append(f"- {completion}")
+
+    highlights = _extract_rag_highlights(rag_context, limit=2)
+    if highlights:
+        lines.append("")
+        lines.append("Relevant indexed context:")
+        for item in highlights:
+            lines.append(f"- {item}")
+
+    lines.extend(["", f"Workspace: `{tenant_id}`"])
+    return "\n".join(lines).strip()
+
+
+async def _build_local_fallback_response(
+    user_content: str,
+    tenant_id: str,
+    context: Optional[dict] = None,
+    *,
+    rag_context: str | None = None,
+) -> str:
+    trimmed = (user_content or "").strip()
+    if _is_capability_prompt(trimmed):
+        return _builtin_capability_response(tenant_id)
+
+    issue_key = _extract_issue_key(trimmed, context)
+    issue = _fallback_issue_stub(issue_key, context)
+
+    if rag_context is None:
+        rag_context = _build_rag_context(trimmed[:500], tenant_id=tenant_id)
+
+    if _looks_like_dita_xml(trimmed):
+        if "<task" in trimmed.lower():
+            issue["dita_type"] = "task"
+        elif "<concept" in trimmed.lower():
+            issue["dita_type"] = "concept"
+        elif "<reference" in trimmed.lower():
+            issue["dita_type"] = "reference"
+        elif "<glossentry" in trimmed.lower():
+            issue["dita_type"] = "glossentry"
+        else:
+            issue["dita_type"] = "topic"
+        return await _build_xml_review_fallback_response(trimmed, issue, tenant_id, rag_context=rag_context or "")
+
+    lowered = trimmed.lower()
+    if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
+        return _build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id)
+
+    if rag_context:
+        return _build_rag_grounded_fallback_response(trimmed, rag_context, tenant_id, issue_key=issue_key)
+
+    return _builtin_unavailable_response(trimmed, tenant_id)
+
+
+def _persist_assistant_message(
+    session_id: str,
+    assistant_msg_id: str,
+    content: str,
+    *,
+    tool_calls: object | None = None,
+    tool_results: object | None = None,
+) -> None:
+    db = SessionLocal()
+    try:
+        db.add(
+            ChatMessage(
+                id=assistant_msg_id,
+                session_id=session_id,
+                role="assistant",
+                content=content,
+                tool_calls=json.dumps(tool_calls) if tool_calls else None,
+                tool_results=json.dumps(tool_results) if tool_results else None,
+                created_at=datetime.utcnow(),
+            )
+        )
+        s = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if s:
+            s.updated_at = datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
+
+def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     """Retrieve RAG chunks and format for system prompt. Uses more chunks for better retrieval."""
     if not query or not str(query).strip():
         return ""
@@ -204,6 +621,35 @@ def _build_rag_context(query: str) -> str:
                 parts.append("DITA SPEC REFERENCE:\n" + "\n\n".join(dita_parts))
     except Exception as e:
         logger.debug_structured("RAG DITA failed", extra_fields={"error": str(e)})
+
+    try:
+        tenant_chunks = retrieve_tenant_context(query[:500], tenant_id=tenant_id, k=4)
+        if tenant_chunks:
+            tenant_parts = []
+            for i, chunk in enumerate(tenant_chunks[:4], 1):
+                metadata = chunk.get("metadata") or {}
+                label = metadata.get("label") or metadata.get("filename") or "Tenant knowledge"
+                content = (chunk.get("content") or "")[:RAG_SNIPPET_CHARS]
+                if content:
+                    tenant_parts.append(f"[{i}] {label}\n{content}")
+            if tenant_parts:
+                parts.append("TENANT KNOWLEDGE BASE:\n" + "\n\n".join(tenant_parts))
+    except Exception as e:
+        logger.debug_structured("RAG tenant context failed", extra_fields={"error": str(e), "tenant_id": tenant_id})
+
+    try:
+        example_chunks = retrieve_tenant_examples(query[:500], tenant_id=tenant_id, k=2)
+        if example_chunks:
+            example_parts = []
+            for i, example in enumerate(example_chunks[:2], 1):
+                label = example.get("filename") or f"Example {i}"
+                content = (example.get("content") or "")[:RAG_SNIPPET_CHARS]
+                if content:
+                    example_parts.append(f"[{i}] {label}\n{content}")
+            if example_parts:
+                parts.append("APPROVED DITA EXAMPLES:\n" + "\n\n".join(example_parts))
+    except Exception as e:
+        logger.debug_structured("RAG tenant examples failed", extra_fields={"error": str(e), "tenant_id": tenant_id})
 
     # Claude Code / Adobe AI setup (when user asks about Claude, Bedrock, Adobe setup, etc.)
     try:
@@ -244,6 +690,26 @@ def create_session() -> str:
         db.close()
 
 
+def _serialize_session_row(session: ChatSession) -> dict:
+    return {
+        "id": session.id,
+        "title": session.title or "New Chat",
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+    }
+
+
+def _serialize_message_row(message: ChatMessage) -> dict:
+    return {
+        "id": message.id,
+        "role": message.role,
+        "content": message.content,
+        "tool_calls": json.loads(message.tool_calls) if message.tool_calls else None,
+        "tool_results": json.loads(message.tool_results) if message.tool_results else None,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
 def list_sessions(limit: int = 50, offset: int = 0) -> list[dict]:
     """List chat sessions, newest first."""
     db = SessionLocal()
@@ -255,15 +721,7 @@ def list_sessions(limit: int = 50, offset: int = 0) -> list[dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {
-                "id": r.id,
-                "title": r.title or "New Chat",
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-            }
-            for r in rows
-        ]
+        return [_serialize_session_row(r) for r in rows]
     finally:
         db.close()
 
@@ -275,12 +733,7 @@ def get_session(session_id: str) -> dict | None:
         s = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if not s:
             return None
-        return {
-            "id": s.id,
-            "title": s.title or "New Chat",
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
-        }
+        return _serialize_session_row(s)
     finally:
         db.close()
 
@@ -296,17 +749,68 @@ def get_messages(session_id: str, limit: int = 100) -> list[dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {
-                "id": r.id,
-                "role": r.role,
-                "content": r.content,
-                "tool_calls": json.loads(r.tool_calls) if r.tool_calls else None,
-                "tool_results": json.loads(r.tool_results) if r.tool_results else None,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in rows
-        ]
+        return [_serialize_message_row(r) for r in rows]
+    finally:
+        db.close()
+
+
+def branch_session_from_message(session_id: str, message_id: str) -> tuple[dict, list[dict]]:
+    """Create a new session by copying messages before a user message being edited."""
+    db = SessionLocal()
+    try:
+        source_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not source_session:
+            raise LookupError("Session not found")
+
+        source_messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+            .all()
+        )
+        target_index = next((index for index, row in enumerate(source_messages) if row.id == message_id), None)
+        if target_index is None:
+            raise LookupError("Message not found")
+
+        target_message = source_messages[target_index]
+        if target_message.role != "user":
+            raise ValueError("Only user messages can be edited and resent")
+
+        prefix_messages = source_messages[:target_index]
+        now = datetime.utcnow()
+        branched_session = ChatSession(
+            id=str(uuid4()),
+            # Always start edited branches as a fresh chat so the resent prompt can
+            # become the visible title on the first new user message.
+            title="New Chat",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(branched_session)
+
+        for index, row in enumerate(prefix_messages, start=1):
+            db.add(
+                ChatMessage(
+                    id=str(uuid4()),
+                    session_id=branched_session.id,
+                    role=row.role,
+                    content=row.content,
+                    tool_calls=row.tool_calls,
+                    tool_results=row.tool_results,
+                    created_at=now + timedelta(microseconds=index),
+                )
+            )
+
+        db.commit()
+        db.refresh(branched_session)
+
+        branched_messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == branched_session.id)
+            .order_by(ChatMessage.created_at.asc())
+            .all()
+        )
+        return _serialize_session_row(branched_session), [_serialize_message_row(row) for row in branched_messages]
     finally:
         db.close()
 
@@ -438,15 +942,12 @@ async def chat_turn(
     user_content: str,
     user_id: str = "chat-user",
     context: Optional[dict] = None,
+    tenant_id: str = "kone",
 ) -> AsyncGenerator[dict, None]:
     """
     Process a chat turn: persist user message, call LLM with RAG, stream response, persist assistant message.
     Yields dicts: {"type": "chunk", "content": "..."} | {"type": "done"} | {"type": "tool", "name": "...", "result": {...}} | {"type": "error", "message": "..."}
     """
-    if not is_llm_available():
-        yield {"type": "error", "message": "LLM unavailable. Set ANTHROPIC_API_KEY, GROQ_API_KEY, or LLM_PROVIDER=bedrock with AWS credentials in backend/.env"}
-        return
-
     user_content = (user_content or "").strip()
     if not user_content:
         yield {"type": "error", "message": "Message cannot be empty"}
@@ -488,12 +989,29 @@ async def chat_turn(
     finally:
         db.close()
 
+    assistant_msg_id = str(uuid4())
+
+    if _is_capability_prompt(user_content):
+        fallback_text = _builtin_capability_response(tenant_id)
+        _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
+        yield {"type": "chunk", "content": fallback_text}
+        yield {"type": "done"}
+        return
+
+    if not is_llm_available():
+        yield _build_fallback_notice(provider_configured=False)
+        fallback_text = await _build_local_fallback_response(user_content, tenant_id, context)
+        _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
+        yield {"type": "chunk", "content": fallback_text}
+        yield {"type": "done"}
+        return
+
     # Load history
     history = get_messages(session_id)
     llm_messages = _messages_to_llm_format(history)
 
     # RAG context and user context
-    rag_context = _build_rag_context(user_content)
+    rag_context = _build_rag_context(user_content, tenant_id=tenant_id)
     context_block = _build_context_block(context, user_content, session_id=session_id)
     system_prompt = _build_chat_system_prompt(user_context=context_block, rag_context=rag_context)
 
@@ -507,7 +1025,6 @@ async def chat_turn(
 
     tools = get_tool_definitions()
     full_content = []
-    assistant_msg_id = str(uuid4())
     max_tool_rounds = 5
     total_input_tokens = 0
     total_output_tokens = 0
@@ -534,6 +1051,8 @@ async def chat_turn(
                     break
                 elif evt_type == "done":
                     break
+
+            tool_results_by_name: dict[str, dict] = {}
 
             if tool_use_blocks:
                 assistant_blocks = [{"type": "text", "text": "".join(round_text)}] if round_text else []
@@ -569,6 +1088,7 @@ async def chat_turn(
                         },
                     )
                     tool_results.append(result)
+                    tool_results_by_name[b["name"]] = result
                     yield {"type": "tool", "name": b["name"], "result": result}
 
                 result_blocks = [
@@ -576,29 +1096,25 @@ async def chat_turn(
                     for b, r in zip(tool_use_blocks, tool_results)
                 ]
                 llm_messages.append({"role": "user", "content": result_blocks})
+                direct_tool_response = _build_post_tool_assistant_text(tool_results_by_name)
+                if direct_tool_response:
+                    separator = "\n\n" if full_content else ""
+                    full_content.append(separator + direct_tool_response)
+                    yield {"type": "chunk", "content": separator + direct_tool_response}
+                    break
             else:
                 break
 
         full_text = "".join(full_content)
 
         # Persist assistant message
-        db = SessionLocal()
-        try:
-            db.add(
-                ChatMessage(
-                    id=assistant_msg_id,
-                    session_id=session_id,
-                    role="assistant",
-                    content=full_text,
-                    created_at=datetime.utcnow(),
-                )
-            )
-            s = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-            if s:
-                s.updated_at = datetime.utcnow()
-            db.commit()
-        finally:
-            db.close()
+        _persist_assistant_message(
+            session_id,
+            assistant_msg_id,
+            full_text,
+            tool_calls=tool_use_blocks,
+            tool_results=tool_results_by_name,
+        )
 
         # Store token usage for observability (best-effort, non-blocking)
         if total_input_tokens > 0 or total_output_tokens > 0:
@@ -623,4 +1139,11 @@ async def chat_turn(
             extra_fields={"session_id": session_id, "error": str(e)},
             exc_info=True,
         )
-        yield {"type": "error", "message": str(e)}
+        yield _build_fallback_notice(exc=e, provider_configured=True)
+        fallback_text = await _build_local_fallback_response(user_content, tenant_id, context, rag_context=rag_context)
+        try:
+            _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
+            yield {"type": "chunk", "content": fallback_text}
+            yield {"type": "done"}
+        except Exception:
+            yield {"type": "error", "message": format_llm_error_for_user(e)}

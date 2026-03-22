@@ -9,17 +9,17 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from backend.app.db.dita_spec_models import DitaSpecChunk
-from backend.app.db.session import SessionLocal
-from backend.app.services.dita_graph_service import get_graph_summary_for_elements
-from backend.app.services.embedding_service import embed_query, embed_texts, is_embedding_available
-from backend.app.services.vector_store_service import (
+from app.db.dita_spec_models import DitaSpecChunk
+from app.db.session import SessionLocal
+from app.services.dita_graph_service import get_graph_summary_for_elements
+from app.services.embedding_service import embed_query, embed_texts, is_embedding_available
+from app.services.vector_store_service import (
     is_chroma_available,
     query_collection,
     get_collection_count,
     CHROMA_COLLECTION_DITA_SPEC,
 )
-from backend.app.core.structured_logging import get_structured_logger
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

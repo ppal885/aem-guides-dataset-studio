@@ -1,8 +1,7 @@
 """Admin and maintenance endpoints."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
-from app.core.auth import UserIdentity, CurrentUser
+from app.core.auth import AdminUser, UserIdentity
 from app.services.cleaning_service import clean_old_data
 from app.core.structured_logging import get_structured_logger
 
@@ -19,7 +18,7 @@ class CleanupRequest(BaseModel):
 @router.post("/cleanup")
 def trigger_cleanup(
     request: CleanupRequest = CleanupRequest(),
-    user: UserIdentity = CurrentUser,
+    user: UserIdentity = AdminUser,
 ):
     """Manually trigger data cleanup job.
     

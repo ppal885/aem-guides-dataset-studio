@@ -1,7 +1,7 @@
 """Database models for DITA spec indexing."""
 from datetime import datetime
 from sqlalchemy import Column, String, Text, DateTime
-from backend.app.db.base import Base
+from app.db.base import Base
 
 
 class DitaSpecChunk(Base):

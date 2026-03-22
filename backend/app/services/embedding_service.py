@@ -6,7 +6,7 @@ Supports custom fine-tuned model via DITA_EMBEDDING_MODEL_PATH.
 import os
 from typing import Optional
 
-from backend.app.core.structured_logging import get_structured_logger
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

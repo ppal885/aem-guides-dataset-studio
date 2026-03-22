@@ -8,6 +8,7 @@ from app.core.content_validation import validate_chat_content, validate_chat_con
 from app.db.session import get_db
 from app.utils.api_rate_limit import check_chat_sessions_limit, check_chat_messages_limit
 from app.services.chat_service import (
+    branch_session_from_message,
     create_session,
     list_sessions,
     get_session,
@@ -15,6 +16,8 @@ from app.services.chat_service import (
     delete_session,
     chat_turn,
 )
+from app.services.tenant_service import get_tenant_id_from_request
+from app.services.llm_service import format_llm_error_for_user
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -26,6 +29,10 @@ class CreateSessionResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     context: dict | None = None  # { "issue_summary": str, "issue_key": str, "source_page": str }
+
+
+class BranchSessionRequest(BaseModel):
+    message_id: str
 
 
 @router.post("/sessions", response_model=CreateSessionResponse)
@@ -78,6 +85,21 @@ def get_session_messages(
     return {"messages": messages}
 
 
+@router.post("/sessions/{session_id}/branches")
+def post_branch_session(request: Request, session_id: str, body: BranchSessionRequest):
+    """Create a new session from the history before a user message being edited."""
+    err = check_chat_sessions_limit(request)
+    if err:
+        raise HTTPException(status_code=429, detail=err)
+    try:
+        session, messages = branch_session_from_message(session_id, body.message_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"session": session, "messages": messages}
+
+
 @router.post("/sessions/{session_id}/messages")
 async def post_send_message(request: Request, session_id: str, body: SendMessageRequest):
     """Send a message and stream the response via SSE."""
@@ -96,13 +118,15 @@ async def post_send_message(request: Request, session_id: str, body: SendMessage
     if err:
         raise HTTPException(status_code=400, detail=err)
 
+    tenant_id = get_tenant_id_from_request(request)
+
     async def event_stream():
         try:
-            async for event in chat_turn(session_id, content, context=body.context):
+            async for event in chat_turn(session_id, content, context=body.context, tenant_id=tenant_id):
                 line = json.dumps(event) + "\n"
                 yield f"data: {line}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': format_llm_error_for_user(e)})}\n\n"
 
     return StreamingResponse(
         event_stream(),

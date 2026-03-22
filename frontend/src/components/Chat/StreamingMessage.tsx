@@ -11,7 +11,7 @@ export function StreamingMessage({ content, className }: StreamingMessageProps) 
   return (
     <div
       className={cn(
-        'rounded-lg p-4 text-sm bg-slate-100 text-slate-800 mr-8',
+        'mr-8 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm',
         className
       )}
     >

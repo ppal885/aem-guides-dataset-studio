@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Builder } from './pages/Builder'
 import { Loader2 } from 'lucide-react'
+import AuthoringPage from './pages/AuthoringPage'
 
 const JobHistoryPage = lazy(() => import('./pages/JobHistoryPage').then(module => ({ default: module.JobHistoryPage })))
 const DatasetExplorerPage = lazy(() => import('./pages/DatasetExplorerPage').then(module => ({ default: module.DatasetExplorerPage })))
@@ -28,6 +29,7 @@ function App() {
                 <Route path="/job-history" element={<JobHistoryPage />} />
                 <Route path="/dataset-explorer" element={<DatasetExplorerPage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/authoring" element={<AuthoringPage />} />
                 <Route path="/upload" element={<AemUploadPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>

@@ -468,16 +468,34 @@ class IndexDitaPdfRequest(BaseModel):
     urls: list[str] | None = None
 
 
+async def _read_optional_json_object(request: Request) -> dict:
+    raw = await request.body()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+    return payload
+
+
 @router.post("/crawl-aem-guides")
-async def crawl_aem_guides(body: CrawlRequest | None = Body(None)):
+async def crawl_aem_guides(request: Request):
     """Crawl AEM Guides documentation from Experience League, index chunks, and store for RAG.
     Run this before using doc enrichment in Jira analysis. Returns pages_crawled, chunks_stored, errors.
     Optional body: { \"urls\": [\"https://...\"] } to crawl specific URLs; omit to use config file."""
     try:
         from app.services.crawl_service import crawl_and_index
-        urls = body.urls if body and body.urls else None
+        payload = await _read_optional_json_object(request)
+        urls = payload.get("urls") if isinstance(payload.get("urls"), list) else None
         stats = await asyncio.to_thread(crawl_and_index, urls=urls)
         return stats
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error_structured(
             "AEM Guides crawl failed",
@@ -553,7 +571,7 @@ def get_crawl_status():
 
 
 @router.get("/rag-status")
-def get_rag_status():
+def get_rag_status(request: Request):
     """Return RAG source status: ChromaDB collection counts for AEM Guides (Experience League) and DITA PDF.
     When counts are 0, run POST /api/v1/ai/crawl-aem-guides and POST /api/v1/ai/index-dita-pdf to populate."""
     try:
@@ -563,10 +581,13 @@ def get_rag_status():
             CHROMA_COLLECTION_AEM_GUIDES,
             CHROMA_COLLECTION_DITA_SPEC,
         )
+        from app.services.github_dita_examples_service import get_github_dita_status
+        from app.services.tenant_service import get_tenant_id_from_request
         from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
         chroma_ok = is_chroma_available()
         aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
         dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
+        tenant_id = get_tenant_id_from_request(request)
         return {
             "chroma_available": chroma_ok,
             "aem_guides": {
@@ -584,6 +605,7 @@ def get_rag_status():
                 "used_in": ["scenario_expander", "plan_for_scenario"],
                 "populate_via": "POST /api/v1/ai/index-dita-pdf",
             },
+            "oxygen_examples": get_github_dita_status(tenant_id),
         }
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
@@ -591,17 +613,51 @@ def get_rag_status():
 
 
 @router.post("/index-dita-pdf")
-async def index_dita_pdf(body: IndexDitaPdfRequest | None = Body(None)):
+async def index_dita_pdf(request: Request):
     """Index DITA 1.2 and 1.3 Part 1 Base PDFs (or custom urls). Download, load with LangChain, split, embed, and store in ChromaDB for RAG.
     Run this to enable DITA spec retrieval. Returns pages_loaded, chunks_stored, sources_indexed, errors."""
     try:
         from app.services.dita_pdf_index_service import index_dita_pdf as index_dita_pdf_fn
-        urls = body.urls if body and body.urls else None
+        payload = await _read_optional_json_object(request)
+        urls = payload.get("urls") if isinstance(payload.get("urls"), list) else None
         stats = await asyncio.to_thread(index_dita_pdf_fn, pdf_urls=urls)
         return stats
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error_structured(
             "DITA PDF index failed",
+            extra_fields={"error": str(e)},
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=sanitize_error_for_client(e))
+
+
+@router.post("/index-github-dita-examples")
+async def index_github_dita_examples_route(request: Request):
+    """Index DITA examples from a GitHub tree URL into the tenant examples collection and tenant RAG."""
+    try:
+        from app.services.github_dita_examples_service import (
+            DEFAULT_GITHUB_DITA_SOURCE_URL,
+            index_github_dita_examples,
+        )
+        from app.services.tenant_service import get_tenant_id_from_request
+
+        payload = await _read_optional_json_object(request)
+        tenant_id = get_tenant_id_from_request(request)
+        result = await index_github_dita_examples(
+            tenant_id=tenant_id,
+            source_url=str(payload.get("source_url") or DEFAULT_GITHUB_DITA_SOURCE_URL),
+            max_files=int(payload.get("max_files") or 400),
+            include_maps=bool(payload.get("include_maps", True)),
+            index_into_rag=bool(payload.get("index_into_rag", True)),
+        )
+        return result.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error_structured(
+            "GitHub DITA example index failed",
             extra_fields={"error": str(e)},
             exc_info=True,
         )

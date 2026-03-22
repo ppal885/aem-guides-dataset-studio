@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from backend.app.db.dita_spec_models import DitaSpecChunk
-from backend.app.db.session import SessionLocal
-from backend.app.core.structured_logging import get_structured_logger
+from app.db.dita_spec_models import DitaSpecChunk
+from app.db.session import SessionLocal
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from backend.app.core.structured_logging import StructuredJSONFormatter
+from app.core.structured_logging import StructuredJSONFormatter
 
 # Create logs directory if it doesn't exist
 LOG_DIR = Path(__file__).parent.parent.parent / "logs"

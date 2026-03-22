@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
-from backend.app.core.structured_logging import get_structured_logger
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

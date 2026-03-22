@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { GenerationProgressCard } from './GenerationProgressCard';
@@ -10,6 +10,9 @@ interface ChatMessageListProps {
   generationRunId?: string | null;
   onGenerationComplete?: () => void;
   onCopyMessage?: (content: string) => void;
+  onEditMessage?: (message: ChatMessageType) => void;
+  editingMessageId?: string | null;
+  emptyState?: ReactNode;
 }
 
 export function ChatMessageList({
@@ -18,6 +21,9 @@ export function ChatMessageList({
   generationRunId,
   onGenerationComplete,
   onCopyMessage,
+  onEditMessage,
+  editingMessageId,
+  emptyState,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -28,9 +34,11 @@ export function ChatMessageList({
   return (
     <div className="flex-1 overflow-y-auto space-y-4 p-4">
       {messages.length === 0 && !streamingContent && (
-        <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
-          Paste Jira text, ask about DITA, or generate a dataset.
-        </div>
+        emptyState ?? (
+          <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
+            Paste Jira text, ask about DITA, or generate a dataset.
+          </div>
+        )
       )}
       {messages.map((m) => (
         <ChatMessage
@@ -43,6 +51,8 @@ export function ChatMessageList({
               ? () => onCopyMessage(m.content!)
               : undefined
           }
+          onEdit={m.role === 'user' && onEditMessage ? () => onEditMessage(m) : undefined}
+          isEditing={editingMessageId === m.id}
         />
       ))}
       {streamingContent !== null && (

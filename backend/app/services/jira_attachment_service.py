@@ -24,11 +24,76 @@ TEXT_MIME_PREFIXES = (
 TEXT_EXTENSIONS = (".txt", ".md", ".json", ".yaml", ".yml", ".xml", ".html", ".htm", ".snippet", ".sample")
 DITA_EXTENSIONS = (".dita", ".ditamap", ".xml")
 DITA_NAMES = ("map", "topic", "keydef", "topicref", "keyref", "section", "body")
+VIDEO_MIME_PREFIXES = ("video/",)
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".wmv", ".mkv", ".ogv")
+IMAGE_MIME_PREFIXES = ("image/",)
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp")
 
 
 def _is_safe_issue_key(issue_key: str) -> bool:
     """Validate issue_key for path safety (alphanumeric + hyphen)."""
     return bool(issue_key and re.match(r"^[A-Za-z0-9_-]+$", issue_key))
+
+
+def classify_attachment_kind(filename: str, mime_type: Optional[str]) -> str:
+    """Classify attachment into a broad content kind."""
+    suffix = Path(filename or "").suffix.lower()
+    mime = (mime_type or "").lower()
+
+    if mime.startswith(VIDEO_MIME_PREFIXES) or suffix in VIDEO_EXTENSIONS:
+        return "video"
+    if mime.startswith(IMAGE_MIME_PREFIXES) or suffix in IMAGE_EXTENSIONS:
+        return "image"
+    if mime.startswith(TEXT_MIME_PREFIXES) or suffix in TEXT_EXTENSIONS:
+        return "text"
+    if mime == "application/zip" or suffix == ".zip":
+        return "archive"
+    return "file"
+
+
+def _attachment_storage_paths(issue_key: str, attachment_id: str, filename: str) -> tuple[str, Path]:
+    """Resolve a safe storage location for a Jira attachment."""
+    storage = get_storage()
+    safe_filename = sanitize_filename(filename, windows_safe=True)
+    if not safe_filename or ".." in safe_filename:
+        safe_filename = f"attachment_{attachment_id[:8]}"
+
+    safe_prefix = sanitize_filename(str(attachment_id)[:12], windows_safe=True) or "att"
+    rel_path = f"jira_attachments/{issue_key}/{safe_prefix}_{safe_filename}"
+    return rel_path, storage.base_path / rel_path
+
+
+def cache_raw_issue_attachment(
+    issue_key: str,
+    attachment_id: str,
+    filename: str,
+    content_url: str,
+    jira_client: Optional[JiraClient] = None,
+) -> dict:
+    """Cache a Jira attachment from raw Jira issue data."""
+    if not _is_safe_issue_key(issue_key) or not content_url:
+        return {"stored_path": "", "relative_path": ""}
+
+    rel_path, full_path = _attachment_storage_paths(issue_key, attachment_id, filename)
+    if full_path.exists():
+        return {"stored_path": str(full_path), "relative_path": rel_path.replace("\\", "/")}
+
+    client = jira_client or JiraClient()
+    if not client.base_url:
+        return {"stored_path": "", "relative_path": ""}
+
+    try:
+        content = client.download_attachment(content_url)
+    except Exception as e:
+        logger.warning_structured(
+            "Failed to download raw Jira attachment",
+            extra_fields={"issue_key": issue_key, "attachment_id": attachment_id, "error": str(e)},
+        )
+        return {"stored_path": "", "relative_path": ""}
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+    return {"stored_path": str(full_path), "relative_path": rel_path.replace("\\", "/")}
 
 
 def ensure_attachment_cached(
@@ -67,13 +132,11 @@ def ensure_attachment_cached(
         )
         return attachment_row
 
-    storage = get_storage()
-    safe_filename = sanitize_filename(attachment_row.filename, windows_safe=True)
-    if not safe_filename or ".." in safe_filename:
-        safe_filename = f"attachment_{attachment_row.id[:8]}"
-
-    rel_path = f"jira_attachments/{attachment_row.issue_key}/{safe_filename}"
-    full_path = storage.base_path / rel_path
+    rel_path, full_path = _attachment_storage_paths(
+        attachment_row.issue_key,
+        attachment_row.id,
+        attachment_row.filename,
+    )
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_bytes(content)
 
@@ -203,3 +266,84 @@ def enrich_attachments_with_excerpts(
         })
 
     return result
+
+
+def normalize_issue_attachments(
+    issue_key: str,
+    raw_attachments: list[dict] | None,
+    jira_client: Optional[JiraClient] = None,
+    *,
+    download_media: bool = False,
+    max_downloads: int = 3,
+) -> list[dict]:
+    """Normalize raw Jira attachment metadata and optionally cache media files."""
+    normalized: list[dict] = []
+    downloaded = 0
+
+    for raw in raw_attachments or []:
+        if not isinstance(raw, dict):
+            continue
+
+        attachment_id = str(raw.get("id") or "")
+        filename = str(raw.get("filename") or "attachment")
+        mime_type = str(raw.get("mimeType") or "")
+        kind = classify_attachment_kind(filename, mime_type)
+        content_url = str(raw.get("content") or "")
+        thumbnail_url = str(raw.get("thumbnail") or "")
+        stored_path = ""
+        relative_path = ""
+
+        should_download = download_media and kind in {"video", "image"} and downloaded < max_downloads
+        if should_download:
+            cached = cache_raw_issue_attachment(
+                issue_key=issue_key,
+                attachment_id=attachment_id or filename,
+                filename=filename,
+                content_url=content_url,
+                jira_client=jira_client,
+            )
+            stored_path = str(cached.get("stored_path") or "")
+            relative_path = str(cached.get("relative_path") or "")
+            if stored_path:
+                downloaded += 1
+
+        normalized.append(
+            {
+                "id": attachment_id,
+                "filename": filename,
+                "mime_type": mime_type,
+                "size_bytes": raw.get("size"),
+                "jira_url": content_url,
+                "thumbnail_url": thumbnail_url,
+                "kind": kind,
+                "is_video": kind == "video",
+                "is_image": kind == "image",
+                "stored_path": stored_path,
+                "relative_path": relative_path,
+            }
+        )
+
+    return normalized
+
+
+def summarize_issue_attachments(attachments: list[dict] | None, max_items: int = 4) -> str:
+    """Create a compact prompt-friendly summary of issue attachments."""
+    lines: list[str] = []
+    for att in (attachments or [])[:max_items]:
+        filename = str(att.get("filename") or "attachment")
+        kind = str(att.get("kind") or "file")
+        mime_type = str(att.get("mime_type") or "")
+        relative_path = str(att.get("relative_path") or "")
+
+        details = [kind]
+        if mime_type:
+            details.append(mime_type)
+        if relative_path:
+            details.append(f"cached path: {relative_path}")
+
+        line = f"- {filename} ({', '.join(details)})"
+        if att.get("is_video") and relative_path:
+            line += " Include this video with a DITA <object> element when it supports the topic."
+        lines.append(line)
+
+    return "\n".join(lines)

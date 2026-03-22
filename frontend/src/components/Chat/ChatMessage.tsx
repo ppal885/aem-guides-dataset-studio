@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy } from 'lucide-react';
+import { Copy, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/utils/api';
@@ -10,34 +10,116 @@ interface ChatMessageProps {
   content: string;
   toolResults?: Record<string, unknown>;
   onCopy?: () => void;
+  onEdit?: () => void;
+  isEditing?: boolean;
 }
 
-export function ChatMessage({ role, content, toolResults, onCopy }: ChatMessageProps) {
+function getVerifiedBundleUrl(toolResults?: Record<string, unknown>): string {
+  const result = toolResults?.generate_dita;
+  if (!result || typeof result !== 'object') {
+    return '';
+  }
+  const downloadUrl = String((result as Record<string, unknown>).download_url || '').trim();
+  if (!downloadUrl.startsWith('/api/v1/ai/bundle/') || !downloadUrl.endsWith('/download')) {
+    return '';
+  }
+  return apiUrl(downloadUrl);
+}
+
+function sanitizeAssistantContent(content: string, verifiedBundleUrl: string): string {
+  if (!verifiedBundleUrl) {
+    return content;
+  }
+  const placeholder = 'Use the Download DITA Bundle action below.';
+  const zipUrlPattern = /\bhttps?:\/\/[^\s)]+\.zip\b/gi;
+  const markdownLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi;
+  return (content || '')
+    .replace(markdownLinkPattern, (_match, label: string, href: string) => {
+      return href === verifiedBundleUrl ? `[${label}](${href})` : `${label} (${placeholder})`;
+    })
+    .replace(zipUrlPattern, (href) => (href === verifiedBundleUrl ? href : placeholder));
+}
+
+export function ChatMessage({ role, content, toolResults, onCopy, onEdit, isEditing }: ChatMessageProps) {
   const isUser = role === 'user';
+  const verifiedBundleUrl = getVerifiedBundleUrl(toolResults);
+  const renderedContent = isUser ? content : sanitizeAssistantContent(content, verifiedBundleUrl);
   return (
     <div
       className={cn(
-        'rounded-lg p-4 text-sm',
-        isUser ? 'bg-blue-100 text-blue-900 ml-8' : 'bg-slate-100 text-slate-800 mr-8'
+        'rounded-2xl border p-4 text-sm shadow-sm',
+        isUser
+          ? 'ml-8 border-sky-200 bg-sky-50 text-slate-900'
+          : 'mr-8 border-slate-200 bg-white text-slate-800',
+        isEditing &&
+          (isUser
+            ? 'border-sky-300 ring-2 ring-sky-100'
+            : 'border-blue-200 ring-2 ring-blue-100')
       )}
     >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="font-medium text-xs opacity-80">{isUser ? 'You' : 'Assistant'}</span>
-        {onCopy && content && (
-          <Button variant="ghost" size="sm" onClick={onCopy} title="Copy">
-            <Copy className="w-4 h-4" />
-          </Button>
-        )}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium opacity-80">{isUser ? 'You' : 'Assistant'}</span>
+        <div className="flex items-center gap-1">
+          {isUser && onEdit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEdit}
+              title="Edit and resend"
+              className={cn(
+                'h-8 gap-1.5 px-2 text-xs',
+                isUser ? 'text-sky-700 hover:bg-sky-100 hover:text-sky-900' : ''
+              )}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              <span>Edit</span>
+            </Button>
+          )}
+          {onCopy && content && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCopy}
+              title="Copy"
+              className={cn('h-8 px-2', isUser ? 'text-sky-700 hover:bg-sky-100 hover:text-sky-900' : '')}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+      {isEditing && isUser && (
+        <div className="mb-3 rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-xs text-sky-900">
+          Editing this prompt will create a new branch from this point.
+        </div>
+      )}
       <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">
         {isUser ? (
           <div className="whitespace-pre-wrap break-words">{content}</div>
         ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => {
+                const safeHref = String(href || '');
+                const allowLink = !verifiedBundleUrl || safeHref === verifiedBundleUrl;
+                if (!allowLink) {
+                  return <span>{children} (Use the Download DITA Bundle action below.)</span>;
+                }
+                return (
+                  <a href={safeHref} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                );
+              },
+            }}
+          >
+            {renderedContent}
+          </ReactMarkdown>
         )}
       </div>
       {toolResults && Object.keys(toolResults).length > 0 && (
-        <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+        <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
           {Object.entries(toolResults).map(([name, result]) => (
             <ToolResult key={name} name={name} result={result} />
           ))}
@@ -53,7 +135,7 @@ function ToolResult({ name, result }: { name: string; result: unknown }) {
   const err = r.error as string | undefined;
   if (err) {
     return (
-      <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+      <div className="rounded bg-red-50 p-2 text-xs text-red-600">
         {name}: {err}
       </div>
     );
@@ -76,7 +158,7 @@ function ToolResult({ name, result }: { name: string; result: unknown }) {
           </a>
           {jiraId && runId && (
             <span className="text-xs text-slate-500">
-              {jiraId} / {String(runId).slice(0, 8)}…
+              {jiraId} / {String(runId).slice(0, 8)}...
             </span>
           )}
         </div>
@@ -95,7 +177,7 @@ function ToolResult({ name, result }: { name: string; result: unknown }) {
     );
   }
   return (
-    <pre className="text-xs bg-white/50 p-2 rounded overflow-auto max-h-24">
+    <pre className="max-h-24 overflow-auto rounded bg-white/50 p-2 text-xs">
       {JSON.stringify(r, null, 2)}
     </pre>
   );

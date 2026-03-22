@@ -1,5 +1,28 @@
 from fastapi import APIRouter
-from app.api.v1.routes import presets, schedule, dataset_explorer, performance, recipes, bulk, aem_recipes, specialized, scale_testing, limits, admin, ai_dataset, chat
+from app.api.v1.routes import (
+    admin,
+    aem_recipes,
+    ai_flow,
+    ai_dataset,
+    authoring,
+    bulk,
+    chat,
+    dataset_explorer,
+    doc_pdf,
+    intent,
+    jira,
+    limits,
+    performance,
+    preferences,
+    presets,
+    recipes,
+    safety,
+    scale_testing,
+    schedule,
+    specialized,
+    smart_suggestions,
+    tenants,
+)
 
 api_router = APIRouter()
 
@@ -58,5 +81,14 @@ api_router.include_router(specialized.router)
 api_router.include_router(scale_testing.router)
 api_router.include_router(limits.router)
 api_router.include_router(admin.router)
+api_router.include_router(ai_flow.router, tags=["ai-flow"])
 api_router.include_router(ai_dataset.router)
 api_router.include_router(chat.router)
+api_router.include_router(jira.router, prefix="/jira", tags=["jira"])
+api_router.include_router(authoring.router, tags=["authoring"])
+api_router.include_router(intent.router, prefix="/intent", tags=["intent"])
+api_router.include_router(preferences.router, prefix="/prefs", tags=["preferences"])
+api_router.include_router(safety.router, prefix="/safety", tags=["safety"])
+api_router.include_router(tenants.router, prefix="/admin/tenants", tags=["tenants"])
+api_router.include_router(doc_pdf.router, prefix="/docs", tags=["docs"])
+api_router.include_router(smart_suggestions.router, prefix="/smart", tags=["smart"])

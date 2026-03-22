@@ -31,6 +31,34 @@ _request_cache: Dict[str, Tuple[int, dict, bytes, float]] = {}
 CACHE_TTL = 5.0  # Cache responses for 5 seconds
 MAX_CACHE_BODY_SIZE = 1024 * 1024  # 1MB - skip caching larger responses
 
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _environment() -> str:
+    return (os.getenv("ENVIRONMENT") or "development").strip().lower()
+
+
+def _allowed_origins() -> list[str]:
+    configured = [item.strip() for item in (os.getenv("CORS_ALLOWED_ORIGINS") or "").split(",") if item.strip()]
+    if configured:
+        return configured
+    if _environment() in {"development", "test"}:
+        return [
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+            "http://127.0.0.1:4173",
+            "http://localhost:4173",
+        ]
+    return []
+
+
+ALLOWED_ORIGINS = _allowed_origins()
+
 app = FastAPI(
     title="AEM Guides Dataset Studio API",
     description="API for generating and managing AEM Guides datasets",
@@ -40,7 +68,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,7 +107,11 @@ async def deduplicate_requests(request: Request, call_next):
         request = Request(request.scope, receive=cached_receive)
 
     # Build request hash (include body for POST/PUT/PATCH; large bodies get unique hash to skip deduplication)
-    hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}"
+    tenant_hint = request.headers.get("X-Tenant-ID", "").strip().lower()
+    host_hint = request.headers.get("host", "").strip().lower()
+    auth_hint = request.headers.get("authorization", "")
+    auth_hash = hashlib.sha256(auth_hint.encode()).hexdigest()[:16] if auth_hint else "anonymous"
+    hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}:{host_hint}:{tenant_hint}:{auth_hash}"
     if body:
         if len(body) <= MAX_CACHE_BODY_SIZE:
             hash_input += f":{body!r}"
@@ -252,7 +284,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         pass
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
+        content={
+            "detail": "Internal server error",
+            **({"error": str(exc)} if _bool_env("EXPOSE_ERROR_DETAILS", _environment() in {"development", "test"}) else {}),
+        },
     )
 
 # Include API router
@@ -688,4 +723,10 @@ def health():
         extra_fields={"endpoint": "/health", "status": health_status["status"]}
     )
     
-    return health_status
+    if _bool_env("HEALTH_INCLUDE_DETAILS", _environment() in {"development", "test"}):
+        return health_status
+    return {
+        "status": health_status["status"],
+        "database": health_status["database"],
+        "storage": health_status["storage"],
+    }

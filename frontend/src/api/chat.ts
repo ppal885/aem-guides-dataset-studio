@@ -1,7 +1,7 @@
 /**
  * Chat API client - sessions, messages, streaming.
  */
-import { apiUrl, fetchJson } from '@/utils/api';
+import { apiUrl, fetchJson, getTenantId, withTenantHeaders } from '@/utils/api';
 
 export interface GenerateStatus {
   status: 'running' | 'completed' | 'failed';
@@ -39,13 +39,23 @@ export interface ChatMessage {
   created_at: string | null;
 }
 
+export interface ChatNotice {
+  code?: string;
+  level?: 'info' | 'warning' | 'error';
+  title?: string;
+  message?: string;
+}
+
 export interface SSEEvent {
-  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error';
+  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'notice';
   content?: string;
   message?: string;
   name?: string;
   result?: unknown;
   run_id?: string;
+  code?: string;
+  level?: 'info' | 'warning' | 'error';
+  title?: string;
 }
 
 export async function createSession(): Promise<{ session_id: string }> {
@@ -62,6 +72,17 @@ export async function listSessions(limit?: number, offset?: number): Promise<{ s
 
 export async function getSession(id: string): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
   return fetchJson(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(id)}`));
+}
+
+export async function branchSessionFromMessage(
+  sessionId: string,
+  messageId: string
+): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
+  return fetchJson(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/branches`), {
+    method: 'POST',
+    headers: withTenantHeaders({ 'Content-Type': 'application/json' }, getTenantId()),
+    body: JSON.stringify({ message_id: messageId }),
+  });
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -91,13 +112,14 @@ export async function sendMessage(
     onDone?: () => void;
     onTool?: (name: string, result: unknown) => void;
     onToolStart?: (name: string, runId?: string) => void;
+    onNotice?: (notice: ChatNotice) => void;
     onError?: (message: string) => void;
   },
   context?: ChatContext
 ): Promise<void> {
   const res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withTenantHeaders({ 'Content-Type': 'application/json' }, getTenantId()),
     body: JSON.stringify({ content, context: context ?? undefined }),
   });
   if (!res.ok) {
@@ -110,9 +132,13 @@ export async function sendMessage(
   }
   const decoder = new TextDecoder();
   let buffer = '';
-  while (true) {
+  let reading = true;
+  while (reading) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      reading = false;
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
@@ -128,6 +154,13 @@ export async function sendMessage(
             callbacks.onTool?.(event.name, event.result);
           } else if (event.type === 'tool_start' && event.name != null) {
             callbacks.onToolStart?.(event.name, event.run_id);
+          } else if (event.type === 'notice') {
+            callbacks.onNotice?.({
+              code: event.code,
+              level: event.level,
+              title: event.title,
+              message: event.message,
+            });
           } else if (event.type === 'error') {
             callbacks.onError?.(event.message ?? 'Unknown error');
           }
@@ -148,6 +181,13 @@ export async function sendMessage(
         callbacks.onTool?.(event.name, event.result);
       } else if (event.type === 'tool_start' && event.name != null) {
         callbacks.onToolStart?.(event.name, event.run_id);
+      } else if (event.type === 'notice') {
+        callbacks.onNotice?.({
+          code: event.code,
+          level: event.level,
+          title: event.title,
+          message: event.message,
+        });
       } else if (event.type === 'error') {
         callbacks.onError?.(event.message ?? 'Unknown error');
       }

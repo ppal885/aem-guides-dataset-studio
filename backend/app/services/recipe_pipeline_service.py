@@ -152,6 +152,21 @@ async def run_recipe_pipeline(
         pattern.selected_pattern,
         evidence_text=evidence_text or None,
     )
+    from app.services.ai_flow_intelligence_service import recommend_recipe, record_recipe_outcome
+
+    learned_recipe, learning_reason = recommend_recipe(
+        mechanism.selected_feature,
+        pattern.selected_pattern,
+        selection.selected_recipe,
+    )
+    if learned_recipe != selection.selected_recipe:
+        selection = RecipeSelection(
+            selected_feature=mechanism.selected_feature,
+            selected_pattern=pattern.selected_pattern,
+            selected_recipe=learned_recipe,
+            route_reason=f"{selection.route_reason}; {learning_reason}",
+            cross_feature_blocked=False,
+        )
 
     # Stage 4: Anti-blending validation
     validation = validate_recipe_family_match(
@@ -162,6 +177,14 @@ async def run_recipe_pipeline(
         logger.warning_structured(
             "Pipeline: validation failed, using fallback",
             extra_fields={"reason": validation.reason},
+        )
+        record_recipe_outcome(
+            mechanism.selected_feature,
+            pattern.selected_pattern,
+            selection.selected_recipe,
+            success=False,
+            low_confidence=low_confidence,
+            reason=validation.reason,
         )
         selection = route_recipe("keyref", "basic_key_resolution", evidence_text=None)
 
@@ -323,6 +346,16 @@ async def run_recipe_pipeline(
             },
         }
     }
+
+    final_success = not low_confidence and (validation.valid or selection.selected_recipe in {"llm_generated_dita", "evidence_to_dita"})
+    record_recipe_outcome(
+        mechanism.selected_feature,
+        pattern.selected_pattern,
+        selection.selected_recipe,
+        success=final_success,
+        low_confidence=low_confidence,
+        reason=selection.route_reason,
+    )
 
     return {
         "evidence_pack": evidence_pack,

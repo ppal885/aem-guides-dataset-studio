@@ -87,7 +87,7 @@ score_dita_quality()               ← Quality check
 
 - Python 3.11+
 - Git
-- Cursor IDE with MCP enabled
+- Codex or Cursor with MCP enabled
 - Jira access (corporate or cloud)
 
 ### 1. Clone the repo
@@ -148,7 +148,21 @@ USE_DITA_HYBRID_SEARCH=true
 python -m scripts.init_db
 ```
 
-### 6. Configure Cursor MCP
+### 6. Configure Codex MCP (recommended)
+
+This repo includes a project-scoped [`.codex/config.toml`](.codex/config.toml) that starts [`mcp_server.py`](mcp_server.py) with the local virtualenv and sets the workspace model to `gpt-5-codex`.
+
+If you move the repo, update the absolute paths in `.codex/config.toml`.
+
+If you also want the backend AI endpoints to use OpenAI/Codex, set these in `backend/.env`:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_openai_key
+OPENAI_MODEL=gpt-5-codex
+```
+
+### 6b. Configure Cursor MCP (optional)
 
 Edit `~/.cursor/mcp.json`:
 
@@ -167,7 +181,7 @@ Edit `~/.cursor/mcp.json`:
 
 ### 7. Populate RAG knowledge base
 
-In Cursor Agent, run these once:
+In Codex or Cursor, run these once:
 
 ```
 1. Run crawl_experience_league        # indexes AEM Guides docs (~5 min)
@@ -178,7 +192,7 @@ In Cursor Agent, run these once:
 
 ### 8. Generate your first DITA file
 
-In Cursor Agent:
+In Codex or Cursor:
 
 ```
 Fetch Jira issue AEM-123 with comments.

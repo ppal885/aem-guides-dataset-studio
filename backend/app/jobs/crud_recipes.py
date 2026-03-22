@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from backend.app.jobs.models import SavedRecipe
+from app.jobs.models import SavedRecipe
 from datetime import datetime
 
 def create_saved_recipe(

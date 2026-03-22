@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
-<topic id="topic_003" xml:lang="en">
-  <title conref="variables.dita#variables_topic/product_name"/>
-  <shortdesc>Topic demonstrating title conref to product_name.</shortdesc>
-  <body>
-    <p>This topic uses conref in its title to reference the variable 'product_name' from the variables topic.</p>
-  </body>
-</topic>

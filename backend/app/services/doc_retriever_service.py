@@ -7,16 +7,16 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from backend.app.storage import get_storage
-from backend.app.services.embedding_service import embed_query, is_embedding_available
-from backend.app.services.vector_store_service import (
+from app.storage import get_storage
+from app.services.embedding_service import embed_query, is_embedding_available
+from app.services.vector_store_service import (
     is_chroma_available,
     query_collection,
     get_collection_count,
     CHROMA_COLLECTION_AEM_GUIDES,
     CHROMA_COLLECTION_DITA_SPEC,
 )
-from backend.app.core.structured_logging import get_structured_logger
+from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

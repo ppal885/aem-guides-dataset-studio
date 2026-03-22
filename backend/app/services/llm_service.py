@@ -26,7 +26,7 @@ BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "anthropic.claude-3-5-sonnet-20241022
 BEDROCK_REGION = os.getenv("AWS_REGION", os.getenv("BEDROCK_REGION", "us-west-2"))
 USE_BEDROCK = os.getenv("CLAUDE_CODE_USE_BEDROCK", "").lower() in ("1", "true", "yes")
 
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
@@ -221,6 +221,76 @@ def _is_retryable_llm_error(e: Exception) -> bool:
     if status in (429, 503):
         return True
     return False
+
+
+def _provider_has_credentials(provider: str) -> bool:
+    provider = (provider or "").lower().strip()
+    if provider == "groq":
+        return bool(GROQ_API_KEY and GROQ_API_KEY.strip())
+    if provider == "openai":
+        return bool(OPENAI_API_KEY and OPENAI_API_KEY.strip())
+    if provider == "bedrock":
+        return _is_bedrock_available()
+    if provider == "anthropic":
+        return bool(ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip())
+    return False
+
+
+def _provider_label(provider: str | None) -> str:
+    labels = {
+        "anthropic": "Anthropic",
+        "bedrock": "AWS Bedrock",
+        "groq": "Groq",
+        "openai": "OpenAI",
+    }
+    return labels.get((provider or "").lower().strip(), "the AI provider")
+
+
+def _get_chat_fallback_provider(primary_provider: str) -> str | None:
+    candidate = (LLM_FALLBACK_PROVIDER or "").lower().strip()
+    if not candidate or candidate == primary_provider:
+        return None
+    if _provider_has_credentials(candidate):
+        return candidate
+    return None
+
+
+def format_llm_error_for_user(
+    e: Exception,
+    *,
+    primary_provider: str | None = None,
+    fallback_provider: str | None = None,
+    fallback_attempted: bool = False,
+) -> str:
+    """Return a user-safe explanation for common provider failures."""
+    err_str = str(e or "").strip()
+    lowered = err_str.lower()
+    primary_label = _provider_label(primary_provider)
+    fallback_label = _provider_label(fallback_provider) if fallback_provider else None
+
+    if "quota is exhausted" in lowered or lowered.startswith("the assistant is temporarily") or "is rate-limited" in lowered:
+        return err_str
+
+    if "insufficient_quota" in lowered or ("quota" in lowered and "429" in lowered):
+        if fallback_attempted and fallback_label:
+            return (
+                "The assistant is temporarily unavailable because the configured AI providers are out of quota. "
+                "Please try again later or update the provider billing/settings."
+            )
+        return "The assistant is temporarily unavailable because the configured AI provider quota is exhausted."
+
+    if "429" in lowered or "rate limit" in lowered or "overloaded" in lowered:
+        if fallback_attempted and fallback_label:
+            return "The assistant is temporarily busy because the configured AI providers are rate-limited. Please try again in a moment."
+        return "The assistant is temporarily busy because the configured AI provider is rate-limited. Please try again in a moment."
+
+    if "api key" in lowered or "not set" in lowered or "authentication" in lowered:
+        return "The chat provider is not configured correctly in backend/.env."
+
+    if "circuit open" in lowered:
+        return "The assistant is temporarily paused after repeated provider failures. Please wait a moment and retry."
+
+    return "The assistant is temporarily unavailable. Please try again in a moment."
 
 
 def _is_langsmith_tracing_enabled() -> bool:
@@ -444,23 +514,64 @@ async def generate_chat_stream(
     await get_llm_limiter().acquire_async()
 
     provider = _effective_provider()
-    try:
-        if provider == "groq":
+    fallback_provider = _get_chat_fallback_provider(provider)
+
+    async def _stream_from(active_provider: str) -> AsyncGenerator[str, None]:
+        if active_provider == "groq":
             async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
                 yield chunk
-        elif provider == "openai":
+            return
+        if active_provider == "openai":
             async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
                 yield chunk
-        elif provider == "bedrock":
+            return
+        if active_provider == "bedrock":
             async for chunk in _generate_chat_stream_bedrock(system_prompt, messages, max_tokens, timeout_sec):
                 yield chunk
-        else:
-            async for chunk in _generate_chat_stream_anthropic(system_prompt, messages, max_tokens, timeout_sec):
-                yield chunk
+            return
+        async for chunk in _generate_chat_stream_anthropic(system_prompt, messages, max_tokens, timeout_sec):
+            yield chunk
+
+    yielded_any = False
+    try:
+        async for chunk in _stream_from(provider):
+            yielded_any = True
+            yield chunk
         _circuit_breaker_record_success()
     except Exception as e:
+        if not yielded_any and fallback_provider and _is_retryable_llm_error(e):
+            logger.warning_structured(
+                "Primary chat stream provider failed; retrying fallback",
+                extra_fields={
+                    "primary_provider": provider,
+                    "fallback_provider": fallback_provider,
+                    "error": str(e),
+                },
+            )
+            try:
+                async for chunk in _stream_from(fallback_provider):
+                    yield chunk
+                _circuit_breaker_record_success()
+                return
+            except Exception as fallback_exc:
+                _circuit_breaker_record_failure()
+                raise RuntimeError(
+                    format_llm_error_for_user(
+                        fallback_exc,
+                        primary_provider=provider,
+                        fallback_provider=fallback_provider,
+                        fallback_attempted=True,
+                    )
+                ) from fallback_exc
         _circuit_breaker_record_failure()
-        raise
+        raise RuntimeError(
+            format_llm_error_for_user(
+                e,
+                primary_provider=provider,
+                fallback_provider=fallback_provider,
+                fallback_attempted=False,
+            )
+        ) from e
 
 
 async def generate_chat_stream_with_tools(
@@ -487,31 +598,69 @@ async def generate_chat_stream_with_tools(
     await get_llm_limiter().acquire_async()
 
     provider = _effective_provider()
-    try:
-        if provider == "groq":
+    fallback_provider = _get_chat_fallback_provider(provider)
+
+    async def _stream_from(active_provider: str) -> AsyncGenerator[Tuple[str, object], None]:
+        if active_provider == "groq":
             async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
                 yield ("chunk", chunk)
-            yield ("done",)
-            _circuit_breaker_record_success()
+            yield ("done", None)
             return
 
-        if provider == "openai":
+        if active_provider == "openai":
             async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
                 yield ("chunk", chunk)
-            yield ("done",)
-            _circuit_breaker_record_success()
+            yield ("done", None)
             return
 
-        if provider == "bedrock":
+        if active_provider == "bedrock":
             async for evt in _stream_with_tools_bedrock(system_prompt, messages, tools, max_tokens, timeout_sec):
                 yield evt
-        else:
-            async for evt in _stream_with_tools_anthropic(system_prompt, messages, tools, max_tokens, timeout_sec):
-                yield evt
+            return
+
+        async for evt in _stream_with_tools_anthropic(system_prompt, messages, tools, max_tokens, timeout_sec):
+            yield evt
+
+    emitted_any = False
+    try:
+        async for evt in _stream_from(provider):
+            emitted_any = True
+            yield evt
         _circuit_breaker_record_success()
     except Exception as e:
+        if not emitted_any and fallback_provider and _is_retryable_llm_error(e):
+            logger.warning_structured(
+                "Primary chat-with-tools provider failed; retrying fallback",
+                extra_fields={
+                    "primary_provider": provider,
+                    "fallback_provider": fallback_provider,
+                    "error": str(e),
+                },
+            )
+            try:
+                async for evt in _stream_from(fallback_provider):
+                    yield evt
+                _circuit_breaker_record_success()
+                return
+            except Exception as fallback_exc:
+                _circuit_breaker_record_failure()
+                raise RuntimeError(
+                    format_llm_error_for_user(
+                        fallback_exc,
+                        primary_provider=provider,
+                        fallback_provider=fallback_provider,
+                        fallback_attempted=True,
+                    )
+                ) from fallback_exc
         _circuit_breaker_record_failure()
-        raise
+        raise RuntimeError(
+            format_llm_error_for_user(
+                e,
+                primary_provider=provider,
+                fallback_provider=fallback_provider,
+                fallback_attempted=False,
+            )
+        ) from e
 
 
 async def _stream_with_tools_anthropic(
@@ -558,7 +707,7 @@ async def _stream_with_tools_anthropic(
                 return
         if usage:
             yield ("usage", usage)
-        yield ("done",)
+        yield ("done", None)
 
 
 async def _stream_with_tools_bedrock(
@@ -604,7 +753,7 @@ async def _stream_with_tools_bedrock(
                 return
         if usage:
             yield ("usage", usage)
-        yield ("done",)
+        yield ("done", None)
 
 
 async def _generate_chat_stream_anthropic(
@@ -956,6 +1105,175 @@ async def generate_json(
         try:
             from langsmith.run_helpers import traceable
             impl = traceable(run_type="llm", name="LLM generate_json")(_generate_json_impl)
+        except ImportError:
+            pass
+    return await impl(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=max_tokens,
+        step_name=step_name,
+        trace_id=trace_id,
+        jira_id=jira_id,
+    )
+
+
+async def _generate_text_impl(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    step_name: str,
+    trace_id: Optional[str],
+    jira_id: Optional[str],
+) -> str:
+    """Internal implementation of generate_text."""
+    trace_id = trace_id or str(uuid.uuid4())
+    provider = _effective_provider()
+
+    def _get_primary():
+        if provider == "groq":
+            if not GROQ_API_KEY or not GROQ_API_KEY.strip():
+                raise ValueError("GROQ_API_KEY is not set (LLM_PROVIDER=groq)")
+            return GROQ_MODEL, _generate_groq, None
+        if provider == "openai":
+            if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
+                raise ValueError("OPENAI_API_KEY is not set (LLM_PROVIDER=openai)")
+            return OPENAI_MODEL, _generate_openai, None
+        if provider == "bedrock":
+            if not _is_bedrock_available():
+                raise ValueError("Bedrock: set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (or AWS_PROFILE)")
+            return BEDROCK_MODEL, _generate_bedrock, None
+        if not ANTHROPIC_API_KEY or not ANTHROPIC_API_KEY.strip():
+            raise ValueError("ANTHROPIC_API_KEY is not set")
+        return ANTHROPIC_MODEL, _generate_anthropic, None
+
+    def _get_fallback():
+        if LLM_FALLBACK_PROVIDER == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
+            return GROQ_MODEL, _generate_groq, None
+        if LLM_FALLBACK_PROVIDER == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
+            return OPENAI_MODEL, _generate_openai, None
+        if LLM_FALLBACK_PROVIDER == "bedrock" and _is_bedrock_available():
+            return BEDROCK_MODEL, _generate_bedrock, None
+        if ANTHROPIC_FALLBACK_MODEL and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip():
+            return ANTHROPIC_FALLBACK_MODEL, _generate_anthropic, ANTHROPIC_FALLBACK_MODEL
+        return None, None, None
+
+    model_name, generate_fn, model_override = _get_primary()
+    fallback_model, fallback_fn, fallback_override = _get_fallback()
+
+    timeout_sec = agentic_config.llm_timeout_seconds
+    last_error = None
+    full_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
+    prompt_version = _get_prompt_versions().get(step_name)
+    used_fallback = False
+
+    async def _try_generate(fn, model_param: Optional[str] = None):
+        await get_llm_limiter().acquire_async()
+        if model_param and fn in (_generate_anthropic, _generate_bedrock):
+            return await fn(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                timeout_sec=timeout_sec,
+                model=model_param,
+            )
+        return await fn(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            timeout_sec=timeout_sec,
+        )
+
+    for attempt in range(3):
+        start_time = time.perf_counter()
+        input_tok = output_tok = None
+        try:
+            content, input_tok, output_tok = await _try_generate(generate_fn, model_override)
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            _store_llm_run(
+                trace_id=trace_id,
+                jira_id=jira_id,
+                step_name=step_name,
+                model=model_name,
+                prompt=full_prompt,
+                response=content,
+                tokens_input=input_tok,
+                tokens_output=output_tok,
+                latency_ms=elapsed_ms,
+                prompt_version=prompt_version,
+                retry_count=attempt,
+            )
+            logger.info_structured(
+                "LLM text run completed",
+                extra_fields={
+                    "trace_id": trace_id,
+                    "step_name": step_name,
+                    "tokens_input": input_tok,
+                    "tokens_output": output_tok,
+                    "latency_ms": elapsed_ms,
+                    "used_fallback": used_fallback,
+                },
+            )
+            return (content or "").strip()
+        except Exception as e:
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            last_error = e
+            _store_llm_run(
+                trace_id=trace_id,
+                jira_id=jira_id,
+                step_name=step_name,
+                model=model_name,
+                prompt=full_prompt,
+                response=None,
+                tokens_input=None,
+                tokens_output=None,
+                latency_ms=elapsed_ms,
+                error_type=type(e).__name__,
+                prompt_version=prompt_version,
+                retry_count=attempt,
+            )
+            logger.error_structured(
+                "LLM text run failed",
+                extra_fields={
+                    "trace_id": trace_id,
+                    "step_name": step_name,
+                    "latency_ms": elapsed_ms,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            if (
+                not used_fallback
+                and _is_retryable_llm_error(e)
+                and fallback_fn is not None
+                and fallback_model
+            ):
+                used_fallback = True
+                model_name = fallback_model
+                generate_fn = fallback_fn
+                model_override = fallback_override
+                last_error = None
+                continue
+        if attempt < 2:
+            time.sleep(0.5 * (attempt + 1))
+
+    raise last_error or ValueError("Failed to generate text from LLM")
+
+
+async def generate_text(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 1200,
+    step_name: str = "llm_generate_text",
+    trace_id: Optional[str] = None,
+    jira_id: Optional[str] = None,
+) -> str:
+    """Call configured LLM provider and return raw text."""
+    impl = _generate_text_impl
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.run_helpers import traceable
+            impl = traceable(run_type="llm", name="LLM generate_text")(_generate_text_impl)
         except ImportError:
             pass
     return await impl(

@@ -16,7 +16,20 @@ for p in [str(PROJECT_ROOT), str(BACKEND_DIR)]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+
+
+def _load_env_files() -> None:
+    """Load project and backend env files so MCP tools match backend runtime config."""
+    env_files = [
+        PROJECT_ROOT / ".env",
+        BACKEND_DIR / ".env",
+    ]
+    for env_file in env_files:
+        if env_file.exists():
+            load_dotenv(env_file, override=True)
+
+
+_load_env_files()
 
 from mcp.server.fastmcp import FastMCP
 
