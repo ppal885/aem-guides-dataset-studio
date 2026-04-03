@@ -5,6 +5,13 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.structured_logging import get_structured_logger
+from app.services.dataset_job_service import (
+    build_dataset_job_urls,
+    create_dataset_job_record,
+    enforce_concurrent_job_limit,
+    start_dataset_job_in_background,
+)
+from app.services.jira_chat_search_service import search_related_jira_issues
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -21,17 +28,16 @@ def _sanitize_tool_result(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_sanitize_tool_result(v) for v in obj]
     return obj
-from app.db.session import SessionLocal
-from app.jobs import crud as job_crud
 
 logger = get_structured_logger(__name__)
 RECIPE_TYPE_ALLOWLIST = frozenset({
-    "task_topics", "concept_topics", "reference_topics", "glossary_pack",
+    "task_topics", "concept_topics", "reference_topics", "properties_table_reference", "glossary_pack",
     "bookmap_structure", "conditional_content", "relationship_table",
     "conref_pack", "keyscope_demo", "keyword_metadata", "media_rich_content",
     "maps_topicgroup_basic", "maps_topicgroup_nested", "maps_topicref_basic",
     "maps_nested_topicrefs", "maps_mapref_basic", "maps_topichead_basic",
     "maps_reltable_basic", "maps_topicset_basic", "maps_navref_basic",
+    "bulk_dita_map_topics",
 })
 
 
@@ -74,9 +80,20 @@ async def execute_generate_dita(
             "scenarios": result.get("scenarios", []),
             "message": "DITA bundle generated. User can download from the link.",
         }
+        rw = result.get("resolution_warning")
+        if rw:
+            out["resolution_warning"] = rw
         if session_id:
             from app.services.chat_service import set_session_last_generation
-            set_session_last_generation(session_id, text=body.text, instructions=instructions, jira_id=jira_id, run_id=run_id, download_url=download_url)
+            text_for_session = result.get("resolved_source_text") or body.text
+            set_session_last_generation(
+                session_id,
+                text=text_for_session,
+                instructions=instructions,
+                jira_id=jira_id,
+                run_id=run_id,
+                download_url=download_url,
+            )
         return out
     except Exception as e:
         logger.warning_structured(
@@ -137,6 +154,13 @@ async def execute_create_job(
             "include_map": True,
             "pretty_print": True,
         }]
+    elif recipe_type == "bulk_dita_map_topics":
+        base_config["recipes"] = [{
+            "type": "bulk_dita_map_topics",
+            "topic_count": 100,
+            "include_readme": True,
+            "pretty_print": True,
+        }]
     else:
         base_config["recipes"] = [{"type": recipe_type, "pretty_print": True}]
 
@@ -148,29 +172,46 @@ async def execute_create_job(
                 base_config[k] = v
 
     try:
-        session = SessionLocal()
-        try:
-            job = job_crud.create_job(
-                session,
-                config=base_config,
-                name=base_config.get("name", "Chat Job"),
-                user_id=user_id,
-            )
-            session.commit()
-            return {
-                "job_id": str(job.id),
-                "name": job.name,
-                "recipe_type": recipe_type,
-                "message": f"Job created. Download when complete from Job History.",
-            }
-        finally:
-            session.close()
+        enforce_concurrent_job_limit(user_id)
+        job = create_dataset_job_record(
+            base_config,
+            user_id=user_id,
+            name=str(base_config.get("name") or "Chat Job"),
+        )
+        job_id = str(job.get("id") or "").strip()
+        if not job_id:
+            raise RuntimeError("Dataset job creation did not return a job id")
+        start_dataset_job_in_background(job_id, base_config)
+        urls = build_dataset_job_urls(job_id)
+        return {
+            "job_id": job_id,
+            "name": str(job.get("name") or base_config.get("name") or "Chat Job"),
+            "recipe_type": recipe_type,
+            "status": str(job.get("status") or "pending"),
+            **urls,
+            "message": "Dataset generation started. The in-chat status card will update when the ZIP is ready.",
+        }
     except Exception as e:
         logger.warning_structured(
             "create_job tool failed",
             extra_fields={"recipe_type": recipe_type, "error": str(e)},
         )
         return {"error": str(e)}
+
+
+async def execute_search_jira_issues(
+    query: str,
+    *,
+    tenant_id: str = "kone",
+) -> dict[str, Any]:
+    try:
+        return search_related_jira_issues(query, tenant_id=tenant_id)
+    except Exception as e:
+        logger.warning_structured(
+            "search_jira_issues tool failed",
+            extra_fields={"query": query, "tenant_id": tenant_id, "error": str(e)},
+        )
+        return {"query": query, "issues": [], "source": "unavailable", "message": str(e), "error": str(e)}
 
 
 def get_tool_definitions() -> list[dict]:
@@ -202,7 +243,7 @@ def get_tool_definitions() -> list[dict]:
                 "properties": {
                     "recipe_type": {
                         "type": "string",
-                        "description": "Recipe type: task_topics, concept_topics, reference_topics, glossary_pack, bookmap_structure, conditional_content, relationship_table, conref_pack, keyscope_demo, keyword_metadata, media_rich_content, maps_topicgroup_basic, maps_topicgroup_nested, maps_topicref_basic, maps_nested_topicrefs, maps_mapref_basic, maps_topichead_basic, maps_reltable_basic, maps_topicset_basic, maps_navref_basic",
+                        "description": "Recipe type: task_topics, concept_topics, reference_topics, properties_table_reference, glossary_pack, bookmap_structure, conditional_content, relationship_table, conref_pack, keyscope_demo, keyword_metadata, media_rich_content, maps_topicgroup_basic, maps_topicgroup_nested, maps_topicref_basic, maps_nested_topicrefs, maps_mapref_basic, maps_topichead_basic, maps_reltable_basic, maps_topicset_basic, maps_navref_basic, bulk_dita_map_topics",
                     },
                     "config": {
                         "type": "object",
@@ -210,6 +251,20 @@ def get_tool_definitions() -> list[dict]:
                     },
                 },
                 "required": ["recipe_type"],
+            },
+        },
+        {
+            "name": "search_jira_issues",
+            "description": "Search related Jira issues for a user query. Use when the user explicitly asks to fetch, find, or list Jira issues or tickets.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The raw user request or Jira search topic.",
+                    }
+                },
+                "required": ["query"],
             },
         },
     ]
@@ -221,6 +276,7 @@ async def run_tool(
     user_id: str = "chat-user",
     session_id: str | None = None,
     run_id: str | None = None,
+    tenant_id: str = "kone",
 ) -> dict[str, Any]:
     """Execute a tool by name and return the result. Output is sanitized to strip control chars.
     For generate_dita, pass run_id from caller so progress can be streamed before tool completes."""
@@ -238,6 +294,11 @@ async def run_tool(
             recipe_type=params.get("recipe_type", ""),
             config=params.get("config"),
             user_id=user_id,
+        )
+    elif name == "search_jira_issues":
+        result = await execute_search_jira_issues(
+            query=params.get("query", ""),
+            tenant_id=tenant_id,
         )
     else:
         result = {"error": f"Unknown tool: {name}"}

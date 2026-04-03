@@ -1,0 +1,30 @@
+{
+  "issue_key": "GUIDES-35436",
+  "issue_url": "https://jira.corp.adobe.com/browse/GUIDES-35436",
+  "fix_version": "2605",
+  "summary": "The scroll on the edit screen moves and the screen goes up",
+  "issue_type": "Customer Request",
+  "status": "Stage",
+  "priority": "Major",
+  "labels": [
+    "Hyundai",
+    "NewEditor",
+    "Triaged"
+  ],
+  "description": "The scroll bar in the editing screen moves, causing the screen to scroll up. When editing a large section of content or adding reference links, the scroll bar moves, making it difficult to check the table of contents I was editing. When working on a large section of content, the table of contents often scrolls to the top instead of the center, or is not visible.",
+  "attachments": [
+    "image-2025-09-16-09-51-03-241.png"
+  ],
+  "product_area": "AEM Guides Web Editor / New Editor",
+  "symptoms": [
+    "Unexpected scroll / view jumps while editing",
+    "TOC/outline loses position or jumps to top",
+    "TOC not visible or not centered on current section"
+  ],
+  "triggers": [
+    "Large body edits",
+    "Adding or editing reference links"
+  ],
+  "comment_count": 9,
+  "notes_from_workflow": "Demo recording requested for clarity; internal verification on New Editor with large table did not reproduce scroll issue; ticket closed fixed; fix version 2605."
+}

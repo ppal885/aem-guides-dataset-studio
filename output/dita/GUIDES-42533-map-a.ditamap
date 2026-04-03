@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="guides_42533_map_a" xml:lang="en-US">
+  <title>GUIDES-42533 — Map A (root context map)</title>
+  <keydef keys="staticKeyMap" href="GUIDES-42533-keymap-b.ditamap" format="ditamap"/>
+  <topicref href="GUIDES-42533-overview.dita"/>
+</map>

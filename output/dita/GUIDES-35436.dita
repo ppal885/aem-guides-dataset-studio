@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+<reference id="guides_35436" xml:lang="en-US">
+  <title>GUIDES-35436: Editor scroll and TOC visibility (fix 2605)</title>
+  <shortdesc>
+    Customer request from Hyundai: Web Editor scrollbar and viewport jump while editing
+    large content or reference links; table of contents loses position. Fix version 2605.
+  </shortdesc>
+  <prolog>
+    <metadata>
+      <category>jira</category>
+      <keywords>
+        <keyword>NewEditor</keyword>
+        <keyword>Hyundai</keyword>
+        <keyword>scroll</keyword>
+        <keyword>TOC</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <refbody>
+    <section id="summary">
+      <title>Summary</title>
+      <p>The scroll bar in the editing screen moves, causing the screen to scroll up.</p>
+    </section>
+    <section id="details">
+      <title>Description</title>
+      <p>When editing a large section of content or adding reference links, the scroll bar
+        moves, making it difficult to check the table of contents being edited.</p>
+      <ul>
+        <li>When working on a large section of content, the table of contents often scrolls
+          to the top instead of the center, or is not visible.</li>
+      </ul>
+    </section>
+    <section id="metadata">
+      <title>Issue metadata</title>
+      <simpletable relcolwidth="1* 2*">
+        <sthead>
+          <stentry>Field</stentry>
+          <stentry>Value</stentry>
+        </sthead>
+        <strow>
+          <stentry>Issue key</stentry>
+          <stentry>GUIDES-35436</stentry>
+        </strow>
+        <strow>
+          <stentry>URL</stentry>
+          <stentry>https://jira.corp.adobe.com/browse/GUIDES-35436</stentry>
+        </strow>
+        <strow>
+          <stentry>Type</stentry>
+          <stentry>Customer Request</stentry>
+        </strow>
+        <strow>
+          <stentry>Status</stentry>
+          <stentry>Stage</stentry>
+        </strow>
+        <strow>
+          <stentry>Priority</stentry>
+          <stentry>Major</stentry>
+        </strow>
+        <strow>
+          <stentry>Fix version</stentry>
+          <stentry>2605</stentry>
+        </strow>
+        <strow>
+          <stentry>Labels</stentry>
+          <stentry>Hyundai, NewEditor, Triaged</stentry>
+        </strow>
+      </simpletable>
+    </section>
+    <section id="triggers">
+      <title>Reported triggers</title>
+      <ul>
+        <li>Editing a large section of content</li>
+        <li>Adding or editing reference links</li>
+      </ul>
+    </section>
+    <section id="attachments">
+      <title>Attachments (Jira)</title>
+      <p><filepath>image-2025-09-16-09-51-03-241.png</filepath></p>
+    </section>
+    <section id="workflow">
+      <title>Workflow notes</title>
+      <p>Engineering requested a demo recording for clarity. Internal verification on the
+        New Editor with large table editing did not reproduce the scrolling issue; ticket
+        closed as fixed with fix version 2605.</p>
+    </section>
+  </refbody>
+</reference>

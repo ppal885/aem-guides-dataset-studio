@@ -4,6 +4,7 @@ Recipe pipeline orchestrator - multi-stage deterministic flow.
 Runs: normalize evidence -> classify mechanism -> classify pattern ->
       route recipe -> validate -> build plan.
 """
+import os
 from typing import Optional
 from uuid import uuid4
 
@@ -18,9 +19,11 @@ from app.core.schemas_pipeline import (
     normalize_evidence_from_pack,
 )
 from app.core.schemas_ai import Scenario, ScenarioSet, ScenarioType, GeneratorInvocationPlan, SelectedRecipe
+from app.generator.recipe_manifest import RecipeSpec, discover_recipe_specs
 from app.services.mechanism_classifier_service import classify_mechanism
 from app.services.pattern_classifier_service import classify_pattern
 from app.services.recipe_router import route_recipe
+from app.services.recipe_execution_contract import build_recipe_execution_contract
 from app.services.recipe_scoring_service import ROUTE_TABLE, evidence_mentions_novel_construct
 from app.services.anti_blend_validator import validate_recipe_family_match
 from app.services.ai_planner_service import generate_content_from_evidence
@@ -152,21 +155,6 @@ async def run_recipe_pipeline(
         pattern.selected_pattern,
         evidence_text=evidence_text or None,
     )
-    from app.services.ai_flow_intelligence_service import recommend_recipe, record_recipe_outcome
-
-    learned_recipe, learning_reason = recommend_recipe(
-        mechanism.selected_feature,
-        pattern.selected_pattern,
-        selection.selected_recipe,
-    )
-    if learned_recipe != selection.selected_recipe:
-        selection = RecipeSelection(
-            selected_feature=mechanism.selected_feature,
-            selected_pattern=pattern.selected_pattern,
-            selected_recipe=learned_recipe,
-            route_reason=f"{selection.route_reason}; {learning_reason}",
-            cross_feature_blocked=False,
-        )
 
     # Stage 4: Anti-blending validation
     validation = validate_recipe_family_match(
@@ -177,14 +165,6 @@ async def run_recipe_pipeline(
         logger.warning_structured(
             "Pipeline: validation failed, using fallback",
             extra_fields={"reason": validation.reason},
-        )
-        record_recipe_outcome(
-            mechanism.selected_feature,
-            pattern.selected_pattern,
-            selection.selected_recipe,
-            success=False,
-            low_confidence=low_confidence,
-            reason=validation.reason,
         )
         selection = route_recipe("keyref", "basic_key_resolution", evidence_text=None)
 
@@ -216,6 +196,12 @@ async def run_recipe_pipeline(
     ev_lower = (evidence_text or "").lower()
     if ("choicetable" in ev_lower or "choice table" in ev_lower) and selection.selected_recipe in ("reference_topics", "task_topics"):
         params["include_choicetable"] = True
+
+    # Table alignment reference: pass Jira summary for topic title context
+    if selection.selected_recipe == "table_semantics_reference":
+        summ = (primary.get("summary") or "").strip()
+        if summ:
+            params["issue_summary"] = summ[:300]
 
     # Override: llm_generated_dita when evidence mentions novel construct or low-confidence generic fallback
     if evidence_mentions_novel_construct(evidence_text or ""):
@@ -290,6 +276,48 @@ async def run_recipe_pipeline(
         )
         params = {"representative_xml": rep_xml if rep_xml else pre_extracted}
 
+    # Optional: promote table_semantics_reference when intent matches alignment + table (skips generic LLM)
+    intent_for_contract = None
+    if os.getenv("PIPELINE_INTENT_ENHANCEMENT", "false").lower() in ("true", "1", "yes"):
+        if (
+            selection.selected_recipe == "llm_generated_dita"
+            and not evidence_mentions_novel_construct(evidence_text or "")
+        ):
+            from app.services.intent_analysis_service import analyze_intent_sync
+            from app.services.recipe_selector_service import maybe_override_selection_for_table_alignment
+
+            intent_for_contract = analyze_intent_sync(evidence_text or "")
+            alt_id = maybe_override_selection_for_table_alignment(
+                selection.selected_recipe, intent_for_contract, evidence_text or ""
+            )
+            if alt_id:
+                for (f, p), rid in ROUTE_TABLE.items():
+                    if rid == alt_id:
+                        selection = RecipeSelection(
+                            selected_feature=f,
+                            selected_pattern=p,
+                            selected_recipe=alt_id,
+                            route_reason="intent_enhancement:table_alignment",
+                            cross_feature_blocked=selection.cross_feature_blocked,
+                        )
+                        params = {}
+                        summ = (primary.get("summary") or "").strip()
+                        if summ:
+                            params["issue_summary"] = summ[:300]
+                        break
+
+    specs_by_id = {s.id: s for s in discover_recipe_specs() if isinstance(s, RecipeSpec)}
+    selected_spec = specs_by_id.get(selection.selected_recipe)
+    execution_contract_out = None
+    if (
+        selection.selected_recipe == "llm_generated_dita"
+        and selected_spec
+        and isinstance(params, dict)
+    ):
+        c = build_recipe_execution_contract(selected_spec, intent=intent_for_contract)
+        execution_contract_out = c.model_dump(mode="json")
+        params["recipe_execution_contract"] = execution_contract_out
+
     plan = GeneratorInvocationPlan(
         recipes=[
             SelectedRecipe(
@@ -332,6 +360,7 @@ async def run_recipe_pipeline(
         confidence=confidence,
         selection_reason=selection_reasons,
         rejected_recipes=rejected,
+        execution_contract=execution_contract_out,
     )
 
     scenario_set = ScenarioSet(scenarios=[scenario])
@@ -346,16 +375,6 @@ async def run_recipe_pipeline(
             },
         }
     }
-
-    final_success = not low_confidence and (validation.valid or selection.selected_recipe in {"llm_generated_dita", "evidence_to_dita"})
-    record_recipe_outcome(
-        mechanism.selected_feature,
-        pattern.selected_pattern,
-        selection.selected_recipe,
-        success=final_success,
-        low_confidence=low_confidence,
-        reason=selection.route_reason,
-    )
 
     return {
         "evidence_pack": evidence_pack,

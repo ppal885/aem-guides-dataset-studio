@@ -10,7 +10,17 @@ CRITICAL RULES:
 - When Representative Sample XML is provided, use it as reference but ensure valid structure. Do NOT invent if sample is sufficient.
 - When no Representative Sample, infer structure from Jira summary and description. Create minimal valid DITA that demonstrates the described scenario.
 - When DITA KNOWLEDGE, DITA STRUCTURE, or AEM GUIDES DOCUMENTATION is provided in the prompt, follow it strictly. Do not invent nesting or attributes not present in the retrieved knowledge. RAG context is authoritative for correctness.
-- RTE/CURSOR RULE: When evidence describes cursor navigation, arrow keys, Rich Text Editor (RTE), inline tags (<i>, <b>, <u>, <li>), or editor behavior—your topic body MUST contain nested <b>, <i>, <u> elements to reproduce the scenario. Example: <p>Place cursor before tag: <b>bold <i>italic <u>underline</u></i></b></p>. Do NOT add images or media for RTE issues.
+- When **PATTERN-SPECIFIC HINTS** appear after USER INPUT, treat them as mandatory additions on top of these global rules (table semantics, RTE inline tags, keyref/map structure, etc.).
+- When **ADDITIONAL INSTRUCTIONS** include **GENERATION_PLAN_JSON**, that JSON is the authoritative contract: you MUST emit every listed **required_constructs** (with at least the minimum counts) and you MUST NOT use **forbidden_patterns** (e.g. do not substitute a paragraph or unordered list for a required DITA **table** when the plan requires tabular markup).
+- When **RECIPE_EXECUTION_CONTRACT_JSON** appears, it restates the same hard contract from recipe selection: **required_constructs**, **forbidden_fallback_patterns**, **validation_rules**, and **repair_hints**. If you omit required constructs, generation aborts before success (fail-fast)—emit complete markup in the first JSON response.
+- When **RETRIEVAL_CONTEXT** lists **RECIPE_STORE**, **DITA_SPEC_STORE**, **GOLD_XML_EXAMPLES**, and **AEM_GUIDES_STORE**, treat them as separate sources: catalog ranking vs normative spec vs real XML snippets vs product docs. Obey **GENERATION_CONTRACT** inside that block: model the actual DITA elements the user asked for (tables, steps, keydefs, maps, etc.); never “explain” a construct only inside generic **<p>** under **<topic>/<body>/<section>** when the request calls for that construct.
+
+JIRA / BUG SCENARIO FIDELITY (when USER INPUT is Jira evidence):
+- Do NOT output a "dump" that only restates summary/description in generic <p> elements. The goal is a minimal REPRODUCTION dataset: structures and steps a human can follow to see the issue.
+- Menu / context-menu paths: use <menucascade><uicontrol>...</uicontrol>...</menucascade> in order.
+- URLs in evidence: use <xref format="html" scope="external"> (adjust format if not HTML).
+- Verbatim reporter sentences that matter for reproduction: put in <note> or <lq>, then clarify if needed.
+- A metadata-style <simpletable> of issue fields alone does NOT replace the above; at most add it as a small appendix section, not as the only structured content.
 
 DITA MAP: Root element <map>. Can contain: <title>, <topicref href="...">, <topichead navtitle="...">, <topicgroup>, <topicset>, <mapref href="...">, <keydef keys="..." href="...">, <reltable>, <topicmeta>.
 DITA BOOKMAP: Root element <bookmap>. Contains <bookmeta> (metadata: <booktitle>, <booktitlealt>, <shortdesc>, <author>, etc.), <frontmatter>, <chapter>, <part>, <appendices>, <backmatter>. Use <bookmeta> for book-level metadata.

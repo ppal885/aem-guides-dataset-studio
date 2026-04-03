@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { BarChart3, Clock, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
@@ -45,12 +45,7 @@ export function PerformanceDashboard() {
     };
   }, []);
 
-  useEffect(() => {
-    loadMetrics();
-    loadTimeline();
-  }, [days]);
-
-  const loadMetrics = async () => {
+  const loadMetrics = useCallback(async () => {
     try {
       const response = await fetch(`/api/v1/performance/metrics?days=${days}`, {
         signal: abortController.signal,
@@ -78,9 +73,9 @@ export function PerformanceDashboard() {
         setLoading(false);
       }
     }
-  };
+  }, [abortController.signal, days]);
 
-  const loadTimeline = async () => {
+  const loadTimeline = useCallback(async () => {
     try {
       const response = await fetch(`/api/v1/performance/timeline?days=${days}`, {
         signal: abortController.signal,
@@ -104,7 +99,12 @@ export function PerformanceDashboard() {
         console.error('Failed to load timeline:', error);
       }
     }
-  };
+  }, [abortController.signal, days]);
+
+  useEffect(() => {
+    void loadMetrics();
+    void loadTimeline();
+  }, [loadMetrics, loadTimeline]);
 
   const formatTime = (seconds: number | null) => {
     if (!seconds) return 'N/A';

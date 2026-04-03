@@ -154,6 +154,40 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
       }
     }
 
+    // Bulk DITA root map + N topics (single map lists all topicrefs)
+    if (recipe.type === 'bulk_dita_map_topics') {
+      const n = recipe.topic_count ?? 20000;
+      if (limits?.topics_max && n > limits.topics_max) {
+        errors.push({
+          field: 'topic_count',
+          message: `Topic count (${n}) exceeds maximum (${limits.topics_max})`,
+          severity: 'error',
+        });
+      }
+      if (limits?.topicrefs_per_map_max && n > limits.topicrefs_per_map_max) {
+        errors.push({
+          field: 'topic_count',
+          message: `One map will contain ${n} topicrefs; max per map is ${limits.topicrefs_per_map_max}`,
+          severity: 'error',
+        });
+      }
+      const totalRefs = n;
+      if (limits?.total_topicrefs_max && totalRefs > limits.total_topicrefs_max) {
+        errors.push({
+          field: 'topic_count',
+          message: `Total topicrefs (${totalRefs}) exceeds limit (${limits.total_topicrefs_max})`,
+          severity: 'error',
+        });
+      }
+      if (n >= 10000) {
+        warnings.push({
+          field: 'topic_count',
+          message: 'Very large datasets take significant time, memory, and ZIP size.',
+          severity: 'warning',
+        });
+      }
+    }
+
     // Customer Reuse validation
     if (recipe.type === 'customer_reuse_pack') {
       if (limits?.topicrefs_per_map_max && recipe.topic_references_per_map > limits.topicrefs_per_map_max) {

@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { Upload, AlertCircle, CheckCircle2, Loader2, Copy } from 'lucide-react';
 import { uploadDatasetToAem, AemUploadConfig } from '@/utils/aemUpload';
 
 export function AemUploadPage() {
+  const feedback = useAppFeedback();
   const [jobId, setJobId] = useState('');
   const [aemBaseUrl, setAemBaseUrl] = useState('');
   const [targetPath, setTargetPath] = useState('content/dam/');
@@ -67,10 +69,9 @@ export function AemUploadPage() {
       }
     } catch (err) {
       console.error('Failed to copy job ID:', err);
-      // Show error feedback
-      alert(`Failed to copy job ID. Please copy manually: ${jobIdToCopy}`);
+      feedback.error('Failed to copy job ID', `Please copy it manually: ${jobIdToCopy}`);
     }
-  }, [jobId]);
+  }, [feedback, jobId]);
 
   const handleUpload = useCallback(async () => {
     if (!jobId.trim()) {

@@ -1,0 +1,9 @@
+{
+  "jira_id": "GUIDES-28771",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "heavy_topics_tables_codeblocks"
+  ],
+  "created_at": "2026-03-14T11:31:42.533023Z",
+  "evidence": []
+}

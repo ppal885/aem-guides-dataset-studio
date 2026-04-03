@@ -1,8 +1,9 @@
 """Pytest fixtures for testing."""
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
+
 from app.core.auth import UserIdentity
+from app.main import app
 
 
 @pytest.fixture

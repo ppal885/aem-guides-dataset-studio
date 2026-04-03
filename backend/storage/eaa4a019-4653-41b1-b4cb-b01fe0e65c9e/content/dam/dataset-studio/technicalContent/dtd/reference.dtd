@@ -1,0 +1,30 @@
+<!-- Minimal DITA Reference DTD stub (properties align with OASIS proptype/propvalue/propdesc) -->
+<!ENTITY % reference "reference">
+<!ELEMENT reference (title, shortdesc?, refbody?, related-links?)>
+<!ATTLIST reference id CDATA #REQUIRED xml:lang CDATA #IMPLIED>
+<!ELEMENT title (#PCDATA)>
+<!ELEMENT shortdesc (#PCDATA)>
+<!ELEMENT refbody (refsyn?, properties?, section*, choicetable?)>
+<!ELEMENT refsyn (p+)>
+<!ELEMENT properties (prophead?, property+)>
+<!ATTLIST properties outputclass CDATA #IMPLIED>
+<!ELEMENT prophead (proptypehd, propvaluehd, propdeschd)>
+<!ELEMENT proptypehd (#PCDATA)>
+<!ELEMENT propvaluehd (#PCDATA)>
+<!ELEMENT propdeschd (#PCDATA)>
+<!ELEMENT property (proptype?, propvalue?, propdesc?)>
+<!ATTLIST property id CDATA #IMPLIED>
+<!ELEMENT proptype (#PCDATA)>
+<!ELEMENT propvalue (#PCDATA)>
+<!ELEMENT propdesc (p+)>
+<!ELEMENT section (title?, p+)>
+<!ATTLIST section id CDATA #IMPLIED>
+<!ELEMENT choicetable (chrow+)>
+<!ATTLIST choicetable id CDATA #IMPLIED>
+<!ELEMENT chrow (choption, chdesc)>
+<!ELEMENT choption (#PCDATA)>
+<!ELEMENT chdesc (p+)>
+<!ELEMENT p (#PCDATA)>
+<!ELEMENT related-links (link*)>
+<!ELEMENT link EMPTY>
+<!ATTLIST link href CDATA #IMPLIED>

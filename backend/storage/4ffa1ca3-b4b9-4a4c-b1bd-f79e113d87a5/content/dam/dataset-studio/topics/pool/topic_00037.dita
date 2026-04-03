@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "../../technicalContent/dtd/topic.dtd">
+<topic id="topic_00037" xml:lang="en"><title>Conditional Topic 00037</title><body><p>Base content for topic 37.</p><p audience="user">Content for user audience.</p><p platform="windows">Content for windows platform.</p><p platform="mac">Content for mac platform.</p><p platform="linux">Content for linux platform.</p><p product="product-a">Content for product-a.</p></body></topic>

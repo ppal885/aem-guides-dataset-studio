@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="conrefend_cyclic_a" xml:lang="en">
+  <title>Topic A (conrefend to B)</title>
+  <body>
+    <p id="range_start">Topic A range start.</p>
+    <p id="range_mid">Topic A middle.</p>
+    <p id="range_end">Topic A range end.</p>
+    <sectiondiv conref="topic_b.dita#conrefend_cyclic_b/range_start_b" conrefend="topic_b.dita#conrefend_cyclic_b/range_end_b"/>
+  </body>
+</topic>

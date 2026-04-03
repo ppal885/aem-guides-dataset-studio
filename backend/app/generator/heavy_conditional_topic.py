@@ -93,11 +93,13 @@ def _add_block(
     title.text = f"Section {idx + 1}: Conditional Content Block"
 
     for sub_idx in range(subsections_per_section):
-        sub = ET.SubElement(section, "section")
+        # DITA does not allow nested <section>; use sectiondiv + titled <p> for sub-blocks.
+        sub = ET.SubElement(section, "sectiondiv")
         sub.set("id", f"sec_{idx:04d}_sub{sub_idx}")
         _apply_attrs(sub, _pick_attrs(idx * 10 + sub_idx, audiences, platforms, otherprops, density))
-        st = ET.SubElement(sub, "title")
-        st.text = f"Subsection {sub_idx + 1}"
+        st_p = ET.SubElement(sub, "p")
+        st_b = ET.SubElement(st_p, "b")
+        st_b.text = f"Subsection {sub_idx + 1}"
 
         for p_idx in range(paragraphs_per_subsection):
             p = ET.SubElement(sub, "p")
@@ -106,7 +108,9 @@ def _add_block(
             p.text += "This block is part of a heavy conditional topic for stress and filtering tests. "
             p.text += "Audience, platform, and otherprops attributes are distributed across elements."
             if include_xrefs and (idx + sub_idx + p_idx) % 5 == 0:
-                xref = ET.SubElement(p, "xref", {"href": "#sec_0000", "format": "dita"})
+                xref = ET.SubElement(p, "xref")
+                xref.set("href", "#sec_0000")
+                xref.set("type", "section")
                 xref.text = "See Section 1"
 
         ul = ET.SubElement(sub, "ul")
@@ -128,7 +132,7 @@ def _add_block(
             _apply_attrs(table, _pick_attrs(idx + 2000, audiences, platforms, otherprops, density))
             tgroup = ET.SubElement(table, "tgroup", {"cols": "4", "colsep": "1", "rowsep": "1"})
             for c in range(4):
-                ET.SubElement(tgroup, "colspec", {"colname": f"c{c+1}", "colnum": str(c+1), "colwidth": "1*"})
+                ET.SubElement(tgroup, "colspec", {"colname": f"c{c+1}", "colwidth": "1*"})
             thead = ET.SubElement(tgroup, "thead")
             row = ET.SubElement(thead, "row")
             for c in range(4):
@@ -146,7 +150,7 @@ def _add_block(
         if include_codeblocks and codeblocks_per_n > 0 and sub_global_idx % codeblocks_per_n == 0:
             cb = ET.SubElement(sub, "codeblock", {"xml:space": "preserve"})
             _apply_attrs(cb, _pick_attrs(idx + 3000, audiences, platforms, otherprops, density))
-            cb.text = "\n".join([f'  <element id="item_{i}">Content {i}</element>' for i in range(15)])
+            cb.text = "\n".join([f'  line_{i}: config key = "item_{i}"; value = Content {i};' for i in range(15)])
 
         if include_notes and notes_per_n > 0 and sub_global_idx % notes_per_n == 0:
             note = ET.SubElement(sub, "note")
@@ -203,7 +207,6 @@ def _generate_ditaval(
 ) -> bytes:
     """Generate a DITAVAL for filtering tests."""
     val = ET.Element("val")
-    val.set("xmlns:ditaarch", "http://dita.oasis-open.org/architecture/2005/")
 
     for a in audiences[:3]:
         prop = ET.SubElement(val, "prop")
@@ -235,7 +238,10 @@ def _generate_ditaval(
         xml_body = xml_body.split(b"\n", 1)[1] if b"\n" in xml_body else xml_body
     except Exception:
         pass
-    doc = b'<?xml version="1.0" encoding="UTF-8"?>\n'
+    doc = (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<!DOCTYPE val PUBLIC "-//OASIS//DTD DITA DITAVAL//EN" "ditaval.dtd">\n'
+    )
     return doc + xml_body
 
 

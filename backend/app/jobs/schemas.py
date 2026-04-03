@@ -95,6 +95,32 @@ class MapParseStressRecipe(BaseModel):
     topicrefs_per_map: int = Field(default=1000, ge=10, le=10000)
     pretty_print: bool = True
 
+
+class BulkDitaMapTopicsRecipe(BaseModel):
+    """
+    Single root DITAMAP referencing many simple DITA topics (bulk / scale testing).
+
+    Same idea as ``generate_dita_20k_dataset.py``: ``topics/topic_XXXXX.dita`` and one
+    ``rootmap_{N}.ditamap`` with navtitle on each topicref.
+    """
+    type: Literal["bulk_dita_map_topics"] = "bulk_dita_map_topics"
+    topic_count: int = Field(
+        default=20000,
+        ge=1,
+        le=25000,
+        description="Number of topic files; one root map lists all topicrefs",
+    )
+    include_readme: bool = Field(default=True, description="Emit README.txt in dataset folder")
+    pretty_print: bool = True
+    include_local_dtd_stubs: bool = Field(
+        default=True,
+        description=(
+            "Emit minimal topic.dtd/map.dtd under technicalContent/dtd/ and use doctypes that resolve "
+            "from topics/ and the root map (Builder default). When false, stubs sit at dataset root only."
+        ),
+    )
+
+
 class RelationshipTableRecipe(BaseModel):
     """Recipe for generating relationship tables."""
     type: Literal["relationship_table"] = "relationship_table"
@@ -291,6 +317,7 @@ class TaskTopicsRecipe(BaseModel):
     steps_per_task: int = Field(default=5, ge=1, le=20)
     include_prereq: bool = True
     include_result: bool = True
+    include_choicetable: bool = False
     include_map: bool = True
     pretty_print: bool = True
 
@@ -328,8 +355,25 @@ class ReferenceTopicsRecipe(BaseModel):
     type: Literal["reference_topics"] = "reference_topics"
     topic_count: int = Field(default=50, ge=10, le=5000)
     properties_per_ref: int = Field(default=5, ge=1, le=20)
+    include_choicetable: bool = False
     include_map: bool = True
     pretty_print: bool = True
+
+
+class PropertiesTableReferenceRecipe(BaseModel):
+    """
+    Recipe for DITA reference topics focused on <properties> tables.
+
+    Each topic includes a refbody properties table using proptype, propvalue, and propdesc,
+    optionally with prophead (column headers). Suited for AEM Guides / API-style reference QA.
+    """
+    type: Literal["properties_table_reference"] = "properties_table_reference"
+    topic_count: int = Field(default=30, ge=5, le=5000)
+    rows_per_table: int = Field(default=8, ge=3, le=25, description="Property rows per topic")
+    include_prophead: bool = Field(default=True, description="Include prophead with Type/Value/Description headers")
+    include_map: bool = True
+    pretty_print: bool = True
+
 
 class GlossaryPackRecipe(BaseModel):
     """
@@ -350,10 +394,49 @@ class GlossaryPackRecipe(BaseModel):
     include_map: bool = True
     pretty_print: bool = True
 
+class ChoicetableTaskTopicsRecipe(BaseModel):
+    """
+    Recipe for generating Task topics with choicetables.
+
+    Every topic includes a choicetable with realistic AEM Guides
+    and DITA options (output presets, reuse strategies, conditional
+    attributes, map elements, review actions, baselines, translation).
+
+    Output includes:
+    - DITA task topic files with choicetables (.dita)
+    - Optional DITA map file (.ditamap)
+    """
+    type: Literal["choicetable_tasks"] = "choicetable_tasks"
+    topic_count: int = Field(default=50, ge=10, le=5000)
+    steps_per_task: int = Field(default=5, ge=1, le=20)
+    choices_per_topic: int = Field(default=4, ge=2, le=10)
+    include_map: bool = True
+    pretty_print: bool = True
+
+class ChoicetableReferenceTopicsRecipe(BaseModel):
+    """
+    Recipe for generating Reference topics with option tables (simpletable).
+
+    Every topic includes a simpletable listing DITA-OT parameters,
+    XML attribute types, AEM Guides API endpoints, Native PDF CSS
+    properties, or chunk attribute values. Uses <simpletable> instead
+    of <choicetable> because choicetable is only valid inside <step>
+    in task.dtd and does not exist in reference.dtd.
+
+    Output includes:
+    - DITA reference topic files with simpletables (.dita)
+    - Optional DITA map file (.ditamap)
+    """
+    type: Literal["choicetable_references"] = "choicetable_references"
+    topic_count: int = Field(default=50, ge=10, le=5000)
+    choices_per_topic: int = Field(default=5, ge=2, le=10)
+    include_map: bool = True
+    pretty_print: bool = True
+
 class BookmapStructureRecipe(BaseModel):
     """
     Recipe for generating Bookmap structures.
-    
+
     Generates bookmap with chapters and structure:
     - Bookmap file with chapter organization
     - Chapter topics with multiple topics per chapter
@@ -638,11 +721,8 @@ class InsuranceIncrementalRecipe(BaseModel):
             raise ValueError("map_sizes cannot be empty")
         if not all(isinstance(x, int) and x > 0 for x in v):
             raise ValueError("map_sizes must contain positive integers")
-        # Ensure sorted and increasing
-        sorted_v = sorted(set(v))
-        if sorted_v != v:
-            raise ValueError("map_sizes must be sorted in increasing order")
-        return sorted_v
+        # Dedupe and sort (UI can briefly send duplicates after edits; order no longer needs to match input)
+        return sorted(set(v))
     
     @model_validator(mode='after')
     def validate_max_topics(self):
@@ -684,6 +764,29 @@ class KeyrefNestedKeydefChainRecipe(BaseModel):
     add_workaround_variant: bool = Field(default=False, description="Add variant with Map B as root")
     id_prefix: str = Field(default="t", description="ID prefix for generated elements")
     pretty_print: bool = True
+
+
+class ParentChildMapsKeysConrefConkeyrefSelfrefsRecipe(BaseModel):
+    """Conservative parent-child maps with keys, conref, conkeyref, and self references."""
+
+    type: Literal["parent_child_maps_keys_conref_conkeyref_selfrefs"] = "parent_child_maps_keys_conref_conkeyref_selfrefs"
+    pretty_print: bool = True
+
+
+class CompactParentChildKeyResolutionRecipe(BaseModel):
+    """Compact parent-child key resolution dataset."""
+
+    type: Literal["compact_parent_child_key_resolution"] = "compact_parent_child_key_resolution"
+    pretty_print: bool = True
+
+
+class LargeRootMap1000Topics100kbRecipe(BaseModel):
+    """Root map plus 1000 conservative generic topics of approximately 100 KB each."""
+
+    type: Literal["large_root_map_1000_topics_100kb"] = "large_root_map_1000_topics_100kb"
+    topic_count: int = Field(default=1000, ge=1, le=5000)
+    approx_topic_size_kb: int = Field(default=100, ge=8, le=512)
+    pretty_print: bool = False
 
 
 class HeavyConditionalTopic6000LinesRecipe(BaseModel):
@@ -874,6 +977,175 @@ class MapsNavrefBasicRecipe(BaseModel):
         return v
 
 
+class TableSemanticsReferenceRecipe(BaseModel):
+    """Map + topic with reference table documenting table @align values."""
+    type: Literal["table_semantics_reference"] = "table_semantics_reference"
+    id_prefix: str = Field(default="tblalign", description="Prefix for generated IDs")
+    issue_summary: str = Field(default="", description="Optional text used as topic title when non-empty")
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "tblalign"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+class InlineFormattingNestedRecipe(BaseModel):
+    """Map + topic with nested inline b/i/u for RTE-style reproduction."""
+    type: Literal["inline_formatting_nested"] = "inline_formatting_nested"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+def _validate_id_prefix_t(v: str) -> str:
+    if not v:
+        return "t"
+    if not (v[0].isalpha() or v[0] == "_"):
+        raise ValueError("id_prefix must start with a letter or underscore")
+    return v
+
+
+class NestedTopicInlineRecipe(BaseModel):
+    """Map + topic with nested b/i/u and a nested child topic (empty title)."""
+
+    type: Literal["nested_topic_inline"] = "nested_topic_inline"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        return _validate_id_prefix_t(v)
+
+
+class TopicPhKeywordRelatedLinksRecipe(BaseModel):
+    """Map + two topics: prolog keywords, ph/keyword in body, related-links."""
+
+    type: Literal["topic_ph_keyword_related_links"] = "topic_ph_keyword_related_links"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        return _validate_id_prefix_t(v)
+
+
+class TopicSvgMathmlForeignRecipe(BaseModel):
+    """Map + topics + SVG file: image href, foreign SVG/MathML, related-links."""
+
+    type: Literal["topic_svg_mathml_foreign"] = "topic_svg_mathml_foreign"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        return _validate_id_prefix_t(v)
+
+
+class BookmapElementsReferenceRecipe(BaseModel):
+    """Bookmap shell (bookmeta, frontmatter, chapter, backmatter) + topic targets."""
+
+    type: Literal["bookmap_elements_reference"] = "bookmap_elements_reference"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        return _validate_id_prefix_t(v)
+
+
+class SelfConrefendRangeRecipe(BaseModel):
+    """Same-file conref + conrefend range in one topic."""
+    type: Literal["self_conrefend_range"] = "self_conrefend_range"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+class SelfXrefConrefPositiveRecipe(BaseModel):
+    """Minimal same-file xref and conref in one topic (positive)."""
+    type: Literal["self_xref_conref_positive"] = "self_xref_conref_positive"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+    pretty_print: bool = True
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+class ValidationDuplicateIdNegativeRecipe(BaseModel):
+    """Intentionally invalid DITA: duplicate xml:id (validator negative test)."""
+    type: Literal["validation_duplicate_id_negative"] = "validation_duplicate_id_negative"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+class ValidationInvalidChildNegativeRecipe(BaseModel):
+    """Intentionally invalid DITA: invalid element nesting."""
+    type: Literal["validation_invalid_child_negative"] = "validation_invalid_child_negative"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
+class ValidationMissingBodyNegativeRecipe(BaseModel):
+    """Intentionally invalid DITA: topic without required body."""
+    type: Literal["validation_missing_body_negative"] = "validation_missing_body_negative"
+    id_prefix: str = Field(default="t", description="Prefix for generated IDs")
+
+    @field_validator("id_prefix")
+    @classmethod
+    def validate_id_prefix(cls, v):
+        if not v:
+            return "t"
+        if not (v[0].isalpha() or v[0] == "_"):
+            raise ValueError("id_prefix must start with a letter or underscore")
+        return v
+
+
 # Configure Recipe as a discriminated union using the 'type' field
 Recipe = Annotated[
     Union[
@@ -881,6 +1153,7 @@ Recipe = Annotated[
         HeavyTopicsTablesCodeblocksRecipe,
         CustomerReusePackRecipe,
         MapParseStressRecipe,
+        BulkDitaMapTopicsRecipe,
         RelationshipTableRecipe,
         LocalizedContentRecipe,
         ConrefPackRecipe,
@@ -894,6 +1167,7 @@ Recipe = Annotated[
         TaskTopicsRecipe,
         ConceptTopicsRecipe,
         ReferenceTopicsRecipe,
+        PropertiesTableReferenceRecipe,
         GlossaryPackRecipe,
         BookmapStructureRecipe,
         MediaRichContentRecipe,
@@ -910,6 +1184,9 @@ Recipe = Annotated[
         InsuranceIncrementalRecipe,
         HeavyConditionalTopic6000LinesRecipe,
         KeyrefNestedKeydefChainRecipe,
+        ParentChildMapsKeysConrefConkeyrefSelfrefsRecipe,
+        CompactParentChildKeyResolutionRecipe,
+        LargeRootMap1000Topics100kbRecipe,
         MapsTopicgroupBasicRecipe,
         MapsTopicgroupNestedRecipe,
         MapsTopicrefBasicRecipe,
@@ -919,6 +1196,19 @@ Recipe = Annotated[
         MapsReltableBasicRecipe,
         MapsTopicsetBasicRecipe,
         MapsNavrefBasicRecipe,
+        TableSemanticsReferenceRecipe,
+        InlineFormattingNestedRecipe,
+        NestedTopicInlineRecipe,
+        TopicPhKeywordRelatedLinksRecipe,
+        TopicSvgMathmlForeignRecipe,
+        BookmapElementsReferenceRecipe,
+        SelfConrefendRangeRecipe,
+        SelfXrefConrefPositiveRecipe,
+        ValidationDuplicateIdNegativeRecipe,
+        ValidationInvalidChildNegativeRecipe,
+        ValidationMissingBodyNegativeRecipe,
+        ChoicetableTaskTopicsRecipe,
+        ChoicetableReferenceTopicsRecipe,
     ],
     Discriminator('type')
 ]
@@ -930,7 +1220,14 @@ class DatasetConfig(BaseModel):
     root_folder: str = "/content/dam/dataset-studio"
     windows_safe_filenames: bool = True
     doctype_topic: str = '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">'
+    doctype_task: str = '<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">'
+    doctype_reference: str = (
+        '<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">'
+    )
     doctype_map: str = '<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">'
+    doctype_bookmap: str = (
+        '<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "technicalContent/dtd/bookmap.dtd">'
+    )
     doctype_glossentry: str = '<!DOCTYPE glossentry PUBLIC "-//OASIS//DTD DITA Glossentry//EN" "technicalContent/dtd/glossentry.dtd">'
     recipes: List[Recipe] = Field(default_factory=list)
     use_ai_content: bool = False

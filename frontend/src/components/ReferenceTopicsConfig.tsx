@@ -6,6 +6,7 @@ interface ReferenceTopicsConfigProps {
   recipe: {
     topic_count?: number;
     properties_per_ref?: number;
+    include_choicetable?: boolean;
     include_map?: boolean;
     pretty_print?: boolean;
   };
@@ -21,11 +22,9 @@ export function ReferenceTopicsConfig({ recipe, onChange }: ReferenceTopicsConfi
           type="number"
           value={recipe.topic_count || 50}
           onChange={(e) => onChange({
+            ...recipe,
             type: 'reference_topics',
             topic_count: parseInt(e.target.value) || 50,
-            properties_per_ref: recipe.properties_per_ref ?? 5,
-            include_map: recipe.include_map ?? true,
-            pretty_print: recipe.pretty_print ?? true,
           })}
           min={10}
           max={5000}
@@ -41,11 +40,9 @@ export function ReferenceTopicsConfig({ recipe, onChange }: ReferenceTopicsConfi
           type="number"
           value={recipe.properties_per_ref || 5}
           onChange={(e) => onChange({
+            ...recipe,
             type: 'reference_topics',
-            topic_count: recipe.topic_count ?? 50,
             properties_per_ref: parseInt(e.target.value) || 5,
-            include_map: recipe.include_map ?? true,
-            pretty_print: recipe.pretty_print ?? true,
           })}
           min={1}
           max={20}
@@ -57,14 +54,26 @@ export function ReferenceTopicsConfig({ recipe, onChange }: ReferenceTopicsConfi
 
       <div className="flex items-center space-x-2">
         <Switch
+          id="include-choicetable-ref"
+          checked={recipe.include_choicetable === true}
+          onCheckedChange={(checked) => onChange({
+            ...recipe,
+            type: 'reference_topics',
+            include_choicetable: checked,
+          })}
+        />
+        <Label htmlFor="include-choicetable-ref">Include Option Table</Label>
+        <p className="text-xs text-gray-400 ml-1">(adds simpletable to every reference topic)</p>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Switch
           id="include-map"
           checked={recipe.include_map !== false}
           onCheckedChange={(checked) => onChange({
+            ...recipe,
             type: 'reference_topics',
-            topic_count: recipe.topic_count ?? 50,
-            properties_per_ref: recipe.properties_per_ref ?? 5,
             include_map: checked,
-            pretty_print: recipe.pretty_print ?? true,
           })}
         />
         <Label htmlFor="include-map">Include Map</Label>
@@ -75,10 +84,8 @@ export function ReferenceTopicsConfig({ recipe, onChange }: ReferenceTopicsConfi
           id="pretty-print"
           checked={recipe.pretty_print !== false}
           onCheckedChange={(checked) => onChange({
+            ...recipe,
             type: 'reference_topics',
-            topic_count: recipe.topic_count ?? 50,
-            properties_per_ref: recipe.properties_per_ref ?? 5,
-            include_map: recipe.include_map ?? true,
             pretty_print: checked,
           })}
         />

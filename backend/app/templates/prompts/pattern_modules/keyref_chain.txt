@@ -1,0 +1,2 @@
+KEYREF / NESTED KEYDEF CHAIN (when USER INPUT describes nested keydefs, keymaps, map hierarchy, or key resolution across multiple maps):
+- Prefer <map> with <keydef keys="..." href="..."/> and child <mapref> or nested maps as described. Use <topicref keyref="..."/> where the issue discusses keyref resolution. Mirror Representative Sample map/topic structure when provided; do not replace with a generic single-topic dump.

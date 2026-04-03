@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "../../technicalContent/dtd/map.dtd">
+<map id="t_832ecc2e">
+  <title>Topicgroup Nested</title>
+  <topicgroup>
+    <topicref href="../topics/a.dita" navtitle="A"/>
+    <topicgroup>
+      <topicref href="../topics/b.dita" navtitle="B"/>
+    </topicgroup>
+  </topicgroup>
+</map>

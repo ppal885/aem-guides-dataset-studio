@@ -1,0 +1,10 @@
+{
+  "job_id": "7b287369-622d-40dc-ada9-e5ea13bc437b",
+  "generated_at": "2026-03-29T03:08:11.167294",
+  "dataset_name": "My Dataset",
+  "seed": "test-seed",
+  "total_files": 3,
+  "dita_files": 1,
+  "recipe_count": 1,
+  "status": "completed"
+}

@@ -1,7 +1,7 @@
 """Unified vector store service using ChromaDB.
 
 Provides persistent storage for embeddings with metadata filtering.
-Collections: aem_guides, dita_spec, dita_examples, recipes, jira_issues.
+Collections: aem_guides, dita_spec, recipes, jira_issues.
 """
 from pathlib import Path
 from typing import Optional
@@ -13,8 +13,6 @@ logger = get_structured_logger(__name__)
 
 CHROMA_COLLECTION_AEM_GUIDES = "aem_guides"
 CHROMA_COLLECTION_DITA_SPEC = "dita_spec"
-CHROMA_COLLECTION_DITA_EXAMPLES = "dita_examples"
-CHROMA_COLLECTION_RESEARCH_CACHE = "research_cache"
 CHROMA_DB_DIR = "chroma_db"
 
 _chroma_client = None
@@ -35,9 +33,31 @@ def _get_client():
         return _chroma_client
     try:
         import chromadb
+        from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT
 
         path = _get_chroma_path()
-        _chroma_client = chromadb.PersistentClient(path=str(path))
+        # Pin Chroma's canonical tenant/database names (default_tenant / default_database) so we never
+        # rely on ambiguous defaults after upgrades or partial migrations.
+        client = chromadb.PersistentClient(
+            path=str(path),
+            tenant=DEFAULT_TENANT,
+            database=DEFAULT_DATABASE,
+        )
+        try:
+            client.list_collections()
+        except Exception as warmup_exc:
+            msg = str(warmup_exc).lower()
+            if "tenant" in msg and "not found" in msg:
+                try:
+                    client.create_tenant(DEFAULT_TENANT)
+                except Exception:
+                    pass
+                try:
+                    client.create_database(DEFAULT_DATABASE, tenant=DEFAULT_TENANT)
+                except Exception:
+                    pass
+                client.list_collections()
+        _chroma_client = client
         return _chroma_client
     except ImportError as e:
         logger.warning_structured(
@@ -71,9 +91,7 @@ def add_documents(
     Returns True on success, False on failure.
     """
     client = _get_client()
-    if not client or not ids:
-        return False
-    if not (len(ids) == len(documents) == len(metadatas) == len(embeddings)):
+    if not client or not ids or len(ids) != len(documents) != len(metadatas) != len(embeddings):
         return False
     try:
         coll = client.get_or_create_collection(
@@ -160,6 +178,27 @@ def query_collection(
         return []
 
 
+def delete_documents(collection_name: str, ids: list[str]) -> bool:
+    """Delete documents by id from a collection. No-op if collection missing or ids empty."""
+    if not ids:
+        return True
+    client = _get_client()
+    if not client:
+        return False
+    if not _collection_exists(client, collection_name):
+        return True
+    try:
+        coll = client.get_collection(name=collection_name)
+        coll.delete(ids=ids)
+        return True
+    except Exception as e:
+        logger.warning_structured(
+            "ChromaDB delete_documents failed",
+            extra_fields={"collection": collection_name, "error": str(e), "count": len(ids)},
+        )
+        return False
+
+
 def delete_collection(collection_name: str) -> bool:
     """Delete a ChromaDB collection. Returns True on success. No-op if collection does not exist."""
     client = _get_client()
@@ -174,25 +213,6 @@ def delete_collection(collection_name: str) -> bool:
         logger.warning_structured(
             "ChromaDB delete_collection failed",
             extra_fields={"collection": collection_name, "error": str(e)},
-        )
-        return False
-
-
-def delete_documents(collection_name: str, ids: list[str]) -> bool:
-    """Delete specific documents from a ChromaDB collection by ID."""
-    client = _get_client()
-    if not client or not ids:
-        return False
-    if not _collection_exists(client, collection_name):
-        return True
-    try:
-        coll = client.get_collection(name=collection_name)
-        coll.delete(ids=ids)
-        return True
-    except Exception as e:
-        logger.warning_structured(
-            "ChromaDB delete_documents failed",
-            extra_fields={"collection": collection_name, "error": str(e), "count": len(ids)},
         )
         return False
 

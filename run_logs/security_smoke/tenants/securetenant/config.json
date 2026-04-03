@@ -1,0 +1,18 @@
+{
+  "tenant_id": "securetenant",
+  "name": "Secure Tenant",
+  "jira_url": "https://jira.example.com",
+  "jira_email": "jira@example.com",
+  "rag_collection": "securetenant_rag",
+  "examples_collection": "securetenant_examples",
+  "research_collection": "securetenant_research",
+  "terminology": {},
+  "forbidden_terms": [],
+  "style_rules": "",
+  "component_map": {},
+  "custom_audiences": {},
+  "created_at": "2026-03-21T21:20:44.447259",
+  "is_active": true,
+  "plan": "standard",
+  "jira_token_encrypted": "enc:v1:gAAAAABpvwustkRglnZK5z9YztlzhzuyNLjaVqFqdEzAOY-Sb2OqnjympYl35g17MSPzmRabJG0A2Z17TKm18HOtJWtkDse_roZqdB-XRtkiT1mTNkSyFyA="
+}

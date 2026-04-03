@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-03T07:07:31.972221+00:00",
+  "query_health": {
+    "kone": {
+      "aem_guides": {
+        "preferred_source": "tavily",
+        "degraded_until": "",
+        "learning_note": "Self-healing: Tavily returned results again, so web-backed research is restored.",
+        "sources": {
+          "rag": {
+            "successes": 2,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 2,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-03-22T17:04:34.828954+00:00",
+            "last_success_at": "2026-03-22T17:04:34.828954+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 9,
+            "failures": 2,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 1,
+            "last_error": "local retrieval looks strong",
+            "last_used_at": "2026-03-22T17:04:34.824403+00:00",
+            "last_success_at": "2026-03-22T15:21:26.309427+00:00",
+            "last_failure_at": "2026-03-22T17:04:34.824403+00:00"
+          }
+        }
+      },
+      "dita_elements": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 11,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 11,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-03-22T17:04:34.819953+00:00",
+            "last_success_at": "2026-03-22T17:04:34.819953+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      },
+      "client_docs": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 10,
+            "failures": 1,
+            "empty_results": 0,
+            "consecutive_successes": 10,
+            "consecutive_failures": 0,
+            "last_error": "No results returned",
+            "last_used_at": "2026-03-22T17:04:34.833152+00:00",
+            "last_success_at": "2026-03-22T17:04:34.833152+00:00",
+            "last_failure_at": "2026-03-22T08:06:23.556284+00:00"
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      },
+      "expert_examples": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 11,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 11,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-03-22T17:04:34.845692+00:00",
+            "last_success_at": "2026-03-22T17:04:34.845692+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      },
+      "dita_spec": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 11,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 11,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-03-22T17:04:34.849836+00:00",
+            "last_success_at": "2026-03-22T17:04:34.849836+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      },
+      "bugs_fixes": {
+        "preferred_source": "tavily",
+        "degraded_until": "",
+        "learning_note": "Self-healing: Tavily returned results again, so web-backed research is restored.",
+        "sources": {
+          "rag": {
+            "successes": 2,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 2,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-03-22T17:04:34.841610+00:00",
+            "last_success_at": "2026-03-22T17:04:34.841610+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 9,
+            "failures": 1,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 1,
+            "last_error": "low term coverage, too many off-topic snippets",
+            "last_used_at": "2026-03-22T17:04:34.837296+00:00",
+            "last_success_at": "2026-03-22T15:21:26.333859+00:00",
+            "last_failure_at": "2026-03-22T17:04:34.837296+00:00"
+          }
+        }
+      },
+      "authoring": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 1,
+            "failures": 3,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 3,
+            "last_error": "low term coverage, issue context is underrepresented, evidence is narrow, too many off-topic snippets",
+            "last_used_at": "2026-03-22T20:42:12.761686+00:00",
+            "last_success_at": "2026-03-22T17:04:42.094470+00:00",
+            "last_failure_at": "2026-03-22T20:42:12.761686+00:00"
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      },
+      "chat": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 79,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 79,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-04-03T07:07:31.971222+00:00",
+            "last_success_at": "2026-04-03T07:07:31.971222+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      }
+    },
+    "default": {
+      "chat": {
+        "preferred_source": "",
+        "degraded_until": "",
+        "learning_note": "",
+        "sources": {
+          "rag": {
+            "successes": 5,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 5,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "2026-04-02T19:01:09.380407+00:00",
+            "last_success_at": "2026-04-02T19:01:09.380407+00:00",
+            "last_failure_at": ""
+          },
+          "tavily": {
+            "successes": 0,
+            "failures": 0,
+            "empty_results": 0,
+            "consecutive_successes": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+            "last_used_at": "",
+            "last_success_at": "",
+            "last_failure_at": ""
+          }
+        }
+      }
+    }
+  },
+  "authoring_health": {
+    "kone": {
+      "task": {
+        "attempts": 36,
+        "clean_runs": 9,
+        "healed_runs": 36,
+        "avg_quality": 61.86,
+        "last_quality": 75,
+        "failed_checks": {
+          "XML parse error: unbound prefix: line 3, column 0": 4
+        },
+        "healing_strategies": {
+          "structural_repair": 36,
+          "content_result_rewrite": 19,
+          "repair_prompt": 6,
+          "content_context_rewrite": 3,
+          "media_attachment_injected": 10,
+          "content_title_rewrite": 10,
+          "media_markup_sanitized": 2,
+          "task_dtd_rebuild": 3,
+          "instruction_context_refined": 2,
+          "instruction_prereq_added": 1,
+          "instruction_result_refined": 2,
+          "instruction_shortdesc_refined": 2,
+          "instruction_title_refined": 2
+        }
+      },
+      "concept": {
+        "attempts": 1,
+        "clean_runs": 0,
+        "healed_runs": 1,
+        "avg_quality": 60.0,
+        "last_quality": 60,
+        "failed_checks": {},
+        "healing_strategies": {
+          "structural_repair": 1
+        }
+      }
+    },
+    "*": {
+      "task": {
+        "attempts": 42,
+        "clean_runs": 6,
+        "healed_runs": 0,
+        "avg_quality": 60.04,
+        "last_quality": 37,
+        "failed_checks": {
+          "xml:lang present": 2,
+          "taskbody child order valid": 5
+        },
+        "healing_strategies": {}
+      }
+    }
+  },
+  "recipe_health": {}
+}

@@ -306,6 +306,7 @@ export function Builder() {
                           steps_per_task: 5,
                           include_prereq: true,
                           include_result: true,
+                          include_choicetable: false,
                           include_map: true,
                           pretty_print: true,
                         });
@@ -322,6 +323,7 @@ export function Builder() {
                           type: 'reference_topics',
                           topic_count: 50,
                           properties_per_ref: 5,
+                          include_choicetable: false,
                           include_map: true,
                           pretty_print: true,
                         });
@@ -604,6 +606,23 @@ export function Builder() {
                           key_definitions: 200,
                           key_groups: 5,
                           external_references: 10,
+                        });
+                      } else if (type === 'choicetable_tasks') {
+                        setCurrentRecipe({
+                          type,
+                          topic_count: 50,
+                          steps_per_task: 5,
+                          choices_per_topic: 4,
+                          include_map: true,
+                          pretty_print: true,
+                        });
+                      } else if (type === 'choicetable_references') {
+                        setCurrentRecipe({
+                          type,
+                          topic_count: 50,
+                          choices_per_topic: 5,
+                          include_map: true,
+                          pretty_print: true,
                         });
                       }
                     } else {

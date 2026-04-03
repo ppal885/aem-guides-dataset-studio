@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="guides_42533_map_b" xml:lang="en-US">
+  <title>GUIDES-42533 — Map B (intermediate keymap)</title>
+  <keydef keys="productName">
+    <topicmeta>
+      <keywords>
+        <keyword>IBM Security Guardium</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="keywordFile" href="GUIDES-42533-static-content.dita" format="dita"/>
+  <keydef keys="versionString" href="GUIDES-42533-static-content.dita#versionString" format="dita"/>
+</map>

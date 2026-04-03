@@ -1,28 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.routes import (
-    admin,
-    aem_recipes,
-    ai_flow,
-    ai_dataset,
-    authoring,
-    bulk,
-    chat,
-    dataset_explorer,
-    doc_pdf,
-    intent,
-    jira,
-    limits,
-    performance,
-    preferences,
-    presets,
-    recipes,
-    safety,
-    scale_testing,
-    schedule,
-    specialized,
-    smart_suggestions,
-    tenants,
-)
+from app.api.v1.routes import presets, schedule, dataset_explorer, performance, recipes, bulk, aem_recipes, specialized, scale_testing, limits, admin, ai_dataset, chat
 
 api_router = APIRouter()
 
@@ -46,6 +23,10 @@ def _get_rag_status():
                 "source": "Experience League crawl (LangChain WebBaseLoader)",
                 "collection": CHROMA_COLLECTION_AEM_GUIDES,
                 "chunk_count": aem_count,
+                "count_scope": (
+                    "This number is only embeddings in Chroma `aem_guides`. "
+                    "Use /api/v1/ai/rag-status for Tavily/GitHub summary."
+                ),
                 "used_in": ["mechanism_classifier", "pattern_classifier", "evidence_extractor"],
                 "populate_via": "POST /api/v1/ai/crawl-aem-guides",
                 "enrichment_enabled": USE_AEM_DOCS_ENRICHMENT,
@@ -54,6 +35,7 @@ def _get_rag_status():
                 "source": "DITA 1.2 + 1.3 Part 1 Base PDFs (LangChain PyPDFLoader)",
                 "collection": CHROMA_COLLECTION_DITA_SPEC,
                 "chunk_count": dita_count,
+                "count_scope": "Embeddings in Chroma `dita_spec` only (separate from `aem_guides`).",
                 "used_in": ["scenario_expander", "plan_for_scenario"],
                 "populate_via": "POST /api/v1/ai/index-dita-pdf",
             },
@@ -81,14 +63,5 @@ api_router.include_router(specialized.router)
 api_router.include_router(scale_testing.router)
 api_router.include_router(limits.router)
 api_router.include_router(admin.router)
-api_router.include_router(ai_flow.router, tags=["ai-flow"])
 api_router.include_router(ai_dataset.router)
 api_router.include_router(chat.router)
-api_router.include_router(jira.router, prefix="/jira", tags=["jira"])
-api_router.include_router(authoring.router, tags=["authoring"])
-api_router.include_router(intent.router, prefix="/intent", tags=["intent"])
-api_router.include_router(preferences.router, prefix="/prefs", tags=["preferences"])
-api_router.include_router(safety.router, prefix="/safety", tags=["safety"])
-api_router.include_router(tenants.router, prefix="/admin/tenants", tags=["tenants"])
-api_router.include_router(doc_pdf.router, prefix="/docs", tags=["docs"])
-api_router.include_router(smart_suggestions.router, prefix="/smart", tags=["smart"])

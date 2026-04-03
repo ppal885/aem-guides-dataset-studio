@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DatasetExplorer } from '@/components/DatasetExplorer';
+import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -14,6 +15,7 @@ interface Job {
 }
 
 export function DatasetExplorerPage() {
+  const feedback = useAppFeedback();
   const [searchParams, setSearchParams] = useSearchParams();
   const jobIdFromUrl = searchParams.get('jobId');
   
@@ -28,16 +30,6 @@ export function DatasetExplorerPage() {
       isMountedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    loadCompletedJobs();
-  }, []);
-
-  useEffect(() => {
-    if (jobIdFromUrl && jobIdFromUrl !== selectedJobId) {
-      setSelectedJobId(jobIdFromUrl);
-    }
-  }, [jobIdFromUrl]);
 
   const loadCompletedJobs = useCallback(async () => {
     setLoading(true);
@@ -67,12 +59,22 @@ export function DatasetExplorerPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
       if (isMountedRef.current) {
-        alert('Failed to load completed jobs. Please try again.');
+        feedback.error('Failed to load completed jobs', 'Please try again.');
       }
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
       }
+    }
+  }, [feedback, jobIdFromUrl, selectedJobId]);
+
+  useEffect(() => {
+    void loadCompletedJobs();
+  }, [loadCompletedJobs]);
+
+  useEffect(() => {
+    if (jobIdFromUrl && jobIdFromUrl !== selectedJobId) {
+      setSelectedJobId(jobIdFromUrl);
     }
   }, [jobIdFromUrl, selectedJobId]);
 

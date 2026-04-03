@@ -104,6 +104,10 @@ class RecipeSelectionOutput(BaseModel):
         default_factory=list,
         description="Recipes considered but rejected with reasons",
     )
+    execution_contract: Optional[dict] = Field(
+        default=None,
+        description="Hard contract (required constructs, forbidden fallbacks, validation rules, repair hints) when attached",
+    )
 
 
 class RecipeScoringResult(BaseModel):

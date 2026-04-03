@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="map_self_ref">
+  <title>Self-Reference Map</title>
+  <keydef keys="self" href="../topics/self_ref_topic.dita"/>
+  <topicref href="../topics/self_ref_topic.dita" navtitle="Self-Reference Topic" type="topic"/>
+</map>

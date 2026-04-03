@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="guides_23211" xml:lang="en-US">
+  <title>GUIDES-23211: Text alignment in tables via right-click</title>
+  <shortdesc>Authors need faster access to table text alignment in AEM Guides by exposing alignment actions on the table context menu instead of deep property dialogs.</shortdesc>
+  <prolog>
+    <author type="contributor">Dataset Studio (Jira via MCP)</author>
+    <critdates>
+      <created date="2026-03-24"/>
+    </critdates>
+    <metadata>
+      <keywords>
+        <keyword>GUIDES-23211</keyword>
+        <keyword>table</keyword>
+        <keyword>text alignment</keyword>
+        <keyword>NewEditor</keyword>
+        <keyword>Hyundai</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <conbody>
+    <section id="problem">
+      <title>Problem statement</title>
+      <p>When editing tables in AEM, basic settings such as <b>text alignment</b> and related formatting
+        are buried behind multiple layers of menus. Frequently used actions therefore take longer than
+        necessary during day-to-day authoring.</p>
+    </section>
+    <section id="objective">
+      <title>Business objective</title>
+      <p>Improve table editing in AEM Guides by letting authors set <b>text alignment</b> from a
+        <b>right-click</b> (context) menu on the table or cell selection, rather than only through
+        multi-step property navigation.</p>
+    </section>
+    <section id="context">
+      <title>Issue context (Jira)</title>
+      <ul>
+        <li><b>Type:</b> Customer request; <b>Status:</b> Open; <b>Priority:</b> Major.</li>
+        <li><b>Labels:</b> Hyundai, NewEditor, Priority:Low.</li>
+        <li>Discussion highlights customer frustration with overall table behavior in the Web Editor and
+          asks whether the new editor timeline (on-premise) can move earlier than the currently communicated
+          plan; product response in Jira references new editor planned for Q1 2026.</li>
+      </ul>
+    </section>
+    <section id="dita_alignment">
+      <title>DITA <codeph>align</codeph> on tables (reference)</title>
+      <p>Horizontal alignment for table columns or cells is expressed with the <codeph>align</codeph>
+        attribute on <codeph>colspec</codeph>, <codeph>entry</codeph>, and related table constructs (per
+        DITA 1.x). AEM Guides UI actions for text alignment should map to these values in serialized
+        DITA. Allowed values include:</p>
+      <table id="tbl_align_allowed_values">
+        <title>Allowed align values for tables</title>
+        <tgroup cols="2">
+          <colspec colname="c_val" colnum="1" colwidth="1.0*"/>
+          <colspec colname="c_desc" colnum="2" colwidth="3.0*"/>
+          <thead>
+            <row>
+              <entry>Value</entry>
+              <entry>Description</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry><codeph>left</codeph></entry>
+              <entry>Aligns text to the left.</entry>
+            </row>
+            <row>
+              <entry><codeph>right</codeph></entry>
+              <entry>Aligns text to the right.</entry>
+            </row>
+            <row>
+              <entry><codeph>center</codeph></entry>
+              <entry>Centers the text.</entry>
+            </row>
+            <row>
+              <entry><codeph>justify</codeph></entry>
+              <entry>Justifies content.</entry>
+            </row>
+            <row>
+              <entry><codeph>char</codeph></entry>
+              <entry>Uses the character specified on the <codeph>char</codeph> attribute for alignment.</entry>
+            </row>
+            <row>
+              <entry><codeph>-dita-use-conref-target</codeph></entry>
+              <entry>See DITA spec: use conref target for the effective <codeph>align</codeph> value.</entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+      <p>You may set <codeph>align</codeph> on <codeph>colspec</codeph> (column default) or on individual
+        <codeph>entry</codeph> elements to override. Example column defaults:
+        <codeph>&lt;colspec colname="c1" align="left"/&gt;</codeph>.</p>
+    </section>
+  </conbody>
+</concept>

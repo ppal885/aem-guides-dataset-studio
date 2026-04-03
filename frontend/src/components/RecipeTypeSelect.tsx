@@ -29,6 +29,8 @@ const RECIPE_OPTIONS: RecipeOption[] = [
   { value: 'reference_topics', label: 'Reference Topics', group: 'specialized', description: 'Structured reference data' },
   { value: 'glossary_pack', label: 'Glossary Pack', group: 'specialized', description: 'Term definitions and acronyms' },
   { value: 'bookmap_structure', label: 'Bookmap Structure', group: 'specialized', description: 'Book with chapters and frontmatter' },
+  { value: 'choicetable_tasks', label: 'Choicetable Task Topics', group: 'specialized', description: 'Task topics with choicetables inside steps (output presets, reuse, conditions)' },
+  { value: 'choicetable_references', label: 'Option Table Reference Topics', group: 'specialized', description: 'Reference topics with simpletables (DITA-OT params, APIs, CSS)' },
   { value: 'maps_topicgroup_basic', label: 'Topicgroup Basic', group: 'maps', description: 'Map with topicgroup for grouping topicrefs' },
   { value: 'maps_topicgroup_nested', label: 'Topicgroup Nested', group: 'maps', description: 'Nested topicgroup elements for hierarchical grouping' },
   { value: 'maps_topicref_basic', label: 'Topicref Basic', group: 'maps', description: 'Map with basic topicrefs' },

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="t_self_ref" xml:lang="en">
+  <title>Self-Reference Topic</title>
+  <body>
+    <p>
+      This topic references itself: 
+      <xref keyref="self"/>
+      . The key &quot;self&quot; in the map points to this same topic. In AEM Guides, the right panel (outgoing links / forward reference) should show this self-reference.
+    </p>
+  </body>
+</topic>
