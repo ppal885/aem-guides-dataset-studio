@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="withdraw" xml:lang="en-us">
+<title>Software discontinuance of support: <tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Data Exchange select products</title>
+<topic id="topic_ddl_3gt_51c">
+<title>Overview</title>
+<body>
+<p><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Data Exchange is discontinuing support of select releases for multiple products. Clients with active maintenance are eligible to upgrade to the latest product releases and thereby benefit from security updates, performance enhancements, automation improvements to client and partner onboarding, modernized user interfaces and RESTful APIs, as well as hybrid cloud deployment options. For more information, contact your <tm trademark="IBM" tmtype="reg">IBM</tm> representative or <tm trademark="IBM" tmtype="reg">IBM</tm> Business Partner.</p>
+</body>
+</topic>
+<topic id="no_support">
+<title>Discontinuance of support of select releases</title>
+<body>
+<p>Effective on the dates shown, <tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Data Exchange will discontinue support for specific versions and releases of the following programs as licensed under the applicable <tm trademark="IBM" tmtype="reg">IBM</tm> agreement. </p>
+<table frame="all" rowsep="1" colsep="1" id="table_rfc_3d5_szb">
+<tgroup cols="5">
+<colspec colwidth="369.50px" colname="c1" colnum="1"></colspec>
+<colspec colwidth="369.50%" colname="c2" colnum="2"></colspec>
+<colspec colwidth="369.50%" colname="newCol4" colnum="3"></colspec>
+<colspec colwidth="369.50%" colname="newCol3" colnum="4"></colspec>
+<colspec colwidth="369.50px" colname="newCol5" colnum="5"></colspec>
+<thead>
+<row>
+<entry>Program name and identifier</entry>
+<entry>VRMs</entry>
+<entry>Effective date</entry>
+<entry>Supported VRMs</entry>
+<entry>Product lifecycle page</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling B2B Integrator (5725-D06)</entry>
+<entry>6.1.x</entry>
+<entry>September 30, 2025</entry>
+<entry>6.2.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-D06" format="html" scope="external">5725-D06</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling File Gateway (5725-D07)</entry>
+<entry>6.1.x</entry>
+<entry>September 30, 2025</entry>
+<entry>6.2.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-D07" format="html" scope="external">5725-D07</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling <tm trademark="Connect:Direct" tmtype="reg">Connect:Direct</tm> (5725-C99)</entry>
+<entry>6.1.x</entry>
+<entry>April 30, 2025</entry>
+<entry>6.2.x, 6.3.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-C99" format="html" scope="external">5725-C99</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Control Center Monitor (5725-D02)</entry>
+<entry>6.2.x</entry>
+<entry>April 30, 2025</entry>
+<entry>6.3.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-D02" format="html" scope="external">5725-D02</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Control Center Director (5725-D02)</entry>
+<entry>6.2.x</entry>
+<entry>April 30, 2025</entry>
+<entry>6.3.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-D02" format="html" scope="external">5725-D02</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Secure Proxy (5725-D03)</entry>
+<entry>6.0.x</entry>
+<entry>April 30, 2025</entry>
+<entry>6.1.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5725-D03" format="html"
+scope="external">5725-D03</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Partner Engagement Manager (5737-L99)</entry>
+<entry>6.1.x</entry>
+<entry>April 30, 2025</entry>
+<entry>6.2.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5737-L99" format="html" scope="external">5737-L99</xref></entry>
+</row>
+<row>
+<entry><tm trademark="IBM" tmtype="reg">IBM</tm> Sterling Transformation Extender Advanced
+(5724-Q23)</entry>
+<entry>9.0.x</entry>
+<entry>June 30, 2024</entry>
+<entry>10.x</entry>
+<entry><xref href="https://www.ibm.com/support/pages/lifecycle/search?q=5724-Q23" format="html" scope="external">5724-Q23</xref></entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+</body>
+</topic>
+<topic id="topic_b5r_dyq_f1c">
+<title>Technical support</title>
+<body>
+<p>Technical support continues to be available based on the announced lifecycle policy, as detailed
+on the <xref href="https://www.ibm.com/support/pages/lifecycle/" format="html" scope="external"><tm trademark="IBM" tmtype="reg">IBM</tm> Support Product lifecycle </xref> page, until end of support date. </p>
+<p><tm trademark="IBM" tmtype="reg">IBM</tm> Support offerings can provide additional services and help to extend the life of your software investment. For more information, see <xref href="https://www.ibm.com/support/pages/node/7008589" format="html" scope="external"><tm trademark="IBM" tmtype="reg">IBM</tm> Extended Support</xref>.</p>
+</body>
+</topic>
+</topic>

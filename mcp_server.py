@@ -35,7 +35,8 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("aem-dataset-studio")
 
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+# Same resolution as backend tavily_search_service.get_tavily_api_key()
+TAVILY_API_KEY = (os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_KEY") or "").strip()
 
 # All imports are lazy (inside each tool function) so a single missing
 # dependency never kills the entire MCP server — only that one tool fails.
@@ -1364,6 +1365,23 @@ REQUIREMENTS:
 9. Content must reflect the ACTUAL Jira issue — not generic
 10. Follow nesting rules from element graph above
 11. Mirror structure from expert example above
+
+SCENARIO FIDELITY (mandatory — not a Jira field dump):
+12. Do NOT treat the topic as finished if you only paraphrased the description into <p>
+    blocks and added a metadata <simpletable> (issue key, status, labels). That is
+    insufficient for editor, table, layout, or publishing defects.
+13. Encode the reporter's STRUCTURE in DITA: if they describe a table with dimensions,
+    include a real content <table> with <tgroup cols="N">, <colspec> per column,
+    <thead>/<tbody>, and enough <row>/<entry> cells to match the described grid (pick a
+    clear interpretation when Jira wording is ambiguous, e.g. "6 rows and 5 rows" → state
+    5 columns × 6 rows in a short <p> or <note>).
+14. UI actions (right-click, menu paths): use <menucascade> with <uicontrol> for each
+    level (e.g. Delete → Columns). Order must match the Jira reproduction.
+15. Every URL in description or comments: add <xref href="..." format="html" scope="external">.
+16. Distinctive reporter wording that carries reproduction detail: preserve in a <note> or
+    <lq> (verbatim or near-verbatim), then explain interpretation in following <p> if needed.
+17. Procedural reproduction in a concept topic: add a dedicated <section> (e.g. reproduction)
+    with <ol> or numbered steps; if dita_type is task, use <steps>/<step>/<cmd> instead.
 
 AFTER GENERATING, EXECUTE IN ORDER:
 1. save_dita_file('{filename}', generated_xml)

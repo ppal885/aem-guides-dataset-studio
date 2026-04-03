@@ -1,0 +1,61 @@
+<!-- Minimal DITA Topic DTD stub (general topics) -->
+<!ENTITY % topic "topic">
+<!ELEMENT topic (title, shortdesc?, prolog?, body?, related-links?)>
+<!ATTLIST topic
+  id CDATA #REQUIRED
+  xml:lang CDATA #IMPLIED
+  audience CDATA #IMPLIED
+  platform CDATA #IMPLIED
+  product CDATA #IMPLIED
+  otherprops CDATA #IMPLIED>
+<!ELEMENT title (#PCDATA)>
+<!ELEMENT shortdesc (#PCDATA)>
+<!ELEMENT prolog (metadata?)>
+<!ELEMENT metadata (keywords*|category*|audience*|othermeta*|publisher*|data*)>
+<!ELEMENT keywords (keyword+)>
+<!ELEMENT keyword EMPTY>
+<!ATTLIST keyword id CDATA #IMPLIED keyref CDATA #IMPLIED>
+<!ELEMENT category (#PCDATA)>
+<!ELEMENT audience (#PCDATA)>
+<!ELEMENT othermeta EMPTY>
+<!ATTLIST othermeta name CDATA #IMPLIED content CDATA #IMPLIED>
+<!ELEMENT publisher (#PCDATA)>
+<!ELEMENT data EMPTY>
+<!ATTLIST data name CDATA #IMPLIED value CDATA #IMPLIED>
+<!ELEMENT body (section*|p*|table*|simpletable*|codeblock*|note*|example*|ul*|ol*|dl*|image*|xref*|draft-comment*)>
+<!ELEMENT related-links (link*|linklist*)>
+<!ELEMENT link EMPTY>
+<!ATTLIST link href CDATA #IMPLIED keyref CDATA #IMPLIED>
+<!ELEMENT linklist ANY>
+<!ELEMENT section (title?, (p|table|simpletable|codeblock|note|example|ul|ol|dl|section)*)>
+<!ATTLIST section id CDATA #IMPLIED>
+<!ELEMENT p (#PCDATA|xref|ph|b|i|u|codeph|tm|keyword)*>
+<!ELEMENT table ANY>
+<!ELEMENT simpletable (sthead?, stbody)>
+<!ELEMENT sthead (strow)>
+<!ELEMENT stbody (strow+)>
+<!ELEMENT strow (stentry+)>
+<!ELEMENT stentry (#PCDATA)>
+<!ELEMENT codeblock (#PCDATA)>
+<!ATTLIST codeblock outputclass CDATA #IMPLIED>
+<!ELEMENT note ANY>
+<!ELEMENT example ANY>
+<!ELEMENT ul (li+)>
+<!ELEMENT li ANY>
+<!ELEMENT ol (li+)>
+<!ELEMENT dl (dlentry+)>
+<!ELEMENT dlentry (dt, dd)>
+<!ELEMENT dt (#PCDATA)>
+<!ELEMENT dd ANY>
+<!ELEMENT image EMPTY>
+<!ATTLIST image href CDATA #IMPLIED placement CDATA #IMPLIED>
+<!ELEMENT xref EMPTY>
+<!ATTLIST xref href CDATA #IMPLIED keyref CDATA #IMPLIED>
+<!ELEMENT ph (#PCDATA)>
+<!ELEMENT b (#PCDATA)>
+<!ELEMENT i (#PCDATA)>
+<!ELEMENT u (#PCDATA)>
+<!ELEMENT codeph (#PCDATA)>
+<!ELEMENT tm (#PCDATA)>
+<!ELEMENT keyword (#PCDATA)>
+<!ELEMENT draft-comment ANY>

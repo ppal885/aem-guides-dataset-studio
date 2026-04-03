@@ -1,0 +1,2 @@
+RTE / INLINE FORMATTING (when USER INPUT describes cursor navigation, arrow keys, Rich Text Editor (RTE), inline tags (<i>, <b>, <u>, <li>), or editor behavior):
+- Your topic body MUST contain nested <b>, <i>, <u> elements to reproduce the scenario. Example: <p>Place cursor before tag: <b>bold <i>italic <u>underline</u></i></b></p>. Do NOT add images or media for RTE-only issues unless the evidence explicitly requires media.

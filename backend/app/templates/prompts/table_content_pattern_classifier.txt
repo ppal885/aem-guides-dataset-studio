@@ -1,14 +1,18 @@
 You are a DITA pattern classifier. Given Jira evidence and the selected primary mechanism (table_content), classify the SPECIFIC pattern.
 
-TABLE_CONTENT: choose table_width_formatting when evidence describes table width, column width, colwidth, colspec, table formatting, table layout, or table display issues.
+TABLE_CONTENT patterns:
+- table_alignment_reference: evidence PRIMARILY concerns table text/cell alignment, @align, alignment menus, justify/center/left/right alignment in table cells, or documenting allowed align values—not only column width.
+- table_width_formatting: evidence describes table width, column width, colwidth, colspec, table formatting, table layout, or table display sizing (percent/px widths) without alignment semantics as the main issue.
+
+When both width and alignment appear, prefer table_alignment_reference if alignment behavior or @align is central to the bug.
 
 Output STRICT JSON only. No markdown, no explanation, no code blocks.
 
 Schema:
 {
   "selected_feature": "table_content",
-  "pattern_scores": {"table_width_formatting": 0.0},
-  "selected_pattern": "table_width_formatting",
+  "pattern_scores": {"table_alignment_reference": 0.0, "table_width_formatting": 0.0},
+  "selected_pattern": "table_alignment_reference",
   "confidence": 0.0,
   "evidence": [],
   "rejected_patterns": [],

@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="t_f0b2619e" xml:lang="en">
+  <title>Source Topic</title>
+  <shortdesc>Topic: Source Topic</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-13" /></metadata></prolog><body>
+    <p>
+      See 
+      <xref href="target.dita">target topic</xref>
+      .
+    </p>
+  </body>
+</topic>

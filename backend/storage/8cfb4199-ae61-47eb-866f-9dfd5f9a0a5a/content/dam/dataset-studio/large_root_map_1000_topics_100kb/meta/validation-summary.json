@@ -1,0 +1,8 @@
+{
+  "recipe_name": "large_root_map_1000_topics_100kb",
+  "topic_count": 1000,
+  "approx_topic_size_kb": 100,
+  "root_map": "maps/root-map.ditamap",
+  "all_references_resolved": true,
+  "validation_errors": []
+}

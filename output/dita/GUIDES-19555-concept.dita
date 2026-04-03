@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="guides_19555" xml:lang="en-US">
+  <title>GUIDES-19555: Make new reltable easier to use (column collapse, tags view)</title>
+  <shortdesc>In AEM Guides Author with tags enabled, a new map reltable without a header row can look like a
+    four-cell grid until a topic is placed in the first cell; then later columns collapse and targets are hard
+    to add. Full tags view can also garble overlapping reltable link text.</shortdesc>
+  <prolog>
+    <author type="contributor">Dataset Studio (Jira GUIDES-19555)</author>
+    <critdates>
+      <created date="2026-03-24"/>
+    </critdates>
+    <metadata>
+      <keywords>
+        <keyword>NewEditor</keyword>
+        <keyword>reltable</keyword>
+        <keyword>Workday</keyword>
+        <keyword>Author view</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <conbody>
+    <section id="problem">
+      <title>Problem</title>
+      <p>Customers (Workday, LinkedIn, Thomson Reuters, and others per Jira) report reltable authoring pain in
+        the map editor when <b>tagging is enabled</b>:</p>
+      <ul>
+        <li><b>Column collapse:</b> After creating a <b>new reltable without a header row</b> and placing a
+          reference in the <b>first cell</b>, the <b>second (and later) columns</b> shrink so much that placing
+          a target reference is very difficult (repro noted by engineering).</li>
+        <li><b>Full tags view:</b> Reltable link text can <b>overlap</b> adjacent columns, so authors fall back
+          to Source view to fix or extend relationships.</li>
+      </ul>
+    </section>
+    <section id="customer">
+      <title>Reporter context (from Jira)</title>
+      <ul>
+        <li>Workday — IMS org <codeph>0AB2768154D414A20A4C98A5@AdobeOrg</codeph>, program
+          <codeph>cm-p108955</codeph>, environment <codeph>e1062829</codeph>; reproducible on prod and stage.</li>
+        <li>Historical: AEM Guides <codeph>2024.6.0.72</codeph> cited during support triage.</li>
+        <li>Dynamics / investigations linked from Jira (e.g. E-001341872, full investigation URL in ticket).</li>
+      </ul>
+    </section>
+    <section id="repro">
+      <title>Reproduction steps (verbatim pattern from Jira)</title>
+      <ol>
+        <li>Open AEM Guides <uicontrol>Author</uicontrol> view with <b>tags enabled</b>.</li>
+        <li>Create a <b>new reltable without a header row</b> in a map.</li>
+        <li>Observe an initial <b>four-cell</b> grid layout.</li>
+        <li>Place a topic reference in the <b>first cell</b>.</li>
+        <li>Observe the <b>second column collapsing</b> (last columns nearly zero width), hindering target placement.</li>
+      </ol>
+    </section>
+    <section id="expected_actual">
+      <title>Expected vs actual</title>
+      <simpletable relcolwidth="1* 2*">
+        <sthead>
+          <stentry/>
+          <stentry>Description</stentry>
+        </sthead>
+        <strow>
+          <stentry>Expected</stentry>
+          <stentry>The reltable keeps a usable grid so target topics can be placed in subsequent cells.</stentry>
+        </strow>
+        <strow>
+          <stentry>Actual</stentry>
+          <stentry>Column width collapses after the first-cell link; full tags view can overlap link text across
+            columns.</stentry>
+        </strow>
+      </simpletable>
+    </section>
+    <section id="bundled">
+      <title>Bundled minimal DITA (this dataset)</title>
+      <p>File <filepath>GUIDES-19555-sample-map.ditamap</filepath> contains a <codeph>reltable</codeph> with
+        <b>no</b> <codeph>relheader</codeph>, two <codeph>relrow</codeph> elements, two <codeph>relcell</codeph>
+        children each (2×2 grid). The first cell references <filepath>GUIDES-19555-topic-source.dita</filepath>;
+        other cells are empty for you to populate in the editor when testing.</p>
+      <ul>
+        <li><filepath>GUIDES-19555-sample-map.ditamap</filepath></li>
+        <li><filepath>GUIDES-19555-topic-overview.dita</filepath></li>
+        <li><filepath>GUIDES-19555-topic-source.dita</filepath></li>
+        <li><filepath>GUIDES-19555-topic-target.dita</filepath></li>
+      </ul>
+    </section>
+    <section id="verification">
+      <title>Verification notes (Jira comments)</title>
+      <p>Engineering reported <b>not reproducible on the new editor</b> (see Manav Mittal comment, Jan 2026).
+        Prashant Pal verified on build <codeph>5.3.0.6523</codeph> with a sample map (screenshot in Jira, Mar 2026).
+        Issue status in Jira is <b>Closed</b>; this bundle remains useful as a <b>structural repro dataset</b> for
+        reltable layout and regression checks.</p>
+    </section>
+    <section id="links">
+      <title>Links</title>
+      <p>
+        <xref href="https://jira.corp.adobe.com/browse/GUIDES-19555" format="html" scope="external">GUIDES-19555
+          (Jira)</xref>
+      </p>
+      <p>
+        <xref href="https://aemcs-workspace.adobe.com/bot/dynamics/investigation/d6cc6678-e817-4a5d-a02f-d933cc256c28"
+          format="html" scope="external">Dynamics investigation (external)</xref>
+      </p>
+    </section>
+  </conbody>
+</concept>

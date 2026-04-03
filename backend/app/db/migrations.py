@@ -85,6 +85,36 @@ def run_migrations() -> None:
                     logger.info("Migration: created chat_messages table")
                 except Exception as e:
                     logger.debug("chat_messages migration skipped: %s", e)
+                try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS chat_message_feedback (
+                            id VARCHAR(36) PRIMARY KEY,
+                            message_id VARCHAR(36) NOT NULL,
+                            session_id VARCHAR(36) NOT NULL,
+                            rating VARCHAR(50) NOT NULL,
+                            correction_text TEXT,
+                            error_type VARCHAR(100),
+                            auto_detected INTEGER NOT NULL DEFAULT 0,
+                            original_snippet TEXT,
+                            correct_snippet TEXT,
+                            created_at DATETIME NOT NULL,
+                            FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                            FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created chat_message_feedback table")
+                except Exception as e:
+                    logger.debug("chat_message_feedback migration skipped: %s", e)
+                try:
+                    res = conn.execute(text("PRAGMA table_info(chat_sessions)"))
+                    cs_cols = [row[1] for row in res.fetchall()]
+                    if cs_cols and "last_generation_json" not in cs_cols:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))
+                        conn.commit()
+                        logger.info("Migration: added last_generation_json to chat_sessions")
+                except Exception as e:
+                    logger.debug("chat_sessions last_generation_json migration skipped: %s", e)
             else:
                 def col_exists(table: str, c: str) -> bool:
                     r = conn.execute(
@@ -152,5 +182,31 @@ def run_migrations() -> None:
                     logger.info("Migration: created chat_sessions and chat_messages tables")
                 except Exception as e:
                     logger.debug("chat tables migration skipped: %s", e)
+                try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS chat_message_feedback (
+                            id VARCHAR(36) PRIMARY KEY,
+                            message_id VARCHAR(36) NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+                            session_id VARCHAR(36) NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                            rating VARCHAR(50) NOT NULL,
+                            correction_text TEXT,
+                            error_type VARCHAR(100),
+                            auto_detected BOOLEAN NOT NULL DEFAULT FALSE,
+                            original_snippet TEXT,
+                            correct_snippet TEXT,
+                            created_at TIMESTAMP NOT NULL
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created chat_message_feedback table (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("chat_message_feedback migration skipped: %s", e)
+                try:
+                    if col_exists("chat_sessions", "last_generation_json") is False:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))
+                        conn.commit()
+                        logger.info("Migration: added last_generation_json to chat_sessions (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("chat_sessions last_generation_json migration skipped: %s", e)
     except Exception as e:
         logger.warning("Migration skipped or failed (table may not exist yet): %s", e)

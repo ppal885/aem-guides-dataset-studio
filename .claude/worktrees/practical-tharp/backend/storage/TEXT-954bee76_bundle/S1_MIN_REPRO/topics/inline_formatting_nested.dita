@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="inline_formatting" xml:lang="en">
+  <title>Inline Formatting Nested Tags</title>
+  <shortdesc>Topic with nested bold, italic, and underline for RTE cursor navigation reproduction.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-15" /></metadata></prolog><body>
+    <p>
+      Place cursor before the tag and use arrow keys: 
+      <b>
+        bold 
+        <i>
+          italic 
+          <u>underline</u>
+        </i>
+      </b>
+       and navigate back.
+    </p>
+    <p>
+      Alternate nesting: 
+      <u>
+        underline 
+        <i>
+          italic 
+          <b>bold</b>
+        </i>
+      </u>
+       text.
+    </p>
+  </body>
+</topic>

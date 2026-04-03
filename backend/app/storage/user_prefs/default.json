@@ -1,0 +1,50 @@
+{
+  "author_id": "default",
+  "display_name": "",
+  "email": "",
+  "created_at": "2026-03-21T19:45:34.889837",
+  "updated_at": "2026-03-21T20:53:52.656136",
+  "last_issue_key": "SWC-1598",
+  "last_issue_summary": "Add 2nd-gen a11y test job to CircleCI",
+  "last_dita_type": "concept",
+  "last_stage": "done",
+  "dita_type_map": {
+    "Bug": "task",
+    "Story": "concept",
+    "Task": "task",
+    "Epic": "concept",
+    "Sub-task": "task",
+    "Improvement": "task"
+  },
+  "recent_issues": [
+    {
+      "issue_key": "SWC-1598",
+      "summary": "Add 2nd-gen a11y test job to CircleCI",
+      "dita_type": "concept",
+      "opened_at": "2026-03-21T20:53:52.656129"
+    },
+    {
+      "issue_key": "GUIDES-35263",
+      "summary": "Getting error in splunk in case of native aem site publishing.",
+      "dita_type": "task",
+      "opened_at": "2026-03-21T20:33:30.796270"
+    }
+  ],
+  "saved_queries": {
+    "dita_elements": [],
+    "aem_guides": [],
+    "bugs_fixes": [],
+    "expert_examples": [],
+    "dita_spec": []
+  },
+  "auto_approve_sections": [],
+  "always_review_sections": [],
+  "min_quality_score": 80,
+  "default_tab": "preview",
+  "show_research_step": true,
+  "compact_mode": false,
+  "total_topics_generated": 0,
+  "total_topics_approved": 0,
+  "total_topics_rejected": 0,
+  "total_scratch_started": 0
+}

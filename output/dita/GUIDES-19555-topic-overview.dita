@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="guides_19555_overview" xml:lang="en-US">
+  <title>GUIDES-19555 — Map sibling topic</title>
+  <shortdesc>Ordinary topicref on the sample map (outside the reltable).</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-24" /></metadata></prolog><body>
+    <p>This topic is included so the map is not reltable-only.</p>
+  </body>
+</topic>

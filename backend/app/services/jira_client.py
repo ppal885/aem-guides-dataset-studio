@@ -1,6 +1,5 @@
 """Jira REST API client."""
 import os
-import re
 from typing import Optional
 import httpx
 
@@ -216,90 +215,19 @@ def _adf_to_plain_text(adf: dict) -> str:
     """Extract plain text from Atlassian Document Format (ADF)."""
     if not adf or not isinstance(adf, dict):
         return ""
-    text = _adf_node_to_text(adf).strip()
-    return _normalize_adf_text(text)
-
-
-def _adf_node_to_text(node: object) -> str:
-    if isinstance(node, str):
-        return node
-    if not isinstance(node, dict):
-        return ""
-
-    node_type = str(node.get("type") or "").strip()
-    attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
-    content = node.get("content") if isinstance(node.get("content"), list) else []
-
-    if node_type == "text":
-        text = str(node.get("text") or "")
-        for mark in node.get("marks") or []:
-            if not isinstance(mark, dict):
-                continue
-            if mark.get("type") == "link":
-                href = str((mark.get("attrs") or {}).get("href") or "").strip()
-                if href and href not in text:
-                    text = f"{text} ({href})"
-        return text
-    if node_type == "hardBreak":
-        return "\n"
-    if node_type == "mention":
-        return str(attrs.get("text") or attrs.get("id") or "").strip()
-    if node_type == "emoji":
-        return str(attrs.get("text") or attrs.get("shortName") or "").strip()
-    if node_type in {"inlineCard", "blockCard", "embedCard"}:
-        return str(attrs.get("url") or attrs.get("title") or "").strip()
-    if node_type == "status":
-        return str(attrs.get("text") or "").strip()
-    if node_type == "date":
-        return str(attrs.get("timestamp") or "").strip()
-
-    child_text = [_adf_node_to_text(child) for child in content]
-
-    if node_type in {"doc", "panel", "blockquote", "tableCell", "tableHeader"}:
-        return "\n".join(part.strip() for part in child_text if part.strip())
-    if node_type in {"paragraph", "heading"}:
-        return "".join(child_text).strip()
-    if node_type == "codeBlock":
-        code = "".join(child_text).strip()
-        return f"\n{code}\n" if code else ""
-    if node_type == "listItem":
-        parts = [part.strip() for part in child_text if part.strip()]
-        return "\n".join(parts)
-    if node_type == "bulletList":
-        items = []
-        for item in content:
-            rendered = _normalize_adf_text(_adf_node_to_text(item))
-            if rendered:
-                items.append(f"- {rendered}")
-        return "\n".join(items)
-    if node_type == "orderedList":
-        items = []
-        for index, item in enumerate(content, start=1):
-            rendered = _normalize_adf_text(_adf_node_to_text(item))
-            if rendered:
-                items.append(f"{index}. {rendered}")
-        return "\n".join(items)
-    if node_type == "tableRow":
-        cells = [_normalize_adf_text(part) for part in child_text if _normalize_adf_text(part)]
-        return " | ".join(cells)
-    if node_type == "table":
-        rows = [part.strip() for part in child_text if part.strip()]
-        return "\n".join(rows)
-    if node_type in {"mediaSingle", "mediaGroup"}:
-        return ""
-
-    return "".join(child_text)
-
-
-def _normalize_adf_text(text: str) -> str:
-    lines = []
-    for raw_line in str(text or "").splitlines():
-        stripped = re.sub(r"[ \t]+", " ", raw_line).strip()
-        if stripped:
-            lines.append(stripped)
-    normalized = "\n".join(lines)
-    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
-    return normalized.strip()
+    parts = []
+    for block in adf.get("content", []):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "paragraph":
+            for c in block.get("content", []):
+                if isinstance(c, dict) and c.get("type") == "text" and "text" in c:
+                    parts.append(c["text"])
+        elif block.get("type") == "codeBlock":
+            for c in block.get("content", []):
+                if isinstance(c, dict) and c.get("type") == "text" and "text" in c:
+                    parts.append(c["text"])
+    return " ".join(parts).strip()
 
 
 def extract_description_from_issue(issue: dict) -> str:

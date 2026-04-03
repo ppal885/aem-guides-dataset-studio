@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="t_self_ref" xml:lang="en">
+  <title>Self-Reference Topic</title>
+  <shortdesc>Topic: Self-Reference Topic</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-06" /></metadata></prolog><body>
+    <p>
+      This topic references itself: 
+      <xref keyref="self" />
+      . The key "self" in the map points to this same topic. In AEM Guides, the right panel (outgoing links / forward reference) should show this self-reference.
+    </p>
+  </body>
+</topic>

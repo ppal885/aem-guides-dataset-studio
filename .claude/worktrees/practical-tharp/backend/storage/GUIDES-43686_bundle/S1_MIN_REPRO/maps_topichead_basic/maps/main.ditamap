@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="t_f8a29251">
+  <title>Topichead Basic</title>
+  <topichead navtitle="Getting Started">
+    <topicref href="../topics/intro.dita" navtitle="Introduction"/>
+    <topicref href="../topics/install.dita" navtitle="Installation"/>
+  </topichead>
+  <topichead navtitle="Advanced">
+    <topicref href="../topics/advanced.dita" navtitle="Advanced Topics"/>
+  </topichead>
+</map>

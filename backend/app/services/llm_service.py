@@ -17,7 +17,7 @@ logger = get_structured_logger(__name__)
 obs_log = get_observability_logger("llm")
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
-ANTHROPIC_FALLBACK_MODEL = os.getenv("ANTHROPIC_FALLBACK_MODEL", "claude-3-haiku-20240307").strip() or None
+ANTHROPIC_FALLBACK_MODEL = os.getenv("ANTHROPIC_FALLBACK_MODEL", "").strip() or None
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # Bedrock (Claude Code setup at Adobe: Shared Bedrock or Project Turnkey)
@@ -34,7 +34,13 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
-LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "groq").lower().strip()
+LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "").lower().strip()
+
+# Reasoning / quality tuning — configurable via .env
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))           # generation (JSON, text)
+LLM_TEMPERATURE_CHAT = float(os.getenv("LLM_TEMPERATURE_CHAT", "0.15"))  # chat streaming
+LLM_TOP_P = float(os.getenv("LLM_TOP_P", "0.85"))                     # nucleus sampling
+LLM_FREQUENCY_PENALTY = float(os.getenv("LLM_FREQUENCY_PENALTY", "0.1"))  # reduce repetition
 
 # Circuit breaker (env-gated, default off)
 CIRCUIT_BREAKER_ENABLED = os.getenv("LLM_CIRCUIT_BREAKER_ENABLED", "").lower() in ("true", "1", "yes")
@@ -223,6 +229,59 @@ def _is_retryable_llm_error(e: Exception) -> bool:
     return False
 
 
+def _flatten_exception_messages(exc: BaseException | None) -> str:
+    """Collect nested exception messages into one searchable string."""
+    seen: set[int] = set()
+    parts: list[str] = []
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        text = str(current).strip()
+        if text:
+            parts.append(text)
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+    return " | ".join(parts)
+
+
+def _is_stream_unpack_bug(e: Exception) -> bool:
+    """Detect the Anthropic/Bedrock streaming unpack bug so we can retry non-streaming."""
+    lowered = _flatten_exception_messages(e).lower()
+    return (
+        "not enough values to unpack" in lowered
+        and "expected 2" in lowered
+        and "got 1" in lowered
+    )
+
+
+def _anthropic_usage_to_dict(usage) -> dict[str, int] | None:
+    if not usage:
+        return None
+    return {
+        "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+        "output_tokens": getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0) or 0,
+    }
+
+
+def _anthropic_message_parts(message) -> tuple[list[str], list[dict[str, object]]]:
+    texts: list[str] = []
+    tool_blocks: list[dict[str, object]] = []
+    for block in getattr(message, "content", None) or []:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            text = getattr(block, "text", None)
+            if text:
+                texts.append(str(text))
+        elif block_type == "tool_use":
+            tool_blocks.append(
+                {
+                    "id": getattr(block, "id", ""),
+                    "name": getattr(block, "name", ""),
+                    "input": getattr(block, "input", {}) or {},
+                }
+            )
+    return texts, tool_blocks
+
+
 def _provider_has_credentials(provider: str) -> bool:
     provider = (provider or "").lower().strip()
     if provider == "groq":
@@ -253,6 +312,23 @@ def _get_chat_fallback_provider(primary_provider: str) -> str | None:
     if _provider_has_credentials(candidate):
         return candidate
     return None
+
+
+def _get_generation_fallback(primary_provider: str) -> tuple[str | None, object | None, str | None]:
+    """Resolve explicit fallback for JSON/text generation only when configured."""
+    candidate = (LLM_FALLBACK_PROVIDER or "").lower().strip()
+    if not candidate or candidate == primary_provider:
+        return None, None, None
+    if candidate == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
+        return GROQ_MODEL, _generate_groq, None
+    if candidate == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
+        return OPENAI_MODEL, _generate_openai, None
+    if candidate == "bedrock" and _is_bedrock_available():
+        return BEDROCK_MODEL, _generate_bedrock, None
+    if candidate == "anthropic" and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip():
+        model = ANTHROPIC_FALLBACK_MODEL or ANTHROPIC_MODEL
+        return model, _generate_anthropic, model
+    return None, None, None
 
 
 def format_llm_error_for_user(
@@ -332,26 +408,29 @@ async def _generate_bedrock(
     timeout_sec: float,
     model: Optional[str] = None,
 ) -> Tuple[str, Optional[int], Optional[int]]:
-    """Call Claude via AWS Bedrock. Returns (content, input_tokens, output_tokens)."""
+    """Call Claude via AWS Bedrock with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
     client = _get_bedrock_client()
     model_to_use = model or BEDROCK_MODEL
-    response = await client.messages.create(
+    chunks: list[str] = []
+    input_tok = output_tok = None
+    async with client.messages.stream(
         model=model_to_use,
         max_tokens=max_tokens,
-        temperature=0.1,
+        temperature=LLM_TEMPERATURE,
+        top_p=LLM_TOP_P,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
         timeout=timeout_sec,
-    )
-    content = ""
-    if response.content:
-        for block in response.content:
-            if hasattr(block, "text"):
-                content += block.text
-    usage = getattr(response, "usage", None)
-    input_tok = getattr(usage, "input_tokens", None) if usage else None
-    output_tok = getattr(usage, "output_tokens", None) if usage else None
-    return content, input_tok, output_tok
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                chunks.append(text)
+        msg = await stream.get_final_message()
+        usage = getattr(msg, "usage", None)
+        if usage:
+            input_tok = getattr(usage, "input_tokens", None)
+            output_tok = getattr(usage, "output_tokens", None)
+    return "".join(chunks), input_tok, output_tok
 
 
 async def _generate_anthropic(
@@ -361,7 +440,7 @@ async def _generate_anthropic(
     timeout_sec: float,
     model: Optional[str] = None,
 ) -> Tuple[str, Optional[int], Optional[int]]:
-    """Call Anthropic API. Returns (content, input_tokens, output_tokens)."""
+    """Call Anthropic API with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
     try:
         import anthropic
     except ImportError:
@@ -370,26 +449,27 @@ async def _generate_anthropic(
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
     client = _wrap_for_tracing(client)
     model_to_use = model or ANTHROPIC_MODEL
-    response = await client.messages.create(
+    chunks: list[str] = []
+    input_tok = output_tok = None
+    async with client.messages.stream(
         model=model_to_use,
         max_tokens=max_tokens,
-        temperature=0.1,
+        temperature=LLM_TEMPERATURE,
+        top_p=LLM_TOP_P,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
         timeout=timeout_sec,
-    )
+    ) as stream:
+        async for text in stream.text_stream:
+            if text:
+                chunks.append(text)
+        msg = await stream.get_final_message()
+        usage = getattr(msg, "usage", None)
+        if usage:
+            input_tok = getattr(usage, "input_tokens", None)
+            output_tok = getattr(usage, "output_tokens", None)
 
-    content = ""
-    if response.content:
-        for block in response.content:
-            if hasattr(block, "text"):
-                content += block.text
-
-    usage = getattr(response, "usage", None)
-    input_tok = getattr(usage, "input_tokens", None) if usage else None
-    output_tok = getattr(usage, "output_tokens", None) if usage else None
-
-    return content, input_tok, output_tok
+    return "".join(chunks), input_tok, output_tok
 
 
 async def _generate_groq(
@@ -398,7 +478,7 @@ async def _generate_groq(
     max_tokens: int,
     timeout_sec: float,
 ) -> Tuple[str, Optional[int], Optional[int]]:
-    """Call Groq API (OpenAI-compatible). Returns (content, input_tokens, output_tokens)."""
+    """Call Groq API (OpenAI-compatible) with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
     try:
         from openai import AsyncOpenAI
     except ImportError:
@@ -421,25 +501,28 @@ async def _generate_groq(
         {"role": "user", "content": user_prompt},
     ]
 
-    response = await client.chat.completions.create(
+    chunks: list[str] = []
+    input_tok = output_tok = None
+    stream = await client.chat.completions.create(
         model=GROQ_MODEL,
         messages=messages,
         max_tokens=max_tokens,
-        temperature=0.1,
+        temperature=LLM_TEMPERATURE,
+        top_p=LLM_TOP_P,
+        frequency_penalty=LLM_FREQUENCY_PENALTY,
+        stream=True,
+        stream_options={"include_usage": True},
     )
+    async for chunk in stream:
+        if hasattr(chunk, "usage") and chunk.usage:
+            input_tok = getattr(chunk.usage, "prompt_tokens", None)
+            output_tok = getattr(chunk.usage, "completion_tokens", None)
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if delta and hasattr(delta, "content") and delta.content:
+                chunks.append(delta.content)
 
-    content = ""
-    if response.choices and len(response.choices) > 0:
-        msg = response.choices[0].message
-        if msg and hasattr(msg, "content") and msg.content:
-            content = msg.content
-
-    input_tok = output_tok = None
-    if response.usage:
-        input_tok = getattr(response.usage, "prompt_tokens", None)
-        output_tok = getattr(response.usage, "completion_tokens", None)
-
-    return content, input_tok, output_tok
+    return "".join(chunks), input_tok, output_tok
 
 
 async def _generate_openai(
@@ -448,7 +531,7 @@ async def _generate_openai(
     max_tokens: int,
     timeout_sec: float,
 ) -> Tuple[str, Optional[int], Optional[int]]:
-    """Call OpenAI API. Returns (content, input_tokens, output_tokens)."""
+    """Call OpenAI API with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
     try:
         from openai import AsyncOpenAI
     except ImportError:
@@ -470,25 +553,28 @@ async def _generate_openai(
         {"role": "user", "content": user_prompt},
     ]
 
-    response = await client.chat.completions.create(
+    chunks: list[str] = []
+    input_tok = output_tok = None
+    stream = await client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=messages,
         max_tokens=max_tokens,
-        temperature=0.1,
+        temperature=LLM_TEMPERATURE,
+        top_p=LLM_TOP_P,
+        frequency_penalty=LLM_FREQUENCY_PENALTY,
+        stream=True,
+        stream_options={"include_usage": True},
     )
+    async for chunk in stream:
+        if hasattr(chunk, "usage") and chunk.usage:
+            input_tok = getattr(chunk.usage, "prompt_tokens", None)
+            output_tok = getattr(chunk.usage, "completion_tokens", None)
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if delta and hasattr(delta, "content") and delta.content:
+                chunks.append(delta.content)
 
-    content = ""
-    if response.choices and len(response.choices) > 0:
-        msg = response.choices[0].message
-        if msg and hasattr(msg, "content") and msg.content:
-            content = msg.content
-
-    input_tok = output_tok = None
-    if response.usage:
-        input_tok = getattr(response.usage, "prompt_tokens", None)
-        output_tok = getattr(response.usage, "completion_tokens", None)
-
-    return content, input_tok, output_tok
+    return "".join(chunks), input_tok, output_tok
 
 
 async def generate_chat_stream(
@@ -602,15 +688,13 @@ async def generate_chat_stream_with_tools(
 
     async def _stream_from(active_provider: str) -> AsyncGenerator[Tuple[str, object], None]:
         if active_provider == "groq":
-            async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
-                yield ("chunk", chunk)
-            yield ("done", None)
+            async for evt in _stream_with_tools_groq(system_prompt, messages, tools, max_tokens, timeout_sec):
+                yield evt
             return
 
         if active_provider == "openai":
-            async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
-                yield ("chunk", chunk)
-            yield ("done", None)
+            async for evt in _stream_with_tools_openai(system_prompt, messages, tools, max_tokens, timeout_sec):
+                yield evt
             return
 
         if active_provider == "bedrock":
@@ -673,41 +757,47 @@ async def _stream_with_tools_anthropic(
     """Stream with tools via Anthropic API. Yields (chunk, text) or (tool_use_blocks, blocks) or (done,)."""
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
-    async with client.messages.stream(
-        model=ANTHROPIC_MODEL,
-        max_tokens=max_tokens,
-        temperature=0.2,
-        system=system_prompt,
-        messages=messages,
-        tools=tools,
-        tool_choice={"type": "auto"},
-        timeout=timeout_sec,
-    ) as stream:
-        async for text in stream.text_stream:
-            if text:
-                yield ("chunk", text)
-        msg = await stream.get_final_message()
-        usage = None
-        if getattr(msg, "usage", None):
-            u = msg.usage
-            usage = {
-                "input_tokens": getattr(u, "input_tokens", 0) or 0,
-                "output_tokens": getattr(u, "output_tokens", 0) or getattr(u, "completion_tokens", 0) or 0,
-            }
-        if msg.stop_reason == "tool_use":
-            blocks = [
-                {"id": b.id, "name": b.name, "input": b.input}
-                for b in msg.content
-                if getattr(b, "type", None) == "tool_use"
-            ]
-            if blocks:
-                if usage:
-                    yield ("usage", usage)
-                yield ("tool_use_blocks", blocks)
-                return
+    request_kwargs = {
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "system": system_prompt,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": {"type": "auto"},
+        "timeout": timeout_sec,
+    }
+    emitted_any = False
+    try:
+        async with client.messages.stream(**request_kwargs) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    emitted_any = True
+                    yield ("chunk", text)
+            msg = await stream.get_final_message()
+    except Exception as exc:
+        if emitted_any or not _is_stream_unpack_bug(exc):
+            raise
+        logger.warning_structured(
+            "Anthropic stream hit unpack bug; retrying non-streaming request",
+            extra_fields={"error": _flatten_exception_messages(exc)},
+        )
+        msg = await client.messages.create(**request_kwargs)
+
+    usage = _anthropic_usage_to_dict(getattr(msg, "usage", None))
+    text_parts, tool_blocks = _anthropic_message_parts(msg)
+    for text in text_parts:
+        if text:
+            yield ("chunk", text)
+    if getattr(msg, "stop_reason", None) == "tool_use" and tool_blocks:
         if usage:
             yield ("usage", usage)
-        yield ("done", None)
+        yield ("tool_use_blocks", tool_blocks)
+        return
+    if usage:
+        yield ("usage", usage)
+    yield ("done", None)
 
 
 async def _stream_with_tools_bedrock(
@@ -719,41 +809,47 @@ async def _stream_with_tools_bedrock(
 ) -> AsyncGenerator[Tuple[str, object], None]:
     """Stream with tools via Bedrock. Same yield format as Anthropic."""
     client = _get_bedrock_client()
-    async with client.messages.stream(
-        model=BEDROCK_MODEL,
-        max_tokens=max_tokens,
-        temperature=0.2,
-        system=system_prompt,
-        messages=messages,
-        tools=tools,
-        tool_choice={"type": "auto"},
-        timeout=timeout_sec,
-    ) as stream:
-        async for text in stream.text_stream:
-            if text:
-                yield ("chunk", text)
-        msg = await stream.get_final_message()
-        usage = None
-        if getattr(msg, "usage", None):
-            u = msg.usage
-            usage = {
-                "input_tokens": getattr(u, "input_tokens", 0) or 0,
-                "output_tokens": getattr(u, "output_tokens", 0) or getattr(u, "completion_tokens", 0) or 0,
-            }
-        if msg.stop_reason == "tool_use":
-            blocks = [
-                {"id": b.id, "name": b.name, "input": b.input}
-                for b in msg.content
-                if getattr(b, "type", None) == "tool_use"
-            ]
-            if blocks:
-                if usage:
-                    yield ("usage", usage)
-                yield ("tool_use_blocks", blocks)
-                return
+    request_kwargs = {
+        "model": BEDROCK_MODEL,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "system": system_prompt,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": {"type": "auto"},
+        "timeout": timeout_sec,
+    }
+    emitted_any = False
+    try:
+        async with client.messages.stream(**request_kwargs) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    emitted_any = True
+                    yield ("chunk", text)
+            msg = await stream.get_final_message()
+    except Exception as exc:
+        if emitted_any or not _is_stream_unpack_bug(exc):
+            raise
+        logger.warning_structured(
+            "Bedrock stream hit unpack bug; retrying non-streaming request",
+            extra_fields={"error": _flatten_exception_messages(exc)},
+        )
+        msg = await client.messages.create(**request_kwargs)
+
+    usage = _anthropic_usage_to_dict(getattr(msg, "usage", None))
+    text_parts, tool_blocks = _anthropic_message_parts(msg)
+    for text in text_parts:
+        if text:
+            yield ("chunk", text)
+    if getattr(msg, "stop_reason", None) == "tool_use" and tool_blocks:
         if usage:
             yield ("usage", usage)
-        yield ("done", None)
+        yield ("tool_use_blocks", tool_blocks)
+        return
+    if usage:
+        yield ("usage", usage)
+    yield ("done", None)
 
 
 async def _generate_chat_stream_anthropic(
@@ -770,18 +866,35 @@ async def _generate_chat_stream_anthropic(
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=timeout_sec)
     model_to_use = ANTHROPIC_MODEL
-
-    async with client.messages.stream(
-        model=model_to_use,
-        max_tokens=max_tokens,
-        temperature=0.2,
-        system=system_prompt,
-        messages=messages,
-        timeout=timeout_sec,
-    ) as stream:
-        async for text in stream.text_stream:
-            if text:
-                yield text
+    request_kwargs = {
+        "model": model_to_use,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "system": system_prompt,
+        "messages": messages,
+        "timeout": timeout_sec,
+    }
+    emitted_any = False
+    try:
+        async with client.messages.stream(**request_kwargs) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    emitted_any = True
+                    yield text
+            return
+    except Exception as exc:
+        if emitted_any or not _is_stream_unpack_bug(exc):
+            raise
+        logger.warning_structured(
+            "Anthropic chat stream hit unpack bug; retrying non-streaming request",
+            extra_fields={"error": _flatten_exception_messages(exc)},
+        )
+    msg = await client.messages.create(**request_kwargs)
+    text_parts, _tool_blocks = _anthropic_message_parts(msg)
+    for text in text_parts:
+        if text:
+            yield text
 
 
 async def _generate_chat_stream_bedrock(
@@ -793,26 +906,153 @@ async def _generate_chat_stream_bedrock(
     """Stream via AWS Bedrock (Claude Code setup at Adobe)."""
     client = _get_bedrock_client()
     model_to_use = BEDROCK_MODEL
-    async with client.messages.stream(
-        model=model_to_use,
-        max_tokens=max_tokens,
-        temperature=0.2,
-        system=system_prompt,
-        messages=messages,
-        timeout=timeout_sec,
-    ) as stream:
-        async for text in stream.text_stream:
-            if text:
-                yield text
+    request_kwargs = {
+        "model": model_to_use,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "system": system_prompt,
+        "messages": messages,
+        "timeout": timeout_sec,
+    }
+    emitted_any = False
+    try:
+        async with client.messages.stream(**request_kwargs) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    emitted_any = True
+                    yield text
+            return
+    except Exception as exc:
+        if emitted_any or not _is_stream_unpack_bug(exc):
+            raise
+        logger.warning_structured(
+            "Bedrock chat stream hit unpack bug; retrying non-streaming request",
+            extra_fields={"error": _flatten_exception_messages(exc)},
+        )
+    msg = await client.messages.create(**request_kwargs)
+    text_parts, _tool_blocks = _anthropic_message_parts(msg)
+    for text in text_parts:
+        if text:
+            yield text
 
 
-async def _generate_chat_stream_groq(
+def _anthropic_tools_to_openai(tools: list[dict]) -> list[dict]:
+    """Convert Anthropic-style tool definitions to OpenAI/Groq function calling format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": t.get("input_schema", {}),
+            },
+        }
+        for t in tools
+    ]
+
+
+def _flatten_anthropic_content(content) -> str:
+    """Flatten Anthropic-style content blocks (list of dicts) to a plain string."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                parts.append(block.get("text") or block.get("content") or str(block))
+            else:
+                parts.append(str(block))
+        return "\n".join(parts)
+    return str(content) if content else ""
+
+
+def _coerce_llm_text_response(value: object) -> str:
+    """Normalize provider completion payloads to a string (avoids .strip() on dict/list)."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(value)
+    if isinstance(value, list):
+        return _flatten_anthropic_content(value)
+    return str(value)
+
+
+def _build_openai_messages(system_prompt: str, messages: list[dict]) -> list[dict]:
+    """Convert Anthropic-style messages to OpenAI format, including tool call/result messages.
+
+    Handles:
+    - Regular user/assistant text messages
+    - Assistant messages with tool_use blocks → OpenAI tool_calls format
+    - User messages with tool_result blocks → OpenAI role=tool messages
+    """
+    openai_messages = [{"role": "system", "content": system_prompt}]
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+
+        # Handle assistant messages with Anthropic tool_use blocks
+        if role == "assistant" and isinstance(content, list):
+            text_parts = []
+            tool_calls = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "tool_use":
+                        tool_calls.append({
+                            "id": block.get("id", ""),
+                            "type": "function",
+                            "function": {
+                                "name": block.get("name", ""),
+                                "arguments": json.dumps(block.get("input", {})),
+                            },
+                        })
+                    else:
+                        text_parts.append(block.get("text") or block.get("content") or "")
+                else:
+                    text_parts.append(str(block))
+            msg: dict = {"role": "assistant", "content": "\n".join(text_parts) or None}
+            if tool_calls:
+                msg["tool_calls"] = tool_calls
+            openai_messages.append(msg)
+            continue
+
+        # Handle user messages with Anthropic tool_result blocks
+        if role == "user" and isinstance(content, list):
+            has_tool_results = any(
+                isinstance(block, dict) and block.get("type") == "tool_result"
+                for block in content
+            )
+            if has_tool_results:
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        openai_messages.append({
+                            "role": "tool",
+                            "tool_call_id": block.get("tool_use_id", ""),
+                            "content": block.get("content", ""),
+                        })
+                continue
+            # Regular user message with content blocks
+            content = _flatten_anthropic_content(content)
+
+        content = _flatten_anthropic_content(content)
+        if role in ("user", "assistant") and content:
+            openai_messages.append({"role": role, "content": content})
+    return openai_messages
+
+
+async def _stream_with_tools_groq(
     system_prompt: str,
     messages: list[dict],
+    tools: list[dict],
     max_tokens: int,
     timeout_sec: float,
-) -> AsyncGenerator[str, None]:
-    """Stream via Groq API (OpenAI-compatible)."""
+) -> AsyncGenerator[Tuple[str, object], None]:
+    """Stream with tool support via Groq API (OpenAI-compatible). Same yield format as Anthropic."""
     try:
         from openai import AsyncOpenAI
     except ImportError:
@@ -824,36 +1064,98 @@ async def _generate_chat_stream_groq(
         timeout=timeout_sec,
     )
 
-    # Convert to OpenAI format: system + alternating user/assistant
-    openai_messages = [{"role": "system", "content": system_prompt}]
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-        if role in ("user", "assistant"):
-            openai_messages.append({"role": role, "content": content})
+    openai_messages = _build_openai_messages(system_prompt, messages)
+    openai_tools = _anthropic_tools_to_openai(tools) if tools else None
 
-    stream = await client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=openai_messages,
-        max_tokens=max_tokens,
-        temperature=0.2,
-        stream=True,
-    )
+    kwargs = {
+        "model": GROQ_MODEL,
+        "messages": openai_messages,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "frequency_penalty": LLM_FREQUENCY_PENALTY,
+        "stream": True,
+    }
+    if openai_tools:
+        kwargs["tools"] = openai_tools
+        kwargs["tool_choice"] = "auto"
+
+    stream = await client.chat.completions.create(**kwargs)
+
+    # Accumulate tool calls across streamed chunks
+    tool_calls_acc: dict[int, dict] = {}  # index -> {id, name, arguments}
+    input_tok = output_tok = None
 
     async for chunk in stream:
-        if chunk.choices and len(chunk.choices) > 0:
-            delta = chunk.choices[0].delta
-            if delta and hasattr(delta, "content") and delta.content:
-                yield delta.content
+        if hasattr(chunk, "usage") and chunk.usage:
+            input_tok = getattr(chunk.usage, "prompt_tokens", None)
+            output_tok = getattr(chunk.usage, "completion_tokens", None)
+
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+
+        # Stream text content
+        if delta and hasattr(delta, "content") and delta.content:
+            yield ("chunk", delta.content)
+
+        # Accumulate tool calls
+        if delta and hasattr(delta, "tool_calls") and delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in tool_calls_acc:
+                    tool_calls_acc[idx] = {
+                        "id": getattr(tc, "id", None) or f"call_{idx}",
+                        "name": "",
+                        "arguments": "",
+                    }
+                if tc.function:
+                    if tc.function.name:
+                        tool_calls_acc[idx]["name"] = tc.function.name
+                    if tc.function.arguments:
+                        tool_calls_acc[idx]["arguments"] += tc.function.arguments
+
+        # Check for finish reason
+        if choice.finish_reason == "tool_calls":
+            break
+
+    # Emit usage if available
+    if input_tok is not None or output_tok is not None:
+        yield ("usage", {
+            "input_tokens": input_tok or 0,
+            "output_tokens": output_tok or 0,
+        })
+
+    # Emit tool_use_blocks if any tool calls were accumulated
+    if tool_calls_acc:
+        blocks = []
+        for idx in sorted(tool_calls_acc.keys()):
+            tc = tool_calls_acc[idx]
+            try:
+                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+            except json.JSONDecodeError:
+                args = {}
+            blocks.append({
+                "id": tc["id"],
+                "name": tc["name"],
+                "input": args,
+            })
+        if blocks:
+            yield ("tool_use_blocks", blocks)
+            return
+
+    yield ("done", None)
 
 
-async def _generate_chat_stream_openai(
+async def _stream_with_tools_openai(
     system_prompt: str,
     messages: list[dict],
+    tools: list[dict],
     max_tokens: int,
     timeout_sec: float,
-) -> AsyncGenerator[str, None]:
-    """Stream via OpenAI API."""
+) -> AsyncGenerator[Tuple[str, object], None]:
+    """Stream with tool support via OpenAI API. Same yield format as Anthropic."""
     try:
         from openai import AsyncOpenAI
     except ImportError:
@@ -870,18 +1172,153 @@ async def _generate_chat_stream_openai(
         except ImportError:
             pass
 
-    openai_messages = [{"role": "system", "content": system_prompt}]
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-        if role in ("user", "assistant"):
-            openai_messages.append({"role": role, "content": content})
+    openai_messages = _build_openai_messages(system_prompt, messages)
+    openai_tools = _anthropic_tools_to_openai(tools) if tools else None
+
+    kwargs = {
+        "model": OPENAI_MODEL,
+        "messages": openai_messages,
+        "max_tokens": max_tokens,
+        "temperature": LLM_TEMPERATURE_CHAT,
+        "top_p": LLM_TOP_P,
+        "frequency_penalty": LLM_FREQUENCY_PENALTY,
+        "stream": True,
+    }
+    if openai_tools:
+        kwargs["tools"] = openai_tools
+        kwargs["tool_choice"] = "auto"
+
+    stream = await client.chat.completions.create(**kwargs)
+
+    tool_calls_acc: dict[int, dict] = {}
+    input_tok = output_tok = None
+
+    async for chunk in stream:
+        if hasattr(chunk, "usage") and chunk.usage:
+            input_tok = getattr(chunk.usage, "prompt_tokens", None)
+            output_tok = getattr(chunk.usage, "completion_tokens", None)
+
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+
+        if delta and hasattr(delta, "content") and delta.content:
+            yield ("chunk", delta.content)
+
+        if delta and hasattr(delta, "tool_calls") and delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in tool_calls_acc:
+                    tool_calls_acc[idx] = {
+                        "id": getattr(tc, "id", None) or f"call_{idx}",
+                        "name": "",
+                        "arguments": "",
+                    }
+                if tc.function:
+                    if tc.function.name:
+                        tool_calls_acc[idx]["name"] = tc.function.name
+                    if tc.function.arguments:
+                        tool_calls_acc[idx]["arguments"] += tc.function.arguments
+
+        if choice.finish_reason == "tool_calls":
+            break
+
+    if input_tok is not None or output_tok is not None:
+        yield ("usage", {
+            "input_tokens": input_tok or 0,
+            "output_tokens": output_tok or 0,
+        })
+
+    if tool_calls_acc:
+        blocks = []
+        for idx in sorted(tool_calls_acc.keys()):
+            tc = tool_calls_acc[idx]
+            try:
+                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+            except json.JSONDecodeError:
+                args = {}
+            blocks.append({
+                "id": tc["id"],
+                "name": tc["name"],
+                "input": args,
+            })
+        if blocks:
+            yield ("tool_use_blocks", blocks)
+            return
+
+    yield ("done", None)
+
+
+async def _generate_chat_stream_groq(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via Groq API (OpenAI-compatible) without tools."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for Groq. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        base_url=GROQ_BASE_URL,
+        api_key=GROQ_API_KEY,
+        timeout=timeout_sec,
+    )
+
+    openai_messages = _build_openai_messages(system_prompt, messages)
+
+    stream = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=openai_messages,
+        max_tokens=max_tokens,
+        temperature=LLM_TEMPERATURE_CHAT,
+        top_p=LLM_TOP_P,
+        frequency_penalty=LLM_FREQUENCY_PENALTY,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta
+            if delta and hasattr(delta, "content") and delta.content:
+                yield delta.content
+
+
+async def _generate_chat_stream_openai(
+    system_prompt: str,
+    messages: list[dict],
+    max_tokens: int,
+    timeout_sec: float,
+) -> AsyncGenerator[str, None]:
+    """Stream via OpenAI API without tools."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
+
+    client = AsyncOpenAI(
+        api_key=OPENAI_API_KEY,
+        timeout=timeout_sec,
+    )
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.wrappers import wrap_openai
+            client = wrap_openai(client)
+        except ImportError:
+            pass
+
+    openai_messages = _build_openai_messages(system_prompt, messages)
 
     stream = await client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=openai_messages,
         max_tokens=max_tokens,
-        temperature=0.2,
+        temperature=LLM_TEMPERATURE_CHAT,
+        top_p=LLM_TOP_P,
+        frequency_penalty=LLM_FREQUENCY_PENALTY,
         stream=True,
     )
 
@@ -922,15 +1359,7 @@ async def _generate_json_impl(
         return ANTHROPIC_MODEL, _generate_anthropic, None
 
     def _get_fallback():
-        if LLM_FALLBACK_PROVIDER == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
-            return GROQ_MODEL, _generate_groq, None
-        if LLM_FALLBACK_PROVIDER == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
-            return OPENAI_MODEL, _generate_openai, None
-        if LLM_FALLBACK_PROVIDER == "bedrock" and _is_bedrock_available():
-            return BEDROCK_MODEL, _generate_bedrock, None
-        if ANTHROPIC_FALLBACK_MODEL and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip():
-            return ANTHROPIC_FALLBACK_MODEL, _generate_anthropic, ANTHROPIC_FALLBACK_MODEL
-        return None, None, None
+        return _get_generation_fallback(provider)
 
     model_name, generate_fn, model_override = _get_primary()
     fallback_model, fallback_fn, fallback_override = _get_fallback()
@@ -1147,15 +1576,7 @@ async def _generate_text_impl(
         return ANTHROPIC_MODEL, _generate_anthropic, None
 
     def _get_fallback():
-        if LLM_FALLBACK_PROVIDER == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
-            return GROQ_MODEL, _generate_groq, None
-        if LLM_FALLBACK_PROVIDER == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
-            return OPENAI_MODEL, _generate_openai, None
-        if LLM_FALLBACK_PROVIDER == "bedrock" and _is_bedrock_available():
-            return BEDROCK_MODEL, _generate_bedrock, None
-        if ANTHROPIC_FALLBACK_MODEL and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip():
-            return ANTHROPIC_FALLBACK_MODEL, _generate_anthropic, ANTHROPIC_FALLBACK_MODEL
-        return None, None, None
+        return _get_generation_fallback(provider)
 
     model_name, generate_fn, model_override = _get_primary()
     fallback_model, fallback_fn, fallback_override = _get_fallback()
@@ -1188,6 +1609,7 @@ async def _generate_text_impl(
         input_tok = output_tok = None
         try:
             content, input_tok, output_tok = await _try_generate(generate_fn, model_override)
+            text_out = _coerce_llm_text_response(content).strip()
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             _store_llm_run(
                 trace_id=trace_id,
@@ -1195,7 +1617,7 @@ async def _generate_text_impl(
                 step_name=step_name,
                 model=model_name,
                 prompt=full_prompt,
-                response=content,
+                response=text_out or None,
                 tokens_input=input_tok,
                 tokens_output=output_tok,
                 latency_ms=elapsed_ms,
@@ -1213,7 +1635,7 @@ async def _generate_text_impl(
                     "used_fallback": used_fallback,
                 },
             )
-            return (content or "").strip()
+            return text_out
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             last_error = e

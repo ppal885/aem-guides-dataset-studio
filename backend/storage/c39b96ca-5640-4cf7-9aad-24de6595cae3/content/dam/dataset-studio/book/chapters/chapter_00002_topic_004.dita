@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<task id="chapter_topic_baef3964" xml:lang="en"><title>Chapter 2 - Task 4</title><shortdesc>Task: Chapter 2 - Task 4</shortdesc><prereq><p>Prerequisites for this task.</p></prereq><taskbody><context><p>Context information for this task.</p></context><steps unordered="no"><step importance="required"><cmd>Step 1: Perform action 1</cmd></step><step importance="required"><cmd>Step 2: Perform action 2</cmd></step><step importance="required"><cmd>Step 3: Perform action 3</cmd></step></steps><result><p>Expected result after completing this task.</p></result></taskbody></task>

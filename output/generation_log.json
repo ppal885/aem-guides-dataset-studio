@@ -1,0 +1,27 @@
+{
+  "GUIDES-35438": {
+    "generated_at": "2026-03-24T13:44:02.438815",
+    "dita_files": [
+      "GUIDES-35438-concept.dita"
+    ],
+    "notes": "Concept from Jira via generate_dita_from_jira MCP package"
+  },
+  "GUIDES-42533": {
+    "generated_at": "2026-03-24T14:09:59.141660",
+    "dita_files": [
+      "GUIDES-42533-map-a.ditamap",
+      "GUIDES-42533-keymap-b.ditamap",
+      "GUIDES-42533-static-content.dita",
+      "GUIDES-42533-overview.dita",
+      "GUIDES-42533-concept.dita"
+    ],
+    "notes": "Saved via MCP save_dita_files + enrich_dita_output + mark_issue_generated"
+  },
+  "GUIDES-23211": {
+    "generated_at": "2026-03-24T15:06:36.377491",
+    "dita_files": [
+      "GUIDES-23211-concept.dita"
+    ],
+    "notes": "Concept generated via MCP generate_dita_from_jira pipeline; validate_and_fix blocked by missing lxml in MCP env."
+  }
+}

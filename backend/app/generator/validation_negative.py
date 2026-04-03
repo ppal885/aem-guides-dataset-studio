@@ -112,11 +112,11 @@ def _spec(id_: str, title: str, desc: str, fn: str, tags: list, use_when: list, 
 
 RECIPE_SPECS = [
     _spec("validation.duplicate_id_negative", "Duplicate ID Negative", "Negative: duplicate ID in document.", "generate_validation_duplicate_id_negative",
-          ["VALIDATION", "NEGATIVE", "DUPLICATE_ID"], ["validation", "duplicate id", "negative test"], ["valid dataset"], "negative"),
+          ["VALIDATION", "NEGATIVE", "DUPLICATE_ID"], ["validation", "duplicate id", "negative test"], ["valid dataset"]),
     _spec("validation.invalid_child_structure", "Invalid Child Structure", "Negative: invalid child structure.", "generate_validation_invalid_child_structure",
-          ["VALIDATION", "NEGATIVE", "STRUCTURE"], ["validation", "invalid structure"], ["valid dataset"], "negative"),
+          ["VALIDATION", "NEGATIVE", "STRUCTURE"], ["validation", "invalid structure"], ["valid dataset"]),
     _spec("validation.missing_required_element", "Missing Required Element", "Negative: missing required body.", "generate_validation_missing_required_element",
-          ["VALIDATION", "NEGATIVE", "REQUIRED"], ["validation", "missing element"], ["valid dataset"], "negative"),
+          ["VALIDATION", "NEGATIVE", "REQUIRED"], ["validation", "missing element"], ["valid dataset"]),
     _spec("validation.invalid_map_structure", "Invalid Map Structure", "Negative: invalid map structure.", "generate_validation_invalid_map_structure",
-          ["VALIDATION", "NEGATIVE", "MAP"], ["validation", "invalid map"], ["valid dataset"], "negative"),
+          ["VALIDATION", "NEGATIVE", "MAP"], ["validation", "invalid map"], ["valid dataset"]),
 ]

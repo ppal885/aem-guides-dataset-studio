@@ -1,4 +1,5 @@
 import { RecipeLibrary } from '@/components/RecipeLibrary';
+import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
@@ -11,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  * - Use recipes in dataset generation
  */
 export function RecipeLibraryPage() {
+  const feedback = useAppFeedback();
   const handleSelectRecipe = async (recipeId: string) => {
     try {
       const response = await fetch(`/api/v1/recipes/${recipeId}`);
@@ -51,16 +53,16 @@ export function RecipeLibraryPage() {
 
       if (response.ok) {
         const result = await response.json();
-        alert(`Recipe "${result.name}" saved successfully!`);
+        feedback.success('Recipe saved', `Recipe "${result.name}" saved successfully.`);
         // Reload recipes
         window.location.reload();
       } else {
         const error = await response.json();
-        alert(`Failed to save recipe: ${error.detail}`);
+        feedback.error('Failed to save recipe', error.detail || 'The recipe could not be saved.');
       }
     } catch (error) {
       console.error('Failed to save recipe:', error);
-      alert('Failed to save recipe');
+      feedback.error('Failed to save recipe', 'The recipe could not be saved.');
     }
   };
 

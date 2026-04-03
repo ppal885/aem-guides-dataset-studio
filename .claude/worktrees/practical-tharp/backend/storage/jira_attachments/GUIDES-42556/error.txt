@@ -1,0 +1,574 @@
+
+init:
+
+whr-init-pre:
+
+init-whr-version:
+     [echo] Oxygen XML WebHelp 27.1 build 2025063008
+
+init-properties:
+[init-project] Initializing project
+
+check-arg:
+    [mkdir] Created dir: /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output
+    [mkdir] Created dir: /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319
+
+log-arg:
+     [echo] *****************************************************************
+     [echo] * basedir = /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360
+     [echo] * dita.dir = /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT
+     [echo] * transtype = webhelp-responsive
+     [echo] * tempdir = /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319
+     [echo] * outputdir = output
+     [echo] * clean.temp = no
+     [echo] * DITA-OT version = 4.2.3
+     [echo] * XML parser = Xerces
+     [echo] * XSLT processor = Saxon
+     [echo] * collator = ICU
+     [echo] *****************************************************************
+     [echo] #Ant properties
+     [echo] #Wed Jan 21 20:41:28 UTC 2026
+     [echo] args.copy.source=yes
+     [echo] args.copycss=yes
+     [echo] args.csspath=css
+     [echo] args.debug=yes
+     [echo] args.figurelink.style=TITLE
+     [echo] args.gen.task.lbl=NO
+     [echo] args.grammar.cache=yes
+     [echo] args.hide.parent.link=yes
+     [echo] args.index.show=yes
+     [echo] args.input=/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+     [echo] args.rellinks=all
+     [echo] args.tablelink.style=TITLE
+     [echo] args.xml.systemid.set=yes
+     [echo] dita.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT
+     [echo] dita.output.dir=output
+     [echo] dita.plugin.com.ciena.ciena-pdf.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.ciena.ciena-pdf
+     [echo] dita.plugin.com.ciena.doctypes.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.ciena.doctypes
+     [echo] dita.plugin.com.elovirta.pdf.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.elovirta.pdf
+     [echo] dita.plugin.com.oxygenxml.common.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.common
+     [echo] dita.plugin.com.oxygenxml.gsd.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.gsd
+     [echo] dita.plugin.com.oxygenxml.highlight.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.highlight
+     [echo] dita.plugin.com.oxygenxml.media.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.media
+     [echo] dita.plugin.com.oxygenxml.specialization.qa.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.specialization.qa
+     [echo] dita.plugin.com.oxygenxml.webhelp.responsive.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive
+     [echo] dita.plugin.org.dita.base.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base
+     [echo] dita.plugin.org.dita.eclipsehelp.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.eclipsehelp
+     [echo] dita.plugin.org.dita.html5.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.html5
+     [echo] dita.plugin.org.dita.htmlhelp.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.htmlhelp
+     [echo] dita.plugin.org.dita.index.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.index
+     [echo] dita.plugin.org.dita.normalize.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.normalize
+     [echo] dita.plugin.org.dita.pdf2.axf.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.pdf2.axf
+     [echo] dita.plugin.org.dita.pdf2.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.pdf2
+     [echo] dita.plugin.org.dita.pdf2.fop.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.pdf2.fop
+     [echo] dita.plugin.org.dita.pdf2.xep.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.pdf2.xep
+     [echo] dita.plugin.org.dita.specialization.dita11.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.specialization.dita11
+     [echo] dita.plugin.org.dita.xhtml.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.xhtml
+     [echo] dita.plugin.org.lwdita.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.lwdita
+     [echo] dita.plugin.org.oasis-open.dita.techcomm.v2_0.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.oasis-open.dita.techcomm.v2_0
+     [echo] dita.plugin.org.oasis-open.dita.v1_2.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.oasis-open.dita.v1_2
+     [echo] dita.plugin.org.oasis-open.dita.v1_3.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.oasis-open.dita.v1_3
+     [echo] dita.plugin.org.oasis-open.dita.v2_0.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.oasis-open.dita.v2_0
+     [echo] dita.plugin.org.oasis-open.xdita.v0_3_0.dir=/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.oasis-open.xdita.v0_3_0
+     [echo] dita.temp.dir=/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319
+     [echo] *****************************************************************
+
+build-init:
+
+whr-init-classpath:
+
+whr-init-publishing-template:
+Oxygen WebHelp license valid, licensed to: Ciena (Staging License), start date: Sep 19, 2025, license version: 27
+[templatetask] Loading publishing template from descriptor: /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/templates/oxygen-red
+[templatetask] HTML Fragments conversion to Well Formed XML content is 'enabled'
+[templatetask] Set ANT property: 'webhelp.copy.resources.ant.file.path' -> /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/wh-template-copy-resources.xml
+[templatetask] Set ANT property: 'webhelp.responsive.custom.template.skin.relpath' -> oxygen-red.css;notes.css
+[templatetask] Set ANT property: 'webhelp.show.main.page.tiles' -> no
+[templatetask] Set ANT property: 'webhelp.show.main.page.toc' -> yes
+[templatetask] Set ANT property: 'webhelp.top.menu.depth' -> 3
+[templatetask] Set ANT property: 'webhelp.fix.path.root' -> true
+[templatetask] Set ANT property: 'webhelp.topic.collapsible.elements.initial.state' -> expanded
+[templatetask] Set ANT property: 'webhelp.show.expand.collapse.sections' -> no
+[templatetask] Set ANT property: 'webhelp.show.publication.toc' -> yes
+[templatetask] Set ANT property: 'webhelp.enable.sticky.publication.toc' -> yes
+[templatetask] Set ANT property: 'webhelp.enable.sticky.topic.toc' -> yes
+[templatetask] Set ANT property: 'webhelp.show.top.menu' -> no
+[templatetask] Set ANT property: 'webhelp.show.pdf.link' -> yes
+[templatetask] Set ANT property: 'webhelp.show.navigation.links' -> yes
+[templatetask] Set ANT property: 'webhelp.publication.toc.links' -> all
+[templatetask] Set ANT property: 'webhelp.default.collection.type.sequence' -> yes
+[templatetask] Set ANT property: 'webhelp.publication.toc.tooltip.position' -> hidden
+
+whr-init-properties:
+     [echo] Load file from temp: /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319
+
+whr-init-collection-type-prop:
+
+whr-init:
+
+whr-init-post:
+
+com.oxygenxml.cleanOutput:
+
+preprocess.init:
+     [echo] *****************************************************************
+     [echo] * input = /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+     [echo] *****************************************************************
+
+ditaval-merge:
+
+gen-list:
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-35c31e83-9d90-4d10-b186-fd2a92081711-en.ditamap
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+ [gen-list] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+
+debug-filter:
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-35c31e83-9d90-4d10-b186-fd2a92081711-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-35c31e83-9d90-4d10-b186-fd2a92081711-en.ditamap
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+   [filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita
+
+mapref-check:
+
+mapref:
+   [mapref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+   [mapref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-35c31e83-9d90-4d10-b186-fd2a92081711-en.ditamap
+
+branch-filter:
+[branch-filter] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+
+keyref:
+   [keyref] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita:10:85: [DOTJ047I][INFO] Unable to find key definition for key reference 'document_name*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita:39:97: [DOTJ047I][INFO] Unable to find key definition for key reference 'document_name*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+   [keyref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:7:45: [DOTJ047I][INFO] Unable to find key definition for key reference 'document_name*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:8:43: [DOTJ047I][INFO] Unable to find key definition for key reference 'Release_a.a*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:8:77: [DOTJ047I][INFO] Unable to find key definition for key reference 'xxx-yyyy-zzz*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:8:107: [DOTJ047I][INFO] Unable to find key definition for key reference 'status*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:8:135: [DOTJ047I][INFO] Unable to find key definition for key reference 'issue*' in root scope. Using the @href attribute as fallback if it exists.
+   [keyref] file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita:34:42: [DOTJ047I][INFO] Unable to find key definition for key reference 'month_year*' in root scope. Using the @href attribute as fallback if it exists.
+   [mapref] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/mapref.xsl
+   [mapref] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/mapref.xsl
+   [mapref] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+
+copy-to:
+
+conrefpush:
+
+conref:
+
+profile:
+
+topic-fragment:
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+[topic-fragment] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita
+
+chunk-check:
+
+chunk:
+    [chunk] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+
+move-meta-entries:
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-519f0fa1-30f8-4056-acea-57a40922cfeb-en.dita
+[move-meta] Loading stylesheet /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/mappull.xsl
+[move-meta] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+
+maplink-check:
+
+maplink:
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+  [maplink] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+
+topicpull-check:
+
+topicpull:
+[topicpull] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/topicpull.xsl
+[topicpull] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/topicpull.xsl
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+[topicpull] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+
+clean-map-check:
+
+clean-map:
+[clean-map] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/clean-map.xsl
+[clean-map] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.base/xsl/preprocess/clean-map.xsl
+[clean-map] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap
+
+clean-preprocess:
+
+copy-image:
+     [copy] Copying 12 files to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output
+
+copy-html:
+
+copy-flag-check:
+
+copy-flag:
+
+copy-files:
+
+com.elovirta.pdf.generate:
+
+preprocess:
+
+html5.init:
+
+html5.image-metadata:
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-f483758a-090c-40cb-9d15-d21c373dad0b-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-b124f4a1-aad3-49b5-a295-b9ac75289e29-en.png
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-4559c4b7-1620-411a-8ec4-4650d5d12791-en.svg
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-8fd7dbeb-b409-497b-8472-4411ef0f220c-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-9d602464-5393-4f66-921a-23c3c834d23e-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-d50aab91-f57e-4f35-b327-f62816ece8d7-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-938e9fbc-ea87-45a1-be1d-3917d9eb67a4-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-adbb411b-60ee-47e0-8dec-a71925774bee-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-8f9dcca2-f0a3-4cbb-a470-24ee0b271cb2-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-03b27599-43e8-4052-87a7-5fe82c12c493-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-c34adc8e-cee4-450a-9eb8-d38a877071eb-en.svg
+[image-metadata] Reading file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-314ff9ee-6d29-4062-be92-00c5ed0272bb-en.svg
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita
+[image-metadata] Processing /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita
+
+whr-detect-lang:
+     [echo] Indexer language=en
+
+whr-collect-indexterms-pre:
+
+whr-collect-indexterms:
+    [touch] Creating /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/indexterms.properties
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/indexterms/extract-indexterms.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/indexterms/extract-indexterms.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita.indexterms
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita.indexterms
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/indexterms/collect-indexterms.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/indexterms/collect-indexterms.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/index.xml
+
+whr-collect-indexterms-post:
+
+whr-create-props-file:
+    [touch] Creating /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/props.xml
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/options/jsonProperties.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/options/jsonProperties.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/props.xml to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/options/properties.js
+
+whr-toc-xml-pre:
+
+whr-toc-xml:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/navLinks/tocDita.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/navLinks/tocDita.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/toc.xml
+
+whr-toc-xml-post:
+
+whr-nav-links:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/navLinks/navLinks.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/navLinks/navLinks.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/toc.xml to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/navlinks-dummy.html
+
+whr-context-help-map-pre:
+
+whr-context-help-map:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/contextHelp/contextHelpMapDita.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/contextHelp/contextHelpMapDita.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/context-help-map.xml
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/contextHelp/contextHelpMapDitaJS.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/contextHelp/contextHelpMapDitaJS.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/context-help-map.xml to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/context-help/context-help-map.js
+
+whr-context-help-map-post:
+
+whr-search-facets:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/facets/extract-search-facets.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/facets/extract-search-facets.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/facets/search-facets.json
+
+whr-sitemap-pre:
+
+whr-sitemap:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/search/sitemapDita.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/search/sitemapDita.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/sitemap.xml
+
+whr-sitemap-post:
+
+whr-copy-resources-pre:
+
+whr-copy-logo-image:
+
+whr-copy-favicon:
+
+whr-copy-custom-resources:
+
+whr-copy-common-resources:
+     [copy] Copying 45 files to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp
+     [copy] Copying 1 file to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output
+     [copy] Copying 1 file to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output
+
+whr-copy-template-resources:
+     [echo] Copying custom template resources. Ant file: /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/wh-template-copy-resources.xml
+
+copy-template-resources:
+    [mkdir] Created dir: /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template
+     [copy] Copying 4 files to /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template
+     [copy] Copying /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/templates/oxygen-red/oxygen-red.css to /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template/oxygen-red.css
+     [copy] Copying /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/templates/oxygen-red/notes.css to /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template/notes.css
+     [copy] Copying /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/templates/oxygen-red/resources/images/bgr_right.png to /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template/resources/images/bgr_right.png
+     [copy] Copying /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/templates/oxygen-red/resources/images/bgr_right_small.png to /opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/output/oxygen-webhelp/template/resources/images/bgr_right_small.png
+
+whr-copy-resources:
+
+whr-copy-resources-post:
+
+html5.css:
+    [mkdir] Created dir: /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/css
+     [copy] Copying 2 files to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/css
+
+html5.copy-css-user:
+
+whr-clean-css:
+
+dita.topics.html.common:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.html5/xsl/dita2html5.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/org.dita.html5/xsl/dita2html5.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.html
+
+whr-create-topic-pages-pre:
+
+whr-process-reviews:
+
+whr-dita-inner-topics:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/dita2webhelp/dita2webhelp.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/dita2webhelp/dita2webhelp.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-798ac78b-77a5-4dc1-9604-c2d6a0ad8df6-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-67c828ff-7dea-4316-8439-7246837662d3-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-db1c5969-2e5b-4d47-a567-2ffe248b5a20-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-44037054-6f69-45a5-a4bc-d487ff271219-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-bc46d7ae-8c8e-42c8-91b6-958d6fac876b-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0e992273-b43a-4780-ba23-c450fc088f52-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0e190952-71b2-4020-8348-9db5a339d4d3-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-20575c75-27f4-4750-af60-a6d72da41ea7-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-3377f8e7-5ace-4681-924e-af2b2d20c01e-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-75ab85f8-70ef-4753-9147-4a8e7a3e1e82-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-3f997916-011f-411d-b3c7-c5adaaa6e498-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-c0d9a506-cc5a-4b95-a0e6-ff3f8cd8d430-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-72a97948-b5c7-4646-b9df-9be3884aff11-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-a251ae67-8b8c-491c-85cd-c0a7ff53fb47-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-02613bf5-42cc-40e8-afc3-0a9270867b68-en.html
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.dita to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/GUID-0f39e02d-3f00-4c02-b803-7dd4626fd5e9-en.html
+
+whr-create-topic-pages:
+
+whr-create-topic-pages-post:
+
+whr-create-main-page-pre:
+
+whr-create-main-page:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createMainPage.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createMainPage.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/oxygen-webhelp/page-templates/wt_index.html to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/index.html
+
+whr-create-main-page-post:
+
+whr-create-search-page-pre:
+
+whr-create-search-page:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createSearchPage.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createSearchPage.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/oxygen-webhelp/page-templates/wt_search.html to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/search.html
+
+whr-create-search-page-post:
+
+whr-create-indexterms-page-pre:
+
+whr-create-indexterms-page:
+     [echo] generate.indexterms.page: true
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createIndextermsPage.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createIndextermsPage.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/oxygen-webhelp/page-templates/wt_terms.html to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/indexTerms.html
+ [pipeline] file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createIndextermsPageImpl.xsl:52:24: I/O error reported by XML parser processing file:/output/index.xml
+ [pipeline] Failed to transform document: Failed to transform document: I/O error reported by XML parser processing file:/output/index.xml
+
+whr-create-indexterms-page-post:
+
+whr-create-localization-files:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createLocalizationFiles.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/mainFiles/createLocalizationFiles.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/oxygen-webhelp/resources/localization/strings.xml to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/dummy.html
+
+whr-create-main-files:
+
+whr-search-index-pre:
+
+whr-search-index-preprocess:
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/search/createSearchExcludesFile.xsl
+ [pipeline] Loading stylesheet file:/opt/aem/launcher/profiles/ditaot--7a63cd09-4958-3166-3103-b3d672136024/DITA-OT/plugins/com.oxygenxml.webhelp.responsive/xsl/search/createSearchExcludesFile.xsl
+ [pipeline] Processing file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/GUID-e4dbf98d-2861-46ed-896a-bd71aa8f8e85-en.ditamap to file:/opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/temp/temp20260121204128319/search-excludes.txt
+
+whr-search-index:
+     [copy] Copying 2 resources to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/search
+     [copy] Copying 1 resource to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/search/index
+     [copy] Copying 4 resources to /opt/aem/launcher/profiles/ditamaps/ditamap_5561105701379433360/output/oxygen-webhelp/app/search/stemmers
+     [echo] Indexing html files in output, indexer language is: en
+[indexertask] Cannot create output search directory. output/oxygen-webhelp/app/search/index.
+
+whr-search-index-post:
+
+dita2webhelp-responsive:
+     [echo] Finished publishing: "output/index.html"
+
+clean-temp:
+
+BUILD SUCCESSFUL
+Total time: 10 seconds

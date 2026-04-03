@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "../technicalContent/dtd/bookmap.dtd">
+<bookmap id="bookmapref" xml:lang="en">
+  
+  
+  <title>Bookmap elements reference</title>
+  
+  
+  <bookmeta>
+    
+    
+    <booktitle>
+      
+      
+      <mainbooktitle>Bookmap elements reference</mainbooktitle>
+      
+    
+    </booktitle>
+    
+    
+    <bookabstract>
+      
+      
+      <p>Minimal bookmap with frontmatter, chapter, and backmatter for DTD-stub validation.</p>
+      
+    
+    </bookabstract>
+    
+  
+  </bookmeta>
+  
+  
+  <frontmatter>
+    
+    
+    <notices>
+      
+      
+      <topicref href="frontmatter/notices.dita" type="topic"/>
+      
+    
+    </notices>
+    
+    
+    <preface>
+      
+      
+      <topicref href="frontmatter/preface.dita" type="topic"/>
+      
+    
+    </preface>
+    
+  
+  </frontmatter>
+  
+  
+  <chapter>
+    
+    
+    <topicref href="topics/bookmap_ref_chapter.dita" type="topic" navtitle="Main chapter"/>
+    
+  
+  </chapter>
+  
+  
+  <backmatter>
+    
+    
+    <appendix>
+      
+      
+      <topicref href="backmatter/appendix.dita" type="topic"/>
+      
+    
+    </appendix>
+    
+    
+    <indexlist>
+      
+      
+      <topicref href="backmatter/index.dita" type="topic"/>
+      
+    
+    </indexlist>
+    
+  
+  </backmatter>
+  
+
+</bookmap>

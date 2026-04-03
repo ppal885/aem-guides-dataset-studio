@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { useAppFeedback } from './feedback/useAppFeedback';
 import { Folder, File, Search, ChevronRight, ChevronDown, Download, Loader2 } from 'lucide-react';
 
 interface FileNode {
@@ -25,6 +26,7 @@ interface DatasetExplorerProps {
 }
 
 export function DatasetExplorer({ jobId, jobName }: DatasetExplorerProps) {
+  const feedback = useAppFeedback();
   const [structure, setStructure] = useState<DatasetStructure | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -34,11 +36,7 @@ export function DatasetExplorer({ jobId, jobName }: DatasetExplorerProps) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [downloading, setDownloading] = useState(false);
 
-  useEffect(() => {
-    loadStructure();
-  }, [jobId]);
-
-  const loadStructure = async () => {
+  const loadStructure = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/v1/datasets/${jobId}/structure`);
@@ -53,7 +51,11 @@ export function DatasetExplorer({ jobId, jobName }: DatasetExplorerProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    void loadStructure();
+  }, [loadStructure]);
 
   const toggleDirectory = (dirPath: string) => {
     const newExpanded = new Set(expandedDirs);
@@ -112,7 +114,7 @@ export function DatasetExplorer({ jobId, jobName }: DatasetExplorerProps) {
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('Download failed:', response.status, errorText);
-        alert(`Failed to download: ${errorText}`);
+        feedback.error('Download failed', errorText || 'The dataset ZIP could not be downloaded.');
         return;
       }
       
@@ -135,7 +137,7 @@ export function DatasetExplorer({ jobId, jobName }: DatasetExplorerProps) {
       }, 100);
     } catch (error) {
       console.error('Download failed:', error);
-      alert('Failed to download dataset. Please try again.');
+      feedback.error('Download failed', 'Failed to download dataset. Please try again.');
     } finally {
       // Delay clearing the loading state slightly to show feedback
       setTimeout(() => {

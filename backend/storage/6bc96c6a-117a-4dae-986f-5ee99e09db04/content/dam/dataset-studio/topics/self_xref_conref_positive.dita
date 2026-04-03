@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "../technicalContent/dtd/topic.dtd">
+<topic id="t_ca5da01a" xml:lang="en">
+  <title>Self Xref Conref Positive</title>
+  <body>
+    <p>
+      See 
+      <xref href="#t_ca5da01a/t_a333234c" type="section"/>
+      .
+    </p>
+    <p id="t_1b9acf6f">Reusable block.</p>
+    <p conref="#t_ca5da01a/t_1b9acf6f"/>
+    <section id="t_a333234c">
+      <title>Target Section</title>
+      <p>Section content.</p>
+    </section>
+  </body>
+</topic>

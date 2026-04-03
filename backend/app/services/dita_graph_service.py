@@ -1,7 +1,7 @@
 """DITA graph service - model elements and nesting for graph-based retrieval."""
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.db.dita_spec_models import DitaSpecChunk
 from app.db.session import SessionLocal
@@ -16,9 +16,17 @@ _graph: dict[str, dict] = {}
 _graph_loaded = False
 
 
-def _parse_children(raw: Optional[str]) -> list[str]:
-    """Parse children_elements JSON string to list."""
-    if not raw or not raw.strip():
+def _parse_children(raw: Optional[Any]) -> list[str]:
+    """Parse children_elements payload to a normalized list."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(child).strip() for child in raw if str(child).strip()]
+    if isinstance(raw, tuple):
+        return [str(child).strip() for child in raw if str(child).strip()]
+    if not isinstance(raw, str):
+        raw = str(raw)
+    if not raw.strip():
         return []
     try:
         parsed = json.loads(raw)
@@ -27,9 +35,15 @@ def _parse_children(raw: Optional[str]) -> list[str]:
         return []
 
 
-def _parse_attributes(raw: Optional[str]) -> dict[str, str]:
-    """Parse attributes JSON string to dict."""
-    if not raw or not raw.strip():
+def _parse_attributes(raw: Optional[Any]) -> dict[str, str]:
+    """Parse attributes payload to a normalized dict."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return {str(key): str(value) for key, value in raw.items()}
+    if not isinstance(raw, str):
+        raw = str(raw)
+    if not raw.strip():
         return {}
     try:
         parsed = json.loads(raw)

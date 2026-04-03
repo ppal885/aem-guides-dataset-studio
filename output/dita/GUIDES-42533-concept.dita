@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="guides_42533" xml:lang="en-US">
+  <title>GUIDES-42533: Nested keydefs (Map → Map → Topic) not resolved in Author (IBM DX)</title>
+  <shortdesc>With Map A as context, keyrefs that depend on definitions in an intermediate keymap (Map B) and
+    a keyword topic (Topic C) stay unresolved in AEM Guides Web Editor; DITA-OT publishing resolves them.</shortdesc>
+  <prolog>
+    <author type="contributor">Dataset Studio (Jira GUIDES-42533)</author>
+    <critdates>
+      <created date="2026-03-24"/>
+    </critdates>
+    <metadata>
+      <keywords>
+        <keyword>NewEditor</keyword>
+        <keyword>keydef</keyword>
+        <keyword>keyref</keyword>
+        <keyword>nested</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <conbody>
+    <section id="problem">
+      <title>Problem</title>
+      <p>Authors use a root map (Map A) that <codeph>keydef</codeph>s a secondary map (Map B). Map B defines
+        product keys and points at a topic (Topic C) for keyword values. A consuming topic (Topic D) uses
+        <codeph>keyword keyref</codeph> for those keys. In Guides Author/Preview, keys from Map B / Topic C
+        do not resolve when Map A is the opened context map, unless Map B is opened as the root context.
+        Published HTML5 output from DITA-OT resolves all keys.</p>
+    </section>
+    <section id="customer">
+      <title>Customer context (from Jira)</title>
+      <ul>
+        <li>Tenant: IBM DX Platforms — Cloud Manager <codeph>cm-p132321-e1283790</codeph> (prod).</li>
+        <li>AEM 2026.02; AEM Guides add-on 2026.1.0.324.</li>
+        <li>Dynamics case E-002095349; reported 2026-02-20.</li>
+      </ul>
+    </section>
+    <section id="repro">
+      <title>Reproduction outline</title>
+      <ol>
+        <li>Map A: <codeph>keydef</codeph> to Map B (<codeph>format="ditamap"</codeph>) plus
+          <codeph>topicref</codeph> to Topic D.</li>
+        <li>Map B: inline <codeph>keydef</codeph> for product name; <codeph>keydef</codeph> to Topic C;
+          keys for version text (see bundled sample files).</li>
+        <li>Topic C: keyword id for version string (prolog metadata).</li>
+        <li>Topic D: body uses <codeph>keyword keyref="productName"</codeph> and
+          <codeph>keyword keyref="versionString"</codeph>.</li>
+        <li>Open Map A as context in Web Editor: observe unresolved keyrefs in Topic D. Open Map B as
+          context: keyrefs may resolve (workaround).</li>
+      </ol>
+      <note>Engineering comment on the ticket notes the written steps are confusing and asks for a clearer
+        repro or customer content; use the sample maps/topics in this folder as a minimal aligned set.</note>
+    </section>
+    <section id="expected_actual">
+      <title>Expected vs actual</title>
+      <simpletable relcolwidth="1* 2*">
+        <sthead>
+          <stentry/>
+          <stentry>Behavior</stentry>
+        </sthead>
+        <strow>
+          <stentry>Expected</stentry>
+          <stentry>Recursive keydef loading: keys from nested keymaps resolve when the outer map is context,
+            consistent with DITA-OT.</stentry>
+        </strow>
+        <strow>
+          <stentry>Actual</stentry>
+          <stentry>Nested keydefs from Map B (and Topic C) not applied in Author/Preview when Map A is
+            context; no errors — placeholders stay unresolved.</stentry>
+        </strow>
+      </simpletable>
+    </section>
+    <section id="bundled">
+      <title>Bundled minimal sample (this dataset)</title>
+      <p>Files in <filepath>output/dita/</filepath>:</p>
+      <ul>
+        <li><filepath>GUIDES-42533-map-a.ditamap</filepath> — Map A</li>
+        <li><filepath>GUIDES-42533-keymap-b.ditamap</filepath> — Map B</li>
+        <li><filepath>GUIDES-42533-static-content.dita</filepath> — Topic C</li>
+        <li><filepath>GUIDES-42533-overview.dita</filepath> — Topic D</li>
+      </ul>
+      <p>Jira Representative Sample used <codeph>&lt;keywords&gt;</codeph> as a pseudo-root; Topic C was
+        normalized to a valid <codeph>&lt;topic&gt;</codeph> with <codeph>prolog/metadata/keywords</codeph>
+        and a <codeph>keydef</codeph> to <codeph>#versionString</codeph> in Map B.</p>
+    </section>
+    <section id="links">
+      <title>Links</title>
+      <p>
+        <xref href="https://jira.corp.adobe.com/browse/GUIDES-42533" format="html" scope="external">GUIDES-42533
+          (Jira)</xref>
+      </p>
+      <p>
+        <xref href="https://jira.corp.adobe.com/browse/GUIDES-19065" format="html" scope="external">GUIDES-19065
+          (possibly related)</xref>;
+        <xref href="https://jira.corp.adobe.com/browse/GUIDES-19412" format="html" scope="external">GUIDES-19412
+          (possibly related)</xref>
+      </p>
+      <p>Author URL (VPN/SAML): sample link in Jira; long query-string editor URL omitted here — see issue
+        description.</p>
+    </section>
+  </conbody>
+</concept>

@@ -1,0 +1,19 @@
+<!-- Minimal DITA bookmap DTD stub -->
+<!ENTITY % bookmap "bookmap">
+<!ELEMENT bookmap (title, bookmeta?, frontmatter?, chapter*, backmatter?)>
+<!ATTLIST bookmap id CDATA #REQUIRED xml:lang CDATA #IMPLIED>
+<!ELEMENT title (#PCDATA)>
+<!ELEMENT bookmeta (booktitle?, bookabstract?)>
+<!ELEMENT booktitle (mainbooktitle)>
+<!ELEMENT mainbooktitle (#PCDATA)>
+<!ELEMENT bookabstract (p+)>
+<!ELEMENT frontmatter (notices?, preface?)>
+<!ELEMENT notices (topicref)>
+<!ELEMENT preface (topicref)>
+<!ELEMENT chapter (topicref+)>
+<!ELEMENT backmatter (appendix?, indexlist?)>
+<!ELEMENT appendix (topicref)>
+<!ELEMENT indexlist (topicref)>
+<!ELEMENT topicref EMPTY>
+<!ATTLIST topicref href CDATA #IMPLIED type CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT p (#PCDATA)>

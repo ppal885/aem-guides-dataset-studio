@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="t_4f9c5cdb">
+  <title>Keydef Basic</title>
+  <keydef keys="prod" href="../topics/target.dita"/>
+  <topicref href="../topics/source.dita" keyref="prod"/>
+</map>

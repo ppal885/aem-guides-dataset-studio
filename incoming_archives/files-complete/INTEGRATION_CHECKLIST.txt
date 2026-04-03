@@ -1,0 +1,144 @@
+# Complete Integration Checklist
+# Project root: C:\Users\prashantp\Videos\aem-guides-dataset-studio\
+# Run all commands from project root
+
+# ============================================================
+# STEP 1 — BACKEND SERVICES  (copy to backend/app/services/)
+# ============================================================
+
+copy outputs\advanced_rag_service.py      backend\app\services\advanced_rag_service.py
+copy outputs\author_safety_service.py     backend\app\services\author_safety_service.py
+copy outputs\query_planner.py             backend\app\services\query_planner.py
+copy outputs\query_executor_advanced.py   backend\app\services\query_executor.py        # REPLACES existing
+copy outputs\dita_authoring_planner.py    backend\app\services\dita_authoring_planner.py
+copy outputs\aem_release_agent.py         backend\app\services\aem_release_agent.py
+
+# ============================================================
+# STEP 2 — BACKEND ROUTES  (copy to backend/app/api/v1/routes/)
+# ============================================================
+
+copy outputs\dita_authoring_route.py      backend\app\api\v1\routes\dita_authoring.py
+copy outputs\safety_routes.py             backend\app\api\v1\routes\safety.py
+copy outputs\agent_routes.py              backend\app\api\v1\routes\agent.py
+
+# ============================================================
+# STEP 3 — REGISTER ROUTES IN router.py
+# Open: backend/app/api/v1/router.py
+# Add these 3 lines:
+# ============================================================
+
+# from app.api.v1.routes import dita_authoring, safety, agent
+# api_router.include_router(dita_authoring.router, tags=["dita-authoring"])
+# api_router.include_router(safety.router, prefix="/safety", tags=["safety"])
+# api_router.include_router(agent.router, prefix="/agent", tags=["agent"])
+
+# ============================================================
+# STEP 4 — PASTE INTO jira.py
+# Open: backend/app/api/v1/routes/jira.py
+# Paste contents of BOTH files at the bottom:
+# ============================================================
+
+# outputs\query_plan_endpoints.py   → paste into jira.py
+# outputs\jira_plan_endpoint.py     → paste into jira.py
+# Add imports at top of jira.py:
+#   from app.services.query_planner import generate_query_plan
+#   from app.services.query_executor import execute_query_plan
+
+# ============================================================
+# STEP 5 — PASTE INTO main.py
+# Open: backend/app/main.py
+# Paste contents of:
+# ============================================================
+
+# outputs\main_scheduler_addition.py → paste into main.py (scheduler setup)
+
+# ============================================================
+# STEP 6 — MCP SERVER additions
+# Open: backend/mcp_server.py (or wherever your MCP server lives)
+# Paste contents of ALL these files at the bottom:
+# ============================================================
+
+# outputs\image_tools.py        → paste into mcp_server.py
+# outputs\research_tools.py     → paste into mcp_server.py
+# outputs\auto_rag_indexing.py  → paste into mcp_server.py
+# outputs\agent_mcp_tools.py    → paste into mcp_server.py
+
+# ============================================================
+# STEP 7 — FRONTEND COMPONENTS
+# (copy to frontend/src/components/Authoring/)
+# ============================================================
+
+copy outputs\QueryPlanPanel.tsx    frontend\src\components\Authoring\QueryPlanPanel.tsx   # NEW
+copy outputs\SafetyPanel.tsx       frontend\src\components\Authoring\SafetyPanel.tsx      # NEW
+copy outputs\PlanningPanel.tsx     frontend\src\components\Authoring\PlanningPanel.tsx    # UPDATE
+copy outputs\ReviewMode.tsx        frontend\src\components\Authoring\ReviewMode.tsx       # UPDATE
+copy outputs\DitaEditor.tsx        frontend\src\components\Authoring\DitaEditor.tsx       # UPDATE
+copy outputs\QualityPanel.tsx      frontend\src\components\Authoring\QualityPanel.tsx     # UPDATE
+copy outputs\JiraIssueBrowser.tsx  frontend\src\components\Authoring\JiraIssueBrowser.tsx # UPDATE
+
+# ============================================================
+# STEP 8 — FRONTEND PAGES + APP WIRING
+# ============================================================
+
+copy outputs\AuthoringPage.tsx     frontend\src\pages\AuthoringPage.tsx    # UPDATE (adds research stage)
+copy outputs\Layout.tsx            frontend\src\components\Layout.tsx      # UPDATE (adds Authoring nav)
+copy outputs\App.tsx               frontend\src\App.tsx                    # UPDATE (adds /authoring route)
+
+# ============================================================
+# STEP 9 — BACKEND CONFIG
+# ============================================================
+
+copy outputs\run.py                backend\run.py                          # CRITICAL — fixes SQLAlchemy bug
+copy outputs\router.py             backend\app\api\v1\router.py            # UPDATE with new imports
+
+# ============================================================
+# STEP 10 — INSTALL ADVANCED RAG DEPENDENCIES
+# Run in terminal with venv active:
+# ============================================================
+
+# pip install sentence-transformers rank-bm25 torch transformers
+
+# Download models (one time, ~1.4GB total):
+# python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5')"
+# python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+
+# ============================================================
+# STEP 11 — ADD TO .env
+# ============================================================
+
+# RAG_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+# RAG_RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+# RAG_CHUNK_SIZE=512
+# RAG_CHUNK_OVERLAP=64
+# TAVILY_API_KEY=tvly-xxxxxxxxxxxx
+# AEM_RELEASE_AGENT_ENABLED=true
+# AEM_RELEASE_AGENT_CRON=0 */6 * * *
+
+# ============================================================
+# STEP 12 — VERIFY INTEGRATION
+# Run backend:
+#   cd backend && python run.py
+# Check these endpoints exist:
+#   GET  http://localhost:8000/docs
+#   POST http://localhost:8000/api/v1/jira/query-plan
+#   POST http://localhost:8000/api/v1/jira/execute-queries
+#   POST http://localhost:8000/api/v1/safety/check-relevance
+#   POST http://localhost:8000/api/v1/safety/approve
+#   POST http://localhost:8000/api/v1/agent/aem-release
+#
+# Run frontend:
+#   cd frontend && npm run dev
+# Check:
+#   http://localhost:5173/authoring  ← full authoring page
+# ============================================================
+
+# ============================================================
+# PRIORITY ORDER (do these first):
+# ============================================================
+# 1. run.py              (fixes SQLAlchemy double-registration crash)
+# 2. router.py           (registers 3 missing routes)
+# 3. dita_authoring_route.py + safety_routes.py + agent_routes.py
+# 4. AuthoringPage.tsx   (wires research stage)
+# 5. SafetyPanel.tsx     (author safety controls)
+# 6. QueryPlanPanel.tsx  (research queries UI)
+# 7. advanced_rag_service.py + query_executor_advanced.py (after pip install)

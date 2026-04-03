@@ -46,7 +46,8 @@ aem-guides-dataset-studio/
 │       ├── core/              # Logging, config
 │       ├── storage/           # ChromaDB, JSON chunks, seed data
 │       └── templates/prompts/ # LLM prompt templates
-├── mcp_server.py              # MCP server — connects Cursor to everything
+├── mcp_server.py              # MCP server — in-process tools (Jira, RAG, files)
+├── mcp_api_adapter/           # MCP server — thin proxy to FastAPI /api/v1 only
 ├── dita_examples/             # Cloned expert DITA repos (git-ignored)
 ├── output/dita/               # Generated DITA files (git-ignored)
 └── scripts/                   # CLI scripts (index, finetune, crawl)
@@ -162,7 +163,29 @@ OPENAI_API_KEY=your_openai_key
 OPENAI_MODEL=gpt-5-codex
 ```
 
-### 6b. Configure Cursor MCP (optional)
+### 6b. MCP over REST (API adapter)
+
+The package [`mcp_api_adapter/`](mcp_api_adapter/) runs a **stdio MCP server** that calls your running FastAPI app under **`/api/v1`** via httpx. It does **not** import application services; it only forwards REST requests. This is useful when agents must use the same contract as the UI/API, or when the API runs on another host.
+
+**Prerequisite:** start the backend (for example from `backend/` with uvicorn on the configured port, often `8000`).
+
+**Install MCP dependencies** (lightweight; can be the same venv as the backend or a separate one):
+
+```bash
+pip install -r requirements-mcp.txt
+```
+
+**Run (normally invoked by Cursor / Codex, not by hand):**
+
+```bash
+python -m mcp_api_adapter
+```
+
+**Environment** (optional): `DATASET_STUDIO_API_BASE_URL` (default `http://127.0.0.1:8000`), `DATASET_STUDIO_API_BEARER_TOKEN` or `API_BEARER_TOKEN`, `DATASET_STUDIO_API_TIMEOUT_SECONDS`, `DATASET_STUDIO_API_EXTRA_HEADERS_JSON`. See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint table and copy-paste config for Cursor, Claude Code, and Codex.
+
+**Compared to [`mcp_server.py`](mcp_server.py):** the root `mcp_server.py` exposes many **in-process** tools (Jira, RAG, DITA files). The API adapter exposes only the **13 REST-mapped** tools and requires a live HTTP API.
+
+### 6c. Configure Cursor MCP (optional)
 
 Edit `~/.cursor/mcp.json`:
 
@@ -172,12 +195,21 @@ Edit `~/.cursor/mcp.json`:
     "aem-dataset-studio": {
       "command": "C:\\path\\to\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe",
       "args": ["C:\\path\\to\\aem-guides-dataset-studio\\mcp_server.py"]
+    },
+    "dataset-studio-api": {
+      "command": "C:\\path\\to\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe",
+      "args": ["-m", "mcp_api_adapter"],
+      "cwd": "C:\\path\\to\\aem-guides-dataset-studio",
+      "env": {
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8000"
+      }
     }
   }
 }
 ```
 
-> **Mac/Linux:** use `venv/bin/python` instead of `venv\Scripts\python.exe`
+> **Mac/Linux:** use `venv/bin/python` instead of `venv\Scripts\python.exe`  
+> **`dataset-studio-api`:** optional; REST-only MCP adapter — see [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md).
 
 ### 7. Populate RAG knowledge base
 

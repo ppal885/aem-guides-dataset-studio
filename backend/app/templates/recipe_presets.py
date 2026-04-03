@@ -92,6 +92,56 @@ RECIPE_PRESETS = {
             ]
         }
     },
+    "choicetable_task_pack": {
+        "name": "Choicetable Task Topics",
+        "description": "50 task topics with choicetables covering output presets, reuse strategies, conditional attributes, baselines, and more",
+        "config": {
+            "recipes": [
+                {
+                    "type": "choicetable_tasks",
+                    "topic_count": 50,
+                    "steps_per_task": 5,
+                    "choices_per_topic": 4,
+                    "include_map": True,
+                }
+            ]
+        }
+    },
+    "choicetable_reference_pack": {
+        "name": "Choicetable Reference Topics",
+        "description": "50 reference topics with choicetables listing DITA-OT params, XML attributes, AEM APIs, Native PDF CSS, and chunk values",
+        "config": {
+            "recipes": [
+                {
+                    "type": "choicetable_references",
+                    "topic_count": 50,
+                    "choices_per_topic": 5,
+                    "include_map": True,
+                }
+            ]
+        }
+    },
+    "choicetable_mixed_pack": {
+        "name": "Choicetable Mixed (Tasks + References)",
+        "description": "Combined pack: 30 task topics + 30 reference topics, all with choicetables for comprehensive DITA choicetable coverage",
+        "config": {
+            "recipes": [
+                {
+                    "type": "choicetable_tasks",
+                    "topic_count": 30,
+                    "steps_per_task": 4,
+                    "choices_per_topic": 4,
+                    "include_map": True,
+                },
+                {
+                    "type": "choicetable_references",
+                    "topic_count": 30,
+                    "choices_per_topic": 5,
+                    "include_map": True,
+                }
+            ]
+        }
+    },
 }
 
 def get_preset(preset_id: str) -> dict | None:

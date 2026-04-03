@@ -10,6 +10,7 @@ from app.generator.specialized import (
     generate_task_topics_dataset,
     generate_concept_topics_dataset,
     generate_reference_topics_dataset,
+    generate_properties_table_reference_dataset,
     generate_glossary_dataset,
     generate_bookmap_dataset,
 )
@@ -65,6 +66,18 @@ def handle_specialized_recipe(recipe, config, base: str, files: Dict[str, bytes]
             rand=rand,
         )
         files.update(ref_files)
+
+    elif recipe.type == "properties_table_reference":
+        pt_files = generate_properties_table_reference_dataset(
+            config,
+            base,
+            topic_count=recipe.topic_count,
+            rows_per_table=recipe.rows_per_table,
+            include_prophead=recipe.include_prophead,
+            include_map=recipe.include_map,
+            rand=rand,
+        )
+        files.update(pt_files)
     
     elif recipe.type == "glossary_pack":
         glossary_files = generate_glossary_dataset(

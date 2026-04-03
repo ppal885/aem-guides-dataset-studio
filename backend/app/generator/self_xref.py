@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict
 
 from app.generator.dita_utils import make_dita_id, stable_id
+from app.generator.generate import safe_join
 from app.generator.self_ref_utils import self_xref_href, self_conref_value, self_conrefend_value
 from app.jobs.schemas import DatasetConfig
 
@@ -55,7 +56,7 @@ def generate_self_xref_section(
     ET.SubElement(section, "title").text = "Target Section"
     ET.SubElement(section, "p").text = "Content in the target section."
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_list_item(
@@ -87,7 +88,7 @@ def generate_self_xref_list_item(
     li.set("id", li_id)
     li.text = "Target list item content."
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_figure(
@@ -119,7 +120,7 @@ def generate_self_xref_figure(
     ET.SubElement(fig, "title").text = "Sample Figure"
     ET.SubElement(fig, "desc").text = "Figure description."
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_table(
@@ -159,7 +160,7 @@ def generate_self_xref_table(
     ET.SubElement(row2, "entry").text = "A"
     ET.SubElement(row2, "entry").text = "B"
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_conref_basic(
@@ -186,7 +187,7 @@ def generate_self_conref_basic(
     p_conref = ET.SubElement(body, "p")
     p_conref.set("conref", self_conref_value(topic_id, target_id, filename, use_filename=False))
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_conrefend_range(
@@ -220,7 +221,7 @@ def generate_self_conrefend_range(
     sectiondiv.set("conref", self_conref_value(topic_id, start_id, filename, use_filename=False))
     sectiondiv.set("conrefend", self_conrefend_value(topic_id, end_id, filename, use_filename=False))
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_conref_positive_minimal(
@@ -260,7 +261,7 @@ def generate_self_xref_conref_positive_minimal(
     ET.SubElement(section, "title").text = "Target Section"
     ET.SubElement(section, "p").text = "Section content."
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_conref_boundary(
@@ -310,7 +311,7 @@ def generate_self_xref_conref_boundary(
     ET.SubElement(fig, "title").text = "Figure"
     ET.SubElement(fig, "desc").text = "Desc."
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 def generate_self_xref_conref_negative(
@@ -339,7 +340,7 @@ def generate_self_xref_conref_negative(
     p_conref = ET.SubElement(body, "p")
     p_conref.set("conref", "#nonexistent_block")
 
-    return {rel_path: _topic_xml(config, topic, pretty_print)}
+    return {safe_join(base_path, rel_path): _topic_xml(config, topic, pretty_print)}
 
 
 RECIPE_SPECS = [

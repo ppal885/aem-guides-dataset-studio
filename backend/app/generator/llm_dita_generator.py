@@ -4,6 +4,9 @@ LLM DITA generator - produces DITA from Jira evidence when no recipe exists.
 Used when Jira mentions topicset, navref, foreign, topicgroup, or other constructs
 not covered by the recipe catalog. Generates DITA directly via LLM token generation.
 Uses RAG (DITA spec, DITA graph, AEM Guides docs) to reduce hallucination.
+
+Set LLM_DITA_USE_ENRICHED_CONCEPT_PROMPT=true to use jira_enriched_concept_generator.txt
+(concept + prolog + four conbody sections + mandatory reference tables for attributes).
 """
 import asyncio
 import json
@@ -15,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from app.generator.dita_utils import make_dita_id
 from app.jobs.schemas import DatasetConfig
+from app.services.dita_xml_headers import DITA_DOCTYPES
 from app.core.structured_logging import get_structured_logger
 from app.core.observability import get_observability_logger
 from app.utils.fs_guard import safe_join, SecurityError
@@ -36,6 +40,24 @@ LLM_DITA_RAG_AEM_DOCS_ENABLED = os.environ.get("LLM_DITA_RAG_AEM_DOCS_ENABLED", 
 LLM_DITA_CONTENT_FIDELITY_ENABLED = os.environ.get("LLM_DITA_CONTENT_FIDELITY_ENABLED", "false").lower() in ("true", "1", "yes")
 LLM_DITA_CONTENT_FIDELITY_MIN_RATIO = max(0.0, min(1.0, float(os.environ.get("LLM_DITA_CONTENT_FIDELITY_MIN_RATIO", "0.2"))))
 
+# Pattern-specific post-checks + optional single repair pass (same patterns as jira_dita_pattern_hints)
+LLM_DITA_PATTERN_VALIDATION_ENABLED = os.environ.get(
+    "LLM_DITA_PATTERN_VALIDATION_ENABLED", "true"
+).lower() in ("true", "1", "yes")
+LLM_DITA_PATTERN_VALIDATION_MAX_REPAIR = max(
+    0, int(os.environ.get("LLM_DITA_PATTERN_VALIDATION_MAX_REPAIR", "1"))
+)
+
+# Use jira_enriched_concept_generator.txt (concept + prolog + 4 sections + reference tables) instead of llm_dita_generator.txt
+LLM_DITA_USE_ENRICHED_CONCEPT_PROMPT = os.environ.get(
+    "LLM_DITA_USE_ENRICHED_CONCEPT_PROMPT", "false"
+).lower() in ("true", "1", "yes")
+
+# When recipe_execution_contract is passed (intent pipeline), abort generation if required constructs are missing.
+LLM_DITA_CONTRACT_FAIL_FAST = os.environ.get(
+    "LLM_DITA_CONTRACT_FAIL_FAST", "true"
+).lower() in ("true", "1", "yes")
+
 RECIPE_SPECS = [
     {
         "id": "llm_generated_dita",
@@ -44,16 +66,40 @@ RECIPE_SPECS = [
         "tags": ["LLM", "fallback", "topicset", "navref", "foreign", "topicgroup", "novel construct"],
         "module": "app.generator.llm_dita_generator",
         "function": "generate_llm_dita",
-        "params_schema": {"evidence_pack": "dict", "representative_xml": "list", "additional_instructions": "str"},
+        "params_schema": {
+            "evidence_pack": "dict",
+            "representative_xml": "list",
+            "additional_instructions": "str",
+            "recipe_execution_contract": "dict",
+        },
         "default_params": {},
         "stability": "stable",
-        "constructs": ["map", "topic", "topicref", "topicgroup", "topicset", "navref", "foreign", "topicmeta", "bookmap", "bookmeta"],
+        "constructs": ["map", "topic", "concept", "task", "topicref", "topicgroup", "topicset", "navref", "foreign", "topicmeta", "bookmap", "bookmeta"],
         "scenario_types": ["MIN_REPRO"],
         "use_when": ["no matching recipe", "topicset", "navref", "foreign", "topicgroup", "bookmap", "bookmeta", "novel DITA construct"],
         "avoid_when": ["specific recipe matches"],
         "positive_negative": "positive",
         "complexity": "minimal",
         "output_scale": "minimal",
+        "topic_type": "any",
+        "intent_tags": ["fallback", "novel", "llm"],
+        "trigger_phrases": [],
+        "required_constructs": [],
+        "optional_constructs": [],
+        "anti_patterns": [],
+        "validation_rules": [],
+        "retrieval_keywords": [
+            "DITA map topic topicref",
+            "DITA table keyref conref",
+        ],
+        "retrieval_element_hints": [],
+        "forbidden_fallback_patterns": [],
+        "repair_hints": [
+            "Emit at least one valid DITA root (concept, task, reference, topic, or map) per file.",
+            "If the contract lists table/menucascade/keyref, include real markup—not prose substitutes.",
+        ],
+        "example_input": "",
+        "example_output": "",
     },
 ]
 
@@ -142,21 +188,36 @@ def _is_valid_dita_xml(content: str) -> bool:
         tag = root.tag.split("}")[-1].lower() if "}" in root.tag else root.tag.lower()
         # Accept dita:topic, topic, etc.
         local_name = tag.split(":")[-1] if ":" in tag else tag
-        return local_name in ("map", "topic", "bookmap")
+        return local_name in ("map", "topic", "bookmap", "concept", "task")
     except ET.ParseError:
         return False
 
 
-def _wrap_with_doctype(content: str, is_map: bool, is_bookmap: bool = False) -> bytes:
-    """Add XML declaration and DOCTYPE to content."""
-    if is_bookmap:
+def _wrap_with_doctype(content: str) -> bytes:
+    """Add XML declaration and DOCTYPE matching the root element."""
+    body = (content or "").strip()
+    cl = body.lower()
+    if cl.startswith("<bookmap"):
         doctype = DOCTYPE_BOOKMAP
-    elif is_map:
+    elif cl.startswith("<map"):
         doctype = DOCTYPE_MAP
+    elif cl.startswith("<concept"):
+        doctype = DITA_DOCTYPES["concept"]
+    elif cl.startswith("<task"):
+        doctype = DITA_DOCTYPES["task"]
     else:
         doctype = DOCTYPE_TOPIC
-    doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype}\n{content.strip()}'
+    doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype}\n{body}'
     return doc.encode("utf-8")
+
+
+def _jira_root_id_hint(evidence_pack: Optional[dict], jira_id: Optional[str]) -> str:
+    """Stable lowercase id for concept/task root (Jira key preferred)."""
+    key = (jira_id or "").strip()
+    if not key and evidence_pack:
+        key = str((evidence_pack.get("primary") or {}).get("issue_key") or "").strip()
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", key).strip("_").lower()
+    return slug or "dataset_concept"
 
 
 def _run_async(coro):
@@ -181,13 +242,21 @@ async def _generate_llm_dita_async(
     id_prefix: str = "llm",
     trace_id: Optional[str] = None,
     jira_id: Optional[str] = None,
+    recipe_execution_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, bytes]:
     """Async implementation of LLM DITA generation."""
     from app.services.llm_service import generate_json, is_llm_available
     from app.services.dita_knowledge_retriever import retrieve_dita_knowledge, retrieve_dita_graph_knowledge
+    from app.services.jira_dita_pattern_hints import compose_pattern_hints
+    from app.services.llm_dita_pattern_validators import validate_llm_dita_patterns
     from app.utils.evidence_extractor import AEM_GUIDES_TRIGGER_TERMS
 
-    prompt_path = Path(__file__).resolve().parent.parent / "templates" / "prompts" / "llm_dita_generator.txt"
+    prompts_dir = Path(__file__).resolve().parent.parent / "templates" / "prompts"
+    if LLM_DITA_USE_ENRICHED_CONCEPT_PROMPT:
+        enriched_path = prompts_dir / "jira_enriched_concept_generator.txt"
+        prompt_path = enriched_path if enriched_path.exists() else prompts_dir / "llm_dita_generator.txt"
+    else:
+        prompt_path = prompts_dir / "llm_dita_generator.txt"
     system_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
 
     if not system_prompt or not is_llm_available():
@@ -252,8 +321,22 @@ async def _generate_llm_dita_async(
     if additional_instructions and additional_instructions.strip():
         instructions_hint = f"\n\nADDITIONAL INSTRUCTIONS (follow these):\n{additional_instructions.strip()[:1500]}\n\n"
 
-    # Use neutral label: user input may be Jira evidence or natural language (e.g. "create a task topic about X")
-    user = f"{dita_context}USER INPUT (Jira evidence or natural language request):\nSummary: {summary}\n\nDescription: {description}{rep_xml_hint}{instructions_hint}Output STRICT JSON with 'files' array only:"
+    jira_enrich_hint = ""
+    if LLM_DITA_USE_ENRICHED_CONCEPT_PROMPT:
+        cid = _jira_root_id_hint(evidence_pack, jira_id)
+        display_key = (jira_id or primary.get("issue_key") or "").strip() or "JIRA-ID"
+        jira_enrich_hint = (
+            f"\n\nJIRA / ROOT TOPIC: On the primary enriched topic file use root <concept id=\"{cid}\" "
+            f'xml:lang="en-US"> (or <task> only if the issue is explicitly a step-by-step procedure). '
+            f'The <title> must begin with "{display_key}:" when the issue key is known.\n'
+        )
+        logger.info_structured(
+            "LLM DITA generator: using enriched concept system prompt",
+            extra_fields={"jira_id": jira_id, "prompt_file": prompt_path.name},
+        )
+
+    pattern_hint_block = compose_pattern_hints(evidence_text)
+    max_pattern_repairs = LLM_DITA_PATTERN_VALIDATION_MAX_REPAIR if LLM_DITA_PATTERN_VALIDATION_ENABLED else 0
 
     obs_log.info(
         "llm_dita_generation_started",
@@ -262,119 +345,185 @@ async def _generate_llm_dita_async(
         jira_id=jira_id,
         evidence_length=len(evidence_text),
     )
-    last_error: Optional[Exception] = None
-    for attempt in range(1, LLM_DITA_MAX_RETRIES + 1):
-        try:
-            result = await generate_json(
-                system_prompt,
-                user,
-                max_tokens=min(LLM_DITA_MAX_TOKENS, 4000),
-                step_name="llm_dita_generator",
-                trace_id=trace_id,
-                jira_id=jira_id,
-            )
-            last_error = None
-            break
-        except Exception as e:
-            last_error = e
-            logger.warning_structured(
-                "LLM DITA generator attempt failed",
-                extra_fields={"jira_id": jira_id, "attempt": attempt, "max_retries": LLM_DITA_MAX_RETRIES, "error": str(e)},
-            )
-            if attempt >= LLM_DITA_MAX_RETRIES:
-                raise RuntimeError(f"LLM DITA generator failed after {LLM_DITA_MAX_RETRIES} attempt(s): {e}") from e
-            await asyncio.sleep(1.0 * attempt)  # Backoff: 1s, 2s, ...
 
-    raw = result if isinstance(result, dict) else (_extract_json(str(result)) if result else {})
-    if not isinstance(raw, dict):
-        raw = {}
-
-    files_list = raw.get("files") or []
-    if not isinstance(files_list, list):
-        logger.warning_structured(
-            "LLM returned invalid structure: files not a list",
-            extra_fields={"jira_id": jira_id, "files_type": type(files_list).__name__},
-        )
-        raise ValueError(
-            f"LLM returned invalid structure: 'files' must be a list, got {type(files_list).__name__}"
-        )
-
+    repair_suffix = ""
     root_folder = f"{base_path}/llm_generated_dita"
-    output: Dict[str, bytes] = {}
-    used_ids: set = set()
-    file_count = 0
-    rejected_count = 0
-    first_rejected_sample: Optional[str] = None
 
-    for item in files_list[:LLM_DITA_MAX_FILES]:
-        if file_count >= LLM_DITA_MAX_FILES:
-            break
-        if not isinstance(item, dict):
-            rejected_count += 1
-            continue
-        path_val = item.get("path") or ""
-        content_val = item.get("content") or ""
-        if not path_val or not content_val:
-            rejected_count += 1
-            continue
-
-        path_val = str(path_val).strip().replace("\\", "/")
-        if path_val.startswith("llm_generated_dita/"):
-            path_val = path_val[len("llm_generated_dita/"):].lstrip("/")
-        if not path_val or ".." in path_val or path_val.startswith("/"):
-            rejected_count += 1
-            continue
-
-        content_val = str(content_val).strip()[:LLM_DITA_MAX_BYTES_PER_FILE]
-        content_val = _normalize_llm_xml_content(content_val)
-        if not _is_valid_dita_xml(content_val):
-            rejected_count += 1
-            if first_rejected_sample is None:
-                first_rejected_sample = (content_val or "")[:300]
-            continue
-
-        content_lower = content_val.lower().strip()
-        is_bookmap = content_lower.startswith("<bookmap")
-        is_map = content_lower.startswith("<map") or is_bookmap
-        full_path = f"{root_folder}/{path_val}"
-
-        try:
-            base_resolved = Path(base_path).resolve()
-            safe_join(base_resolved, f"llm_generated_dita/{path_val}")
-        except SecurityError:
-            rejected_count += 1
-            continue
-
-        xml_bytes = _wrap_with_doctype(content_val, is_map, is_bookmap=is_bookmap)
-        output[full_path] = xml_bytes
-        file_count += 1
-
-    if not output:
-        total = len(files_list[:LLM_DITA_MAX_FILES])
-        logger.warning_structured(
-            "All LLM file(s) failed DITA validation",
-            extra_fields={
-                "jira_id": jira_id,
-                "total_items": total,
-                "rejected_count": rejected_count,
-                "first_rejected_sample": first_rejected_sample[:200] if first_rejected_sample else None,
-            },
-        )
-        sample_hint = f" First rejected sample: {first_rejected_sample!r}" if first_rejected_sample else ""
-        raise ValueError(
-            f"All {total} file(s) from LLM failed DITA validation (invalid XML or wrong root tag)."
-            f"{sample_hint}"
+    for repair_idx in range(max_pattern_repairs + 1):
+        # Neutral label: user input may be Jira evidence or natural language
+        user = (
+            f"{dita_context}USER INPUT (Jira evidence or natural language request):\n"
+            f"Summary: {summary}\n\nDescription: {description}{rep_xml_hint}{instructions_hint}"
+            f"{jira_enrich_hint}{pattern_hint_block}{repair_suffix}"
+            "Output STRICT JSON with 'files' array only:"
         )
 
-    _check_content_fidelity(evidence_text, output, jira_id=jira_id)
-    obs_log.info(
-        "llm_dita_generation_completed",
-        run_id=trace_id,
-        jira_id=jira_id,
-        topic_count=len(output),
-        file_count=len(output),
-    )
-    return output
+        for attempt in range(1, LLM_DITA_MAX_RETRIES + 1):
+            try:
+                result = await generate_json(
+                    system_prompt,
+                    user,
+                    max_tokens=min(LLM_DITA_MAX_TOKENS, 4000),
+                    step_name="llm_dita_generator",
+                    trace_id=trace_id,
+                    jira_id=jira_id,
+                )
+                break
+            except Exception as e:
+                logger.warning_structured(
+                    "LLM DITA generator attempt failed",
+                    extra_fields={
+                        "jira_id": jira_id,
+                        "attempt": attempt,
+                        "max_retries": LLM_DITA_MAX_RETRIES,
+                        "error": str(e),
+                    },
+                )
+                if attempt >= LLM_DITA_MAX_RETRIES:
+                    raise RuntimeError(
+                        f"LLM DITA generator failed after {LLM_DITA_MAX_RETRIES} attempt(s): {e}"
+                    ) from e
+                await asyncio.sleep(1.0 * attempt)
+
+        raw = result if isinstance(result, dict) else (_extract_json(str(result)) if result else {})
+        if not isinstance(raw, dict):
+            raw = {}
+
+        files_list = raw.get("files") or []
+        if not isinstance(files_list, list):
+            logger.warning_structured(
+                "LLM returned invalid structure: files not a list",
+                extra_fields={"jira_id": jira_id, "files_type": type(files_list).__name__},
+            )
+            raise ValueError(
+                f"LLM returned invalid structure: 'files' must be a list, got {type(files_list).__name__}"
+            )
+
+        output: Dict[str, bytes] = {}
+        file_count = 0
+        rejected_count = 0
+        first_rejected_sample: Optional[str] = None
+
+        for item in files_list[:LLM_DITA_MAX_FILES]:
+            if file_count >= LLM_DITA_MAX_FILES:
+                break
+            if not isinstance(item, dict):
+                rejected_count += 1
+                continue
+            path_val = item.get("path") or ""
+            content_val = item.get("content") or ""
+            if not path_val or not content_val:
+                rejected_count += 1
+                continue
+
+            path_val = str(path_val).strip().replace("\\", "/")
+            if path_val.startswith("llm_generated_dita/"):
+                path_val = path_val[len("llm_generated_dita/"):].lstrip("/")
+            if not path_val or ".." in path_val or path_val.startswith("/"):
+                rejected_count += 1
+                continue
+
+            content_val = str(content_val).strip()[:LLM_DITA_MAX_BYTES_PER_FILE]
+            content_val = _normalize_llm_xml_content(content_val)
+            if not _is_valid_dita_xml(content_val):
+                rejected_count += 1
+                if first_rejected_sample is None:
+                    first_rejected_sample = (content_val or "")[:300]
+                continue
+
+            full_path = f"{root_folder}/{path_val}"
+
+            try:
+                base_resolved = Path(base_path).resolve()
+                safe_join(base_resolved, f"llm_generated_dita/{path_val}")
+            except SecurityError:
+                rejected_count += 1
+                continue
+
+            xml_bytes = _wrap_with_doctype(content_val)
+            output[full_path] = xml_bytes
+            file_count += 1
+
+        if not output:
+            total = len(files_list[:LLM_DITA_MAX_FILES])
+            logger.warning_structured(
+                "All LLM file(s) failed DITA validation",
+                extra_fields={
+                    "jira_id": jira_id,
+                    "total_items": total,
+                    "rejected_count": rejected_count,
+                    "first_rejected_sample": first_rejected_sample[:200] if first_rejected_sample else None,
+                    "pattern_repair_idx": repair_idx,
+                },
+            )
+            sample_hint = f" First rejected sample: {first_rejected_sample!r}" if first_rejected_sample else ""
+            raise ValueError(
+                f"All {total} file(s) from LLM failed DITA validation (invalid XML or wrong root tag)."
+                f"{sample_hint}"
+            )
+
+        if recipe_execution_contract and LLM_DITA_CONTRACT_FAIL_FAST:
+            from app.services.recipe_execution_contract import check_contract_required_constructs_or_raise
+
+            check_contract_required_constructs_or_raise(recipe_execution_contract, output)
+            logger.info_structured(
+                "LLM DITA: recipe execution contract satisfied (required constructs)",
+                extra_fields={"jira_id": jira_id, "file_count": len(output)},
+            )
+
+        if not LLM_DITA_PATTERN_VALIDATION_ENABLED:
+            _check_content_fidelity(evidence_text, output, jira_id=jira_id)
+            obs_log.info(
+                "llm_dita_generation_completed",
+                run_id=trace_id,
+                jira_id=jira_id,
+                topic_count=len(output),
+                file_count=len(output),
+            )
+            return output
+
+        pattern_issues = validate_llm_dita_patterns(evidence_text, output)
+        if not pattern_issues:
+            _check_content_fidelity(evidence_text, output, jira_id=jira_id)
+            obs_log.info(
+                "llm_dita_generation_completed",
+                run_id=trace_id,
+                jira_id=jira_id,
+                topic_count=len(output),
+                file_count=len(output),
+            )
+            return output
+
+        if repair_idx >= max_pattern_repairs:
+            logger.warning_structured(
+                "LLM DITA pattern validation: returning output after failed checks",
+                extra_fields={
+                    "jira_id": jira_id,
+                    "issues": pattern_issues[:5],
+                    "repairs_used": repair_idx,
+                },
+            )
+            _check_content_fidelity(evidence_text, output, jira_id=jira_id)
+            obs_log.info(
+                "llm_dita_generation_completed",
+                run_id=trace_id,
+                jira_id=jira_id,
+                topic_count=len(output),
+                file_count=len(output),
+            )
+            return output
+
+        repair_suffix = (
+            "\n\nVALIDATION — PREVIOUS OUTPUT FAILED CHECKS. REGENERATE JSON WITH 'files' FIXING THIS:\n"
+            + "\n".join(f"- {i}" for i in pattern_issues)
+            + "\n"
+        )
+        logger.info_structured(
+            "LLM DITA pattern validation: scheduling repair generation",
+            extra_fields={"jira_id": jira_id, "repair_idx": repair_idx + 1, "issue_count": len(pattern_issues)},
+        )
+
+    raise RuntimeError("LLM DITA generator: exhausted pattern repair loop without return")
 
 
 def _minimal_fallback(
@@ -398,7 +547,7 @@ def _minimal_fallback(
     root = f"{base_path}/llm_generated_dita"
     map_elem = f"""<map id="llm_fallback_map"><title>LLM Fallback</title><topicref href="../topics/placeholder.dita" navtitle="Placeholder"/></map>"""
     return {
-        f"{root}/maps/main.ditamap": _wrap_with_doctype(map_elem, True),
+        f"{root}/maps/main.ditamap": _wrap_with_doctype(map_elem),
         f"{root}/topics/placeholder.dita": _minimal_topic_xml(config, topic_id, title, body_text),
     }
 
@@ -412,6 +561,7 @@ def generate_llm_dita(
     id_prefix: str = "llm",
     trace_id: Optional[str] = None,
     jira_id: Optional[str] = None,
+    recipe_execution_contract: Optional[Dict[str, Any]] = None,
     **kwargs: Any,
 ) -> Dict[str, bytes]:
     """
@@ -428,5 +578,6 @@ def generate_llm_dita(
             id_prefix=id_prefix,
             trace_id=trace_id,
             jira_id=jira_id,
+            recipe_execution_contract=recipe_execution_contract,
         )
     )

@@ -69,6 +69,21 @@ TABLE_CONTENT_KEYWORDS = [
     "table width", "table widths", "colwidth", "colspec", "column width",
     "table column", "table formatting", "table display", "table layout",
     "tgroup", "colsep", "rowsep", "table frame", "table rendering",
+    "@align",
+    "cell alignment",
+    "text alignment",
+    "table alignment",
+    "align attribute",
+]
+TABLE_ALIGN_FOCUS_KEYWORDS = [
+    "@align",
+    "cell alignment",
+    "text alignment",
+    "table alignment",
+    "align attribute",
+    "right-click alignment",
+    "right click alignment",
+    "alignment menu",
 ]
 EXPERIENCE_LEAGUE_KEYWORDS = [
     "experience league", "scraped content", "authentic documentation",
@@ -214,8 +229,23 @@ INLINE_FORMATTING_PATTERN_KEYWORDS: dict[str, list[str]] = {
         "<i>", "<b>", "<u>", "<li>", "nested tag", "editor behavior",
     ],
 }
-TABLE_CONTENT_PATTERNS = ["table_width_formatting"]
+# table_width_formatting first: compute_pattern_scores boosts patterns[0] when all scores stay at baseline
+TABLE_CONTENT_PATTERNS = ["table_width_formatting", "table_alignment_reference"]
 TABLE_CONTENT_PATTERN_KEYWORDS: dict[str, list[str]] = {
+    "table_alignment_reference": [
+        "@align",
+        "cell alignment",
+        "text alignment",
+        "table alignment",
+        "align attribute",
+        "alignment menu",
+        "right-click alignment",
+        "right click alignment",
+        "justify",
+        "center align",
+        "left align",
+        "right align",
+    ],
     "table_width_formatting": [
         "table width", "table widths", "colwidth", "colspec", "column width",
         "table column", "table formatting", "table display", "table layout",
@@ -323,6 +353,7 @@ ROUTE_TABLE: dict[tuple[str, str], str] = {
     # inline_formatting family (RTE, cursor, b/i/u tags)
     ("inline_formatting", "rte_inline_tags"): "inline_formatting_nested",
     # table_content family (table width, colwidth, formatting - NOT xref to table)
+    ("table_content", "table_alignment_reference"): "table_semantics_reference",
     ("table_content", "table_width_formatting"): "heavy_topics_tables_codeblocks",
     # experience_league family (scraped Experience League docs to DITA)
     ("experience_league", "doc_to_dita"): "experience_league_to_dita",
@@ -422,10 +453,16 @@ def compute_feature_scores(evidence: IssueEvidence) -> dict[str, float]:
     if image_ref_matches > 0:
         scores["image_reference"] = min(1.0, 0.35 + image_ref_matches * 0.15)
 
-    # Table content (table width, colwidth, formatting - NOT xref to table)
+    # Table content (table width, colwidth, formatting, alignment - NOT xref to table)
     table_content_matches = sum(1 for kw in TABLE_CONTENT_KEYWORDS if kw in text.lower())
     if table_content_matches > 0:
         scores["table_content"] = min(1.0, 0.4 + table_content_matches * 0.2)
+    table_align_focus = sum(1 for kw in TABLE_ALIGN_FOCUS_KEYWORDS if kw in text.lower())
+    if table_align_focus > 0:
+        scores["table_content"] = max(
+            scores.get("table_content", 0),
+            min(1.0, 0.55 + table_align_focus * 0.12),
+        )
 
     # Experience League (scraped docs to DITA)
     experience_league_matches = sum(1 for kw in EXPERIENCE_LEAGUE_KEYWORDS if kw in text.lower())

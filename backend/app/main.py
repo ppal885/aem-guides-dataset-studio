@@ -2,11 +2,15 @@
 import os
 from pathlib import Path
 
-# Load .env from backend directory (parent of app/)
-_env_path = Path(__file__).resolve().parent.parent / ".env"
-if _env_path.exists():
+# Load .env: project root first, then backend (backend overrides). Matches MCP / common IDEs.
+_backend_dir = Path(__file__).resolve().parent.parent
+_project_root = _backend_dir.parent
+if (_project_root / ".env").exists() or (_backend_dir / ".env").exists():
     from dotenv import load_dotenv
-    load_dotenv(_env_path)
+
+    for _env_path in (_project_root / ".env", _backend_dir / ".env"):
+        if _env_path.exists():
+            load_dotenv(_env_path, override=True, encoding="utf-8-sig")
 import logging
 import hashlib
 import time
@@ -31,34 +35,6 @@ _request_cache: Dict[str, Tuple[int, dict, bytes, float]] = {}
 CACHE_TTL = 5.0  # Cache responses for 5 seconds
 MAX_CACHE_BODY_SIZE = 1024 * 1024  # 1MB - skip caching larger responses
 
-
-def _bool_env(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _environment() -> str:
-    return (os.getenv("ENVIRONMENT") or "development").strip().lower()
-
-
-def _allowed_origins() -> list[str]:
-    configured = [item.strip() for item in (os.getenv("CORS_ALLOWED_ORIGINS") or "").split(",") if item.strip()]
-    if configured:
-        return configured
-    if _environment() in {"development", "test"}:
-        return [
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            "http://127.0.0.1:4173",
-            "http://localhost:4173",
-        ]
-    return []
-
-
-ALLOWED_ORIGINS = _allowed_origins()
-
 app = FastAPI(
     title="AEM Guides Dataset Studio API",
     description="API for generating and managing AEM Guides datasets",
@@ -68,7 +44,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],  # In production, specify actual origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,20 +83,23 @@ async def deduplicate_requests(request: Request, call_next):
         request = Request(request.scope, receive=cached_receive)
 
     # Build request hash (include body for POST/PUT/PATCH; large bodies get unique hash to skip deduplication)
-    tenant_hint = request.headers.get("X-Tenant-ID", "").strip().lower()
-    host_hint = request.headers.get("host", "").strip().lower()
-    auth_hint = request.headers.get("authorization", "")
-    auth_hash = hashlib.sha256(auth_hint.encode()).hexdigest()[:16] if auth_hint else "anonymous"
-    hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}:{host_hint}:{tenant_hint}:{auth_hash}"
+    hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}"
     if body:
         if len(body) <= MAX_CACHE_BODY_SIZE:
             hash_input += f":{body!r}"
         else:
             hash_input += f":{uuid4()}"  # Unique per request - no deduplication for large bodies
     request_hash = hashlib.sha256(hash_input.encode()).hexdigest()
-    
+
+    # Never deduplicate or cache DELETE — avoids any chance of reusing a prior response for
+    # session mutations (e.g. clear-all vs delete-one) if path normalization ever collides.
+    # Skip all /api/v1/chat traffic: POST streams and PATCH edits must always hit handlers; caching
+    # identical prompts or edits within the TTL caused wrong or 404-like behavior for clients.
+    chat_path = str(request.url.path).startswith("/api/v1/chat")
+    skip_dedup = request.method == "DELETE" or chat_path
+
     current_time = time.time()
-    if request_hash in _request_cache:
+    if not skip_dedup and request_hash in _request_cache:
         cached_status, cached_headers, cached_body, cache_time = _request_cache[request_hash]
         if current_time - cache_time < CACHE_TTL:
             logger.debug_structured(
@@ -160,7 +139,11 @@ async def deduplicate_requests(request: Request, call_next):
         async for chunk in response.body_iterator:
             body += chunk
 
-        if response.status_code < 400 and len(body) <= MAX_CACHE_BODY_SIZE:
+        if (
+            not skip_dedup
+            and response.status_code < 400
+            and len(body) <= MAX_CACHE_BODY_SIZE
+        ):
             headers = dict(response.headers)
             _request_cache[request_hash] = (response.status_code, headers, body, current_time)
             _cleanup_cache()
@@ -284,10 +267,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         pass
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "Internal server error",
-            **({"error": str(exc)} if _bool_env("EXPOSE_ERROR_DETAILS", _environment() in {"development", "test"}) else {}),
-        },
+        content={"detail": "Internal server error", "error": str(exc)}
     )
 
 # Include API router
@@ -348,7 +328,7 @@ async def startup_event():
         try:
             from app.db.session import DATABASE_URL, engine
             from app.db.base import Base
-            from app.db.chat_models import ChatSession, ChatMessage  # noqa: F401 - register for create_all
+            from app.db.chat_models import ChatSession, ChatMessage, ChatMessageFeedback  # noqa: F401 - register for create_all
             from app.db.llm_models import LLMRun  # noqa: F401 - register for create_all
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
@@ -723,10 +703,4 @@ def health():
         extra_fields={"endpoint": "/health", "status": health_status["status"]}
     )
     
-    if _bool_env("HEALTH_INCLUDE_DETAILS", _environment() in {"development", "test"}):
-        return health_status
-    return {
-        "status": health_status["status"],
-        "database": health_status["database"],
-        "storage": health_status["storage"],
-    }
+    return health_status

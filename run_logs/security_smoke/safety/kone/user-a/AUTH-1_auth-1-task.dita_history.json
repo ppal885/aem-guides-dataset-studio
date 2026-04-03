@@ -1,0 +1,12 @@
+[
+  {
+    "version": 1,
+    "content": "<task id=\"a\"/>",
+    "author": "ai",
+    "action": "generated",
+    "timestamp": "2026-03-21T21:20:44.451313",
+    "ai_percent": 100.0,
+    "comment": "",
+    "diff_from_prev": "+ new file"
+  }
+]

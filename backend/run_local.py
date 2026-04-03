@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the FastAPI app locally."""
 import os
+import sys
 from pathlib import Path
 
 # Load .env from backend directory before any app imports
@@ -8,6 +9,11 @@ _env_path = Path(__file__).resolve().parent / ".env"
 if _env_path.exists():
     from dotenv import load_dotenv
     load_dotenv(_env_path)
+
+# Allow `from backend.app...` imports used across services (repo root must be on path)
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.append(str(_repo_root))
 
 import uvicorn
 from app.core.logging_config import setup_logging

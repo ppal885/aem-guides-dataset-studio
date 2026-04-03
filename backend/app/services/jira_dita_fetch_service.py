@@ -26,7 +26,7 @@ def fetch_jira_issues(
     try:
         issues = client.search_issues_with_fields(
             jql,
-            fields="summary,description,labels,priority,status,created,updated,issuetype,components",
+            fields="summary,description,labels,priority,status,created,updated,issuetype",
             max_results=max_results,
         )
     except Exception as e:
@@ -73,16 +73,6 @@ def fetch_jira_issues(
                     extra_fields={"issue_key": key, "error": str(e)},
                 )
 
-        issue_type = ""
-        issue_type_field = fields.get("issuetype")
-        if isinstance(issue_type_field, dict) and issue_type_field.get("name"):
-            issue_type = issue_type_field["name"]
-        components = [
-            item.get("name", "")
-            for item in (fields.get("components") or [])
-            if isinstance(item, dict) and item.get("name")
-        ]
-
         result.append({
             "issue_key": key,
             "summary": summary,
@@ -91,8 +81,6 @@ def fetch_jira_issues(
             "comments": comments,
             "priority": priority,
             "status": status,
-            "issue_type": issue_type,
-            "components": components,
             "created": created,
             "updated": updated,
         })

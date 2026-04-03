@@ -1,5 +1,5 @@
 {
-  "chat_system": "v1",
+  "chat_system": "v13",
   "domain_classifier": "v1",
   "scenario_expander": "v1",
   "generator_invocation_planner": "v1",
