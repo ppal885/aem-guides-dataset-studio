@@ -66,6 +66,18 @@ DITA_BOOST_TERMS = {
     "glossref": 1.8,
     "outputclass": 1.5,
     "navtitle": 1.5,
+    "format": 1.8,
+    "scope": 1.8,
+    "collection-type": 1.5,
+    "locktitle": 1.5,
+    "processing-role": 1.5,
+    "toc": 1.3,
+    "print": 1.3,
+    "keys": 2.0,
+    "conkeyref": 2.0,
+    "audio": 1.5,
+    "video": 1.5,
+    "media-source": 1.5,
 }
 
 USE_DITA_HYBRID_SEARCH = os.getenv("USE_DITA_HYBRID_SEARCH", "true").lower() in ("true", "1", "yes")

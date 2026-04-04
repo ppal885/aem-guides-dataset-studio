@@ -959,6 +959,421 @@
     "attributes": "{\"to-content\": \"merge children into one output\", \"by-topic\": \"split into one output per topic\", \"by-document\": \"one output per source file\", \"select-topic\": \"include only referenced topic\", \"select-branch\": \"include topic and descendants\", \"select-document\": \"include all topics from file\"}"
   },
   {
+    "element_name": "format_attribute",
+    "content_type": "attribute",
+    "text_content": "The @format attribute identifies the format of the resource referenced by @href. Defined in OASIS DITA 1.3.\n\nValid values:\n- dita — target is a DITA topic or topic element. @type defaults to 'topic' unless specified.\n- ditamap — target is a DITA map. On <topicref>, resolves to the hierarchy of topic references in the targeted map.\n- html — target is an HTML resource. Default when href starts with http:// or https://.\n- pdf — target is a PDF document.\n- txt — target is a plain text file.\n- (any file extension without period) — e.g., 'doc', 'xlsx', 'xml'. Use the file extension as the format value.\n\nLightweight DITA additional values: hdita, mdita, xdita, hditamap, mditamap, xditamap\n\nDefault cascading rules (when @format is omitted):\n1. Cascades from the closest containing element in the map or related-links section.\n2. If no ancestor specifies format, the processor checks @href:\n   - File extension (lowercase, no period) becomes the default. Example: 'guide.pdf' -> format='pdf'\n   - Exception: .xml extension defaults to 'dita' (not 'xml')\n   - Absolute URIs with http:// or https:// default to 'html'\n   - All other cases default to 'dita'\n\nElements that support @format: <topicref>, <xref>, <link>, <keydef>, <mapref>, <navref>\n\nInteraction with @scope:\n- format='dita' + scope='local' — normal internal DITA reference (default)\n- format='html' + scope='external' — external web link\n- format='pdf' + scope='local' — local PDF file reference\n- format='ditamap' + scope='peer' — cross-deliverable map reference\n\nTest data scenarios for @format:\n```xml\n<map>\n  <title>Test: @format attribute coverage</title>\n  <!-- format=dita (explicit, local DITA topic) -->\n  <topicref href=\"topic-a.dita\" format=\"dita\"/>\n  <!-- format=html with scope=external (web link) -->\n  <topicref href=\"https://example.com/guide.html\" format=\"html\" scope=\"external\"/>\n  <!-- format=pdf with scope=local (local PDF) -->\n  <topicref href=\"manual.pdf\" format=\"pdf\" scope=\"local\"/>\n  <!-- format=ditamap (submap inclusion) -->\n  <topicref href=\"submap.ditamap\" format=\"ditamap\"/>\n  <!-- format omitted on .dita file (should default to dita) -->\n  <topicref href=\"topic-b.dita\"/>\n  <!-- format omitted on http URL (should default to html) -->\n  <topicref href=\"https://example.com/page\" scope=\"external\"/>\n  <!-- format omitted on .xml file (should default to dita, not xml) -->\n  <topicref href=\"data.xml\"/>\n  <!-- format=txt (plain text reference) -->\n  <topicref href=\"release-notes.txt\" format=\"txt\" scope=\"local\"/>\n</map>\n```\n\nCommon mistakes:\n- Using format='xml' instead of format='dita' for .xml files\n- Omitting format on external http links (processor defaults to html but explicit is clearer)\n- Using format='map' instead of format='ditamap'\n- Forgetting scope='external' when format='html' and href is absolute URL",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"dita\": \"DITA topic (default)\", \"ditamap\": \"DITA map\", \"html\": \"HTML resource\", \"pdf\": \"PDF document\", \"txt\": \"plain text\"}",
+    "usage_contexts": [
+      "topicref format='dita' — reference to local DITA topic (default)",
+      "topicref format='html' scope='external' — link to external web page",
+      "topicref format='pdf' scope='local' — reference to local PDF",
+      "topicref format='ditamap' — include a submap",
+      "xref format='html' scope='external' — inline link to web resource",
+      "keydef format='html' — define key pointing to external HTML"
+    ],
+    "common_mistakes": [
+      "Using format='xml' for DITA files — .xml defaults to 'dita', not 'xml'",
+      "Using format='map' instead of format='ditamap'",
+      "Omitting scope='external' when format='html' and href is absolute URL"
+    ],
+    "correct_examples": [
+      "<topicref href=\"topic.dita\" format=\"dita\"/>",
+      "<topicref href=\"https://example.com/api.html\" format=\"html\" scope=\"external\"/>",
+      "<topicref href=\"install-guide.pdf\" format=\"pdf\" scope=\"local\"/>",
+      "<topicref href=\"child-map.ditamap\" format=\"ditamap\"/>"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "dita",
+        "ditamap",
+        "html",
+        "pdf",
+        "txt"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keydef",
+        "mapref"
+      ],
+      "combination_attributes": [
+        "scope",
+        "href",
+        "type"
+      ],
+      "default_scenarios": [
+        "omitted on .dita file",
+        "omitted on .xml file",
+        "omitted on http URL"
+      ]
+    }
+  },
+  {
+    "element_name": "scope_attribute",
+    "content_type": "attribute",
+    "text_content": "The @scope attribute identifies whether the referenced resource is part of the current content set. Defined in OASIS DITA 1.3.\n\nValid values:\n- local — resource is part of the current content set. Default for relative URIs.\n- peer — resource is part of the content collection but may not be available during processing. Used for:\n  1. Cross-deliverable linking (target is a separate output/deliverable)\n  2. Map-to-map key resolution (target should function as root map for key references)\n  3. Peer map with @keyscope — designates the map as a discrete deliverable\n- external — resource is NOT part of the current content set. Default for http/https/ftp/mailto URIs.\n- -dita-use-conref-target — inherit value from the referenced element during conref resolution.\n\nDefault cascading rules:\n1. Cascades from nearest ancestor that specifies @scope.\n2. If no ancestor specifies: relative URIs -> 'local'; http/https/ftp/mailto -> 'external'.\n3. Processors MUST always consider relative URIs as local by default.\n\nElements that support @scope: <topicref>, <xref>, <link>, <keydef>, <mapref>, <navref>\n\nInteraction with @format:\n- scope='local' + format='dita' — normal internal reference (default)\n- scope='external' + format='html' — external web link\n- scope='peer' + format='ditamap' — cross-deliverable map (with keyscope)\n\nInteraction with @keyscope (peer maps):\n```xml\n<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" keyscope=\"book-b\" format=\"ditamap\"/>\n<xref keyref=\"book-b.install-topic\">See installation in Book B</xref>\n```\n\nTest data scenarios for @scope:\n```xml\n<map>\n  <title>Test: @scope attribute coverage</title>\n  <topicref href=\"local-topic.dita\" scope=\"local\"/>\n  <topicref href=\"https://example.com/docs.html\" scope=\"external\" format=\"html\"/>\n  <topicref href=\"../other-guide/guide.ditamap\" scope=\"peer\" format=\"ditamap\" keyscope=\"other-guide\"/>\n  <topicref href=\"../other-guide/install.dita\" scope=\"peer\"/>\n  <topicref href=\"topic-a.dita\"/>  <!-- defaults to local -->\n  <topicref href=\"https://example.com/api\" format=\"html\"/>  <!-- defaults to external -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"local\": \"part of current content set (default for relative URIs)\", \"peer\": \"in collection but possibly unavailable during processing\", \"external\": \"not part of current content set (default for http/https)\", \"-dita-use-conref-target\": \"inherit from conref source\"}",
+    "usage_contexts": [
+      "scope='local' — default for relative hrefs, topic in same deliverable",
+      "scope='external' — links to web pages, PDFs outside content set",
+      "scope='peer' — cross-deliverable links, peer map with keyscope"
+    ],
+    "common_mistakes": [
+      "Using scope='external' for topics in the same content set",
+      "Using scope='peer' without keyscope for map references",
+      "Assuming scope='peer' resources are available during processing"
+    ],
+    "correct_examples": [
+      "<topicref href=\"install.dita\" scope=\"local\"/>",
+      "<topicref href=\"https://docs.example.com/api.html\" scope=\"external\" format=\"html\"/>",
+      "<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" format=\"ditamap\" keyscope=\"book-b\"/>"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "local",
+        "peer",
+        "external"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keydef",
+        "mapref"
+      ],
+      "combination_attributes": [
+        "format",
+        "href",
+        "keyscope"
+      ],
+      "default_scenarios": [
+        "omitted on relative href",
+        "omitted on http URL"
+      ]
+    }
+  },
+  {
+    "element_name": "type_attribute",
+    "content_type": "attribute",
+    "text_content": "The @type attribute on linking elements describes the target of the reference. Defined in OASIS DITA 1.3.\n\nValid values on <xref> (can link below topic level):\n- fig, fn, li, section, table — target element types\n- Qualified names: 'topic/fig', 'task/step', etc.\n\nValid values on <topicref>, <link> (topic-level only):\n- topic (default fallback), concept, task, reference\n\nDefault cascading: ancestor -> auto-detect from target -> fallback 'topic'.\nProcessing: mismatch warning + auto-correct.\n\nTest data scenarios:\n```xml\n<map>\n  <topicref href=\"overview.dita\" type=\"concept\"/>\n  <topicref href=\"install.dita\" type=\"task\"/>\n  <topicref href=\"api-ref.dita\" type=\"reference\"/>\n  <topicref href=\"generic.dita\"/>  <!-- defaults to topic -->\n</map>\n<body>\n  <p>See <xref href=\"overview.dita#overview/fig-arch\" type=\"fig\">diagram</xref>.</p>\n  <p>Refer to <xref href=\"api-ref.dita#api/params\" type=\"table\">params</xref>.</p>\n  <p>Check <xref href=\"install.dita#install/prereqs\" type=\"section\">prereqs</xref>.</p>\n</body>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"topic\": \"generic topic (default)\", \"concept\": \"concept topic\", \"task\": \"task topic\", \"reference\": \"reference topic\", \"fig\": \"figure (xref only)\", \"fn\": \"footnote (xref only)\", \"section\": \"section (xref only)\", \"table\": \"table (xref only)\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "topic",
+        "concept",
+        "task",
+        "reference",
+        "fig",
+        "fn",
+        "li",
+        "section",
+        "table"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link"
+      ],
+      "combination_attributes": [
+        "href",
+        "scope",
+        "format"
+      ],
+      "default_scenarios": [
+        "omitted (auto-detect)",
+        "mismatched type"
+      ]
+    }
+  },
+  {
+    "element_name": "uri_based_addressing",
+    "content_type": "attribute",
+    "text_content": "URI-based addressing in DITA uses @href, @conref, and similar attributes. Defined in OASIS DITA 1.3.\n\nHref syntax patterns:\n1. Whole file: href=\"file.dita\" — first topic in file\n2. Specific topic: href=\"file.dita#topicid\"\n3. Non-topic element: href=\"file.dita#topicid/elementid\" — MUST include both IDs\n4. Same-topic shorthand: href=\"#./elementid\" — current topic only, not in maps\n5. Same-file topic: href=\"#topicid\" — fragment-only URI\n6. Map element: href=\"file.ditamap#mapid\" — #. shorthand does NOT work for maps\n7. External: href=\"https://example.com\" — implies scope='external' format='html'\n\nConref addressing: conref=\"file.dita#topicid/elementid\" — MUST use topicid/elementid\n\nDefaults: relative href -> format from extension, scope='local'; http href -> format='html', scope='external'\n\nTest data:\n```xml\n<map>\n  <topicref href=\"topic-a.dita\"/>  <!-- whole file -->\n  <topicref href=\"multi.dita#second-topic\"/>  <!-- specific topic -->\n  <topicref href=\"sub.ditamap#section\" format=\"ditamap\"/>  <!-- map element -->\n  <topicref href=\"https://example.com\" scope=\"external\" format=\"html\"/>  <!-- external -->\n</map>\n<concept id=\"demo\"><title>Demo</title><conbody>\n  <p>See <xref href=\"ref.dita#ref/params\" type=\"table\">params</xref>.</p>\n  <p>See <xref href=\"#./my-fig\" type=\"fig\">figure below</xref>.</p>\n  <note conref=\"shared.dita#shared/important-note\">placeholder</note>\n</conbody></concept>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"href\": \"URI reference to target\", \"conref\": \"URI for content reuse (topicid/elementid)\", \"conkeyref\": \"key-based content reference (keyname/elementid)\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "whole-file",
+        "topic-fragment",
+        "element-fragment",
+        "same-topic-shorthand",
+        "map-element",
+        "external-uri"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "conref"
+      ],
+      "combination_attributes": [
+        "format",
+        "scope",
+        "type"
+      ]
+    }
+  },
+  {
+    "element_name": "keys_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keys attribute defines one or more key names for a resource. Used on <topicref>, <keydef>, and specializations in DITA maps.\n\nSyntax: One or more space-separated key names.\nExample: keys=\"install install-topic setup\" defines 3 keys for the same resource.\n\nNaming rules:\n- Case-sensitive: 'Install' and 'install' are different keys\n- Legal characters: same as URI characters\n- Prohibited: { } [ ] / # ? and whitespace (except as separator)\n\nIMPORTANT: The attribute name is keys (PLURAL), NOT key.\n- WRONG: <topicref href=\"t.dita\" key=\"mykey\"/>\n- CORRECT: <topicref href=\"t.dita\" keys=\"mykey\"/>\n\nKey definitions bind key names to:\n1. URI-addressed resources via @href\n2. Metadata content in child <topicmeta> (variable text)\n3. Both simultaneously\n4. Nothing (valid but empty key definition)\n\nPrecedence when duplicate keys exist:\n1. First definition in breadth-first map traversal wins\n2. Parent scope definitions override child scope definitions\n3. All key spaces resolved BEFORE any key reference processing\n\nTest data scenarios:\n```xml\n<map>\n  <!-- Single key -->\n  <keydef keys=\"product-name\">\n    <topicmeta><keywords><keyword>AEM Guides</keyword></keywords></topicmeta>\n  </keydef>\n  <!-- Multiple keys for same resource -->\n  <keydef keys=\"install setup getting-started\" href=\"install.dita\"/>\n  <!-- Key on topicref (visible in TOC + defines key) -->\n  <topicref href=\"config.dita\" keys=\"configuration\"/>\n  <!-- Key for external resource -->\n  <keydef keys=\"api-docs\" href=\"https://api.example.com\" format=\"html\" scope=\"external\"/>\n  <!-- Key for PDF -->\n  <keydef keys=\"user-guide-pdf\" href=\"guide.pdf\" format=\"pdf\" scope=\"local\"/>\n  <!-- Empty key (placeholder, overridden by parent map) -->\n  <keydef keys=\"brand-name\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keys\": \"space-separated key names (PLURAL, not key)\"}",
+    "usage_contexts": [
+      "keydef keys='product-name' — variable text key",
+      "keydef keys='install' href='install.dita' — topic key",
+      "topicref keys='config' href='config.dita' — visible + keyed",
+      "keydef keys='api' href='https://...' format='html' scope='external' — external key"
+    ],
+    "common_mistakes": [
+      "Using key= (singular) instead of keys= (PLURAL)",
+      "Forgetting keys are case-sensitive",
+      "Not understanding first-definition-wins precedence"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "single-key",
+        "multiple-keys",
+        "variable-text-key",
+        "topic-key",
+        "external-key",
+        "empty-key",
+        "override-key"
+      ],
+      "supported_elements": [
+        "keydef",
+        "topicref"
+      ],
+      "combination_attributes": [
+        "href",
+        "format",
+        "scope",
+        "keyscope"
+      ]
+    }
+  },
+  {
+    "element_name": "keyref_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keyref attribute provides indirect, late-bound references to resources defined by keys.\n\nSyntax forms:\n1. Simple: keyref=\"keyname\" — resolves to the key's href target\n2. Element-specific: keyref=\"keyname/elementid\" — resolves to element within key's target\n\nElements that support @keyref:\n- <topicref keyref=\"...\"> — indirect topic reference in map\n- <xref keyref=\"...\"> — indirect cross-reference in topic\n- <link keyref=\"...\"> — indirect related link\n- <keyword keyref=\"...\"> — variable text substitution\n- <term keyref=\"...\"> — glossary term reference\n- <image keyref=\"...\"> — indirect image reference\n- <ph keyref=\"...\"> — phrase-level variable text\n\nInteraction with @href:\n- If both keyref and href are specified, keyref takes precedence\n- href acts as fallback if key is undefined\n\nVariable text substitution:\nWhen keyref points to a key with <topicmeta>/<keywords>/<keyword>, the keyword text replaces the element content.\n\nTest data:\n```xml\n<map>\n  <keydef keys=\"product\" href=\"product-info.dita\">\n    <topicmeta><keywords><keyword>AEM Guides</keyword></keywords></topicmeta>\n  </keydef>\n  <keydef keys=\"api-ref\" href=\"https://api.example.com\" format=\"html\" scope=\"external\"/>\n  <topicref keyref=\"product\"/>  <!-- indirect topic reference -->\n</map>\n\n<!-- In topic body -->\n<p>Welcome to <keyword keyref=\"product\"/>.</p>  <!-- resolves to 'AEM Guides' -->\n<p>See <xref keyref=\"api-ref\">API documentation</xref>.</p>\n<p>See <xref keyref=\"product/install-section\" type=\"section\">install</xref>.</p>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keyref\": \"keyname or keyname/elementid\"}",
+    "usage_contexts": [
+      "topicref keyref='key' — indirect topic reference",
+      "xref keyref='key' — indirect cross-reference",
+      "keyword keyref='key' — variable text substitution",
+      "image keyref='key' — indirect image reference"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "simple-keyref",
+        "element-keyref",
+        "variable-text",
+        "fallback-href",
+        "undefined-key"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keyword",
+        "term",
+        "image",
+        "ph"
+      ],
+      "combination_attributes": [
+        "href",
+        "type",
+        "format"
+      ]
+    }
+  },
+  {
+    "element_name": "keyscope_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keyscope attribute creates a named scope for key definitions. Defined in OASIS DITA 1.3.\n\nPurpose: Allows different branches of a map to define different values for the same key name.\n\nSyntax: One or more space-separated scope names (same naming rules as keys).\n\nHow scopes work:\n- Each scope has its own key space for resolution\n- Keys in a scope are accessed from outside via scope-qualified names: scope.keyname\n- The root map always defines an implicit (unnamed) scope\n- Nested scopes: inner scope can override outer scope keys\n\nCross-deliverable linking with keyscope + scope='peer':\n```xml\n<!-- In book-a's map: reference book-b as peer -->\n<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" \n         keyscope=\"book-b\" format=\"ditamap\"/>\n<!-- In topic: link to book-b's install topic -->\n<xref keyref=\"book-b.install\">See Book B installation</xref>\n```\n\nVariable text per scope (same key, different values):\n```xml\n<map>\n  <!-- Windows scope -->\n  <topicref keyscope=\"windows\">\n    <keydef keys=\"os-name\">\n      <topicmeta><keywords><keyword>Windows</keyword></keywords></topicmeta>\n    </keydef>\n    <topicref href=\"install.dita\"/>  <!-- uses 'Windows' for os-name -->\n  </topicref>\n  <!-- Linux scope -->\n  <topicref keyscope=\"linux\">\n    <keydef keys=\"os-name\">\n      <topicmeta><keywords><keyword>Linux</keyword></keywords></topicmeta>\n    </keydef>\n    <topicref href=\"install.dita\"/>  <!-- uses 'Linux' for os-name -->\n  </topicref>\n</map>\n```\n\nConref redirection with keys:\n```xml\n<!-- conkeyref allows map-level control over reused content -->\n<note conkeyref=\"reuse/warning-1\">placeholder</note>\n<!-- Map defines which reuse topic provides the content: -->\n<keydef keys=\"reuse\" href=\"acme-reuse.dita\"/>\n<!-- Partner map overrides: -->\n<keydef keys=\"reuse\" href=\"partner-reuse.dita\"/>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keyscope\": \"space-separated scope names\"}",
+    "usage_contexts": [
+      "keyscope on topicref — creates named scope for branch",
+      "keyscope + scope='peer' — cross-deliverable linking",
+      "nested keyscopes — scope overrides within branches",
+      "scope-qualified key: scope.keyname — access key from outside scope"
+    ],
+    "common_mistakes": [
+      "Forgetting to qualify key names when accessing from outside scope (use scope.keyname)",
+      "Not understanding that root map always has an implicit scope",
+      "Using keyscope on peer map root (ignored by referencing map)"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "single-scope",
+        "multiple-scope-names",
+        "nested-scopes",
+        "peer-scope",
+        "variable-text-per-scope"
+      ],
+      "supported_elements": [
+        "topicref",
+        "map"
+      ],
+      "combination_attributes": [
+        "scope",
+        "keys",
+        "format"
+      ],
+      "default_scenarios": [
+        "no keyscope (implicit root scope)",
+        "scope-qualified key reference"
+      ]
+    }
+  },
+  {
+    "element_name": "conkeyref_attribute",
+    "content_type": "attribute",
+    "text_content": "The @conkeyref attribute provides key-based content reuse (conref redirection).\n\nSyntax: conkeyref=\"keyname/elementid\"\n- keyname — resolves to a topic via key definition\n- elementid — the @id of the element to reuse from that topic\n- MUST have both parts separated by /\n\nWRONG: conkeyref=\"keyname\" (missing /elementid)\nCORRECT: conkeyref=\"reuse/warning-note\"\n\nHow it works:\n1. Processor resolves 'keyname' to a topic file via map's key definition\n2. Within that topic, finds element with id='elementid'\n3. Copies that element's content into the referencing location\n\nAdvantage over @conref:\n- Map-level control: change which file provides content by changing key definition\n- Portable: topics don't hardcode file paths\n- Enables variant publishing (different maps -> different content)\n\nTest data:\n```xml\n<!-- Map with key definition -->\n<map>\n  <keydef keys=\"shared-warnings\" href=\"warnings-en.dita\"/>\n  <topicref href=\"install.dita\"/>\n</map>\n\n<!-- warnings-en.dita (source of reusable content) -->\n<topic id=\"warnings\">\n  <title>Warnings</title>\n  <body>\n    <note id=\"backup-warning\" type=\"caution\">Back up before proceeding.</note>\n    <p id=\"prereq-text\">Ensure you have admin privileges.</p>\n  </body>\n</topic>\n\n<!-- install.dita (uses conkeyref) -->\n<task id=\"install\">\n  <title>Install</title>\n  <taskbody>\n    <prereq>\n      <note conkeyref=\"shared-warnings/backup-warning\">placeholder</note>\n      <p conkeyref=\"shared-warnings/prereq-text\">placeholder</p>\n    </prereq>\n  </taskbody>\n</task>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"conkeyref\": \"keyname/elementid (MUST have both parts)\"}",
+    "usage_contexts": [
+      "conkeyref='key/id' on <note> — reuse a note via key",
+      "conkeyref='key/id' on <p> — reuse a paragraph via key",
+      "conkeyref='key/id' on <step> — reuse a step via key",
+      "variant publishing — different maps point key to different source files"
+    ],
+    "common_mistakes": [
+      "Missing /elementid (conkeyref='keyname' is WRONG)",
+      "Target element missing @id attribute",
+      "Element type mismatch between source and reference",
+      "Using conref when conkeyref is available (prefer key-based)"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "note-conkeyref",
+        "paragraph-conkeyref",
+        "step-conkeyref",
+        "variant-publishing",
+        "fallback-conref"
+      ],
+      "supported_elements": [
+        "note",
+        "p",
+        "step",
+        "li",
+        "ph",
+        "keyword",
+        "any-element-with-id"
+      ],
+      "combination_attributes": [
+        "keys",
+        "keydef",
+        "href"
+      ]
+    }
+  },
+  {
+    "element_name": "processing_role_attribute",
+    "content_type": "attribute",
+    "text_content": "The @processing-role attribute controls whether a referenced topic contributes to navigation output.\n\nValid values:\n- normal (default) — topic appears in TOC and output.\n- resource-only — available for conref/keyref but excluded from TOC/output.\n\nUse cases: conref warehouse, key definitions, shared variables.\n<keydef> implicitly has processing-role='resource-only'.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"visible.dita\" processing-role=\"normal\"/>\n  <topicref href=\"reusable.dita\" processing-role=\"resource-only\"/>\n  <topicref href=\"default.dita\"/>  <!-- defaults to normal -->\n  <keydef keys=\"product\" href=\"vars.dita\"/>  <!-- implicit resource-only -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"normal\": \"appears in TOC/output (default)\", \"resource-only\": \"reuse only, excluded from navigation\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "normal",
+        "resource-only"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "href",
+        "keys"
+      ],
+      "default_scenarios": [
+        "omitted (defaults to normal)",
+        "keydef (implicit resource-only)"
+      ]
+    }
+  },
+  {
+    "element_name": "linking_attribute",
+    "content_type": "attribute",
+    "text_content": "The @linking attribute controls automatic link generation for the referenced topic.\n\nValid values:\n- normal (default) — linked TO and generates outgoing links.\n- targetonly — can be linked TO but no outgoing links. Use for glossary/reference.\n- sourceonly — generates outgoing links but cannot be linked to. Use for hub pages.\n- none — no automatic links in either direction.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"main.dita\" linking=\"normal\"/>\n  <topicref href=\"glossary.dita\" linking=\"targetonly\"/>\n  <topicref href=\"hub.dita\" linking=\"sourceonly\"/>\n  <topicref href=\"legal.dita\" linking=\"none\"/>\n  <topicref href=\"regular.dita\"/>  <!-- defaults to normal -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"normal\": \"both directions (default)\", \"targetonly\": \"linkable, no outgoing\", \"sourceonly\": \"generates links, not linkable\", \"none\": \"no automatic links\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "normal",
+        "targetonly",
+        "sourceonly",
+        "none"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "collection-type",
+        "toc"
+      ]
+    }
+  },
+  {
+    "element_name": "toc_attribute",
+    "content_type": "attribute",
+    "text_content": "The @toc attribute controls TOC visibility.\n\nValid values: yes (default) — in TOC; no — excluded from TOC.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"ch1.dita\" toc=\"yes\"/>\n  <topicref href=\"legal.dita\" toc=\"no\"/>\n  <topicref href=\"ch2.dita\"/>  <!-- defaults to yes -->\n  <topicref href=\"online-only.dita\" toc=\"no\" print=\"no\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"yes\": \"include in TOC (default)\", \"no\": \"exclude from TOC\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "yes",
+        "no"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "print",
+        "linking"
+      ]
+    }
+  },
+  {
+    "element_name": "print_attribute",
+    "content_type": "attribute",
+    "text_content": "The @print attribute controls print/PDF output inclusion.\n\nValid values:\n- yes — included in print output.\n- no — excluded from print/PDF.\n- printonly — included ONLY in print, excluded from web/Sites.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"ch1.dita\" print=\"yes\"/>\n  <topicref href=\"demo.dita\" print=\"no\"/>\n  <topicref href=\"isbn.dita\" print=\"printonly\"/>\n  <topicref href=\"ch2.dita\"/>  <!-- included in all -->\n  <topicref href=\"widget.dita\" print=\"no\" toc=\"no\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"yes\": \"include in print\", \"no\": \"exclude from print\", \"printonly\": \"print only, exclude from web\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "yes",
+        "no",
+        "printonly"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "toc",
+        "linking"
+      ]
+    }
+  },
+  {
     "element_name": "collection-type",
     "content_type": "element",
     "text_content": "The @collection-type attribute on <topicref> defines how child topics relate to each other and generates automatic links.\n\nValues:\n- unordered (default) — parent-to-child links, no sibling links\n- sequence — adds previous/next navigation between siblings (for tutorials, procedures)\n- family — all siblings link to each other (for closely related topics)\n- choice — one-of selection (rarely used)\n\nExample:\n```xml\n<!-- Sequential tutorial with prev/next links -->\n<topicref href=\"tutorial.dita\" collection-type=\"sequence\">\n  <topicref href=\"tutorial-01-intro.dita\"/>\n  <topicref href=\"tutorial-02-setup.dita\"/>\n  <topicref href=\"tutorial-03-build.dita\"/>\n  <topicref href=\"tutorial-04-deploy.dita\"/>\n</topicref>\n```\n\nIn AEM Guides: collection-type=sequence generates 'Previous' and 'Next' links in AEM Sites output. PDF output may show sequential navigation in footers.",
@@ -3318,5 +3733,84 @@
       "External system integration"
     ],
     "attributes": {}
+  },
+  {
+    "element_name": "audio_element",
+    "content_type": "element",
+    "text_content": "The <audio> element embeds sound content in DITA topics. Modeled on HTML5 audio.\n\nContent model: desc?, longdescref?, fallback?, media-source*, media-track*, foreign*\n\nPlayback attributes: @autoplay, @controls, @loop, @muted (all true/false), @tabindex\nResource: @href (URI), @keyref (indirect), @format (MIME type e.g. audio/mp3), @scope\n\nWhen audio cannot render, processors SHOULD show <fallback> content.\nIf @href specified, also specify @format.\n\n```xml\n<audio href=\"sounds/alert.mp3\" format=\"audio/mp3\" controls=\"true\">\n  <desc>Alert sound</desc>\n  <fallback><p>Audio not supported.</p></fallback>\n  <media-source href=\"sounds/alert.ogg\" format=\"audio/ogg\"/>\n</audio>\n```",
+    "parent_element": "body, section, fig, li, dd, stentry, entry, p",
+    "children_elements": "desc, longdescref, fallback, media-source, media-track, foreign",
+    "attributes": "{\"href\": \"URI\", \"keyref\": \"key\", \"format\": \"MIME type\", \"scope\": \"local|peer|external\", \"autoplay\": \"true|false\", \"controls\": \"true|false\", \"loop\": \"true|false\", \"muted\": \"true|false\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "audio/mp3",
+        "audio/ogg",
+        "audio/wav",
+        "audio/aac"
+      ],
+      "supported_elements": [
+        "audio"
+      ],
+      "combination_attributes": [
+        "href",
+        "keyref",
+        "format",
+        "scope",
+        "controls",
+        "autoplay"
+      ]
+    }
+  },
+  {
+    "element_name": "video_element",
+    "content_type": "element",
+    "text_content": "The <video> element embeds moving visual content. Modeled on HTML5 video.\n\nContent model: desc?, longdescref?, video-poster?, fallback?, media-source*, media-track*, foreign*\n\nPlayback: @autoplay, @controls, @loop, @muted, @tabindex, @height, @width\nResource: @href, @keyref, @format (video/mp4, video/webm, video/ogg), @scope\n\n```xml\n<video href=\"videos/demo.mp4\" format=\"video/mp4\" controls=\"true\" width=\"640\" height=\"360\">\n  <video-poster href=\"images/poster.png\"/>\n  <fallback><p>Video not supported.</p></fallback>\n  <media-source href=\"videos/demo.webm\" format=\"video/webm\"/>\n  <media-track href=\"captions/en.vtt\" kind=\"subtitles\" srclang=\"en\"/>\n</video>\n```",
+    "parent_element": "body, section, fig, li, dd, stentry, entry, p",
+    "children_elements": "desc, longdescref, video-poster, fallback, media-source, media-track, foreign",
+    "attributes": "{\"href\": \"URI\", \"keyref\": \"key\", \"format\": \"MIME type\", \"scope\": \"local|peer|external\", \"controls\": \"true|false\", \"width\": \"pixels\", \"height\": \"pixels\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "video/mp4",
+        "video/webm",
+        "video/ogg"
+      ],
+      "supported_elements": [
+        "video"
+      ],
+      "combination_attributes": [
+        "href",
+        "keyref",
+        "format",
+        "scope",
+        "controls",
+        "width",
+        "height"
+      ]
+    }
+  },
+  {
+    "element_name": "media_source_element",
+    "content_type": "element",
+    "text_content": "The <media-source> element specifies location of audio/video resource. Modeled on HTML5 <source>. Empty element.\n\nParents: <audio>, <video>\nAttributes: @href (URI), @format (MIME), @keyref (indirect), @scope\n\nMultiple <media-source> elements = format fallback chain. User agent plays first supported format.\n\n```xml\n<audio controls=\"true\">\n  <media-source href=\"clip.mp3\" format=\"audio/mp3\"/>\n  <media-source href=\"clip.ogg\" format=\"audio/ogg\"/>\n</audio>\n```",
+    "parent_element": "audio, video",
+    "children_elements": null,
+    "attributes": "{\"href\": \"URI\", \"format\": \"MIME type\", \"keyref\": \"key\", \"scope\": \"local|peer|external\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "audio/mp3",
+        "audio/ogg",
+        "video/mp4",
+        "video/webm"
+      ],
+      "supported_elements": [
+        "media-source"
+      ],
+      "combination_attributes": [
+        "href",
+        "format",
+        "keyref",
+        "scope"
+      ]
+    }
   }
 ]

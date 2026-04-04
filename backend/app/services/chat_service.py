@@ -66,9 +66,91 @@ _DATASET_REQUEST_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_GENERATION_PATTERN = re.compile(
-    r"\b(generate|create|write|draft|make|build)\b.*\b(dita|task topic|concept topic|reference topic|glossentry|topic|zip|bundle|xml|sample|example|template|scaffold|boilerplate|bookmap|reltable|ditamap)\b",
+    r"\b(generate|create|write|draft|make|build|need|want|get|give|send|export|"
+    r"produce|prepare|provide|fetch|grab|pull|output|deliver|share|save|show)\b"
+    r".*\b(dita|task topic|concept topic|reference topic|glossentry|topic|"
+    r"zip|bundle|xml|sample|example|template|scaffold|boilerplate|bookmap|reltable|ditamap)\b",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# Download / ZIP intent detection (keyword-set approach, not fragile regex)
+# ---------------------------------------------------------------------------
+_DOWNLOAD_NOUNS = frozenset({
+    "zip", "bundle", "package", "download", "export", "file", "files",
+    "archive", "output", "link", "url", "artifact", "artifacts",
+    "result", "results", "content", "dataset", "deliverable",
+    "attachment", "generated", "dita", "xml",
+})
+
+_DOWNLOAD_VERBS = frozenset({
+    "download", "zip", "bundle", "package", "export", "save",
+    "provide", "share", "prepare", "fetch", "grab", "pull", "produce",
+    "output", "deliver", "send", "give", "get", "need", "want",
+    "show", "hand", "extract", "retrieve", "obtain", "acquire",
+    "transfer", "receive", "collect", "take", "access", "open",
+    "load", "bring", "pass", "attach", "generate", "create",
+    "make", "build", "pack", "wrap", "compress",
+})
+
+# Standalone phrases that are unambiguously download requests
+_DOWNLOAD_STANDALONE = re.compile(
+    r"(?i)^\s*("
+    r"zip\s*(it|that|this|up|please|now|ok|okay|already|the\s+\w+)?\s*[.!?]*\s*$|"
+    r"download\s*(it|that|this|link|please|now|ok|okay|already)?\s*[.!?]*\s*$|"
+    r"bundle\s*(it|that|this|please|now|ok|okay|already)?\s*[.!?]*\s*$|"
+    r"package\s*(it|that|this|up|please|now|ok|okay|already)?\s*[.!?]*\s*$|"
+    r"export\s*(it|that|this|please|now|ok|okay|already)?\s*[.!?]*\s*$|"
+    r"(gimme|give me|hand me|show me|can i have|where'?s|where is|i need|i want)\s+(the\s+)?(zip|download|bundle|package|link|file|output|result|artifact)|"
+    r"(can i|may i|i want to|i need to|let me|how do i|how to)\s+(download|get|access|open|retrieve|obtain|export|save)|"
+    r"link\s*\??\s*$|"
+    r"download\s+link\s*\??\s*$|"
+    r"save\s+as\s+zip|"
+    r"pack\s+it\s+up|"
+    r"zip\s+the\s+\w+|"
+    r"export\s+(the\s+)?(dita|files?|content|output|generated|xml|result|results|dataset|bundle)|"
+    r"get\s+(me\s+)?(the\s+)?(zip|download|bundle|package|file|output|result|artifact)|"
+    r"(just|please|can you|could you|would you)\s+(zip|download|bundle|package|export|save)\b"
+    r")"
+)
+
+# Negative filter: explanatory questions about zip/download concepts
+_DOWNLOAD_EXPLANATION_PATTERN = re.compile(
+    r"(?i)^\s*(what\s+(is|are|does)|explain|define|meaning\s+of|tell\s+me\s+about)\b.*(zip|download|bundle|package)",
+)
+
+
+def _has_download_intent(text: str, *, session_aware: bool = False) -> bool:
+    """Detect download/zip intent in user message.
+
+    When session_aware=True (a previous generation exists in the session),
+    use a very loose check — any download-related noun is sufficient.
+    When session_aware=False, require more explicit phrasing (verb + noun or standalone phrase).
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    # Always exclude explanatory / definitional questions
+    if _DOWNLOAD_EXPLANATION_PATTERN.match(text):
+        return False
+    # Standalone phrases always match (regardless of session)
+    if _DOWNLOAD_STANDALONE.match(text):
+        return True
+    words = set(re.findall(r"\b\w+\b", t))
+    if session_aware:
+        # With session context, any download-related noun is enough
+        if words & _DOWNLOAD_NOUNS:
+            return True
+        # Also match follow-up phrases like "for the same", "for this", "ready?"
+        if re.search(r"\b(for the same|for this|for that|the same|the above|same thing|ready|done)\b", t):
+            return True
+        # Match any download verb alone (e.g., "save", "export", "download")
+        if words & {"download", "zip", "export", "save", "bundle", "pack", "package", "compress"}:
+            return True
+        return False
+    # Without session context, require verb + noun combination
+    return bool(words & _DOWNLOAD_VERBS) and bool(words & _DOWNLOAD_NOUNS)
+
 _JIRA_SEARCH_PATTERN = re.compile(
     r"\b(jira|jiras|issue|issues|ticket|tickets)\b.*\b(fetch|find|show|search|lookup|look up|get|list|related|similar|matching|relevant)\b|"
     r"\b(fetch|find|show|search|lookup|look up|get|list)\b.*\b(jira|jiras|issue|issues|ticket|tickets)\b",
@@ -253,11 +335,16 @@ def _build_context_block(
         last_gen = get_session_last_generation(session_id)
         if last_gen:
             prev_text = (last_gen.get("text") or "")[:800]
+            prev_download = last_gen.get("download_url") or ""
             parts.append(
-                f"LAST GENERATION IN THIS SESSION (user can refine):\n"
+                f"LAST GENERATION IN THIS SESSION (user can refine or download):\n"
                 f"Previous text: {prev_text}{'...' if len(last_gen.get('text', '') or '') > 800 else ''}\n"
+                f"Download URL: {prev_download}\n"
                 "When user says 'add X', 'refine', 'make steps more detailed', etc., call generate_dita with "
-                "text=<previous text> and instructions=<their refinement request>."
+                "text=<previous text> and instructions=<their refinement request>.\n"
+                "When user asks for 'zip', 'download', 'bundle', 'package', or 'export', AND a previous generation "
+                "exists with a download URL above, provide that download URL directly — do NOT re-generate or "
+                "explain what a ZIP file is. If no previous generation exists, call generate_dita to create one."
             )
     if not parts:
         return ""
@@ -326,7 +413,7 @@ def _build_post_tool_assistant_text(tool_results_by_name: dict[str, dict]) -> st
     return "\n\n".join(line for line in lines if line).strip()
 
 
-def _should_use_tool_mode(user_content: str) -> bool:
+def _should_use_tool_mode(user_content: str, session_id: str | None = None) -> bool:
     text = (user_content or "").strip()
     if not text:
         return False
@@ -335,6 +422,15 @@ def _should_use_tool_mode(user_content: str) -> bool:
     if _DATASET_REQUEST_PATTERN.search(text):
         return True
     if _DITA_GENERATION_PATTERN.search(text):
+        return True
+    # Session-aware download intent: loose match when a previous generation exists
+    if session_id:
+        last_gen = get_session_last_generation(session_id)
+        if last_gen and last_gen.get("download_url"):
+            if _has_download_intent(text, session_aware=True):
+                return True
+    # Session-unaware download intent: strict verb+noun or standalone phrase
+    if _has_download_intent(text, session_aware=False):
         return True
     if (
         _domain_tool_mode_enabled()
@@ -1364,7 +1460,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if _should_use_tool_mode(user_content):
+    if _should_use_tool_mode(user_content, session_id=session_id):
         async for event in _stream_tool_mode_reply(
             session_id,
             user_content=user_content,
@@ -1564,6 +1660,10 @@ async def _stream_tool_mode_reply(
     rag_context = _build_rag_context(user_content, tenant_id=tenant_id)
     # Use compact prompt to stay within Groq 12K TPM limit
     system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context)
+    # Inject session context (previous generation download URL, refinement hints)
+    context_block = _build_context_block(context, user_content, session_id=session_id)
+    if context_block:
+        system_prompt += context_block
 
     if not is_llm_available():
         fallback_text = await _build_local_fallback_response(

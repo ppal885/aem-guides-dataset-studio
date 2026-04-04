@@ -120,6 +120,28 @@ def _plan_instruction_block(
         )
     else:
         parts.extend(["\nRAG_CONTEXT_DIGEST (legacy single block):\n", rag_digest_fallback[:4500]])
+    # Attribute test coverage section (for test data generation mode)
+    if plan.attribute_test_coverage:
+        attr_lines: list[str] = ["\nATTRIBUTE TEST COVERAGE REQUIREMENT:"]
+        attr_lines.append("You are generating COMPREHENSIVE TEST DATA, not documentation.")
+        attr_lines.append("Generate ALL values listed below, not just the one from the Jira ticket.\n")
+        for cov in plan.attribute_test_coverage:
+            attr_lines.append(f"Target attribute: @{cov.target_attribute}")
+            if cov.target_elements:
+                attr_lines.append(f"Target elements: {', '.join(cov.target_elements)}")
+            if cov.all_valid_values:
+                attr_lines.append(f"ALL valid values (MUST generate each): {', '.join(cov.all_valid_values)}")
+            if cov.mentioned_values:
+                attr_lines.append(f"Values from Jira ticket: {', '.join(cov.mentioned_values)}")
+            if cov.combination_attributes:
+                attr_lines.append(f"Combination attributes: {', '.join(cov.combination_attributes)}")
+            if cov.test_scenarios:
+                attr_lines.append("Test scenarios (generate each as a separate element):")
+                for i, sc in enumerate(cov.test_scenarios, 1):
+                    attr_lines.append(f"  {i}. {sc}")
+            attr_lines.append("")
+        parts.extend(attr_lines)
+
     if extra.strip():
         parts.append("\n" + extra.strip())
     return "\n".join(parts)

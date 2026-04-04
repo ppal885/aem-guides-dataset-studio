@@ -29,6 +29,15 @@ _ALLOWED_TOPIC_TYPE = frozenset(
 )
 
 
+class DetectedDitaConstruct(BaseModel):
+    """Which DITA attribute/element the Jira ticket is about (for test data generation)."""
+
+    attributes: list[str] = Field(default_factory=list)
+    elements: list[str] = Field(default_factory=list)
+    specific_values: dict[str, list[str]] = Field(default_factory=dict)
+    confidence: float = 0.0
+
+
 class IntentRecord(BaseModel):
     """Structured intent from user/Jira text (LLM + optional keyword merge)."""
 
@@ -54,6 +63,7 @@ class IntentRecord(BaseModel):
     evidence_phrases: list[str] = Field(default_factory=list)
     confidence: float = Field(0.5, ge=0.0, le=1.0)
     assumptions: list[str] = Field(default_factory=list)
+    detected_dita_construct: DetectedDitaConstruct = Field(default_factory=DetectedDitaConstruct)
 
     @field_validator("content_intent", mode="before")
     @classmethod
@@ -166,6 +176,17 @@ class RecipeExecutionContract(BaseModel):
     repair_hints: list[str] = Field(default_factory=list)
 
 
+class AttributeTestCoverage(BaseModel):
+    """Specifies target attribute test coverage for comprehensive test data generation."""
+
+    target_attribute: str = ""
+    target_elements: list[str] = Field(default_factory=list)
+    all_valid_values: list[str] = Field(default_factory=list)
+    mentioned_values: list[str] = Field(default_factory=list)
+    combination_attributes: list[str] = Field(default_factory=list)
+    test_scenarios: list[str] = Field(default_factory=list)
+
+
 class GenerationPlan(BaseModel):
     plan_version: str = "1.0"
     recipe_id: str
@@ -181,6 +202,7 @@ class GenerationPlan(BaseModel):
     raw_user_text_excerpt: str = ""
     intent_summary: str = ""  # one-line for prompts
     source_fidelity_rules: list[str] = Field(default_factory=list)
+    attribute_test_coverage: list[AttributeTestCoverage] = Field(default_factory=list)
 
 
 class SemanticViolation(BaseModel):

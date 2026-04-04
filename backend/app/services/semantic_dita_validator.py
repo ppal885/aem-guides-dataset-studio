@@ -135,6 +135,34 @@ def detect_shallow_output(
     return shallow, violations
 
 
+def _validate_attribute_coverage(
+    plan: GenerationPlan,
+    combined: str,
+) -> list[SemanticViolation]:
+    """Check that generated XML includes all required attribute values from test coverage."""
+    violations: list[SemanticViolation] = []
+    for cov in plan.attribute_test_coverage:
+        attr = cov.target_attribute
+        required_values = set(cov.all_valid_values)
+        if not required_values:
+            continue
+        found_values: set[str] = set()
+        for m in re.finditer(rf'{re.escape(attr)}\s*=\s*["\']([^"\']+)["\']', combined, re.I):
+            found_values.add(m.group(1).strip().lower())
+        required_lower = {v.lower() for v in required_values}
+        missing = required_lower - found_values
+        if missing:
+            violations.append(
+                SemanticViolation(
+                    rule_id=f"attribute_coverage:{attr}",
+                    severity="warn",
+                    message=f"Missing @{attr} values in test data: {', '.join(sorted(missing))}",
+                    repair_hint=f"Add test cases for {attr}={', '.join(sorted(missing))}",
+                )
+            )
+    return violations
+
+
 def validate_generation_semantics(
     plan: GenerationPlan,
     spec: RecipeSpec,
@@ -157,6 +185,11 @@ def validate_generation_semantics(
 
     combined_lower = combined.lower()
     shallow, violations = detect_shallow_output(combined_lower, counts, plan, intent)
+
+    # Attribute test coverage validation
+    if plan.attribute_test_coverage:
+        attr_violations = _validate_attribute_coverage(plan, combined)
+        violations.extend(attr_violations)
 
     domain_violations = evaluate_domain_shallow_rules(
         combined, combined_lower, counts, plan, intent
