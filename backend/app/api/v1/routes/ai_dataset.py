@@ -32,6 +32,7 @@ from app.services.bundle_builder_service import build_bundle
 from app.services.dataset_packager_service import package_bundle
 from app.utils.dita_validator import validate_dita_folder
 from app.services.doc_retriever_service import check_rag_readiness
+from app.services.jira_generate_resolve import resolve_text_for_generate_from_text
 from app.storage import get_storage
 from app.core.structured_logging import get_structured_logger
 from app.core.observability import get_observability_logger
@@ -48,6 +49,9 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 _generate_progress: dict[str, dict] = {}
 
 GENERATE_FROM_TEXT_USE_PIPELINE = os.environ.get("GENERATE_FROM_TEXT_USE_PIPELINE", "false").lower() in ("true", "1", "yes")
+GENERATE_FROM_TEXT_USE_INTENT_PIPELINE = os.environ.get(
+    "GENERATE_FROM_TEXT_USE_INTENT_PIPELINE", "true"
+).lower() in ("true", "1", "yes")
 
 
 def _write_scenario_metadata(
@@ -156,50 +160,125 @@ def download_ai_bundle(jira_id: str, run_id: str):
     )
 
 
-def _build_evidence_pack_from_text(text: str, run_id: str) -> dict:
+def _extract_jira_field(text: str, pattern: str) -> str:
+    """Extract a single-line field value from formatted Jira text."""
+    m = re.search(pattern, text, re.IGNORECASE)
+    return (m.group(1) or "").strip() if m else ""
+
+
+def _extract_jira_section(text: str, heading_pattern: str) -> str:
+    """Extract a multi-line section following a heading pattern."""
+    m = re.search(heading_pattern, text, re.IGNORECASE)
+    if not m:
+        return ""
+    start = m.end()
+    # Find next section heading
+    next_h = re.search(
+        r"\n(?:##\s|h[1-6]\.\s|(?:Issue\s+(?:Summary|Description)|Steps?\s+to|Expected|Actual|Acceptance|Environment|Comments?)\s*\n)",
+        text[start:],
+        re.IGNORECASE,
+    )
+    end = start + next_h.start() if next_h else len(text)
+    return text[start:end].strip()[:3000]
+
+
+def _build_evidence_pack_from_text(
+    text: str, run_id: str, forced_issue_key: str | None = None
+) -> dict:
     """
     Parse raw Jira-style text into evidence_pack for generate-from-text.
-    If text contains Jira headings (h3., Issue Description), split on them.
-    Otherwise: first ~500 chars = summary, rest = description.
+    Extracts structured fields (issue_type, priority, steps_to_reproduce, acceptance_criteria, etc.)
+    so downstream intent analysis and generation planning can use them.
     """
     text = (text or "").strip()
     if not text:
         return {"primary": {"summary": "", "description": "", "issue_key": "TEXT"}, "similar": []}
 
+    issue_key = forced_issue_key or f"TEXT-{run_id[:8]}"
+
+    # Extract structured metadata fields from formatted Jira text
+    issue_type = _extract_jira_field(text, r"^Issue\s+Type:\s*(.+)$")
+    priority = _extract_jira_field(text, r"^Priority:\s*(.+)$")
+    status = _extract_jira_field(text, r"^Status:\s*(.+)$")
+    labels_raw = _extract_jira_field(text, r"^Labels:\s*(.+)$")
+    labels = [l.strip() for l in labels_raw.split(",") if l.strip()] if labels_raw else []
+    components_raw = _extract_jira_field(text, r"^Components:\s*(.+)$")
+    components = [c.strip() for c in components_raw.split(",") if c.strip()] if components_raw else []
+
+    # Extract structured sections
+    acceptance_criteria = _extract_jira_section(text, r"##\s*Acceptance\s+Criteria\s*\n")
+    steps_to_reproduce = _extract_jira_section(text, r"##\s*Steps?\s+to\s+Reproduce\s*\n")
+    expected_behavior = _extract_jira_section(text, r"##\s*Expected\s+(?:Behavior|Result|Outcome)\s*\n")
+    actual_behavior = _extract_jira_section(text, r"##\s*(?:Actual\s+(?:Behavior|Result|Outcome)|Current\s+Behavior)\s*\n")
+    environment = _extract_jira_section(text, r"##\s*Environment\s*\n")
+
+    # Extract summary and description (main content sections)
     summary = ""
     description = text
-    issue_key = f"TEXT-{run_id[:8]}"
 
-    # Jira-style headings: h3. Issue Description, h3. Issue Summary, etc.
-    desc_match = re.search(
-        r"(?:h3\.\s*)?Issue\s+Description\s*\n",
-        text,
-        re.IGNORECASE,
-    )
-    sum_match = re.search(
-        r"(?:h3\.\s*)?Issue\s+Summary\s*\n",
-        text,
-        re.IGNORECASE,
-    )
-
-    if desc_match or sum_match:
-        # Split on first heading
-        parts = re.split(r"\n(?:h3\.\s*)?(?:Issue\s+Summary|Issue\s+Description)\s*\n", text, maxsplit=1, flags=re.IGNORECASE)
-        if len(parts) >= 2:
-            summary = (parts[0] or "").strip()[:500]
-            description = (parts[1] or "").strip()
-        else:
-            summary = (parts[0] or "").strip()[:500]
-            description = ""
+    if forced_issue_key:
+        sum_m = re.search(
+            r"##\s*Issue\s+Summary\s*\n(.*?)(?=\n\s*##\s*Issue\s+Description|\Z)",
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        desc_m = re.search(r"##\s*Issue\s+Description\s*\n(.*?)(?=\n\s*##\s|\Z)", text, re.IGNORECASE | re.DOTALL)
+        if sum_m:
+            summary = (sum_m.group(1) or "").strip()[:500]
+        if desc_m:
+            description = (desc_m.group(1) or "").strip()
     else:
-        summary = text[:500].strip()
-        description = text[500:].strip() if len(text) > 500 else ""
+        # Jira-style headings: h3. Issue Description, h3. Issue Summary, etc.
+        desc_match = re.search(
+            r"(?:h3\.\s*)?Issue\s+Description\s*\n",
+            text,
+            re.IGNORECASE,
+        )
+        sum_match = re.search(
+            r"(?:h3\.\s*)?Issue\s+Summary\s*\n",
+            text,
+            re.IGNORECASE,
+        )
 
-    primary = {
+        if desc_match or sum_match:
+            parts = re.split(r"\n(?:h3\.\s*)?(?:Issue\s+Summary|Issue\s+Description)\s*\n", text, maxsplit=1, flags=re.IGNORECASE)
+            if len(parts) >= 2:
+                summary = (parts[0] or "").strip()[:500]
+                description = (parts[1] or "").strip()
+            else:
+                summary = (parts[0] or "").strip()[:500]
+                description = ""
+        else:
+            summary = text[:500].strip()
+            description = text[500:].strip() if len(text) > 500 else ""
+
+    primary: dict = {
         "summary": summary,
         "description": description,
         "issue_key": issue_key,
     }
+    # Attach structured fields so intent analysis + generation plan can use them
+    if issue_type:
+        primary["issue_type"] = issue_type
+    if priority:
+        primary["priority"] = priority
+    if status:
+        primary["status"] = status
+    if labels:
+        primary["labels"] = labels
+    if components:
+        primary["components"] = components
+    if acceptance_criteria:
+        primary["acceptance_criteria"] = acceptance_criteria
+    if steps_to_reproduce:
+        primary["steps_to_reproduce"] = steps_to_reproduce
+    if expected_behavior:
+        primary["expected_behavior"] = expected_behavior
+    if actual_behavior:
+        primary["actual_behavior"] = actual_behavior
+    if environment:
+        primary["environment"] = environment
+
     return {"primary": primary, "similar": []}
 
 
@@ -224,7 +303,9 @@ async def _run_generate_from_text(
     When progress_run_id is set, updates _generate_progress at each stage for streaming/polling.
     """
     pid = progress_run_id or run_id
-    _update_generate_progress(pid, status="running", stage="planning", jira_id=f"TEXT-{run_id[:8]}", scenarios_total=1, scenarios_done=0)
+    resolved_text, real_jira_id, resolution_warning = resolve_text_for_generate_from_text(body.text)
+    jira_id = real_jira_id or f"TEXT-{run_id[:8]}"
+    _update_generate_progress(pid, status="running", stage="planning", jira_id=jira_id, scenarios_total=1, scenarios_done=0)
 
     trace_id = str(uuid4())
     start_time = time.perf_counter()
@@ -236,8 +317,9 @@ async def _run_generate_from_text(
         topic_count=1,
         scenarios_total=1,
     )
-    jira_id = f"TEXT-{run_id[:8]}"
-    evidence_pack = _build_evidence_pack_from_text(body.text, run_id)
+    evidence_pack = _build_evidence_pack_from_text(
+        resolved_text, run_id, forced_issue_key=real_jira_id
+    )
 
     # Merge instructions into evidence description so LLM sees full context (refinements, clarifications)
     instructions = (body.instructions or "").strip() or None
@@ -264,8 +346,40 @@ async def _run_generate_from_text(
             "and POST /api/v1/ai/index-dita-pdf, then retry."
         )
 
-    # Plan: use recipe pipeline when GENERATE_FROM_TEXT_USE_PIPELINE=true, else direct LLM path
-    if GENERATE_FROM_TEXT_USE_PIPELINE:
+    storage = get_storage()
+    temp_base = storage.base_path / "ai_runs" / jira_id / run_id
+    temp_base.mkdir(parents=True, exist_ok=True)
+    scenario_dir = temp_base / "S1_MIN_REPRO"
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+
+    exec_result: dict | None = None
+    plan: GeneratorInvocationPlan | None = None
+    pipeline_out: dict | None = None
+
+    # Plan + execute: intent pipeline OR Jira-style recipe pipeline OR direct LLM (then execute if not already run)
+    if GENERATE_FROM_TEXT_USE_INTENT_PIPELINE:
+        from app.services.dita_pipeline_orchestrator import run_intent_pipeline_with_execution
+
+        _update_generate_progress(pid, stage="intent_pipeline", message="Analyzing intent and selecting recipe...")
+        pipeline_out = await run_intent_pipeline_with_execution(
+            evidence_pack,
+            jira_id,
+            scenario_dir,
+            seed=run_id,
+            trace_id=trace_id,
+            user_instructions=instructions,
+        )
+        inv = pipeline_out.get("invocation_plan")
+        if inv is not None:
+            plan = inv
+        exec_result = pipeline_out["exec_result"]
+        sem = pipeline_out.get("semantic_report")
+        if sem and not sem.ok and exec_result:
+            for v in sem.violations:
+                exec_result.setdefault("warnings", []).append(
+                    f"semantic:{v.rule_id}: {v.message}"
+                )
+    elif GENERATE_FROM_TEXT_USE_PIPELINE:
         pipeline_result = await run_recipe_pipeline(
             evidence_pack, jira_id, trace_id=trace_id
         )
@@ -283,7 +397,7 @@ async def _run_generate_from_text(
                         "representative_xml": rep_xml or [],
                         "trace_id": trace_id,
                         "jira_id": jira_id,
-                        "additional_instructions": None,  # Already merged into evidence description
+                        "additional_instructions": None,
                     },
                     evidence_used=[],
                 )
@@ -291,20 +405,16 @@ async def _run_generate_from_text(
             selection_rationale=["generate-from-text: natural language chat"],
         )
 
-    storage = get_storage()
-    temp_base = storage.base_path / "ai_runs" / jira_id / run_id
-    temp_base.mkdir(parents=True, exist_ok=True)
-    scenario_dir = temp_base / "S1_MIN_REPRO"
-    scenario_dir.mkdir(parents=True, exist_ok=True)
-
-    _update_generate_progress(pid, stage="generating", message="Generating DITA...")
-    exec_result = await asyncio.to_thread(
-        execute_plan,
-        plan,
-        str(scenario_dir),
-        seed=run_id[:8],
-        skip_experience_league_companion=True,
-    )
+    if exec_result is None:
+        assert plan is not None
+        _update_generate_progress(pid, stage="generating", message="Generating DITA...")
+        exec_result = await asyncio.to_thread(
+            execute_plan,
+            plan,
+            str(scenario_dir),
+            seed=run_id[:8],
+            skip_experience_league_companion=True,
+        )
 
     _update_generate_progress(pid, stage="enriching", message="Enriching DITA...")
     await asyncio.to_thread(enrich_dita_folder, scenario_dir)
@@ -361,6 +471,7 @@ async def _run_generate_from_text(
     result = {
         "jira_id": jira_id,
         "run_id": run_id,
+        "resolved_source_text": resolved_text,
         "trace_id": trace_id,
         "scenarios": list(scenario_outputs.keys()),
         "bundle": {
@@ -373,8 +484,15 @@ async def _run_generate_from_text(
             "scenarios": ["S1_MIN_REPRO"],
         },
     }
+    if pipeline_out is not None:
+        result["generation_debug"] = {
+            "trace_path": pipeline_out.get("generation_trace_path"),
+            "outcome": pipeline_out.get("generation_outcome"),
+        }
     if rag_status.get("rag_warning"):
         result["rag_warning"] = rag_status["rag_warning"]
+    if resolution_warning:
+        result["resolution_warning"] = resolution_warning
     result["download_url"] = f"/api/v1/ai/bundle/{jira_id}/{run_id}/download"
     _generate_progress[pid] = {"status": "completed", "result": result}
     return result
@@ -468,34 +586,35 @@ class IndexDitaPdfRequest(BaseModel):
     urls: list[str] | None = None
 
 
-async def _read_optional_json_object(request: Request) -> dict:
-    raw = await request.body()
-    if not raw:
-        return {}
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
-    return payload
+class IndexGithubDitaRequest(BaseModel):
+    """Index DITA from a GitHub repo subtree (zip via codeload) into tenant examples/RAG and optionally into global `aem_guides` for chat."""
+
+    tenant_id: str = "default"
+    source_url: str | None = None
+    index_all: bool = False
+    max_files: int = 400
+    include_maps: bool = True
+    index_into_rag: bool = True
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _coerce_tenant_id(cls, v: object) -> str:
+        if v is None:
+            return "default"
+        s = str(v).strip()
+        return s if s else "default"
 
 
 @router.post("/crawl-aem-guides")
-async def crawl_aem_guides(request: Request):
+async def crawl_aem_guides(body: CrawlRequest | None = Body(None)):
     """Crawl AEM Guides documentation from Experience League, index chunks, and store for RAG.
     Run this before using doc enrichment in Jira analysis. Returns pages_crawled, chunks_stored, errors.
     Optional body: { \"urls\": [\"https://...\"] } to crawl specific URLs; omit to use config file."""
     try:
         from app.services.crawl_service import crawl_and_index
-        payload = await _read_optional_json_object(request)
-        urls = payload.get("urls") if isinstance(payload.get("urls"), list) else None
+        urls = body.urls if body and body.urls else None
         stats = await asyncio.to_thread(crawl_and_index, urls=urls)
         return stats
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error_structured(
             "AEM Guides crawl failed",
@@ -571,59 +690,107 @@ def get_crawl_status():
 
 
 @router.get("/rag-status")
-def get_rag_status(request: Request):
+def get_rag_status(tenant_id: str = Query("default", description="Tenant for GitHub DITA registry summary")):
     """Return RAG source status: ChromaDB collection counts for AEM Guides (Experience League) and DITA PDF.
-    When counts are 0, run POST /api/v1/ai/crawl-aem-guides and POST /api/v1/ai/index-dita-pdf to populate."""
-    try:
-        from app.services.vector_store_service import (
-            is_chroma_available,
-            get_collection_count,
-            CHROMA_COLLECTION_AEM_GUIDES,
-            CHROMA_COLLECTION_DITA_SPEC,
-        )
-        from app.services.github_dita_examples_service import get_github_dita_status
-        from app.services.tenant_service import get_tenant_id_from_request
-        from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
-        chroma_ok = is_chroma_available()
-        aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
-        dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
-        tenant_id = get_tenant_id_from_request(request)
+    When counts are 0, run POST /api/v1/ai/crawl-aem-guides, POST /api/v1/ai/index-dita-pdf, and optionally
+    POST /api/v1/ai/index-github-dita-examples (for Oxygen GitHub DITA / dev_guide in the same collection)."""
+    from app.services.vector_store_service import (
+        CHROMA_COLLECTION_AEM_GUIDES,
+        CHROMA_COLLECTION_DITA_SPEC,
+        get_collection_count,
+        is_chroma_available,
+    )
+    from app.services.github_dita_examples_service import get_github_dita_rag_summary
+    from app.services.tavily_search_service import get_tavily_rag_status
+    from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
+
+    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, err: str | None = None) -> dict:
+        try:
+            tavily = get_tavily_rag_status()
+        except Exception as ex:
+            tavily = {
+                "configured": False,
+                "chat_enabled": False,
+                "hint": "Set TAVILY_API_KEY in backend/.env or project-root .env, then restart the backend.",
+            }
+            err = f"{err}; tavily: {ex}" if err else str(ex)
+        try:
+            github_dita = get_github_dita_rag_summary(tenant_id=tenant_id)
+        except Exception as ex:
+            merge_github = os.getenv("GITHUB_DITA_ALSO_MERGE_TO_AEM_RAG", "true").lower() in ("true", "1", "yes")
+            github_dita = {
+                "source": "Oxygen userguide & other GitHub DITA trees (zip download)",
+                "indexed_subtrees": 0,
+                "merged_into_aem_guides_chunks": 0,
+                "merge_into_aem_guides_enabled": merge_github,
+                "source_labels": [],
+                "last_indexed_at": "",
+                "populate_via": "POST /api/v1/ai/index-github-dita-examples",
+            }
+            err = f"{err}; github_dita summary: {ex}" if err else str(ex)
         return {
             "chroma_available": chroma_ok,
+            "error": err,
+            "tavily": tavily,
             "aem_guides": {
-                "source": "Experience League crawl (LangChain WebBaseLoader)",
+                "source": "Experience League crawl; optional GitHub DITA examples can merge into this same collection.",
                 "collection": CHROMA_COLLECTION_AEM_GUIDES,
                 "chunk_count": aem_count,
-                "used_in": ["mechanism_classifier", "pattern_classifier", "evidence_extractor"],
-                "populate_via": "POST /api/v1/ai/crawl-aem-guides",
+                "count_scope": (
+                    "This number is only embeddings in Chroma `aem_guides`. "
+                    "DITA spec PDFs live in `dita_spec` (see below). "
+                    "Recipe definitions are not stored as RAG chunks here."
+                ),
+                "used_in": ["mechanism_classifier", "pattern_classifier", "evidence_extractor", "chat_rag"],
+                "populate_via": "POST /api/v1/ai/crawl-aem-guides; GitHub DITA: POST /api/v1/ai/index-github-dita-examples",
                 "enrichment_enabled": USE_AEM_DOCS_ENRICHMENT,
             },
             "dita_spec": {
                 "source": "DITA 1.2 + 1.3 Part 1 Base PDFs (LangChain PyPDFLoader)",
                 "collection": CHROMA_COLLECTION_DITA_SPEC,
                 "chunk_count": dita_count,
+                "count_scope": "Embeddings in Chroma `dita_spec` only (separate from `aem_guides`).",
                 "used_in": ["scenario_expander", "plan_for_scenario"],
                 "populate_via": "POST /api/v1/ai/index-dita-pdf",
             },
-            "oxygen_examples": get_github_dita_status(tenant_id),
+            "github_dita": github_dita,
         }
+
+    try:
+        chroma_ok = is_chroma_available()
+        aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
+        dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
+        return _payload(chroma_ok, aem_count, dita_count, None)
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
-        return {"chroma_available": False, "error": str(e)}
+        # Always return the same shape so Settings UI can show all sections (with zeros).
+        try:
+            return _payload(False, 0, 0, str(e))
+        except Exception as e2:
+            logger.warning_structured("RAG status fallback failed", extra_fields={"error": str(e2)})
+            return {
+                "chroma_available": False,
+                "error": f"{e}; fallback: {e2}",
+                "aem_guides": {"chunk_count": 0, "source": "", "populate_via": ""},
+                "dita_spec": {"chunk_count": 0, "source": "", "populate_via": ""},
+                "github_dita": {"indexed_subtrees": 0, "merged_into_aem_guides_chunks": 0},
+                "tavily": {
+                    "configured": False,
+                    "chat_enabled": False,
+                    "hint": "Set TAVILY_API_KEY in backend/.env or project-root .env, then restart the backend.",
+                },
+            }
 
 
 @router.post("/index-dita-pdf")
-async def index_dita_pdf(request: Request):
+async def index_dita_pdf(body: IndexDitaPdfRequest | None = Body(None)):
     """Index DITA 1.2 and 1.3 Part 1 Base PDFs (or custom urls). Download, load with LangChain, split, embed, and store in ChromaDB for RAG.
     Run this to enable DITA spec retrieval. Returns pages_loaded, chunks_stored, sources_indexed, errors."""
     try:
         from app.services.dita_pdf_index_service import index_dita_pdf as index_dita_pdf_fn
-        payload = await _read_optional_json_object(request)
-        urls = payload.get("urls") if isinstance(payload.get("urls"), list) else None
+        urls = body.urls if body and body.urls else None
         stats = await asyncio.to_thread(index_dita_pdf_fn, pdf_urls=urls)
         return stats
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error_structured(
             "DITA PDF index failed",
@@ -634,30 +801,47 @@ async def index_dita_pdf(request: Request):
 
 
 @router.post("/index-github-dita-examples")
-async def index_github_dita_examples_route(request: Request):
-    """Index DITA examples from a GitHub tree URL into the tenant examples collection and tenant RAG."""
+async def index_github_dita_examples_route(body: IndexGithubDitaRequest | None = Body(None)):
+    """Index DITA files from a GitHub folder (e.g. Oxygen userguide `DITA` or `DITA/dev_guide`) into ChromaDB.
+    Uses codeload zip, not HTML crawl. When `index_all` is true, indexes `GITHUB_DITA_SOURCE_URL` plus defaults
+    (including dev_guide) and `GITHUB_DITA_ADDITIONAL_SOURCE_URLS`. Merges into global `aem_guides` for chat when
+    `GITHUB_DITA_ALSO_MERGE_TO_AEM_RAG` is true."""
     try:
         from app.services.github_dita_examples_service import (
             DEFAULT_GITHUB_DITA_SOURCE_URL,
+            index_all_github_dita_examples,
             index_github_dita_examples,
         )
-        from app.services.tenant_service import get_tenant_id_from_request
 
-        payload = await _read_optional_json_object(request)
-        tenant_id = get_tenant_id_from_request(request)
+        b = body or IndexGithubDitaRequest()
+        if b.index_all:
+            results = await index_all_github_dita_examples(
+                tenant_id=b.tenant_id,
+                max_files=b.max_files,
+                include_maps=b.include_maps,
+                index_into_rag=b.index_into_rag,
+            )
+            return {
+                "index_all": True,
+                "sources": [r.to_dict() for r in results],
+                "errors": [e for r in results for e in r.errors],
+            }
+        src = (b.source_url or DEFAULT_GITHUB_DITA_SOURCE_URL).strip()
         result = await index_github_dita_examples(
-            tenant_id=tenant_id,
-            source_url=str(payload.get("source_url") or DEFAULT_GITHUB_DITA_SOURCE_URL),
-            max_files=int(payload.get("max_files") or 400),
-            include_maps=bool(payload.get("include_maps", True)),
-            index_into_rag=bool(payload.get("index_into_rag", True)),
+            tenant_id=b.tenant_id,
+            source_url=src,
+            max_files=b.max_files,
+            include_maps=b.include_maps,
+            index_into_rag=b.index_into_rag,
         )
-        return result.to_dict()
-    except HTTPException:
-        raise
+        out = result.to_dict()
+        out["index_all"] = False
+        return out
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error_structured(
-            "GitHub DITA example index failed",
+            "GitHub DITA index failed",
             extra_fields={"error": str(e)},
             exc_info=True,
         )

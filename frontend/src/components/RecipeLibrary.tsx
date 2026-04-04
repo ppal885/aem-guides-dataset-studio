@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
+import { useAppFeedback } from './feedback/useAppFeedback';
 import { Star, Share2, Trash2, Plus } from 'lucide-react';
 import { useRequestCancellationWithDeps } from '@/hooks/useRequestCancellation';
 
@@ -23,6 +24,7 @@ interface RecipeLibraryProps {
 }
 
 export function RecipeLibrary({ onSelectRecipe, onSaveRecipe }: RecipeLibraryProps) {
+  const feedback = useAppFeedback();
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,11 +40,7 @@ export function RecipeLibrary({ onSelectRecipe, onSaveRecipe }: RecipeLibraryPro
     };
   }, []);
 
-  useEffect(() => {
-    loadRecipes();
-  }, [searchQuery, selectedTags]);
-
-  const loadRecipes = async () => {
+  const loadRecipes = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (searchQuery) params.append('search', searchQuery);
@@ -74,7 +72,11 @@ export function RecipeLibrary({ onSelectRecipe, onSaveRecipe }: RecipeLibraryPro
         setLoading(false);
       }
     }
-  };
+  }, [abortController.signal, searchQuery, selectedTags]);
+
+  useEffect(() => {
+    void loadRecipes();
+  }, [loadRecipes]);
 
   const handleUseRecipe = async (recipeId: string) => {
     try {
@@ -93,7 +95,13 @@ export function RecipeLibrary({ onSelectRecipe, onSaveRecipe }: RecipeLibraryPro
   };
 
   const handleDeleteRecipe = async (recipeId: string) => {
-    if (!confirm('Are you sure you want to delete this recipe?')) return;
+    const confirmed = await feedback.confirm({
+      title: 'Delete saved recipe?',
+      message: 'This removes the recipe from your library. This action cannot be undone.',
+      confirmLabel: 'Delete recipe',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     
     try {
       const response = await fetch(`/api/v1/recipes/${recipeId}`, {
@@ -101,9 +109,12 @@ export function RecipeLibrary({ onSelectRecipe, onSaveRecipe }: RecipeLibraryPro
       });
       if (response.ok) {
         loadRecipes();
+      } else {
+        feedback.error('Failed to delete recipe', 'The recipe could not be deleted.');
       }
     } catch (error) {
       console.error('Failed to delete recipe:', error);
+      feedback.error('Failed to delete recipe', 'The recipe could not be deleted.');
     }
   };
 
@@ -247,6 +258,7 @@ function SaveRecipeDialog({
   onSave: (name: string, description: string, recipeConfig: any, isPublic: boolean, tags: string[]) => void;
   onClose: () => void;
 }) {
+  const feedback = useAppFeedback();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
@@ -254,7 +266,7 @@ function SaveRecipeDialog({
 
   const handleSave = () => {
     if (!name.trim()) {
-      alert('Please enter a recipe name');
+      feedback.warning('Recipe name required', 'Please enter a recipe name before saving.');
       return;
     }
     // This would get the current recipe config from parent

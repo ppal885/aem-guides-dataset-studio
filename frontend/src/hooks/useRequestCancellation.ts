@@ -67,6 +67,7 @@ export function useRequestCancellation(): AbortController {
  */
 export function useRequestCancellationWithDeps(deps: React.DependencyList): AbortController {
   const abortControllerRef = useRef<AbortController | null>(null);
+  const depsKey = JSON.stringify(deps);
 
   useEffect(() => {
     if (abortControllerRef.current) {
@@ -79,7 +80,7 @@ export function useRequestCancellationWithDeps(deps: React.DependencyList): Abor
         abortControllerRef.current.abort();
       }
     };
-  }, deps);
+  }, [depsKey]);
 
   if (!abortControllerRef.current) {
     abortControllerRef.current = new AbortController();

@@ -35,7 +35,13 @@ export function BulkJobCreator({ onJobsCreated }: BulkJobCreatorProps) {
           root_folder: '/content/dam/dataset-studio',
           windows_safe_filenames: true,
           doctype_topic: '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">',
+          doctype_reference:
+            '<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">',
           doctype_map: '<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">',
+          doctype_bookmap:
+            '<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "technicalContent/dtd/bookmap.dtd">',
+          doctype_glossentry:
+            '<!DOCTYPE glossentry PUBLIC "-//OASIS//DTD DITA Glossentry//EN" "technicalContent/dtd/glossentry.dtd">',
           recipes: [{
             type: 'task_topics',
             topic_count: 10,
@@ -115,7 +121,13 @@ export function BulkJobCreator({ onJobsCreated }: BulkJobCreatorProps) {
           root_folder: row.root_folder || '/content/dam/dataset-studio',
           windows_safe_filenames: true,
           doctype_topic: '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">',
+          doctype_reference:
+            '<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">',
           doctype_map: '<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">',
+          doctype_bookmap:
+            '<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "technicalContent/dtd/bookmap.dtd">',
+          doctype_glossentry:
+            '<!DOCTYPE glossentry PUBLIC "-//OASIS//DTD DITA Glossentry//EN" "technicalContent/dtd/glossentry.dtd">',
         };
 
         const recipeType = row.recipe_type || 'task_topics';

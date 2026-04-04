@@ -35,7 +35,18 @@ def run_generate_dataset(
     
     # Base path for files
     base = dataset_config.root_folder.strip('/') if dataset_config.root_folder else "dataset"
-    
+
+    # Normalize DTD paths in each streamed batch (large-scale jobs) so SYSTEM ids resolve.
+    stream_cb: Optional[Callable[[Dict[str, bytes]], None]] = stream_callback
+    if stream_callback is not None:
+        from app.generator.dtd_dataset_resolution import normalize_dtd_in_file_batch
+
+        _orig_stream = stream_callback
+
+        def stream_cb(batch: Dict[str, bytes]) -> None:
+            normalize_dtd_in_file_batch(batch, base)
+            _orig_stream(batch)
+
     # Estimate total files for progress tracking
     total_files_estimated = 0
     for recipe in dataset_config.recipes:
@@ -69,6 +80,11 @@ def run_generate_dataset(
             topicrefs_per_map = recipe.topicrefs_per_map if hasattr(recipe, 'topicrefs_per_map') else 1000
             total_files_estimated += map_count * topicrefs_per_map  # Topics
             total_files_estimated += map_count  # Maps
+        elif recipe_type == "bulk_dita_map_topics":
+            n = recipe.topic_count if hasattr(recipe, 'topic_count') else 20000
+            total_files_estimated += n + 1  # topics + root map
+            if getattr(recipe, "include_readme", True):
+                total_files_estimated += 1
         elif recipe_type == "conrefend_cyclic_duplicate_id":
             total_files_estimated += 4  # 2 topics, 1 map, 1 readme
         elif recipe_type == "dita_conref_title_dataset_recipe":
@@ -77,6 +93,13 @@ def run_generate_dataset(
         elif recipe_type == "dita_conref_keyref_dataset_recipe":
             topic_count = recipe.topic_count if hasattr(recipe, 'topic_count') else 15
             total_files_estimated += topic_count + 3  # topics + keydef-map + variables.dita + manifest
+        elif recipe_type == "parent_child_maps_keys_conref_conkeyref_selfrefs":
+            total_files_estimated += 13  # 4 maps + 8 topics + validation summary
+        elif recipe_type == "compact_parent_child_key_resolution":
+            total_files_estimated += 6  # 2 maps + 3 topics + validation summary
+        elif recipe_type == "large_root_map_1000_topics_100kb":
+            topic_count = recipe.topic_count if hasattr(recipe, 'topic_count') else 1000
+            total_files_estimated += topic_count + 2  # root map + topics + validation summary
         elif recipe_type == "dita_subject_scheme_dataset_recipe":
             valid_count = recipe.valid_count if hasattr(recipe, 'valid_count') else 10
             invalid_count = recipe.invalid_count if hasattr(recipe, 'invalid_count') else 10
@@ -91,6 +114,26 @@ def run_generate_dataset(
             total_files_estimated += 3  # 1 topic, 1 ditaval, 1 manifest
         elif recipe_type == "keyref_nested_keydef_chain_map_to_map_to_topic":
             total_files_estimated += 6  # 2 maps, 2 topics, README, manifest
+        elif recipe_type == "table_semantics_reference":
+            total_files_estimated += 2  # map + topic
+        elif recipe_type == "inline_formatting_nested":
+            total_files_estimated += 2  # map + topic
+        elif recipe_type == "nested_topic_inline":
+            total_files_estimated += 2
+        elif recipe_type == "topic_ph_keyword_related_links":
+            total_files_estimated += 3  # map + 2 topics
+        elif recipe_type == "topic_svg_mathml_foreign":
+            total_files_estimated += 4  # map + 2 topics + svg
+        elif recipe_type == "bookmap_elements_reference":
+            total_files_estimated += 6  # bookmap + 5 topics
+        elif recipe_type in ("self_conrefend_range", "self_xref_conref_positive"):
+            total_files_estimated += 1
+        elif recipe_type in (
+            "validation_duplicate_id_negative",
+            "validation_invalid_child_negative",
+            "validation_missing_body_negative",
+        ):
+            total_files_estimated += 1
         else:
             total_files_estimated += 10  # Default estimate
     
@@ -128,6 +171,7 @@ def run_generate_dataset(
                     topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 20,
                     steps_per_task=recipe.steps_per_task if hasattr(recipe, 'steps_per_task') else 3,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
+                    include_choicetable=recipe.include_choicetable if hasattr(recipe, 'include_choicetable') else False,
                     rand=rand
                 )
                 files.update(recipe_files)
@@ -154,7 +198,23 @@ def run_generate_dataset(
                     topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 20,
                     properties_per_ref=recipe.properties_per_ref if hasattr(recipe, 'properties_per_ref') else 5,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
+                    include_choicetable=recipe.include_choicetable if hasattr(recipe, 'include_choicetable') else False,
                     rand=rand
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "properties_table_reference":
+                from app.generator.specialized import generate_properties_table_reference_dataset
+                recipe_files = generate_properties_table_reference_dataset(
+                    dataset_config,
+                    base,
+                    topic_count=recipe.topic_count if hasattr(recipe, "topic_count") else 30,
+                    rows_per_table=recipe.rows_per_table if hasattr(recipe, "rows_per_table") else 8,
+                    include_prophead=recipe.include_prophead if hasattr(recipe, "include_prophead") else True,
+                    include_map=recipe.include_map if hasattr(recipe, "include_map") else True,
+                    rand=rand,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -239,6 +299,47 @@ def run_generate_dataset(
                     topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 15,
                     id_prefix=recipe.id_prefix if hasattr(recipe, 'id_prefix') else "t",
                     pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "parent_child_maps_keys_conref_conkeyref_selfrefs":
+                from app.generator.enterprise_dita_recipes import (
+                    generate_parent_child_maps_keys_conref_conkeyref_selfrefs,
+                )
+                recipe_files = generate_parent_child_maps_keys_conref_conkeyref_selfrefs(
+                    dataset_config,
+                    base,
+                    pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "compact_parent_child_key_resolution":
+                from app.generator.enterprise_dita_recipes import (
+                    generate_compact_parent_child_key_resolution,
+                )
+                recipe_files = generate_compact_parent_child_key_resolution(
+                    dataset_config,
+                    base,
+                    pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "large_root_map_1000_topics_100kb":
+                from app.generator.enterprise_dita_recipes import (
+                    generate_large_root_map_1000_topics_100kb,
+                )
+                recipe_files = generate_large_root_map_1000_topics_100kb(
+                    dataset_config,
+                    base,
+                    topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 1000,
+                    approx_topic_size_kb=recipe.approx_topic_size_kb if hasattr(recipe, 'approx_topic_size_kb') else 100,
+                    pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else False,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -456,7 +557,7 @@ def run_generate_dataset(
                         "batch_size": recipe.batch_size if hasattr(recipe, 'batch_size') else 100,
                     },
                     rand=rand,
-                    stream_callback=stream_callback
+                    stream_callback=stream_cb
                 )
                 if recipe_files:
                     files.update(recipe_files)
@@ -556,6 +657,25 @@ def run_generate_dataset(
                     topicrefs_per_map=recipe.topicrefs_per_map if hasattr(recipe, 'topicrefs_per_map') else 1000,
                     pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else True,
                     rand=rand
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "bulk_dita_map_topics":
+                from app.generator.bulk_dita_map_topics import generate_bulk_dita_map_topics_dataset
+                recipe_files = generate_bulk_dita_map_topics_dataset(
+                    dataset_config,
+                    base,
+                    topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 20000,
+                    include_readme=recipe.include_readme if hasattr(recipe, 'include_readme') else True,
+                    pretty_print=recipe.pretty_print if hasattr(recipe, 'pretty_print') else True,
+                    include_local_dtd_stubs=(
+                        recipe.include_local_dtd_stubs
+                        if hasattr(recipe, 'include_local_dtd_stubs')
+                        else True
+                    ),
+                    rand=rand,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -720,7 +840,163 @@ def run_generate_dataset(
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
                 update_progress(f"Completed {stage_name}")
-            
+
+            elif recipe_type == "table_semantics_reference":
+                from app.generator.table_semantics_recipe import generate_table_semantics_reference_dataset
+                recipe_files = generate_table_semantics_reference_dataset(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "tblalign",
+                    issue_summary=getattr(recipe, "issue_summary", "") or "",
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "inline_formatting_nested":
+                from app.generator.inline_formatting import generate_inline_formatting_nested
+                recipe_files = generate_inline_formatting_nested(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "nested_topic_inline":
+                from app.generator.dita_advanced_recipes import generate_nested_topic_inline
+                recipe_files = generate_nested_topic_inline(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "topic_ph_keyword_related_links":
+                from app.generator.dita_advanced_recipes import generate_topic_ph_keyword_related_links
+                recipe_files = generate_topic_ph_keyword_related_links(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "topic_svg_mathml_foreign":
+                from app.generator.dita_advanced_recipes import generate_topic_svg_mathml_foreign
+                recipe_files = generate_topic_svg_mathml_foreign(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "bookmap_elements_reference":
+                from app.generator.dita_advanced_recipes import generate_bookmap_elements_reference
+                recipe_files = generate_bookmap_elements_reference(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "self_conrefend_range":
+                from app.generator.self_xref import generate_self_conrefend_range
+                recipe_files = generate_self_conrefend_range(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "self_xref_conref_positive":
+                from app.generator.self_xref import generate_self_xref_conref_positive_minimal
+                recipe_files = generate_self_xref_conref_positive_minimal(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                    pretty_print=recipe.pretty_print if hasattr(recipe, "pretty_print") else True,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "validation_duplicate_id_negative":
+                from app.generator.validation_negative import generate_validation_duplicate_id_negative
+                recipe_files = generate_validation_duplicate_id_negative(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "validation_invalid_child_negative":
+                from app.generator.validation_negative import generate_validation_invalid_child_structure
+                recipe_files = generate_validation_invalid_child_structure(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "validation_missing_body_negative":
+                from app.generator.validation_negative import generate_validation_missing_required_element
+                recipe_files = generate_validation_missing_required_element(
+                    dataset_config,
+                    base,
+                    id_prefix=recipe.id_prefix if hasattr(recipe, "id_prefix") else "t",
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "choicetable_tasks":
+                from app.generator.specialized import generate_choicetable_task_topics_dataset
+                recipe_files = generate_choicetable_task_topics_dataset(
+                    dataset_config, base,
+                    topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 50,
+                    steps_per_task=recipe.steps_per_task if hasattr(recipe, 'steps_per_task') else 5,
+                    choices_per_topic=recipe.choices_per_topic if hasattr(recipe, 'choices_per_topic') else 4,
+                    include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
+                    rand=rand,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "choicetable_references":
+                from app.generator.specialized import generate_choicetable_reference_dataset
+                recipe_files = generate_choicetable_reference_dataset(
+                    dataset_config, base,
+                    topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 50,
+                    choices_per_topic=recipe.choices_per_topic if hasattr(recipe, 'choices_per_topic') else 5,
+                    include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
+                    rand=rand,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
             else:
                 # For unsupported recipe types, generate basic topics as fallback
                 from app.generator.specialized import generate_task_topics_dataset
@@ -750,6 +1026,10 @@ def run_generate_dataset(
         )
         files.update(basic_files)
         files_generated += len(basic_files)
+
+    from app.generator.dtd_dataset_resolution import ensure_dataset_dtd_resolution
+
+    ensure_dataset_dtd_resolution(files, base)
     
     # Update progress: finalizing
     if progress_callback:

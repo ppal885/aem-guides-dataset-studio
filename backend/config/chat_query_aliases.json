@@ -1,0 +1,113 @@
+{
+  "aliases": [
+    {
+      "match": ["author view"],
+      "variants": [
+        "Map Editor Author view",
+        "AEM Guides Author view"
+      ]
+    },
+    {
+      "match": ["map editor"],
+      "variants": [
+        "AEM Guides Map Editor",
+        "Map Editor Layout Author Source Preview"
+      ]
+    },
+    {
+      "match": ["href"],
+      "variants": [
+        "topicref href",
+        "reference resolution",
+        "root map resolution"
+      ]
+    },
+    {
+      "match": ["keyref"],
+      "variants": [
+        "key reference resolution",
+        "content reuse references"
+      ]
+    },
+    {
+      "match": ["conref", "conkeyref"],
+      "variants": [
+        "content reuse references",
+        "content reusability in AEM Guides"
+      ]
+    },
+    {
+      "match": ["hasinstance", "has instance"],
+      "variants": [
+        "hasInstance",
+        "subject scheme hasInstance"
+      ]
+    },
+    {
+      "match": ["aem guides"],
+      "variants": [
+        "Adobe Experience Manager Guides",
+        "Experience League AEM Guides"
+      ]
+    },
+    {
+      "match": ["properties table", "properties element", "prophead", "proptype", "propvalue", "propdesc"],
+      "variants": [
+        "DITA reference topic refbody properties prophead proptype propvalue propdesc",
+        "DITA reference properties table three columns type value description"
+      ]
+    },
+    {
+      "match": ["reference topic", "refbody", "reference element"],
+      "variants": [
+        "DITA reference topic structure refbody properties table",
+        "OASIS DITA reference specialization"
+      ]
+    },
+    {
+      "match": ["baseline", "baselines", "dynamic baseline", "new baseline", "baseline beta"],
+      "variants": [
+        "Experience Manager Guides Baseline Map console publishing translation",
+        "create baseline label version date Pick Automatically",
+        "new baseline Beta web-editor-baseline-v2 migration Bulk Processor"
+      ]
+    },
+    {
+      "match": ["map console", "open in map console"],
+      "variants": [
+        "open files Map console AEM Guides output presets baseline reports",
+        "Map console synced Map view Editor Repository"
+      ]
+    },
+    {
+      "match": [
+        "web editor features",
+        "editor features",
+        "header bar",
+        "tab bar",
+        "left panel",
+        "right panel",
+        "tags view",
+        "save all"
+      ],
+      "variants": [
+        "Know the Editor features AEM Guides Web Editor toolbar panels",
+        "web-editor-features Experience Manager Guides authoring interface"
+      ]
+    },
+    {
+      "match": [
+        "topic list report",
+        "metadata report",
+        "broken links report",
+        "multimedia report",
+        "dita map report",
+        "guides reports"
+      ],
+      "variants": [
+        "Map Console Reports tab Topic List Metadata Multimedia Broken links",
+        "reports-aem-guide reports intro reports web editor"
+      ]
+    }
+  ]
+}

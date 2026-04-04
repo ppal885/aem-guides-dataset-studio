@@ -6,6 +6,10 @@ CRITICAL: The Jira summary and description are often self-explanatory. Look for:
 - "Issue Summary" - describes the bug (e.g. nested keydefs, Map A -> Map B -> Topic C)
 - "Representative Sample" - contains exact DITA/XML structure (Map A, Map B, Topic C, keydef, keyref)
 - "Steps to Reproduce" - actionable steps
+- Table / grid cues: row and column counts, "delete column(s)", "select two columns", merged cells — extract into steps AND body_snippets so downstream DITA can include a real <table> with matching dimensions (note ambiguities explicitly in body_snippets)
+- Table **alignment** / **text alignment** / **@align** / context-menu alignment: add a body_snippet that instructs a two-column reference table listing DITA @align values (left, right, center, justify, char, -dita-use-conref-target) with the standard descriptions—do not satisfy this with prose-only summaries
+- UI / menu paths: e.g. Right-click → Delete → Columns — put each level in steps as separate substrings or one string with arrows; preserve order
+- URLs in description or comments — copy full href into body_snippets or steps for <xref> generation
 
 When "Representative Sample" or XML/code blocks are present, extract them into representative_xml. This is the most important content for reproducing the exact structure.
 

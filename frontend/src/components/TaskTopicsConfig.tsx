@@ -8,6 +8,7 @@ interface TaskTopicsConfigProps {
     steps_per_task?: number;
     include_prereq?: boolean;
     include_result?: boolean;
+    include_choicetable?: boolean;
     include_map?: boolean;
     pretty_print?: boolean;
   };
@@ -97,6 +98,20 @@ export function TaskTopicsConfig({ recipe, onChange }: TaskTopicsConfigProps) {
 
       <div className="flex items-center space-x-2">
         <Switch
+          id="include-choicetable"
+          checked={recipe.include_choicetable === true}
+          onCheckedChange={(checked) => onChange({
+            ...recipe,
+            type: 'task_topics',
+            include_choicetable: checked,
+          })}
+        />
+        <Label htmlFor="include-choicetable">Include Choicetable</Label>
+        <p className="text-xs text-gray-400 ml-1">(adds choicetable to every topic; ~20% get one by default)</p>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Switch
           id="include-map"
           checked={recipe.include_map !== false}
           onCheckedChange={(checked) => onChange({
@@ -105,6 +120,7 @@ export function TaskTopicsConfig({ recipe, onChange }: TaskTopicsConfigProps) {
             steps_per_task: recipe.steps_per_task ?? 5,
             include_prereq: recipe.include_prereq ?? true,
             include_result: recipe.include_result ?? true,
+            include_choicetable: recipe.include_choicetable ?? false,
             include_map: checked,
             pretty_print: recipe.pretty_print ?? true,
           })}

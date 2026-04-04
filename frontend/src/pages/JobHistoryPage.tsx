@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Download, Search, Filter, Loader2, CheckCircle2, XCircle, Clock, PlayCircle, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 
 interface Job {
   id: string;
@@ -23,6 +24,7 @@ interface Job {
 }
 
 export function JobHistoryPage() {
+  const feedback = useAppFeedback();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -82,7 +84,7 @@ export function JobHistoryPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
       if (isMountedRef.current) {
-        alert('Failed to load jobs. Please try again.');
+        feedback.error('Failed to load jobs', 'Please try again.');
       }
     } finally {
       if (isMountedRef.current) {
@@ -90,11 +92,12 @@ export function JobHistoryPage() {
         setLoadingMore(false);
       }
     }
-  }, [statusFilter, offset]);
+  }, [feedback, statusFilter]);
 
   useEffect(() => {
     loadJobs(true, 0);
-  }, [statusFilter, loadJobs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   const runningJobIds = useMemo(() => {
     return jobs.filter(j => j.status === 'running' || j.status === 'pending').map(j => j.id);
@@ -128,7 +131,7 @@ export function JobHistoryPage() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [runningJobIds.join(',')]);
+  }, [runningJobIds]);
 
   const handleDownload = useCallback(async (jobId: string, jobName: string) => {
     try {
@@ -136,7 +139,7 @@ export function JobHistoryPage() {
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        alert(`Failed to download: ${errorText}`);
+        feedback.error('Download failed', errorText || 'The dataset ZIP could not be downloaded.');
         return;
       }
       
@@ -152,9 +155,9 @@ export function JobHistoryPage() {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Download failed:', error);
-      alert('Failed to download dataset. Please try again.');
+      feedback.error('Download failed', 'Failed to download dataset. Please try again.');
     }
-  }, []);
+  }, [feedback]);
 
   const handleExplore = useCallback((jobId: string) => {
     navigate(`/dataset-explorer?jobId=${jobId}`);
@@ -202,10 +205,9 @@ export function JobHistoryPage() {
       }
     } catch (err) {
       console.error('Failed to copy job ID:', err);
-      // Show error feedback
-      alert(`Failed to copy job ID. Please copy manually: ${jobId}`);
+      feedback.error('Failed to copy job ID', `Please copy it manually: ${jobId}`);
     }
-  }, []);
+  }, [feedback]);
 
   const filteredJobs = useMemo(() => {
     if (!searchQuery) return jobs;

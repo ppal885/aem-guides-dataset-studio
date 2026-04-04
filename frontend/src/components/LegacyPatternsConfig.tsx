@@ -11,7 +11,21 @@ interface LegacyPatternsConfigProps {
     id_prefix?: string;
   };
   onChange: (recipe: any) => void;
-  recipeType: 'hub_spoke_inbound' | 'keydef_heavy' | 'map_cyclic';
+  recipeType:
+    | 'hub_spoke_inbound'
+    | 'keydef_heavy'
+    | 'map_cyclic'
+    | 'conrefend_cyclic_duplicate_id'
+    | 'inline_formatting_nested'
+    | 'nested_topic_inline'
+    | 'topic_ph_keyword_related_links'
+    | 'topic_svg_mathml_foreign'
+    | 'bookmap_elements_reference'
+    | 'self_conrefend_range'
+    | 'self_xref_conref_positive'
+    | 'validation_duplicate_id_negative'
+    | 'validation_invalid_child_negative'
+    | 'validation_missing_body_negative';
 }
 
 export function LegacyPatternsConfig({ recipe, onChange, recipeType }: LegacyPatternsConfigProps) {
@@ -105,7 +119,20 @@ export function LegacyPatternsConfig({ recipe, onChange, recipeType }: LegacyPat
     );
   }
 
-  if (recipeType === 'map_cyclic') {
+  if (
+    recipeType === 'map_cyclic' ||
+    recipeType === 'conrefend_cyclic_duplicate_id' ||
+    recipeType === 'inline_formatting_nested' ||
+    recipeType === 'nested_topic_inline' ||
+    recipeType === 'topic_ph_keyword_related_links' ||
+    recipeType === 'topic_svg_mathml_foreign' ||
+    recipeType === 'bookmap_elements_reference' ||
+    recipeType === 'self_conrefend_range' ||
+    recipeType === 'self_xref_conref_positive' ||
+    recipeType === 'validation_duplicate_id_negative' ||
+    recipeType === 'validation_invalid_child_negative' ||
+    recipeType === 'validation_missing_body_negative'
+  ) {
     return (
       <div className="space-y-4">
         <div>

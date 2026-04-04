@@ -2,9 +2,6 @@
  * API utility functions with retry logic and error handling.
  */
 
-export const DEFAULT_TENANT_ID = 'kone';
-const TENANT_STORAGE_KEY = 'aem-guides-dataset-studio:tenant-id';
-
 /** Base URL for API calls. Empty = relative (uses Vite proxy in dev). Set VITE_API_BASE_URL for direct backend. */
 function normalizeApiBase(raw: string): string {
   const s = (raw || '').trim();
@@ -13,32 +10,6 @@ function normalizeApiBase(raw: string): string {
   return `http://${s.replace(/\/$/, '')}`;
 }
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string);
-
-export function normalizeTenantId(value: string | null | undefined): string {
-  const normalized = (value || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-  return normalized || DEFAULT_TENANT_ID;
-}
-
-export function getTenantId(): string {
-  if (typeof window === 'undefined') {
-    return DEFAULT_TENANT_ID;
-  }
-  return normalizeTenantId(window.localStorage.getItem(TENANT_STORAGE_KEY));
-}
-
-export function setTenantId(value: string): string {
-  const normalized = normalizeTenantId(value);
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(TENANT_STORAGE_KEY, normalized);
-  }
-  return normalized;
-}
-
-export function withTenantHeaders(headers: HeadersInit = {}, tenantId: string = getTenantId()): Record<string, string> {
-  const next = new Headers(headers);
-  next.set('X-Tenant-ID', normalizeTenantId(tenantId));
-  return Object.fromEntries(next.entries());
-}
 
 export function apiUrl(path: string): string {
   const base = API_BASE;
@@ -188,11 +159,22 @@ export async function fetchJson<T = any>(
   options: RequestInit = {},
   retryOptions: RetryOptions = {}
 ): Promise<T> {
+  // Only set JSON Content-Type when there is a body. Sending Content-Type: application/json on
+  // DELETE/GET with no body triggers extra CORS preflights and confuses some proxies; it also
+  // matches curl/browsers that omit Content-Type for bodyless DELETE (e.g. clear all chat sessions).
+  const hasBody =
+    options.body !== undefined &&
+    options.body !== null &&
+    !(typeof options.body === 'string' && options.body === '');
+  const defaultHeaders: Record<string, string> = {};
+  if (hasBody) {
+    defaultHeaders['Content-Type'] = 'application/json';
+  }
   const response = await fetchWithRetry(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
+      ...defaultHeaders,
+      ...(options.headers as Record<string, string>),
     },
   }, retryOptions);
 
@@ -201,18 +183,7 @@ export async function fetchJson<T = any>(
     let message = errorText;
     try {
       const parsed = JSON.parse(errorText);
-      const parsedErrors = parsed && Array.isArray(parsed.errors) ? parsed.errors : [];
-      if (parsedErrors.length) {
-        const details = parsedErrors.map((item: unknown) => {
-          if (!item || typeof item !== 'object') {
-            return String(item);
-          }
-          const field = 'field' in item && typeof item.field === 'string' ? item.field : '';
-          const errorMessage = 'message' in item && typeof item.message === 'string' ? item.message : String(item);
-          return field ? `${field}: ${errorMessage}` : errorMessage;
-        });
-        message = details.join('; ');
-      } else if (parsed && typeof parsed.detail === 'string') {
+      if (parsed && typeof parsed.detail === 'string') {
         message = parsed.detail;
       } else if (parsed && Array.isArray(parsed.detail)) {
         message = parsed.detail.map((d: unknown) =>

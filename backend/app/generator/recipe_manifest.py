@@ -29,6 +29,20 @@ class RecipeSpec:
     aem_guides_features: list[str] = field(default_factory=list)
     output_scale: str = ""  # minimal | medium | large | stress - for LLM to prefer scale-appropriate recipes
     mechanism_family: str = ""  # keyref | xref | conref | ditaval | etc. - for anti-blending validation
+    # Machine-usable contract for intent pipeline, semantic validation, and RAG rewriting
+    topic_type: str = ""  # concept | task | reference | topic | map | mixed | any
+    intent_tags: list[str] = field(default_factory=list)
+    trigger_phrases: list[str] = field(default_factory=list)
+    required_constructs: list[dict] = field(default_factory=list)  # [{"name": "table", "min_count": 1}]
+    optional_constructs: list[str] = field(default_factory=list)
+    anti_patterns: list[dict] = field(default_factory=list)  # [{"id": "...", "description": "..."}]
+    validation_rules: list[dict] = field(default_factory=list)  # rule objects for semantic_validator
+    retrieval_keywords: list[str] = field(default_factory=list)
+    retrieval_element_hints: list[str] = field(default_factory=list)
+    forbidden_fallback_patterns: list[str] = field(default_factory=list)
+    repair_hints: list[str] = field(default_factory=list)
+    example_input: str = ""
+    example_output: str = ""
 
 
 def get_mechanism_family(spec: RecipeSpec) -> str:
@@ -76,6 +90,13 @@ def recipe_to_retrieval_text(spec: RecipeSpec) -> str:
     for ex in spec.examples or []:
         if isinstance(ex, dict) and ex.get("prompt"):
             parts.append(str(ex["prompt"]))
+    parts.extend(_flatten_to_str(spec.intent_tags).split() if spec.intent_tags else [])
+    parts.append(_flatten_to_str(spec.trigger_phrases))
+    parts.append(_flatten_to_str(spec.retrieval_keywords))
+    parts.append(_flatten_to_str(spec.retrieval_element_hints))
+    for rc in spec.required_constructs or []:
+        if isinstance(rc, dict) and rc.get("name"):
+            parts.append(str(rc["name"]))
     return " ".join(p for p in parts if p)
 
 

@@ -59,6 +59,25 @@ DITA_BOOST_TERMS = {
     "topichead": 1.8,
     "glossentry": 1.5,
     "abbreviated-form": 1.5,
+    "hasinstance": 2.0,
+    "haskind": 2.0,
+    "hasnarrower": 2.0,
+    "subjectdef": 1.8,
+    "glossref": 1.8,
+    "outputclass": 1.5,
+    "navtitle": 1.5,
+    "format": 1.8,
+    "scope": 1.8,
+    "collection-type": 1.5,
+    "locktitle": 1.5,
+    "processing-role": 1.5,
+    "toc": 1.3,
+    "print": 1.3,
+    "keys": 2.0,
+    "conkeyref": 2.0,
+    "audio": 1.5,
+    "video": 1.5,
+    "media-source": 1.5,
 }
 
 USE_DITA_HYBRID_SEARCH = os.getenv("USE_DITA_HYBRID_SEARCH", "true").lower() in ("true", "1", "yes")
@@ -212,7 +231,11 @@ def _retrieve_dita_embedding(query_text: str, k: int) -> Optional[list[dict]]:
                 return None
             _dita_embedding_cache = (chunks, embs)
 
-        cached_chunks, chunk_embeddings = _dita_embedding_cache
+        try:
+            cached_chunks, chunk_embeddings = _dita_embedding_cache
+        except (TypeError, ValueError):
+            _dita_embedding_cache = None
+            return _retrieve_dita_embedding(query_text, k)
         if len(cached_chunks) != len(chunks):
             _dita_embedding_cache = None
             return _retrieve_dita_embedding(query_text, k)
@@ -249,23 +272,31 @@ def retrieve_dita_knowledge(
 
     chroma_results = _retrieve_dita_chromadb(query_text, k)
     if chroma_results is not None:
-        if USE_DITA_HYBRID_SEARCH and chroma_results:
+        seed_hits = _search_seed(query_text, k=max(2, k // 2))
+        merged = list(chroma_results)
+        seen_texts = {(c.get("text_content") or "")[:120] for c in merged}
+        for sh in seed_hits:
+            if (sh.get("text_content") or "")[:120] not in seen_texts:
+                merged.append(sh)
+        if USE_DITA_HYBRID_SEARCH and merged:
             tokens = _tokenize(query_text)
             if tokens:
                 scored = []
-                for i, chunk in enumerate(chroma_results):
+                for i, chunk in enumerate(merged):
                     text = (chunk.get("text_content") or "") + " " + (chunk.get("element_name") or "")
                     text_lower = text.lower()
                     lexical_boost = 0.0
                     for t in tokens:
                         if t in text_lower:
                             lexical_boost += DITA_BOOST_TERMS.get(t, 1.0)
+                    is_seed = chunk.get("content_type") not in ("spec",)
+                    seed_bonus = 0.3 if is_seed else 0.0
                     embedding_rank = 1.0 / (1.0 + i)
-                    combined = embedding_rank + lexical_boost * 0.5
+                    combined = embedding_rank + lexical_boost * 0.5 + seed_bonus
                     scored.append((combined, chunk))
                 scored.sort(key=lambda x: -x[0])
-                chroma_results = [c for _, c in scored]
-        return chroma_results
+                merged = [c for _, c in scored]
+        return merged[:k]
 
     logger.info_structured(
         "DITA knowledge from DB/seed fallback (run POST /api/v1/ai/index-dita-pdf to use DITA 1.2 PDF)",

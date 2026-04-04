@@ -12,9 +12,9 @@ def get_limits():
     try:
         logger.debug("Limits endpoint accessed")
         limits = {
-            "topicrefs_per_map_max": 5000,
+            "topicrefs_per_map_max": 25000,
             "total_topicrefs_max": 100000,
-            "topics_max": 10000,
+            "topics_max": 25000,
             "maps_max": 100,
             "xrefs_max": 50000,
             "keydefs_max": 1000,

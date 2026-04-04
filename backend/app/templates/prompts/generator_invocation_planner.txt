@@ -14,6 +14,7 @@ RECIPE SELECTION (use your judgment):
 - For each selected recipe, provide selection_rationale: briefly explain which recipe metadata matched (title, tags, use_when, constructs, output_scale).
 
 KEYREF_NESTED_KEYDEF_CHAIN: Select when Jira PRIMARILY describes nested keydef chain resolution across outer map -> intermediate keymap -> keyword/topic source, especially when DITA-OT resolves correctly but Web Editor author/preview does not. Do NOT select for xref, conref, ditaval, duplicate keys, glossary, reltable.
+TABLE_SEMANTICS_REFERENCE: Select table_semantics_reference when Jira PRIMARILY concerns table text/cell alignment, @align, alignment UI in tables, or documenting allowed align values—and candidates include that recipe. Prefer it over heavy_topics_tables_codeblocks for alignment-only minimal repro. Do NOT select for keyref, conref, or issues with no table semantics.
 HEAVY_CONDITIONAL_TOPIC_6000_LINES: Select when Jira or similar request PRIMARILY asks for a very large single DITA topic with heavy conditional profiling using audience/platform/otherprops, especially for stress, filtering, rendering, or performance testing. Do NOT select for keyref, conref, xref, nested map, duplicate keys, glossary, reltable—those are reference/linking mechanisms. "Conditional heavy topic" is NOT the same as keyref/conref/xref recipes.
 
 Evidence contains the full Jira (summary, description, Representative Sample). Use it to decide.
