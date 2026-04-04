@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="guides_19555_source" xml:lang="en-US">
+  <title>GUIDES-19555 — Source topic (reltable column A)</title>
+  <shortdesc>Place this topic in the first reltable cell to reproduce column-collapse behavior in legacy Author view.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-24" /></metadata></prolog><body>
+    <p>Represents the <q>source</q> side of a relationship row in the sample reltable.</p>
+  </body>
+</topic>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="guides_42533_static" xml:lang="en-US">
+  <title>GUIDES-42533 — Topic C (static keywords)</title>
+  <shortdesc>Keyword resource referenced from Map B; supports nested keydef resolution tests.</shortdesc>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword id="versionString">v6.1</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <body/>
+</topic>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="guides_19555_map" xml:lang="en-US">
+  <title>GUIDES-19555 — Sample map with headerless reltable (2×2)</title>
+  <topicref href="GUIDES-19555-topic-overview.dita"/>
+  <!-- No relheader: matches customer repro (new reltable without header row). -->
+  <reltable>
+    <relrow>
+      <relcell>
+        <topicref href="GUIDES-19555-topic-source.dita"/>
+      </relcell>
+      <relcell/>
+    </relrow>
+    <relrow>
+      <relcell/>
+      <relcell/>
+    </relrow>
+  </reltable>
+</map>

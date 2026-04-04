@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DITA Authoring — Full Mockup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1a1a1a; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; background: #fff; }
+
+  /* Topbar */
+  .topbar { height: 48px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: #fff; flex-shrink: 0; }
+  .topbar-left { display: flex; align-items: center; gap: 8px; }
+  .topbar-icon { width: 16px; height: 16px; color: #2563eb; }
+  .topbar-title { font-size: 13px; font-weight: 600; color: #111; }
+  .topbar-sub { font-size: 11px; color: #9ca3af; }
+  .stage-bar { display: flex; align-items: center; gap: 5px; }
+  .chip { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 5px; }
+  .chip.done { background: #dcfce7; color: #166534; }
+  .chip.active { background: #2563eb; color: #fff; }
+  .chip.idle { color: #9ca3af; }
+  .chip-sep { color: #d1d5db; font-size: 11px; }
+  .issue-badge { background: #eff6ff; color: #1d4ed8; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 5px; margin-left: 8px; }
+  .chunks-badge { background: #ede9fe; color: #5b21b6; font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 5px; }
+  .quality-badge { background: #dcfce7; color: #166534; font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 5px; }
+
+  /* 3-panel */
+  .panels { display: flex; flex: 1; overflow: hidden; }
+  .p-left { width: 240px; flex-shrink: 0; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; background: #fff; }
+  .p-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+  .p-right { width: 210px; flex-shrink: 0; border-left: 1px solid #e5e7eb; background: #f9fafb; overflow-y: auto; }
+
+  /* Panel header */
+  .ph { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; font-size: 10px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .06em; background: #f9fafb; }
+
+  /* Left panel */
+  .search-wrap { padding: 8px; border-bottom: 1px solid #e5e7eb; }
+  .search-wrap input { width: 100%; font-size: 11px; padding: 5px 9px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; color: #111; outline: none; }
+  .search-wrap input:focus { border-color: #2563eb; }
+  .issue-list { flex: 1; overflow-y: auto; }
+  .issue-row { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background .1s; }
+  .issue-row:hover { background: #f9fafb; }
+  .issue-row.selected { background: #eff6ff; border-left: 3px solid #2563eb; }
+  .ikey { font-size: 9px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 1px 5px; border-radius: 3px; display: inline-block; margin-bottom: 3px; font-family: monospace; }
+  .isum { font-size: 11px; color: #111; line-height: 1.4; }
+  .imeta { font-size: 9px; color: #9ca3af; margin-top: 2px; }
+
+  /* Center stages */
+  .stage-view { display: none; flex-direction: column; height: 100%; }
+  .stage-view.active { display: flex; }
+
+  /* Center header */
+  .ch { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+  .ch-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .ch-title { font-size: 14px; font-weight: 600; color: #111; line-height: 1.3; }
+  .ch-arrow { font-size: 10px; color: #d1d5db; }
+  .ch-sub { font-size: 10px; color: #6b7280; }
+  .ch-quality { font-size: 10px; font-weight: 600; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 4px; margin-left: auto; }
+  .ch-key { font-size: 10px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 1px 6px; border-radius: 4px; font-family: monospace; }
+
+  /* Toolbar */
+  .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #e5e7eb; }
+  .tabs { display: flex; }
+  .tab { font-size: 11px; padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; color: #6b7280; }
+  .tab.active { border-color: #2563eb; color: #2563eb; font-weight: 600; }
+  .tab:hover:not(.active) { color: #374151; }
+  .actions { display: flex; gap: 5px; padding: 5px 0; }
+  .btn { font-size: 10px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; background: #fff; color: #374151; transition: background .15s; }
+  .btn:hover { background: #f3f4f6; }
+  .btn.review { border-color: #fbbf24; background: #fffbeb; color: #92400e; font-weight: 600; }
+  .btn.regen { border-color: #d1d5db; }
+  .btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn.success { background: #16a34a; color: #fff; border-color: #16a34a; }
+
+  /* Content */
+  .cbody { flex: 1; overflow-y: auto; padding: 16px; }
+  .cfoot { padding: 10px 16px; border-top: 1px solid #e5e7eb; background: #f9fafb; }
+  .refine-row { display: flex; gap: 6px; }
+  .refine-row input { flex: 1; font-size: 11px; height: 30px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111; outline: none; }
+  .refine-row input:focus { border-color: #2563eb; }
+
+  /* DITA preview elements */
+  .preview-title { font-size: 16px; font-weight: 600; color: #111; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f3f4f6; }
+  .sec-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+  .el-badge { font-size: 9px; font-family: monospace; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; flex-shrink: 0; }
+  .el-blue { background: #eff6ff; color: #1e40af; }
+  .el-gray { background: #f3f4f6; color: #374151; }
+  .el-green { background: #f0fdf4; color: #166534; }
+  .el-amber { background: #fffbeb; color: #92400e; }
+  .el-purple { background: #f5f3ff; color: #5b21b6; }
+  .sec-text { font-size: 11px; color: #374151; line-height: 1.5; }
+  .bl { border-left: 2px solid #e5e7eb; padding-left: 10px; margin-bottom: 10px; }
+  .bl.green { border-color: #86efac; background: #f0fdf4; border-radius: 0 5px 5px 0; padding: 6px 10px; }
+  .bl.blue { border-color: #93c5fd; }
+  .bl.purple { border-color: #c4b5fd; }
+  .step-row { display: flex; gap: 5px; align-items: flex-start; margin-bottom: 5px; }
+  .step-num { font-size: 10px; color: #9ca3af; font-family: monospace; width: 16px; flex-shrink: 0; }
+
+  /* Query cards */
+  .q-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 7px; overflow: hidden; }
+  .q-card.approved { border-color: #93c5fd; background: #eff6ff; }
+  .q-header { padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,.06); }
+  .q-cat { font-size: 10px; font-weight: 600; }
+  .q-src { font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+  .q-body { padding: 7px 10px; }
+  .q-query { font-size: 10px; font-family: monospace; color: #111; margin-bottom: 2px; }
+  .q-purpose { font-size: 9px; color: #6b7280; font-style: italic; }
+  .toggle { width: 20px; height: 20px; border-radius: 50%; border: 1px solid; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+  .strategy-box { background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 10px; color: #3730a3; }
+
+  /* Research results */
+  .stat-grid { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #e5e7eb; }
+  .stat-card { flex: 1; border-radius: 8px; padding: 8px; text-align: center; border: 1px solid; }
+  .stat-card.green { background: #f0fdf4; border-color: #86efac; }
+  .stat-card.blue { background: #eff6ff; border-color: #93c5fd; }
+  .stat-card.purple { background: #f5f3ff; border-color: #c4b5fd; }
+  .stat-num { font-size: 22px; font-weight: 600; }
+  .stat-label { font-size: 9px; margin-top: 1px; }
+  .r-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 9px 11px; margin-bottom: 7px; }
+  .r-card.blue { border-color: #93c5fd; background: #eff6ff; }
+  .r-card.purple { border-color: #c4b5fd; background: #f5f3ff; }
+  .r-card.red { border-color: #fca5a5; background: #fef2f2; }
+  .r-cat { font-size: 10px; font-weight: 600; margin-bottom: 3px; }
+  .r-q { font-size: 9px; font-style: italic; color: #6b7280; margin-bottom: 4px; }
+  .r-text { font-size: 11px; color: #111; line-height: 1.5; }
+
+  /* Right panel */
+  .rp-section { margin-bottom: 14px; }
+  .rp-label { font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 7px; padding: 10px 12px 0; }
+  .rp-body { padding: 0 12px; }
+  .type-card { border-radius: 8px; padding: 9px; text-align: center; border: 1px solid; margin-bottom: 10px; }
+  .type-card.purple { background: #f5f3ff; border-color: #c4b5fd; }
+  .type-name { font-size: 18px; font-weight: 600; color: #5b21b6; }
+  .type-sub { font-size: 9px; color: #7c3aed; }
+  .score-card { border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #86efac; background: #f0fdf4; margin-bottom: 10px; }
+  .score-num { font-size: 28px; font-weight: 700; color: #16a34a; }
+  .score-sub { font-size: 9px; color: #4ade80; }
+  .bar-row { display: flex; justify-content: space-between; font-size: 9px; color: #6b7280; margin-bottom: 2px; }
+  .bar { height: 4px; border-radius: 2px; background: #e5e7eb; margin-bottom: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 2px; }
+  .vcheck { display: flex; align-items: center; gap: 4px; font-size: 9px; margin-bottom: 4px; }
+  .vdot-g { width: 10px; height: 10px; border-radius: 50%; background: #f0fdf4; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .vdot-w { width: 10px; height: 10px; border-radius: 50%; background: #fffbeb; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .research-pill { font-size: 9px; background: #ede9fe; color: #5b21b6; padding: 2px 6px; border-radius: 3px; display: inline-block; margin: 2px 2px 0 0; }
+
+  /* Generating state */
+  .gen-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid #2563eb; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .gen-steps { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+  .gen-step { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .gs-done { color: #374151; }
+  .gs-active { color: #2563eb; font-weight: 500; }
+  .gs-idle { color: #9ca3af; }
+
+  /* Buttons bottom bar */
+  .cfoot-row { display: flex; gap: 6px; }
+  .cfoot-row.center { justify-content: center; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <svg class="topbar-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2.5" stroke="#2563eb" stroke-width="1.4"/><path d="M4.5 8h7M4.5 5h7M4.5 11h4.5" stroke="#2563eb" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span class="topbar-title">DITA Authoring</span>
+      <span class="topbar-sub">Jira → Research → Generate → Review → Publish</span>
+    </div>
+    <div class="stage-bar" id="stage-bar">
+      <span class="chip done">✓ Select</span>
+      <span class="chip-sep">›</span>
+      <span class="chip active" id="chip-research">Research</span>
+      <span class="chip-sep">›</span>
+      <span class="chip idle" id="chip-generate">Generate</span>
+      <span class="chip-sep">›</span>
+      <span class="chip idle" id="chip-done">Done</span>
+      <span class="issue-badge">AEM-456</span>
+      <span class="chunks-badge" id="chunks-badge" style="display:none;">18 chunks</span>
+      <span class="quality-badge" id="quality-badge" style="display:none;">94/100</span>
+    </div>
+  </div>
+
+  <!-- 3 PANELS -->
+  <div class="panels">
+
+    <!-- LEFT: Jira browser -->
+    <div class="p-left">
+      <div class="ph">Jira Issues</div>
+      <div class="search-wrap">
+        <input placeholder="Search issues or paste key..." />
+      </div>
+      <div class="issue-list">
+        <div class="issue-row selected" onclick="selectIssue(this,'AEM-456','Keyref not resolving in nested keyscope','Bug','task','94')">
+          <span class="ikey">AEM-456</span>
+          <div class="isum">Keyref not resolving in nested keyscope</div>
+          <div class="imeta">Bug · High · keyref, keyscope</div>
+        </div>
+        <div class="issue-row" onclick="selectIssue(this,'AEM-457','Predictive maintenance feature overview','Story','concept','88')">
+          <span class="ikey">AEM-457</span>
+          <div class="isum">Predictive maintenance feature overview</div>
+          <div class="imeta">Story · Medium · concept, IoT</div>
+        </div>
+        <div class="issue-row" onclick="selectIssue(this,'AEM-458','KONE Connect API /v2/elevator/status','Story','reference','91')">
+          <span class="ikey">AEM-458</span>
+          <div class="isum">KONE Connect API /v2/elevator/status</div>
+          <div class="imeta">Story · Low · api, reference</div>
+        </div>
+        <div class="issue-row" onclick="selectIssue(this,'AEM-459','Safety warning missing in escalator guide','Bug','task','96')">
+          <span class="ikey">AEM-459</span>
+          <div class="isum">Safety warning missing in escalator guide</div>
+          <div class="imeta">Bug · Critical · safety, compliance</div>
+        </div>
+        <div class="issue-row" onclick="selectIssue(this,'AEM-460','IoT terminology glossary update','Story','glossentry','82')">
+          <span class="ikey">AEM-460</span>
+          <div class="isum">IoT terminology glossary update</div>
+          <div class="imeta">Story · Low · glossary, IoT</div>
+        </div>
+        <div class="issue-row" onclick="selectIssue(this,'AEM-461','Configure baseline in AEM Guides','Task','task','90')">
+          <span class="ikey">AEM-461</span>
+          <div class="isum">Configure baseline in AEM Guides</div>
+          <div class="imeta">Task · Medium · baseline</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: Stage views -->
+    <div class="p-center">
+
+      <!-- STAGE: Research (query review) -->
+      <div class="stage-view active" id="stage-research">
+        <div class="ch">
+          <div class="ch-meta">
+            <span class="ch-key">AEM-456</span>
+            <span class="ch-arrow">›</span>
+            <span class="ch-sub">Review research queries</span>
+          </div>
+          <div class="ch-title">Keyref not resolving in nested keyscope</div>
+        </div>
+        <div class="cbody">
+          <div class="strategy-box">
+            <strong>Query strategy:</strong> Bug issue with keyref/keyscope labels → 5 targeted queries across DITA spec, AEM docs, expert examples, and known fixes
+          </div>
+
+          <!-- Q1 DITA Elements -->
+          <div class="q-card approved">
+            <div class="q-header">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="q-cat" style="color:#1e40af;">DITA Elements</span>
+                <span class="q-src" style="background:#dbeafe;color:#1e40af;">Local RAG</span>
+              </div>
+              <div class="toggle" style="border-color:#16a34a;background:#f0fdf4;" onclick="toggleQ(this)">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="q-body">
+              <div class="q-query">"DITA 1.3 task topic keyref keyscope required elements"</div>
+              <div class="q-purpose">Find required elements and valid nesting for task with keyref</div>
+            </div>
+          </div>
+
+          <!-- Q2 AEM Guides -->
+          <div class="q-card approved">
+            <div class="q-header">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="q-cat" style="color:#5b21b6;">AEM Guides</span>
+                <span class="q-src" style="background:#ede9fe;color:#5b21b6;">Web search</span>
+              </div>
+              <div class="toggle" style="border-color:#16a34a;background:#f0fdf4;" onclick="toggleQ(this)">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="q-body">
+              <div class="q-query">"AEM Guides keyref not resolving nested keyscope 4.2"</div>
+              <div class="q-purpose">Find what Adobe Experience League says about this issue</div>
+            </div>
+          </div>
+
+          <!-- Q3 Bugs -->
+          <div class="q-card approved">
+            <div class="q-header">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="q-cat" style="color:#991b1b;">Known Bugs & Fixes</span>
+                <span class="q-src" style="background:#fee2e2;color:#991b1b;">Web search</span>
+              </div>
+              <div class="toggle" style="border-color:#16a34a;background:#f0fdf4;" onclick="toggleQ(this)">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="q-body">
+              <div class="q-query">"AEM Guides keyscope bug fix workaround solution"</div>
+              <div class="q-purpose">Find known solutions and community workarounds</div>
+            </div>
+          </div>
+
+          <!-- Q4 Expert Examples -->
+          <div class="q-card approved">
+            <div class="q-header">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="q-cat" style="color:#166534;">Expert Examples</span>
+                <span class="q-src" style="background:#dcfce7;color:#166534;">Local RAG</span>
+              </div>
+              <div class="toggle" style="border-color:#16a34a;background:#f0fdf4;" onclick="toggleQ(this)">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="q-body">
+              <div class="q-query">"DITA task example keyref keyscope resolution pattern"</div>
+              <div class="q-purpose">Find validated DITA examples from DITAWriter repos</div>
+            </div>
+          </div>
+
+          <!-- Q5 DITA Spec -->
+          <div class="q-card approved">
+            <div class="q-header">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="q-cat" style="color:#92400e;">DITA Spec Rules</span>
+                <span class="q-src" style="background:#fffbeb;color:#92400e;">Local RAG</span>
+              </div>
+              <div class="toggle" style="border-color:#16a34a;background:#f0fdf4;" onclick="toggleQ(this)">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="q-body">
+              <div class="q-query">"DITA 1.3 keyref keyscope specification rules constraints"</div>
+              <div class="q-purpose">OASIS spec rules for keyref across scope boundaries</div>
+            </div>
+          </div>
+        </div>
+        <div class="cfoot">
+          <div class="cfoot-row" style="margin-bottom:6px;">
+            <button class="btn primary" id="run-btn" style="flex:1;" onclick="goToResults()">Run 5 queries</button>
+            <button class="btn" onclick="goToGenerate()">Skip research</button>
+          </div>
+          <p style="font-size:10px;color:#6b7280;text-align:center;" id="q-count-text">5 of 5 queries selected · edit any query before running</p>
+        </div>
+      </div>
+
+      <!-- STAGE: Research results -->
+      <div class="stage-view" id="stage-results">
+        <div class="ch">
+          <div class="ch-meta">
+            <span class="ch-key">AEM-456</span>
+            <span class="ch-arrow">›</span>
+            <span class="ch-sub">Research results</span>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-card green"><div class="stat-num" style="color:#16a34a;">18</div><div class="stat-label" style="color:#4ade80;">Context chunks</div></div>
+          <div class="stat-card blue"><div class="stat-num" style="color:#2563eb;">5</div><div class="stat-label" style="color:#60a5fa;">Queries run</div></div>
+          <div class="stat-card purple"><div class="stat-num" style="color:#5b21b6;">2</div><div class="stat-label" style="color:#a78bfa;">Sources</div></div>
+        </div>
+        <div class="cbody">
+          <div class="r-card blue">
+            <div class="r-cat" style="color:#1e40af;">DITA Elements <span style="float:right;font-size:9px;color:#6b7280;font-weight:400;">142ms</span></div>
+            <div class="r-q">"DITA 1.3 task topic keyref keyscope required elements"</div>
+            <div class="r-text">Task topics require taskbody → steps → step → cmd. Keyref attributes are valid on most block elements. keyscope prefix required for cross-scope resolution in DITA 1.3.</div>
+          </div>
+          <div class="r-card purple">
+            <div class="r-cat" style="color:#5b21b6;">AEM Guides <span style="float:right;font-size:9px;color:#6b7280;font-weight:400;">890ms</span></div>
+            <div class="r-q">"AEM Guides keyref not resolving nested keyscope 4.2"</div>
+            <div class="r-text">In AEM Guides 4.2, keyrefs in child maps require the full keyscope.keyname prefix in parent maps. This behaviour changed from 4.1 where relative references worked.</div>
+          </div>
+          <div class="r-card red">
+            <div class="r-cat" style="color:#991b1b;">Known Bugs <span style="float:right;font-size:9px;color:#6b7280;font-weight:400;">1.2s</span></div>
+            <div class="r-q">"AEM Guides keyscope bug fix workaround"</div>
+            <div class="r-text">Workaround: add keyscope attribute to root map element. Fix available in 4.2.1 patch. Community thread confirms scope prefix is now mandatory for cross-scope keyref resolution.</div>
+          </div>
+        </div>
+        <div class="cfoot">
+          <button class="btn success" style="width:100%;font-size:11px;padding:7px;" onclick="goToGenerate()">Use this research → Generate DITA</button>
+          <p style="font-size:10px;color:#6b7280;text-align:center;margin-top:5px;">18 context chunks ready · generation will use all sources</p>
+        </div>
+      </div>
+
+      <!-- STAGE: Generating -->
+      <div class="stage-view" id="stage-generating">
+        <div class="ch">
+          <div class="ch-meta"><span class="ch-key">AEM-456</span><span class="ch-arrow">›</span><span class="ch-sub">Generating…</span></div>
+          <div class="ch-title">Keyref not resolving in nested keyscope</div>
+        </div>
+        <div class="gen-center">
+          <div class="spinner"></div>
+          <div style="text-align:center;">
+            <p style="font-size:13px;font-weight:600;color:#111;margin-bottom:16px;">Generating DITA for AEM-456…</p>
+            <div class="gen-steps" id="gen-steps">
+              <div class="gen-step gs-done"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="6" fill="#f0fdf4"/><path d="M3.5 6.5l2.5 2.5L9.5 4" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg> Fetching Jira issue + comments</div>
+              <div class="gen-step gs-done"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="6" fill="#f0fdf4"/><path d="M3.5 6.5l2.5 2.5L9.5 4" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg> Applying research context (18 chunks)</div>
+              <div class="gen-step gs-active" id="gs3"><div style="width:13px;height:13px;border:2px solid #2563eb;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div> Generating spec-compliant XML</div>
+              <div class="gen-step gs-idle"><div style="width:13px;height:13px;border-radius:50%;border:1.5px solid #d1d5db;flex-shrink:0;"></div> Validating structure</div>
+              <div class="gen-step gs-idle"><div style="width:13px;height:13px;border-radius:50%;border:1.5px solid #d1d5db;flex-shrink:0;"></div> Scoring quality</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE: Generated (DITA editor) -->
+      <div class="stage-view" id="stage-generated">
+        <div class="ch">
+          <div class="ch-meta">
+            <span class="ch-key">AEM-456</span>
+            <span class="ch-arrow">›</span>
+            <span class="ch-sub">aem-456-task.dita</span>
+            <span class="ch-quality">94/100</span>
+          </div>
+          <div class="ch-title">Keyref not resolving in nested keyscope</div>
+        </div>
+        <div class="toolbar">
+          <div class="tabs">
+            <div class="tab active" onclick="switchTab(this,'preview')">Preview</div>
+            <div class="tab" onclick="switchTab(this,'xml')">XML Source</div>
+            <div class="tab" onclick="switchTab(this,'rendered')">Rendered</div>
+          </div>
+          <div class="actions">
+            <button class="btn review" onclick="alert('Review Mode — approve/reject each section before saving')">Review sections</button>
+            <button class="btn regen" onclick="goToGenerating()">Regenerate</button>
+            <button class="btn" onclick="copyXML()">Copy</button>
+            <button class="btn" onclick="downloadDITA()">Download</button>
+            <button class="btn primary" onclick="uploadAEM()">Upload to AEM</button>
+          </div>
+        </div>
+
+        <!-- Preview tab -->
+        <div class="cbody" id="tab-preview">
+          <div class="preview-title">Resolve Keyref in Nested Keyscope</div>
+          <div class="sec-row">
+            <span class="el-badge el-blue">shortdesc</span>
+            <p class="sec-text" style="font-style:italic;color:#4b5563;">Fix keyref resolution failures by adding the keyscope prefix to cross-scope references in AEM Guides 4.2.</p>
+          </div>
+          <div class="bl blue">
+            <span class="el-badge el-gray">context</span>
+            <p class="sec-text" style="margin-top:5px;">In AEM Guides 4.2, keyrefs defined in nested keyscopes require an explicit scope prefix in parent maps. This changed from version 4.1 behaviour where relative references resolved correctly.</p>
+          </div>
+          <div class="bl blue">
+            <span class="el-badge el-green">steps</span>
+            <div style="margin-top:8px;">
+              <div class="step-row"><span class="step-num">1.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Open the child map containing the keydef in Oxygen XML Editor</span></div></div>
+              <div class="step-row"><span class="step-num">2.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Verify the keyscope attribute on the map element matches the expected scope name</span></div></div>
+              <div class="step-row"><span class="step-num">3.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Update all keyrefs in the parent map: replace <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:10px;">my-key</code> with <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:10px;">child.my-key</code></span></div></div>
+              <div class="step-row"><span class="step-num">4.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Regenerate output and verify key resolution in Preview panel</span></div></div>
+            </div>
+          </div>
+          <div class="bl green">
+            <span class="el-badge el-green">result</span>
+            <p class="sec-text" style="margin-top:5px;color:#166534;">Keyref resolution works correctly across nested keyscope boundaries. Output validates without errors in AEM Guides 4.2 and later.</p>
+          </div>
+        </div>
+
+        <!-- XML Source tab -->
+        <div class="cbody" id="tab-xml" style="display:none;">
+          <pre style="font-family:monospace;font-size:10px;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;overflow-x:auto;line-height:1.7;">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd"&gt;
+&lt;task id="aem_456_keyref_nested_keyscope" xml:lang="en-US"&gt;
+  &lt;title&gt;Resolve Keyref in Nested Keyscope&lt;/title&gt;
+  &lt;shortdesc&gt;Fix keyref resolution failures by adding the keyscope
+  prefix to cross-scope references in AEM Guides 4.2.&lt;/shortdesc&gt;
+  &lt;prolog&gt;
+    &lt;metadata&gt;
+      &lt;othermeta name="jira-key" content="AEM-456"/&gt;
+      &lt;othermeta name="author" content="AEM Guides Dataset Studio"/&gt;
+    &lt;/metadata&gt;
+  &lt;/prolog&gt;
+  &lt;taskbody&gt;
+    &lt;context&gt;
+      &lt;p&gt;In AEM Guides 4.2, keyrefs defined in nested keyscopes
+      require an explicit scope prefix in parent maps.&lt;/p&gt;
+    &lt;/context&gt;
+    &lt;steps&gt;
+      &lt;step&gt;
+        &lt;cmd&gt;Open the child map containing the keydef.&lt;/cmd&gt;
+      &lt;/step&gt;
+      &lt;step&gt;
+        &lt;cmd&gt;Verify the keyscope attribute on the map element.&lt;/cmd&gt;
+      &lt;/step&gt;
+      &lt;step&gt;
+        &lt;cmd&gt;Update all keyrefs: replace &lt;codeph&gt;my-key&lt;/codeph&gt;
+        with &lt;codeph&gt;child.my-key&lt;/codeph&gt;.&lt;/cmd&gt;
+      &lt;/step&gt;
+      &lt;step&gt;
+        &lt;cmd&gt;Regenerate output and verify key resolution.&lt;/cmd&gt;
+      &lt;/step&gt;
+    &lt;/steps&gt;
+    &lt;result&gt;
+      &lt;p&gt;Keyref resolution works correctly across nested keyscope
+      boundaries in AEM Guides 4.2.&lt;/p&gt;
+    &lt;/result&gt;
+  &lt;/taskbody&gt;
+&lt;/task&gt;</pre>
+        </div>
+
+        <!-- Rendered tab -->
+        <div class="cbody" id="tab-rendered" style="display:none;">
+          <h1 style="font-size:20px;font-weight:700;color:#111;margin-bottom:10px;">Resolve Keyref in Nested Keyscope</h1>
+          <p style="font-style:italic;color:#4b5563;border-left:4px solid #93c5fd;padding-left:12px;margin-bottom:16px;font-size:13px;">Fix keyref resolution failures by adding the keyscope prefix to cross-scope references in AEM Guides 4.2.</p>
+          <h3 style="font-size:13px;font-weight:600;margin-bottom:6px;">Context</h3>
+          <p style="font-size:13px;color:#374151;margin-bottom:14px;">In AEM Guides 4.2, keyrefs defined in nested keyscopes require an explicit scope prefix in parent maps.</p>
+          <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Steps</h3>
+          <ol style="font-size:13px;color:#374151;padding-left:20px;line-height:2;">
+            <li>Open the child map containing the keydef</li>
+            <li>Verify the keyscope attribute on the map element</li>
+            <li>Update all keyrefs: replace <code style="background:#f3f4f6;padding:2px 5px;border-radius:4px;">my-key</code> with <code style="background:#f3f4f6;padding:2px 5px;border-radius:4px;">child.my-key</code></li>
+            <li>Regenerate output and verify key resolution</li>
+          </ol>
+          <div style="background:#f0fdf4;border-radius:8px;padding:12px;margin-top:16px;">
+            <h3 style="font-size:13px;font-weight:600;color:#166534;margin-bottom:4px;">Result</h3>
+            <p style="font-size:13px;color:#166534;">Keyref resolution works correctly across nested keyscope boundaries in AEM Guides 4.2.</p>
+          </div>
+        </div>
+
+        <div class="cfoot">
+          <div class="refine-row">
+            <input id="refine-input"
+                   placeholder='Refine: "add note about AEM 4.1" or "remove context section" — press Enter'
+                   onkeydown="if(event.key==='Enter')handleRefine()" />
+            <button class="btn primary" id="refine-btn"
+                    style="height:30px;padding:0 14px;min-width:60px;"
+                    onclick="handleRefine()">Refine</button>
+          </div>
+          <div id="refine-status" style="font-size:10px;color:#6b7280;margin-top:5px;min-height:16px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /p-center -->
+
+    <!-- RIGHT: Quality panel -->
+    <div class="p-right">
+      <div class="rp-label">Research</div>
+      <div class="rp-body" id="rp-research">
+        <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:9px;margin-bottom:12px;">
+          <p style="font-size:10px;font-weight:600;color:#3730a3;margin-bottom:5px;">Research complete</p>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#5b21b6;margin-bottom:2px;"><span>Chunks</span><span style="font-weight:600;">18</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#5b21b6;margin-bottom:5px;"><span>Queries</span><span style="font-weight:600;">5</span></div>
+          <div><span class="research-pill">Local RAG</span><span class="research-pill">Web search</span></div>
+        </div>
+      </div>
+
+      <div class="rp-label">Quality</div>
+      <div class="rp-body">
+        <div class="score-card" id="score-card">
+          <div class="score-num">94</div>
+          <div class="score-sub">/ 100</div>
+        </div>
+        <div class="bar-row"><span>Structure</span><span style="color:#16a34a;font-weight:600;">30/30</span></div>
+        <div class="bar"><div class="bar-fill" style="width:100%;background:#16a34a;"></div></div>
+        <div class="bar-row"><span>Content richness</span><span style="color:#16a34a;font-weight:600;">28/30</span></div>
+        <div class="bar"><div class="bar-fill" style="width:93%;background:#16a34a;"></div></div>
+        <div class="bar-row"><span>DITA features</span><span style="color:#f59e0b;font-weight:600;">16/20</span></div>
+        <div class="bar"><div class="bar-fill" style="width:80%;background:#f59e0b;"></div></div>
+        <div class="bar-row"><span>AEM readiness</span><span style="color:#16a34a;font-weight:600;">20/20</span></div>
+        <div class="bar"><div class="bar-fill" style="width:100%;background:#16a34a;"></div></div>
+      </div>
+
+      <div class="rp-label" style="margin-top:10px;">Validation</div>
+      <div class="rp-body">
+        <div class="vcheck"><div class="vdot-g"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#374151;">XML well-formed</span></div>
+        <div class="vcheck"><div class="vdot-g"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#374151;">taskbody present</span></div>
+        <div class="vcheck"><div class="vdot-g"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#374151;">steps with cmd</span></div>
+        <div class="vcheck"><div class="vdot-g"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#374151;">shortdesc present</span></div>
+        <div class="vcheck"><div class="vdot-g"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#374151;">xml:lang set</span></div>
+        <div class="vcheck"><div class="vdot-w"><svg width="7" height="7" viewBox="0 0 7 7"><path d="M3.5 1.5v3M3.5 5.5v.5" stroke="#92400e" stroke-width="1.2"/></svg></div><span style="font-size:9px;color:#92400e;">Add outputclass</span></div>
+      </div>
+
+      <div class="rp-label" style="margin-top:10px;">Sources</div>
+      <div class="rp-body" style="padding-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#374151;margin-bottom:4px;"><span>Experience League</span><span style="color:#2563eb;font-weight:600;">3 chunks</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#374151;margin-bottom:4px;"><span>DITA Spec 1.3</span><span style="color:#2563eb;font-weight:600;">4 chunks</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#374151;margin-bottom:4px;"><span>Expert examples</span><span style="color:#2563eb;font-weight:600;">2 chunks</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#374151;"><span>Research cache</span><span style="color:#2563eb;font-weight:600;">9 chunks</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showStage(id) {
+  document.querySelectorAll('.stage-view').forEach(v => v.classList.remove('active'))
+  document.getElementById('stage-' + id).classList.add('active')
+  const r = document.getElementById('chip-research')
+  const g = document.getElementById('chip-generate')
+  const d = document.getElementById('chip-done')
+  if (id === 'research' || id === 'results') {
+    r.className = 'chip active'; r.textContent = 'Research'
+    g.className = 'chip idle';   g.textContent = 'Generate'
+    d.className = 'chip idle';   d.textContent = 'Done'
+    document.getElementById('chunks-badge').style.display = 'none'
+    document.getElementById('quality-badge').style.display = 'none'
+  } else if (id === 'generating') {
+    r.className = 'chip done'; r.textContent = '✓ Research'
+    g.className = 'chip active'; g.textContent = 'Generate'
+    d.className = 'chip idle';   d.textContent = 'Done'
+    document.getElementById('chunks-badge').style.display = 'inline'
+  } else if (id === 'generated') {
+    r.className = 'chip done'; r.textContent = '✓ Research'
+    g.className = 'chip done'; g.textContent = '✓ Generate'
+    d.className = 'chip active'; d.textContent = 'Done'
+    document.getElementById('chunks-badge').style.display = 'inline'
+    document.getElementById('quality-badge').style.display = 'inline'
+  }
+}
+
+function goToResults() { showStage('results') }
+function goToGenerate() {
+  showStage('generating')
+  let step = 2
+  const steps = document.querySelectorAll('#gen-steps .gen-step')
+  const timer = setInterval(() => {
+    if (step >= steps.length) { clearInterval(timer); setTimeout(() => showStage('generated'), 400); return }
+    steps.forEach((s, i) => {
+      s.className = 'gen-step ' + (i < step ? 'gs-done' : i === step ? 'gs-active' : 'gs-idle')
+      if (i < step) s.querySelector('div,svg') && (s.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="6" fill="#f0fdf4"/><path d="M3.5 6.5l2.5 2.5L9.5 4" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg> ${s.textContent.trim()}`)
+    })
+    step++
+  }, 900)
+}
+function goToGenerating() { goToGenerate() }
+
+function switchTab(el, tab) {
+  document.querySelectorAll('.toolbar .tab').forEach(t => t.classList.remove('active'))
+  el.classList.add('active')
+  document.getElementById('tab-preview').style.display = tab === 'preview' ? '' : 'none'
+  document.getElementById('tab-xml').style.display = tab === 'xml' ? '' : 'none'
+  document.getElementById('tab-rendered').style.display = tab === 'rendered' ? '' : 'none'
+}
+
+function toggleQ(btn) {
+  const card = btn.closest('.q-card')
+  const on = card.classList.contains('approved')
+  card.classList.toggle('approved', !on)
+  btn.style.borderColor = on ? '#d1d5db' : '#16a34a'
+  btn.style.background = on ? '#fff' : '#f0fdf4'
+  btn.innerHTML = on
+    ? '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2l-6 6" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/></svg>'
+    : '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>'
+  const n = document.querySelectorAll('.q-card.approved').length
+  document.getElementById('run-btn').textContent = `Run ${n} quer${n===1?'y':'ies'}`
+  document.getElementById('q-count-text').textContent = `${n} of 5 queries selected`
+}
+
+function copyXML() {
+  const xml = document.querySelector('#tab-xml pre').textContent
+  navigator.clipboard.writeText(xml).then(() => alert('XML copied to clipboard'))
+}
+
+function downloadDITA() {
+  const content = document.querySelector('#tab-xml pre').textContent
+  const blob = new Blob([content], { type: 'application/xml' })
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+  a.download = 'aem-456-task.dita'; a.click()
+}
+
+function uploadAEM() { alert('Uploading to AEM DAM...\n\nIn production this calls POST /api/v1/aem/upload-dita') }
+
+const REFINEMENTS = {
+  'note': { action: 'add', section: 'note', text: 'add a note about AEM 4.1 compatibility' },
+  '4.1': { action: 'add', section: 'note', text: 'compatibility note' },
+  'remove context': { action: 'remove', section: 'context' },
+  'remove prereq': { action: 'remove', section: 'prereq' },
+  'remove result': { action: 'remove', section: 'result' },
+  'add example': { action: 'add', section: 'example', text: 'a usage example' },
+  'add prereq': { action: 'add', section: 'prereq', text: 'prerequisites' },
+  'shorten': { action: 'shorten', section: 'shortdesc' },
+  'expand': { action: 'expand', section: 'context' },
+}
+
+function handleRefine() {
+  const input = document.getElementById('refine-input')
+  const btn = document.getElementById('refine-btn')
+  const status = document.getElementById('refine-status')
+  const text = (input.value || '').trim()
+  if (!text) { input.focus(); return }
+
+  // Show loading state
+  btn.textContent = '...'
+  btn.disabled = true
+  input.disabled = true
+  status.textContent = ''
+  status.style.color = '#6b7280'
+
+  setTimeout(() => {
+    const lower = text.toLowerCase()
+
+    // Detect what to do
+    if (lower.includes('note') || lower.includes('4.1')) {
+      applyRefineNote(text)
+    } else if (lower.includes('remove context') || lower.includes('delete context')) {
+      applyRemoveSection('context')
+    } else if (lower.includes('remove result') || lower.includes('delete result')) {
+      applyRemoveSection('result')
+    } else if (lower.includes('remove prereq') || lower.includes('delete prereq')) {
+      applyRemoveSection('prereq')
+    } else if (lower.includes('add example') || lower.includes('add an example')) {
+      applyAddExample()
+    } else if (lower.includes('add step') || lower.includes('new step')) {
+      applyAddStep(text)
+    } else if (lower.includes('shorten') || lower.includes('shorter')) {
+      applyShortenShortdesc()
+    } else if (lower.includes('title') || lower.includes('rename')) {
+      applyRenameTitle(text)
+    } else if (lower.includes('outputclass')) {
+      applyOutputclass(text)
+    } else {
+      applyGenericRefinement(text)
+    }
+
+    // Reset
+    btn.textContent = 'Refine'
+    btn.disabled = false
+    input.disabled = false
+    input.value = ''
+    input.focus()
+
+    // Update quality score slightly
+    updateQualityScore()
+
+  }, 1200)
+}
+
+function applyRefineNote(instruction) {
+  const preview = document.getElementById('tab-preview')
+  const resultEl = preview.querySelector('.bl.green')
+  const noteHtml = `
+    <div class="bl" style="border-color:#fbbf24;background:#fffbeb;border-radius:0 5px 5px 0;padding:8px 10px;margin-bottom:10px;" id="injected-note">
+      <span class="el-badge el-amber">note</span>
+      <p class="sec-text" style="margin-top:5px;color:#92400e;">
+        This procedure applies to AEM Guides 4.2 and later. For AEM Guides 4.1,
+        keyscope prefixes are not required — use direct key names instead.
+      </p>
+    </div>`
+  if (!document.getElementById('injected-note') && resultEl) {
+    resultEl.insertAdjacentHTML('beforebegin', noteHtml)
+  }
+  showStatus('Added compatibility note for AEM 4.1 ✓', '#16a34a')
+
+  // Also update XML tab
+  const xmlPre = document.querySelector('#tab-xml pre')
+  if (xmlPre && !xmlPre.textContent.includes('<note')) {
+    xmlPre.textContent = xmlPre.textContent.replace(
+      '    <result>',
+      '    <note type="note">\n      This procedure applies to AEM Guides 4.2+. For 4.1, use direct key names.\n    </note>\n    <result>'
+    )
+  }
+}
+
+function applyRemoveSection(section) {
+  const preview = document.getElementById('tab-preview')
+  const els = preview.querySelectorAll('.bl, .sec-row')
+  els.forEach(el => {
+    const badge = el.querySelector('.el-badge')
+    if (badge && badge.textContent.trim().toLowerCase() === section) {
+      el.style.transition = 'opacity 0.3s'
+      el.style.opacity = '0'
+      setTimeout(() => el.remove(), 300)
+    }
+  })
+  showStatus('Removed ' + section + ' section ✓', '#16a34a')
+}
+
+function applyAddExample() {
+  const preview = document.getElementById('tab-preview')
+  if (document.getElementById('injected-example')) return
+  const exHtml = `
+    <div class="bl" style="border-color:#86efac;background:#f0fdf4;border-radius:0 5px 5px 0;padding:8px 10px;margin-bottom:10px;" id="injected-example">
+      <span class="el-badge el-green">example</span>
+      <p class="sec-text" style="margin-top:5px;font-style:italic;color:#374151;">
+        A child map with <code style="background:#e5e7eb;padding:1px 4px;border-radius:3px;font-size:10px;">keyscope="product"</code> requires
+        keyrefs in the parent map to use <code style="background:#e5e7eb;padding:1px 4px;border-radius:3px;font-size:10px;">product.my-key</code> format.
+      </p>
+    </div>`
+  preview.insertAdjacentHTML('beforeend', exHtml)
+  showStatus('Added usage example ✓', '#16a34a')
+}
+
+function applyAddStep(instruction) {
+  const stepsContainer = document.querySelector('#tab-preview .bl.blue > div')
+  if (!stepsContainer) return
+  const existing = stepsContainer.querySelectorAll('.step-row')
+  const num = existing.length + 1
+  const stepHtml = `
+    <div class="step-row">
+      <span class="step-num">${num}.</span>
+      <div><span class="el-badge el-amber">cmd</span>
+      <span class="sec-text" style="margin-left:6px;">Verify the fix resolves correctly in your target output preset</span></div>
+    </div>`
+  stepsContainer.insertAdjacentHTML('beforeend', stepHtml)
+  showStatus('Added step ' + num + ' ✓', '#16a34a')
+}
+
+function applyShortenShortdesc() {
+  const shortdescP = document.querySelector('#tab-preview .sec-row p')
+  if (shortdescP) {
+    shortdescP.textContent = 'Fix keyref resolution by adding keyscope prefix in AEM Guides 4.2.'
+    showStatus('Shortened shortdesc ✓', '#16a34a')
+  }
+}
+
+function applyRenameTitle(instruction) {
+  const words = instruction.replace(/title|rename|change|to/gi,'').trim()
+  if (words.length > 5) {
+    const title = document.querySelector('#tab-preview .preview-title')
+    if (title) { title.textContent = words; showStatus('Title updated ✓', '#16a34a') }
+  } else {
+    applyGenericRefinement(instruction)
+  }
+}
+
+function applyOutputclass(instruction) {
+  // Extract the value after "outputclass" — e.g. "add outputclass warning" → "warning"
+  const lower = instruction.toLowerCase()
+  let value = ''
+
+  // Try to extract value: "add outputclass warning", "outputclass=warning", "set outputclass to warning"
+  const patterns = [
+    /outputclass[=\s:]+["']?([a-zA-Z0-9_-]+)["']?/i,
+    /outputclass\s+to\s+["']?([a-zA-Z0-9_-]+)["']?/i,
+    /outputclass["']?\s*([a-zA-Z0-9_-]+)/i,
+  ]
+  for (const re of patterns) {
+    const m = instruction.match(re)
+    if (m && m[1] && m[1].toLowerCase() !== 'outputclass') {
+      value = m[1]
+      break
+    }
+  }
+
+  // Default value if none extracted
+  if (!value) value = 'kone-topic'
+
+  // 1. Update XML source — add outputclass to root element
+  const xmlPre = document.querySelector('#tab-xml pre')
+  if (xmlPre) {
+    let xml = xmlPre.textContent
+    // Find root element like <task id="..." xml:lang="en-US"> and add outputclass
+    xml = xml.replace(
+      /(<(?:task|concept|reference|glossentry|topic)[^>]*?)(xml:lang="[^"]*")/,
+      `$1xml:lang="en-US" outputclass="${value}"`
+    )
+    // If already has outputclass, update it
+    xml = xml.replace(/outputclass="[^"]*"/, `outputclass="${value}"`)
+    xmlPre.textContent = xml
+  }
+
+  // 2. Update Preview — show outputclass badge on title
+  const previewTitle = document.querySelector('#tab-preview .preview-title')
+  if (previewTitle) {
+    // Remove any existing outputclass badge
+    const existing = document.getElementById('outputclass-badge')
+    if (existing) existing.remove()
+
+    const badge = document.createElement('span')
+    badge.id = 'outputclass-badge'
+    badge.style.cssText = 'font-size:9px;font-family:monospace;font-weight:600;background:#f0fdf4;color:#166534;border:1px solid #86efac;padding:2px 7px;border-radius:4px;margin-left:8px;vertical-align:middle;'
+    badge.textContent = 'outputclass="' + value + '"'
+    previewTitle.appendChild(badge)
+  }
+
+  // 3. Fix the validation warning → turn it green
+  const vChecks = document.querySelectorAll('.vcheck')
+  vChecks.forEach(vc => {
+    if (vc.textContent.includes('outputclass') || vc.textContent.includes('Add outputclass')) {
+      vc.innerHTML = `
+        <div class="vdot-g">
+          <svg width="7" height="7" viewBox="0 0 7 7">
+            <path d="M1.5 3.5l1.5 1.5L5.5 2" stroke="#16a34a" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span style="font-size:9px;color:#374151;">outputclass="${value}" added</span>`
+    }
+  })
+
+  showStatus('Added outputclass="' + value + '" to root element ✓', '#16a34a')
+}
+
+function applyGenericRefinement(instruction) {
+  const preview = document.getElementById('tab-preview')
+  if (!document.getElementById('refine-generic')) {
+    const html = `
+      <div class="bl" style="border-color:#c4b5fd;background:#f5f3ff;border-radius:0 5px 5px 0;padding:8px 10px;margin-bottom:10px;" id="refine-generic">
+        <span class="el-badge el-purple">refined</span>
+        <p class="sec-text" style="margin-top:5px;color:#374151;">
+          Applied refinement: <em>"${instruction}"</em> — content updated based on instruction.
+        </p>
+      </div>`
+    preview.insertAdjacentHTML('beforeend', html)
+  } else {
+    document.querySelector('#refine-generic p em').textContent = '"' + instruction + '"'
+  }
+  showStatus('Refinement applied ✓', '#16a34a')
+}
+
+function showStatus(msg, color) {
+  const status = document.getElementById('refine-status')
+  status.textContent = msg
+  status.style.color = color
+  setTimeout(() => { status.textContent = '' }, 3000)
+}
+
+function selectIssue(el, key, summary, issueType, ditaType, quality) {
+  // Update selected state in sidebar
+  document.querySelectorAll('.issue-row').forEach(r => r.classList.remove('selected'))
+  el.classList.add('selected')
+
+  // Update issue badge in topbar
+  document.querySelector('.issue-badge').textContent = key
+
+  // Reset any injected refinements from previous issue
+  const injected = ['injected-note','injected-example','refine-generic']
+  injected.forEach(id => { const el = document.getElementById(id); if(el) el.remove() })
+  document.getElementById('refine-input').value = ''
+  document.getElementById('refine-status').textContent = ''
+
+  // Reset to research stage for new issue
+  showStage('research')
+
+  // Update center header issue key + title across all stage views
+  document.querySelectorAll('.ch-key').forEach(el => el.textContent = key)
+  document.querySelectorAll('.ch-title').forEach(el => el.textContent = summary)
+  document.querySelectorAll('.ch-sub').forEach(el => {
+    if(el.textContent.includes('.dita')) el.textContent = key.toLowerCase() + '-' + ditaType + '.dita'
+  })
+
+  // Update quality badge
+  document.querySelector('.ch-quality').textContent = quality + '/100'
+  document.getElementById('quality-badge').textContent = quality + '/100'
+  document.querySelector('.score-num').textContent = quality
+
+  // Update topic type in right panel if present
+  const typeCard = document.querySelector('.type-name')
+  if(typeCard) typeCard.textContent = ditaType
+
+  // Update preview title
+  document.querySelector('.preview-title').textContent = summary
+
+  // Update query strategy text
+  const strategyTypes = {
+    'task':       'Bug/Task issue → 5 targeted queries for procedural DITA content',
+    'concept':    'Story/Feature issue → 5 queries for explanatory/overview DITA content',
+    'reference':  'API/Spec issue → 5 queries for reference documentation and parameters',
+    'glossentry': 'Glossary issue → 5 queries for terminology and definitions',
+  }
+  const stratBox = document.querySelector('.strategy-box')
+  if(stratBox) stratBox.innerHTML = '<strong>Query strategy:</strong> ' + (strategyTypes[ditaType] || strategyTypes.task)
+
+  // Update queries to be relevant to this issue
+  const queries = getQueriesForIssue(key, summary, ditaType)
+  const qCards = document.querySelectorAll('.q-card')
+  qCards.forEach((card, i) => {
+    if(queries[i]) {
+      card.querySelector('.q-query').textContent = '"' + queries[i].q + '"'
+      card.querySelector('.q-purpose').textContent = queries[i].p
+    }
+  })
+
+  // Update research results
+  updateResearchResults(key, summary, ditaType)
+
+  // Update generated DITA preview content
+  updateDitaPreview(key, summary, ditaType, quality)
+
+  // Update XML source
+  updateXmlSource(key, summary, ditaType)
+}
+
+function getQueriesForIssue(key, summary, ditaType) {
+  const base = summary.substring(0, 40)
+  const maps = {
+    task: [
+      { q: 'DITA 1.3 task topic required elements steps cmd', p: 'Find required task structure' },
+      { q: 'AEM Guides ' + base, p: 'Find AEM docs on this topic' },
+      { q: base + ' bug fix workaround solution', p: 'Find known solutions' },
+      { q: 'DITA task example ' + base.split(' ').slice(0,3).join(' '), p: 'Find expert task examples' },
+      { q: 'DITA 1.3 taskbody steps specification rules', p: 'Find OASIS spec rules for tasks' },
+    ],
+    concept: [
+      { q: 'DITA 1.3 concept topic conbody section required', p: 'Find concept topic structure' },
+      { q: 'AEM Guides ' + base + ' overview', p: 'Find AEM docs on this concept' },
+      { q: base + ' best practices guidelines', p: 'Find best practice content' },
+      { q: 'DITA concept example ' + base.split(' ').slice(0,3).join(' '), p: 'Find expert concept examples' },
+      { q: 'DITA 1.3 concept conbody specification rules', p: 'Find OASIS spec rules for concepts' },
+    ],
+    reference: [
+      { q: 'DITA 1.3 reference topic refbody properties table', p: 'Find reference topic structure' },
+      { q: 'AEM Guides ' + base + ' parameters', p: 'Find AEM API documentation' },
+      { q: base + ' API specification response format', p: 'Find API response details' },
+      { q: 'DITA reference example API documentation table', p: 'Find expert reference examples' },
+      { q: 'DITA 1.3 properties table specification rules', p: 'Find OASIS spec rules' },
+    ],
+    glossentry: [
+      { q: 'DITA 1.3 glossentry glossterm glossdef required', p: 'Find glossentry structure' },
+      { q: 'AEM Guides glossary terminology ' + base, p: 'Find AEM glossary patterns' },
+      { q: base + ' definition IoT terminology', p: 'Find authoritative definitions' },
+      { q: 'DITA glossentry example technical terminology', p: 'Find expert glossentry examples' },
+      { q: 'DITA 1.3 glossentry specification rules', p: 'Find OASIS spec rules' },
+    ],
+  }
+  return maps[ditaType] || maps.task
+}
+
+function updateResearchResults(key, summary, ditaType) {
+  const resultCards = document.querySelectorAll('.r-card')
+  const base = summary.substring(0, 50)
+  const results = {
+    task: [
+      { cls:'blue', cat:'DITA Elements', t:'245ms', q:'DITA 1.3 task required elements',
+        text:'Task topics require taskbody as the main body element. Steps must contain at least one step element, each with cmd as the first child.' },
+      { cls:'purple', cat:'AEM Guides', t:'980ms', q:'AEM Guides ' + base,
+        text:'AEM Guides documentation confirmed: ' + summary + '. Verified fix applies to version 4.2 and later with updated configuration.' },
+      { cls:'red', cat:'Known Bugs', t:'1.1s', q:base + ' fix workaround',
+        text:'Community workaround available. Fix confirmed in patch release. Multiple users reported same issue with suggested solution validated.' },
+    ],
+    concept: [
+      { cls:'blue', cat:'DITA Elements', t:'198ms', q:'DITA 1.3 concept conbody structure',
+        text:'Concept topics use conbody as the main body. Can contain p, section, example, and note elements. No mandatory child elements.' },
+      { cls:'purple', cat:'AEM Guides', t:'850ms', q:'AEM Guides ' + base,
+        text:'AEM Guides Experience League documents: ' + summary + '. Overview content found with IoT sensor data and predictive analytics details.' },
+      { cls:'blue', cat:'Expert Examples', t:'120ms', q:'DITA concept example overview',
+        text:'DITAWriter repo contains 3 matching concept topics using section + example pattern. Validated against DITA 1.3 spec.' },
+    ],
+    reference: [
+      { cls:'blue', cat:'DITA Elements', t:'167ms', q:'DITA 1.3 reference refbody properties',
+        text:'Reference topics use refbody. The properties element creates parameter tables with prophead and proprow. Section and example also valid.' },
+      { cls:'purple', cat:'AEM Guides', t:'1.3s', q:'AEM Guides API ' + base,
+        text:'Adobe Experience League API reference pattern found. REST endpoint documentation uses properties tables for parameters and responses.' },
+      { cls:'blue', cat:'Expert Examples', t:'134ms', q:'DITA reference API documentation',
+        text:'3 reference topic examples found in DITAWriter repos with properties tables matching API parameter documentation pattern.' },
+    ],
+    glossentry: [
+      { cls:'blue', cat:'DITA Elements', t:'143ms', q:'DITA 1.3 glossentry structure',
+        text:'Glossentry requires glossterm and glossdef. Optional glossBody for extended definitions. GlossAlt for alternate terms.' },
+      { cls:'purple', cat:'AEM Guides', t:'720ms', q:'AEM Guides glossary ' + base,
+        text:'AEM Guides supports glossary maps for terminology management. Keyrefs to glossterm elements enable consistent term usage across topics.' },
+      { cls:'blue', cat:'Expert Examples', t:'98ms', q:'DITA glossentry terminology example',
+        text:'2 glossentry examples in DITAWriter repos demonstrating proper glossterm and glossdef structure with alternate term definitions.' },
+    ],
+  }
+  const data = results[ditaType] || results.task
+  resultCards.forEach((card, i) => {
+    if(!data[i]) return
+    const d = data[i]
+    card.className = 'r-card ' + d.cls
+    card.querySelector('.r-cat').innerHTML = d.cat + ' <span style="float:right;font-size:9px;color:#6b7280;font-weight:400;">' + d.t + '</span>'
+    card.querySelector('.r-q').textContent = '"' + d.q + '"'
+    card.querySelector('.r-text').textContent = d.text
+  })
+}
+
+function updateDitaPreview(key, summary, ditaType, quality) {
+  const keyLower = key.toLowerCase().replace('-','_')
+  const previews = {
+    task: `<div class="preview-title">${summary}</div>
+      <div class="sec-row"><span class="el-badge el-blue">shortdesc</span>
+        <p class="sec-text" style="font-style:italic;color:#4b5563;">Procedure to resolve: ${summary.toLowerCase()}.</p></div>
+      <div class="bl blue"><span class="el-badge el-gray">context</span>
+        <p class="sec-text" style="margin-top:5px;">This issue affects AEM Guides users. Follow the steps below to resolve the reported problem.</p></div>
+      <div class="bl blue"><span class="el-badge el-green">steps</span>
+        <div style="margin-top:8px;">
+          <div class="step-row"><span class="step-num">1.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Identify the root cause of the issue in your configuration</span></div></div>
+          <div class="step-row"><span class="step-num">2.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Apply the recommended fix or configuration change</span></div></div>
+          <div class="step-row"><span class="step-num">3.</span><div><span class="el-badge el-amber">cmd</span><span class="sec-text" style="margin-left:6px;">Verify the fix resolves the issue in your output</span></div></div>
+        </div></div>
+      <div class="bl green"><span class="el-badge el-green">result</span>
+        <p class="sec-text" style="margin-top:5px;color:#166534;">Issue resolved successfully. Verify in your target output preset.</p></div>`,
+    concept: `<div class="preview-title">${summary}</div>
+      <div class="sec-row"><span class="el-badge el-blue">shortdesc</span>
+        <p class="sec-text" style="font-style:italic;color:#4b5563;">Overview of ${summary.toLowerCase()}.</p></div>
+      <div class="bl" style="border-color:#c4b5fd;"><span class="el-badge el-purple">conbody</span>
+        <p class="sec-text" style="margin-top:5px;">${summary} provides key capabilities for AEM Guides users. This concept explains the background, benefits, and usage patterns.</p></div>
+      <div class="bl"><span class="el-badge el-gray">section</span>
+        <p class="sec-text" style="margin-top:5px;font-weight:500;">How it works</p>
+        <p class="sec-text">The system monitors and processes data continuously, enabling proactive management and improved outcomes.</p></div>
+      <div class="bl" style="border-color:#86efac;background:#f0fdf4;border-radius:0 5px 5px 0;padding:8px 10px;"><span class="el-badge el-green">example</span>
+        <p class="sec-text" style="margin-top:5px;font-style:italic;color:#374151;">A typical scenario: a user configures the feature and immediately observes improved results in their workflow.</p></div>`,
+    reference: `<div class="preview-title">${summary}</div>
+      <div class="sec-row"><span class="el-badge el-blue">shortdesc</span>
+        <p class="sec-text" style="font-style:italic;color:#4b5563;">Reference documentation for ${summary.toLowerCase()}.</p></div>
+      <div class="bl" style="border-color:#c4b5fd;"><span class="el-badge el-purple">refbody</span>
+        <p class="sec-text" style="margin-top:5px;font-weight:500;">Parameters</p>
+        <table style="width:100%;font-size:10px;margin-top:6px;border-collapse:collapse;">
+          <thead><tr style="border-bottom:0.5px solid #e5e7eb;"><th style="text-align:left;padding:3px 6px;color:#6b7280;font-weight:500;">Parameter</th><th style="text-align:left;padding:3px 6px;color:#6b7280;font-weight:500;">Type</th><th style="text-align:left;padding:3px 6px;color:#6b7280;font-weight:500;">Description</th></tr></thead>
+          <tbody>
+            <tr style="border-bottom:0.5px solid #f3f4f6;"><td style="padding:3px 6px;font-family:monospace;color:#2563eb;">id</td><td style="padding:3px 6px;color:#6b7280;">string</td><td style="padding:3px 6px;">Unique identifier</td></tr>
+            <tr style="border-bottom:0.5px solid #f3f4f6;"><td style="padding:3px 6px;font-family:monospace;color:#2563eb;">status</td><td style="padding:3px 6px;color:#6b7280;">string</td><td style="padding:3px 6px;">Current operational status</td></tr>
+            <tr><td style="padding:3px 6px;font-family:monospace;color:#2563eb;">timestamp</td><td style="padding:3px 6px;color:#6b7280;">ISO 8601</td><td style="padding:3px 6px;">Last updated time</td></tr>
+          </tbody>
+        </table></div>`,
+    glossentry: `<div class="preview-title">${summary}</div>
+      <div class="sec-row"><span class="el-badge el-blue">shortdesc</span>
+        <p class="sec-text" style="font-style:italic;color:#4b5563;">Glossary entry for terminology related to ${summary.toLowerCase()}.</p></div>
+      <div class="bl" style="border-color:#86efac;background:#f0fdf4;border-radius:0 5px 5px 0;padding:8px 10px;"><span class="el-badge el-green">glossterm</span>
+        <p class="sec-text" style="margin-top:5px;font-weight:600;">IoT (Internet of Things)</p></div>
+      <div class="bl"><span class="el-badge el-gray">glossdef</span>
+        <p class="sec-text" style="margin-top:5px;">A network of physical devices embedded with sensors, software, and connectivity that enables data exchange and remote monitoring.</p></div>
+      <div class="bl"><span class="el-badge el-gray">glossBody</span>
+        <p class="sec-text" style="margin-top:5px;">In the context of KONE systems, IoT refers to the sensor network used in predictive maintenance and elevator monitoring platforms.</p></div>`,
+  }
+  document.getElementById('tab-preview').innerHTML = previews[ditaType] || previews.task
+}
+
+function updateXmlSource(key, summary, ditaType) {
+  const keyId = key.toLowerCase().replace('-','_')
+  const xmlMap = {
+    task: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="${keyId}" xml:lang="en-US">
+  <title>${summary}</title>
+  <shortdesc>Procedure to resolve: ${summary.toLowerCase()}.</shortdesc>
+  <prolog>
+    <metadata>
+      <othermeta name="jira-key" content="${key}"/>
+    </metadata>
+  </prolog>
+  <taskbody>
+    <context>
+      <p>This issue affects AEM Guides users. Follow the steps to resolve.</p>
+    </context>
+    <steps>
+      <step><cmd>Identify the root cause in your configuration.</cmd></step>
+      <step><cmd>Apply the recommended fix or configuration change.</cmd></step>
+      <step><cmd>Verify the fix resolves the issue in your output.</cmd></step>
+    </steps>
+    <result><p>Issue resolved successfully.</p></result>
+  </taskbody>
+</task>`,
+    concept: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="${keyId}" xml:lang="en-US">
+  <title>${summary}</title>
+  <shortdesc>Overview of ${summary.toLowerCase()}.</shortdesc>
+  <prolog>
+    <metadata>
+      <othermeta name="jira-key" content="${key}"/>
+    </metadata>
+  </prolog>
+  <conbody>
+    <p>${summary} provides key capabilities for AEM Guides users.</p>
+    <section><title>How it works</title>
+      <p>The system monitors data continuously for proactive management.</p>
+    </section>
+    <example><p>A user configures the feature and observes improved results.</p></example>
+  </conbody>
+</concept>`,
+    reference: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+<reference id="${keyId}" xml:lang="en-US">
+  <title>${summary}</title>
+  <shortdesc>Reference documentation for ${summary.toLowerCase()}.</shortdesc>
+  <prolog>
+    <metadata>
+      <othermeta name="jira-key" content="${key}"/>
+    </metadata>
+  </prolog>
+  <refbody>
+    <properties>
+      <prophead><proptypehd>Parameter</proptypehd><propvaluehd>Type</propvaluehd><propdeschd>Description</propdeschd></prophead>
+      <property><proptype>id</proptype><propvalue>string</propvalue><propdesc>Unique identifier</propdesc></property>
+      <property><proptype>status</proptype><propvalue>string</propvalue><propdesc>Current status</propdesc></property>
+    </properties>
+  </refbody>
+</reference>`,
+    glossentry: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE glossentry PUBLIC "-//OASIS//DTD DITA Glossary Entry//EN" "glossentry.dtd">
+<glossentry id="${keyId}" xml:lang="en-US">
+  <glossterm>IoT (Internet of Things)</glossterm>
+  <glossdef>A network of physical devices with sensors and connectivity enabling data exchange.</glossdef>
+  <glossBody>
+    <p>In KONE systems, IoT refers to the sensor network for predictive maintenance.</p>
+  </glossBody>
+</glossentry>`,
+  }
+  document.querySelector('#tab-xml pre').textContent = xmlMap[ditaType] || xmlMap.task
+}
+
+function updateQualityScore() {
+  const scoreEl = document.querySelector('.score-num')
+  if (!scoreEl) return
+  const current = parseInt(scoreEl.textContent)
+  if (current < 100) {
+    const newScore = Math.min(100, current + Math.floor(Math.random() * 3) + 1)
+    scoreEl.textContent = newScore
+    document.querySelector('.ch-quality').textContent = newScore + '/100'
+    document.getElementById('quality-badge').textContent = newScore + '/100'
+  }
+}
+</script>
+</body>
+</html>

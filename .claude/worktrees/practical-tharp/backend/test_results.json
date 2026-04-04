@@ -1,0 +1,602 @@
+{
+  "task_topics": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/tasks/task_00001.dita",
+        "content/dam/test/topics/tasks/task_00002.dita",
+        "content/dam/test/topics/tasks/task_00003.dita",
+        "content/dam/test/topics/tasks/task_00004.dita",
+        "content/dam/test/topics/tasks/task_00005.dita",
+        "content/dam/test/topics/tasks/task_00006.dita",
+        "content/dam/test/topics/tasks/task_00007.dita",
+        "content/dam/test/topics/tasks/task_00008.dita",
+        "content/dam/test/topics/tasks/task_00009.dita",
+        "content/dam/test/topics/tasks/task_00010.dita"
+      ]
+    },
+    "description": "Task Topics - Generates DITA task topics with procedural steps, prerequisites, and results"
+  },
+  "concept_topics": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/concepts/concept_00001.dita",
+        "content/dam/test/topics/concepts/concept_00002.dita",
+        "content/dam/test/topics/concepts/concept_00003.dita",
+        "content/dam/test/topics/concepts/concept_00004.dita",
+        "content/dam/test/topics/concepts/concept_00005.dita",
+        "content/dam/test/topics/concepts/concept_00006.dita",
+        "content/dam/test/topics/concepts/concept_00007.dita",
+        "content/dam/test/topics/concepts/concept_00008.dita",
+        "content/dam/test/topics/concepts/concept_00009.dita",
+        "content/dam/test/topics/concepts/concept_00010.dita"
+      ]
+    },
+    "description": "Concept Topics - Generates DITA concept topics explaining ideas and concepts"
+  },
+  "reference_topics": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/references/reference_00001.dita",
+        "content/dam/test/topics/references/reference_00002.dita",
+        "content/dam/test/topics/references/reference_00003.dita",
+        "content/dam/test/topics/references/reference_00004.dita",
+        "content/dam/test/topics/references/reference_00005.dita",
+        "content/dam/test/topics/references/reference_00006.dita",
+        "content/dam/test/topics/references/reference_00007.dita",
+        "content/dam/test/topics/references/reference_00008.dita",
+        "content/dam/test/topics/references/reference_00009.dita",
+        "content/dam/test/topics/references/reference_00010.dita"
+      ]
+    },
+    "description": "Reference Topics - Generates DITA reference topics with property tables and structured data"
+  },
+  "glossary_pack": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/glossary/glossentry_00001.dita",
+        "content/dam/test/glossary/glossentry_00002.dita",
+        "content/dam/test/glossary/glossentry_00003.dita",
+        "content/dam/test/glossary/glossentry_00004.dita",
+        "content/dam/test/glossary/glossentry_00005.dita",
+        "content/dam/test/glossary/glossentry_00006.dita",
+        "content/dam/test/glossary/glossentry_00007.dita",
+        "content/dam/test/glossary/glossentry_00008.dita",
+        "content/dam/test/glossary/glossentry_00009.dita",
+        "content/dam/test/glossary/glossentry_00010.dita"
+      ]
+    },
+    "description": "Glossary Pack - Generates glossary entries with definitions and optional acronyms"
+  },
+  "bookmap_structure": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 16,
+      "dita_files": 13,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/book/chapters/chapter_00001.dita",
+        "content/dam/test/book/chapters/chapter_00001_topic_001.dita",
+        "content/dam/test/book/chapters/chapter_00001_topic_002.dita",
+        "content/dam/test/book/chapters/chapter_00002.dita",
+        "content/dam/test/book/chapters/chapter_00002_topic_001.dita",
+        "content/dam/test/book/chapters/chapter_00002_topic_002.dita",
+        "content/dam/test/book/chapters/chapter_00003.dita",
+        "content/dam/test/book/chapters/chapter_00003_topic_001.dita",
+        "content/dam/test/book/chapters/chapter_00003_topic_002.dita",
+        "content/dam/test/book/frontmatter/notices.dita"
+      ]
+    },
+    "description": "Bookmap Structure - Generates bookmap with chapters, frontmatter, and backmatter"
+  },
+  "relationship_table": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Relationship Table - Generates topics with relationship tables linking related content"
+  },
+  "conref_pack": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Conref Pack - Generates topics with content references (conrefs) for content reuse"
+  },
+  "conditional_content": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 16,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 3,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Conditional Content - Generates topics with conditional processing attributes and DITAVAL files"
+  },
+  "media_rich_content": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Media Rich Content - Generates topics with embedded images and media references"
+  },
+  "advanced_relationships": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 53,
+      "dita_files": 50,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Advanced Relationships - Generates complex relationship patterns between topics and maps"
+  },
+  "keyscope_demo": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 12,
+      "dita_files": 6,
+      "map_files": 3,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/aem_guides_keyscope_demo/topics/root_target.dita",
+        "content/dam/test/aem_guides_keyscope_demo/topics/s1_target.dita",
+        "content/dam/test/aem_guides_keyscope_demo/topics/s2_target.dita",
+        "content/dam/test/aem_guides_keyscope_demo/topics/consumer_root.dita",
+        "content/dam/test/aem_guides_keyscope_demo/topics/consumer_s1.dita",
+        "content/dam/test/aem_guides_keyscope_demo/topics/consumer_s2.dita",
+        "content/dam/test/aem_guides_keyscope_demo/maps/root_map.ditamap",
+        "content/dam/test/aem_guides_keyscope_demo/maps/submap_s1.ditamap",
+        "content/dam/test/aem_guides_keyscope_demo/maps/submap_s2.ditamap",
+        "content/dam/test/aem_guides_keyscope_demo/README.txt"
+      ]
+    },
+    "description": "Keyscope Demo - Generates maps and topics demonstrating scoped key resolution"
+  },
+  "keyword_metadata": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 20,
+      "dita_files": 15,
+      "map_files": 2,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/keyword_1.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/keyword_2.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/keyword_3.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/keyword_4.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/keyword_5.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/category_1.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/category_2.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/category_3.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/tag_beginner.dita",
+        "content/dam/test/aem_guides_keyword_metadata/topics/metadata/tag_advanced.dita"
+      ]
+    },
+    "description": "Keyword Metadata - Generates topics with keyword metadata keys and category assignments"
+  },
+  "incremental_topicref_maps": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 55,
+      "dita_files": 50,
+      "map_files": 3,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00001.dita",
+        "content/dam/test/topics/pool/topic_00002.dita",
+        "content/dam/test/topics/pool/topic_00003.dita",
+        "content/dam/test/topics/pool/topic_00004.dita",
+        "content/dam/test/topics/pool/topic_00005.dita",
+        "content/dam/test/topics/pool/topic_00006.dita",
+        "content/dam/test/topics/pool/topic_00007.dita",
+        "content/dam/test/topics/pool/topic_00008.dita",
+        "content/dam/test/topics/pool/topic_00009.dita",
+        "content/dam/test/topics/pool/topic_00010.dita"
+      ]
+    },
+    "description": "Incremental Topicref Maps - Generates a pool of topics and multiple maps with varying topicref counts"
+  },
+  "large_scale": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 1003,
+      "dita_files": 1000,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/pool/topic_00000001.dita",
+        "content/dam/test/topics/pool/topic_00000002.dita",
+        "content/dam/test/topics/pool/topic_00000003.dita",
+        "content/dam/test/topics/pool/topic_00000004.dita",
+        "content/dam/test/topics/pool/topic_00000005.dita",
+        "content/dam/test/topics/pool/topic_00000006.dita",
+        "content/dam/test/topics/pool/topic_00000007.dita",
+        "content/dam/test/topics/pool/topic_00000008.dita",
+        "content/dam/test/topics/pool/topic_00000009.dita",
+        "content/dam/test/topics/pool/topic_00000010.dita"
+      ]
+    },
+    "description": "Large Scale - Generates a large number of topics for performance testing (100k+ topics)"
+  },
+  "deep_hierarchy": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 20,
+      "dita_files": 15,
+      "map_files": 3,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/level_0/topic_l0_00000.dita",
+        "content/dam/test/topics/level_1/topic_l1_00000.dita",
+        "content/dam/test/topics/level_1/topic_l1_00001.dita",
+        "content/dam/test/topics/level_2/topic_l2_00000.dita",
+        "content/dam/test/topics/level_2/topic_l2_00001.dita",
+        "content/dam/test/topics/level_2/topic_l2_00002.dita",
+        "content/dam/test/topics/level_2/topic_l2_00003.dita",
+        "content/dam/test/topics/level_3/topic_l3_00000.dita",
+        "content/dam/test/topics/level_3/topic_l3_00001.dita",
+        "content/dam/test/topics/level_3/topic_l3_00002.dita"
+      ]
+    },
+    "description": "Deep Hierarchy - Generates deeply nested topic hierarchies (10+ levels)"
+  },
+  "wide_branching": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 26,
+      "dita_files": 22,
+      "map_files": 2,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/roots/root_00001.dita",
+        "content/dam/test/topics/roots/root_00002.dita",
+        "content/dam/test/topics/children/root_1/child_00001.dita",
+        "content/dam/test/topics/children/root_1/child_00002.dita",
+        "content/dam/test/topics/children/root_1/child_00003.dita",
+        "content/dam/test/topics/children/root_1/child_00004.dita",
+        "content/dam/test/topics/children/root_1/child_00005.dita",
+        "content/dam/test/topics/children/root_1/child_00006.dita",
+        "content/dam/test/topics/children/root_1/child_00007.dita",
+        "content/dam/test/topics/children/root_1/child_00008.dita"
+      ]
+    },
+    "description": "Wide Branching - Generates topics with many children per parent (1000+ children)"
+  },
+  "workflow_enabled_content": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 14,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 1,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/tasks/task_00001.dita",
+        "content/dam/test/topics/tasks/task_00002.dita",
+        "content/dam/test/topics/tasks/task_00003.dita",
+        "content/dam/test/topics/tasks/task_00004.dita",
+        "content/dam/test/topics/tasks/task_00005.dita",
+        "content/dam/test/topics/tasks/task_00006.dita",
+        "content/dam/test/topics/tasks/task_00007.dita",
+        "content/dam/test/topics/tasks/task_00008.dita",
+        "content/dam/test/topics/tasks/task_00009.dita",
+        "content/dam/test/topics/tasks/task_00010.dita"
+      ]
+    },
+    "description": "Workflow Enabled Content - Generates content with review, translation, and approval workflow metadata"
+  },
+  "heavy_topics_tables_codeblocks": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/heavy_topics/heavy_topic_00001.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00002.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00003.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00004.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00005.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00006.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00007.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00008.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00009.dita",
+        "content/dam/test/heavy_topics/heavy_topic_00010.dita"
+      ]
+    },
+    "description": "Heavy Topics Tables & Codeblocks - Generates topics with multiple tables and codeblocks for content processing tests"
+  },
+  "customer_reuse_pack": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 25,
+      "dita_files": 20,
+      "map_files": 3,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00001.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00002.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00003.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00004.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00005.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00006.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00007.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00008.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00009.dita",
+        "content/dam/test/customer_reuse/shared_topics/shared_topic_00010.dita"
+      ]
+    },
+    "description": "Customer Reuse Pack - Generates shared topics referenced by multiple maps with key definitions"
+  },
+  "map_parse_stress": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 44,
+      "dita_files": 40,
+      "map_files": 2,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/map_stress/topics/stress_topic_00001.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00002.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00003.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00004.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00005.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00006.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00007.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00008.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00009.dita",
+        "content/dam/test/map_stress/topics/stress_topic_00010.dita"
+      ]
+    },
+    "description": "Map Parse Stress - Generates maps with many topicrefs to stress test map parsing"
+  },
+  "hub_spoke_inbound": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 14,
+      "dita_files": 11,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/hub_spoke/hub/hub_topic.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00001.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00002.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00003.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00004.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00005.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00006.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00007.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00008.dita",
+        "content/dam/test/hub_spoke/spokes/spoke_topic_00009.dita"
+      ]
+    },
+    "description": "Hub-Spoke Inbound - Generates hub topic with multiple spoke topics referencing it"
+  },
+  "keydef_heavy": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 13,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 0,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00001.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00002.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00003.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00004.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00005.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00006.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00007.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00008.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00009.dita",
+        "content/dam/test/keydef_heavy/topics/keydef_topic_00010.dita"
+      ]
+    },
+    "description": "Keydef Heavy - Generates maps with many key definitions for key resolution testing"
+  },
+  "localized_content": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 25,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 11,
+      "other_files": 1,
+      "file_list": [
+        "content/dam/test/topics/tasks/task_00001.dita",
+        "content/dam/test/topics/tasks/task_00002.dita",
+        "content/dam/test/topics/tasks/task_00003.dita",
+        "content/dam/test/topics/tasks/task_00004.dita",
+        "content/dam/test/topics/tasks/task_00005.dita",
+        "content/dam/test/topics/tasks/task_00006.dita",
+        "content/dam/test/topics/tasks/task_00007.dita",
+        "content/dam/test/topics/tasks/task_00008.dita",
+        "content/dam/test/topics/tasks/task_00009.dita",
+        "content/dam/test/topics/tasks/task_00010.dita"
+      ]
+    },
+    "description": "Localized Content - Generates language variants of base content with translation metadata"
+  },
+  "output_optimized": {
+    "success": true,
+    "message": "Success",
+    "stats": {
+      "total_files": 14,
+      "dita_files": 10,
+      "map_files": 1,
+      "ditaval_files": 0,
+      "json_files": 1,
+      "other_files": 0,
+      "file_list": [
+        "content/dam/test/topics/tasks/task_00001.dita",
+        "content/dam/test/topics/tasks/task_00002.dita",
+        "content/dam/test/topics/tasks/task_00003.dita",
+        "content/dam/test/topics/tasks/task_00004.dita",
+        "content/dam/test/topics/tasks/task_00005.dita",
+        "content/dam/test/topics/tasks/task_00006.dita",
+        "content/dam/test/topics/tasks/task_00007.dita",
+        "content/dam/test/topics/tasks/task_00008.dita",
+        "content/dam/test/topics/tasks/task_00009.dita",
+        "content/dam/test/topics/tasks/task_00010.dita"
+      ]
+    },
+    "description": "Output Optimized - Optimizes base content for specific output formats (AEM Site, PDF, HTML5, Mobile)"
+  }
+}

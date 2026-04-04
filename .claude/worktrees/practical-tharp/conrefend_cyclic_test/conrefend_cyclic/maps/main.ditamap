@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="conrefend_cyclic_map">
+  <title>Conrefend Cyclic Duplicate ID Repro</title>
+  <topicref href="../topics/topic_a.dita" type="topic"/>
+  <topicref href="../topics/topic_b.dita" type="topic"/>
+</map>

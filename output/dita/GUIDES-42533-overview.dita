@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="guides_42533_overview" xml:lang="en-US">
+  <title>GUIDES-42533 — Topic D (overview with keyrefs)</title>
+  <shortdesc>Sample topic that resolves keys from Map B when the full key scope is loaded.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-24" /></metadata></prolog><body>
+    <p>Welcome to <keyword keyref="productName" /> release <keyword keyref="versionString" />.</p>
+  </body>
+</topic>

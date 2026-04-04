@@ -1,0 +1,9 @@
+{
+  "jira_id": "GUIDES-43199",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "keys.keydef_basic"
+  ],
+  "created_at": "2026-03-11T03:53:26.633760Z",
+  "evidence": []
+}

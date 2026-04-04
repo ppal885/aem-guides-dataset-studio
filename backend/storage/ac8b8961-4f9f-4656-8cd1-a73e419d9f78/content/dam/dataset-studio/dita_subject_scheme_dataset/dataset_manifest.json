@@ -1,0 +1,36 @@
+{
+  "dataset_name": "dita_subject_scheme_dataset",
+  "valid_topics": 10,
+  "invalid_topics": 10,
+  "dita_feature": "subject_scheme",
+  "purpose": "Subject scheme validation testing",
+  "recipe_name": "dita_subject_scheme_dataset_recipe",
+  "files": [
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/subject-scheme.ditamap",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_01.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_02.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_03.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_04.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_05.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_06.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_07.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_08.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_09.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_valid_10.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_01.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_02.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_03.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_04.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_05.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_06.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_07.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_08.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_09.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/topic_invalid_10.dita",
+    "content/dam/dataset-studio/dita_subject_scheme_dataset/root-map.ditamap"
+  ],
+  "stats": {
+    "valid_count": 10,
+    "invalid_count": 10
+  }
+}

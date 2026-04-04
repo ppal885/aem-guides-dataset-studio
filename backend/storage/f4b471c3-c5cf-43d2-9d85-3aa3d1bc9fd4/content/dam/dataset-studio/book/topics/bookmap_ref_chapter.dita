@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "../../technicalContent/dtd/topic.dtd">
+<topic id="book_ch" xml:lang="en">
+  
+  
+  <title>Chapter body topic</title>
+  
+  
+  <shortdesc>Primary chapter topic for bookmap shell reference.</shortdesc>
+  
+  
+  <body>
+    
+    
+    <p>Content for the chapter topicref in bookmap_elements_reference.</p>
+    
+  
+  </body>
+  
+
+</topic>

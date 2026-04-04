@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="guides_19555_target" xml:lang="en-US">
+  <title>GUIDES-19555 — Target topic (reltable column B)</title>
+  <shortdesc>Intended for the second column of the reltable after the grid remains usable.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-03-24" /></metadata></prolog><body>
+    <p>Represents the <q>target</q> topic for the relationship link.</p>
+  </body>
+</topic>

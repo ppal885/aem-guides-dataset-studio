@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.generator.generate import safe_join
 from app.generator.self_conref import (
     generate_self_conref_basic_paragraph,
     generate_self_conref_section,
@@ -27,13 +28,16 @@ from app.jobs.schemas import DatasetConfig
 from app.utils.dita_validator import validate_dita_folder
 
 
-def _write_and_validate(files: dict, base: Path) -> dict:
-    """Write files to base and run validator."""
-    for rel_path, content in files.items():
-        out = base / rel_path
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(content)
-    return validate_dita_folder(base)
+def _write_and_validate(files: dict, dita_root: Path) -> dict:
+    """Write files under dita_root and run validator. Keys may be absolute or relative to dita_root."""
+    dita_root = dita_root.resolve()
+    for key, content in files.items():
+        path = Path(key)
+        if not path.is_absolute():
+            path = dita_root / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    return validate_dita_folder(dita_root)
 
 
 @pytest.fixture
@@ -56,77 +60,97 @@ def test_valid_self_xref_section(config):
 
 def test_self_xref_section_minimal_deterministic(config):
     """Self xref section produces minimal dataset with deterministic IDs."""
-    files1 = generate_self_xref_section(config, "/tmp")
-    files2 = generate_self_xref_section(config, "/tmp")
-    assert files1 == files2
-    assert "topics/self_xref_section.dita" in files1
-    content = files1["topics/self_xref_section.dita"].decode("utf-8")
-    assert 'type="section"' in content
-    assert 'href="#' in content
-    assert "<section" in content
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files1 = generate_self_xref_section(config, base_str)
+        files2 = generate_self_xref_section(config, base_str)
+        assert files1 == files2
+        key = safe_join(base_str, "topics/self_xref_section.dita")
+        assert key in files1
+        content = files1[key].decode("utf-8")
+        assert 'type="section"' in content
+        assert 'href="#' in content
+        assert "<section" in content
 
 
 def test_self_xref_conref_positive_minimal(config):
     """Positive minimal: valid same-file xref and conref passes validation."""
-    files = generate_self_xref_conref_positive_minimal(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_conref_positive_minimal(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_self_xref_conref_boundary(config):
     """Boundary: multiple xrefs and conref passes validation."""
-    files = generate_self_xref_conref_boundary(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_conref_boundary(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_self_xref_conref_negative(config):
     """Negative: broken xref and conref fail validation."""
-    files = generate_self_xref_conref_negative(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_conref_negative(config, base_str)
+        result = _write_and_validate(files, root)
     assert len(result["errors"]) >= 1
 
 
 def test_valid_self_xref_li(config):
     """Valid same-file xref to list item passes validation."""
-    files = generate_self_xref_list_item(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_list_item(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_valid_self_xref_fig(config):
     """Valid same-file xref to figure passes validation."""
-    files = generate_self_xref_figure(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_figure(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_valid_self_xref_table(config):
     """Valid same-file xref to table passes validation."""
-    files = generate_self_xref_table(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_xref_table(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_valid_self_conref_basic(config):
     """Valid same-file conref basic passes validation."""
-    files = generate_self_conref_basic(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_conref_basic(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 
 def test_valid_self_conrefend_range(config):
     """Valid same-file conrefend range passes validation."""
-    files = generate_self_conrefend_range(config, "/tmp")
     with tempfile.TemporaryDirectory() as tmp:
-        result = _write_and_validate(files, Path(tmp))
+        root = Path(tmp).resolve()
+        base_str = safe_join(str(root), "")
+        files = generate_self_conrefend_range(config, base_str)
+        result = _write_and_validate(files, root)
     assert result["errors"] == []
 
 

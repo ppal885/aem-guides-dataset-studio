@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "../technicalContent/dtd/topic.dtd">
+<topic id="topic_valid_03" xml:lang="en">
+  <title>Valid Audience Topic</title>
+  <body audience="advanced">
+    <p>This topic uses a valid controlled value.</p>
+  </body>
+</topic>

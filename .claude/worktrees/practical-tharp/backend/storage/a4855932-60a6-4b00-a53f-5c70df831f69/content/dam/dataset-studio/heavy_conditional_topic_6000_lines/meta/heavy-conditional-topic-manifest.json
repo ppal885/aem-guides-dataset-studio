@@ -1,0 +1,27 @@
+{
+  "recipe_name": "heavy_conditional_topic_6000_lines",
+  "files": [
+    "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/topics/heavy-conditional-topic-6000-lines.dita",
+    "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/filters/heavy-conditional-topic.ditaval",
+    "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/meta/heavy-conditional-topic-manifest.json"
+  ],
+  "stats": {
+    "line_count": 6055,
+    "section_count": 26,
+    "paragraph_count": 695,
+    "table_count": 52,
+    "codeblock_count": 52,
+    "note_count": 35,
+    "example_count": 35,
+    "conditional_attribute_count": 9102,
+    "generated_files": [
+      "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/topics/heavy-conditional-topic-6000-lines.dita",
+      "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/filters/heavy-conditional-topic.ditaval",
+      "content/dam/dataset-studio/heavy_conditional_topic_6000_lines/meta/heavy-conditional-topic-manifest.json"
+    ],
+    "target_lines": 6000,
+    "target_met": true
+  },
+  "assumptions": [],
+  "warnings": []
+}

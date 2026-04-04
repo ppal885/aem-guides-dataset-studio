@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="nested_topic_inline_map_7ed21ae7" xmlns="http://www.oasis-open.org/committees/entity/release/1.1/catalog" xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/">
+  <title>Nested topic inline map</title>
+  <topicref href="topics/nested_topic_inline.dita" />
+</map>

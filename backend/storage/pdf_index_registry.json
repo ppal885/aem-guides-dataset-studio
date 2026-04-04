@@ -1,0 +1,17 @@
+{
+  "kone:ba539d9accf315f1": {
+    "tenant_id": "kone",
+    "filename": "SOG-13.20.040-QG2_2020-12-10_tcm276-104195.pdf",
+    "label": "Sog 13.20.040 Qg2 2020 12 10 Tcm276 104195",
+    "doc_type": "product_doc",
+    "chunks": 3,
+    "indexed_at": "2026-03-21T21:21:42.594700",
+    "collection": "kone_rag",
+    "file_hash": "ba539d9accf315f1",
+    "chunk_ids": [
+      "kone_ba539d9accf315f1_0",
+      "kone_ba539d9accf315f1_1",
+      "kone_ba539d9accf315f1_2"
+    ]
+  }
+}

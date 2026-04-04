@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="guides_35438" xml:lang="en-US">
+  <title>GUIDES-35438: Error when deleting two or more columns from a table</title>
+  <shortdesc>Deleting multiple columns from a table in the Web Editor can leave a column in an abnormal state after the delete operation.</shortdesc>
+  <prolog>
+    <author type="contributor">Dataset Studio (Jira via MCP)</author>
+    <critdates>
+      <created date="2026-03-24"/>
+    </critdates>
+    <metadata>
+      <keywords>
+        <keyword>NewEditor</keyword>
+        <keyword>Hyundai</keyword>
+        <keyword>table</keyword>
+        <keyword>columns</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <conbody>
+    <section id="problem">
+      <title>Problem</title>
+      <p>When the user selects two columns on the right side of a table, then uses the context menu
+        <menucascade><uicontrol>Delete</uicontrol><uicontrol>Columns</uicontrol></menucascade>,
+        the columns are removed, but the UI can leave <q>column 1</q> in an inconsistent or abnormal
+        state (per reporter; screenshot referenced in Jira).</p>
+    </section>
+    <section id="verbatim">
+      <title>Verbatim reporter description</title>
+      <note>Jira description (abridged punctuation): If you select the two columns on the right in the
+        table with 6 rows and 5 rows, right-click and select
+        <menucascade><uicontrol>Delete</uicontrol><uicontrol>Columns</uicontrol></menucascade>, the
+        columns will be deleted, but column 1 will be deleted normally, and column 1 will remain in an
+        abnormal form as shown in the figure below.</note>
+      <p>The phrase <q>6 rows and 5 rows</q> is treated here as <b>five columns</b> and <b>six table
+        rows</b> (one header row plus five body rows). If your reproduction uses six body rows instead,
+        add one more <codeph>row</codeph> in <codeph>tbody</codeph>.</p>
+      <p>The wording <q>column 1 … column 1</q> is ambiguous (likely first column vs. a duplicated
+        column artifact); the screenshot in Jira clarifies the visual defect.</p>
+    </section>
+    <section id="reproduction_table">
+      <title>Sample table matching the reported grid</title>
+      <p>Use this structure as a DITA analogue of the reporter’s table. In the Web Editor, select the
+        <b>two rightmost columns</b> (here: <q>Col 4</q> and <q>Col 5</q> for every body row), then
+        <menucascade><uicontrol>Delete</uicontrol><uicontrol>Columns</uicontrol></menucascade>.</p>
+      <table id="tbl_guid_35438">
+        <title>Five columns, six rows (1 header + 5 body) — before deleting the two right columns</title>
+        <tgroup cols="5">
+          <colspec colname="c1" colnum="1"/>
+          <colspec colname="c2" colnum="2"/>
+          <colspec colname="c3" colnum="3"/>
+          <colspec colname="c4" colnum="4"/>
+          <colspec colname="c5" colnum="5"/>
+          <thead>
+            <row>
+              <entry>Col 1</entry>
+              <entry>Col 2</entry>
+              <entry>Col 3</entry>
+              <entry>Col 4 (right region)</entry>
+              <entry>Col 5 (right region)</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry>Row 1</entry>
+              <entry>R1-C2</entry>
+              <entry>R1-C3</entry>
+              <entry>R1-C4</entry>
+              <entry>R1-C5</entry>
+            </row>
+            <row>
+              <entry>Row 2</entry>
+              <entry>R2-C2</entry>
+              <entry>R2-C3</entry>
+              <entry>R2-C4</entry>
+              <entry>R2-C5</entry>
+            </row>
+            <row>
+              <entry>Row 3</entry>
+              <entry>R3-C2</entry>
+              <entry>R3-C3</entry>
+              <entry>R3-C4</entry>
+              <entry>R3-C5</entry>
+            </row>
+            <row>
+              <entry>Row 4</entry>
+              <entry>R4-C2</entry>
+              <entry>R4-C3</entry>
+              <entry>R4-C4</entry>
+              <entry>R4-C5</entry>
+            </row>
+            <row>
+              <entry>Row 5</entry>
+              <entry>R5-C2</entry>
+              <entry>R5-C3</entry>
+              <entry>R5-C4</entry>
+              <entry>R5-C5</entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+      <p>After deletion, only three logical columns should remain (Col 1–3). The defect is that the
+        editor can leave the first column or layout in an inconsistent state (per reporter).</p>
+      <p>
+        <xref href="https://dxp.northstar.co.kr/assetdetails.html/content/dam/DXP/boy/boy-topic-01.dita"
+          format="html" scope="external">Original sample topic URL from Jira (external)</xref>
+      </p>
+    </section>
+    <section id="engineering">
+      <title>Engineering notes</title>
+      <p>Flagged as a candidate to be addressed with the new editor; tracked in the engineering
+        spreadsheet (per Jira comments).</p>
+    </section>
+    <section id="verification">
+      <title>Verification</title>
+      <p>Verification on the new editor (build <codeph>5.2.0.6109</codeph>, branch
+        <codeph>develop</codeph>, built <codeph>2026-01-15</codeph>) reported
+        <b>not able to reproduce</b> the issue.</p>
+    </section>
+    <section id="metadata">
+      <title>Issue metadata</title>
+      <simpletable relcolwidth="1* 2*">
+        <sthead>
+          <stentry>Field</stentry>
+          <stentry>Value</stentry>
+        </sthead>
+        <strow>
+          <stentry>Issue key</stentry>
+          <stentry>GUIDES-35438</stentry>
+        </strow>
+        <strow>
+          <stentry>URL</stentry>
+          <stentry>https://jira.corp.adobe.com/browse/GUIDES-35438</stentry>
+        </strow>
+        <strow>
+          <stentry>Type</stentry>
+          <stentry>Customer Request</stentry>
+        </strow>
+        <strow>
+          <stentry>Status</stentry>
+          <stentry>Open</stentry>
+        </strow>
+        <strow>
+          <stentry>Priority</stentry>
+          <stentry>Normal</stentry>
+        </strow>
+        <strow>
+          <stentry>Labels</stentry>
+          <stentry>Hyundai, NewEditor, Not_Automated, Triaged, UAC_Check</stentry>
+        </strow>
+      </simpletable>
+    </section>
+  </conbody>
+</concept>
