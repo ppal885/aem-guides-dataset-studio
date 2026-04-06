@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
   CheckCircle2,
+  Check,
+  Copy,
   Info,
   ListChecks,
   Lightbulb,
@@ -165,6 +169,37 @@ function CalloutCard({
   );
 }
 
+/** Syntax-highlighted code block with a hover copy button. */
+function CodeBlock({ language, children }: { language: string; children: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(children);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [children]);
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={handleCopy}
+        className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-700 hover:bg-gray-600 text-white rounded p-1.5"
+        aria-label="Copy code"
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      <SyntaxHighlighter
+        language={language}
+        style={oneDark}
+        customStyle={{ margin: 0, borderRadius: '0.5rem', fontSize: '0.85rem' }}
+        wrapLongLines={true}
+      >
+        {children}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
 export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownProps) {
   return (
     <ReactMarkdown
@@ -202,9 +237,21 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
         tr: ({ children }) => (
           <tr className="transition-colors hover:bg-slate-50/50">{children}</tr>
         ),
-        pre: ({ children }) => (
-          <pre className="my-4 overflow-x-auto rounded-xl bg-[#1e293b] p-4 shadow-inner ring-1 ring-slate-700/20">{children}</pre>
-        ),
+        pre: ({ children }) => {
+          // When code block has syntax highlighting, skip the default pre wrapper
+          // because SyntaxHighlighter renders its own pre element.
+          const child = React.Children.toArray(children)[0];
+          if (React.isValidElement(child)) {
+            const childProps = child.props as { className?: string };
+            const hasLanguage = Boolean(childProps.className && /\blanguage-/.test(childProps.className));
+            if (hasLanguage) {
+              return <div className="my-4">{children}</div>;
+            }
+          }
+          return (
+            <pre className="my-4 overflow-x-auto rounded-xl bg-[#1e293b] p-4 shadow-inner ring-1 ring-slate-700/20">{children}</pre>
+          );
+        },
         code: ({ className, children, ...rest }) => {
           const inlineFlag = (rest as { inline?: boolean }).inline;
           const hasLanguage = Boolean(className && /\blanguage-/.test(className));
@@ -218,6 +265,12 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
                 {children}
               </code>
             );
+          }
+          // Extract language from className (e.g. "language-xml" -> "xml")
+          const languageMatch = className ? /language-(\w+)/.exec(className) : null;
+          const language = languageMatch ? languageMatch[1] : 'text';
+          if (hasLanguage) {
+            return <CodeBlock language={language}>{text}</CodeBlock>;
           }
           return (
             <code

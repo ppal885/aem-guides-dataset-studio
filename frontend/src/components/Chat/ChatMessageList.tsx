@@ -5,7 +5,8 @@ import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { GenerationProgressCard } from './GenerationProgressCard';
-import type { ChatMessage as ChatMessageType } from '@/api/chat';
+import { SuggestedFollowups } from './SuggestedFollowups';
+import type { ChatMessage as ChatMessageType, AgentState, AgentStateInfo, JobProgressInfo, SuggestedFollowup } from '@/api/chat';
 
 const EXAMPLE_PROMPTS: { label: string; text: string }[] = [
   {
@@ -70,6 +71,19 @@ interface ChatMessageListProps {
   actionDisabled?: boolean;
   onRegenerate?: () => void;
   onRetry?: () => void;
+  /** Agentic state props */
+  thinking?: string | null;
+  agentState?: AgentState | null;
+  agentStateMessage?: string | null;
+  agentStateInfo?: AgentStateInfo | null;
+  /** Approval gate props */
+  approvalMessage?: string | null;
+  approvalTools?: string[];
+  /** Job progress streaming */
+  jobProgress?: JobProgressInfo | null;
+  /** Suggested follow-ups after assistant response */
+  suggestedFollowups?: SuggestedFollowup[];
+  onFollowupSelect?: (text: string) => void;
 }
 
 export function ChatMessageList({
@@ -83,6 +97,15 @@ export function ChatMessageList({
   actionDisabled,
   onRegenerate,
   onRetry,
+  thinking,
+  agentState,
+  agentStateMessage,
+  agentStateInfo,
+  approvalMessage,
+  approvalTools,
+  jobProgress,
+  suggestedFollowups,
+  onFollowupSelect,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const lastIdx = messages.length - 1;
@@ -162,7 +185,16 @@ export function ChatMessageList({
         );
       })}
       {streamingContent !== null && (
-        <StreamingMessage content={streamingContent} />
+        <StreamingMessage
+          content={streamingContent}
+          thinking={thinking}
+          agentState={agentState}
+          agentStateMessage={agentStateMessage}
+          agentStateInfo={agentStateInfo}
+          approvalMessage={approvalMessage}
+          approvalTools={approvalTools}
+          jobProgress={jobProgress}
+        />
       )}
       {generationRunId && (
         <div className="mt-2">
@@ -171,6 +203,13 @@ export function ChatMessageList({
             onComplete={onGenerationComplete}
           />
         </div>
+      )}
+      {suggestedFollowups && suggestedFollowups.length > 0 && onFollowupSelect && !streamingContent && (
+        <SuggestedFollowups
+          followups={suggestedFollowups}
+          onSelect={onFollowupSelect}
+          className="mt-1"
+        />
       )}
       <div ref={endRef} />
       </div>

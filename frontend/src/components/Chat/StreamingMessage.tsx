@@ -1,13 +1,34 @@
 import { cn } from '@/lib/utils';
+import type { AgentState, AgentStateInfo, JobProgressInfo } from '@/api/chat';
 import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
+import { AgentStateIndicator } from './AgentStateIndicator';
+import { ApprovalGate } from './ApprovalGate';
+import { DatasetJobStatusCard } from './DatasetJobStatusCard';
 
 interface StreamingMessageProps {
   content: string;
   className?: string;
+  thinking?: string | null;
+  agentState?: AgentState | null;
+  agentStateMessage?: string | null;
+  agentStateInfo?: AgentStateInfo | null;
+  approvalMessage?: string | null;
+  approvalTools?: string[];
+  jobProgress?: JobProgressInfo | null;
 }
 
-export function StreamingMessage({ content, className }: StreamingMessageProps) {
+export function StreamingMessage({
+  content,
+  className,
+  thinking,
+  agentState,
+  agentStateMessage,
+  agentStateInfo,
+  approvalMessage,
+  approvalTools,
+  jobProgress,
+}: StreamingMessageProps) {
   const showCursor = content.length > 0;
 
   return (
@@ -24,6 +45,31 @@ export function StreamingMessage({ content, className }: StreamingMessageProps) 
             Generating
           </span>
         </div>
+        <AgentStateIndicator
+          thinking={thinking}
+          state={agentState}
+          stateMessage={agentStateMessage}
+          stateInfo={agentStateInfo}
+          className="mb-2"
+        />
+        {approvalMessage && (
+          <ApprovalGate
+            message={approvalMessage}
+            tools={approvalTools ?? []}
+            className="mb-2"
+          />
+        )}
+        {jobProgress && (
+          <div className="mb-2">
+            <DatasetJobStatusCard
+              jobId={jobProgress.jobId}
+              initialStatus={jobProgress.status}
+              jobName={jobProgress.name}
+              recipeType={jobProgress.recipeType}
+              downloadUrl={jobProgress.downloadUrl}
+            />
+          </div>
+        )}
         <div className="text-[0.9375rem] leading-relaxed text-slate-800" aria-live="polite" aria-busy="true">
           <div className={CHAT_MARKDOWN_PROSE_CLASS}>
             <ChatMarkdown content={content} />

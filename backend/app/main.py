@@ -276,6 +276,13 @@ try:
 except Exception:
     print("Registering API routes...")
 app.include_router(v1_router, prefix="/api/v1")
+
+from app.api.chat_upload_router import router as chat_upload_router
+app.include_router(chat_upload_router)
+
+from app.api.v1.routes.map_visualization import router as map_viz_router
+app.include_router(map_viz_router)
+
 try:
     logger.info_structured("API routes registered successfully", extra_fields={"router": "v1"})
 except Exception:
