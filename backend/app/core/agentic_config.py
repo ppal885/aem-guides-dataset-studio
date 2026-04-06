@@ -74,6 +74,33 @@ class AgenticConfig:
     # When priors have strong signal (max >= 0.6), effective weight is boosted.
     mechanism_prior_weight: float = field(default_factory=lambda: _float_env("AI_MECHANISM_PRIOR_WEIGHT", 0.5))
 
+    # ── Chat agentic loop ──
+    max_chat_tool_rounds: int = field(default_factory=lambda: _int_env("CHAT_MAX_TOOL_ROUNDS", 8, 1, 15))
+    chat_thinking_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_THINKING_ENABLED", True))
+    chat_state_events_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_STATE_EVENTS_ENABLED", True))
+    chat_tool_retry_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOOL_RETRY_ENABLED", True))
+    chat_tool_max_retries: int = field(default_factory=lambda: _int_env("CHAT_TOOL_MAX_RETRIES", 1, 0, 3))
+    chat_approval_gates_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_APPROVAL_GATES_ENABLED", True))
+    chat_approval_topic_threshold: int = field(default_factory=lambda: _int_env("CHAT_APPROVAL_TOPIC_THRESHOLD", 1000, 100, 50000))
+    chat_job_progress_streaming: bool = field(default_factory=lambda: _bool_env("CHAT_JOB_PROGRESS_STREAMING", True))
+
+    # ── Phase A: Agentic hardening ──
+    # A1: Tool argument parse validation + JSON repair
+    chat_tool_parse_validation_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOOL_PARSE_VALIDATION", True))
+    chat_tool_json_repair_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOOL_JSON_REPAIR", True))
+    # A2: Structured error taxonomy with exponential backoff
+    chat_error_taxonomy_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_ERROR_TAXONOMY", True))
+    # A3: Tool execution observability
+    chat_tool_observability_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOOL_OBSERVABILITY", True))
+    chat_tool_metrics_sse_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOOL_METRICS_SSE", False))
+    # A4: Coordinated token budget
+    chat_token_budget_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_TOKEN_BUDGET", False))
+    chat_token_budget_limit: int = field(default_factory=lambda: _int_env("CHAT_TOKEN_BUDGET_LIMIT", 0, 0, 200000))
+    # A5: Extended approval gates
+    chat_extended_approval_gates_enabled: bool = field(default_factory=lambda: _bool_env("CHAT_EXTENDED_APPROVAL_GATES", False))
+    chat_approval_generate_char_threshold: int = field(default_factory=lambda: _int_env("CHAT_APPROVAL_GENERATE_CHAR_THRESHOLD", 50000, 1000, 500000))
+    chat_approval_max_parallel_tools: int = field(default_factory=lambda: _int_env("CHAT_APPROVAL_MAX_PARALLEL_TOOLS", 3, 1, 10))
+
     def recipe_k_for_validation_retry(self, validation_retries: int) -> int:
         """Candidate count increases with validation retries to broaden search."""
         return self.recipe_candidates_k + self.recipe_candidates_k_per_retry * validation_retries

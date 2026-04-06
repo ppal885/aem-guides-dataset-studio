@@ -17,6 +17,10 @@ import {
   regenerateAssistant,
   type ChatSession,
   type ChatMessage,
+  type AgentState,
+  type AgentStateInfo,
+  type JobProgressInfo,
+  type SuggestedFollowup,
 } from '@/api/chat';
 import { apiUrl } from '@/utils/api';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
@@ -53,6 +57,14 @@ export function ChatPage() {
   const [clearingAllChats, setClearingAllChats] = useState(false);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [generationRunId, setGenerationRunId] = useState<string | null>(null);
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const [agentStateMessage, setAgentStateMessage] = useState<string | null>(null);
+  const [agentStateInfo, setAgentStateInfo] = useState<AgentStateInfo | null>(null);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [approvalTools, setApprovalTools] = useState<string[]>([]);
+  const [jobProgress, setJobProgress] = useState<JobProgressInfo | null>(null);
+  const [suggestedFollowups, setSuggestedFollowups] = useState<SuggestedFollowup[]>([]);
   const [humanPrompts, setHumanPrompts] = useState<boolean>(readHumanPromptsDefault);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -215,6 +227,14 @@ export function ChatPage() {
     setLoading(false);
     setStreamingContent(null);
     setGenerationRunId(null);
+    setThinking(null);
+    setAgentState(null);
+    setAgentStateMessage(null);
+    setAgentStateInfo(null);
+    setApprovalMessage(null);
+    setApprovalTools([]);
+    setJobProgress(null);
+    setSuggestedFollowups([]);
     if (currentSession) {
       void loadSession(currentSession.id);
     }
@@ -223,11 +243,22 @@ export function ChatPage() {
   const streamCallbacks = useCallback(
     (sessionId: string) => ({
       onChunk: (chunk: string) => {
+        // Clear thinking/state once real content starts flowing
+        setThinking(null);
+        setAgentState(null);
         setStreamingContent((prev) => (prev || '') + chunk);
       },
       onDone: () => {
         setStreamingContent(null);
         setGenerationRunId(null);
+        setThinking(null);
+        setAgentState(null);
+        setAgentStateMessage(null);
+        setAgentStateInfo(null);
+        setApprovalMessage(null);
+        setApprovalTools([]);
+        setJobProgress(null);
+        // Keep suggestedFollowups visible after done — they are shown below the last message
         void loadSession(sessionId);
       },
       onToolStart: (name: string, runId?: string) => {
@@ -244,9 +275,31 @@ export function ChatPage() {
               : `Using ${name}...`;
         setStreamingContent((prev) => (prev || '') + `\n\n_(${label})_`);
       },
+      onThinking: (content: string) => {
+        setThinking(content);
+      },
+      onState: (state: AgentState, message: string, info: AgentStateInfo) => {
+        setAgentState(state);
+        setAgentStateMessage(message);
+        setAgentStateInfo(info);
+      },
+      onApprovalRequired: (message: string, tools: string[]) => {
+        setApprovalMessage(message);
+        setApprovalTools(tools);
+      },
+      onJobProgress: (info: JobProgressInfo) => {
+        setJobProgress(info);
+      },
+      onSuggestedFollowups: (followups: SuggestedFollowup[]) => {
+        setSuggestedFollowups(followups);
+      },
       onError: (msg: string) => {
         setStreamingContent(null);
         setGenerationRunId(null);
+        setThinking(null);
+        setAgentState(null);
+        setApprovalMessage(null);
+        setJobProgress(null);
         const errBubble: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'assistant',
@@ -278,6 +331,7 @@ export function ChatPage() {
     abortRef.current = ac;
     setLoading(true);
     setStreamingContent('');
+    setSuggestedFollowups([]);
 
     const userMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
@@ -556,6 +610,18 @@ export function ChatPage() {
                 actionDisabled={loading}
                 onRegenerate={handleRegenerate}
                 onRetry={handleRetry}
+                thinking={thinking}
+                agentState={agentState}
+                agentStateMessage={agentStateMessage}
+                agentStateInfo={agentStateInfo}
+                approvalMessage={approvalMessage}
+                approvalTools={approvalTools}
+                jobProgress={jobProgress}
+                suggestedFollowups={suggestedFollowups}
+                onFollowupSelect={(text) => {
+                  setInput(text);
+                  setSuggestedFollowups([]);
+                }}
               />
               <div className="shrink-0 space-y-2.5 border-t border-slate-200/80 bg-white/95 backdrop-blur-sm px-5 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -582,6 +648,7 @@ export function ChatPage() {
                   loading={loading}
                   streaming={streaming}
                   showShortcutHint
+                  sessionId={currentSession?.id}
                   placeholder="Paste Jira text, ask a DITA question, or request a dataset job..."
                 />
               </div>

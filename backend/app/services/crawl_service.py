@@ -23,6 +23,7 @@ from app.services.vector_store_service import (
     is_chroma_available,
     CHROMA_COLLECTION_AEM_GUIDES,
 )
+from app.services.chunk_metadata_extractor import extract_metadata_from_crawled_page
 from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
@@ -311,15 +312,41 @@ def crawl_and_index(
             for i, r in enumerate(records):
                 r["embedding"] = embeddings_list[i]
 
+    # Extract chunk metadata when feature flag is enabled
+    chunk_metadata_enabled = os.getenv("CHUNK_METADATA_ENABLED", "false").lower() == "true"
+    if chunk_metadata_enabled:
+        for r in records:
+            meta = extract_metadata_from_crawled_page(
+                content=r["content"],
+                url=r.get("url", ""),
+                title=r.get("title", ""),
+            )
+            # Store full metadata as JSON on the record for JSON file fallback
+            r["chunk_metadata"] = meta.model_dump(mode="json")
+
     # Store to ChromaDB when available (full replace)
     if is_chroma_available() and embeddings_list and records:
         delete_collection(CHROMA_COLLECTION_AEM_GUIDES)
         ids = [f"aem_{i}" for i in range(len(records))]
         documents = [r["content"] for r in records]
-        metadatas = [
-            {"url": r.get("url", ""), "title": r.get("title", "")}
-            for r in records
-        ]
+        if chunk_metadata_enabled:
+            metadatas = []
+            for r in records:
+                md = {"url": r.get("url", ""), "title": r.get("title", "")}
+                cm = r.get("chunk_metadata", {})
+                # Add only ChromaDB-compatible scalar fields (str/float/int/bool)
+                for key in (
+                    "doc_type", "element_name", "region_type", "source_type",
+                    "chunk_priority", "content_hash", "is_standalone",
+                ):
+                    if key in cm:
+                        md[key] = cm[key]
+                metadatas.append(md)
+        else:
+            metadatas = [
+                {"url": r.get("url", ""), "title": r.get("title", "")}
+                for r in records
+            ]
         if chroma_add_documents(
             CHROMA_COLLECTION_AEM_GUIDES,
             ids=ids,

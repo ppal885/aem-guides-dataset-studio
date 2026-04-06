@@ -61,14 +61,33 @@ export interface ChatGrounding {
   unsupported_points?: string[];
 }
 
+export type AgentState = 'analyzing' | 'tool_calling' | 'synthesizing' | 'retrying';
+
+export interface SuggestedFollowup {
+  label: string;
+  text: string;
+}
+
 export interface SSEEvent {
-  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding';
+  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding' | 'thinking' | 'state' | 'approval_required' | 'job_progress' | 'suggested_followups' | 'tool_metrics';
   content?: string;
   message?: string;
   name?: string;
   result?: unknown;
   run_id?: string;
   grounding?: ChatGrounding;
+  /** Agentic state indicator */
+  state?: AgentState;
+  tools?: string[];
+  round?: number;
+  max_rounds?: number;
+  /** Job progress streaming (Phase 3) */
+  job_id?: string;
+  recipe_type?: string;
+  status?: string;
+  download_url?: string;
+  /** Suggested follow-ups */
+  followups?: SuggestedFollowup[];
 }
 
 function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
@@ -82,9 +101,48 @@ function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
     callbacks.onToolStart?.(event.name, event.run_id);
   } else if (event.type === 'grounding' && event.grounding != null) {
     callbacks.onGrounding?.(event.grounding);
+  } else if (event.type === 'thinking' && event.content != null) {
+    callbacks.onThinking?.(event.content);
+  } else if (event.type === 'state' && event.state != null) {
+    callbacks.onState?.(event.state, event.message ?? '', {
+      tools: event.tools,
+      round: event.round,
+      maxRounds: event.max_rounds,
+    });
+  } else if (event.type === 'suggested_followups' && event.followups) {
+    callbacks.onSuggestedFollowups?.(event.followups);
+  } else if (event.type === 'approval_required') {
+    callbacks.onApprovalRequired?.(event.message ?? '', event.tools ?? []);
+  } else if (event.type === 'job_progress') {
+    callbacks.onJobProgress?.({
+      jobId: event.job_id ?? '',
+      name: event.name ?? '',
+      recipeType: event.recipe_type ?? '',
+      status: event.status ?? 'pending',
+      downloadUrl: event.download_url ?? '',
+    });
+  } else if (event.type === 'tool_metrics') {
+    // A3: Tool execution metrics — log to console in dev, optional callback
+    if (import.meta.env.DEV) {
+      console.debug('[tool_metrics]', (event as unknown as Record<string, unknown>).data);
+    }
   } else if (event.type === 'error') {
     callbacks.onError?.(event.message ?? 'Unknown error');
   }
+}
+
+export interface AgentStateInfo {
+  tools?: string[];
+  round?: number;
+  maxRounds?: number;
+}
+
+export interface JobProgressInfo {
+  jobId: string;
+  name: string;
+  recipeType: string;
+  status: string;
+  downloadUrl: string;
 }
 
 export interface SseCallbacks {
@@ -93,6 +151,11 @@ export interface SseCallbacks {
   onTool?: (name: string, result: unknown) => void;
   onToolStart?: (name: string, runId?: string) => void;
   onGrounding?: (grounding: ChatGrounding) => void;
+  onThinking?: (content: string) => void;
+  onState?: (state: AgentState, message: string, info: AgentStateInfo) => void;
+  onSuggestedFollowups?: (followups: SuggestedFollowup[]) => void;
+  onApprovalRequired?: (message: string, tools: string[]) => void;
+  onJobProgress?: (info: JobProgressInfo) => void;
   onError?: (message: string) => void;
 }
 

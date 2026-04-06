@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Pencil, RefreshCw, RotateCcw, ThumbsUp, ThumbsDown, UserRound, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Pencil, RefreshCw, RotateCcw, ThumbsUp, ThumbsDown, UserRound, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/utils/api';
@@ -249,13 +249,55 @@ export function ChatMessage({
           )}
         </div>
         {toolResults && Object.keys(toolResults).length > 0 && (
-          <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
-            {Object.entries(toolResults).map(([name, result]) => (
-              <ToolResult key={name} name={name} result={result} />
-            ))}
-          </div>
+          <CollapsibleToolResults toolResults={toolResults} />
         )}
       </div>
+    </div>
+  );
+}
+
+function CollapsibleToolResults({ toolResults }: { toolResults: Record<string, unknown> }) {
+  const entries = Object.entries(toolResults);
+  // Always show important tools (generate_dita, create_job, _grounding) expanded
+  const importantTools = new Set(['generate_dita', 'create_job', '_grounding']);
+  const hasImportant = entries.some(([name]) => importantTools.has(name));
+  const manyTools = entries.length > 2;
+  // Default collapsed when there are many non-important tool results
+  const [expanded, setExpanded] = useState(!manyTools || hasImportant);
+
+  // If only 1 tool result, just render directly
+  if (entries.length <= 1) {
+    return (
+      <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
+        {entries.map(([name, result]) => (
+          <ToolResult key={name} name={name} result={result} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-200/70 pt-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+      >
+        {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        {entries.length} tool results
+        {!expanded && (
+          <span className="ml-1 text-slate-400">
+            ({entries.filter(([, r]) => !(r as Record<string, unknown> | null)?.error).length} succeeded)
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          {entries.map(([name, result]) => (
+            <ToolResult key={name} name={name} result={result} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

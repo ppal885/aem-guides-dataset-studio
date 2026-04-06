@@ -420,6 +420,28 @@ async def _run_generate_from_text(
     await asyncio.to_thread(enrich_dita_folder, scenario_dir)
     await asyncio.to_thread(auto_fix_dita_folder, scenario_dir)
 
+    # --- Phase E1: Generate images for DITA topics ---
+    from app.services.image_generation_service import (
+        DITA_IMAGE_GENERATION_ENABLED,
+        generate_images_for_dita,
+    )
+    if DITA_IMAGE_GENERATION_ENABLED:
+        _update_generate_progress(pid, stage="images", message="Generating images...")
+        try:
+            dita_files = list(scenario_dir.glob("**/*.dita")) + list(scenario_dir.glob("**/*.xml"))
+            for dita_file in dita_files:
+                dita_xml = dita_file.read_text(encoding="utf-8", errors="replace")
+                await generate_images_for_dita(
+                    dita_xml=dita_xml,
+                    output_dir=dita_file.parent,
+                    topic_title=dita_file.stem,
+                )
+        except Exception as img_err:
+            logger.warning_structured(
+                "Image generation failed (non-fatal)",
+                extra_fields={"error": str(img_err)},
+            )
+
     _update_generate_progress(pid, stage="validating", message="Validating...")
     val_result = await asyncio.to_thread(validate_dita_folder, scenario_dir)
 

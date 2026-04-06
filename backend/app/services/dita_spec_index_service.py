@@ -1,4 +1,5 @@
 """DITA spec index service - fetch OASIS pages and index into DB."""
+import os
 import re
 import uuid
 from typing import Optional
@@ -6,6 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.db.dita_spec_models import DitaSpecChunk
+from app.services.chunk_metadata_extractor import extract_metadata_from_dita_xml
 from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
@@ -89,6 +91,8 @@ def parse_element_page(html: str, url: str) -> list[dict]:
 
 def index_chunk(session: Session, chunk_dict: dict) -> DitaSpecChunk:
     """Upsert a chunk into DB."""
+    import json as _json
+
     chunk_id = str(uuid.uuid4())
     chunk = DitaSpecChunk(
         id=chunk_id,
@@ -100,6 +104,31 @@ def index_chunk(session: Session, chunk_dict: dict) -> DitaSpecChunk:
         text_content=chunk_dict.get("text_content", ""),
         source_url=chunk_dict.get("source_url"),
     )
+
+    # Enrich with extracted metadata when feature flag is enabled
+    if os.getenv("CHUNK_METADATA_ENABLED", "false").lower() == "true":
+        text_content = chunk_dict.get("text_content", "")
+        source_url = chunk_dict.get("source_url", "")
+        meta = extract_metadata_from_dita_xml(content=text_content, file_path=source_url or "")
+
+        # Populate existing DitaSpecChunk columns from extracted metadata
+        if not chunk.element_name and meta.element_name:
+            chunk.element_name = meta.element_name
+        if not chunk.parent_element and meta.region_type:
+            chunk.parent_element = meta.region_type
+        if not chunk.children_elements and meta.keyref_keys:
+            chunk.children_elements = _json.dumps(meta.keyref_keys)
+        if not chunk.attributes:
+            attrs = {
+                "doc_type": meta.doc_type,
+                "region_type": meta.region_type,
+                "content_hash": meta.content_hash,
+                "chunk_priority": meta.chunk_priority,
+                "is_standalone": meta.is_standalone,
+                "source_type": meta.source_type,
+            }
+            chunk.attributes = _json.dumps(attrs)
+
     session.add(chunk)
     return chunk
 
