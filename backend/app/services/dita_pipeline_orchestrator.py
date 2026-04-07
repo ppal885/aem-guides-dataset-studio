@@ -71,6 +71,13 @@ def _plan_instruction_block(
         plan.model_dump_json()[:8000],
     ]
 
+    # Explicitly reinforce topic type when the plan specifies one (prevents LLM defaulting to <concept>)
+    if plan.topic_type and plan.topic_type not in ("any", "topic", "mixed", "unknown", ""):
+        parts.append(
+            f"\n⚠️ MANDATORY TOPIC TYPE: Generate <{plan.topic_type}> — NOT <concept> or <topic>. "
+            f"Use the correct body element: task→<taskbody>, concept→<conbody>, reference→<refbody>."
+        )
+
     # Structured Jira field mapping — tells the LLM what maps to what in DITA
     ef = evidence_fields or {}
     field_mapping_lines: list[str] = []

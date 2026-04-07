@@ -1199,7 +1199,7 @@ async def _stream_with_tools_groq(
         if blocks:
             # Flush any remaining buffered text that was clean
             remaining = "".join(_text_acc_parts)
-            clean_part = re.sub(r'<function\s+[^>]*?/>', '', remaining).strip()
+            clean_part = _strip_inline_function_xml(remaining)
             if clean_part:
                 yield ("chunk", clean_part)
             yield ("tool_use_blocks", blocks)
@@ -1207,16 +1207,15 @@ async def _stream_with_tools_groq(
 
     # ── Groq/Llama inline <function> XML recovery ──
     # Sometimes Groq outputs tool calls as raw XML text instead of API tool_calls.
-    # Detect and convert: <function name="tool_name" parameters="{...}" />
+    # Detect and convert both formats:
+    #   Format 1: <function name="tool" parameters="{...}" />
+    #   Format 2: <function>tool</function>{...}
     remaining_text = "".join(_text_acc_parts)
     if remaining_text:
         inline_blocks = _parse_inline_function_xml(remaining_text)
         if inline_blocks:
             # Don't yield the raw XML to the user; yield a friendly note instead
-            clean_text = re.sub(
-                r'<function\s+name=["\'][^"\']*["\']\s+parameters=["\'].*?["\']\s*/?>',
-                '', remaining_text, flags=re.DOTALL,
-            ).strip()
+            clean_text = _strip_inline_function_xml(remaining_text)
             if clean_text:
                 yield ("chunk", clean_text)
             yield ("chunk", "\n⏳ Executing tool...\n")
@@ -1229,37 +1228,65 @@ async def _stream_with_tools_groq(
     yield ("done", None)
 
 
+def _strip_inline_function_xml(text: str) -> str:
+    """Remove all inline function-call XML variants from text, leaving only clean prose."""
+    # Format 1: <function name="..." parameters="..." />
+    cleaned = re.sub(
+        r'<function\s+name=["\'][^"\']*["\']\s+parameters=["\'].*?["\']\s*/?>',
+        '', text, flags=re.DOTALL,
+    )
+    # Format 2: <function>tool_name</function>{...}
+    cleaned = re.sub(
+        r'<function>\s*\w+\s*</function>\s*\{.*?\}(?=\s*(?:<function>|$))',
+        '', cleaned, flags=re.DOTALL,
+    )
+    # Also strip bare <function>...</function> tags without JSON (malformed)
+    cleaned = re.sub(r'</?function[^>]*>', '', cleaned)
+    return cleaned.strip()
+
+
 def _parse_inline_function_xml(text: str) -> list[dict] | None:
-    """Parse inline <function name="..." parameters="..."/> XML emitted by Groq/Llama.
+    """Parse inline function-call XML emitted by Groq/Llama instead of proper tool_calls.
+
+    Handles multiple format variants:
+      1. <function name="tool" parameters="{...}" />
+      2. <function>tool</function>{"key": "value"}
+      3. <function>tool</function> {"key": "value"}  (with whitespace)
 
     Returns list of tool_use blocks or None if no match found.
     """
     import html
     from app.services.tool_arg_parser import parse_tool_arguments
 
-    # Match patterns like: <function name="generate_dita" parameters="{&quot;text&quot;: ...}" />
-    pattern = re.compile(
+    blocks: list[dict] = []
+
+    # ── Format 1: <function name="..." parameters="..." /> ──
+    pattern_attr = re.compile(
         r'<function\s+name=["\']([^"\']+)["\']\s+parameters=["\'](.+?)["\']\s*/?>',
         re.DOTALL,
     )
-    matches = pattern.findall(text)
-    if not matches:
-        return None
-
-    blocks = []
-    for i, (name, raw_params) in enumerate(matches):
-        # Unescape HTML entities (Groq often encodes quotes as &quot;)
+    for i, (name, raw_params) in enumerate(pattern_attr.findall(text)):
         params_str = html.unescape(raw_params)
         args, parse_err = parse_tool_arguments(
-            params_str,
-            tool_name=name,
-            attempt_repair=True,
+            params_str, tool_name=name, attempt_repair=True,
         )
-        block: dict = {
-            "id": f"inline_call_{i}",
-            "name": name,
-            "input": args,
-        }
+        block: dict = {"id": f"inline_call_{i}", "name": name, "input": args}
+        if parse_err:
+            block["_parse_error"] = parse_err
+        blocks.append(block)
+
+    # ── Format 2: <function>tool_name</function>{json} ──
+    # Groq/Llama sometimes emits tool name as element content followed by JSON body.
+    pattern_body = re.compile(
+        r'<function>\s*(\w+)\s*</function>\s*(\{.+?\})(?=\s*(?:<function>|$))',
+        re.DOTALL,
+    )
+    for j, (name, raw_json) in enumerate(pattern_body.findall(text)):
+        params_str = html.unescape(raw_json)
+        args, parse_err = parse_tool_arguments(
+            params_str, tool_name=name, attempt_repair=True,
+        )
+        block = {"id": f"inline_body_call_{j}", "name": name, "input": args}
         if parse_err:
             block["_parse_error"] = parse_err
         blocks.append(block)

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background rounded square -->
+  <rect width="64" height="64" rx="14" fill="#2563EB"/>
+  <!-- Document shape -->
+  <path d="M18 12h20l10 10v30a4 4 0 01-4 4H18a4 4 0 01-4-4V16a4 4 0 014-4z" fill="white" opacity="0.95"/>
+  <!-- Folded corner -->
+  <path d="M38 12v10h10" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M38 12l10 10h-6a4 4 0 01-4-4v-6z" fill="#BFDBFE"/>
+  <!-- XML angle brackets representing DITA -->
+  <text x="32" y="42" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="18" fill="#2563EB">&lt;/&gt;</text>
+  <!-- Small AI sparkle -->
+  <circle cx="50" cy="12" r="6" fill="#FBBF24"/>
+  <path d="M50 7v10M45 12h10M46.5 8.5l7 7M53.5 8.5l-7 7" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

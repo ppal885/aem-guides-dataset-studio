@@ -159,7 +159,6 @@ def log_generation_trace_event(
 ) -> None:
     """Emit observability + structured logs; full payload is on disk at trace_path."""
     payload = {
-        "event": "dita_generation_trace",
         "trace_id": trace.trace_id,
         "jira_id": trace.jira_id,
         "outcome": trace.outcome,
