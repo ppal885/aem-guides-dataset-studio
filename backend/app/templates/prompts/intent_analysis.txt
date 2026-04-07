@@ -24,3 +24,12 @@ Rules:
 - If tables AND (alignment OR right-click OR menus OR cell formatting) appear, include "table" and "menucascade" in required_dita_patterns and add anti_fallback_signals "table_alignment" and "no_prose_only".
 - If AEM/XML Documentation/Web Editor is implied, set domain_signals.aem_guides or web_editor true.
 - Never output empty JSON. Use "unknown" and false when unsure.
+
+TOPIC TYPE DETECTION (critical — get this right):
+- "reference topic", "API reference", "parameter list/table", "command reference", "error codes", "configuration reference", "settings", "environment variables", "CLI options" → dita_topic_type_guess: "reference"
+- "task topic", "how to", "install", "configure", "set up", "deploy", "troubleshoot", "procedure", "steps to", "tutorial", "walkthrough", "workflow" → dita_topic_type_guess: "task"
+- "concept topic", "what is", "overview", "introduction", "explain", "understand", "architecture", "comparison", "best practice", "definition" → dita_topic_type_guess: "concept"
+- "glossary", "glossentry", "term definition" → dita_topic_type_guess: "glossary"
+- "ditamap", "bookmap", "map with topics" → dita_topic_type_guess: "map_only"
+- When user explicitly says "generate a [type] topic", ALWAYS set dita_topic_type_guess to that type. Do not override with a different type.
+- When content matches multiple types, prefer the one explicitly stated by the user.
