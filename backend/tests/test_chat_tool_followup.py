@@ -60,3 +60,28 @@ def test_search_jira_followup_lists_only_verified_issue_matches():
     assert "GUIDES-42533" in text
     assert "Reltable references fail in nested maps" in text
     assert "AEM-6453" not in text
+
+
+def test_lookup_dita_spec_followup_uses_content_model_summary():
+    text = _build_post_tool_assistant_text(
+        {
+            "lookup_dita_spec": {
+                "query": "What can go inside taskbody?",
+                "element_name": "taskbody",
+                "query_type": "content_model",
+                "content_model_summary": "Inside <taskbody>, DITA allows `prereq`, `context`, `steps`, `steps-unordered`, `result`, and `postreq`.",
+                "allowed_children": ["prereq", "context", "steps", "steps-unordered", "result", "postreq"],
+                "sources": [
+                    {
+                        "label": "taskbody",
+                        "url": "https://example.com/taskbody",
+                        "snippet": "<taskbody> is the main body element inside a DITA task topic.",
+                    }
+                ],
+            }
+        }
+    )
+
+    assert "Inside <taskbody>" in text
+    assert "Sources" in text
+    assert "taskbody" in text

@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.smart_suggestions_service import apply_fix_with_review, fix_all_safe, is_safe_rule
+from app.services.smart_suggestions_service import apply_fix_with_review, build_review_snapshot, fix_all_safe, is_safe_rule
 
 
 def test_safe_rule_classifier_is_explicit():
@@ -40,6 +40,37 @@ def test_apply_fix_with_review_returns_change_metadata():
     assert result["updated_review"]["quality_score"] >= 0
     assert "shortdesc" in result["xml"]
     assert isinstance(result["suggestions_report"]["suggestions"], list)
+
+
+def test_build_review_snapshot_uses_map_specific_checks():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="operations_map" xml:lang="en-US">
+  <title>Operations guide</title>
+  <topicref href="overview.dita"/>
+</map>"""
+
+    result = asyncio.run(
+        build_review_snapshot(
+            xml=xml,
+            issue={"issue_key": "REVIEW", "summary": "Review map"},
+            tenant_id="kone",
+        )
+    )
+
+    labels = [item["label"] for item in result["validation"]]
+    suggestion_titles = [item["title"] for item in result["suggestions_report"]["suggestions"]]
+    suggestion_rule_ids = [item["rule_id"] for item in result["suggestions_report"]["suggestions"]]
+    assert result["dita_type"] == "map"
+    assert "body present" not in labels
+    assert "taskbody present" not in labels
+    assert "map structure present" in labels
+    assert "Task topic is missing taskbody" not in suggestion_titles
+    assert "Missing <shortdesc>" not in suggestion_titles
+    assert "Add a concrete example to improve content richness" not in suggestion_titles
+    assert "Add a note with scope, caveat, or verification guidance" not in suggestion_titles
+    assert "reuse_title_conref" not in suggestion_rule_ids
+    assert all(not rule_id.startswith("task_") for rule_id in suggestion_rule_ids)
 
 
 def test_fix_all_safe_does_not_apply_editorial_rewrites():

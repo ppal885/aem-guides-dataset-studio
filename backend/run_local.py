@@ -10,10 +10,24 @@ if _env_path.exists():
     from dotenv import load_dotenv
     load_dotenv(_env_path)
 
-# Allow `from backend.app...` imports used across services (repo root must be on path)
-_repo_root = Path(__file__).resolve().parent.parent
-if str(_repo_root) not in sys.path:
-    sys.path.append(str(_repo_root))
+# `app` package lives under this directory; uvicorn loads `app.main:app`.
+# Always put backend first — avoids `ModuleNotFoundError: app.core` when another `app`
+# is on PYTHONPATH or when the interpreter resolves sys.path in an unexpected order.
+_backend_dir = str(Path(__file__).resolve().parent)
+_norm = os.path.normcase(os.path.abspath(_backend_dir))
+
+def _path_key(p: str) -> str:
+    try:
+        return os.path.normcase(os.path.abspath(p))
+    except OSError:
+        return p
+
+sys.path[:] = [p for p in sys.path if _path_key(p) != _norm]
+sys.path.insert(0, _backend_dir)
+
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
 
 import uvicorn
 from app.core.logging_config import setup_logging
@@ -24,7 +38,7 @@ if __name__ == "__main__":
     structured = os.getenv("STRUCTURED_LOGGING", "false").lower() in ("true", "1", "yes")
     logger = setup_logging(log_level, structured=structured)
     
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "8001"))
     logger.info("=" * 60)
     logger.info("Starting AEM Guides Dataset Studio Backend")
     logger.info("=" * 60)
@@ -33,6 +47,10 @@ if __name__ == "__main__":
     logger.info(f"Health check: http://0.0.0.0:{port}/health")
     logger.info(f"Log level: {log_level}")
     logger.info(f"Structured logging: {structured}")
+    llm_provider = (os.getenv("LLM_PROVIDER") or "anthropic").strip() or "anthropic"
+    logger.info(f"LLM provider: {llm_provider}")
+    screenshot_vision_provider = (os.getenv("SCREENSHOT_VISION_PROVIDER") or "inherit").strip() or "inherit"
+    logger.info(f"Screenshot vision provider: {screenshot_vision_provider}")
     logger.info("=" * 60)
     
     try:

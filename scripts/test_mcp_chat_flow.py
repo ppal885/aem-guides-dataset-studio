@@ -2,7 +2,7 @@
 """Exercise chat via the same HTTP paths as mcp_api_adapter (stdio MCP).
 
 Prerequisites:
-  - FastAPI backend running (default http://127.0.0.1:8000)
+  - FastAPI backend running (default http://127.0.0.1:8001)
   - LLM configured (same as UI chat)
 
 Usage (from repo root):

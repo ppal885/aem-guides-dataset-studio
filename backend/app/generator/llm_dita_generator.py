@@ -106,6 +106,26 @@ RECIPE_SPECS = [
 DOCTYPE_TOPIC = '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">'
 DOCTYPE_MAP = '<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">'
 DOCTYPE_BOOKMAP = '<!DOCTYPE bookmap PUBLIC "-//OASIS//DTD DITA BookMap//EN" "technicalContent/dtd/bookmap.dtd">'
+_PLACEHOLDER_XML_PHRASES = (
+    "briefly introduce",
+    "provide an overview",
+    "present detailed information",
+    "summarize the key points",
+    "list the requirements",
+    "configure the cluster settings",
+    "use the user interface to",
+    "describe the concept",
+    "describe the task",
+    "describe the reference",
+)
+_GENERIC_SECTION_TITLES = {
+    "introduction",
+    "body",
+    "conclusion",
+    "overview",
+    "details",
+    "summary",
+}
 
 
 def _extract_json(text: str) -> Optional[dict]:
@@ -174,6 +194,75 @@ def _check_content_fidelity(
         )
 
 
+def _get_local_name(tag: str) -> str:
+    tag_value = tag.split("}")[-1] if "}" in tag else tag
+    return tag_value.split(":")[-1].lower() if ":" in tag_value else tag_value.lower()
+
+
+def _extract_root_name(content: str) -> str:
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return ""
+    return _get_local_name(root.tag)
+
+
+def _text_value(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    return " ".join(fragment.strip() for fragment in node.itertext() if fragment and fragment.strip()).strip()
+
+
+def _looks_like_placeholder_text(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return True
+    return any(phrase in lowered for phrase in _PLACEHOLDER_XML_PHRASES)
+
+
+def _quality_gate_issues(content: str) -> list[str]:
+    issues: list[str] = []
+    lowered = (content or "").strip().lower()
+    if not lowered:
+        return ["The generated XML content is empty."]
+
+    if any(phrase in lowered for phrase in _PLACEHOLDER_XML_PHRASES):
+        issues.append("The generated XML still contains placeholder or filler prose.")
+
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return issues
+
+    root_name = _get_local_name(root.tag)
+    if root_name not in {"topic", "concept", "task", "reference", "map", "bookmap", "glossentry", "subjectscheme", "val"}:
+        issues.append(f"Unsupported DITA root `{root_name}`.")
+        return issues
+
+    for section in root.iter():
+        if _get_local_name(section.tag) not in {"section", "example"}:
+            continue
+        title_text = _text_value(section.find("title"))
+        body_text = _text_value(section)
+        body_without_title = body_text.replace(title_text, "", 1).strip() if title_text else body_text
+        if title_text.strip().lower() in _GENERIC_SECTION_TITLES and _looks_like_placeholder_text(body_without_title):
+            issues.append(f"Generic section `{title_text}` is backed only by filler text.")
+        if not body_without_title:
+            issues.append(f"Section `{title_text or 'untitled'}` is empty.")
+
+    if root_name == "task":
+        has_steps = any(_get_local_name(node.tag) in {"steps", "step", "substeps", "substep", "cmd"} for node in root.iter())
+        if not has_steps:
+            issues.append("Task output is missing concrete steps or commands.")
+
+    if root_name == "reference":
+        has_reference_structure = any(_get_local_name(node.tag) in {"section", "table", "simpletable", "dl"} for node in root.iter())
+        if not has_reference_structure:
+            issues.append("Reference output is missing structured reference content.")
+
+    return list(dict.fromkeys(issue for issue in issues if issue))
+
+
 def _is_valid_dita_xml(content: str) -> bool:
     """Check if content parses as valid XML with DITA-like root.
     Accepts namespaced tags (dita:topic, {uri}topic) by normalizing to local name.
@@ -188,7 +277,7 @@ def _is_valid_dita_xml(content: str) -> bool:
         tag = root.tag.split("}")[-1].lower() if "}" in root.tag else root.tag.lower()
         # Accept dita:topic, topic, etc.
         local_name = tag.split(":")[-1] if ":" in tag else tag
-        return local_name in ("map", "topic", "bookmap", "concept", "task")
+        return local_name in ("map", "topic", "bookmap", "concept", "task", "reference", "glossentry", "subjectscheme", "val")
     except ET.ParseError:
         return False
 
@@ -203,11 +292,17 @@ def _wrap_with_doctype(content: str) -> bytes:
         doctype = DOCTYPE_MAP
     elif cl.startswith("<concept"):
         doctype = DITA_DOCTYPES["concept"]
+    elif cl.startswith("<reference"):
+        doctype = DITA_DOCTYPES["reference"]
     elif cl.startswith("<task"):
         doctype = DITA_DOCTYPES["task"]
+    elif cl.startswith("<glossentry"):
+        doctype = DITA_DOCTYPES["glossentry"]
+    elif cl.startswith("<subjectscheme") or cl.startswith("<val"):
+        doctype = ""
     else:
         doctype = DOCTYPE_TOPIC
-    doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype}\n{body}'
+    doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype + chr(10) if doctype else ""}{body}'
     return doc.encode("utf-8")
 
 
@@ -403,6 +498,7 @@ async def _generate_llm_dita_async(
         file_count = 0
         rejected_count = 0
         first_rejected_sample: Optional[str] = None
+        first_rejected_reason: Optional[str] = None
 
         for item in files_list[:LLM_DITA_MAX_FILES]:
             if file_count >= LLM_DITA_MAX_FILES:
@@ -429,6 +525,15 @@ async def _generate_llm_dita_async(
                 rejected_count += 1
                 if first_rejected_sample is None:
                     first_rejected_sample = (content_val or "")[:300]
+                    first_rejected_reason = "invalid XML or unsupported root tag"
+                continue
+
+            quality_issues = _quality_gate_issues(content_val)
+            if quality_issues:
+                rejected_count += 1
+                if first_rejected_sample is None:
+                    first_rejected_sample = (content_val or "")[:300]
+                    first_rejected_reason = quality_issues[0]
                 continue
 
             full_path = f"{root_folder}/{path_val}"
@@ -452,14 +557,16 @@ async def _generate_llm_dita_async(
                     "jira_id": jira_id,
                     "total_items": total,
                     "rejected_count": rejected_count,
+                    "first_rejected_reason": first_rejected_reason,
                     "first_rejected_sample": first_rejected_sample[:200] if first_rejected_sample else None,
                     "pattern_repair_idx": repair_idx,
                 },
             )
+            reason_hint = f" First rejection reason: {first_rejected_reason}." if first_rejected_reason else ""
             sample_hint = f" First rejected sample: {first_rejected_sample!r}" if first_rejected_sample else ""
             raise ValueError(
                 f"All {total} file(s) from LLM failed DITA validation (invalid XML or wrong root tag)."
-                f"{sample_hint}"
+                f"{reason_hint}{sample_hint}"
             )
 
         if recipe_execution_contract and LLM_DITA_CONTRACT_FAIL_FAST:
@@ -496,22 +603,17 @@ async def _generate_llm_dita_async(
 
         if repair_idx >= max_pattern_repairs:
             logger.warning_structured(
-                "LLM DITA pattern validation: returning output after failed checks",
+                "LLM DITA pattern validation: rejecting output after failed checks",
                 extra_fields={
                     "jira_id": jira_id,
                     "issues": pattern_issues[:5],
                     "repairs_used": repair_idx,
                 },
             )
-            _check_content_fidelity(evidence_text, output, jira_id=jira_id)
-            obs_log.info(
-                "llm_dita_generation_completed",
-                run_id=trace_id,
-                jira_id=jira_id,
-                topic_count=len(output),
-                file_count=len(output),
+            raise ValueError(
+                "Generated DITA failed post-generation quality checks: "
+                + "; ".join(pattern_issues[:5])
             )
-            return output
 
         repair_suffix = (
             "\n\nVALIDATION — PREVIOUS OUTPUT FAILED CHECKS. REGENERATE JSON WITH 'files' FIXING THIS:\n"

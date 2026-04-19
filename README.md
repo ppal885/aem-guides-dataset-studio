@@ -167,7 +167,7 @@ OPENAI_MODEL=gpt-5-codex
 
 The package [`mcp_api_adapter/`](mcp_api_adapter/) runs a **stdio MCP server** that calls your running FastAPI app under **`/api/v1`** via httpx. It does **not** import application services; it only forwards REST requests. This is useful when agents must use the same contract as the UI/API, or when the API runs on another host.
 
-**Prerequisite:** start the backend (for example from `backend/` with uvicorn on the configured port, often `8000`).
+**Prerequisite:** start the backend (for example from `backend/` with uvicorn on the configured port, default `8001` via `PORT` / `run_local.py`).
 
 **Install MCP dependencies** (lightweight; can be the same venv as the backend or a separate one):
 
@@ -181,7 +181,7 @@ pip install -r requirements-mcp.txt
 python -m mcp_api_adapter
 ```
 
-**Environment** (optional): `DATASET_STUDIO_API_BASE_URL` (default `http://127.0.0.1:8000`), `DATASET_STUDIO_API_BEARER_TOKEN` or `API_BEARER_TOKEN`, `DATASET_STUDIO_API_TIMEOUT_SECONDS`, `DATASET_STUDIO_API_EXTRA_HEADERS_JSON`. See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint table and copy-paste config for Cursor, Claude Code, and Codex.
+**Environment** (optional): `DATASET_STUDIO_API_BASE_URL` (default `http://127.0.0.1:8001`), `DATASET_STUDIO_API_BEARER_TOKEN` or `API_BEARER_TOKEN`, `DATASET_STUDIO_API_TIMEOUT_SECONDS`, `DATASET_STUDIO_API_EXTRA_HEADERS_JSON`. See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint table and copy-paste config for Cursor, Claude Code, and Codex.
 
 **Compared to [`mcp_server.py`](mcp_server.py):** the root `mcp_server.py` exposes many **in-process** tools (Jira, RAG, DITA files). The API adapter exposes only the **13 REST-mapped** tools and requires a live HTTP API.
 
@@ -201,7 +201,7 @@ Edit `~/.cursor/mcp.json`:
       "args": ["-m", "mcp_api_adapter"],
       "cwd": "C:\\path\\to\\aem-guides-dataset-studio",
       "env": {
-        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8000"
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8001"
       }
     }
   }

@@ -134,3 +134,15 @@ def test_insurance_incremental_duplicate_map_sizes_normalizes(client: TestClient
     assert response.status_code == 200, response.text
     normalized = response.json()["config"]["recipes"][0]["map_sizes"]
     assert normalized == [10, 100, 1000, 5000, 10000]
+
+
+def test_jobs_routes_are_mounted_and_not_404(client: TestClient) -> None:
+    list_response = client.get("/api/v1/jobs", headers=_AUTH_HEADERS)
+    assert list_response.status_code != 404, list_response.text
+
+    schedule_response = client.post(
+        "/api/v1/jobs/schedule",
+        json={},
+        headers=_AUTH_HEADERS,
+    )
+    assert schedule_response.status_code != 404, schedule_response.text

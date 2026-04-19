@@ -5,6 +5,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from app.core.structured_logging import get_structured_logger
+from app.services.dita_xml_headers import serialize_normalized_dita_tree
 
 logger = get_structured_logger(__name__)
 
@@ -17,6 +18,10 @@ def _collect_ids_from_root(root: ET.Element) -> list[tuple[ET.Element, str]]:
         if eid:
             result.append((elem, eid))
     return result
+
+
+def _strip_ns(tag: str) -> str:
+    return tag.split("}")[-1] if "}" in tag else tag
 
 
 def fix_duplicate_ids(folder: Path) -> dict:
@@ -68,7 +73,7 @@ def fix_duplicate_ids(folder: Path) -> dict:
                 stats["ids_renamed"] += 1
             tree = path_to_tree[path]
             root = tree.getroot()
-            xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True, method="xml")
+            xml_bytes = serialize_normalized_dita_tree(root, _strip_ns(root.tag))
             path.write_bytes(xml_bytes)
             stats["files_modified"] += 1
         except Exception as ex:

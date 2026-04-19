@@ -98,30 +98,30 @@ export function DatasetJobStatusCard({
 
   if (currentStatus === 'completed') {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f7fffb_100%)] p-4 text-sm">
+      <div className="rounded-2xl border border-teal-200 bg-[linear-gradient(135deg,#f0fdfa_0%,#f8fafc_100%)] p-4 text-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-sm">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-sm font-semibold text-emerald-950">Dataset ZIP ready</div>
-                <div className="mt-1 text-sm leading-6 text-emerald-900/85">
+                <div className="text-sm font-semibold text-teal-950">Dataset ZIP ready</div>
+                <div className="mt-1 text-sm leading-6 text-teal-900/85">
                   {status?.result?.files_generated
                     ? `${status.result.files_generated} files generated and packaged successfully.`
                     : 'Generation completed successfully.'}
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-emerald-800">
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1">Job ID: {jobId}</span>
-              {recipeType ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1">Recipe: {recipeType}</span> : null}
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-teal-900">
+              <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Job ID: {jobId}</span>
+              {recipeType ? <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Recipe: {recipeType}</span> : null}
             </div>
           </div>
           {resolvedDownloadUrl ? (
             <a href={resolvedDownloadUrl} target="_blank" rel="noreferrer" className="shrink-0">
-              <Button size="sm" className="gap-2 rounded-full bg-emerald-600 px-4 text-white hover:bg-emerald-700">
+              <Button size="sm" className="gap-2 rounded-full bg-teal-600 px-4 text-white hover:bg-teal-700">
                 <Download className="h-4 w-4" />
                 Download ZIP
               </Button>
@@ -133,9 +133,9 @@ export function DatasetJobStatusCard({
   }
 
   return (
-    <div className="rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,#eff6ff_0%,#f8fbff_100%)] p-4 text-sm">
+    <div className="rounded-2xl border border-teal-200 bg-[linear-gradient(135deg,#f0fdfa_0%,#f8fafc_100%)] p-4 text-sm">
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-sm">
           {currentStatus === 'running' ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
@@ -145,33 +145,33 @@ export function DatasetJobStatusCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-sm font-semibold text-sky-950">
+              <div className="text-sm font-semibold text-teal-950">
                 {jobName || 'Dataset generation in progress'}
               </div>
-              <div className="mt-1 text-sm leading-6 text-sky-900/85">
+              <div className="mt-1 text-sm leading-6 text-teal-900/85">
                 {status?.current_stage || 'Preparing dataset files...'}
               </div>
             </div>
-            <span className="w-fit rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+            <span className="w-fit rounded-full border border-teal-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-800">
               {currentStatus}
             </span>
           </div>
 
           <div className="mt-4">
-            <Progress value={progressPercent} className="h-2.5 bg-sky-100 [&>*]:bg-sky-600" />
+            <Progress value={progressPercent} className="h-2.5 bg-teal-100 [&>*]:bg-teal-600" />
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-sky-800/90">
-            <span className="rounded-full border border-sky-200 bg-white px-3 py-1">Job ID: {jobId}</span>
-            {recipeType ? <span className="rounded-full border border-sky-200 bg-white px-3 py-1">Recipe: {recipeType}</span> : null}
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-teal-900/90">
+            <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Job ID: {jobId}</span>
+            {recipeType ? <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Recipe: {recipeType}</span> : null}
             {typeof status?.files_generated === 'number' ? (
-              <span className="rounded-full border border-sky-200 bg-white px-3 py-1">Files: {status.files_generated}</span>
+              <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Files: {status.files_generated}</span>
             ) : null}
             {typeof status?.total_files_estimated === 'number' ? (
-              <span className="rounded-full border border-sky-200 bg-white px-3 py-1">Estimated: {status.total_files_estimated}</span>
+              <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Estimated: {status.total_files_estimated}</span>
             ) : null}
             {status?.estimated_time_remaining ? (
-              <span className="rounded-full border border-sky-200 bg-white px-3 py-1">ETA: {status.estimated_time_remaining}</span>
+              <span className="rounded-full border border-teal-200 bg-white px-3 py-1">ETA: {status.estimated_time_remaining}</span>
             ) : null}
           </div>
         </div>

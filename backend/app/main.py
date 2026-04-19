@@ -24,6 +24,7 @@ from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.api.v1.router import api_router as v1_router
+from app.core.runtime_safety import cors_allowed_origins, validate_runtime_safety
 from app.core.structured_logging import get_structured_logger, LoggingContext
 from app.services.cleaning_service import clean_old_data
 
@@ -34,6 +35,11 @@ logger = get_structured_logger(__name__)
 _request_cache: Dict[str, Tuple[int, dict, bytes, float]] = {}
 CACHE_TTL = 5.0  # Cache responses for 5 seconds
 MAX_CACHE_BODY_SIZE = 1024 * 1024  # 1MB - skip caching larger responses
+_REQUIRED_CANONICAL_API_PATHS = (
+    "/api/v1/jobs",
+    "/api/v1/jobs/{job_id}",
+    "/api/v1/jobs/schedule",
+)
 
 app = FastAPI(
     title="AEM Guides Dataset Studio API",
@@ -41,11 +47,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Runtime safety snapshot
+_runtime_safety = validate_runtime_safety()
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
-    allow_credentials=True,
+    allow_origins=_runtime_safety["cors_allowed_origins"],
+    allow_credentials="*" not in _runtime_safety["cors_allowed_origins"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -195,6 +204,33 @@ def _cleanup_cache():
             extra_fields={"expired_entries": len(expired_keys)}
         )
 
+
+def _registered_api_paths(application: FastAPI) -> list[str]:
+    paths: list[str] = []
+    for route in application.routes:
+        path = getattr(route, "path", None)
+        if path:
+            paths.append(str(path))
+    return sorted(set(paths))
+
+
+def _verify_required_routes(application: FastAPI) -> None:
+    registered_paths = set(_registered_api_paths(application))
+    missing_paths = [path for path in _REQUIRED_CANONICAL_API_PATHS if path not in registered_paths]
+    logger.info_structured(
+        "API route inventory snapshot",
+        extra_fields={
+            "required_paths": list(_REQUIRED_CANONICAL_API_PATHS),
+            "jobs_paths_present": sorted(path for path in registered_paths if path.startswith("/api/v1/jobs")),
+            "missing_required_paths": missing_paths,
+        },
+    )
+    if missing_paths:
+        raise RuntimeError(
+            "Canonical jobs API routes are missing from the mounted backend: "
+            + ", ".join(missing_paths)
+        )
+
 # Request validation error handler (422)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -267,7 +303,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         pass
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
+        content={"detail": "Internal server error"}
     )
 
 # Include API router
@@ -311,10 +347,23 @@ async def startup_event():
     """Application startup event."""
     try:
         environment = os.getenv("ENVIRONMENT", "development")
+        runtime_safety = validate_runtime_safety()
         logger.info_structured(
             "Application starting up",
-            extra_fields={"environment": environment, "version": "1.0.0"}
+            extra_fields={
+                "environment": environment,
+                "version": "1.0.0",
+                "cors_allowed_origins": runtime_safety["cors_allowed_origins"],
+                "dev_auth_bypass_enabled": runtime_safety["dev_auth_bypass_enabled"],
+            }
         )
+        for warning in runtime_safety["warnings"]:
+            logger.warning_structured("Runtime safety warning", extra_fields={"warning": warning})
+        if runtime_safety["errors"]:
+            for error in runtime_safety["errors"]:
+                logger.error_structured("Runtime safety error", extra_fields={"error": error})
+            raise RuntimeError("; ".join(str(item) for item in runtime_safety["errors"]))
+        _verify_required_routes(app)
 
         # Enable LangSmith tracing when API key is present (LangChain PyPDFLoader, WebBaseLoader, etc.)
         if os.getenv("LANGSMITH_API_KEY"):

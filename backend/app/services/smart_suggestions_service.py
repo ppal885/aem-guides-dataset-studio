@@ -16,6 +16,7 @@ _STOPWORDS = {
 }
 
 _GENERIC_ISSUE_TERMS = {"concept", "reference", "task", "story", "feature", "bug", "improvement"}
+_MAP_LIKE_DITA_TYPES = {"map", "bookmap"}
 
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -136,6 +137,15 @@ _VALIDATION_RULES = {
         "fix_prompt": "Add a body element to this topic.",
         "impact": "High: the topic becomes structurally complete.",
     },
+    "glossterm present": {
+        "rule_id": "validation_glossterm",
+        "section": "glossterm",
+        "title": "Glossary entry is missing glossterm",
+        "why": "Glossary entries need a glossterm to name the term being defined.",
+        "after": "Add a glossterm before the glossdef.",
+        "fix_prompt": "Add a glossterm to this glossary entry.",
+        "impact": "High: the glossary entry becomes structurally complete.",
+    },
     "glossdef present": {
         "rule_id": "validation_glossdef",
         "section": "glossdef",
@@ -144,6 +154,24 @@ _VALIDATION_RULES = {
         "after": "Add a glossdef with a concise definition.",
         "fix_prompt": "Add a glossdef to this glossary entry.",
         "impact": "High: the glossary entry becomes complete.",
+    },
+    "map title present": {
+        "rule_id": "validation_map_title",
+        "section": "title",
+        "title": "Map is missing a title",
+        "why": "A map title gives the deliverable a clear navigation label and improves review readability.",
+        "after": "Add a concise <title> as the first child of the map.",
+        "fix_prompt": "Add a concise map title.",
+        "impact": "Medium: map readability and navigation improve.",
+    },
+    "map structure present": {
+        "rule_id": "validation_map_structure",
+        "section": "map",
+        "title": "Map is missing references or branches",
+        "why": "A DITA map should organize deliverable content with map constructs such as topicref, keydef, mapref, topichead, topicgroup, or reltable.",
+        "after": "Add at least one map child such as <topicref href=\"example.dita\"/> or a key/map structure that matches the deliverable.",
+        "fix_prompt": "Add valid map children such as topicref, keydef, mapref, topichead, topicgroup, or reltable.",
+        "impact": "High: the map becomes useful as a deliverable structure.",
     },
 }
 
@@ -283,7 +311,7 @@ def _parse_sections(xml: str) -> dict[str, str]:
 
 
 def _get_dita_type(xml: str) -> str:
-    for candidate in ("glossentry", "reference", "concept", "task"):
+    for candidate in ("bookmap", "map", "glossentry", "reference", "concept", "task", "topic"):
         if re.search(rf"<{candidate}[\s>]", xml, re.IGNORECASE) or re.search(rf"DOCTYPE\s+{candidate}", xml, re.IGNORECASE):
             return candidate
     return "task"
@@ -299,7 +327,10 @@ def _required_elements(dita_type: str) -> list[str]:
         "task": ["shortdesc", "steps", "result"],
         "concept": ["shortdesc", "conbody"],
         "reference": ["shortdesc", "refbody"],
+        "topic": ["shortdesc", "body"],
         "glossentry": ["glossterm", "glossdef"],
+        "map": ["title"],
+        "bookmap": ["title"],
     }
     return mapping.get(dita_type, ["shortdesc"])
 
@@ -307,6 +338,7 @@ def _required_elements(dita_type: str) -> list[str]:
 def _generate_placeholder(element: str, sections: dict[str, str]) -> str:
     title = sections.get("title") or "this topic"
     placeholders = {
+        "title": "Add a clear title here.",
         "shortdesc": f"Complete {title.lower()} by following these steps.",
         "prereq": "Ensure required tools, permissions, and environment access are available before you begin.",
         "context": f"This procedure is needed when {title.lower()}.",
@@ -423,6 +455,7 @@ def _dedupe_suggestions(suggestions: list[Suggestion]) -> list[Suggestion]:
 
 def _check_missing_elements(sections: dict[str, str], dita_type: str) -> list[Suggestion]:
     suggestions: list[Suggestion] = []
+    artifact_label = "map" if dita_type in {"map", "bookmap"} else f"{dita_type} topic"
     for element in _required_elements(dita_type):
         if element in sections:
             continue
@@ -432,11 +465,11 @@ def _check_missing_elements(sections: dict[str, str], dita_type: str) -> list[Su
                 severity="error",
                 section=element,
                 title=f"Missing <{element}>",
-                why=f"{element} is expected for a {dita_type} topic and improves validation readiness.",
+                why=f"{element} is expected for a {artifact_label} and improves validation readiness.",
                 before=f"No <{element}> section is present.",
                 after=_generate_placeholder(element, sections),
                 fix_type="generate",
-                fix_prompt=f"Add a strong <{element}> section for this {dita_type} topic.",
+                fix_prompt=f"Add a strong <{element}> section for this {artifact_label}.",
                 confidence=1.0,
                 rule_id=f"missing_{element}",
             )
@@ -604,6 +637,8 @@ def _check_version_context(sections: dict[str, str]) -> list[Suggestion]:
 
 
 def _check_suggested_elements(sections: dict[str, str], dita_type: str) -> list[Suggestion]:
+    if dita_type in _MAP_LIKE_DITA_TYPES:
+        return []
     text = " ".join(sections.values()).lower()
     suggestions: list[Suggestion] = []
     if dita_type == "task" and "prereq" not in sections and any(tool in text for tool in ("aem guides", "oxygen", "terminal", "portal")):
@@ -631,6 +666,8 @@ def _body_parent_tag(dita_type: str) -> str:
         "concept": "conbody",
         "reference": "refbody",
         "glossentry": "glossdef",
+        "map": "map",
+        "bookmap": "bookmap",
     }.get(dita_type, "body")
 
 
@@ -698,6 +735,8 @@ def _check_reuse_opportunities(
     dita_type: str,
     quality_breakdown: dict | None,
 ) -> list[Suggestion]:
+    if dita_type in _MAP_LIKE_DITA_TYPES:
+        return []
     breakdown = quality_breakdown or {}
     dita_features = int(breakdown.get("dita_features") or 0)
     content_richness = int(breakdown.get("content_richness") or 0)
@@ -800,6 +839,8 @@ def _check_quality_gap_suggestions(
     research_context: dict | None,
     quality_breakdown: dict | None,
 ) -> list[Suggestion]:
+    if dita_type in _MAP_LIKE_DITA_TYPES:
+        return _check_map_quality_gap_suggestions(xml, sections, dita_type, quality_breakdown)
     breakdown = quality_breakdown or {}
     content_richness = int(breakdown.get("content_richness") or 0)
     dita_features = int(breakdown.get("dita_features") or 0)
@@ -946,6 +987,74 @@ def _check_quality_gap_suggestions(
     return suggestions
 
 
+def _check_map_quality_gap_suggestions(
+    xml: str,
+    sections: dict[str, str],
+    dita_type: str,
+    quality_breakdown: dict | None,
+) -> list[Suggestion]:
+    del sections
+    breakdown = quality_breakdown or {}
+    xml_lower = (xml or "").lower()
+    suggestions: list[Suggestion] = []
+
+    if not re.search(r"<(?:topicref|mapref|keydef|topichead|topicgroup|reltable|navref)\b", xml_lower):
+        suggestions.append(
+            Suggestion(
+                id="map_add_structure",
+                severity="error",
+                section=dita_type,
+                title="Map needs deliverable structure",
+                why="A DITA map should organize content with map constructs, not topic body sections.",
+                before="No topicref, keydef, mapref, topichead, topicgroup, navref, or reltable was found.",
+                after='Add map children such as <topicref href="overview.dita"/> or a structure that matches the deliverable.',
+                fix_type="generate",
+                fix_prompt="Add valid map children such as topicref, keydef, mapref, topichead, topicgroup, navref, or reltable.",
+                confidence=1.0,
+                rule_id="map_add_structure",
+                impact="High: the file becomes a usable DITA map rather than an empty container.",
+            )
+        )
+
+    if "<topicmeta" not in xml_lower and int(breakdown.get("content_richness") or 0) < 30:
+        suggestions.append(
+            Suggestion(
+                id="map_add_topicmeta",
+                severity="info",
+                section="topicmeta",
+                title="Consider adding map metadata",
+                why="Map-level topicmeta can carry navigation/search metadata without adding topic-only body content.",
+                before="No <topicmeta> metadata is present.",
+                after="Add <topicmeta> with map-appropriate metadata when the deliverable needs navigation or search labels.",
+                fix_type="preview",
+                fix_prompt="Add map-level topicmeta only if the deliverable needs navigation or search metadata.",
+                confidence=0.72,
+                rule_id="map_add_topicmeta",
+                impact="Low: navigation and publishing metadata become clearer.",
+            )
+        )
+
+    if "<reltable" not in xml_lower and int(breakdown.get("dita_features") or 0) < 40:
+        suggestions.append(
+            Suggestion(
+                id="map_consider_relationships",
+                severity="info",
+                section="reltable",
+                title="Consider relationship tables only when relationships are needed",
+                why="Relationship tables are map-scoped constructs for describing topic relationships; they should be added only when the deliverable needs related-link behavior.",
+                before="No <reltable> is present.",
+                after="Add a reltable only if the map needs explicit topic relationships.",
+                fix_type="preview",
+                fix_prompt="Add a relationship table only when the map needs explicit topic relationships.",
+                confidence=0.62,
+                rule_id="map_consider_relationships",
+                impact="Low: related-link structure improves when the deliverable needs it.",
+            )
+        )
+
+    return suggestions
+
+
 def _check_validation_findings(validation: list[dict], dita_type: str) -> list[Suggestion]:
     suggestions: list[Suggestion] = []
     for finding in validation or []:
@@ -1001,6 +1110,8 @@ def _check_validation_findings(validation: list[dict], dita_type: str) -> list[S
 
 
 def _check_title_alignment(sections: dict[str, str], issue: dict, dita_type: str) -> list[Suggestion]:
+    if dita_type in _MAP_LIKE_DITA_TYPES:
+        return []
     title = sections.get("title", "")
     if not title or not issue.get("summary"):
         return []
@@ -1293,9 +1404,34 @@ def _simple_validation_checks(xml: str, dita_type: str) -> list[dict[str, object
     checks: list[dict[str, object]] = [
         {"label": "XML declaration present", "passing": cleaned.lstrip().startswith("<?xml")},
         {"label": "Required DTD header present", "passing": "<!DOCTYPE" in cleaned[:260]},
-        {"label": "shortdesc present", "passing": bool(re.search(r"<shortdesc\b", body, re.IGNORECASE))},
         {"label": "xml:lang present", "passing": _root_has_xml_lang(body, dita_type)},
     ]
+    if dita_type in {"map", "bookmap"}:
+        checks.extend(
+            [
+                {"label": "map title present", "passing": bool(re.search(r"<(?:title|booktitle)\b", body, re.IGNORECASE))},
+                {
+                    "label": "map structure present",
+                    "passing": bool(
+                        re.search(
+                            r"<(?:topicref|mapref|keydef|topichead|topicgroup|reltable|navref)\b",
+                            body,
+                            re.IGNORECASE,
+                        )
+                    ),
+                },
+            ]
+        )
+    elif dita_type == "glossentry":
+        checks.extend(
+            [
+                {"label": "glossterm present", "passing": bool(re.search(r"<glossterm\b", body, re.IGNORECASE))},
+                {"label": "glossdef present", "passing": bool(re.search(r"<glossdef\b", body, re.IGNORECASE))},
+            ]
+        )
+    else:
+        checks.append({"label": "shortdesc present", "passing": bool(re.search(r"<shortdesc\b", body, re.IGNORECASE))})
+
     if dita_type == "task":
         checks.extend(
             [
@@ -1308,9 +1444,7 @@ def _simple_validation_checks(xml: str, dita_type: str) -> list[dict[str, object
         checks.append({"label": "conbody present", "passing": bool(re.search(r"<conbody\b", body, re.IGNORECASE))})
     elif dita_type == "reference":
         checks.append({"label": "refbody present", "passing": bool(re.search(r"<refbody\b", body, re.IGNORECASE))})
-    elif dita_type == "glossentry":
-        checks.append({"label": "glossdef present", "passing": bool(re.search(r"<glossdef\b", body, re.IGNORECASE))})
-    else:
+    elif dita_type == "topic":
         checks.append({"label": "body present", "passing": bool(re.search(r"<body\b", body, re.IGNORECASE))})
     return checks
 
@@ -1323,13 +1457,23 @@ def _estimate_quality_breakdown(xml: str, dita_type: str, validation: list[dict[
     structure = int(round(validation_pass_rate * 100))
 
     richness_points = 0
-    for token in ("<shortdesc", "<context", "<result", "<postreq", "<example", "<note"):
+    richness_tokens = (
+        ("<title", "<topicmeta", "<navtitle", "<searchtitle", "<shortdesc")
+        if dita_type in {"map", "bookmap"}
+        else ("<shortdesc", "<context", "<result", "<postreq", "<example", "<note")
+    )
+    for token in richness_tokens:
         if token in content:
             richness_points += 1
     content_richness = min(100, richness_points * 18)
 
     dita_feature_points = 0
-    for token in ("<xref", "<codeblock", "<object", " keyref=", " conref=", " conkeyref=", "<keywords"):
+    feature_tokens = (
+        ("<topicref", "<keydef", "<mapref", "<reltable", "<topichead", "<topicgroup", " keyscope=", " processing-role=")
+        if dita_type in {"map", "bookmap"}
+        else ("<xref", "<codeblock", "<object", " keyref=", " conref=", " conkeyref=", "<keywords")
+    )
+    for token in feature_tokens:
         if token in content:
             dita_feature_points += 1
     dita_features = min(100, dita_feature_points * 20)
@@ -1423,7 +1567,7 @@ def _apply_structural_repairs(
         )
         actions.append("structural_repair")
 
-    if resolved_type != "glossentry" and "<shortdesc" not in repaired.lower():
+    if resolved_type not in {"glossentry", *_MAP_LIKE_DITA_TYPES} and "<shortdesc" not in repaired.lower():
         repaired = re.sub(
             r"(<title[^>]*>.*?</title>)",
             rf"\1\n  <shortdesc>{_build_placeholder_shortdesc(issue, resolved_type)}</shortdesc>",
@@ -1511,6 +1655,33 @@ def _apply_structural_repairs(
     return repaired, resolved_type, list(dict.fromkeys(actions))
 
 
+def apply_chat_topic_structural_repairs(
+    xml: str,
+    dita_type: str,
+    *,
+    issue: dict | None = None,
+) -> tuple[str, str, list[str]]:
+    """
+    Public entry for workspace / chat topic repair.
+
+    Wraps :func:`_apply_structural_repairs` with default issue metadata and returns
+    normalized XML plus resolved DITA type.
+    """
+    from app.services.dita_xml_headers import normalize_dita_document
+
+    base_issue = {
+        "issue_key": "TOPIC-REPAIR",
+        "summary": "DITA topic",
+        "description": "Structured repair from workspace or chat.",
+    }
+    merged = {**base_issue, **(issue or {})}
+    key = str(merged.get("issue_key") or "TOPIC-REPAIR")
+    cleaned = _clean_xml(xml)
+    repaired, resolved_type, actions = _apply_structural_repairs(cleaned, dita_type, merged, key)
+    full, dt = normalize_dita_document(repaired, resolved_type)
+    return full, dt, list(dict.fromkeys(actions))
+
+
 async def analyse_content(
     xml: str,
     issue: dict,
@@ -1541,18 +1712,21 @@ async def analyse_content(
     suggestions: list[Suggestion] = []
     suggestions.extend(_check_validation_findings(validation or [], dita_type))
     suggestions.extend(_check_missing_elements(sections, dita_type))
-    suggestions.extend(_check_title_alignment(sections, issue, dita_type))
-    suggestions.extend(_check_shortdesc(sections))
-    suggestions.extend(_check_vague_steps(steps))
-    suggestions.extend(_check_task_depth(steps, dita_type))
-    suggestions.extend(_check_issue_coverage(sections, issue))
-    suggestions.extend(_check_bug_report_language(sections))
-    suggestions.extend(_check_research_alignment(sections, research_context))
-    suggestions.extend(_check_terminology(sections, terminology))
-    suggestions.extend(_check_version_context(sections))
-    suggestions.extend(_check_suggested_elements(sections, dita_type))
-    suggestions.extend(_check_reuse_opportunities(xml, sections, issue, dita_type, quality_breakdown))
-    suggestions.extend(_check_quality_gap_suggestions(xml, sections, dita_type, issue, research_context, quality_breakdown))
+    if dita_type in _MAP_LIKE_DITA_TYPES:
+        suggestions.extend(_check_map_quality_gap_suggestions(xml, sections, dita_type, quality_breakdown))
+    else:
+        suggestions.extend(_check_title_alignment(sections, issue, dita_type))
+        suggestions.extend(_check_shortdesc(sections))
+        suggestions.extend(_check_vague_steps(steps))
+        suggestions.extend(_check_task_depth(steps, dita_type))
+        suggestions.extend(_check_issue_coverage(sections, issue))
+        suggestions.extend(_check_bug_report_language(sections))
+        suggestions.extend(_check_research_alignment(sections, research_context))
+        suggestions.extend(_check_terminology(sections, terminology))
+        suggestions.extend(_check_version_context(sections))
+        suggestions.extend(_check_suggested_elements(sections, dita_type))
+        suggestions.extend(_check_reuse_opportunities(xml, sections, issue, dita_type, quality_breakdown))
+        suggestions.extend(_check_quality_gap_suggestions(xml, sections, dita_type, issue, research_context, quality_breakdown))
 
     suggestions = _dedupe_suggestions(suggestions)
     suggestions.sort(

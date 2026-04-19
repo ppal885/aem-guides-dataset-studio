@@ -4,9 +4,18 @@
 Write-Host "Starting Backend Server..." -ForegroundColor Cyan
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendPath = Join-Path $scriptPath "backend"
+$repoVenvPython = Join-Path $scriptPath "venv\Scripts\python.exe"
+$backendVenvPython = Join-Path $backendPath ".venv\Scripts\python.exe"
 
-# Try Windows Store Python path directly
-$pythonPath = "C:\Users\prashantp\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe"
+# Prefer project-local virtualenvs first
+$pythonPath = $null
+if (Test-Path $repoVenvPython) {
+    $pythonPath = $repoVenvPython
+} elseif (Test-Path $backendVenvPython) {
+    $pythonPath = $backendVenvPython
+} else {
+    $pythonPath = "C:\Users\prashantp\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe"
+}
 
 if (Test-Path $pythonPath) {
     Write-Host "Using Python at: $pythonPath" -ForegroundColor Green
@@ -15,14 +24,14 @@ if (Test-Path $pythonPath) {
     $scriptBlock = @"
 cd '$backendPath'
 Write-Host 'Starting Backend Server...' -ForegroundColor Green
-& '$pythonPath' run_local.py
+& '$pythonPath' '$backendPath\run_local.py'
 "@
     
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $scriptBlock
     
     Write-Host "`nBackend server starting in new window..." -ForegroundColor Green
-    Write-Host "Server will be available at http://localhost:8000" -ForegroundColor Cyan
-    Write-Host "API docs: http://localhost:8000/docs" -ForegroundColor Cyan
+    Write-Host "Server will be available at http://localhost:8001" -ForegroundColor Cyan
+    Write-Host "API docs: http://localhost:8001/docs" -ForegroundColor Cyan
     Write-Host "`nIf you see permission errors, please install Python from:" -ForegroundColor Yellow
     Write-Host "https://www.python.org/downloads/" -ForegroundColor Yellow
 } else {

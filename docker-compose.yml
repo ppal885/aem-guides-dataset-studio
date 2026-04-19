@@ -66,7 +66,7 @@ services:
       JIRA_ISSUE_TYPE: ${JIRA_ISSUE_TYPE:-}
       JIRA_API_VERSION: ${JIRA_API_VERSION:-2}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8001}:8000"
     volumes:
       - backend_logs:/app/logs
       - dataset_storage:/app/storage/datasets

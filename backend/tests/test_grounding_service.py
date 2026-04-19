@@ -172,3 +172,45 @@ async def test_verify_grounded_answer_marks_unknown_term_as_not_verified():
     assert grounded.grounding_status == "partial"
     assert "not verified" in grounded.answer.lower()
     assert "hasinstance" in grounded.answer.lower()
+
+
+@pytest.mark.anyio
+async def test_verify_grounded_answer_replaces_unsafe_dita_example_with_safe_example():
+    pack = build_evidence_pack(
+        query="Show me a task topic skeleton in DITA 1.3",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="DITA task",
+                text="A task topic uses the root task element with title, shortdesc, and taskbody.",
+                metadata={"title": "DITA task"},
+            ),
+            _candidate(
+                source="dita_spec",
+                title="DITA steps",
+                text="Task steps are expressed with steps, step, and cmd elements.",
+                metadata={"title": "DITA steps"},
+            ),
+        ],
+    )
+
+    unsafe_draft = """```xml
+<task id="bad-task">
+  <title>Introduction</title>
+  <body>
+    <shortcut>P</shortcut>
+  </body>
+</task>
+```"""
+
+    grounded = await verify_grounded_answer(
+        question="Show me a task topic skeleton in DITA 1.3",
+        draft_answer=unsafe_draft,
+        evidence_pack=pack,
+    )
+
+    assert grounded.grounding_status == "partial"
+    assert "safe dita 1.3 example" in grounded.answer.lower()
+    assert "<!DOCTYPE task PUBLIC" in grounded.answer
+    assert "<shortcut>" not in grounded.answer

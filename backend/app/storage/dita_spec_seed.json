@@ -148,6 +148,7 @@
   {
     "element_name": "bookmap",
     "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/bookmap.html",
     "text_content": "<bookmap> is a map specialization for book-like publications with frontmatter, chapters, appendices, and backmatter.\n\nWhat is <bookmap>?\nWhile a regular <map> is flexible and flat, <bookmap> enforces a book structure: title page → preface → chapters → appendices → index. Use it when your output is a formal document (PDF book, printed manual).\n\nStructure:\n- <booktitle> / <booktitlealt> — book title and subtitle\n- <bookmeta> — book-level metadata (authors, publishers, ISBN)\n- <frontmatter> — preface, TOC, notices\n- <chapter> — main content sections (each contains topicrefs)\n- <part> — groups chapters (for very large books)\n- <appendices> — supplementary material\n- <backmatter> — index, glossary, colophon\n\nExample:\n```xml\n<bookmap id=\"aem-guides-book\">\n  <booktitle>\n    <mainbooktitle>AEM Guides Administrator Guide</mainbooktitle>\n    <booktitlealt>Version 4.6</booktitlealt>\n  </booktitle>\n  <bookmeta>\n    <author>Adobe Documentation Team</author>\n  </bookmeta>\n\n  <frontmatter>\n    <topicref href=\"preface.dita\"/>\n  </frontmatter>\n\n  <chapter href=\"installation.dita\">\n    <topicref href=\"prerequisites.dita\"/>\n    <topicref href=\"install-steps.dita\"/>\n  </chapter>\n\n  <chapter href=\"configuration.dita\">\n    <topicref href=\"config-general.dita\"/>\n    <topicref href=\"config-advanced.dita\"/>\n  </chapter>\n\n  <appendices>\n    <topicref href=\"troubleshooting.dita\"/>\n  </appendices>\n\n  <backmatter>\n    <topicref href=\"glossary.dita\"/>\n  </backmatter>\n</bookmap>\n```\n\nComparison: map vs bookmap\n| Feature | <map> | <bookmap> |\n|---------|-------|-----------|\n| Structure | Flexible, flat or nested | Book-like: chapters, parts, appendices |\n| Metadata | Basic <topicmeta> | Rich <bookmeta> (ISBN, publisher, etc.) |\n| Best for | Web help, site output | PDF books, printed manuals |\n| Frontmatter/backmatter | No | Yes |\n\nIn AEM Guides: Bookmaps are fully supported. The PDF output engine uses the bookmap structure to generate title pages, chapter numbering, and appendix letters automatically.",
     "parent_element": null,
     "children_elements": "[\"booktitle\", \"bookmeta\", \"frontmatter\", \"chapter\", \"part\", \"appendices\", \"backmatter\"]",
@@ -759,7 +760,103 @@
     "usage_contexts": [
       "Related links at the end of a topic",
       "Prefer reltable in maps for maintainable linking"
-    ]
+    ],
+    "source_url": "https://dita-lang.org/1.3/dita/langref/base/related-links",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "linking",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/related-links"
+    }
+  },
+  {
+    "element_name": "link",
+    "content_type": "element",
+    "text_content": "The <link> element defines a relationship from the current topic to another resource from inside <related-links>. In topic-level related links, use <link> for related targets and reserve <xref> for inline cross references inside normal topic content.\n\nContent model: optional link text and descriptive link information, including <linktext> and <linkinfo>.\n\nCommon attributes: @href for direct URI targets, @keyref for key-based targets, @type, @format, @scope, @role, @otherrole, and @importance.\n\nExample:\n```xml\n<related-links>\n  <link href=\"installing.dita#installing\" type=\"task\">\n    <linktext>Install the product</linktext>\n    <linkinfo>Use this task before configuring the product.</linkinfo>\n  </link>\n</related-links>\n```\n\nCompatibility note: The OASIS DITA 1.0 LangRef documents the base <link> element; newer DITA versions keep the same relationship-linking role while adding broader key-based processing through common linking attributes.",
+    "parent_element": "related-links, linklist, linkpool",
+    "children_elements": "[\"linktext\", \"linkinfo\", \"desc\"]",
+    "attributes": "{\"href\": \"URI target for the related resource\", \"keyref\": \"key-based target for the related resource\", \"type\": \"target topic type or resource type\", \"format\": \"target format such as dita or html\", \"scope\": \"local|peer|external\", \"role\": \"relationship role\", \"importance\": \"link importance\"}",
+    "common_mistakes": [
+      "Using <link> inline in a paragraph instead of using <xref>",
+      "Putting topic prose directly in <link> instead of using <linktext> or <linkinfo>",
+      "Forgetting @scope and @format when linking to external non-DITA resources"
+    ],
+    "correct_examples": [
+      "<related-links>\n  <link href=\"overview.dita#overview\" type=\"concept\"><linktext>Overview</linktext></link>\n</related-links>"
+    ],
+    "usage_contexts": [
+      "Topic-level related links",
+      "Related link lists and link pools",
+      "Direct or key-based links from one topic to another"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/link.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "linking",
+      "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/link.html"
+    }
+  },
+  {
+    "element_name": "relatedl",
+    "content_type": "element",
+    "text_content": "The <relatedl> element is the DITA 1.0 related-links container name for a set of links associated with a topic. In modern DITA authoring, <related-links> is the familiar base element name used at the end of a topic after the body content.\n\nUse it conceptually as the related-link container: it groups direct <link> elements and grouped lists such as <linklist>.\n\nExample:\n```xml\n<related-links>\n  <link href=\"configure.dita#configure\"><linktext>Configure the product</linktext></link>\n</related-links>\n```",
+    "parent_element": "topic",
+    "children_elements": "[\"link\", \"linklist\", \"linkpool\"]",
+    "attributes": "{}",
+    "usage_contexts": [
+      "Legacy DITA 1.0 related-link terminology",
+      "Related-links container semantics"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/relatedl.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "linking",
+      "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/relatedl.html"
+    }
+  },
+  {
+    "element_name": "linkinfo",
+    "content_type": "element",
+    "text_content": "The <linkinfo> element provides descriptive information for a related <link>. It helps explain why the target is related without turning the link itself into a full paragraph of topic content.\n\nUse <linktext> for the visible link label and <linkinfo> for supporting context.\n\nExample:\n```xml\n<link href=\"upgrade.dita#upgrade\" type=\"task\">\n  <linktext>Upgrade the service</linktext>\n  <linkinfo>Use this task after reviewing release compatibility.</linkinfo>\n</link>\n```",
+    "parent_element": "link",
+    "children_elements": "[\"text\", \"ph\", \"keyword\", \"term\", \"p\", \"ul\", \"ol\"]",
+    "attributes": "{\"outputclass\": \"Optional specialization or styling hook\"}",
+    "common_mistakes": [
+      "Using <linkinfo> without a clear <linktext> label",
+      "Placing unrelated explanatory content in link metadata"
+    ],
+    "usage_contexts": [
+      "Supplementing a related link with a short description",
+      "Explaining why a linked topic is relevant"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/linkinfo.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "linking",
+      "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/linkinfo.html"
+    }
+  },
+  {
+    "element_name": "linklist",
+    "content_type": "element",
+    "text_content": "The <linklist> element groups related <link> elements under a common heading or relationship type. Use it inside <related-links> when several related targets form a named group.\n\nA linklist can contain a <title>, optional descriptive material, and one or more <link> children.\n\nExample:\n```xml\n<related-links>\n  <linklist type=\"reference\">\n    <title>Reference topics</title>\n    <link href=\"parameters.dita#parameters\"><linktext>Parameters</linktext></link>\n    <link href=\"limits.dita#limits\"><linktext>Limits</linktext></link>\n  </linklist>\n</related-links>\n```",
+    "parent_element": "related-links",
+    "children_elements": "[\"title\", \"desc\", \"link\", \"linkinfo\"]",
+    "attributes": "{\"type\": \"Relationship or topic type label\", \"collection-type\": \"Optional collection semantics\", \"outputclass\": \"Optional specialization or styling hook\"}",
+    "common_mistakes": [
+      "Using <linklist> as a normal body list instead of a related-links group",
+      "Putting <xref> children inside <linklist> instead of <link>",
+      "Using a linklist when a map reltable would be easier to maintain"
+    ],
+    "usage_contexts": [
+      "Grouped related links at the end of a topic",
+      "Reference groups such as API topics, setup topics, or troubleshooting topics"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/linklist.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "linking",
+      "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/linklist.html"
+    }
   },
   {
     "element_name": "ditaval",
@@ -924,7 +1021,13 @@
     "text_content": "<foreign> contains non-DITA content (SVG, MathML, custom XML). Processors may pass it through or ignore it.\n\nExample:\n```xml\n<body>\n  <p>The formula for the area of a circle:</p>\n  <foreign>\n    <math xmlns=\"http://www.w3.org/1998/Math/MathML\">\n      <mi>A</mi><mo>=</mo><mi>π</mi><msup><mi>r</mi><mn>2</mn></msup>\n    </math>\n  </foreign>\n</body>\n```\n\nIn AEM Guides: Foreign content is passed through to HTML output. PDF handling depends on the PDF engine configuration.",
     "parent_element": "body",
     "children_elements": null,
-    "attributes": "{}"
+    "attributes": "{}",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/foreign.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/foreign.html",
+      "semantic_class": "specialization_container",
+      "processing_note": "Contains non-DITA vocabulary and may include fallback content."
+    }
   },
   {
     "element_name": "div",
@@ -957,6 +1060,424 @@
     "parent_element": "topicref",
     "children_elements": null,
     "attributes": "{\"to-content\": \"merge children into one output\", \"by-topic\": \"split into one output per topic\", \"by-document\": \"one output per source file\", \"select-topic\": \"include only referenced topic\", \"select-branch\": \"include topic and descendants\", \"select-document\": \"include all topics from file\"}"
+  },
+  {
+    "element_name": "format_attribute",
+    "content_type": "attribute",
+    "text_content": "The @format attribute identifies the format of the resource referenced by @href. Defined in OASIS DITA 1.3.\n\nValid values:\n- dita — target is a DITA topic or topic element. @type defaults to 'topic' unless specified.\n- ditamap — target is a DITA map. On <topicref>, resolves to the hierarchy of topic references in the targeted map.\n- html — target is an HTML resource. Default when href starts with http:// or https://.\n- pdf — target is a PDF document.\n- txt — target is a plain text file.\n- (any file extension without period) — e.g., 'doc', 'xlsx', 'xml'. Use the file extension as the format value.\n\nLightweight DITA additional values: hdita, mdita, xdita, hditamap, mditamap, xditamap\n\nDefault cascading rules (when @format is omitted):\n1. Cascades from the closest containing element in the map or related-links section.\n2. If no ancestor specifies format, the processor checks @href:\n   - File extension (lowercase, no period) becomes the default. Example: 'guide.pdf' -> format='pdf'\n   - Exception: .xml extension defaults to 'dita' (not 'xml')\n   - Absolute URIs with http:// or https:// default to 'html'\n   - All other cases default to 'dita'\n\nElements that support @format: <topicref>, <xref>, <link>, <keydef>, <mapref>, <navref>\n\nInteraction with @scope:\n- format='dita' + scope='local' — normal internal DITA reference (default)\n- format='html' + scope='external' — external web link\n- format='pdf' + scope='local' — local PDF file reference\n- format='ditamap' + scope='peer' — cross-deliverable map reference\n\nTest data scenarios for @format:\n```xml\n<map>\n  <title>Test: @format attribute coverage</title>\n  <!-- format=dita (explicit, local DITA topic) -->\n  <topicref href=\"topic-a.dita\" format=\"dita\"/>\n  <!-- format=html with scope=external (web link) -->\n  <topicref href=\"https://example.com/guide.html\" format=\"html\" scope=\"external\"/>\n  <!-- format=pdf with scope=local (local PDF) -->\n  <topicref href=\"manual.pdf\" format=\"pdf\" scope=\"local\"/>\n  <!-- format=ditamap (submap inclusion) -->\n  <topicref href=\"submap.ditamap\" format=\"ditamap\"/>\n  <!-- format omitted on .dita file (should default to dita) -->\n  <topicref href=\"topic-b.dita\"/>\n  <!-- format omitted on http URL (should default to html) -->\n  <topicref href=\"https://example.com/page\" scope=\"external\"/>\n  <!-- format omitted on .xml file (should default to dita, not xml) -->\n  <topicref href=\"data.xml\"/>\n  <!-- format=txt (plain text reference) -->\n  <topicref href=\"release-notes.txt\" format=\"txt\" scope=\"local\"/>\n</map>\n```\n\nCommon mistakes:\n- Using format='xml' instead of format='dita' for .xml files\n- Omitting format on external http links (processor defaults to html but explicit is clearer)\n- Using format='map' instead of format='ditamap'\n- Forgetting scope='external' when format='html' and href is absolute URL",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"dita\": \"DITA topic (default)\", \"ditamap\": \"DITA map\", \"html\": \"HTML resource\", \"pdf\": \"PDF document\", \"txt\": \"plain text\"}",
+    "usage_contexts": [
+      "topicref format='dita' — reference to local DITA topic (default)",
+      "topicref format='html' scope='external' — link to external web page",
+      "topicref format='pdf' scope='local' — reference to local PDF",
+      "topicref format='ditamap' — include a submap",
+      "xref format='html' scope='external' — inline link to web resource",
+      "keydef format='html' — define key pointing to external HTML"
+    ],
+    "common_mistakes": [
+      "Using format='xml' for DITA files — .xml defaults to 'dita', not 'xml'",
+      "Using format='map' instead of format='ditamap'",
+      "Omitting scope='external' when format='html' and href is absolute URL"
+    ],
+    "correct_examples": [
+      "<topicref href=\"topic.dita\" format=\"dita\"/>",
+      "<topicref href=\"https://example.com/api.html\" format=\"html\" scope=\"external\"/>",
+      "<topicref href=\"install-guide.pdf\" format=\"pdf\" scope=\"local\"/>",
+      "<topicref href=\"child-map.ditamap\" format=\"ditamap\"/>"
+    ],
+    "source_url": "https://www.oxygenxml.com/dita/1.3/specs/langRef/attributes/theformatattribute.html",
+    "test_data_coverage": {
+      "all_values": [
+        "dita",
+        "ditamap",
+        "html",
+        "pdf",
+        "txt"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keydef",
+        "mapref",
+        "navref"
+      ],
+      "combination_attributes": [
+        "scope",
+        "href",
+        "type"
+      ],
+      "default_scenarios": [
+        "omitted on .dita file",
+        "omitted on .xml file",
+        "omitted on http URL"
+      ]
+    }
+  },
+  {
+    "element_name": "scope_attribute",
+    "content_type": "attribute",
+    "text_content": "The @scope attribute identifies whether the referenced resource is part of the current content set. Defined in OASIS DITA 1.3.\n\nValid values:\n- local — resource is part of the current content set. Default for relative URIs.\n- peer — resource is part of the content collection but may not be available during processing. Used for:\n  1. Cross-deliverable linking (target is a separate output/deliverable)\n  2. Map-to-map key resolution (target should function as root map for key references)\n  3. Peer map with @keyscope — designates the map as a discrete deliverable\n- external — resource is NOT part of the current content set. Default for http/https/ftp/mailto URIs.\n- -dita-use-conref-target — inherit value from the referenced element during conref resolution.\n\nDefault cascading rules:\n1. Cascades from nearest ancestor that specifies @scope.\n2. If no ancestor specifies: relative URIs -> 'local'; http/https/ftp/mailto -> 'external'.\n3. Processors MUST always consider relative URIs as local by default.\n\nElements that support @scope: <topicref>, <xref>, <link>, <keydef>, <mapref>, <navref>\n\nInteraction with @format:\n- scope='local' + format='dita' — normal internal reference (default)\n- scope='external' + format='html' — external web link\n- scope='peer' + format='ditamap' — cross-deliverable map (with keyscope)\n\nInteraction with @keyscope (peer maps):\n```xml\n<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" keyscope=\"book-b\" format=\"ditamap\"/>\n<xref keyref=\"book-b.install-topic\">See installation in Book B</xref>\n```\n\nTest data scenarios for @scope:\n```xml\n<map>\n  <title>Test: @scope attribute coverage</title>\n  <topicref href=\"local-topic.dita\" scope=\"local\"/>\n  <topicref href=\"https://example.com/docs.html\" scope=\"external\" format=\"html\"/>\n  <topicref href=\"../other-guide/guide.ditamap\" scope=\"peer\" format=\"ditamap\" keyscope=\"other-guide\"/>\n  <topicref href=\"../other-guide/install.dita\" scope=\"peer\"/>\n  <topicref href=\"topic-a.dita\"/>  <!-- defaults to local -->\n  <topicref href=\"https://example.com/api\" format=\"html\"/>  <!-- defaults to external -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"local\": \"part of current content set (default for relative URIs)\", \"peer\": \"in collection but possibly unavailable during processing\", \"external\": \"not part of current content set (default for http/https)\", \"-dita-use-conref-target\": \"inherit from conref source\"}",
+    "usage_contexts": [
+      "scope='local' — default for relative hrefs, topic in same deliverable",
+      "scope='external' — links to web pages, PDFs outside content set",
+      "scope='peer' — cross-deliverable links, peer map with keyscope"
+    ],
+    "common_mistakes": [
+      "Using scope='external' for topics in the same content set",
+      "Using scope='peer' without keyscope for map references",
+      "Assuming scope='peer' resources are available during processing"
+    ],
+    "correct_examples": [
+      "<topicref href=\"install.dita\" scope=\"local\"/>",
+      "<topicref href=\"https://docs.example.com/api.html\" scope=\"external\" format=\"html\"/>",
+      "<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" format=\"ditamap\" keyscope=\"book-b\"/>"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "local",
+        "peer",
+        "external"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keydef",
+        "mapref"
+      ],
+      "combination_attributes": [
+        "format",
+        "href",
+        "keyscope"
+      ],
+      "default_scenarios": [
+        "omitted on relative href",
+        "omitted on http URL"
+      ]
+    }
+  },
+  {
+    "element_name": "type_attribute",
+    "content_type": "attribute",
+    "text_content": "The @type attribute on linking elements describes the target of the reference. Defined in OASIS DITA 1.3.\n\nValid values on <xref> (can link below topic level):\n- fig, fn, li, section, table — target element types\n- Qualified names: 'topic/fig', 'task/step', etc.\n\nValid values on <topicref>, <link> (topic-level only):\n- topic (default fallback), concept, task, reference\n\nDefault cascading: ancestor -> auto-detect from target -> fallback 'topic'.\nProcessing: mismatch warning + auto-correct.\n\nTest data scenarios:\n```xml\n<map>\n  <topicref href=\"overview.dita\" type=\"concept\"/>\n  <topicref href=\"install.dita\" type=\"task\"/>\n  <topicref href=\"api-ref.dita\" type=\"reference\"/>\n  <topicref href=\"generic.dita\"/>  <!-- defaults to topic -->\n</map>\n<body>\n  <p>See <xref href=\"overview.dita#overview/fig-arch\" type=\"fig\">diagram</xref>.</p>\n  <p>Refer to <xref href=\"api-ref.dita#api/params\" type=\"table\">params</xref>.</p>\n  <p>Check <xref href=\"install.dita#install/prereqs\" type=\"section\">prereqs</xref>.</p>\n</body>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"topic\": \"generic topic (default)\", \"concept\": \"concept topic\", \"task\": \"task topic\", \"reference\": \"reference topic\", \"fig\": \"figure (xref only)\", \"fn\": \"footnote (xref only)\", \"section\": \"section (xref only)\", \"table\": \"table (xref only)\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "topic",
+        "concept",
+        "task",
+        "reference",
+        "fig",
+        "fn",
+        "li",
+        "section",
+        "table"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link"
+      ],
+      "combination_attributes": [
+        "href",
+        "scope",
+        "format"
+      ],
+      "default_scenarios": [
+        "omitted (auto-detect)",
+        "mismatched type"
+      ]
+    }
+  },
+  {
+    "element_name": "uri_based_addressing",
+    "content_type": "attribute",
+    "text_content": "URI-based addressing in DITA uses @href, @conref, and similar attributes. Defined in OASIS DITA 1.3.\n\nHref syntax patterns:\n1. Whole file: href=\"file.dita\" — first topic in file\n2. Specific topic: href=\"file.dita#topicid\"\n3. Non-topic element: href=\"file.dita#topicid/elementid\" — MUST include both IDs\n4. Same-topic shorthand: href=\"#./elementid\" — current topic only, not in maps\n5. Same-file topic: href=\"#topicid\" — fragment-only URI\n6. Map element: href=\"file.ditamap#mapid\" — #. shorthand does NOT work for maps\n7. External: href=\"https://example.com\" — implies scope='external' format='html'\n\nConref addressing: conref=\"file.dita#topicid/elementid\" — MUST use topicid/elementid\n\nDefaults: relative href -> format from extension, scope='local'; http href -> format='html', scope='external'\n\nTest data:\n```xml\n<map>\n  <topicref href=\"topic-a.dita\"/>  <!-- whole file -->\n  <topicref href=\"multi.dita#second-topic\"/>  <!-- specific topic -->\n  <topicref href=\"sub.ditamap#section\" format=\"ditamap\"/>  <!-- map element -->\n  <topicref href=\"https://example.com\" scope=\"external\" format=\"html\"/>  <!-- external -->\n</map>\n<concept id=\"demo\"><title>Demo</title><conbody>\n  <p>See <xref href=\"ref.dita#ref/params\" type=\"table\">params</xref>.</p>\n  <p>See <xref href=\"#./my-fig\" type=\"fig\">figure below</xref>.</p>\n  <note conref=\"shared.dita#shared/important-note\">placeholder</note>\n</conbody></concept>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"href\": \"URI reference to target\", \"conref\": \"URI for content reuse (topicid/elementid)\", \"conkeyref\": \"key-based content reference (keyname/elementid)\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "whole-file",
+        "topic-fragment",
+        "element-fragment",
+        "same-topic-shorthand",
+        "map-element",
+        "external-uri"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "conref"
+      ],
+      "combination_attributes": [
+        "format",
+        "scope",
+        "type"
+      ]
+    }
+  },
+  {
+    "element_name": "keys_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keys attribute defines one or more key names for a resource. Used on <topicref>, <keydef>, and specializations in DITA maps.\n\nSyntax: One or more space-separated key names.\nExample: keys=\"install install-topic setup\" defines 3 keys for the same resource.\n\nNaming rules:\n- Case-sensitive: 'Install' and 'install' are different keys\n- Legal characters: same as URI characters\n- Prohibited: { } [ ] / # ? and whitespace (except as separator)\n\nIMPORTANT: The attribute name is keys (PLURAL), NOT key.\n- WRONG: <topicref href=\"t.dita\" key=\"mykey\"/>\n- CORRECT: <topicref href=\"t.dita\" keys=\"mykey\"/>\n\nKey definitions bind key names to:\n1. URI-addressed resources via @href\n2. Metadata content in child <topicmeta> (variable text)\n3. Both simultaneously\n4. Nothing (valid but empty key definition)\n\nPrecedence when duplicate keys exist:\n1. First definition in breadth-first map traversal wins\n2. Parent scope definitions override child scope definitions\n3. All key spaces resolved BEFORE any key reference processing\n\nTest data scenarios:\n```xml\n<map>\n  <!-- Single key -->\n  <keydef keys=\"product-name\">\n    <topicmeta><keywords><keyword>AEM Guides</keyword></keywords></topicmeta>\n  </keydef>\n  <!-- Multiple keys for same resource -->\n  <keydef keys=\"install setup getting-started\" href=\"install.dita\"/>\n  <!-- Key on topicref (visible in TOC + defines key) -->\n  <topicref href=\"config.dita\" keys=\"configuration\"/>\n  <!-- Key for external resource -->\n  <keydef keys=\"api-docs\" href=\"https://api.example.com\" format=\"html\" scope=\"external\"/>\n  <!-- Key for PDF -->\n  <keydef keys=\"user-guide-pdf\" href=\"guide.pdf\" format=\"pdf\" scope=\"local\"/>\n  <!-- Empty key (placeholder, overridden by parent map) -->\n  <keydef keys=\"brand-name\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keys\": \"space-separated key names (PLURAL, not key)\"}",
+    "usage_contexts": [
+      "keydef keys='product-name' — variable text key",
+      "keydef keys='install' href='install.dita' — topic key",
+      "topicref keys='config' href='config.dita' — visible + keyed",
+      "keydef keys='api' href='https://...' format='html' scope='external' — external key"
+    ],
+    "common_mistakes": [
+      "Using key= (singular) instead of keys= (PLURAL)",
+      "Forgetting keys are case-sensitive",
+      "Not understanding first-definition-wins precedence"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "single-key",
+        "multiple-keys",
+        "variable-text-key",
+        "topic-key",
+        "external-key",
+        "empty-key",
+        "override-key"
+      ],
+      "supported_elements": [
+        "keydef",
+        "topicref"
+      ],
+      "combination_attributes": [
+        "href",
+        "format",
+        "scope",
+        "keyscope"
+      ]
+    }
+  },
+  {
+    "element_name": "keyref_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keyref attribute provides indirect, late-bound references to resources defined by keys.\n\nSyntax forms:\n1. Simple: keyref=\"keyname\" — resolves to the key's href target\n2. Element-specific: keyref=\"keyname/elementid\" — resolves to element within key's target\n\nElements that support @keyref:\n- <topicref keyref=\"...\"> — indirect topic reference in map\n- <xref keyref=\"...\"> — indirect cross-reference in topic\n- <link keyref=\"...\"> — indirect related link\n- <keyword keyref=\"...\"> — variable text substitution\n- <term keyref=\"...\"> — glossary term reference\n- <image keyref=\"...\"> — indirect image reference\n- <ph keyref=\"...\"> — phrase-level variable text\n\nInteraction with @href:\n- If both keyref and href are specified, keyref takes precedence\n- href acts as fallback if key is undefined\n\nVariable text substitution:\nWhen keyref points to a key with <topicmeta>/<keywords>/<keyword>, the keyword text replaces the element content.\n\nTest data:\n```xml\n<map>\n  <keydef keys=\"product\" href=\"product-info.dita\">\n    <topicmeta><keywords><keyword>AEM Guides</keyword></keywords></topicmeta>\n  </keydef>\n  <keydef keys=\"api-ref\" href=\"https://api.example.com\" format=\"html\" scope=\"external\"/>\n  <topicref keyref=\"product\"/>  <!-- indirect topic reference -->\n</map>\n\n<!-- In topic body -->\n<p>Welcome to <keyword keyref=\"product\"/>.</p>  <!-- resolves to 'AEM Guides' -->\n<p>See <xref keyref=\"api-ref\">API documentation</xref>.</p>\n<p>See <xref keyref=\"product/install-section\" type=\"section\">install</xref>.</p>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keyref\": \"keyname or keyname/elementid\"}",
+    "usage_contexts": [
+      "topicref keyref='key' — indirect topic reference",
+      "xref keyref='key' — indirect cross-reference",
+      "keyword keyref='key' — variable text substitution",
+      "image keyref='key' — indirect image reference"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "simple-keyref",
+        "element-keyref",
+        "variable-text",
+        "fallback-href",
+        "undefined-key"
+      ],
+      "supported_elements": [
+        "topicref",
+        "xref",
+        "link",
+        "keyword",
+        "term",
+        "image",
+        "ph"
+      ],
+      "combination_attributes": [
+        "href",
+        "type",
+        "format"
+      ]
+    }
+  },
+  {
+    "element_name": "keyscope_attribute",
+    "content_type": "attribute",
+    "text_content": "The @keyscope attribute creates a named scope for key definitions. Defined in OASIS DITA 1.3.\n\nPurpose: Allows different branches of a map to define different values for the same key name.\n\nSyntax: One or more space-separated scope names (same naming rules as keys).\n\nHow scopes work:\n- Each scope has its own key space for resolution\n- Keys in a scope are accessed from outside via scope-qualified names: scope.keyname\n- The root map always defines an implicit (unnamed) scope\n- Nested scopes: inner scope can override outer scope keys\n\nCross-deliverable linking with keyscope + scope='peer':\n```xml\n<!-- In book-a's map: reference book-b as peer -->\n<topicref href=\"../book-b/book-b.ditamap\" scope=\"peer\" \n         keyscope=\"book-b\" format=\"ditamap\"/>\n<!-- In topic: link to book-b's install topic -->\n<xref keyref=\"book-b.install\">See Book B installation</xref>\n```\n\nVariable text per scope (same key, different values):\n```xml\n<map>\n  <!-- Windows scope -->\n  <topicref keyscope=\"windows\">\n    <keydef keys=\"os-name\">\n      <topicmeta><keywords><keyword>Windows</keyword></keywords></topicmeta>\n    </keydef>\n    <topicref href=\"install.dita\"/>  <!-- uses 'Windows' for os-name -->\n  </topicref>\n  <!-- Linux scope -->\n  <topicref keyscope=\"linux\">\n    <keydef keys=\"os-name\">\n      <topicmeta><keywords><keyword>Linux</keyword></keywords></topicmeta>\n    </keydef>\n    <topicref href=\"install.dita\"/>  <!-- uses 'Linux' for os-name -->\n  </topicref>\n</map>\n```\n\nConref redirection with keys:\n```xml\n<!-- conkeyref allows map-level control over reused content -->\n<note conkeyref=\"reuse/warning-1\">placeholder</note>\n<!-- Map defines which reuse topic provides the content: -->\n<keydef keys=\"reuse\" href=\"acme-reuse.dita\"/>\n<!-- Partner map overrides: -->\n<keydef keys=\"reuse\" href=\"partner-reuse.dita\"/>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"keyscope\": \"space-separated scope names\"}",
+    "usage_contexts": [
+      "keyscope on topicref — creates named scope for branch",
+      "keyscope + scope='peer' — cross-deliverable linking",
+      "nested keyscopes — scope overrides within branches",
+      "scope-qualified key: scope.keyname — access key from outside scope"
+    ],
+    "common_mistakes": [
+      "Forgetting to qualify key names when accessing from outside scope (use scope.keyname)",
+      "Not understanding that root map always has an implicit scope",
+      "Using keyscope on peer map root (ignored by referencing map)"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "single-scope",
+        "multiple-scope-names",
+        "nested-scopes",
+        "peer-scope",
+        "variable-text-per-scope"
+      ],
+      "supported_elements": [
+        "topicref",
+        "map"
+      ],
+      "combination_attributes": [
+        "scope",
+        "keys",
+        "format"
+      ],
+      "default_scenarios": [
+        "no keyscope (implicit root scope)",
+        "scope-qualified key reference"
+      ]
+    }
+  },
+  {
+    "element_name": "conkeyref_attribute",
+    "content_type": "attribute",
+    "text_content": "The @conkeyref attribute provides key-based content reuse (conref redirection).\n\nSyntax: conkeyref=\"keyname/elementid\"\n- keyname — resolves to a topic via key definition\n- elementid — the @id of the element to reuse from that topic\n- MUST have both parts separated by /\n\nWRONG: conkeyref=\"keyname\" (missing /elementid)\nCORRECT: conkeyref=\"reuse/warning-note\"\n\nHow it works:\n1. Processor resolves 'keyname' to a topic file via map's key definition\n2. Within that topic, finds element with id='elementid'\n3. Copies that element's content into the referencing location\n\nAdvantage over @conref:\n- Map-level control: change which file provides content by changing key definition\n- Portable: topics don't hardcode file paths\n- Enables variant publishing (different maps -> different content)\n\nTest data:\n```xml\n<!-- Map with key definition -->\n<map>\n  <keydef keys=\"shared-warnings\" href=\"warnings-en.dita\"/>\n  <topicref href=\"install.dita\"/>\n</map>\n\n<!-- warnings-en.dita (source of reusable content) -->\n<topic id=\"warnings\">\n  <title>Warnings</title>\n  <body>\n    <note id=\"backup-warning\" type=\"caution\">Back up before proceeding.</note>\n    <p id=\"prereq-text\">Ensure you have admin privileges.</p>\n  </body>\n</topic>\n\n<!-- install.dita (uses conkeyref) -->\n<task id=\"install\">\n  <title>Install</title>\n  <taskbody>\n    <prereq>\n      <note conkeyref=\"shared-warnings/backup-warning\">placeholder</note>\n      <p conkeyref=\"shared-warnings/prereq-text\">placeholder</p>\n    </prereq>\n  </taskbody>\n</task>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"conkeyref\": \"keyname/elementid (MUST have both parts)\"}",
+    "usage_contexts": [
+      "conkeyref='key/id' on <note> — reuse a note via key",
+      "conkeyref='key/id' on <p> — reuse a paragraph via key",
+      "conkeyref='key/id' on <step> — reuse a step via key",
+      "variant publishing — different maps point key to different source files"
+    ],
+    "common_mistakes": [
+      "Missing /elementid (conkeyref='keyname' is WRONG)",
+      "Target element missing @id attribute",
+      "Element type mismatch between source and reference",
+      "Using conref when conkeyref is available (prefer key-based)"
+    ],
+    "test_data_coverage": {
+      "all_values": [
+        "note-conkeyref",
+        "paragraph-conkeyref",
+        "step-conkeyref",
+        "variant-publishing",
+        "fallback-conref"
+      ],
+      "supported_elements": [
+        "note",
+        "p",
+        "step",
+        "li",
+        "ph",
+        "keyword",
+        "any-element-with-id"
+      ],
+      "combination_attributes": [
+        "keys",
+        "keydef",
+        "href"
+      ]
+    }
+  },
+  {
+    "element_name": "processing_role_attribute",
+    "content_type": "attribute",
+    "text_content": "The @processing-role attribute controls whether a referenced topic contributes to navigation output.\n\nValid values:\n- normal (default) — topic appears in TOC and output.\n- resource-only — available for conref/keyref but excluded from TOC/output.\n\nUse cases: conref warehouse, key definitions, shared variables.\n<keydef> implicitly has processing-role='resource-only'.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"visible.dita\" processing-role=\"normal\"/>\n  <topicref href=\"reusable.dita\" processing-role=\"resource-only\"/>\n  <topicref href=\"default.dita\"/>  <!-- defaults to normal -->\n  <keydef keys=\"product\" href=\"vars.dita\"/>  <!-- implicit resource-only -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"normal\": \"appears in TOC/output (default)\", \"resource-only\": \"reuse only, excluded from navigation\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "normal",
+        "resource-only"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "href",
+        "keys"
+      ],
+      "default_scenarios": [
+        "omitted (defaults to normal)",
+        "keydef (implicit resource-only)"
+      ]
+    }
+  },
+  {
+    "element_name": "linking_attribute",
+    "content_type": "attribute",
+    "text_content": "The @linking attribute controls automatic link generation for the referenced topic.\n\nValid values:\n- normal (default) — linked TO and generates outgoing links.\n- targetonly — can be linked TO but no outgoing links. Use for glossary/reference.\n- sourceonly — generates outgoing links but cannot be linked to. Use for hub pages.\n- none — no automatic links in either direction.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"main.dita\" linking=\"normal\"/>\n  <topicref href=\"glossary.dita\" linking=\"targetonly\"/>\n  <topicref href=\"hub.dita\" linking=\"sourceonly\"/>\n  <topicref href=\"legal.dita\" linking=\"none\"/>\n  <topicref href=\"regular.dita\"/>  <!-- defaults to normal -->\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"normal\": \"both directions (default)\", \"targetonly\": \"linkable, no outgoing\", \"sourceonly\": \"generates links, not linkable\", \"none\": \"no automatic links\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "normal",
+        "targetonly",
+        "sourceonly",
+        "none"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "collection-type",
+        "toc"
+      ]
+    }
+  },
+  {
+    "element_name": "toc_attribute",
+    "content_type": "attribute_group",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/toc.html",
+    "text_content": "The @toc attribute controls TOC visibility.\n\nValid values: yes (default) — in TOC; no — excluded from TOC.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"ch1.dita\" toc=\"yes\"/>\n  <topicref href=\"legal.dita\" toc=\"no\"/>\n  <topicref href=\"ch2.dita\"/>  <!-- defaults to yes -->\n  <topicref href=\"online-only.dita\" toc=\"no\" print=\"no\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"yes\": \"include in TOC (default)\", \"no\": \"exclude from TOC\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "yes",
+        "no"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "print",
+        "linking"
+      ]
+    }
+  },
+  {
+    "element_name": "print_attribute",
+    "content_type": "attribute",
+    "text_content": "The @print attribute controls print/PDF output inclusion.\n\nValid values:\n- yes — included in print output.\n- no — excluded from print/PDF.\n- printonly — included ONLY in print, excluded from web/Sites.\n\nTest data:\n```xml\n<map>\n  <topicref href=\"ch1.dita\" print=\"yes\"/>\n  <topicref href=\"demo.dita\" print=\"no\"/>\n  <topicref href=\"isbn.dita\" print=\"printonly\"/>\n  <topicref href=\"ch2.dita\"/>  <!-- included in all -->\n  <topicref href=\"widget.dita\" print=\"no\" toc=\"no\"/>\n</map>\n```",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"yes\": \"include in print\", \"no\": \"exclude from print\", \"printonly\": \"print only, exclude from web\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "yes",
+        "no",
+        "printonly"
+      ],
+      "supported_elements": [
+        "topicref"
+      ],
+      "combination_attributes": [
+        "toc",
+        "linking"
+      ]
+    }
   },
   {
     "element_name": "collection-type",
@@ -1716,6 +2237,7 @@
   {
     "element_name": "backmatter",
     "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/backmatter.html",
     "text_content": "<backmatter> contains the back-of-book material in a <bookmap>.\n\nWhat is <backmatter>?\nIt's the container for all content that appears after the last chapter: appendixes, glossary, index, and other end-of-book sections.\n\nStructure:\n```xml\n<bookmap>\n  <booktitle>...</booktitle>\n  <frontmatter>...</frontmatter>\n  <chapter href=\"chapter1.dita\"/>\n  <chapter href=\"chapter2.dita\"/>\n  <backmatter>\n    <appendix href=\"appendix-a.dita\"/>\n    <appendix href=\"appendix-b.dita\"/>\n    <booklists>\n      <glossarylist href=\"glossary.ditamap\"/>\n      <indexlist/>        <!-- Generated index -->\n    </booklists>\n  </backmatter>\n</bookmap>\n```\n\nCommon children:\n- <appendix> — appendix topics/maps\n- <booklists> — generated lists (glossary, index)\n- <topicref> — any additional back matter topics\n- <colophon> — publication details\n\nCommon mistakes:\n- Placing <appendix> outside <backmatter> — it should be inside backmatter for proper book structure.\n- Forgetting <indexlist/> — without it, indexterms in your topics won't generate an index.\n\nIn AEM Guides:\n- PDF Output (Native): Backmatter elements use specific page layouts (appendix, glossary, index pages).\n- Sites Output: Backmatter content appears as end-of-publication pages.\n- Web Editor: Visible in Map View with proper nesting under backmatter.",
     "parent_element": "bookmap",
     "children_elements": "[\"appendix\", \"booklists\", \"topicref\", \"colophon\"]",
@@ -1740,10 +2262,91 @@
   {
     "element_name": "appendix",
     "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/appendix.html",
     "text_content": "<appendix> defines an appendix in a <bookmap>. It goes inside <backmatter>.\n\nWhat is <appendix>?\nIt's a topicref specialization for supplementary content at the end of a book. Appendixes use letter-based numbering (Appendix A, Appendix B) in most output formats.\n\nExample:\n```xml\n<backmatter>\n  <appendix href=\"appendix-a-shortcuts.dita\">\n    <topicref href=\"editor-shortcuts.dita\"/>\n    <topicref href=\"review-shortcuts.dita\"/>\n  </appendix>\n  <appendix href=\"appendix-b-migration.dita\"/>\n  <booklists>\n    <glossarylist href=\"glossary.ditamap\"/>\n    <indexlist/>\n  </booklists>\n</backmatter>\n```\n\nIn AEM Guides:\n- PDF Output (Native): Appendixes are numbered with letters (A, B, C) and start on new pages per the PDF template.\n- Sites Output: Appendixes appear in the navigation after the main chapters.",
     "parent_element": "backmatter",
     "children_elements": "[\"topicref\"]",
     "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}"
+  },
+  {
+    "element_name": "appendices",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/appendices.html",
+    "text_content": "<appendices> groups one or more <appendix> entries in a <bookmap>.\n\nWhat is <appendices>?\nIt is a bookmap container for appendix material. Use it when the book has a dedicated appendix section after the main chapters. Individual <appendix> children reference the actual appendix topics or nested appendix structure.\n\nExample:\n```xml\n<bookmap id=\"admin-guide\">\n  <booktitle><mainbooktitle>Administrator Guide</mainbooktitle></booktitle>\n  <chapter href=\"installing.dita\"/>\n  <appendices>\n    <appendix href=\"appendix-a-reference.dita\"/>\n    <appendix href=\"appendix-b-troubleshooting.dita\"/>\n  </appendices>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <appendices> in a regular <map>; it is a bookmap structure.\n- Putting normal chapters under <appendices> instead of <appendix> entries.\n- Confusing the <appendices> container with an individual <appendix> topic reference.",
+    "parent_element": "bookmap",
+    "children_elements": "[\"appendix\"]",
+    "attributes": "{}",
+    "usage_contexts": [
+      "Bookmap appendix grouping",
+      "Use for a dedicated appendix section after chapters"
+    ],
+    "common_mistakes": [
+      "Using <appendices> in a regular map",
+      "Putting <chapter> directly inside <appendices>"
+    ],
+    "correct_examples": [
+      "<bookmap><appendices><appendix href=\"appendix-a.dita\"/></appendices></bookmap>"
+    ]
+  },
+  {
+    "element_name": "abbrevlist",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/abbrevlist.html",
+    "text_content": "<abbrevlist> identifies the location of an abbreviation list in a bookmap.\n\nWhat is <abbrevlist>?\nIt is a bookmap list element, typically used inside <booklists>, for placing or referencing a list of abbreviations. Like other booklist entries, it belongs to book-oriented map structure rather than standalone topic body content.\n\nExample:\n```xml\n<bookmap id=\"product-guide\">\n  <booktitle><mainbooktitle>Product Guide</mainbooktitle></booktitle>\n  <frontmatter>\n    <booklists>\n      <toc/>\n      <abbrevlist href=\"abbreviations.dita\"/>\n    </booklists>\n  </frontmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Treating <abbrevlist> as a topic body element.\n- Placing <abbrevlist> directly in a normal <map> instead of bookmap list structure.",
+    "parent_element": "booklists",
+    "children_elements": "[]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Generated or referenced abbreviation list in a bookmap",
+      "Typically placed under <booklists>"
+    ],
+    "common_mistakes": [
+      "Using <abbrevlist> as topic content",
+      "Using <abbrevlist> outside bookmap list structure"
+    ],
+    "correct_examples": [
+      "<frontmatter><booklists><abbrevlist href=\"abbreviations.dita\"/></booklists></frontmatter>"
+    ]
+  },
+  {
+    "element_name": "amendments",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/amendments.html",
+    "text_content": "<amendments> identifies the location of amendment information in a bookmap.\n\nWhat is <amendments>?\nIt is a bookmap-oriented list/reference element used for amendment material, usually as part of generated or referenced book lists. It is map structure, not body content inside a topic.\n\nExample:\n```xml\n<bookmap id=\"policy-book\">\n  <booktitle><mainbooktitle>Policy Manual</mainbooktitle></booktitle>\n  <frontmatter>\n    <booklists>\n      <toc/>\n      <amendments href=\"amendments.dita\"/>\n    </booklists>\n  </frontmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Rendering amendment text directly inside <amendments> instead of linking/referencing the amendment topic.\n- Using <amendments> in a normal map where bookmap list semantics are not available.",
+    "parent_element": "booklists",
+    "children_elements": "[]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Bookmap amendment list/reference",
+      "Typically placed under <booklists>"
+    ],
+    "common_mistakes": [
+      "Using <amendments> as topic body content",
+      "Using <amendments> outside bookmap list structure"
+    ],
+    "correct_examples": [
+      "<frontmatter><booklists><amendments href=\"amendments.dita\"/></booklists></frontmatter>"
+    ]
+  },
+  {
+    "element_name": "bibliolist",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/bibliolist.html",
+    "text_content": "<bibliolist> identifies the location of a bibliography list in a bookmap.\n\nWhat is <bibliolist>?\nIt is a bookmap list/reference element used for bibliography material. It normally appears in <booklists>, often in back matter, and points to or reserves a generated bibliography list.\n\nExample:\n```xml\n<bookmap id=\"research-guide\">\n  <booktitle><mainbooktitle>Research Guide</mainbooktitle></booktitle>\n  <backmatter>\n    <booklists>\n      <bibliolist href=\"bibliography.dita\"/>\n      <indexlist/>\n    </booklists>\n  </backmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <bibliolist> as a replacement for citation markup inside topics.\n- Placing bibliography list structure in a normal topic instead of bookmap back matter.",
+    "parent_element": "booklists",
+    "children_elements": "[]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Bookmap bibliography list/reference",
+      "Commonly placed under <booklists> in <backmatter>"
+    ],
+    "common_mistakes": [
+      "Using <bibliolist> as topic body content",
+      "Using <bibliolist> instead of citation markup inside topics"
+    ],
+    "correct_examples": [
+      "<backmatter><booklists><bibliolist href=\"bibliography.dita\"/></booklists></backmatter>"
+    ]
   },
   {
     "element_name": "bookmeta",
@@ -1756,14 +2359,176 @@
   {
     "element_name": "booktitle",
     "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/booktitle.html",
     "text_content": "<booktitle> provides the structured title of a bookmap.\n\nWhat is <booktitle>?\nUnlike a simple <title>, <booktitle> allows structured title components: main title, subtitle, and alternate title. It replaces <title> as the first child of <bookmap>.\n\nExample:\n```xml\n<bookmap>\n  <booktitle>\n    <booklibrary>Adobe Experience Manager</booklibrary>\n    <mainbooktitle>AEM Guides User Guide</mainbooktitle>\n    <booktitlealt>For Content Authors and Administrators</booktitlealt>\n  </booktitle>\n  <bookmeta>...</bookmeta>\n</bookmap>\n```\n\nChildren:\n- <booklibrary> — the product or library name (e.g., 'Adobe Experience Manager')\n- <mainbooktitle> — the primary book title (required)\n- <booktitlealt> — subtitle or alternative title\n\nCommon mistakes:\n- Using <title> instead of <booktitle> in a bookmap — <title> works but you lose the structured title components.\n\nIn AEM Guides:\n- PDF Output: The structured title components are placed on the title page layout. <booklibrary> appears above the main title; <booktitlealt> below.\n- Web Editor: The bookmap title is shown in the Map View and Repository panels.",
     "parent_element": "bookmap",
     "children_elements": "[\"booklibrary\", \"mainbooktitle\", \"booktitlealt\"]",
     "attributes": "{}"
   },
   {
+    "element_name": "bookabstract",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/bookabstract.html",
+    "text_content": "<bookabstract> provides abstract or summary content for a bookmap.\n\nWhat is <bookabstract>?\nIt is book-level summary text used in bookmap metadata/front matter contexts. Use it to capture a concise description of the book, not as a replacement for topic-level <abstract> or <shortdesc>.\n\nExample:\n```xml\n<bookmap id=\"admin-guide\">\n  <booktitle><mainbooktitle>Administrator Guide</mainbooktitle></booktitle>\n  <bookmeta>\n    <bookabstract>\n      <p>This guide explains installation, configuration, and administration tasks.</p>\n    </bookabstract>\n  </bookmeta>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <bookabstract> inside a normal topic.\n- Treating <bookabstract> as a chapter or topicref; it is book metadata/summary content.",
+    "parent_element": "bookmeta",
+    "children_elements": "[\"p\"]",
+    "attributes": "{}",
+    "usage_contexts": [
+      "Book-level summary or abstract in a bookmap",
+      "Use in book metadata/front-matter contexts"
+    ],
+    "common_mistakes": [
+      "Using <bookabstract> as topic body content",
+      "Using <bookabstract> instead of topic-level <abstract>"
+    ],
+    "correct_examples": [
+      "<bookmeta><bookabstract><p>Overview of the book.</p></bookabstract></bookmeta>"
+    ]
+  },
+  {
+    "element_name": "booklibrary",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/booklibrary.html",
+    "text_content": "<booklibrary> identifies the library, series, product family, or collection for a book title.\n\nWhat is <booklibrary>?\nIt is a child of <booktitle> that appears before the main book title. Use it for the product/library name that groups the publication.\n\nExample:\n```xml\n<booktitle>\n  <booklibrary>Adobe Experience Manager</booklibrary>\n  <mainbooktitle>AEM Guides User Guide</mainbooktitle>\n  <booktitlealt>For Authors and Administrators</booktitlealt>\n</booktitle>\n```\n\nCommon mistakes:\n- Using <booklibrary> directly under <bookmap> instead of inside <booktitle>.\n- Putting the primary book title in <booklibrary>; use <mainbooktitle> for the main title.",
+    "parent_element": "booktitle",
+    "children_elements": "[]",
+    "attributes": "{}",
+    "usage_contexts": [
+      "Book title metadata",
+      "Use for product family, library, or publication series"
+    ],
+    "common_mistakes": [
+      "Using <booklibrary> outside <booktitle>",
+      "Using <booklibrary> instead of <mainbooktitle>"
+    ],
+    "correct_examples": [
+      "<booktitle><booklibrary>Product Docs</booklibrary><mainbooktitle>User Guide</mainbooktitle></booktitle>"
+    ]
+  },
+  {
+    "element_name": "booktitlealt",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/booktitlealt.html",
+    "text_content": "<booktitlealt> provides an alternate or subtitle-style title in a bookmap title.\n\nWhat is <booktitlealt>?\nIt is a child of <booktitle> used for alternate title text, subtitles, audience qualifiers, or edition information. It supplements <mainbooktitle> rather than replacing it.\n\nExample:\n```xml\n<booktitle>\n  <mainbooktitle>Developer Guide</mainbooktitle>\n  <booktitlealt>Cloud Service Edition</booktitlealt>\n</booktitle>\n```\n\nCommon mistakes:\n- Using <booktitlealt> without a <mainbooktitle>.\n- Placing <booktitlealt> outside <booktitle>.",
+    "parent_element": "booktitle",
+    "children_elements": "[]",
+    "attributes": "{}",
+    "usage_contexts": [
+      "Book subtitle or alternate title",
+      "Supplemental book title metadata"
+    ],
+    "common_mistakes": [
+      "Using <booktitlealt> outside <booktitle>",
+      "Using <booktitlealt> as the only book title"
+    ],
+    "correct_examples": [
+      "<booktitle><mainbooktitle>Developer Guide</mainbooktitle><booktitlealt>Cloud Edition</booktitlealt></booktitle>"
+    ]
+  },
+  {
+    "element_name": "booklist",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/booklist.html",
+    "text_content": "<booklist> is a generic generated-list placeholder in bookmap list structure.\n\nWhat is <booklist>?\nIt represents a book-oriented list entry. Use the more specific list elements such as <toc>, <figurelist>, <tablelist>, <abbrevlist>, <bibliolist>, or <indexlist> when the list type is known.\n\nExample:\n```xml\n<frontmatter>\n  <booklists>\n    <booklist navtitle=\"Generated list\"/>\n  </booklists>\n</frontmatter>\n```\n\nCommon mistakes:\n- Using <booklist> for normal unordered or ordered lists in topics.\n- Choosing generic <booklist> when a specific generated-list element is available.",
+    "parent_element": "booklists",
+    "children_elements": "[]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Generic generated-list placeholder in bookmaps",
+      "Use under <booklists> when no more specific list element applies"
+    ],
+    "common_mistakes": [
+      "Using <booklist> as topic body content",
+      "Using <booklist> instead of <ul>, <ol>, or <sl>"
+    ],
+    "correct_examples": [
+      "<frontmatter><booklists><booklist navtitle=\"Generated list\"/></booklists></frontmatter>"
+    ]
+  },
+  {
+    "element_name": "figurelist",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/figurelist.html",
+    "text_content": "<figurelist> identifies the location of a generated list of figures in a bookmap.\n\nWhat is <figurelist>?\nIt is a bookmap list element, typically placed inside <booklists>, that tells the processor where to generate or reference the list of figures for a book-style publication.\n\nExample:\n```xml\n<bookmap id=\"product-book\">\n  <booktitle><mainbooktitle>Product Book</mainbooktitle></booktitle>\n  <frontmatter>\n    <booklists>\n      <toc/>\n      <figurelist/>\n    </booklists>\n  </frontmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <figurelist> as normal topic body content.\n- Placing <figurelist> outside <booklists> when bookmap list semantics are intended.",
+    "parent_element": "booklists",
+    "children_elements": "[]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Generated list of figures in a bookmap",
+      "Usually placed in <booklists> within <frontmatter>"
+    ],
+    "common_mistakes": [
+      "Using <figurelist> as topic body content",
+      "Using <figurelist> outside bookmap list structure"
+    ],
+    "correct_examples": [
+      "<frontmatter><booklists><figurelist/></booklists></frontmatter>"
+    ]
+  },
+  {
+    "element_name": "dedication",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/dedication.html",
+    "text_content": "<dedication> identifies dedication content in a bookmap.\n\nWhat is <dedication>?\nIt is a bookmap frontmatter element, specialized from topicref, that references dedication material for a book-style publication. It belongs in book front matter rather than in a normal topic body.\n\nExample:\n```xml\n<bookmap id=\"product-book\">\n  <booktitle><mainbooktitle>Product Book</mainbooktitle></booktitle>\n  <frontmatter>\n    <dedication href=\"dedication.dita\"/>\n  </frontmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <dedication> in a regular <map> instead of a <bookmap>.\n- Putting dedication prose directly under <bookmap>; reference a topic with @href instead.",
+    "parent_element": "frontmatter",
+    "children_elements": "[\"topicmeta\"]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Bookmap frontmatter dedication page",
+      "Use to reference dedication material in a formal book"
+    ],
+    "common_mistakes": [
+      "Using <dedication> as topic body content",
+      "Using <dedication> outside bookmap frontmatter"
+    ],
+    "correct_examples": [
+      "<frontmatter><dedication href=\"dedication.dita\"/></frontmatter>"
+    ]
+  },
+  {
+    "element_name": "colophon",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/colophon.html",
+    "text_content": "<colophon> identifies publication details in bookmap back matter.\n\nWhat is <colophon>?\nIt is a bookmap backmatter element, specialized from topicref, that references colophon material such as publication, production, or edition details. It is map structure, not standalone topic-body markup.\n\nExample:\n```xml\n<bookmap id=\"product-book\">\n  <booktitle><mainbooktitle>Product Book</mainbooktitle></booktitle>\n  <backmatter>\n    <colophon href=\"colophon.dita\"/>\n  </backmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Placing <colophon> in normal topic content.\n- Using <colophon> outside bookmap back matter when book-style publication semantics are required.",
+    "parent_element": "backmatter",
+    "children_elements": "[\"topicmeta\"]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Bookmap backmatter publication details",
+      "Use for colophon or edition-production material"
+    ],
+    "common_mistakes": [
+      "Using <colophon> as topic body content",
+      "Using <colophon> outside bookmap backmatter"
+    ],
+    "correct_examples": [
+      "<backmatter><colophon href=\"colophon.dita\"/></backmatter>"
+    ]
+  },
+  {
+    "element_name": "draftintro",
+    "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/draftintro.html",
+    "text_content": "<draftintro> identifies draft-introduction material in bookmap front matter.\n\nWhat is <draftintro>?\nIt is a bookmap frontmatter element, specialized from topicref, used to reference introductory material that applies to draft publications or draft review copies. It belongs in bookmap structure, not in topic body content.\n\nExample:\n```xml\n<bookmap id=\"review-book\">\n  <booktitle><mainbooktitle>Review Draft</mainbooktitle></booktitle>\n  <frontmatter>\n    <draftintro href=\"draft-introduction.dita\"/>\n  </frontmatter>\n</bookmap>\n```\n\nCommon mistakes:\n- Using <draftintro> in regular maps or topics.\n- Treating <draftintro> as an inline note instead of a frontmatter topic reference.",
+    "parent_element": "frontmatter",
+    "children_elements": "[\"topicmeta\"]",
+    "attributes": "{\"href\": \"optional\", \"navtitle\": \"optional\"}",
+    "usage_contexts": [
+      "Bookmap frontmatter draft introduction",
+      "Use for draft-review publication front matter"
+    ],
+    "common_mistakes": [
+      "Using <draftintro> as topic body content",
+      "Using <draftintro> outside bookmap frontmatter"
+    ],
+    "correct_examples": [
+      "<frontmatter><draftintro href=\"draft-introduction.dita\"/></frontmatter>"
+    ]
+  },
+  {
     "element_name": "booklists",
     "content_type": "element",
+    "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/booklists.html",
     "text_content": "<booklists> is a container for generated lists in a <bookmap>: table of contents, index, list of figures, list of tables, and glossary.\n\nWhat is <booklists>?\nIt holds placeholder elements that tell the processor where to generate automatic lists. It can appear in both <frontmatter> (for TOC, figure lists) and <backmatter> (for index, glossary).\n\nExample:\n```xml\n<!-- In frontmatter: TOC and list of figures -->\n<frontmatter>\n  <booklists>\n    <toc/>              <!-- Generated table of contents -->\n    <figurelist/>       <!-- Generated list of figures -->\n    <tablelist/>        <!-- Generated list of tables -->\n  </booklists>\n  <preface href=\"preface.dita\"/>\n</frontmatter>\n\n<!-- In backmatter: glossary and index -->\n<backmatter>\n  <appendix href=\"appendix-a.dita\"/>\n  <booklists>\n    <glossarylist href=\"glossary.ditamap\"/>\n    <indexlist/>        <!-- Generated index from indexterms -->\n  </booklists>\n</backmatter>\n```\n\nAvailable list elements:\n| Element | What it generates | Typical placement |\n|---------|-------------------|-------------------|\n| <toc/> | Table of Contents | frontmatter |\n| <figurelist/> | List of Figures | frontmatter |\n| <tablelist/> | List of Tables | frontmatter |\n| <indexlist/> | Back-of-book Index | backmatter |\n| <glossarylist> | Glossary | backmatter |\n\nIn AEM Guides:\n- PDF Output (Native): Each list type uses a dedicated page layout in the PDF template. The TOC, index, and other lists are auto-generated.\n- Sites Output: Lists are generated as navigational elements.",
     "parent_element": "frontmatter",
     "children_elements": "[\"toc\", \"figurelist\", \"tablelist\", \"indexlist\", \"glossarylist\"]",
@@ -2128,7 +2893,7 @@
   },
   {
     "element_name": "display_attributes",
-    "content_type": "attribute",
+    "content_type": "attribute_group",
     "text_content": "Display attributes control how elements are visually rendered in output. They apply primarily to block-level elements like <table>, <fig>, <lines>, <pre>, <codeblock>, and <simpletable>.\n\nThree display attributes:\n\n1. @expanse — controls horizontal placement/width:\n   - page — element stretches to page margins\n   - column — aligns with current column margin\n   - textline — aligns with text line margin (respects indentation)\n   - spread — renders across multi-page spreads\n   - -dita-use-conref-target — inherits from conref source\n   NOTE: For <table>, use @pgwide instead (1=page width, 0=column width).\n\n2. @frame — specifies border/lines around the element:\n   - all — full box border\n   - top — line before element\n   - bottom — line after element\n   - topbot — lines before and after\n   - sides — lines on left and right\n   - none — no border\n   - -dita-use-conref-target — inherits from conref source\n\n3. @scale — resizes font as percentage of normal text size:\n   Values: 50, 60, 70, 80, 90, 100, 110, 120, 140, 160, 180, 200\n   NOTE: Images inside scaled elements use their OWN scale property, not the parent's.\n\nExample — scaled table with frame:\n```xml\n<table frame=\"all\" scale=\"80\" pgwide=\"1\">\n  <title>API Endpoints (compact view)</title>\n  <tgroup cols=\"3\">\n    <colspec colname=\"method\" colwidth=\"1*\"/>\n    <colspec colname=\"path\" colwidth=\"2*\"/>\n    <colspec colname=\"desc\" colwidth=\"3*\"/>\n    <thead><row><entry>Method</entry><entry>Path</entry><entry>Description</entry></row></thead>\n    <tbody>\n      <row><entry>GET</entry><entry>/api/topics</entry><entry>List all topics</entry></row>\n      <row><entry>POST</entry><entry>/api/topics</entry><entry>Create a topic</entry></row>\n    </tbody>\n  </tgroup>\n</table>\n```\n\nExample — figure with frame and expanse:\n```xml\n<fig frame=\"topbot\" expanse=\"page\">\n  <title>Architecture Diagram</title>\n  <image href=\"images/architecture.png\" placement=\"break\"/>\n</fig>\n```\n\nExample — codeblock with frame:\n```xml\n<codeblock frame=\"all\" scale=\"90\" outputclass=\"language-xml\">\n&lt;topic id=\"example\"&gt;\n  &lt;title&gt;Example&lt;/title&gt;\n&lt;/topic&gt;\n</codeblock>\n```\n\nElements that accept display attributes: <table>, <fig>, <lines>, <pre>, <codeblock>, <screen>, <simpletable>, <syntaxdiagram>.\n\nIn AEM Guides:\n- PDF output: @frame renders as visible borders, @scale adjusts font size, @pgwide=1 makes tables span the full page.\n- Sites output: @frame maps to CSS border classes, @scale maps to font-size.\n- Web Editor: Frame and scale are editable in element properties panel.",
     "parent_element": null,
     "children_elements": null,
@@ -2149,11 +2914,17 @@
       "<table frame=\"all\" pgwide=\"1\"><tgroup cols=\"2\"><tbody><row><entry>A</entry><entry>B</entry></row></tbody></tgroup></table>",
       "<fig frame=\"topbot\" expanse=\"page\"><title>Diagram</title><image href=\"img.png\"/></fig>",
       "<codeblock frame=\"all\" scale=\"90\">code here</codeblock>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/displayAttributes.html#display-atts",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/displayAttributes.html#display-atts"
+    }
   },
   {
     "element_name": "date_attributes",
-    "content_type": "attribute",
+    "content_type": "attribute_group",
     "text_content": "@expiry and @golive are DITA date metadata attributes used in <prolog> metadata to track content lifecycle dates.\n\nTwo date attributes:\n\n1. @golive — the publication or general availability date. When the content is intended to go live / be published.\n   Format: YYYY-MM-DD (e.g., 2024-03-15)\n\n2. @expiry — the expiration or retirement date. When the content should be reviewed, refreshed, or retired.\n   Format: YYYY-MM-DD (e.g., 2025-03-15)\n\nThese attributes appear on metadata elements inside <prolog>, specifically on <created> and <revised> elements within <critdates>.\n\nExample — setting lifecycle dates:\n```xml\n<topic id=\"release-notes-4.3\" xml:lang=\"en-US\">\n  <title>Release Notes — Version 4.3</title>\n  <prolog>\n    <critdates>\n      <created date=\"2024-01-15\" golive=\"2024-02-01\" expiry=\"2025-02-01\"/>\n      <revised modified=\"2024-06-10\" golive=\"2024-06-15\" expiry=\"2025-06-15\"/>\n    </critdates>\n  </prolog>\n  <body>\n    <p>This document describes features in version 4.3.</p>\n  </body>\n</topic>\n```\n\nThe <critdates> (critical dates) element contains:\n- <created> — original creation date\n  - @date (required) — creation date\n  - @golive (optional) — intended publication date\n  - @expiry (optional) — expiration date\n- <revised> — revision dates (can have multiple)\n  - @modified (required) — last modification date\n  - @golive (optional) — publication date for this revision\n  - @expiry (optional) — expiration for this revision\n\nExample — multiple revisions:\n```xml\n<prolog>\n  <critdates>\n    <created date=\"2023-06-01\" golive=\"2023-07-01\"/>\n    <revised modified=\"2023-12-15\" golive=\"2024-01-01\" expiry=\"2024-12-31\"/>\n    <revised modified=\"2024-06-01\" golive=\"2024-07-01\" expiry=\"2025-06-30\"/>\n  </critdates>\n</prolog>\n```\n\nProcessing uses:\n- Content management systems can filter or flag expired content based on @expiry\n- Publishing workflows can schedule content release based on @golive\n- Reports can identify stale content approaching @expiry dates\n- Translation management can prioritize content by @golive urgency\n\nDate format: Always YYYY-MM-DD (ISO 8601). Year is 4 digits, month 01-12, day 01-31.\n\nIn AEM Guides: The Web Editor's Properties panel shows critdates fields. @expiry dates can drive content review workflows. Reports can filter by expiration to identify content needing refresh.",
     "parent_element": "critdates",
     "children_elements": null,
@@ -2173,11 +2944,17 @@
     "correct_examples": [
       "<prolog><critdates><created date=\"2024-01-15\" golive=\"2024-02-01\" expiry=\"2025-02-01\"/></critdates></prolog>",
       "<critdates><created date=\"2024-01-01\"/><revised modified=\"2024-06-15\" golive=\"2024-07-01\" expiry=\"2025-07-01\"/></critdates>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/dateAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/dateAttributes.html"
+    }
   },
   {
     "element_name": "link_relationship_attributes",
-    "content_type": "attribute",
+    "content_type": "attribute_group",
     "text_content": "Link relationship attributes control how DITA elements reference other resources. They appear on linking elements: <xref>, <link>, <topicref>, <navref>, <image>, <object>, and other elements that point to resources.\n\nFour link relationship attributes:\n\n1. @href — the reference to a target resource.\n   Formats:\n   - DITA topic: href=\"install.dita\" or href=\"install.dita#topicid\"\n   - DITA topic element: href=\"install.dita#topicid/elementid\"\n   - DITA map: href=\"guide.ditamap\"\n   - External URL: href=\"https://example.com/docs\"\n   - Non-DITA resource: href=\"readme.pdf\"\n\n2. @format — identifies the format of the referenced resource.\n   Common values:\n   - dita — DITA topic (default for .dita files)\n   - ditamap — DITA map\n   - html — HTML page\n   - pdf — PDF document\n   - txt — plain text\n   Cascading: @format inherits from ancestor elements in maps and related-links.\n\n3. @scope — indicates the relationship closeness between current document and target.\n   Values:\n   - local — target is part of the same deliverable/documentation set (default for DITA refs)\n   - peer — target is DITA content but in a different deliverable (linked at build time)\n   - external — target is outside the documentation set (URL opens in new window)\n   - -dita-use-conref-target — inherits from conref source\n\n4. @type — describes the target type for cross-references and navigation.\n   Common values: topic, concept, task, reference, fig, table, section, fn\n   Processors use this for link text generation and validation.\n\nExample — xref to another topic:\n```xml\n<xref href=\"install.dita\" type=\"task\">Installation steps</xref>\n```\n\nExample — topicref in a map:\n```xml\n<topicref href=\"chapter1.dita\" format=\"dita\" scope=\"local\" type=\"concept\"/>\n```\n\nExample — external link:\n```xml\n<xref href=\"https://docs.adobe.com/aem-guides\" format=\"html\" scope=\"external\">\n  AEM Guides Documentation\n</xref>\n```\n\nExample — PDF reference:\n```xml\n<xref href=\"whitepaper.pdf\" format=\"pdf\" scope=\"local\">Download whitepaper</xref>\n```\n\nExample — peer reference (different deliverable):\n```xml\n<topicref href=\"../admin-guide/security.dita\" scope=\"peer\" format=\"dita\"/>\n```\n\nExample — image with href:\n```xml\n<image href=\"images/screenshot.png\" placement=\"break\">\n  <alt>Web Editor screenshot</alt>\n</image>\n```\n\nCritical rules:\n- External URLs MUST have scope=\"external\" — otherwise processors treat them as local files\n- Non-DITA resources MUST have @format set — processors assume \"dita\" by default\n- @format cascades in maps: set it on a parent <topicref> and children inherit it\n- @href on <topicref> uses the file path (no #fragment for topic-level refs)\n\nIn AEM Guides:\n- Web Editor: Insert Cross Reference dialog sets @href, @format, @scope automatically\n- Map Editor: Drag-and-drop sets @href and @format based on file type\n- Publishing: @scope='external' links open in new tabs in Sites output; peer refs are resolved across deliverables\n- Broken link detection: The Web Editor validates @href targets and flags missing references",
     "parent_element": null,
     "children_elements": null,
@@ -2200,11 +2977,17 @@
       "<xref href=\"https://example.com\" format=\"html\" scope=\"external\">External docs</xref>",
       "<topicref href=\"chapter1.dita\" format=\"dita\" scope=\"local\"/>",
       "<xref href=\"guide.pdf\" format=\"pdf\" scope=\"local\">PDF Guide</xref>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/linkRelationshipAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/linkRelationshipAttributes.html"
+    }
   },
   {
     "element_name": "common_attributes",
-    "content_type": "attribute",
+    "content_type": "attribute_group",
     "text_content": "DITA common attributes are shared across most elements. They fall into several groups.\n\nUniversal attributes (available on nearly every DITA element):\n- @id — unique identifier within the file. Required on topic root elements, optional on others.\n- @conref — direct content reference: conref=\"file.dita#topicid/elementid\"\n- @conkeyref — indirect content reference via key: conkeyref=\"keyname/elementid\"\n- @conrefend — end of a conref range\n- @conaction — conref push action: pushafter, pushbefore, pushreplace, mark\n- @class — specialization hierarchy (set by DTD/schema, never by authors)\n- @outputclass — semantic styling hook for output processing (author-defined)\n- @translate — yes|no — marks content for translation\n- @xml:lang — language and locale (e.g., en-US, fr, ar)\n- @dir — text direction: ltr, rtl, lro, rlo\n\nConditional processing (filtering/flagging) attributes:\n- @props — general-purpose conditional attribute\n- @base — general-purpose metadata attribute\n- @platform — target platform (e.g., windows, linux, macos)\n- @product — product name (e.g., aem-guides, aem-sites)\n- @audience — target audience (e.g., administrator, author, developer)\n- @otherprops — additional conditional values\n- @rev — revision identifier for change tracking\n- @importance — optional, required, deprecated, default\n- @status — new, changed, deleted, unchanged\n\nOther common attributes:\n- @keyref — redirectable reference based on a key defined in a map\n- @compact — controls vertical spacing in lists: yes (tight) or no (normal)\n- @xml:space — preserve whitespace (fixed value \"preserve\" on preformatted elements)\n\nExample — element with multiple common attributes:\n```xml\n<p id=\"warning-para\" conref=\"shared/warnings.dita#warnings/safety-warning\"\n   audience=\"administrator\" platform=\"linux\" translate=\"yes\"\n   xml:lang=\"en-US\" dir=\"ltr\" outputclass=\"callout-warning\">\n  Placeholder for conref content\n</p>\n```\n\nExample — conditional processing:\n```xml\n<p platform=\"windows\">Install using the MSI installer.</p>\n<p platform=\"linux\">Install using apt-get or yum.</p>\n<p audience=\"administrator\" importance=\"required\">Configure SSL before going live.</p>\n```\n\nExample — outputclass for styling:\n```xml\n<codeblock outputclass=\"language-xml\">...</codeblock>\n<note outputclass=\"best-practice\" type=\"tip\"><p>Always use keyrefs for maintainability.</p></note>\n```\n\nIn AEM Guides:\n- Conditional attributes drive DITAVAL filtering in output presets\n- @outputclass maps to CSS classes in Sites and PDF output\n- @translate controls which content is sent to translation workflows\n- @id is required for conref targets and is auto-generated by the Web Editor",
     "parent_element": null,
     "children_elements": null,
@@ -2225,11 +3008,17 @@
       "<p id=\"reusable-warning\" translate=\"yes\" xml:lang=\"en-US\">Important safety warning.</p>",
       "<section platform=\"windows\" audience=\"administrator\">Windows-specific admin steps.</section>",
       "<codeblock outputclass=\"language-java\" translate=\"no\">System.out.println(\"Hello\");</codeblock>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonAttributes.html"
+    }
   },
   {
     "element_name": "simpletable_attributes",
-    "content_type": "attribute",
+    "content_type": "attribute_group",
     "text_content": "Simpletable-specific attributes control column widths and row headings for <simpletable> and its specializations (<choicetable>, <properties>).\n\nThree simpletable attributes:\n\n1. @relcolwidth — proportional column widths.\n   Format: space-separated list of numbers followed by asterisks.\n   The proportions are relative — the actual width depends on available space.\n   Examples:\n   - relcolwidth=\"1* 2* 3*\" → columns at 16.7%, 33.3%, 50%\n   - relcolwidth=\"90* 150*\" → columns at 37.5%, 62.5%\n   - relcolwidth=\"1* 1* 1*\" → equal-width columns\n\n2. @keycol — identifies which column serves as the row heading.\n   Value: column number (1-based). When set, that column's cells are rendered as headers (bold, <th> in HTML).\n   Default: no key column.\n   Examples:\n   - keycol=\"1\" → first column is the row header\n   - keycol=\"0\" or omitted → no row headers\n\n3. @refcols — reserved for future use (do not use).\n\nExample — simpletable with proportional widths and key column:\n```xml\n<simpletable relcolwidth=\"1* 3*\" keycol=\"1\">\n  <sthead>\n    <stentry>Parameter</stentry>\n    <stentry>Description</stentry>\n  </sthead>\n  <strow>\n    <stentry>timeout</stentry>  <!-- rendered as row header because keycol=1 -->\n    <stentry>Connection timeout in seconds. Default: 30.</stentry>\n  </strow>\n  <strow>\n    <stentry>retries</stentry>  <!-- rendered as row header -->\n    <stentry>Number of retry attempts before failure. Default: 3.</stentry>\n  </strow>\n</simpletable>\n```\n\nExample — equal columns, no key column:\n```xml\n<simpletable relcolwidth=\"1* 1* 1*\">\n  <sthead><stentry>A</stentry><stentry>B</stentry><stentry>C</stentry></sthead>\n  <strow><stentry>1</stentry><stentry>2</stentry><stentry>3</stentry></strow>\n</simpletable>\n```\n\nIMPORTANT: These attributes are for <simpletable> ONLY. CALS <table> uses <colspec @colwidth> for column widths and <thead> for headers.\n\nIn AEM Guides: The Web Editor renders @keycol cells as bold headers. @relcolwidth is respected in both PDF and Sites output. Drag column borders in the visual editor to adjust proportions.",
     "parent_element": null,
     "children_elements": null,
@@ -2248,7 +3037,13 @@
     "correct_examples": [
       "<simpletable relcolwidth=\"1* 2*\" keycol=\"1\"><sthead><stentry>Key</stentry><stentry>Value</stentry></sthead><strow><stentry>Name</stentry><stentry>AEM Guides</stentry></strow></simpletable>",
       "<simpletable relcolwidth=\"1* 1* 1*\"><sthead><stentry>A</stentry><stentry>B</stentry><stentry>C</stentry></sthead><strow><stentry>1</stentry><stentry>2</stentry><stentry>3</stentry></strow></simpletable>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/simpletableAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/simpletableAttributes.html"
+    }
   },
   {
     "element_name": "topicref_element_attributes",
@@ -2362,7 +3157,133 @@
     "correct_examples": [
       "<lq reftitle=\"Lynch and Horton (2009)\">\n  <data name=\"ref_source\">\n    <data name=\"date_retrieved\" value=\"13 September 2009\"/>\n    <data name=\"chapter\" value=\"9\"/>\n    <data name=\"pub_type\" value=\"web\"/>\n  </data>\n  The inverted pyramid style used in journalism works well on web pages...\n</lq>",
       "<codeblock>\n  <data name=\"source\" value=\"GitHub\" href=\"https://github.com/example/repo\"/>\n  function hello() { return 'world'; }\n</codeblock>"
-    ]
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/data.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/data.html",
+      "semantic_class": "metadata",
+      "processing_note": "Metadata in content flow; ignored by default unless specialized or processed by tooling."
+    }
+  },
+  {
+    "element_name": "data-about",
+    "content_type": "element",
+    "text_content": "<data-about> identifies the subject that metadata in a <data> structure is about. It lets metadata be associated with a specific content item rather than only the surrounding topic.\n\nUse it when a data structure needs to point at the thing being described. It is metadata, not visible body prose, and processors decide how to use it.",
+    "parent_element": "data",
+    "children_elements": [
+      "data",
+      "data-about"
+    ],
+    "attributes": "{\"name\": \"name of the metadata subject\", \"value\": \"value associated with the subject\", \"href\": \"resource associated with the subject\"}",
+    "usage_contexts": [
+      "Identifying the subject of metadata stored in a data structure",
+      "Associating metadata with a specific element or resource",
+      "Specialization base for metadata relationships"
+    ],
+    "common_mistakes": [
+      "Using <data-about> for rendered prose instead of metadata",
+      "Copying visible topic content into <data-about> instead of using attributes or nested metadata",
+      "Assuming all processors display <data-about> in output"
+    ],
+    "correct_examples": [
+      "<data name=\"review-metadata\"><data-about name=\"applies-to\" value=\"step-verify\"/><data name=\"owner\" value=\"release-engineering\"/></data>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/data-about.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/data-about.html",
+      "semantic_class": "metadata",
+      "processing_note": "Subject metadata for data structures; not a visible-content element."
+    }
+  },
+  {
+    "element_name": "boolean",
+    "content_type": "element",
+    "text_content": "<boolean> is a deprecated DITA base element that was used to express one of two opposite values, such as yes/no, on/off, or true/false. It was primarily intended as a specialization base.\n\nBecause it is deprecated, new content should normally use a more specific semantic element or specialization instead of authoring new <boolean> markup. Existing content might use @state or paired @name values to identify the opposing states.",
+    "parent_element": "prolog, metadata, or specialized metadata contexts",
+    "children_elements": [],
+    "attributes": "{\"state\": \"one of the opposing boolean states\", \"name\": \"name used to identify a boolean value or pair\"}",
+    "usage_contexts": [
+      "Legacy metadata that represents two-state values",
+      "Specialization base in older DITA vocabularies",
+      "Migration analysis for deprecated DITA elements"
+    ],
+    "common_mistakes": [
+      "Using <boolean> in new authoring even though it is deprecated",
+      "Treating <boolean> as visible body prose",
+      "Assuming DITA defines one universal set of boolean labels"
+    ],
+    "correct_examples": [
+      "<boolean name=\"enabled\" state=\"yes\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/boolean.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/boolean.html",
+      "semantic_class": "deprecated_metadata",
+      "processing_note": "Deprecated; explain legacy semantics and recommend avoiding it for new content."
+    }
+  },
+  {
+    "element_name": "index-base",
+    "content_type": "element",
+    "text_content": "<index-base> is an indexing extension base element. It has no standalone processing meaning and should be ignored in processing unless specialized.\n\nIt should only appear as a child of <indexterm>. Use it as a specialization base for indexing extensions, not as ordinary author-authored index text.",
+    "parent_element": "indexterm",
+    "children_elements": [],
+    "attributes": "{}",
+    "usage_contexts": [
+      "Specializing indexing extensions from <indexterm>",
+      "Representing processor-specific or vocabulary-specific index metadata"
+    ],
+    "common_mistakes": [
+      "Using <index-base> directly as visible index text",
+      "Placing <index-base> outside <indexterm>",
+      "Expecting base DITA processors to assign meaning to unspecialized <index-base>"
+    ],
+    "correct_examples": [
+      "<indexterm>Install<index-base/></indexterm>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/index-base.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/index-base.html",
+      "semantic_class": "indexing_specialization_base",
+      "processing_note": "Only meaningful through specialization; must stay under indexterm."
+    }
+  },
+  {
+    "element_name": "itemgroup",
+    "content_type": "element",
+    "text_content": "<itemgroup> is a base grouping element for content inside list items. It is intended primarily as a specialization base for groups of item content, rather than as a visible semantic label by itself.\n\nUse <itemgroup> only where list-item content grouping is valid. It should not be treated as a map construct, a publishing control, or a replacement for normal list items.",
+    "parent_element": "li, sli, step, substep, or specialized list-item contexts",
+    "children_elements": [
+      "p",
+      "note",
+      "ul",
+      "ol",
+      "dl",
+      "simpletable",
+      "fig",
+      "image",
+      "codeblock"
+    ],
+    "attributes": "{\"outputclass\": \"optional styling hook\", \"id\": \"optional ID when allowed by context\"}",
+    "usage_contexts": [
+      "Grouping related content inside a list item",
+      "Specialization base for item-level content groups",
+      "Structuring complex list-item content without changing map hierarchy"
+    ],
+    "common_mistakes": [
+      "Using <itemgroup> as a standalone body section",
+      "Treating <itemgroup> as a map or publishing construct",
+      "Using <itemgroup> where a normal <li>, <p>, <note>, or <section> would be clearer"
+    ],
+    "correct_examples": [
+      "<li>Review the configuration.<itemgroup><p>Confirm that required values are present.</p><note>Do not change generated IDs manually.</note></itemgroup></li>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/itemgroup.html",
+    "metadata": {
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/itemgroup.html",
+      "semantic_class": "list_item_grouping",
+      "processing_note": "Grouping/specialization element for list-item content; not a publishing output control."
+    }
   },
   {
     "element_name": "duplicate_semantic_elements",
@@ -3318,5 +4239,1387 @@
       "External system integration"
     ],
     "attributes": {}
+  },
+  {
+    "element_name": "audio_element",
+    "content_type": "element",
+    "text_content": "The <audio> element embeds sound content in DITA topics. Modeled on HTML5 audio.\n\nContent model: desc?, longdescref?, fallback?, media-source*, media-track*, foreign*\n\nPlayback attributes: @autoplay, @controls, @loop, @muted (all true/false), @tabindex\nResource: @href (URI), @keyref (indirect), @format (MIME type e.g. audio/mp3), @scope\n\nWhen audio cannot render, processors SHOULD show <fallback> content.\nIf @href specified, also specify @format.\n\n```xml\n<audio href=\"sounds/alert.mp3\" format=\"audio/mp3\" controls=\"true\">\n  <desc>Alert sound</desc>\n  <fallback><p>Audio not supported.</p></fallback>\n  <media-source href=\"sounds/alert.ogg\" format=\"audio/ogg\"/>\n</audio>\n```",
+    "parent_element": "body, section, fig, li, dd, stentry, entry, p",
+    "children_elements": "desc, longdescref, fallback, media-source, media-track, foreign",
+    "attributes": "{\"href\": \"URI\", \"keyref\": \"key\", \"format\": \"MIME type\", \"scope\": \"local|peer|external\", \"autoplay\": \"true|false\", \"controls\": \"true|false\", \"loop\": \"true|false\", \"muted\": \"true|false\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "audio/mp3",
+        "audio/ogg",
+        "audio/wav",
+        "audio/aac"
+      ],
+      "supported_elements": [
+        "audio"
+      ],
+      "combination_attributes": [
+        "href",
+        "keyref",
+        "format",
+        "scope",
+        "controls",
+        "autoplay"
+      ]
+    }
+  },
+  {
+    "element_name": "video_element",
+    "content_type": "element",
+    "text_content": "The <video> element embeds moving visual content. Modeled on HTML5 video.\n\nContent model: desc?, longdescref?, video-poster?, fallback?, media-source*, media-track*, foreign*\n\nPlayback: @autoplay, @controls, @loop, @muted, @tabindex, @height, @width\nResource: @href, @keyref, @format (video/mp4, video/webm, video/ogg), @scope\n\n```xml\n<video href=\"videos/demo.mp4\" format=\"video/mp4\" controls=\"true\" width=\"640\" height=\"360\">\n  <video-poster href=\"images/poster.png\"/>\n  <fallback><p>Video not supported.</p></fallback>\n  <media-source href=\"videos/demo.webm\" format=\"video/webm\"/>\n  <media-track href=\"captions/en.vtt\" kind=\"subtitles\" srclang=\"en\"/>\n</video>\n```",
+    "parent_element": "body, section, fig, li, dd, stentry, entry, p",
+    "children_elements": "desc, longdescref, video-poster, fallback, media-source, media-track, foreign",
+    "attributes": "{\"href\": \"URI\", \"keyref\": \"key\", \"format\": \"MIME type\", \"scope\": \"local|peer|external\", \"controls\": \"true|false\", \"width\": \"pixels\", \"height\": \"pixels\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "video/mp4",
+        "video/webm",
+        "video/ogg"
+      ],
+      "supported_elements": [
+        "video"
+      ],
+      "combination_attributes": [
+        "href",
+        "keyref",
+        "format",
+        "scope",
+        "controls",
+        "width",
+        "height"
+      ]
+    }
+  },
+  {
+    "element_name": "media_source_element",
+    "content_type": "element",
+    "text_content": "The <media-source> element specifies location of audio/video resource. Modeled on HTML5 <source>. Empty element.\n\nParents: <audio>, <video>\nAttributes: @href (URI), @format (MIME), @keyref (indirect), @scope\n\nMultiple <media-source> elements = format fallback chain. User agent plays first supported format.\n\n```xml\n<audio controls=\"true\">\n  <media-source href=\"clip.mp3\" format=\"audio/mp3\"/>\n  <media-source href=\"clip.ogg\" format=\"audio/ogg\"/>\n</audio>\n```",
+    "parent_element": "audio, video",
+    "children_elements": null,
+    "attributes": "{\"href\": \"URI\", \"format\": \"MIME type\", \"keyref\": \"key\", \"scope\": \"local|peer|external\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "audio/mp3",
+        "audio/ogg",
+        "video/mp4",
+        "video/webm"
+      ],
+      "supported_elements": [
+        "media-source"
+      ],
+      "combination_attributes": [
+        "href",
+        "format",
+        "keyref",
+        "scope"
+      ]
+    }
+  },
+  {
+    "element_name": "subject_scheme_overview",
+    "content_type": "concept",
+    "text_content": "Subject scheme maps define controlled vocabularies and taxonomies for DITA attributes. A subject scheme map uses <subjectScheme> as root element and contains <subjectdef> elements that define subjects (controlled values). Subject schemes can bind controlled values to specific attributes using <enumerationDef>, constrain attribute values for quality control, define hierarchical taxonomies with <hasNarrower>/<hasPart>/<hasKind>/<hasInstance>, and classify content via <topicSubjectTable>. Subject scheme maps are processed as resource-only by default (processing-role='resource-only'). They can be referenced from a root map using <mapref> and affect all maps in the publication scope. Key elements: <subjectScheme>, <subjectdef>, <enumerationDef>, <hasNarrower>, <hasPart>, <hasKind>, <hasInstance>, <subjectRelTable>, <topicSubjectTable>, <attributedef>, <elementdef>, <defaultSubject>.",
+    "parent_element": null,
+    "children_elements": "subjectdef, enumerationDef, subjectRelTable, hasNarrower, hasPart, hasKind, hasInstance",
+    "attributes": null,
+    "test_data_coverage": {
+      "all_values": [
+        "subjectScheme",
+        "subjectdef",
+        "enumerationDef",
+        "hasNarrower",
+        "hasPart",
+        "hasKind",
+        "hasInstance"
+      ],
+      "supported_elements": [
+        "subjectScheme"
+      ],
+      "combination_attributes": [
+        "processing-role",
+        "mapref"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/subject-scheme-maps-and-usage"
+    }
+  },
+  {
+    "element_name": "subject_scheme_definition",
+    "content_type": "element",
+    "text_content": "The <subjectScheme> element is a specialization of <map> that defines a collection of controlled values (subjects). A subject scheme map can define a taxonomy of subjects, bind those subjects to attributes via <enumerationDef>, and establish relationships between subjects. The <subjectdef> element defines a single subject in the taxonomy. Each <subjectdef> has a @keys attribute that names the subject and can nest child <subjectdef> elements to create hierarchies. Example: <subjectScheme><subjectdef keys=\"os\"><subjectdef keys=\"linux\"/><subjectdef keys=\"windows\"/><subjectdef keys=\"macos\"/></subjectdef></subjectScheme>. The @navtitle attribute or nested <topicmeta>/<navtitle> provides human-readable labels. Subject definitions without @keys are category groupings only.",
+    "parent_element": null,
+    "children_elements": "subjectdef, enumerationDef, subjectRelTable",
+    "attributes": "{\"keys\": \"key name for subject\", \"href\": \"optional topic with definition\", \"navtitle\": \"human-readable label\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "subjectScheme",
+        "subjectdef"
+      ],
+      "supported_elements": [
+        "subjectScheme",
+        "subjectdef"
+      ],
+      "combination_attributes": [
+        "keys",
+        "navtitle",
+        "href"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/subjectschema"
+    }
+  },
+  {
+    "element_name": "subject_scheme_binding",
+    "content_type": "concept",
+    "text_content": "The <enumerationDef> element binds a set of controlled values (subjects) to a DITA attribute. It contains <attributedef> to specify which attribute is constrained, optional <elementdef> to limit the binding to specific elements, and <subjectdef> referencing the subject hierarchy. Example binding @platform to OS values: <enumerationDef><attributedef name=\"platform\"/><subjectdef keyref=\"os\"/></enumerationDef>. This constrains @platform to only accept values defined under the 'os' subject hierarchy. If <elementdef> is included, the binding only applies to that element type. A <defaultSubject> element can specify the default value when the attribute is omitted. Multiple <enumerationDef> elements can bind different attributes in the same scheme. Processors should issue warnings for attribute values not in the enumeration. The binding affects all maps that reference the subject scheme map.",
+    "parent_element": "subjectScheme",
+    "children_elements": "attributedef, elementdef, subjectdef, defaultSubject",
+    "attributes": null,
+    "test_data_coverage": {
+      "all_values": [
+        "audience",
+        "platform",
+        "product",
+        "otherprops",
+        "deliveryTarget",
+        "props"
+      ],
+      "supported_elements": [
+        "enumerationDef",
+        "attributedef",
+        "elementdef",
+        "defaultSubject"
+      ],
+      "combination_attributes": [
+        "name",
+        "keyref"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/binding-controlled-values-to-attribute"
+    }
+  },
+  {
+    "element_name": "subject_scheme_processing",
+    "content_type": "concept",
+    "text_content": "When processing controlled attribute values bound by subject schemes, DITA processors must: (1) Resolve the subject scheme hierarchy to determine all valid values for each bound attribute. (2) When filtering (DITAVAL), treat hierarchical subjects correctly - filtering out a parent subject also filters all descendant subjects. For example, if 'os' has children 'linux' and 'windows', excluding 'os' excludes both children. (3) When a subject has child subjects, content tagged with the parent value matches queries for any descendant. (4) Issue warnings for attribute values not in the enumeration. (5) The @navtitle of a <subjectdef> provides the display label for authoring tools. Processors should present controlled values in editing interfaces (dropdowns, etc.). Subject scheme bindings cascade through the map hierarchy - a scheme referenced by the root map applies to all nested maps and topics.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/processing-controlled-attribute-values"
+    }
+  },
+  {
+    "element_name": "subject_scheme_extending",
+    "content_type": "concept",
+    "text_content": "Subject scheme maps can extend other subject scheme maps by adding new values or refining existing taxonomies. Extension is done by creating a new subject scheme map that references the base scheme via <schemeref> and adds additional <subjectdef> elements. Extension rules: (1) New values can be added to existing subject hierarchies. (2) Existing values cannot be removed (only the base scheme owner can remove). (3) The extending scheme can add deeper nesting under existing subjects. (4) Multiple schemes can extend the same base scheme. (5) If two extending schemes define conflicting bindings for the same attribute, the last-referenced scheme wins. Example: A base scheme defines @platform with 'linux' and 'windows'. An extending scheme adds 'macos' under the same hierarchy.",
+    "parent_element": null,
+    "children_elements": "schemeref, subjectdef",
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/extending-a-subject-scheme"
+    }
+  },
+  {
+    "element_name": "subject_scheme_taxonomy",
+    "content_type": "concept",
+    "text_content": "Subject schemes can define taxonomies by scaling controlled values into hierarchical classification systems. The hierarchy elements are: <hasNarrower> - defines an is-a/narrower relationship (e.g., 'mammal' hasNarrower 'dog'). <hasPart> - defines a part-of relationship (e.g., 'car' hasPart 'engine'). <hasKind> - defines a kind-of relationship. <hasInstance> - defines an instance-of relationship. <hasRelated> - defines an associative relationship. These elements contain <subjectdef> children to build the hierarchy. Taxonomy hierarchies affect filtering behavior: filtering a broader term automatically filters all narrower terms. They also enable faceted classification where content can be classified along multiple independent dimensions. Example: <subjectdef keys='animals'><hasNarrower><subjectdef keys='mammals'/><subjectdef keys='birds'/></hasNarrower></subjectdef>.",
+    "parent_element": "subjectScheme, subjectdef",
+    "children_elements": "subjectdef",
+    "attributes": null,
+    "test_data_coverage": {
+      "all_values": [
+        "hasNarrower",
+        "hasPart",
+        "hasKind",
+        "hasInstance",
+        "hasRelated"
+      ],
+      "supported_elements": [
+        "subjectdef"
+      ],
+      "combination_attributes": [
+        "keys",
+        "navtitle"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/scaling-controlled-values-to-define-a-taxonomy"
+    }
+  },
+  {
+    "element_name": "subject_scheme_classification_maps",
+    "content_type": "concept",
+    "text_content": "Classification maps use <topicSubjectTable> to classify topics against subject scheme taxonomies. A <topicSubjectTable> is a specialized relationship table where: The first column contains <topicref> elements pointing to topics to classify. Subsequent columns reference subjects from the scheme via <subjectref>. The table header row uses <topicSubjectHeader> to label columns with the attribute or category being classified. Each body row (<topicSubjectRow>) associates a topic with one or more subjects. Example: classifying topics by audience and platform - header defines columns for audience and platform, body rows map each topic to its applicable audience(s) and platform(s). This classification is equivalent to setting the corresponding profiling attributes on the topics themselves, but managed centrally.",
+    "parent_element": "subjectScheme, map",
+    "children_elements": "topicSubjectHeader, topicSubjectRow, topicref, subjectref",
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/classification-maps"
+    }
+  },
+  {
+    "element_name": "subject_scheme_filtering_example",
+    "content_type": "example",
+    "text_content": "Example of subject scheme filtering. A subject scheme defines OS values: <subjectScheme><subjectdef keys=\"os\"><subjectdef keys=\"linux\"><subjectdef keys=\"redhat\"/><subjectdef keys=\"suse\"/></subjectdef><subjectdef keys=\"windows\"><subjectdef keys=\"win10\"/><subjectdef keys=\"win11\"/></subjectdef></subjectdef><enumerationDef><attributedef name=\"platform\"/><subjectdef keyref=\"os\"/></enumerationDef></subjectScheme>. Filtering behavior: A DITAVAL rule <prop att='platform' val='linux' action='exclude'/> excludes all content with platform='linux', platform='redhat', or platform='suse' because redhat and suse are narrower terms of linux. A DITAVAL rule including platform='linux' includes all its descendants too. Content with platform='win10' is unaffected by linux filtering rules.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/example-subjectscheme-filtering"
+    }
+  },
+  {
+    "element_name": "subject_scheme_extension_example",
+    "content_type": "example",
+    "text_content": "Example of extending a subject scheme. Base scheme defines operating systems: <subjectScheme><subjectdef keys=\"os\"><subjectdef keys=\"linux\"/><subjectdef keys=\"windows\"/></subjectdef></subjectScheme>. Extension scheme adds macOS and refines Linux: <subjectScheme><schemeref href=\"base-scheme.ditamap\"/><subjectdef keys=\"os\"><subjectdef keys=\"macos\"/><subjectdef keys=\"linux\"><subjectdef keys=\"ubuntu\"/><subjectdef keys=\"fedora\"/></subjectdef></subjectdef></subjectScheme>. After extension, valid @platform values include: linux, windows, macos, ubuntu, fedora. The extending scheme cannot remove values defined in the base scheme.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/example-subjectscheme-extension"
+    }
+  },
+  {
+    "element_name": "subject_scheme_extension_upwards_example",
+    "content_type": "example",
+    "text_content": "Example of extending a subject scheme upwards by adding broader terms. Base scheme defines specific platforms: <subjectScheme><subjectdef keys=\"linux\"/><subjectdef keys=\"windows\"/></subjectScheme>. Extension adds a broader parent category 'desktop-os' above existing values: <subjectScheme><schemeref href=\"base-scheme.ditamap\"/><subjectdef keys=\"desktop-os\"><subjectdef keys=\"linux\"/><subjectdef keys=\"windows\"/><subjectdef keys=\"macos\"/></subjectdef></subjectScheme>. This creates a new hierarchy where filtering desktop-os affects all three platforms. Upward extension is useful when an organization needs to add grouping categories without modifying the original base scheme.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/example-subjectscheme-extension-upwards.dita"
+    }
+  },
+  {
+    "element_name": "subject_scheme_deliverytarget_example",
+    "content_type": "example",
+    "text_content": "Example of using subject scheme to define controlled values for @deliveryTarget. The @deliveryTarget attribute (DITA 1.3) specifies intended delivery formats. A subject scheme can bind controlled values: <subjectScheme><subjectdef keys=\"deliveryTargetValues\"><subjectdef keys=\"html5\"/><subjectdef keys=\"pdf\"/><subjectdef keys=\"epub\"/><subjectdef keys=\"aemsite\"/><subjectdef keys=\"markdown\"/></subjectdef><enumerationDef><attributedef name=\"deliveryTarget\"/><subjectdef keyref=\"deliveryTargetValues\"/></enumerationDef></subjectScheme>. This constrains @deliveryTarget to only accept: html5, pdf, epub, aemsite, markdown. Content can then be filtered by output format: <p deliveryTarget=\"pdf\">This paragraph only appears in PDF output.</p>. DITAVAL filtering: <prop att='deliveryTarget' val='pdf' action='include'/>.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "test_data_coverage": {
+      "all_values": [
+        "html5",
+        "pdf",
+        "epub",
+        "aemsite",
+        "markdown"
+      ],
+      "supported_elements": [
+        "enumerationDef"
+      ],
+      "combination_attributes": [
+        "deliveryTarget",
+        "attributedef"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "subject_scheme",
+      "source_url": "https://dita-lang.org/1.3/dita/archspec/base/example-subjectscheme-values-for-deliverytarget"
+    }
+  },
+  {
+    "element_name": "ditaval_overview",
+    "content_type": "concept",
+    "text_content": "A DITAVAL file (.ditaval) defines a conditional processing profile for filtering, flagging, and revision marking of DITA content. The root element is <val>. Structure: <val> contains an optional <style-conflict> followed by any number of <prop> or <revprop> elements. <prop> and <revprop> can contain <startflag> and <endflag>, which can contain <alt-text>. Processors should report attribute values in content that lack an explicit action. Actions: include (default, output content), exclude (remove from output), passthrough (include and preserve attribute for runtime), flag (include and visually flag). A <prop> with no @att and no @val sets the default action for all conditional attributes. Values not explicitly mentioned default to 'include' unless overridden by a catch-all prop.",
+    "parent_element": null,
+    "children_elements": "val, style-conflict, prop, revprop, startflag, endflag, alt-text",
+    "attributes": null,
+    "test_data_coverage": {
+      "all_values": [
+        "include",
+        "exclude",
+        "passthrough",
+        "flag"
+      ],
+      "supported_elements": [
+        "val",
+        "prop",
+        "revprop"
+      ],
+      "combination_attributes": [
+        "att",
+        "val",
+        "action",
+        "color",
+        "backcolor",
+        "style"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/common/about-ditaval.html"
+    }
+  },
+  {
+    "element_name": "ditaval_val",
+    "content_type": "element",
+    "text_content": "The <val> element is the root element of a DITAVAL file. It contains an optional <style-conflict> element followed by any number of <prop> or <revprop> elements. A DITAVAL file specifies filter, flagging, and revision rules applied during publishing. Example: <val><prop att='audience' val='admin' action='include'/><prop att='audience' val='novice' action='exclude'/></val>. A <prop> with no @att and no @val sets the default action for all conditional attributes.",
+    "parent_element": null,
+    "children_elements": "style-conflict, prop, revprop",
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-val.html"
+    }
+  },
+  {
+    "element_name": "ditaval_style_conflict",
+    "content_type": "element",
+    "text_content": "The <style-conflict> element declares behavior when multiple flagging methods collide on a single content element. It is an empty element contained by <val>. Attributes: @foreground-conflict-color (optional, CDATA) for conflicting text colors, @background-conflict-color (optional, CDATA) for conflicting background colors. Conflict resolution rules: nested flags win over ancestor flags. For same-element conflicts: startflag/endflag - add all; color - use foreground-conflict-color; backcolor - use background-conflict-color; style - combine all (default to double-underline + conflict color for underline conflicts); changebar - add all.",
+    "parent_element": "val",
+    "children_elements": null,
+    "attributes": "{\"foreground-conflict-color\": \"color for conflicting text\", \"background-conflict-color\": \"color for conflicting backgrounds\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-style-conflict.html"
+    }
+  },
+  {
+    "element_name": "ditaval_prop",
+    "content_type": "element",
+    "text_content": "The <prop> element in a DITAVAL file identifies a conditional processing attribute and value to act upon. Content model: optional <startflag>, then optional <endflag>. Attributes: @att (optional, must be props/audience/platform/product/otherprops or a specialization of props; omitting sets default for all conditional attributes), @val (optional, the specific value to match; omitting sets default for all values of @att), @action (required: include|exclude|passthrough|flag), @color (optional, text color when action=flag, named colors or #rrggbb hex), @backcolor (optional, background color when action=flag), @style (optional: underline|double-underline|italics|overline|bold). Example: <prop att='platform' val='windows' action='exclude'/>. Duplicate prop with same att+val is an error.",
+    "parent_element": "val",
+    "children_elements": "startflag, endflag",
+    "attributes": "{\"att\": \"conditional attribute name (audience|platform|product|otherprops|props)\", \"val\": \"value to match\", \"action\": \"include|exclude|passthrough|flag (required)\", \"color\": \"text color (#rrggbb or named)\", \"backcolor\": \"background color\", \"style\": \"underline|double-underline|italics|overline|bold\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "include",
+        "exclude",
+        "passthrough",
+        "flag"
+      ],
+      "supported_elements": [
+        "prop"
+      ],
+      "combination_attributes": [
+        "att",
+        "val",
+        "action",
+        "color",
+        "backcolor",
+        "style"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-prop.html"
+    }
+  },
+  {
+    "element_name": "ditaval_revprop",
+    "content_type": "element",
+    "text_content": "The <revprop> element identifies a value in the @rev attribute for flagging. Unlike other conditional attributes, @rev may only be used for flagging, NOT filtering. Content model: optional <startflag>, then optional <endflag>. Attributes: @val (optional, revision value to match; omitting sets default for all rev values), @action (required: include|passthrough|flag - NO exclude option since rev cannot filter), @changebar (optional, changebar color/style/character for flagged revisions), @color (optional, text color), @backcolor (optional, background color), @style (optional: underline|double-underline|italics|overline|bold). Default alt-text when none specified: localized 'Start of change' / 'End of change'.",
+    "parent_element": "val",
+    "children_elements": "startflag, endflag",
+    "attributes": "{\"val\": \"revision value to match\", \"action\": \"include|passthrough|flag (required, no exclude)\", \"changebar\": \"changebar style for revisions\", \"color\": \"text color\", \"backcolor\": \"background color\", \"style\": \"underline|double-underline|italics|overline|bold\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-revprop.html"
+    }
+  },
+  {
+    "element_name": "ditaval_startflag",
+    "content_type": "element",
+    "text_content": "The <startflag> element marks the beginning of flagged content with an optional image and/or alt-text. Content model: optional <alt-text>. Contained by: <prop>, <revprop>. Attributes: @imageref (required, URI reference to an image file, same syntax as href). Processing: if image specified, it flags the beginning of content with that image + alt-text. If only alt-text is specified (no image), that text is used instead. If neither specified, element has no defined purpose.",
+    "parent_element": "prop, revprop",
+    "children_elements": "alt-text",
+    "attributes": "{\"imageref\": \"URI reference to flag image (required)\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-startflag.html"
+    }
+  },
+  {
+    "element_name": "ditaval_endflag",
+    "content_type": "element",
+    "text_content": "The <endflag> element marks the end of flagged content with an optional image and/or alt-text. Content model: optional <alt-text>. Contained by: <prop>, <revprop>. Attributes: @imageref (required, URI reference to an image file). Processing: same logic as startflag - image flags end of content; alt-text used as fallback; if neither present, no defined purpose.",
+    "parent_element": "prop, revprop",
+    "children_elements": "alt-text",
+    "attributes": "{\"imageref\": \"URI reference to flag image (required)\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/ditaval-endflag.html"
+    }
+  },
+  {
+    "element_name": "ditaval_flag_module_processing",
+    "content_type": "concept",
+    "text_content": "The flag-module is a DITA-OT pre-processing step (since DITA-OT 1.7) that evaluates a DITAVAL file against all flagging attributes and inserts DITA-OT-specific hint elements. Two pseudo-specialization elements of <foreign> are injected: <ditaval-startprop> inserted as the first child of a flagged element, containing CSS styles on @outputclass, any <style-conflict>, and copies of active <prop>/<revprop> with <startflag> children but NOT <endflag>. <ditaval-endprop> inserted as the last child of a flagged element, containing copies of active <prop>/<revprop> with <endflag> children but NOT <startflag>. If no DITAVAL is used, the step is skipped. Transforms support flagging by processing these hint elements or can ignore them.",
+    "parent_element": null,
+    "children_elements": "ditaval-startprop, ditaval-endprop",
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://www.dita-ot.org/dev/reference/preprocess-flagging"
+    }
+  },
+  {
+    "element_name": "index_see",
+    "content_type": "element",
+    "text_content": "The <index-see> element directs the reader to an index entry that should be used INSTEAD of the current one (a 'see' cross-reference). Inheritance: - topic/index-see. Content model: text, <data>, <foreign>, <keyword>, <term>, <text>, <ph>, <indexterm>. Contained by: <indexterm> only. Attributes: universal attributes + @keyref. Processing: processors SHOULD ignore an <index-see> if its parent <indexterm> contains any <indexterm> children. Multiple <index-see> elements can appear in a single <indexterm>. The generated index entry has no page reference - only the redirection. Can redirect to multi-level entries by nesting <indexterm> inside <index-see>. Example: <indexterm>Vehicles<index-see>Cars</index-see></indexterm> produces 'Vehicles, see Cars' in the index.",
+    "parent_element": "indexterm",
+    "children_elements": "indexterm, keyword, term, ph, data, foreign, text",
+    "attributes": "{\"keyref\": \"key reference\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "indexing",
+      "source_url": "https://dita-lang.org/dita/langref/base/index-see"
+    }
+  },
+  {
+    "element_name": "index_see_also",
+    "content_type": "element",
+    "text_content": "The <index-see-also> element directs the reader to an index entry that can be used IN ADDITION to the current one (a 'see also' cross-reference). Inheritance: - topic/index-see-also. Content model: text, <data>, <foreign>, <keyword>, <term>, <text>, <ph>, <indexterm>. Contained by: <indexterm> only. Attributes: universal attributes + @keyref. Processing: processors SHOULD ignore an <index-see-also> if its parent <indexterm> contains any <indexterm> children. A single <indexterm> can contain multiple <index-see-also> elements. Unlike <index-see>, this generates both the primary index entry WITH a page reference AND the 'see also' redirection. Can redirect to multi-level entries by nesting <indexterm> inside <index-see-also>. Example: <indexterm>Markup languages<index-see-also>XML</index-see-also></indexterm> produces 'Markup languages 12, see also XML' in the index.",
+    "parent_element": "indexterm",
+    "children_elements": "indexterm, keyword, term, ph, data, foreign, text",
+    "attributes": "{\"keyref\": \"key reference\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "indexing",
+      "source_url": "https://dita-lang.org/dita/langref/base/index-see-also"
+    }
+  },
+  {
+    "element_name": "searchtitle",
+    "content_type": "element",
+    "text_content": "The <searchtitle> element specifies an alternative title displayed by search tools that locate the topic. It is useful when the topic has a title that makes sense in the context of a single information set but may be too general in a list of search results. For example, a topic titled 'Markup example' might use searchtitle 'DITA markup example' so search results are more descriptive.\n\nIn DITA 2.0, <searchtitle> is a convenience shorthand for <titlealt title-role='search'>. It specializes from <titlealt> and is defined in the alternative-titles domain module. Inheritance: + topic/titlealt alternativeTitles-d/searchtitle.\n\nWhere to place <searchtitle>:\n- In a TOPIC: inside <prolog> (DITA 2.0) or inside <titlealts> (DITA 1.3)\n- In a MAP: inside <topicmeta> on a <topicref>\n\nContent model: text, <data>, <foreign>, <keyword>, <term>, <text>, <ph>, <draft-comment>, <required-cleanup>.\n\nAttributes: universal attributes + @title-role (defaults to 'search').\n\nProcessing: when present, search engines should use <searchtitle> instead of <title> in search result listings. If absent, falls back to <titlealt title-role='linking'>, then to <title>.\n\nExample in a topic (DITA 2.0):\n```xml\n<topic id=\"programming-example\">\n  <title>Programming example</title>\n  <prolog>\n    <searchtitle>Example of basic programming in XSLT</searchtitle>\n  </prolog>\n  <body><!-- content --></body>\n</topic>\n```\n\nExample in a topic (DITA 1.3):\n```xml\n<topic id=\"programming-example\">\n  <title>Programming example</title>\n  <titlealts>\n    <searchtitle>Example of basic programming in XSLT</searchtitle>\n  </titlealts>\n  <body><!-- content --></body>\n</topic>\n```\n\nExample in a map (overriding from topicref):\n```xml\n<topicref href=\"programming-example.dita\">\n  <topicmeta>\n    <navtitle>Programming example</navtitle>\n    <searchtitle>Example of programming in XSLT</searchtitle>\n  </topicmeta>\n</topicref>\n```\n\nIn AEM Guides / AEM Sites: The <searchtitle> value is used as the page title in AEM Sites search results and in the HTML <meta> tags for SEO. When publishing to AEM Sites, the search title influences how pages appear in AEM's built-in search, the Assets search, and external search engines indexing the site.",
+    "parent_element": "prolog, titlealts, topicmeta",
+    "children_elements": "keyword, term, ph, data, foreign, text, draft-comment, required-cleanup",
+    "attributes": "{\"title-role\": \"search (default for this element)\", \"universal\": \"id, conref, conkeyref, outputclass, class, translate, xml:lang, dir, audience, platform, product, otherprops, props, rev, deliveryTarget\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "search",
+        "linking",
+        "navigation",
+        "subtitle",
+        "hint"
+      ],
+      "supported_elements": [
+        "searchtitle",
+        "titlealt"
+      ],
+      "combination_attributes": [
+        "title-role"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "titles",
+      "source_url": "https://dita-lang.org/dita/langref/base/searchtitle"
+    }
+  },
+  {
+    "element_name": "titlealt",
+    "content_type": "element",
+    "text_content": "The <titlealt> element provides an alternative title for a document, used in contexts other than straightforward display. It is the base element from which convenience elements like <searchtitle>, <navtitle>, <subtitle>, <linktitle>, and <titlehint> are specialized.\n\nThe @title-role attribute (REQUIRED) specifies the role. Defined roles:\n- 'linking': title for generated links (parent/child/sibling, reltable). Also the FALLBACK for navigation and search roles.\n- 'navigation': title for TOCs and navigation. Falls back to 'linking' if absent.\n- 'search': title for search results. Falls back to 'linking' if absent.\n- 'subtitle': subtitle for the document.\n- 'hint': hint for map authors about the referenced resource. No processing effect.\n\nMultiple roles can be specified as space-separated tokens: title-role='linking navigation'.\n\nWhere to place <titlealt>:\n- In a TOPIC: inside <prolog>\n- In a MAP: inside <topicmeta>\n- In root <map>'s <topicmeta>: applies to the map itself\n- Inside a <topicref>: applies to the referenced resource\n- When referenced resource is a DITA topic: alt titles from <topicref> are merged with those in the topic, with <topicref> titles taking higher priority.\n\nContent model: text, <data>, <foreign>, <keyword>, <term>, <text>, <ph>, <draft-comment>, <required-cleanup>.\n\nInheritance: - topic/titlealt\n\nExample - subtitle on a map:\n```xml\n<map>\n  <title>Publication title</title>\n  <topicmeta>\n    <titlealt title-role=\"subtitle\">Publication subtitle</titlealt>\n  </topicmeta>\n</map>\n```\n\nExample - multiple roles on a topicref:\n```xml\n<topicref keys=\"about\" href=\"about.dita\">\n  <topicmeta>\n    <titlealt title-role=\"linking navigation\">About the product</titlealt>\n    <titlealt title-role=\"search\">About</titlealt>\n    <titlealt title-role=\"hint\">About the Acme TextMax 5000</titlealt>\n  </topicmeta>\n</topicref>\n```\n\nUnrecognized @title-role tokens SHOULD be ignored by processors.",
+    "parent_element": "prolog, topicmeta",
+    "children_elements": "keyword, term, ph, data, foreign, text, draft-comment, required-cleanup",
+    "attributes": "{\"title-role\": \"REQUIRED - linking|navigation|search|subtitle|hint (space-separated for multiple roles)\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "linking",
+        "navigation",
+        "search",
+        "subtitle",
+        "hint"
+      ],
+      "supported_elements": [
+        "titlealt"
+      ],
+      "combination_attributes": [
+        "title-role"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "titles",
+      "source_url": "https://dita-lang.org/dita/langref/base/titlealt"
+    }
+  },
+  {
+    "element_name": "titlealts_dita13",
+    "content_type": "element",
+    "text_content": "The <titlealts> element is a DITA 1.3 wrapper element that contains alternative titles for a topic. It appears after <title> and before <shortdesc>/<abstract> in the topic prologue area.\n\nIMPORTANT: <titlealts> was REMOVED in DITA 2.0. In DITA 2.0, alternative titles (<searchtitle>, <navtitle>, <titlealt>) are placed directly inside <prolog> instead.\n\nContent model (DITA 1.3): optional <navtitle>, then optional <searchtitle>.\n\nContained by: <topic>, <concept>, <task>, <reference>, <glossentry>, and all topic specializations.\n\nAttributes (DITA 1.3): @id, @conref, @conkeyref, @conrefend, @conaction, @outputclass, @class, @translate, @xml:lang, @dir.\n\nExample (DITA 1.3):\n```xml\n<topic id=\"install-guide\">\n  <title>Installation</title>\n  <titlealts>\n    <navtitle>Install Guide</navtitle>\n    <searchtitle>How to install AEM Guides on AEM 6.5</searchtitle>\n  </titlealts>\n  <shortdesc>Steps to install.</shortdesc>\n  <body><!-- content --></body>\n</topic>\n```\n\nMigration to DITA 2.0: replace <titlealts> wrapper with direct children of <prolog>:\n```xml\n<topic id=\"install-guide\">\n  <title>Installation</title>\n  <prolog>\n    <navtitle>Install Guide</navtitle>\n    <searchtitle>How to install AEM Guides on AEM 6.5</searchtitle>\n  </prolog>\n  <shortdesc>Steps to install.</shortdesc>\n  <body><!-- content --></body>\n</topic>\n```",
+    "parent_element": "topic, concept, task, reference, glossentry",
+    "children_elements": "navtitle, searchtitle",
+    "attributes": "{\"id\": \"optional\", \"conref\": \"optional\", \"conkeyref\": \"optional\", \"outputclass\": \"optional\", \"class\": \"- topic/titlealts\", \"translate\": \"optional\", \"xml:lang\": \"optional\", \"dir\": \"optional\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "titles",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/titlealts"
+    }
+  },
+  {
+    "element_name": "table_cals",
+    "content_type": "element",
+    "text_content": "The <table> element organizes arbitrarily complex relationships of tabular information using the OASIS Exchange Table Model (CALS). It supports column/row spanning, captions, and accessibility features.\n\nContent model: optional <title>, optional <desc>, then one or more <tgroup>.\n\nContained by: body, bodydiv, section, sectiondiv, example, p, note, lq, li, itemgroup, dd, fig, stentry, draft-comment, fn, entry, abstract, linklist, linkinfo.\n\nKey attributes:\n- @frame: top|bottom|topbot|all|sides|none (which sides get borders)\n- @colsep: 0|1 (column separators)\n- @rowsep: 0|1 (row separators)\n- @pgwide: 0|1 (span page width)\n- @rowheader: firstcol|headers|norowheader (which column is a row header)\n- @orient: port|land (portrait or landscape)\n- @scale: percentage for font scaling\n- Display attributes: @expanse, @frame, @scale\n\nExample:\n```xml\n<table frame=\"all\" rowsep=\"1\" colsep=\"1\">\n  <title>Supported output types</title>\n  <tgroup cols=\"3\">\n    <colspec colname=\"c1\" colwidth=\"1*\"/>\n    <colspec colname=\"c2\" colwidth=\"2*\"/>\n    <colspec colname=\"c3\" colwidth=\"1*\"/>\n    <thead>\n      <row>\n        <entry>Format</entry>\n        <entry>Description</entry>\n        <entry>Status</entry>\n      </row>\n    </thead>\n    <tbody>\n      <row>\n        <entry>PDF</entry>\n        <entry>Native PDF output</entry>\n        <entry>Supported</entry>\n      </row>\n    </tbody>\n  </tgroup>\n</table>\n```",
+    "parent_element": "body, bodydiv, section, example, p, note, li, dd, fig, entry, abstract",
+    "children_elements": "title, desc, tgroup",
+    "attributes": "{\"frame\": \"top|bottom|topbot|all|sides|none\", \"colsep\": \"0|1\", \"rowsep\": \"0|1\", \"pgwide\": \"0|1\", \"rowheader\": \"firstcol|headers|norowheader\", \"orient\": \"port|land\", \"scale\": \"percentage\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "tables",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/table"
+    }
+  },
+  {
+    "element_name": "simpletable_element",
+    "content_type": "element",
+    "text_content": "The <simpletable> element is used for tables that are regular in structure and do not need a caption. Suitable for displaying tabular data in consistent rows and columns without the complexity of the CALS table model.\n\nContent model: optional <sthead> (header row), then one or more <strow> (body rows).\n\nContained by: body, bodydiv, section, sectiondiv, example, p, note, lq, li, itemgroup, dd, fig, draft-comment, fn, entry, abstract, linklist, linkinfo.\n\nKey attributes:\n- @keycol: number identifying which column is the key/header column\n- @relcolwidth: proportional column widths (e.g., '1* 2* 1*')\n- @spectitle: string title\n\nExample:\n```xml\n<simpletable relcolwidth=\"1* 3*\">\n  <sthead>\n    <stentry>Setting</stentry>\n    <stentry>Description</stentry>\n  </sthead>\n  <strow>\n    <stentry>chunk</stentry>\n    <stentry>Controls how topics are combined in output</stentry>\n  </strow>\n</simpletable>\n```\n\nDifference from <table>: simpletable has no title, no column/row spanning, no colspec. Use <table> when you need spanning, captions, or complex structure.",
+    "parent_element": "body, bodydiv, section, example, p, note, li, dd, fig, entry, abstract",
+    "children_elements": "sthead, strow",
+    "attributes": "{\"keycol\": \"number (key column)\", \"relcolwidth\": \"proportional widths (e.g. 1* 2*)\", \"spectitle\": \"string title\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "tables",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/simpletable"
+    }
+  },
+  {
+    "element_name": "row_element",
+    "content_type": "element",
+    "text_content": "The <row> element contains a single row in a CALS table. Content model: one or more <entry> elements.\nContained by: <thead> or <tbody>.\nAttributes: @rowsep (0|1, row separator), @valign (top|bottom|middle).",
+    "parent_element": "thead, tbody",
+    "children_elements": "entry",
+    "attributes": "{\"rowsep\": \"0|1\", \"valign\": \"top|bottom|middle\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "tables",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/row"
+    }
+  },
+  {
+    "element_name": "entry_element",
+    "content_type": "element",
+    "text_content": "The <entry> element defines a single cell in a CALS table.\n\nContent model: inline and block content (text, ph, keyword, xref, image, dl, fig, note, ol, ul, p, pre, codeblock, simpletable, etc.).\n\nContained by: <row> only.\n\nKey attributes for spanning and alignment:\n- @namest + @nameend: column spanning (first and last column names)\n- @morerows: row spanning (number of additional rows)\n- @colname: references a <colspec> by name\n- @rotate: 0|1 (rotate cell content 90 degrees)\n- @align: left|right|center|justify|char\n- @valign: top|bottom|middle\n- @colsep, @rowsep: 0|1\n- @scope: row|col|rowgroup|colgroup (accessibility - identifies header cells)\n- @headers: IDREFS to header entries (accessibility)\n\nExample of column spanning:\n```xml\n<row>\n  <entry namest=\"c1\" nameend=\"c3\">This spans all 3 columns</entry>\n</row>\n```\n\nExample of row spanning:\n```xml\n<row>\n  <entry morerows=\"1\">Spans 2 rows</entry>\n  <entry>Normal cell</entry>\n</row>\n```",
+    "parent_element": "row",
+    "children_elements": "p, ph, keyword, xref, image, dl, fig, note, ol, ul, pre, codeblock, simpletable",
+    "attributes": "{\"namest\": \"first column in span\", \"nameend\": \"last column in span\", \"morerows\": \"additional rows spanned\", \"colname\": \"references colspec\", \"rotate\": \"0|1\", \"align\": \"left|right|center|justify|char\", \"valign\": \"top|bottom|middle\", \"scope\": \"row|col|rowgroup|colgroup\", \"headers\": \"IDREFS to header entries\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "tables",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/entry"
+    }
+  },
+  {
+    "element_name": "cals_table_attributes",
+    "content_type": "concept",
+    "text_content": "CALS table attributes are a set of attributes available on CALS table elements (table, tgroup, colspec, thead, tbody, row, entry) for controlling alignment, separators, row headers, and vertical alignment.\n\nAttributes:\n- @align (tgroup, colspec, entry): left|right|center|justify|char - text alignment\n- @char (colspec, entry): alignment character when align='char'\n- @charoff (colspec, entry): horizontal offset 0-100 for char alignment\n- @colsep (table, tgroup, colspec, entry): 0|1 - column separator lines\n- @rowsep (table, tgroup, row, colspec, entry): 0|1 - row separator lines\n- @rowheader (table, colspec): firstcol|headers|norowheader - identifies row headers\n- @valign (thead, tbody, row, entry): top|bottom|middle - vertical alignment\n\nCascading: attribute values cascade from table -> tgroup -> colspec -> entry, with the most specific (closest to the cell) winning.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"align\": \"left|right|center|justify|char\", \"char\": \"alignment character\", \"charoff\": \"0-100 offset\", \"colsep\": \"0|1\", \"rowsep\": \"0|1\", \"rowheader\": \"firstcol|headers|norowheader\", \"valign\": \"top|bottom|middle\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "tables",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/attributes/calstableattributes"
+    }
+  },
+  {
+    "element_name": "bodydiv_element",
+    "content_type": "element",
+    "text_content": "The <bodydiv> element is an informal grouping container within the body of a topic. It has no explicit semantics; it is used to organize content into logical groups, primarily as a specialization base or for conref reuse of body fragments.\n\nContent model: block-level content (p, ol, ul, dl, table, simpletable, fig, note, image, section, example, bodydiv, etc.).\n\nContained by: <body>, <bodydiv> (can nest).\n\nUse cases: (1) group paragraphs for conref as a unit, (2) specialization base for custom body-level groupings, (3) wrap content for conditional processing.\n\nExample:\n```xml\n<body>\n  <bodydiv id=\"prereqs-group\">\n    <p>Before you begin, ensure:</p>\n    <ul>\n      <li>AEM 6.5 SP18+ is installed</li>\n      <li>Java 11 is available</li>\n    </ul>\n  </bodydiv>\n</body>\n```",
+    "parent_element": "body, bodydiv",
+    "children_elements": "p, ol, ul, dl, table, simpletable, fig, note, image, section, example, bodydiv",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/bodydiv"
+    }
+  },
+  {
+    "element_name": "desc_element",
+    "content_type": "element",
+    "text_content": "The <desc> element contains the description of the current element. It provides additional information in contexts like figures, tables, cross-references, and objects.\n\nContent model: inline content (text, ph, keyword, xref, term, image, draft-comment).\n\nContained by: <table>, <fig>, <xref>, <link>, <object>.\n\nProcessing: on <table> and <fig>, <desc> renders as a caption/description. On <xref> and <link>, <desc> provides hover/tooltip text.",
+    "parent_element": "table, fig, xref, link, object",
+    "children_elements": "ph, keyword, xref, term, image, draft-comment",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/desc"
+    }
+  },
+  {
+    "element_name": "alt_element",
+    "content_type": "element",
+    "text_content": "The <alt> element provides alternate text for an image. It replaces the deprecated @alt attribute on the <image> element.\n\nContent model: inline content (text, ph, keyword).\nContained by: <image> only.\n\nExample:\n```xml\n<image href=\"logo.png\">\n  <alt>Company logo</alt>\n</image>\n```",
+    "parent_element": "image",
+    "children_elements": "ph, keyword",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/alt"
+    }
+  },
+  {
+    "element_name": "dlentry_element",
+    "content_type": "element",
+    "text_content": "The <dlentry> element groups a single entry in a definition list, including a term (<dt>) and one or more definitions (<dd>).\n\nContent model: one or more <dt>, then one or more <dd>.\nContained by: <dl> only.\n\nExample:\n```xml\n<dl>\n  <dlentry>\n    <dt>conref</dt>\n    <dd>Content reference - reuses content from another element by ID</dd>\n  </dlentry>\n  <dlentry>\n    <dt>keyref</dt>\n    <dd>Key reference - indirect addressing via key names</dd>\n  </dlentry>\n</dl>\n```",
+    "parent_element": "dl",
+    "children_elements": "dt, dd",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/dlentry"
+    }
+  },
+  {
+    "element_name": "dd_element",
+    "content_type": "element",
+    "text_content": "The <dd> element contains the description/definition of a term in a <dlentry>.\n\nContent model: block and inline content (p, ol, ul, dl, fig, note, pre, codeblock, image, table, simpletable, etc.).\nContained by: <dlentry> only.",
+    "parent_element": "dlentry",
+    "children_elements": "p, ol, ul, dl, fig, note, pre, codeblock, image, table, simpletable",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/dd"
+    }
+  },
+  {
+    "element_name": "dt_element",
+    "content_type": "element",
+    "text_content": "The <dt> element contains a term in a definition list entry (<dlentry>).\n\nContent model: inline content (text, ph, keyword, term, xref, image).\nContained by: <dlentry> only.\nAttributes: @keyref (key reference), @outputclass.",
+    "parent_element": "dlentry",
+    "children_elements": "ph, keyword, term, xref, image",
+    "attributes": "{\"keyref\": \"key reference\", \"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/dt"
+    }
+  },
+  {
+    "element_name": "ddhd_element",
+    "content_type": "element",
+    "text_content": "The <ddhd> element provides an optional heading for the description column in a definition list. Contained by <dlhead>. Content model: inline content.",
+    "parent_element": "dlhead",
+    "children_elements": "ph, keyword, term, xref, image",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/ddhd"
+    }
+  },
+  {
+    "element_name": "dthd_element",
+    "content_type": "element",
+    "text_content": "The <dthd> element provides an optional heading for the term column in a definition list. Contained by <dlhead>. Content model: inline content.",
+    "parent_element": "dlhead",
+    "children_elements": "ph, keyword, term, xref, image",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/dthd"
+    }
+  },
+  {
+    "element_name": "draft_comment",
+    "content_type": "element",
+    "text_content": "The <draft-comment> element facilitates review and discussion of topic contents within the marked-up content. Designed for internal commenting during authoring.\n\nContent model: block and inline content (text, p, ol, ul, dl, ph, keyword, image).\n\nContained by: nearly all body-level and inline contexts (body, section, p, li, dd, entry, ph, fig, note, title, shortdesc, abstract).\n\nKey attributes:\n- @author: string, originator of the comment\n- @time: string, creation date\n- @disposition: string, status (e.g., 'open', 'accepted', 'rejected')\n- @translate: defaults to 'no'\n\nProcessing: processors SHOULD strip <draft-comment> from final output by default and only render it in draft mode. In AEM Guides, draft comments appear in the Web Editor review workflow but are excluded from published output.",
+    "parent_element": "body, section, p, li, dd, entry, ph, fig, note, title, shortdesc, abstract",
+    "children_elements": "p, ol, ul, dl, ph, keyword, image",
+    "attributes": "{\"author\": \"originator\", \"time\": \"creation date\", \"disposition\": \"status (open|accepted|rejected)\", \"translate\": \"no (default)\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/draft-comment"
+    }
+  },
+  {
+    "element_name": "example_element",
+    "content_type": "element",
+    "text_content": "The <example> element is a section-like element that contains examples illustrating or supporting the current topic. Can contain both sample code and discussion.\n\nContent model: optional <title>, then block and inline content (p, ol, ul, dl, table, simpletable, fig, note, pre, codeblock, image).\n\nContained by: body, conbody, refbody, taskbody (after prereq, context, steps, result).\n\nAttributes: @spectitle (string), @outputclass.\n\nNote: <example> is a section-level element like <section>. It cannot nest inside itself or inside <section>.",
+    "parent_element": "body, conbody, refbody, taskbody",
+    "children_elements": "title, p, ol, ul, dl, table, simpletable, fig, note, pre, codeblock, image",
+    "attributes": "{\"spectitle\": \"string title\", \"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/example"
+    }
+  },
+  {
+    "element_name": "fig_element",
+    "content_type": "element",
+    "text_content": "The <fig> element represents a figure (exhibit) with an optional title. Commonly displays images but can contain text objects, code, and other content.\n\nContent model: optional <title>, optional <desc>, then content: figgroup, image, ol, ul, dl, p, pre, codeblock, lines, simpletable, xref, fn, note, draft-comment.\n\nContained by: body, bodydiv, section, sectiondiv, example, p, note, lq, li, itemgroup, dd, entry, abstract, linklist, linkinfo, stentry.\n\nAttributes: @spectitle, @outputclass, @expanse, @frame, @scale (display-atts).\n\nExample:\n```xml\n<fig id=\"arch-diagram\">\n  <title>System Architecture</title>\n  <desc>Overview of the AEM Guides publishing pipeline</desc>\n  <image href=\"architecture.png\" placement=\"break\">\n    <alt>Architecture diagram</alt>\n  </image>\n</fig>\n```",
+    "parent_element": "body, bodydiv, section, example, p, note, li, dd, entry, abstract",
+    "children_elements": "title, desc, figgroup, image, ol, ul, dl, p, pre, codeblock, simpletable, xref, fn, note",
+    "attributes": "{\"spectitle\": \"string\", \"outputclass\": \"string\", \"expanse\": \"display attribute\", \"frame\": \"display attribute\", \"scale\": \"display attribute\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/fig"
+    }
+  },
+  {
+    "element_name": "figgroup_element",
+    "content_type": "element",
+    "text_content": "The <figgroup> element is used primarily for specialization to create segments within a figure. It enables creation of complex specialized structures and can contain cross-references, footnotes, keywords, and images.\n\nContent model: title, figgroup (nesting), xref, fn, ph, keyword, image, draft-comment.\nContained by: <fig>, <figgroup> (can nest).",
+    "parent_element": "fig, figgroup",
+    "children_elements": "title, figgroup, xref, fn, ph, keyword, image, draft-comment",
+    "attributes": "{\"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/figgroup"
+    }
+  },
+  {
+    "element_name": "dita_use_conref_target",
+    "content_type": "concept",
+    "text_content": "The value '-dita-use-conref-target' is a special token for enumerated attributes that allows the conref resolution process to pull the attribute value from the referenced element, rather than preserving the locally-specified value.\n\nPurpose: lets authors specify a value for a required attribute while still deferring to the conref source. When an element uses @conref and an attribute is set to '-dita-use-conref-target', that attribute value is replaced by the corresponding attribute value from the referenced element during conref resolution.\n\nApplies to: any enumerated attribute where not prohibited by the specification. NOT allowed on @id for topic elements.\n\nExample: a <note> that conrefs another note but defers the @type value:\n```xml\n<note conref=\"common.dita#common/warning-note\" type=\"-dita-use-conref-target\"/>\n```\nAfter resolution, @type takes the value from the referenced element.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": null,
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attributes",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/attributes/ditauseconreftarget"
+    }
+  },
+  {
+    "element_name": "fn_element",
+    "content_type": "element",
+    "text_content": "The <fn> element is a footnote placed in the body of a topic. It produces a superscript reference at the point of insertion and renders the footnote text at the bottom of the page (PDF) or as a popup/endnote (HTML).\n\nContent model: inline and block content (text, ph, keyword, xref, p, ol, ul, dl, pre, codeblock, note, image).\n\nContained by: most inline and block contexts (p, li, entry, ph, title, shortdesc, dd, fig, note, section, abstract, lq, stentry, etc.).\n\nKey attributes:\n- @id: used for cross-referencing the footnote\n- @callout: custom callout symbol (default is auto-numbered)\n\nUse-conref pattern: define a <fn> once with an @id, then reuse it elsewhere with <xref type='fn' href='#topicid/fnid'/>.\n\nExample:\n```xml\n<p>DITA supports content reuse<fn id=\"fn-reuse\">Content reuse includes conref, conkeyref, keyref, and topicref-based reuse.</fn> across multiple publications.</p>\n```\n\nProcessing: in PDF output, footnotes appear at the bottom of the page. In HTML-based output, they typically appear as endnotes or tooltips.",
+    "parent_element": "p, li, entry, ph, title, shortdesc, dd, fig, note, section, abstract, lq, stentry",
+    "children_elements": "ph, keyword, xref, p, ol, ul, dl, pre, codeblock, note, image",
+    "attributes": "{\"id\": \"footnote identifier for xref\", \"callout\": \"custom callout symbol\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/fn"
+    }
+  },
+  {
+    "element_name": "note_element",
+    "content_type": "element",
+    "text_content": "The <note> element provides information that expands on or calls attention to a particular point within a topic. The @type attribute controls the visual rendering.\n\nContent model: block and inline content (text, p, ol, ul, dl, pre, codeblock, simpletable, table, fig, image, note, ph, keyword, xref).\n\nContained by: body, bodydiv, section, sectiondiv, example, p, li, itemgroup, dd, fig, stentry, draft-comment, fn, entry, abstract, linklist, linkinfo, lq.\n\nKey attribute - @type (controls icon/styling):\n- note (default): general information\n- tip: helpful suggestion\n- important: important information\n- remember: reminder\n- restriction: constraint or limitation\n- attention: calls attention\n- caution: potential for minor damage or injury\n- warning: potential for serious injury\n- danger: potential for death or serious injury\n- trouble: troubleshooting tip\n- notice: regulatory notice\n- fastpath: shortcut or faster alternative\n- other: custom (use @othertype to specify)\n\nOther attributes: @spectitle (custom label), @othertype (when type='other').\n\nExample:\n```xml\n<note type=\"warning\">Do not modify the DTD files directly. Changes will be lost during upgrades.</note>\n```",
+    "parent_element": "body, bodydiv, section, example, p, li, dd, fig, entry, abstract, lq",
+    "children_elements": "p, ol, ul, dl, pre, codeblock, simpletable, table, fig, image, note, ph, keyword, xref",
+    "attributes": "{\"type\": \"note|tip|important|remember|restriction|attention|caution|warning|danger|trouble|notice|fastpath|other\", \"spectitle\": \"custom label\", \"othertype\": \"custom type when type=other\"}",
+    "test_data_coverage": {
+      "all_values": [
+        "note",
+        "tip",
+        "important",
+        "remember",
+        "restriction",
+        "attention",
+        "caution",
+        "warning",
+        "danger",
+        "trouble",
+        "notice",
+        "fastpath",
+        "other"
+      ],
+      "supported_elements": [
+        "note"
+      ],
+      "combination_attributes": [
+        "type",
+        "spectitle",
+        "othertype"
+      ]
+    },
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/note"
+    }
+  },
+  {
+    "element_name": "ol_element",
+    "content_type": "element",
+    "text_content": "The <ol> element contains a list of items sorted by sequence or order of importance. Items are rendered with numbers or letters.\n\nContent model: one or more <li> elements.\n\nContained by: body, bodydiv, section, sectiondiv, example, p, note, lq, li, itemgroup, dd, fig, stentry, draft-comment, fn, entry, abstract, linklist, linkinfo.\n\nAttributes: @compact (yes|no, controls spacing), @outputclass.\n\nNote: <ol> can nest inside <li> for multi-level numbered lists.",
+    "parent_element": "body, bodydiv, section, example, p, note, li, dd, fig, entry, abstract",
+    "children_elements": "li",
+    "attributes": "{\"compact\": \"yes|no (control spacing)\", \"outputclass\": \"string\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/ol"
+    }
+  },
+  {
+    "element_name": "param_element",
+    "content_type": "element",
+    "text_content": "The <param> element provides a named parameter for an <object> element. Used to pass configuration values to embedded multimedia or applet objects.\n\nContent model: empty element.\nContained by: <object> only.\n\nKey attributes:\n- @name (REQUIRED): parameter name\n- @value: parameter value\n- @valuetype: data|ref|object (how to interpret @value)\n- @type: MIME type (when valuetype='ref')\n\nExample:\n```xml\n<object data=\"video.mp4\" type=\"video/mp4\">\n  <param name=\"autoplay\" value=\"false\"/>\n  <param name=\"controls\" value=\"true\"/>\n</object>\n```",
+    "parent_element": "object",
+    "children_elements": null,
+    "attributes": "{\"name\": \"REQUIRED - parameter name\", \"value\": \"parameter value\", \"valuetype\": \"data|ref|object\", \"type\": \"MIME type\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/param"
+    }
+  },
+  {
+    "element_name": "longdescref",
+    "content_type": "element",
+    "text_content": "The <longdescref> element provides a reference to a text description of an image or object. It links to a separate DITA topic or external file containing the full long description for accessibility purposes.\n\nContent model: empty element.\nContained by: <image>, <object>.\n\nKey attributes:\n- @href (REQUIRED): URI to the long description resource\n- @type: format of the referenced resource\n- @scope: local|peer|external\n- @format: resource format (dita, html, etc.)\n\nExample:\n```xml\n<image href=\"architecture.png\">\n  <alt>System architecture diagram</alt>\n  <longdescref href=\"architecture-description.dita\"/>\n</image>\n```\n\nPurpose: provides a longer accessibility description than <alt> for complex images like charts, diagrams, and infographics.",
+    "parent_element": "image, object",
+    "children_elements": null,
+    "attributes": "{\"href\": \"REQUIRED - URI to long description\", \"type\": \"resource format\", \"scope\": \"local|peer|external\", \"format\": \"dita|html|etc.\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/longdescref"
+    }
+  },
+  {
+    "element_name": "longquoteref",
+    "content_type": "element",
+    "text_content": "The <longquoteref> element provides a reference to the source of a long quotation (<lq>). It links to the original source document being quoted.\n\nContent model: empty element.\nContained by: <lq> (long quote) only.\n\nKey attributes:\n- @href (REQUIRED): URI to the source of the quotation\n- @scope: local|peer|external\n- @format: resource format\n\nExample:\n```xml\n<lq>\n  The fundamental concept in DITA is topic-based authoring...\n  <longquoteref href=\"https://www.oasis-open.org/dita-spec\" scope=\"external\"/>\n</lq>\n```\n\nPurpose: machine-readable source attribution for long quotations, complementing the @reftitle attribute on <lq> which provides human-readable attribution.",
+    "parent_element": "lq",
+    "children_elements": null,
+    "attributes": "{\"href\": \"REQUIRED - URI to quotation source\", \"scope\": \"local|peer|external\", \"format\": \"resource format\"}",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "body_elements",
+      "source_url": "https://dita-lang.org/1.3/dita/langref/base/longquoteref"
+    }
+  },
+  {
+    "element_name": "no-topic-nesting",
+    "content_type": "element",
+    "text_content": "The <no-topic-nesting> element is a configuration element used in DITA grammar modules to disallow nested topics. It is not normal authored topic body content. Use it when a shell or constraint needs to prevent a topic from containing another topic as a child.",
+    "parent_element": "configuration module",
+    "children_elements": [],
+    "attributes": "{}",
+    "usage_contexts": [
+      "Use in grammar/configuration contexts to prevent nested topic structures.",
+      "Do not use <no-topic-nesting> as visible content in an authored topic."
+    ],
+    "common_mistakes": [
+      "Treating <no-topic-nesting> as a topic-body element.",
+      "Using it in a DITA map or regular topic instead of a grammar/configuration context."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/no-topic-nesting.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "grammar_configuration",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/no-topic-nesting.html"
+    }
+  },
+  {
+    "element_name": "state",
+    "content_type": "element",
+    "text_content": "The <state> element identifies a state or property of a subject. It is often used for machine-processable state information, such as a name/value pair that records a condition, status, or property. It is DITA metadata/content markup, not the same thing as AEM Guides document states.",
+    "parent_element": "body, section, p, li, note, itemgroup, data",
+    "children_elements": [
+      "data",
+      "data-about",
+      "foreign",
+      "keyword",
+      "term",
+      "text",
+      "ph"
+    ],
+    "attributes": "{\"name\": \"state/property name\", \"value\": \"state/property value\"}",
+    "usage_contexts": [
+      "Use <state> for a named status or property that processors or specializations can consume.",
+      "Keep AEM Guides document workflow states separate from the DITA <state> element."
+    ],
+    "common_mistakes": [
+      "Confusing the DITA <state> element with AEM Guides document states such as Draft or Approved.",
+      "Using <state> for normal prose instead of a machine-readable state/property."
+    ],
+    "correct_examples": [
+      "<state name=\"feature-status\" value=\"supported\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/state.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "metadata",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/state.html"
+    }
+  },
+  {
+    "element_name": "unknown",
+    "content_type": "element",
+    "text_content": "The <unknown> element represents content for which the original semantics are unknown, commonly after migration or conversion. It preserves content that cannot yet be mapped to a better DITA element, so authors can review and replace it with accurate semantic markup.",
+    "parent_element": "body, section, p, li, note, itemgroup",
+    "children_elements": [
+      "data",
+      "foreign",
+      "keyword",
+      "term",
+      "text",
+      "ph"
+    ],
+    "attributes": "{\"outputclass\": \"optional styling or migration hint\"}",
+    "usage_contexts": [
+      "Use <unknown> as a temporary migration holding element when the source semantics are not known.",
+      "Replace <unknown> with a semantically correct DITA element before final publication whenever possible."
+    ],
+    "common_mistakes": [
+      "Leaving <unknown> in final content without review.",
+      "Using <unknown> as a convenient generic wrapper instead of choosing a real DITA element."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/unknown.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "migration_cleanup",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/unknown.html"
+    }
+  },
+  {
+    "element_name": "required-cleanup",
+    "content_type": "element",
+    "text_content": "The <required-cleanup> element marks content that must be cleaned up before publication. It is stronger than an ordinary comment because it wraps problematic content that still needs authoring or migration work.",
+    "parent_element": "body, section, p, li, note, itemgroup",
+    "children_elements": [
+      "p",
+      "ul",
+      "ol",
+      "dl",
+      "pre",
+      "codeblock",
+      "ph",
+      "keyword",
+      "term"
+    ],
+    "attributes": "{\"remap\": \"optional original source element or migration hint\"}",
+    "usage_contexts": [
+      "Use <required-cleanup> to preserve content that must be fixed before final publishing.",
+      "Use @remap to record the original source structure during migration."
+    ],
+    "common_mistakes": [
+      "Leaving <required-cleanup> in production-ready content.",
+      "Using <required-cleanup> for general comments instead of actual cleanup-required content."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/required-cleanup.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "migration_cleanup",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/required-cleanup.html"
+    }
+  },
+  {
+    "element_name": "ditaval-elements",
+    "content_type": "container",
+    "text_content": "DITAVAL elements define profiling/filtering rules for conditional processing. The root <val> contains property rules such as <prop> and <revprop>, plus flagging support elements such as <startflag>, <endflag>, <alt-text>, and <style-conflict>. DITAVAL content belongs in a .ditaval profile file and is referenced from maps or output presets; it is not authored as normal topic body content.",
+    "parent_element": "ditaval profile file",
+    "children_elements": [
+      "val",
+      "prop",
+      "revprop",
+      "startflag",
+      "endflag",
+      "alt-text",
+      "style-conflict"
+    ],
+    "attributes": "{}",
+    "usage_contexts": [
+      "Use DITAVAL elements in .ditaval files to include, exclude, passthrough, or flag profiled content.",
+      "Reference the .ditaval profile from a map branch with <ditavalref> or from an output preset/filtering configuration."
+    ],
+    "common_mistakes": [
+      "Putting DITAVAL elements inside a DITA topic body.",
+      "Confusing <ditavalref> in a map with the actual .ditaval profile content."
+    ],
+    "correct_examples": [
+      "<val><prop att=\"audience\" val=\"admin\" action=\"include\"/><prop att=\"platform\" val=\"linux\" action=\"exclude\"/></val>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/containers/ditaval-elements.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/containers/ditaval-elements.html"
+    }
+  },
+  {
+    "element_name": "val",
+    "content_type": "ditaval_element",
+    "text_content": "The <val> element is the root element of a DITAVAL profile. It contains conditional-processing rules that tell processors how to include, exclude, passthrough, or flag content based on profiling attributes.",
+    "parent_element": "ditaval profile file",
+    "children_elements": [
+      "prop",
+      "revprop"
+    ],
+    "attributes": "{}",
+    "usage_contexts": [
+      "Use <val> as the root of a .ditaval profile file.",
+      "Place <prop> and <revprop> rules inside <val> to control profiling and flagging."
+    ],
+    "common_mistakes": [
+      "Putting <val> inside a topic or map instead of a .ditaval file.",
+      "Confusing the <val> root with <ditavalref>, which references a DITAVAL file from a map branch."
+    ],
+    "correct_examples": [
+      "<val><prop att=\"audience\" val=\"admin\" action=\"include\"/></val>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-val.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-val.html"
+    }
+  },
+  {
+    "element_name": "prop",
+    "content_type": "ditaval_element",
+    "text_content": "The <prop> element defines a DITAVAL rule for a profiling property. It matches an attribute name and value, then applies an action such as include, exclude, passthrough, or flagging.",
+    "parent_element": "val",
+    "children_elements": [
+      "startflag",
+      "endflag"
+    ],
+    "attributes": "{\"att\": \"profiling attribute name\", \"val\": \"profiling value\", \"action\": \"include|exclude|passthrough|flag\"}",
+    "usage_contexts": [
+      "Use <prop> to define filtering or flagging rules for attributes such as audience, platform, product, props, or otherprops.",
+      "Use child <startflag> and <endflag> when the rule visually flags matching content."
+    ],
+    "common_mistakes": [
+      "Using <prop> in topic body content instead of a .ditaval profile.",
+      "Creating a rule without matching the profiling attribute/value used in the topics."
+    ],
+    "correct_examples": [
+      "<prop att=\"audience\" val=\"admin\" action=\"include\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-prop.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-prop.html"
+    }
+  },
+  {
+    "element_name": "revprop",
+    "content_type": "ditaval_element",
+    "text_content": "The <revprop> element defines a DITAVAL rule for revision values. It is used to include, exclude, passthrough, or flag content based on the DITA @rev attribute.",
+    "parent_element": "val",
+    "children_elements": [
+      "startflag",
+      "endflag"
+    ],
+    "attributes": "{\"val\": \"revision value\", \"action\": \"include|exclude|passthrough|flag\"}",
+    "usage_contexts": [
+      "Use <revprop> when conditional processing depends specifically on @rev values.",
+      "Use child flag elements when revision-marked content should be visually flagged."
+    ],
+    "common_mistakes": [
+      "Using <prop att=\"rev\"> instead of the revision-specific <revprop> form.",
+      "Expecting <revprop> to affect non-@rev profiling attributes."
+    ],
+    "correct_examples": [
+      "<revprop val=\"reviewed\" action=\"include\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-revprop.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-revprop.html"
+    }
+  },
+  {
+    "element_name": "startflag",
+    "content_type": "ditaval_element",
+    "text_content": "The <startflag> element defines content or styling inserted before content that is flagged by a matching DITAVAL <prop> or <revprop> rule.",
+    "parent_element": "prop, revprop",
+    "children_elements": [
+      "alt-text"
+    ],
+    "attributes": "{\"imageref\": \"optional image for the start flag\", \"style\": \"optional style information\"}",
+    "usage_contexts": [
+      "Use <startflag> inside <prop> or <revprop> when matching content needs a visible flag before it.",
+      "Use <alt-text> inside the flag when the flag uses an image and needs accessible text."
+    ],
+    "common_mistakes": [
+      "Using <startflag> without a matching flagging rule.",
+      "Putting <startflag> directly under <val> instead of inside <prop> or <revprop>."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-startflag.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-startflag.html"
+    }
+  },
+  {
+    "element_name": "endflag",
+    "content_type": "ditaval_element",
+    "text_content": "The <endflag> element defines content or styling inserted after content that is flagged by a matching DITAVAL <prop> or <revprop> rule.",
+    "parent_element": "prop, revprop",
+    "children_elements": [
+      "alt-text"
+    ],
+    "attributes": "{\"imageref\": \"optional image for the end flag\", \"style\": \"optional style information\"}",
+    "usage_contexts": [
+      "Use <endflag> inside <prop> or <revprop> when matching content needs a visible flag after it.",
+      "Pair with <startflag> when both opening and closing visual markers are needed."
+    ],
+    "common_mistakes": [
+      "Putting <endflag> directly in topic content.",
+      "Using <endflag> when a start-only visual marker is sufficient."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-endflag.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-endflag.html"
+    }
+  },
+  {
+    "element_name": "alt-text",
+    "content_type": "ditaval_element",
+    "text_content": "The <alt-text> element provides accessible alternate text for a DITAVAL flag image used in <startflag> or <endflag>.",
+    "parent_element": "startflag, endflag",
+    "children_elements": [],
+    "attributes": "{}",
+    "usage_contexts": [
+      "Use <alt-text> when a start or end flag uses an image.",
+      "Keep the text short and descriptive so assistive technology can identify the flag."
+    ],
+    "common_mistakes": [
+      "Omitting alternate text for image-based flags.",
+      "Using <alt-text> as normal topic body content."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-alt-text.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-alt-text.html"
+    }
+  },
+  {
+    "element_name": "style-conflict",
+    "content_type": "ditaval_element",
+    "text_content": "The <style-conflict> element specifies how processors should handle conflicting DITAVAL flagging styles when more than one active flag applies to the same content.",
+    "parent_element": "val",
+    "children_elements": [],
+    "attributes": "{\"foreground-conflict-color\": \"color used for foreground conflicts\", \"background-conflict-color\": \"color used for background conflicts\"}",
+    "usage_contexts": [
+      "Use <style-conflict> in a DITAVAL profile when multiple flagging rules might apply to the same content.",
+      "Set conflict colors so output makes overlapping flags visible instead of silently choosing one style."
+    ],
+    "common_mistakes": [
+      "Expecting <style-conflict> to filter content; it only handles flagging style conflicts.",
+      "Using it outside a DITAVAL profile."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-style-conflict.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "ditaval",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/ditaval/ditaval-style-conflict.html"
+    }
+  },
+  {
+    "element_name": "id_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA ID attribute group covers addressing and reuse identifiers, including @id and related reference attributes such as @conref and @conrefend. Use @id to create stable, unique targets inside a DITA document so maps, xrefs, conrefs, and processors can address the correct element.",
+    "parent_element": "common DITA elements",
+    "children_elements": [],
+    "attributes": "{\"id\": \"unique XML identifier for the element\", \"conref\": \"content reference to reusable source\", \"conrefend\": \"end of a conref range\"}",
+    "usage_contexts": [
+      "Use @id on topic roots and reusable target elements that must be addressed by URI, xref, conref, or key-based references.",
+      "Keep IDs stable across revisions so downstream links and reuse targets do not break."
+    ],
+    "common_mistakes": [
+      "Duplicating an @id within the same XML document.",
+      "Using a visible title as if it were an ID target.",
+      "Assuming a local @id is globally unique without the topic/file portion of the address."
+    ],
+    "correct_examples": [
+      "<topic id=\"install\"><title>Install</title><body><p id=\"prereq\">Check prerequisites.</p></body></topic>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/idAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/idAttributes.html"
+    }
+  },
+  {
+    "element_name": "metadata_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA metadata attribute group contains profiling and revision attributes such as @audience, @platform, @product, @props, @otherprops, @rev, and @deliveryTarget. These attributes carry metadata used for filtering, flagging, conditional processing, and delivery-target selection.",
+    "parent_element": "common DITA elements",
+    "children_elements": [],
+    "attributes": "{\"audience\": \"intended audience profiling token\", \"platform\": \"platform profiling token\", \"product\": \"product profiling token\", \"props\": \"general profiling token\", \"otherprops\": \"other profiling token\", \"rev\": \"revision token\", \"deliveryTarget\": \"delivery target token\"}",
+    "usage_contexts": [
+      "Use metadata attributes on topics, map branches, and body elements when conditional processing must include, exclude, pass through, or flag content.",
+      "Pair metadata attributes with subject schemes or DITAVAL profiles when values need governance or filtering behavior."
+    ],
+    "common_mistakes": [
+      "Treating profiling tokens as fixed enum values when they are project-defined tokens.",
+      "Applying profile values without a DITAVAL profile, subject scheme, or publishing rule that consumes them."
+    ],
+    "correct_examples": [
+      "<topicref href=\"admin.dita\" audience=\"admin\" platform=\"linux\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/metadataAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/metadataAttributes.html"
+    }
+  },
+  {
+    "element_name": "localization_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA localization attribute group includes language, direction, and translation-control metadata such as @xml:lang, @dir, and @translate. These attributes guide localization, bidirectional text handling, and whether content should be translated.",
+    "parent_element": "common DITA elements",
+    "children_elements": [],
+    "attributes": "{\"xml:lang\": \"language tag for the element content\", \"dir\": \"text direction\", \"translate\": \"translation control\"}",
+    "usage_contexts": [
+      "Use @xml:lang on maps, topics, and translated branches to identify the content language.",
+      "Use @dir for right-to-left or bidirectional language content.",
+      "Use @translate when specific strings such as product names, commands, or code-like tokens should not be translated."
+    ],
+    "common_mistakes": [
+      "Relying on output language settings without setting @xml:lang on localized source content.",
+      "Using @translate=\"no\" too broadly on user-visible prose."
+    ],
+    "correct_examples": [
+      "<topic id=\"intro\" xml:lang=\"fr-FR\"><title>Introduction</title></topic>",
+      "<keyword translate=\"no\">kubectl</keyword>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/localizationAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/localizationAttributes.html"
+    }
+  },
+  {
+    "element_name": "debug_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA debug attribute group contains processor tracing attributes such as @xtrf and @xtrc. These attributes are intended for source-file and source-context debugging information, not for author-facing semantics or publishing behavior.",
+    "parent_element": "common DITA elements",
+    "children_elements": [],
+    "attributes": "{\"xtrf\": \"source file trace\", \"xtrc\": \"source context trace\"}",
+    "usage_contexts": [
+      "Use debug attributes only when processors or diagnostic tooling need to preserve source tracing information.",
+      "Treat @xtrf and @xtrc as diagnostic metadata that can be generated or changed by tools."
+    ],
+    "common_mistakes": [
+      "Authoring @xtrf or @xtrc manually as meaningful content metadata.",
+      "Depending on debug attributes for output behavior."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/debugAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/debugAttributes.html"
+    }
+  },
+  {
+    "element_name": "architectural_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA architectural attribute group contains architecture metadata such as @class, @domains, @specializations, and DITA architecture version declarations. These attributes describe specialization ancestry and grammar/domain availability rather than user-visible subject matter.",
+    "parent_element": "common DITA elements and root elements",
+    "children_elements": [],
+    "attributes": "{\"class\": \"specialization ancestry\", \"domains\": \"domain contribution declarations\", \"specializations\": \"specialization declarations\", \"ditaarch:DITAArchVersion\": \"DITA architecture version\"}",
+    "usage_contexts": [
+      "Use architectural attributes to preserve DITA specialization and domain metadata supplied by the grammar or processor.",
+      "Use @class to identify how a specialized element maps back to base DITA element types."
+    ],
+    "common_mistakes": [
+      "Editing @class manually in authored content.",
+      "Confusing @domains or @specializations with profiling taxonomies such as subject schemes."
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/architecturalAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/architecturalAttributes.html"
+    }
+  },
+  {
+    "element_name": "common_map_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA common map attribute group contains map-branch behavior attributes such as @collection-type, @processing-role, @linking, @toc, @print, @search, @chunk, @navtitle, @locktitle, and @copy-to. These attributes control map processing, navigation, output inclusion, generated links, and branch behavior.",
+    "parent_element": "map reference elements such as topicref, topichead, topicgroup, mapref, and keydef",
+    "children_elements": [],
+    "attributes": "{\"collection-type\": \"child relationship semantics\", \"processing-role\": \"normal or resource-only processing\", \"linking\": \"generated-link behavior\", \"toc\": \"TOC inclusion\", \"print\": \"print output inclusion\", \"search\": \"search indexing inclusion\", \"chunk\": \"output split/merge behavior\", \"navtitle\": \"navigation title\", \"locktitle\": \"whether navtitle is locked\", \"copy-to\": \"alternate output resource name\"}",
+    "usage_contexts": [
+      "Use common map attributes on topicref-like elements to control how referenced resources participate in navigation and output.",
+      "Use @processing-role=\"resource-only\" for key resources, conref warehouses, or subject-scheme maps that support processing but should not publish as normal topics."
+    ],
+    "common_mistakes": [
+      "Using map-only attributes in standalone topic body content.",
+      "Treating @toc, @print, @search, and @linking as the same setting even though each controls a different processing concern."
+    ],
+    "correct_examples": [
+      "<topicref href=\"shared/reuse.dita\" processing-role=\"resource-only\"/>",
+      "<topicref href=\"tutorial.dita\" collection-type=\"sequence\"/>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html"
+    }
+  },
+  {
+    "element_name": "cals_table_attributes",
+    "content_type": "attribute_group",
+    "text_content": "The DITA CALS table attribute group contains table-grid, separator, span, frame, and alignment attributes used by CALS table structures such as <table>, <tgroup>, <colspec>, <row>, and <entry>. Common attributes include @cols, @colname, @colnum, @colwidth, @namest, @nameend, @morerows, @colsep, @rowsep, @align, @valign, @rowheader, and @frame.",
+    "parent_element": "CALS table elements such as table, tgroup, colspec, row, and entry",
+    "children_elements": [],
+    "attributes": "{\"cols\": \"column count\", \"colname\": \"column name\", \"colnum\": \"column number\", \"colwidth\": \"column width\", \"namest\": \"starting span column\", \"nameend\": \"ending span column\", \"morerows\": \"additional spanned rows\", \"colsep\": \"column separator\", \"rowsep\": \"row separator\", \"align\": \"horizontal alignment\", \"valign\": \"vertical alignment\", \"rowheader\": \"row header behavior\", \"frame\": \"outer table frame\"}",
+    "usage_contexts": [
+      "Use CALS table attributes only on CALS table structures, not on <simpletable> or <properties>.",
+      "Use span attributes such as @namest, @nameend, and @morerows only when the resulting table grid remains valid."
+    ],
+    "common_mistakes": [
+      "Applying CALS attributes to simpletable or properties tables.",
+      "Using visual separator attributes as a substitute for semantic table headers and accessibility structure."
+    ],
+    "correct_examples": [
+      "<tgroup cols=\"3\"><colspec colname=\"c1\"/><tbody><row><entry colsep=\"1\">Value</entry></row></tbody></tgroup>"
+    ],
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/calsTableAttributes.html",
+    "metadata": {
+      "category": "dita_spec",
+      "subcategory": "attribute_group",
+      "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/calsTableAttributes.html"
+    }
   }
 ]

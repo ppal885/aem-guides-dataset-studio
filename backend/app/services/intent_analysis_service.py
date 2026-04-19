@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from app.core.schemas_dita_pipeline import DomainSignals, IntentRecord
+from app.core.schemas_dita_pipeline import DetectedDitaConstruct, DomainSignals, IntentRecord
 from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
@@ -23,6 +23,93 @@ _JIRA_TYPE_TO_DITA: dict[str, tuple[str, str]] = {
     "new feature": ("concept", "feature_request"),
     "documentation": ("concept", "documentation"),
 }
+
+
+# ── DITA attribute/element detection patterns ──
+_DITA_ATTRIBUTE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "format": re.compile(r'\b(?:format\s*(?:=|attribute)|@format|format\s*=\s*["\']?\w+)\b', re.I),
+    "scope": re.compile(r'\b(?:scope\s*(?:=|attribute)|@scope|scope\s*=\s*["\']?(?:local|peer|external))\b', re.I),
+    "chunk": re.compile(r'\b(?:chunk\s*(?:=|attribute)|@chunk|chunk\s*=\s*["\']?\w+)\b', re.I),
+    "type": re.compile(r'\b(?:@type|type\s*=\s*["\']?(?:topic|concept|task|reference|fig|fn|section|table))\b', re.I),
+    "collection-type": re.compile(r'\b(?:collection[\-.]type|@collection-type)\b', re.I),
+    "processing-role": re.compile(r'\b(?:processing[\-.]role|@processing-role|resource[\-.]only)\b', re.I),
+    "linking": re.compile(r'\b(?:linking\s*(?:=|attribute)|@linking|targetonly|sourceonly)\b', re.I),
+    "locktitle": re.compile(r'\b(?:locktitle|@locktitle|lock[\-.]title)\b', re.I),
+    "conref": re.compile(r'\b(?:conref\s*(?:=|attribute)|@conref|conref\b)', re.I),
+    "conkeyref": re.compile(r'\b(?:conkeyref\s*(?:=|attribute)|@conkeyref|conkeyref\b)', re.I),
+    "keyref": re.compile(r'\b(?:keyref\s*(?:=|attribute)|@keyref|keyref\b)', re.I),
+    "keys": re.compile(r'\b(?:keys\s*(?:=|attribute)|@keys|\bkeys\b)', re.I),
+    "keyscope": re.compile(r'\b(?:keyscope\s*(?:=|attribute)|@keyscope|keyscope\b)', re.I),
+    "href": re.compile(r'\b(?:href\s*(?:=|attribute)|@href)\b', re.I),
+    "navtitle": re.compile(r'\b(?:navtitle\s*(?:=|attribute)|@navtitle)\b', re.I),
+    "toc": re.compile(r'\b(?:@toc|toc\s*=\s*["\']?(?:yes|no))\b', re.I),
+    "print": re.compile(r'\b(?:@print|print\s*=\s*["\']?(?:yes|no|printonly))\b', re.I),
+}
+
+_DITA_ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
+    "topicref": re.compile(r'\btopicref\b', re.I),
+    "xref": re.compile(r'\b(?:xref|cross[\-\s]?ref)\b', re.I),
+    "keydef": re.compile(r'\bkeydef\b', re.I),
+    "reltable": re.compile(r'\b(?:reltable|relationship\s+table)\b', re.I),
+    "mapref": re.compile(r'\bmapref\b', re.I),
+    "topichead": re.compile(r'\btopichead\b', re.I),
+    "topicgroup": re.compile(r'\btopicgroup\b', re.I),
+    "glossentry": re.compile(r'\bglossentry\b', re.I),
+    "bookmap": re.compile(r'\bbookmap\b', re.I),
+    "image": re.compile(r'\b(?:<image|image\s+element)\b', re.I),
+    "audio": re.compile(r'\b(?:<audio|audio\s+element)\b', re.I),
+    "video": re.compile(r'\b(?:<video|video\s+element)\b', re.I),
+}
+
+_ATTR_VALUE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "format": re.compile(r'format\s*=\s*["\']?(\w+)', re.I),
+    "scope": re.compile(r'scope\s*=\s*["\']?(local|peer|external)', re.I),
+    "type": re.compile(r'type\s*=\s*["\']?(\w+(?:/\w+)?)', re.I),
+    "chunk": re.compile(r'chunk\s*=\s*["\']?([\w\-]+)', re.I),
+    "collection-type": re.compile(r'collection[\-.]type\s*=\s*["\']?(\w+)', re.I),
+    "processing-role": re.compile(r'processing[\-.]role\s*=\s*["\']?([\w\-]+)', re.I),
+    "linking": re.compile(r'linking\s*=\s*["\']?(\w+)', re.I),
+    "toc": re.compile(r'toc\s*=\s*["\']?(yes|no)', re.I),
+    "print": re.compile(r'print\s*=\s*["\']?(yes|no|printonly)', re.I),
+}
+
+
+def _detect_dita_construct(text: str, evidence_fields: dict | None = None) -> DetectedDitaConstruct:
+    """Identify which DITA attributes/elements a Jira ticket is about."""
+    ef = evidence_fields or {}
+    search_text = (text or "") + " " + (ef.get("summary") or "") + " " + (ef.get("description") or "")
+
+    detected_attrs: list[str] = []
+    detected_elems: list[str] = []
+    specific_values: dict[str, list[str]] = {}
+
+    for attr_name, pattern in _DITA_ATTRIBUTE_PATTERNS.items():
+        if pattern.search(search_text):
+            detected_attrs.append(attr_name)
+            val_pat = _ATTR_VALUE_PATTERNS.get(attr_name)
+            if val_pat:
+                vals = val_pat.findall(search_text)
+                if vals:
+                    specific_values[attr_name] = list(dict.fromkeys(vals))
+
+    for elem_name, pattern in _DITA_ELEMENT_PATTERNS.items():
+        if pattern.search(search_text):
+            detected_elems.append(elem_name)
+
+    confidence = 0.0
+    if detected_attrs or detected_elems:
+        confidence = 0.5
+        if detected_attrs and detected_elems:
+            confidence = 0.8
+        if specific_values:
+            confidence = min(1.0, confidence + 0.15)
+
+    return DetectedDitaConstruct(
+        attributes=detected_attrs,
+        elements=detected_elems,
+        specific_values=specific_values,
+        confidence=confidence,
+    )
 
 
 def _keyword_boost_intent(
@@ -107,9 +194,15 @@ def _keyword_boost_intent(
         patterns = [p for p in patterns if p != "none"]
     anti = list(dict.fromkeys(anti))
 
+    # DITA construct detection (for test data generation)
+    construct = _detect_dita_construct(user_text, evidence_fields=ef)
+
     spec = base.specialized_construct_required or bool(
         [p for p in patterns if p and p != "none"]
     )
+    if construct.confidence >= 0.5:
+        spec = True
+
     return base.model_copy(
         update={
             "required_dita_patterns": patterns or base.required_dita_patterns,
@@ -118,6 +211,7 @@ def _keyword_boost_intent(
             "specialized_construct_required": spec,
             "dita_topic_type_guess": topic_type,
             "content_intent": content_intent,
+            "detected_dita_construct": construct,
         }
     )
 

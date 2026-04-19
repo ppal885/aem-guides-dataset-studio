@@ -27,8 +27,8 @@ export function AssistantAvatar({
     <div
       className={cn(
         'relative flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-md ring-2 ring-white',
-        'bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 text-white',
-        'shadow-indigo-500/25',
+        'bg-gradient-to-br from-teal-600 via-teal-700 to-slate-700 text-white',
+        'shadow-teal-900/25',
         sizeClasses[size],
         className
       )}

@@ -41,6 +41,58 @@ def test_chat_fallback_provider_is_disabled_when_unset(monkeypatch):
     assert llm_service._get_chat_fallback_provider("openai") is None
 
 
+def test_get_llm_provider_configuration_supports_azure_openai(monkeypatch):
+    monkeypatch.setattr(llm_service, "LLM_PROVIDER", "azure_openai")
+    monkeypatch.setattr(llm_service, "USE_BEDROCK", False)
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_API_KEY", "azure-key")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_API_VERSION", "2024-02-01")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_MODEL", "gpt-4.1-deployment")
+
+    config = llm_service.get_llm_provider_configuration()
+
+    assert config["provider"] == "azure_openai"
+    assert config["provider_label"] == "Azure OpenAI"
+    assert config["model"] == "gpt-4.1-deployment"
+    assert config["available"] is True
+
+
+def test_generation_fallback_supports_azure_openai(monkeypatch):
+    monkeypatch.setattr(llm_service, "LLM_FALLBACK_PROVIDER", "azure_openai")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_API_KEY", "azure-key")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_API_VERSION", "2024-02-01")
+    monkeypatch.setattr(llm_service, "AZURE_OPENAI_MODEL", "gpt-4.1-deployment")
+
+    model, fn, override = llm_service._get_generation_fallback("groq")
+
+    assert model == "gpt-4.1-deployment"
+    assert fn is llm_service._generate_openai
+    assert override is None
+
+
+def test_chat_fallback_is_disabled_when_primary_provider_is_azure(monkeypatch):
+    monkeypatch.setattr(llm_service, "LLM_PROVIDER", "azure_openai")
+    monkeypatch.setattr(llm_service, "LLM_FALLBACK_PROVIDER", "anthropic")
+    monkeypatch.setattr(llm_service, "USE_BEDROCK", False)
+    monkeypatch.setattr(llm_service, "ANTHROPIC_API_KEY", "anthropic-key")
+
+    assert llm_service._get_chat_fallback_provider("azure_openai") is None
+
+
+def test_generation_fallback_is_disabled_when_primary_provider_is_azure(monkeypatch):
+    monkeypatch.setattr(llm_service, "LLM_PROVIDER", "azure_openai")
+    monkeypatch.setattr(llm_service, "LLM_FALLBACK_PROVIDER", "openai")
+    monkeypatch.setattr(llm_service, "USE_BEDROCK", False)
+    monkeypatch.setattr(llm_service, "OPENAI_API_KEY", "openai-key")
+
+    model, fn, override = llm_service._get_generation_fallback("azure_openai")
+
+    assert model is None
+    assert fn is None
+    assert override is None
+
+
 def test_generation_fallback_requires_explicit_provider(monkeypatch):
     monkeypatch.setattr(llm_service, "LLM_FALLBACK_PROVIDER", "")
     monkeypatch.setattr(llm_service, "ANTHROPIC_API_KEY", "anthropic-key")

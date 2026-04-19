@@ -11,6 +11,8 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(String(36), primary_key=True)
+    user_id = Column(String(120), nullable=True, index=True)
+    tenant_id = Column(String(120), nullable=True, index=True)
     title = Column(String(500), nullable=True)  # Auto from first message
     # JSON blob: last generate_dita context for "refine previous generation" (survives process restart)
     last_generation_json = Column(Text, nullable=True)

@@ -31,6 +31,7 @@ def _map_xml(
     map_id: str,
     title: str,
     topicref_hrefs: List[str],
+    topicref_entries: List[dict] = None,
     keydef_entries: List = None,
     scoped_blocks: List = None,
 ) -> bytes:
@@ -43,9 +44,23 @@ def _map_xml(
     # Validate inputs
     if topicref_hrefs is None:
         topicref_hrefs = []
+    if topicref_entries is None:
+        topicref_entries = []
+
+    if topicref_entries:
+        normalized_topicrefs = []
+        for entry in topicref_entries:
+            if not isinstance(entry, dict):
+                continue
+            href = str(entry.get("href") or "").strip()
+            attrs = dict(entry.get("attrs") or {}) if isinstance(entry.get("attrs"), dict) else {}
+            if href:
+                normalized_topicrefs.append({"href": href, "attrs": attrs})
+    else:
+        normalized_topicrefs = [{"href": href, "attrs": {}} for href in topicref_hrefs if href]
     
     # Log map generation details for debugging
-    logger.debug(f"Generating map '{title}' (id: {map_id}) with {len(topicref_hrefs)} topicrefs")
+    logger.debug(f"Generating map '{title}' (id: {map_id}) with {len(normalized_topicrefs)} topicrefs")
     
     root = ET.Element("map", {
         "id": map_id,
@@ -58,15 +73,22 @@ def _map_xml(
     
     # Add topicrefs - ensure ALL are added
     topicref_count = 0
-    for href in topicref_hrefs:
-        if href:  # Skip empty hrefs
-            topicref = ET.SubElement(root, "topicref", {"href": xml_escape_href(href)})
+    for entry in normalized_topicrefs:
+        href = str(entry.get("href") or "").strip()
+        if href:
+            attrs = {"href": xml_escape_href(href)}
+            for attr_name, attr_value in (entry.get("attrs") or {}).items():
+                clean_name = str(attr_name or "").strip()
+                clean_value = str(attr_value or "").strip()
+                if clean_name and clean_value:
+                    attrs[clean_name] = xml_escape_attr(clean_value)
+            ET.SubElement(root, "topicref", attrs)
             topicref_count += 1
     
     # Verify all topicrefs were added
-    if topicref_count != len(topicref_hrefs):
+    if topicref_count != len(normalized_topicrefs):
         logger.warning(
-            f"Map '{title}': Expected {len(topicref_hrefs)} topicrefs, but added {topicref_count}. "
+            f"Map '{title}': Expected {len(normalized_topicrefs)} topicrefs, but added {topicref_count}. "
             f"Some hrefs may be empty or invalid."
         )
     else:

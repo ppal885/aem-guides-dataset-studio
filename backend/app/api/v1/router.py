@@ -1,5 +1,27 @@
 from fastapi import APIRouter
-from app.api.v1.routes import presets, schedule, dataset_explorer, performance, recipes, bulk, aem_recipes, specialized, scale_testing, limits, admin, ai_dataset, chat
+from fastapi.responses import JSONResponse
+
+from app.api.v1.routes import (
+    aem_recipes,
+    admin,
+    ai_dataset,
+    ai_flow,
+    bulk,
+    chat,
+    dataset_explorer,
+    doc_pdf,
+    limits,
+    performance,
+    presets,
+    recipes,
+    schedule,
+    scale_testing,
+    smart_suggestions,
+    specialized,
+    storage,
+    tenants,
+)
+from app.core.auth import CurrentUser, UserIdentity
 
 api_router = APIRouter()
 
@@ -47,9 +69,12 @@ def _get_rag_status():
 
 
 @api_router.get("/rag-status")
-def get_rag_status_v1():
+def get_rag_status_v1(user: UserIdentity = CurrentUser):
     """RAG source status (alias at /api/v1/rag-status). Also at /api/v1/ai/rag-status."""
-    return _get_rag_status()
+    return JSONResponse(
+        content=_get_rag_status(),
+        headers={"Deprecation": "true", "Link": '</api/v1/ai/rag-status>; rel="successor-version"'},
+    )
 
 
 api_router.include_router(presets.router)
@@ -65,3 +90,8 @@ api_router.include_router(limits.router)
 api_router.include_router(admin.router)
 api_router.include_router(ai_dataset.router)
 api_router.include_router(chat.router)
+api_router.include_router(storage.router)
+api_router.include_router(ai_flow.router)
+api_router.include_router(tenants.router, prefix="/admin/tenants", tags=["admin-tenants"])
+api_router.include_router(smart_suggestions.router, prefix="/smart", tags=["smart"])
+api_router.include_router(doc_pdf.router, prefix="/docs", tags=["docs"])

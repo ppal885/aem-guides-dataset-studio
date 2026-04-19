@@ -30,7 +30,7 @@ if ($Build) {
 
 if ($Dev) {
     Write-Host "Starting in DEVELOPMENT mode (hot-reload)..." -ForegroundColor Cyan
-    Write-Host "  Backend: http://localhost:8000" -ForegroundColor White
+    Write-Host "  Backend: http://localhost:8001" -ForegroundColor White
     Write-Host "  Frontend: http://localhost:5173" -ForegroundColor White
     Write-Host ""
     docker compose -f docker-compose.yml -f docker-compose.dev.yml up

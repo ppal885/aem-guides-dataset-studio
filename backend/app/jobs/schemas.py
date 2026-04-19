@@ -375,6 +375,19 @@ class PropertiesTableReferenceRecipe(BaseModel):
     pretty_print: bool = True
 
 
+class SyntaxDiagramReferenceRecipe(BaseModel):
+    """
+    Recipe for DITA reference topics with <syntaxdiagram> under <refsyn>.
+
+    Emits groupseq / groupchoice patterns with kwd, delim, oper, sep, and repsep for tech comm syntax QA.
+    """
+
+    type: Literal["syntax_diagram_reference"] = "syntax_diagram_reference"
+    topic_count: int = Field(default=30, ge=5, le=5000)
+    include_map: bool = True
+    pretty_print: bool = True
+
+
 class GlossaryPackRecipe(BaseModel):
     """
     Recipe for generating Glossary entries.
@@ -1168,6 +1181,7 @@ Recipe = Annotated[
         ConceptTopicsRecipe,
         ReferenceTopicsRecipe,
         PropertiesTableReferenceRecipe,
+        SyntaxDiagramReferenceRecipe,
         GlossaryPackRecipe,
         BookmapStructureRecipe,
         MediaRichContentRecipe,

@@ -11,7 +11,6 @@ const DatasetExplorerPage = lazy(() => import('./pages/DatasetExplorerPage').the
 const AemUploadPage = lazy(() => import('./pages/AemUploadPage').then(module => ({ default: module.AemUploadPage })))
 const ChatPage = lazy(() => import('./pages/ChatPage').then(module => ({ default: module.ChatPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
-
 function App() {
   return (
     <ErrorBoundary>

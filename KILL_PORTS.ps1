@@ -1,4 +1,4 @@
-# Kill processes using ports 8000 (backend) and 5173 (frontend)
+# Kill processes using ports 8001 (backend default) and 5173 (frontend)
 # Run this if RUN_BOTH.ps1 fails with "Backend did not respond" or port-in-use errors
 
 $ErrorActionPreference = "SilentlyContinue"
@@ -23,8 +23,8 @@ function Kill-Port {
     }
 }
 
-Write-Host "Clearing ports 8000 and 5173..." -ForegroundColor Cyan
-Kill-Port 8000
+Write-Host "Clearing ports 8001 and 5173..." -ForegroundColor Cyan
+Kill-Port 8001
 Kill-Port 5173
 Start-Sleep -Seconds 2
 Write-Host "Done. Run .\RUN_BOTH.ps1 to start." -ForegroundColor Green

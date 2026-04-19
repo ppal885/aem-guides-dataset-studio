@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal, cast
 
 from app.core.schemas_dita_pipeline import (
+    AttributeTestCoverage,
     GenerationPlan,
     IntentRecord,
     PlanConstruct,
@@ -11,6 +12,7 @@ from app.core.schemas_dita_pipeline import (
     RetrievalQueryBundle,
 )
 from app.generator.recipe_manifest import RecipeSpec
+from app.services.dita_attribute_catalog import build_test_scenarios, get_attribute_spec
 
 DEFAULT_SECTIONS = [
     "problem_statement",
@@ -100,6 +102,30 @@ def build_generation_plan(
     if ef.get("expected_behavior") and ef.get("actual_behavior"):
         forbidden.append("omit_expected_vs_actual_comparison")
 
+    # Build attribute test coverage when DITA constructs are detected
+    attr_coverage: list[AttributeTestCoverage] = []
+    ddc = intent.detected_dita_construct
+    if ddc.confidence >= 0.5 and ddc.attributes:
+        for attr_name in ddc.attributes:
+            attr_spec = get_attribute_spec(attr_name)
+            target_elems = ddc.elements or (
+                attr_spec.supported_elements if attr_spec else []
+            )
+            mentioned = ddc.specific_values.get(attr_name, [])
+            all_vals = attr_spec.all_valid_values if attr_spec else mentioned
+            combo_attrs = attr_spec.combination_attributes if attr_spec else []
+            scenarios = build_test_scenarios(attr_name, target_elems, mentioned)
+            attr_coverage.append(
+                AttributeTestCoverage(
+                    target_attribute=attr_name,
+                    target_elements=target_elems[:6],
+                    all_valid_values=all_vals,
+                    mentioned_values=mentioned,
+                    combination_attributes=combo_attrs[:4],
+                    test_scenarios=scenarios[:15],
+                )
+            )
+
     return GenerationPlan(
         recipe_id=spec.id,
         topic_type=topic_type,
@@ -114,4 +140,5 @@ def build_generation_plan(
         raw_user_text_excerpt=user_text_excerpt[:2000],
         intent_summary=intent_summary[:500],
         source_fidelity_rules=fidelity_rules,
+        attribute_test_coverage=attr_coverage,
     )

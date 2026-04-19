@@ -189,7 +189,15 @@ REFERENCE_TOPIC_DTD = """<!-- Minimal DITA Reference DTD stub (properties align 
 <!ELEMENT title (#PCDATA)>
 <!ELEMENT shortdesc (#PCDATA)>
 <!ELEMENT refbody (refsyn?, properties?, section*, choicetable?)>
-<!ELEMENT refsyn (p+)>
+<!ELEMENT refsyn (p|syntaxdiagram)+>
+<!ELEMENT syntaxdiagram (title?, (groupseq|groupchoice)+)>
+<!ELEMENT groupseq ((kwd|oper|delim|sep|repsep|groupseq|groupchoice)+)>
+<!ELEMENT groupchoice ((kwd|oper|delim|sep|repsep|groupseq|groupchoice)+)>
+<!ELEMENT kwd (#PCDATA)>
+<!ELEMENT oper (#PCDATA)>
+<!ELEMENT delim (#PCDATA)>
+<!ELEMENT sep (#PCDATA)>
+<!ELEMENT repsep (#PCDATA)>
 <!ELEMENT properties (prophead?, property+)>
 <!ATTLIST properties outputclass CDATA #IMPLIED>
 <!ELEMENT prophead (proptypehd, propvaluehd, propdeschd)>

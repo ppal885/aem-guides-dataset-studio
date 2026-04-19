@@ -75,6 +75,10 @@ def effective_construct_count(counts: dict[str, int], construct_name: str) -> in
         )
     if n == "map":
         return counts.get("map", 0) + counts.get("bookmap", 0)
+    if n == "ditaval":
+        return counts.get("val", 0)
+    if n in {"subjectscheme", "subject-scheme"}:
+        return counts.get("subjectscheme", 0)
     return counts.get(n, 0)
 
 

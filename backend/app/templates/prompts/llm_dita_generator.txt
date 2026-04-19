@@ -10,6 +10,7 @@ CRITICAL RULES:
 - When Representative Sample XML is provided, use it as reference but ensure valid structure. Do NOT invent if sample is sufficient.
 - When no Representative Sample, infer structure from Jira summary and description. Create minimal valid DITA that demonstrates the described scenario.
 - When DITA KNOWLEDGE, DITA STRUCTURE, or AEM GUIDES DOCUMENTATION is provided in the prompt, follow it strictly. Do not invent nesting or attributes not present in the retrieved knowledge. RAG context is authoritative for correctness.
+- If evidence is weak, incomplete, or ambiguous, stay conservative. Do not invent missing sections, steps, attributes, or domain-specific elements just to make the file look complete.
 - When **PATTERN-SPECIFIC HINTS** appear after USER INPUT, treat them as mandatory additions on top of these global rules (table semantics, RTE inline tags, keyref/map structure, etc.).
 - When **ADDITIONAL INSTRUCTIONS** include **GENERATION_PLAN_JSON**, that JSON is the authoritative contract: you MUST emit every listed **required_constructs** (with at least the minimum counts) and you MUST NOT use **forbidden_patterns** (e.g. do not substitute a paragraph or unordered list for a required DITA **table** when the plan requires tabular markup).
 - When **RECIPE_EXECUTION_CONTRACT_JSON** appears, it restates the same hard contract from recipe selection: **required_constructs**, **forbidden_fallback_patterns**, **validation_rules**, and **repair_hints**. If you omit required constructs, generation aborts before success (fail-fast)—emit complete markup in the first JSON response.
@@ -17,6 +18,7 @@ CRITICAL RULES:
 
 JIRA / BUG SCENARIO FIDELITY (when USER INPUT is Jira evidence):
 - Do NOT output a "dump" that only restates summary/description in generic <p> elements. The goal is a minimal REPRODUCTION dataset: structures and steps a human can follow to see the issue.
+- Do NOT emit filler scaffolding such as Introduction / Body / Conclusion unless the evidence explicitly supports that shape.
 - Menu / context-menu paths: use <menucascade><uicontrol>...</uicontrol>...</menucascade> in order.
 - URLs in evidence: use <xref format="html" scope="external"> (adjust format if not HTML).
 - Verbatim reporter sentences that matter for reproduction: put in <note> or <lq>, then clarify if needed.
@@ -25,6 +27,12 @@ JIRA / BUG SCENARIO FIDELITY (when USER INPUT is Jira evidence):
 DITA MAP: Root element <map>. Can contain: <title>, <topicref href="...">, <topichead navtitle="...">, <topicgroup>, <topicset>, <mapref href="...">, <keydef keys="..." href="...">, <reltable>, <topicmeta>.
 DITA BOOKMAP: Root element <bookmap>. Contains <bookmeta> (metadata: <booktitle>, <booktitlealt>, <shortdesc>, <author>, etc.), <frontmatter>, <chapter>, <part>, <appendices>, <backmatter>. Use <bookmeta> for book-level metadata.
 DITA TOPIC: Root element <topic id="..." xml:lang="en">. Contains: <title>, <shortdesc>, <body> with <section> or <p>. May use <foreign> for non-DITA content.
+DITA REFERENCE: Root element <reference id="...">. Use when the evidence is field-heavy, parameter-oriented, or clearly reference content. Prefer structured tables, sections, or definition-list style content over narrative filler.
+
+FAIL-SAFE BEHAVIOR:
+- Never invent specialization/domain tags unless the retrieved evidence explicitly supports them.
+- Never guess unsupported child nesting.
+- If you cannot support a complete structure from the evidence, emit the smallest correct DITA structure you can justify instead of a padded generic topic.
 
 OUTPUT SCHEMA (strict JSON):
 {

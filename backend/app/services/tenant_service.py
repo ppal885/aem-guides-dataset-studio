@@ -43,6 +43,13 @@ def _tenants_dir() -> Path:
     return path
 
 
+def _tenant_knowledge_snippets_path(tenant_id: str) -> Path:
+    normalized = _canonical_tenant_id_for_access(_normalize_tenant_id(tenant_id) or DEFAULT_TENANT)
+    path = _tenants_dir() / normalized / "knowledge_snippets.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _environment() -> str:
     return (os.getenv("ENVIRONMENT") or "development").strip().lower()
 
@@ -349,12 +356,66 @@ def update_tenant_kb(
     return config
 
 
+def list_tenant_knowledge_snippets(tenant_id: str) -> list[dict]:
+    return _load_tenant_knowledge_snippets(tenant_id)
+
+
+def upsert_tenant_knowledge_snippet(
+    tenant_id: str,
+    *,
+    title: str,
+    content: str,
+    snippet_id: Optional[str] = None,
+    description: str = "",
+    aliases: Optional[list[str]] = None,
+    tags: Optional[list[str]] = None,
+    snippet_type: str = "xml_snippet",
+) -> dict:
+    normalized_tenant = get_tenant(tenant_id).tenant_id
+    clean_title = str(title or "").strip()
+    clean_content = str(content or "").strip()
+    if not clean_title:
+        raise ValueError("title is required")
+    if not clean_content:
+        raise ValueError("content is required")
+
+    snippet_key = (
+        _normalize_snippet_id(snippet_id)
+        if snippet_id
+        else _normalize_snippet_id(clean_title.replace(" ", "-"))
+    )
+    entries = _load_tenant_knowledge_snippets(normalized_tenant)
+    new_entry = {
+        "id": snippet_key,
+        "title": clean_title,
+        "description": str(description or "").strip(),
+        "content": clean_content,
+        "aliases": _normalize_text_list(aliases),
+        "tags": _normalize_text_list(tags),
+        "snippet_type": str(snippet_type or "xml_snippet").strip() or "xml_snippet",
+    }
+
+    replaced = False
+    for index, existing in enumerate(entries):
+        if str(existing.get("id") or "").strip() == snippet_key:
+            entries[index] = {**existing, **new_entry}
+            replaced = True
+            break
+    if not replaced:
+        entries.append(new_entry)
+
+    _save_tenant_knowledge_snippets(normalized_tenant, entries)
+    return new_entry
+
+
 def get_tenant_id_from_request(request) -> str:
     return _extract_requested_tenant_id(request)
 
 
-def get_authorized_tenant_id(request, user: UserIdentity) -> str:
-    requested = _extract_requested_tenant_id(request)
+def get_authorized_tenant_id(request, user: UserIdentity, requested_tenant: str | None = None) -> str:
+    requested = str(requested_tenant).strip() if requested_tenant is not None else _extract_requested_tenant_id(request)
+    if not requested:
+        requested = DEFAULT_TENANT
     allowed = _normalized_allowed_tenants(user)
     if requested == DEFAULT_TENANT and allowed and "*" not in allowed and DEFAULT_TENANT not in allowed and len(allowed) == 1:
         requested = allowed[0]
@@ -414,25 +475,48 @@ def retrieve_tenant_context(query: str, tenant_id: str, k: int = 4) -> list[dict
     from app.services.vector_store_service import is_chroma_available, query_collection
 
     config = get_tenant(tenant_id)
-    if not is_chroma_available() or not is_embedding_available():
+    vector_results: list[dict] = []
+    if is_chroma_available() and is_embedding_available():
+        embedding = embed_query(query)
+        if embedding is not None:
+            rows = query_collection(
+                config.rag_collection,
+                query_embedding=embedding.tolist() if hasattr(embedding, "tolist") else list(embedding),
+                k=k,
+            )
+            vector_results = [
+                {
+                    "content": row.get("document") or "",
+                    "metadata": row.get("metadata") or {},
+                    "distance": row.get("distance", 0.0),
+                }
+                for row in rows
+                if row.get("document")
+            ]
+
+    snippet_results = _retrieve_tenant_snippet_hits(query=query, tenant_id=config.tenant_id, k=k)
+    combined = [*snippet_results, *vector_results]
+    if not combined:
         return []
-    embedding = embed_query(query)
-    if embedding is None:
-        return []
-    rows = query_collection(
-        config.rag_collection,
-        query_embedding=embedding.tolist() if hasattr(embedding, "tolist") else list(embedding),
-        k=k,
-    )
-    return [
-        {
-            "content": row.get("document") or "",
-            "metadata": row.get("metadata") or {},
-            "distance": row.get("distance", 0.0),
-        }
-        for row in rows
-        if row.get("document")
-    ]
+
+    deduped: list[dict] = []
+    seen_keys: set[str] = set()
+    for item in combined:
+        metadata = item.get("metadata") or {}
+        key = "|".join(
+            [
+                str(metadata.get("id") or "").strip().lower(),
+                str(metadata.get("title") or metadata.get("label") or "").strip().lower(),
+                str(item.get("content") or "").strip()[:200].lower(),
+            ]
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(item)
+        if len(deduped) >= max(1, k):
+            break
+    return deduped
 
 
 def retrieve_tenant_examples(query: str, tenant_id: str, k: int = 2) -> list[dict]:
@@ -474,6 +558,155 @@ def _normalize_tenant_id(value: str) -> str:
     if not re.match(r"^[a-z0-9_]+$", value):
         raise ValueError("tenant_id must be lowercase alphanumeric with underscores")
     return value
+
+
+def _normalize_snippet_id(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    if not slug:
+        raise ValueError("snippet_id must contain alphanumeric content")
+    return slug
+
+
+def _normalize_text_list(values: Optional[list[str]]) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(text)
+    return normalized
+
+
+def _load_tenant_knowledge_snippets(tenant_id: str) -> list[dict]:
+    path = _tenant_knowledge_snippets_path(tenant_id)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning_structured(
+            "Failed to load tenant knowledge snippets",
+            extra_fields={"tenant_id": tenant_id, "error": str(exc)},
+        )
+        return []
+
+    if not isinstance(payload, list):
+        return []
+
+    snippets: list[dict] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if not content or not title:
+            continue
+        snippet_id = str(item.get("id") or "").strip()
+        try:
+            snippet_id = _normalize_snippet_id(snippet_id or title)
+        except ValueError:
+            continue
+        snippets.append(
+            {
+                "id": snippet_id,
+                "title": title,
+                "description": str(item.get("description") or "").strip(),
+                "content": content,
+                "aliases": _normalize_text_list(item.get("aliases") or []),
+                "tags": _normalize_text_list(item.get("tags") or []),
+                "snippet_type": str(item.get("snippet_type") or "xml_snippet").strip() or "xml_snippet",
+            }
+        )
+    return snippets
+
+
+def _save_tenant_knowledge_snippets(tenant_id: str, entries: list[dict]) -> None:
+    path = _tenant_knowledge_snippets_path(tenant_id)
+    path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+
+def _normalize_search_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _search_terms(value: str) -> list[str]:
+    return [term for term in _normalize_search_text(value).split() if len(term) >= 2]
+
+
+def _retrieve_tenant_snippet_hits(query: str, tenant_id: str, k: int = 4) -> list[dict]:
+    snippets = _load_tenant_knowledge_snippets(tenant_id)
+    if not snippets:
+        return []
+
+    query_norm = _normalize_search_text(query)
+    query_terms = _search_terms(query)
+    if not query_norm and not query_terms:
+        return []
+
+    ranked: list[tuple[int, dict]] = []
+    for snippet in snippets:
+        title_text = _normalize_search_text(snippet.get("title") or "")
+        alias_text = _normalize_search_text(" ".join(snippet.get("aliases") or []))
+        tag_text = _normalize_search_text(" ".join(snippet.get("tags") or []))
+        description_text = _normalize_search_text(snippet.get("description") or "")
+        content_text = _normalize_search_text(snippet.get("content") or "")
+        searchable_text = " ".join(part for part in [title_text, alias_text, tag_text, description_text, content_text] if part)
+
+        score = 0
+        if query_norm:
+            if query_norm == title_text:
+                score += 24
+            elif query_norm in title_text:
+                score += 16
+            elif query_norm in alias_text:
+                score += 14
+            elif query_norm in searchable_text:
+                score += 10
+        for term in query_terms:
+            if term in title_text:
+                score += 6
+            elif term in alias_text or term in tag_text:
+                score += 4
+            elif term in description_text:
+                score += 3
+            elif term in content_text:
+                score += 1
+
+        if score <= 0:
+            continue
+
+        ranked.append(
+            (
+                score,
+                {
+                    "content": snippet.get("content") or "",
+                    "metadata": {
+                        "id": snippet.get("id") or "",
+                        "title": snippet.get("title") or "",
+                        "label": snippet.get("title") or "",
+                        "description": snippet.get("description") or "",
+                        "doc_type": "knowledge_snippet",
+                        "snippet_type": snippet.get("snippet_type") or "xml_snippet",
+                        "tags": snippet.get("tags") or [],
+                        "aliases": snippet.get("aliases") or [],
+                        "source": "tenant_snippet",
+                    },
+                    "distance": 1.0 / (score + 1.0),
+                },
+            )
+        )
+
+    ranked.sort(key=lambda item: (-item[0], item[1]["metadata"].get("title") or ""))
+    return [item for _, item in ranked[: max(1, k)]]
 
 
 def _load_tenant(tenant_id: str) -> Optional[TenantConfig]:

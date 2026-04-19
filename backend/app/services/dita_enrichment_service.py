@@ -5,6 +5,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from app.core.structured_logging import get_structured_logger
+from app.services.dita_xml_headers import serialize_normalized_dita_tree
 
 logger = get_structured_logger(__name__)
 
@@ -127,7 +128,7 @@ def _enrich_topic_file(path: Path) -> dict:
             modified = True
 
         if modified:
-            xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True, method="xml")
+            xml_bytes = serialize_normalized_dita_tree(root, root_tag)
             path.write_bytes(xml_bytes)
     except ET.ParseError as e:
         result["error"] = str(e)

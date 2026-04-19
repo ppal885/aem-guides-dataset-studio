@@ -4,9 +4,9 @@ import { MessageSquarePlus, Trash2, Loader2, Download, Pencil, Check, X, Eraser,
 import { cn } from '@/lib/utils';
 import type { ChatSession as ChatSessionType } from '@/api/chat';
 
-const MIN_WIDTH = 200;
-const MAX_WIDTH = 480;
-const DEFAULT_WIDTH = 288;
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 520;
+const DEFAULT_WIDTH = 320;
 const STORAGE_KEY = 'chatSidebarWidth';
 const COLLAPSED_KEY = 'chatSidebarCollapsed';
 
@@ -129,11 +129,11 @@ export function ChatSidebar({
   // Collapsed sidebar
   if (collapsed) {
     return (
-      <div className="flex w-12 shrink-0 flex-col items-center border-r border-slate-200 bg-slate-50/80 py-3 gap-3">
+      <div className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-slate-200 bg-slate-50 py-3">
         <button
           type="button"
           onClick={() => setCollapsed(false)}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700"
           title="Expand sidebar"
         >
           <PanelLeftOpen className="h-4 w-4" />
@@ -141,7 +141,7 @@ export function ChatSidebar({
         <button
           type="button"
           onClick={onNew}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+          className="rounded-lg border border-slate-200 bg-white p-2 text-teal-600 shadow-sm transition-colors hover:border-teal-300 hover:bg-teal-50"
           title="New conversation"
           disabled={creatingSession || clearingAll}
         >
@@ -154,16 +154,16 @@ export function ChatSidebar({
   return (
     <div
       ref={sidebarRef}
-      className="relative flex shrink-0 flex-col border-r border-slate-200 bg-slate-50/80 backdrop-blur-sm"
+      className="relative flex shrink-0 flex-col border-r border-slate-200 bg-slate-50"
       style={{ width }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Conversations</p>
+      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Conversations</p>
         <button
           type="button"
           onClick={() => setCollapsed(true)}
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors"
+          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
           title="Collapse sidebar"
         >
           <PanelLeftClose className="h-3.5 w-3.5" />
@@ -175,7 +175,7 @@ export function ChatSidebar({
         <Button
           onClick={onNew}
           variant="outline"
-          className="flex w-full items-center justify-center gap-2 border-slate-200 bg-white font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 h-8 text-xs"
+          className="h-8 w-full items-center justify-center gap-2 rounded-lg border-0 bg-teal-600 font-semibold text-white shadow-sm hover:bg-teal-700"
           disabled={creatingSession || clearingAll}
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ export function ChatSidebar({
           <Button
             type="button"
             variant="ghost"
-            className="flex w-full items-center justify-center gap-2 text-red-600 hover:bg-red-50 hover:text-red-700 h-7 text-xs"
+            className="flex h-7 w-full items-center justify-center gap-2 rounded-full text-rose-600 hover:bg-rose-50/80 hover:text-rose-700 text-xs"
             disabled={creatingSession || clearingAll || Boolean(deletingId)}
             onClick={() => void onDeleteAll()}
             aria-label="Clear all chats"
@@ -211,10 +211,10 @@ export function ChatSidebar({
           <div
             key={s.id}
             className={cn(
-              'group mb-0.5 flex cursor-pointer items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-2 transition-all duration-150',
+              'group mb-1 flex cursor-pointer items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2.5 transition-all duration-150',
               currentId === s.id
-                ? 'border-indigo-200/60 bg-indigo-50/60 shadow-sm'
-                : 'hover:bg-white/80 hover:shadow-sm'
+                ? 'border-teal-200 bg-teal-50/90 shadow-sm'
+                : 'hover:border-slate-200 hover:bg-white'
             )}
           >
             {editingId === s.id ? (
@@ -227,7 +227,7 @@ export function ChatSidebar({
                     if (e.key === 'Enter') void commitRename();
                     if (e.key === 'Escape') cancelRename();
                   }}
-                  className="min-w-0 flex-1 rounded-md border border-indigo-300 bg-white px-2 py-1 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/25"
                   disabled={savingTitle}
                   autoFocus
                 />
@@ -255,18 +255,19 @@ export function ChatSidebar({
                 <button
                   type="button"
                   className={cn(
-                    "flex-1 text-left truncate text-[13px] min-w-0",
-                    currentId === s.id ? "font-medium text-indigo-900" : "text-slate-700"
+                    "flex-1 min-w-0 text-left text-[13px] leading-5",
+                    currentId === s.id ? "font-semibold text-slate-900" : "text-slate-700"
                   )}
                   onClick={() => onSelect(s.id)}
+                  title={s.title || 'New Chat'}
                 >
-                  {s.title || 'New Chat'}
+                  <span className="block max-h-10 overflow-hidden whitespace-normal break-words">{s.title || 'New Chat'}</span>
                 </button>
                 {onRenameSession && currentId === s.id && (
                   <button
                     type="button"
                     onClick={(e) => startRename(s, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-white text-slate-400 hover:text-slate-600 transition-all"
+                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-white hover:text-teal-700 group-hover:opacity-100"
                     title="Rename chat"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -279,7 +280,7 @@ export function ChatSidebar({
                       e.stopPropagation();
                       onExport(s.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-white text-slate-400 hover:text-slate-600 transition-all"
+                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-white hover:text-teal-700 group-hover:opacity-100"
                     title="Export as Markdown"
                   >
                     <Download className="w-3.5 h-3.5" />
@@ -291,7 +292,7 @@ export function ChatSidebar({
                     e.stopPropagation();
                     onDelete(s.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
+                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
                   title="Delete"
                   disabled={deletingId === s.id}
                 >
@@ -311,7 +312,7 @@ export function ChatSidebar({
       <div
         className={cn(
           "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize transition-colors z-10",
-          dragging ? "bg-indigo-400" : "bg-transparent hover:bg-indigo-300/50"
+          dragging ? "bg-teal-500" : "bg-transparent hover:bg-teal-400/30"
         )}
         onMouseDown={handleMouseDown}
         title="Drag to resize"

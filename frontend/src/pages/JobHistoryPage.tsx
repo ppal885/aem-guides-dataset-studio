@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Download, Search, Filter, Loader2, CheckCircle2, XCircle, Clock, PlayCircle, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
+import { apiUrl, canonicalJobsRouteErrorMessage } from '@/utils/api';
 
 interface Job {
   id: string;
@@ -62,9 +63,9 @@ export function JobHistoryPage() {
       params.append('limit', DEFAULT_LIMIT.toString());
       params.append('offset', currentOffset.toString());
 
-      const response = await fetch(`/api/v1/jobs?${params.toString()}`);
+      const response = await fetch(apiUrl(`/api/v1/jobs?${params.toString()}`));
       if (!response.ok) {
-        throw new Error(`Failed to load jobs: ${response.statusText}`);
+        throw new Error(canonicalJobsRouteErrorMessage(`HTTP ${response.status}: ${response.statusText}`));
       }
 
       const data = await response.json();
@@ -84,7 +85,7 @@ export function JobHistoryPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
       if (isMountedRef.current) {
-        feedback.error('Failed to load jobs', 'Please try again.');
+        feedback.error('Failed to load jobs', canonicalJobsRouteErrorMessage(error));
       }
     } finally {
       if (isMountedRef.current) {
@@ -92,7 +93,7 @@ export function JobHistoryPage() {
         setLoadingMore(false);
       }
     }
-  }, [feedback, statusFilter]);
+  }, [feedback, offset, statusFilter]);
 
   useEffect(() => {
     loadJobs(true, 0);
@@ -108,7 +109,7 @@ export function JobHistoryPage() {
 
     const pollJobStatus = async (jobId: string) => {
       try {
-        const response = await fetch(`/api/v1/jobs/${jobId}`);
+        const response = await fetch(apiUrl(`/api/v1/jobs/${jobId}`));
         if (!response.ok) {
           return;
         }
@@ -135,7 +136,7 @@ export function JobHistoryPage() {
 
   const handleDownload = useCallback(async (jobId: string, jobName: string) => {
     try {
-      const response = await fetch(`/api/v1/datasets/${jobId}/download`);
+      const response = await fetch(apiUrl(`/api/v1/datasets/${jobId}/download`));
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -280,17 +281,17 @@ export function JobHistoryPage() {
 
   if (loading && jobs.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Job History</h1>
-        <p className="text-slate-600">
+      <div className="border-l-4 border-teal-500 pl-4">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Job History</h1>
+        <p className="mt-2 text-slate-600">
           View and manage all your dataset generation jobs. Total: {totalCount} jobs
         </p>
       </div>
