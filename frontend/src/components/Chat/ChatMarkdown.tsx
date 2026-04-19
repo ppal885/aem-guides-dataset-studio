@@ -209,6 +209,37 @@ function CalloutCard({
   );
 }
 
+/** Syntax-highlighted code block with a hover copy button. */
+function CodeBlock({ language, children }: { language: string; children: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(children);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [children]);
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={handleCopy}
+        className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-700 hover:bg-gray-600 text-white rounded p-1.5"
+        aria-label="Copy code"
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      <SyntaxHighlighter
+        language={language}
+        style={oneDark}
+        customStyle={{ margin: 0, borderRadius: '0.5rem', fontSize: '0.85rem' }}
+        wrapLongLines={true}
+      >
+        {children}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
 export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownProps) {
   return (
     <ReactMarkdown

@@ -1,19 +1,23 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
-import { Upload, AlertCircle, CheckCircle2, Loader2, Copy } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Loader2, Copy, Info } from 'lucide-react';
 import { uploadDatasetToAem, AemUploadConfig } from '@/utils/aemUpload';
+
+type AuthMode = 'basic' | 'token';
 
 export function AemUploadPage() {
   const feedback = useAppFeedback();
   const [jobId, setJobId] = useState('');
   const [aemBaseUrl, setAemBaseUrl] = useState('');
   const [targetPath, setTargetPath] = useState('content/dam/');
+  const [authMode, setAuthMode] = useState<AuthMode>('basic');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [accessToken, setAccessToken] = useState('');
   const [maxConcurrent, setMaxConcurrent] = useState(20);
   const [maxUploadFiles, setMaxUploadFiles] = useState(70000);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -25,6 +29,20 @@ export function AemUploadPage() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Auto-detect AEM Cloud Service URLs and switch to token auth
+  const isCloudService = useMemo(
+    () => /adobeaemcloud\.com/i.test(aemBaseUrl),
+    [aemBaseUrl]
+  );
+
+  // When user types a Cloud Service URL, auto-switch to token auth
+  const handleAemBaseUrlChange = useCallback((value: string) => {
+    setAemBaseUrl(value);
+    if (/adobeaemcloud\.com/i.test(value) && authMode === 'basic') {
+      setAuthMode('token');
+    }
+  }, [authMode]);
 
   const handleCopyJobId = useCallback(async () => {
     if (!jobId.trim()) {
@@ -89,14 +107,20 @@ export function AemUploadPage() {
       return;
     }
 
-    if (!username.trim()) {
-      setError('Please enter username');
-      return;
-    }
-
-    if (!password.trim()) {
-      setError('Please enter password');
-      return;
+    if (authMode === 'basic') {
+      if (!username.trim()) {
+        setError('Please enter username');
+        return;
+      }
+      if (!password.trim()) {
+        setError('Please enter password');
+        return;
+      }
+    } else {
+      if (!accessToken.trim()) {
+        setError('Please enter an access token from AEM Developer Console');
+        return;
+      }
     }
 
     setLoading(true);
@@ -106,8 +130,9 @@ export function AemUploadPage() {
     const config: AemUploadConfig = {
       aem_base_url: aemBaseUrl.trim(),
       target_path: targetPath.trim(),
-      username: username.trim(),
-      password: password.trim(),
+      ...(authMode === 'basic'
+        ? { username: username.trim(), password: password.trim() }
+        : { access_token: accessToken.trim() }),
       max_concurrent: maxConcurrent,
       max_upload_files: maxUploadFiles,
     };
@@ -129,7 +154,7 @@ export function AemUploadPage() {
     } finally {
       setLoading(false);
     }
-  }, [jobId, aemBaseUrl, targetPath, username, password, maxConcurrent, maxUploadFiles]);
+  }, [jobId, aemBaseUrl, targetPath, authMode, username, password, accessToken, maxConcurrent, maxUploadFiles]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -196,7 +221,7 @@ export function AemUploadPage() {
               type="url"
               placeholder="https://author-p35602-e1337026.adobeaemcloud.com"
               value={aemBaseUrl}
-              onChange={(e) => setAemBaseUrl(e.target.value)}
+              onChange={(e) => handleAemBaseUrlChange(e.target.value)}
               disabled={loading}
               className="w-full"
             />
@@ -223,37 +248,100 @@ export function AemUploadPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-semibold text-slate-900">
-                Username
-              </Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="testadmin"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+          {/* Auth mode selector */}
+          <div className="space-y-3">
+            <Label className="text-sm font-semibold text-slate-900">Authentication</Label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setAuthMode('basic')}
                 disabled={loading}
-                className="w-full"
-              />
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                  authMode === 'basic'
+                    ? 'bg-blue-50 border-blue-300 text-blue-800 ring-1 ring-blue-200'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Basic Auth
+                <span className="block text-xs font-normal mt-0.5 opacity-70">On-premise / AMS</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMode('token')}
+                disabled={loading}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                  authMode === 'token'
+                    ? 'bg-blue-50 border-blue-300 text-blue-800 ring-1 ring-blue-200'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Bearer Token
+                <span className="block text-xs font-normal mt-0.5 opacity-70">Cloud Service (AEMaaCS)</span>
+              </button>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-semibold text-slate-900">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-                className="w-full"
-              />
-            </div>
+            {isCloudService && authMode === 'basic' && (
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  AEM Cloud Service URLs don't support username/password. Switch to <strong>Bearer Token</strong> and paste a token from your AEM Developer Console.
+                </p>
+              </div>
+            )}
           </div>
+
+          {authMode === 'basic' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-sm font-semibold text-slate-900">
+                  Username
+                </Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="testadmin"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={loading}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-semibold text-slate-900">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="accessToken" className="text-sm font-semibold text-slate-900">
+                Access Token
+              </Label>
+              <textarea
+                id="accessToken"
+                placeholder="Paste your Developer Console access token here..."
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                disabled={loading}
+                rows={3}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 font-mono"
+              />
+              <p className="text-xs text-slate-500">
+                Get this from: AEM &rarr; Developer Console &rarr; Integrations &rarr; Local Token.
+                Tokens expire after 24 hours.
+              </p>
+            </div>
+          )}
 
           <div className="pt-4 border-t border-slate-200">
             <Button
@@ -357,7 +445,7 @@ export function AemUploadPage() {
           <div className="pt-4">
             <Button
               onClick={handleUpload}
-              disabled={loading || !jobId.trim() || !aemBaseUrl.trim() || !targetPath.trim() || !username.trim() || !password.trim()}
+              disabled={loading || !jobId.trim() || !aemBaseUrl.trim() || !targetPath.trim() || (authMode === 'basic' ? (!username.trim() || !password.trim()) : !accessToken.trim())}
               className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold py-3.5 text-base shadow-md hover:shadow-lg active:shadow-sm transition-all duration-200"
               size="lg"
             >

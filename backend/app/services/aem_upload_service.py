@@ -232,23 +232,29 @@ class AemUploadService:
         source_path: str,
         aem_base_url: str,
         target_path: str,
-        username: str,
-        password: str,
+        username: str = "",
+        password: str = "",
+        access_token: str = "",
         max_concurrent: int = 20,
         max_upload_files: int = 70000
     ) -> Dict:
         """
         Upload dataset to AEM instance.
-        
+
+        Supports two auth modes:
+        - **Basic Auth**: ``username`` + ``password`` (AEM on-premise / AMS)
+        - **Bearer Token**: ``access_token`` from Developer Console (AEM Cloud Service)
+
         Args:
             source_path: Path to the dataset directory
             aem_base_url: AEM instance base URL
             target_path: Target path in AEM (e.g., 'content/dam/Priyanka_Perf/')
-            username: AEM username
-            password: AEM password
+            username: AEM username (Basic Auth)
+            password: AEM password (Basic Auth)
+            access_token: Bearer token from AEM Developer Console (Cloud Service)
             max_concurrent: Maximum concurrent uploads (default: 20)
             max_upload_files: Maximum files to upload (default: 70000)
-        
+
         Returns:
             Dict with upload status and results
         """
@@ -282,6 +288,7 @@ class AemUploadService:
                 "targetPath": target_path.lstrip('/'),
                 "username": username,
                 "password": password,
+                "accessToken": access_token,
                 "maxConcurrent": max_concurrent,
                 "maxUploadFiles": max_upload_files
             }

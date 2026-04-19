@@ -18,11 +18,19 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
 class AemUploadRequest(BaseModel):
-    """Request model for AEM upload."""
+    """Request model for AEM upload.
+
+    Supports two auth modes:
+    - **Basic Auth**: provide ``username`` + ``password`` (AEM on-premise / AMS)
+    - **Bearer Token**: provide ``access_token`` from AEM Developer Console (AEM Cloud Service)
+
+    If ``access_token`` is supplied it takes precedence over username/password.
+    """
     aem_base_url: str = Field(..., description="AEM instance base URL")
     target_path: str = Field(..., description="Target path in AEM (e.g., 'content/dam/Priyanka_Perf/')")
-    username: str = Field(..., description="AEM username")
-    password: str = Field(..., description="AEM password")
+    username: str = Field(default="", description="AEM username (Basic Auth — on-premise / AMS)")
+    password: str = Field(default="", description="AEM password (Basic Auth — on-premise / AMS)")
+    access_token: str = Field(default="", description="Bearer token from AEM Developer Console (Cloud Service)")
     max_concurrent: int = Field(default=20, ge=1, le=100, description="Maximum concurrent uploads")
     max_upload_files: int = Field(default=70000, ge=1, description="Maximum files to upload")
 
@@ -487,6 +495,17 @@ def upload_dataset_to_aem(
             detail="Source path must be a directory. Only folder contents are uploaded, not zip files."
         )
     
+    # Validate that at least one auth method is provided
+    has_basic = bool(upload_request.username and upload_request.password)
+    has_token = bool(upload_request.access_token)
+    if not has_basic and not has_token:
+        if temp_extract_dir and os.path.exists(temp_extract_dir):
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=400,
+            detail="Authentication required. Provide either username+password (AEM on-premise) or access_token (AEM Cloud Service)."
+        )
+
     try:
         try:
             upload_service = get_upload_service()
@@ -505,13 +524,14 @@ def upload_dataset_to_aem(
                 status_code=500,
                 detail=f"Upload service not available: {str(e)}"
             )
-        
+
         result = upload_service.upload_dataset(
             source_path=source_path,
             aem_base_url=upload_request.aem_base_url,
             target_path=upload_request.target_path,
             username=upload_request.username,
             password=upload_request.password,
+            access_token=upload_request.access_token,
             max_concurrent=upload_request.max_concurrent,
             max_upload_files=upload_request.max_upload_files
         )

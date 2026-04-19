@@ -62,6 +62,14 @@ export function ChatPage() {
   const [clearingAllChats, setClearingAllChats] = useState(false);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [generationRunId, setGenerationRunId] = useState<string | null>(null);
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const [agentStateMessage, setAgentStateMessage] = useState<string | null>(null);
+  const [agentStateInfo, setAgentStateInfo] = useState<AgentStateInfo | null>(null);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [approvalTools, setApprovalTools] = useState<string[]>([]);
+  const [jobProgress, setJobProgress] = useState<JobProgressInfo | null>(null);
+  const [suggestedFollowups, setSuggestedFollowups] = useState<SuggestedFollowup[]>([]);
   const [humanPrompts, setHumanPrompts] = useState<boolean>(readHumanPromptsDefault);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [chatTools, setChatTools] = useState<ChatToolCatalogItem[]>([]);
@@ -378,6 +386,14 @@ export function ChatPage() {
     setLoading(false);
     setStreamingContent(null);
     setGenerationRunId(null);
+    setThinking(null);
+    setAgentState(null);
+    setAgentStateMessage(null);
+    setAgentStateInfo(null);
+    setApprovalMessage(null);
+    setApprovalTools([]);
+    setJobProgress(null);
+    setSuggestedFollowups([]);
     if (currentSession) {
       void loadSession(currentSession.id);
     }
@@ -386,6 +402,9 @@ export function ChatPage() {
   const streamCallbacks = useCallback(
     (sessionId: string) => ({
       onChunk: (chunk: string) => {
+        // Clear thinking/state once real content starts flowing
+        setThinking(null);
+        setAgentState(null);
         setStreamingContent((prev) => (prev || '') + chunk);
       },
       onDone: () => {
@@ -449,6 +468,10 @@ export function ChatPage() {
         setStreamingContent(null);
         setStreamingToolResults(null);
         setGenerationRunId(null);
+        setThinking(null);
+        setAgentState(null);
+        setApprovalMessage(null);
+        setJobProgress(null);
         const errBubble: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'assistant',

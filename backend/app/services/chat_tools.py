@@ -67,7 +67,7 @@ RECIPE_TYPE_ALLOWLIST = frozenset({
     # Specialized Content
     "task_topics", "concept_topics", "reference_topics", "glossary_pack",
     "bookmap_structure", "choicetable_tasks", "choicetable_references",
-    "properties_table_reference", "syntax_diagram_reference", "bookmap_elements_reference",
+    "properties_table_reference", "bookmap_elements_reference",
     "table_semantics_reference", "topic_ph_keyword_related_links",
     # Map Structure
     "maps_topicgroup_basic", "maps_topicgroup_nested", "maps_topicref_basic",
@@ -100,25 +100,6 @@ RECIPE_TYPE_ALLOWLIST = frozenset({
     # Validation & Negative
     "validation_duplicate_id_negative", "validation_invalid_child_negative",
     "validation_missing_body_negative",
-})
-
-_TOOL_APPROVAL_REQUIRED = frozenset({"create_job", "fix_dita_xml"})
-_TOOL_REVIEW_FIRST = frozenset({"generate_dita"})
-_TOOL_READ_ONLY = frozenset({
-    "search_jira_issues",
-    "lookup_dita_spec",
-    "review_dita_xml",
-    "find_recipes",
-    "get_job_status",
-    "lookup_aem_guides",
-    "search_tenant_knowledge",
-    "lookup_output_preset",
-    "list_jobs",
-    "lookup_dita_attribute",
-    "list_indexed_pdfs",
-    "generate_native_pdf_config",
-    "browse_dataset",
-    "generate_xml_flowchart",
 })
 
 _TOOL_UI_META: dict[str, dict[str, Any]] = {
@@ -978,43 +959,8 @@ async def execute_lookup_dita_spec(
         retrieve_dita_knowledge,
         retrieve_dita_graph_knowledge,
     )
-    from app.services.dita_attribute_catalog import get_attribute_spec
-    from app.services.dita_query_interpreter import interpret_dita_query
 
     try:
-        intent = interpret_dita_query(query, explicit_elements=elements)
-        if intent.mode == "attribute_comparison" and len(intent.attribute_names) >= 2:
-            comparison = _build_dita_attribute_comparison_guidance(query, intent.attribute_names)
-            if comparison is not None:
-                return comparison
-
-        attribute_name = intent.attribute_names[0] if intent.attribute_names else ""
-        if attribute_name:
-            spec = get_attribute_spec(attribute_name)
-            if spec is not None:
-                return {
-                    "query": query,
-                    "query_type": intent.mode,
-                    "attribute_name": spec.attribute_name,
-                    "all_valid_values": spec.all_valid_values,
-                    "supported_elements": spec.supported_elements,
-                    "combination_attributes": spec.combination_attributes,
-                    "default_scenarios": spec.default_scenarios,
-                    "usage_contexts": spec.usage_contexts,
-                    "common_mistakes": spec.common_mistakes,
-                    "correct_examples": spec.correct_examples,
-                    "attribute_semantic_class": spec.semantic_class,
-                    "attribute_syntax": spec.syntax,
-                    "text_content": (spec.text_content or "")[:1200],
-                    "source_url": spec.source_url,
-                    "spec_chunks": [],
-                    "graph_knowledge": "",
-                    "matched_via": "attribute_catalog",
-                    "summary": f"Retrieved DITA attribute guidance for `{spec.attribute_name}`.",
-                }
-        element_guidance = _build_dita_element_guidance(query, elements=elements)
-        if element_guidance is not None:
-            return element_guidance
         chunks = retrieve_dita_knowledge(query, k=5)
         graph_text = ""
         if elements:
@@ -3057,6 +3003,110 @@ async def run_tool(
             size=params.get("size", "1024x1024"),
             style=params.get("style"),
             count=params.get("count", 1),
+        )
+    elif name == "lookup_dita_spec":
+        result = await execute_lookup_dita_spec(
+            query=params.get("query", ""),
+            elements=params.get("elements"),
+        )
+    elif name == "review_dita_xml":
+        result = await execute_review_dita_xml(
+            xml=params.get("xml", ""),
+            context=params.get("context"),
+            tenant_id=tenant_id,
+        )
+    elif name == "find_recipes":
+        result = await execute_find_recipes(
+            query=params.get("query", ""),
+            k=int(params.get("k", 5)),
+        )
+    elif name == "get_job_status":
+        result = await execute_get_job_status(
+            job_id=params.get("job_id", ""),
+        )
+    elif name == "lookup_aem_guides":
+        result = await execute_lookup_aem_guides(
+            query=params.get("query", ""),
+            k=int(params.get("k", 5)),
+        )
+    elif name == "search_tenant_knowledge":
+        result = await execute_search_tenant_knowledge(
+            query=params.get("query", ""),
+            tenant_id=tenant_id,
+            k=int(params.get("k", 5)),
+        )
+    elif name == "lookup_output_preset":
+        result = await execute_lookup_output_preset(
+            query=params.get("query", ""),
+            output_type=params.get("output_type"),
+            k=int(params.get("k", 5)),
+        )
+    elif name == "list_jobs":
+        result = await execute_list_jobs(
+            status=params.get("status"),
+            limit=int(params.get("limit", 10)),
+            user_id=user_id,
+        )
+    elif name == "fix_dita_xml":
+        result = await execute_fix_dita_xml(
+            xml=params.get("xml", ""),
+            fix_rule_id=params.get("fix_rule_id"),
+            context=params.get("context"),
+            tenant_id=tenant_id,
+        )
+    elif name == "lookup_dita_attribute":
+        result = await execute_lookup_dita_attribute(
+            attribute_name=params.get("attribute_name", ""),
+        )
+    elif name == "list_indexed_pdfs":
+        result = await execute_list_indexed_pdfs(
+            tenant_id=tenant_id,
+        )
+    elif name == "generate_native_pdf_config":
+        result = await execute_generate_native_pdf_config(
+            query=params.get("query", ""),
+            config_type=params.get("config_type", "template"),
+        )
+    elif name == "browse_dataset":
+        result = await execute_browse_dataset(
+            job_id=params.get("job_id", ""),
+            file_path=params.get("file_path"),
+        )
+    # ── Phase F: Content Intelligence Tools ──
+    elif name == "generate_shortdesc":
+        from app.services.shortdesc_generator_service import generate_shortdesc
+        result = await generate_shortdesc(
+            xml_string=params.get("xml", ""),
+            use_llm=True,
+        )
+    elif name == "advise_topic_type":
+        from app.services.topic_type_advisor_service import analyze_topic_type
+        result = analyze_topic_type(
+            xml_content=params.get("xml", ""),
+        )
+    elif name == "check_style_guide":
+        from app.services.style_guide_enforcer_service import enforce
+        result = enforce(
+            dita_xml=params.get("xml", ""),
+        )
+    # ── Phase G: Agentic Workflow Tools ──
+    elif name == "migrate_content":
+        from app.services.content_migration_service import migrate_content
+        result = migrate_content(
+            content=params.get("content", ""),
+            source_format=params.get("source_format", "auto"),
+        )
+    # ── Phase I: Visual & Interactive Tools ──
+    elif name == "visualize_map":
+        from app.services.map_visualizer_service import parse_map_to_graph
+        result = parse_map_to_graph(
+            xml=params.get("xml", ""),
+        )
+    elif name == "generate_diagram":
+        from app.services.diagram_generation_service import generate_diagram
+        result = await generate_diagram(
+            xml=params.get("xml", ""),
+            diagram_type=params.get("diagram_type", "auto"),
         )
     else:
         result = {"error": f"Unknown tool: {name}"}

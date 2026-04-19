@@ -252,6 +252,13 @@ export function ChatMessageList({
           />
         </div>
       )}
+      {suggestedFollowups && suggestedFollowups.length > 0 && onFollowupSelect && !streamingContent && (
+        <SuggestedFollowups
+          followups={suggestedFollowups}
+          onSelect={onFollowupSelect}
+          className="mt-1"
+        />
+      )}
       <div ref={endRef} />
       </div>
     </div>

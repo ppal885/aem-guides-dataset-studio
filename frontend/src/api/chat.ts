@@ -288,6 +288,13 @@ export interface ChatToolIntent {
   source: 'slash';
 }
 
+export type AgentState = 'analyzing' | 'tool_calling' | 'synthesizing' | 'retrying';
+
+export interface SuggestedFollowup {
+  label: string;
+  text: string;
+}
+
 export interface SSEEvent {
   type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding' | 'plan' | 'approval_required' | 'step_status';
   content?: string;
@@ -322,6 +329,20 @@ function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
   } else if (event.type === 'error') {
     callbacks.onError?.(event.message ?? 'Unknown error');
   }
+}
+
+export interface AgentStateInfo {
+  tools?: string[];
+  round?: number;
+  maxRounds?: number;
+}
+
+export interface JobProgressInfo {
+  jobId: string;
+  name: string;
+  recipeType: string;
+  status: string;
+  downloadUrl: string;
 }
 
 export interface SseCallbacks {

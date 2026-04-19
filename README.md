@@ -1,8 +1,10 @@
 # AEM Guides Dataset Studio
 
-> Generate spec-compliant DITA content from Jira issues using AI — powered by RAG, fine-tuned embeddings, and an MCP server for Cursor.
+> AI-powered DITA authoring platform with an intelligent chat copilot, content migration, visual diagram generation, and one-click AEM Cloud upload -- built for Technical Writers.
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/fastapi-latest-009688.svg)](https://fastapi.tiangolo.com/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -10,16 +12,71 @@
 
 ## What is this?
 
-**AEM Guides Dataset Studio** is a tool that:
+**AEM Guides Dataset Studio** is a full-stack platform that helps Technical Writers produce spec-compliant DITA content at scale. It combines:
 
-1. **Pulls real Jira issues** from your project
-2. **Grounds generation** in actual DITA 1.2/1.3 spec rules (indexed from OASIS PDFs)
-3. **Grounds generation** in real AEM Guides documentation (crawled from Experience League)
-4. **Uses expert DITA examples** as few-shot references (DITAWriter GitHub repos)
-5. **Generates spec-compliant DITA** via Cursor Agent — no API key needed
-6. **Validates and enriches** output automatically
+- **AI Chat Copilot** -- a multi-tool agentic chat that generates, validates, fixes, and enriches DITA XML in real time
+- **RAG-Grounded Generation** -- every generation is grounded in DITA 1.3 spec rules, AEM Guides documentation, and expert DITA examples
+- **Content Intelligence** -- smart shortdesc generation, topic type classification, style guide enforcement
+- **Content Migration** -- auto-convert Markdown, HTML, and plain text into properly structured DITA topics
+- **Visual Diagrams** -- generate Mermaid flowcharts, concept maps, and map structure diagrams from DITA content
+- **Dataset Factory** -- bulk generate DITA datasets from Jira issues or templates with 20+ recipe types
+- **AEM Cloud Upload** -- upload generated datasets directly to AEM Cloud Service or on-premise instances
 
-The result: production-quality DITA files from Jira issues in seconds, not hours.
+---
+
+## Key Features
+
+### AI Chat Copilot
+| Feature | Description |
+|---------|-------------|
+| Multi-tool agent loop | Chat autonomously calls up to 22 tools -- generate, validate, fix, search, browse |
+| Streaming responses | Real-time token streaming with tool execution indicators |
+| Multi-provider LLM | OpenAI, Anthropic, Groq (free tier) with automatic fallback |
+| RAG context assembly | Retrieves from AEM docs, DITA spec, tenant knowledge, and indexed PDFs |
+| Smart tool selection | Dynamically selects the most relevant tools per query (optimized for Groq token limits) |
+| Inline XML recovery | Recovers tool calls when Groq outputs raw XML instead of API tool_use blocks |
+| Conversation sessions | Persistent chat sessions with message history |
+| Grounding panel | Shows citations and source evidence for AI responses |
+
+### Content Intelligence (Phase F)
+| Tool | Description |
+|------|-------------|
+| Smart Shortdesc Generator | LLM-enhanced + rule-based shortdesc generation following information-typing rules |
+| Topic Type Advisor | Pure rule-based classifier -- detects task/concept/reference misclassification |
+| Style Guide Enforcer | 10 built-in rules: passive voice, sentence length, banned terms, step imperatives, etc. |
+
+### Content Migration (Phase G)
+| Tool | Description |
+|------|-------------|
+| Content Migration Copilot | Auto-detect format (Markdown/HTML/plain text), classify sections, generate DITA topics + ditamap |
+| Section Classification | Heading-based splitting with task/concept/reference/glossentry type detection |
+| DITA Generation | Proper DOCTYPE declarations, xml:lang, slugified IDs, structural elements per topic type |
+
+### Visual Diagrams (Phase I)
+| Tool | Description |
+|------|-------------|
+| Task Flowcharts | Steps to Mermaid flowchart with decision diamonds for choices |
+| Concept Mind Maps | Sections to hierarchical Mermaid mindmap |
+| Map Structure Diagrams | Topicref hierarchy to navigable flowchart |
+| Map Visualizer | Interactive tree component with color-coded nodes, stats, and AI suggestions |
+
+### Dataset Generation
+| Feature | Description |
+|---------|-------------|
+| 20+ recipe types | Task topics, concept topics, glossary packs, relationship tables, conref packs, bookmaps, and more |
+| Jira integration | Pull real issues and generate grounded DITA content |
+| Batch processing | Generate hundreds of topics from JQL queries or CSV templates |
+| Quality scoring | Automated quality checks with validation and enrichment pipeline |
+| Job management | Track, browse, and download generated datasets |
+
+### AEM Upload
+| Feature | Description |
+|---------|-------------|
+| Cloud Service support | Bearer token auth via AEM Developer Console |
+| On-premise support | Basic Auth (username/password) for AEM on-premise and AMS |
+| Auto-detection | Automatically detects `adobeaemcloud.com` URLs and switches to token auth |
+| Deep upload | Preserves directory structure with content/dam path optimization |
+| Concurrent uploads | Configurable concurrency (1-100 simultaneous file uploads) |
 
 ---
 
@@ -27,57 +84,104 @@ The result: production-quality DITA files from Jira issues in seconds, not hours
 
 ```
 aem-guides-dataset-studio/
+├── frontend/                          # React 18 + Vite + Tailwind CSS
+│   └── src/
+│       ├── pages/                     # 8 pages (Chat, Builder, Upload, Explorer, etc.)
+│       ├── components/                # 51 components
+│       │   ├── Chat/                  # Chat UI (messages, input, markdown, sidebar)
+│       │   ├── ui/                    # Radix UI primitives
+│       │   └── ...                    # Recipe configs, feedback, layout
+│       └── utils/                     # API clients, helpers
+│
 ├── backend/
 │   └── app/
-│       ├── services/          # Core services
-│       │   ├── jira_client.py                 # Jira REST API client
-│       │   ├── jira_dita_fetch_service.py     # Fetch issues for DITA
-│       │   ├── jira_similarity_service.py     # Semantic issue search
-│       │   ├── jira_index_service.py          # Index issues to DB
-│       │   ├── doc_retriever_service.py       # Experience League RAG
-│       │   ├── dita_knowledge_retriever.py    # DITA spec RAG
-│       │   ├── dita_graph_service.py          # Element nesting graph
-│       │   ├── dita_enrichment_service.py     # Auto-add shortdesc/prolog
-│       │   ├── dita_pdf_index_service.py      # Index DITA spec PDFs
-│       │   ├── crawl_service.py               # Crawl Experience League
-│       │   ├── embedding_service.py           # Sentence transformers
-│       │   └── jira_dita_analysis_service.py  # Full analysis pipeline
-│       ├── db/                # SQLAlchemy models + session
-│       ├── core/              # Logging, config
-│       ├── storage/           # ChromaDB, JSON chunks, seed data
-│       └── templates/prompts/ # LLM prompt templates
-├── mcp_server.py              # MCP server — in-process tools (Jira, RAG, files)
-├── mcp_api_adapter/           # MCP server — thin proxy to FastAPI /api/v1 only
-├── dita_examples/             # Cloned expert DITA repos (git-ignored)
-├── output/dita/               # Generated DITA files (git-ignored)
-└── scripts/                   # CLI scripts (index, finetune, crawl)
+│       ├── api/v1/routes/             # 20 route modules (chat, datasets, recipes, etc.)
+│       ├── services/                  # 90+ service modules
+│       │   ├── chat_service.py        # Agentic chat orchestrator
+│       │   ├── chat_tools.py          # 22 tool definitions + dispatch
+│       │   ├── llm_service.py         # Multi-provider LLM (OpenAI/Anthropic/Groq)
+│       │   ├── vector_store_service.py # ChromaDB vector store
+│       │   ├── hierarchical_retriever.py # Weighted multi-signal retrieval
+│       │   ├── chunk_metadata_extractor.py # DITA-aware metadata extraction
+│       │   ├── shortdesc_generator_service.py  # Phase F1
+│       │   ├── topic_type_advisor_service.py   # Phase F2
+│       │   ├── style_guide_enforcer_service.py # Phase F4
+│       │   ├── content_migration_service.py    # Phase G2
+│       │   ├── diagram_generation_service.py   # Phase I1
+│       │   ├── map_visualizer_service.py       # Phase I2
+│       │   ├── tool_result_cache.py   # D7: LRU cache with TTL
+│       │   └── ...                    # Jira, RAG, enrichment, validation
+│       ├── db/                        # SQLAlchemy models + session
+│       ├── core/                      # Auth, config, structured logging
+│       └── storage/                   # ChromaDB, seed data, JSON chunks
+│
+├── backend/scripts/
+│   └── aem_upload.js                  # Node.js AEM upload (Basic Auth + Bearer Token)
+│
+├── backend/tests/                     # 78 test files, 211+ tests
+│
+├── mcp_server.py                      # MCP server -- in-process tools (Jira, RAG, files)
+├── mcp_api_adapter/                   # MCP server -- REST proxy to FastAPI
+└── scripts/                           # CLI scripts (index, finetune, crawl)
 ```
 
 ---
 
-## How it works
+## How It Works
 
 ```
-Jira Issue
+                    ┌─────────────────────────────────┐
+                    │         React Frontend           │
+                    │  Chat  │ Builder │ Upload │ ...  │
+                    └──────────────┬──────────────────┘
+                                   │ REST API
+                    ┌──────────────▼──────────────────┐
+                    │       FastAPI Backend             │
+                    │                                   │
+                    │  ┌─────────────────────────────┐ │
+                    │  │      Chat Service            │ │
+                    │  │  (agentic tool loop)         │ │
+                    │  │  ┌─────┐ ┌──────┐ ┌──────┐  │ │
+                    │  │  │Tools│ │ RAG  │ │ LLM  │  │ │
+                    │  │  │(22) │ │Blend │ │Multi │  │ │
+                    │  │  └─────┘ └──────┘ └──────┘  │ │
+                    │  └─────────────────────────────┘ │
+                    │                                   │
+                    │  ┌──────────┐ ┌───────────────┐  │
+                    │  │ Dataset  │ │  AEM Upload    │  │
+                    │  │ Pipeline │ │  (Node.js)     │  │
+                    │  └──────────┘ └───────────────┘  │
+                    └──────────────┬──────────────────┘
+                    ┌──────────────▼──────────────────┐
+                    │      Knowledge Layer             │
+                    │  ChromaDB │ SQLite │ JSON Seeds  │
+                    │  AEM Docs │ DITA Spec │ Jira     │
+                    └─────────────────────────────────┘
+```
+
+### Chat Copilot Flow
+```
+User message
     ↓
-get_jira_issue_with_comments()     ← MCP fetches real data
+_build_rag_context()          ← Hierarchical retrieval from AEM docs + DITA spec
     ↓
-query_combined_context()           ← RAG grounds generation
-  ├── Experience League docs        (AEM-specific patterns)
-  ├── DITA 1.2/1.3 spec PDFs       (structural rules)
-  └── DITA element graph            (nesting + attributes)
+Smart tool selection          ← Pick 5 most relevant tools (Groq) or all 22
     ↓
-query_dita_examples()              ← Expert examples as reference
+LLM generates response        ← Streaming with tool_use blocks
     ↓
-Cursor Agent generates DITA        ← No API key needed (Cursor is the LLM)
+Tool execution loop (max 8 rounds)
+  ├── generate_dita            → DITA XML generation
+  ├── review_dita_xml          → Validation
+  ├── fix_dita_xml             → Auto-repair
+  ├── generate_shortdesc       → Smart shortdesc
+  ├── advise_topic_type        → Classification
+  ├── check_style_guide        → Style enforcement
+  ├── migrate_content          → Format conversion
+  ├── generate_diagram         → Mermaid diagrams
+  ├── visualize_map            → Map structure graph
+  └── ... (13 more tools)
     ↓
-validate_and_fix_dita()            ← Self-healing validation loop
-    ↓
-enrich_dita_output()               ← Auto-add shortdesc, prolog
-    ↓
-score_dita_quality()               ← Quality check
-    ↓
-✅ Spec-compliant DITA file
+Streaming response to user
 ```
 
 ---
@@ -87,83 +191,67 @@ score_dita_quality()               ← Quality check
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+ (for AEM upload)
 - Git
-- Codex or Cursor with MCP enabled
-- Jira access (corporate or cloud)
 
-### 1. Clone the repo
+### 1. Clone and setup
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/aem-guides-dataset-studio.git
 cd aem-guides-dataset-studio
-```
 
-### 2. Create virtual environment
-
-```bash
+# Backend
+cd backend
 python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # Mac/Linux
 pip install -r requirements.txt
+
+# Frontend
+cd ../frontend
+npm install
 ```
 
-### 4. Configure environment
+### 2. Configure environment
 
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-Edit `.env` with your settings:
+Edit `backend/.env`:
 
 ```env
-# Jira Configuration
-JIRA_BASE_URL=https://jira.corp.yourcompany.com
+# LLM Provider (pick one)
+LLM_PROVIDER=openai                    # or: anthropic, groq
+OPENAI_API_KEY=sk-...                  # GPT-4o-mini recommended ($0.15/M input)
+# ANTHROPIC_API_KEY=sk-ant-...         # Claude Sonnet
+# GROQ_API_KEY=gsk_...                 # Free tier (12K TPM limit)
+
+# Jira (optional -- for dataset generation)
+JIRA_BASE_URL=https://jira.yourcompany.com
 JIRA_USERNAME=your_username
 JIRA_PASSWORD=your_password
-# OR for Jira Cloud:
-JIRA_EMAIL=your@email.com
-JIRA_API_TOKEN=your_api_token
-JIRA_API_VERSION=2
 
 # Embedding Model
 DITA_EMBEDDING_MODEL=all-MiniLM-L6-v2
-USE_DITA_EMBEDDING=true
-USE_DITA_HYBRID_SEARCH=true
-
-# Optional: fine-tuned model path
-# DITA_EMBEDDING_MODEL_PATH=models/dita_embeddings_v1
 ```
 
-### 5. Initialize the database
+### 3. Initialize and run
 
 ```bash
+# Initialize database
+cd backend
 python -m scripts.init_db
+
+# Start backend (terminal 1)
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Start frontend (terminal 2)
+cd frontend
+npx vite --port 5173 --host 0.0.0.0
 ```
 
-### 6. Configure Codex MCP (recommended)
-
-This repo includes a project-scoped [`.codex/config.toml`](.codex/config.toml) that starts [`mcp_server.py`](mcp_server.py) with the local virtualenv and sets the workspace model to `gpt-5-codex`.
-
-If you move the repo, update the absolute paths in `.codex/config.toml`.
-
-If you also want the backend AI endpoints to use OpenAI/Codex, set these in `backend/.env`:
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-5-codex
-```
-
-### 6b. MCP over REST (API adapter)
+Open `http://localhost:5173` -- the chat copilot is ready to use.
 
 The package [`mcp_api_adapter/`](mcp_api_adapter/) runs a **stdio MCP server** that calls your running FastAPI app under **`/api/v1`** via httpx. It does **not** import application services; it only forwards REST requests. This is useful when agents must use the same contract as the UI/API, or when the API runs on another host.
 
@@ -172,22 +260,24 @@ The package [`mcp_api_adapter/`](mcp_api_adapter/) runs a **stdio MCP server** t
 **Install MCP dependencies** (lightweight; can be the same venv as the backend or a separate one):
 
 ```bash
-pip install -r requirements-mcp.txt
-```
+# In the chat, or via API:
+# 1. Crawl AEM Guides docs
+POST /api/v1/ai/crawl-aem-guides
 
-**Run (normally invoked by Cursor / Codex, not by hand):**
-
-```bash
-python -m mcp_api_adapter
+# 2. Index DITA spec
+POST /api/v1/ai/index-dita-spec
 ```
 
 **Environment** (optional): `DATASET_STUDIO_API_BASE_URL` (default `http://127.0.0.1:8001`), `DATASET_STUDIO_API_BEARER_TOKEN` or `API_BEARER_TOKEN`, `DATASET_STUDIO_API_TIMEOUT_SECONDS`, `DATASET_STUDIO_API_EXTRA_HEADERS_JSON`. See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint table and copy-paste config for Cursor, Claude Code, and Codex.
 
 **Compared to [`mcp_server.py`](mcp_server.py):** the root `mcp_server.py` exposes many **in-process** tools (Jira, RAG, DITA files). The API adapter exposes only the **13 REST-mapped** tools and requires a live HTTP API.
 
-### 6c. Configure Cursor MCP (optional)
+## Chat Copilot -- Example Prompts
 
-Edit `~/.cursor/mcp.json`:
+**Generate DITA:**
+```
+Generate a DITA task topic about configuring OAuth authentication in AEM
+```
 
 ```json
 {
@@ -208,149 +298,201 @@ Edit `~/.cursor/mcp.json`:
 }
 ```
 
-> **Mac/Linux:** use `venv/bin/python` instead of `venv\Scripts\python.exe`  
-> **`dataset-studio-api`:** optional; REST-only MCP adapter — see [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md).
-
-### 7. Populate RAG knowledge base
-
-In Codex or Cursor, run these once:
-
+**Content migration:**
 ```
-1. Run crawl_experience_league        # indexes AEM Guides docs (~5 min)
-2. Run index_dita_spec_pdfs           # indexes DITA 1.2/1.3 PDFs (~5 min)  
-3. Run clone_dita_example_repos       # clones expert DITA examples
-4. Run index_dita_example_repos       # indexes them into ChromaDB
+Convert this Markdown to DITA:
+# Installation Guide
+## Prerequisites
+- Node.js 18+
+## Steps
+1. Clone the repository
+2. Run npm install
 ```
 
-### 8. Generate your first DITA file
-
-In Codex or Cursor:
-
+**Visual diagrams:**
 ```
-Fetch Jira issue AEM-123 with comments.
-Query combined context using the issue summary.
-Query DITA examples for similar task topics.
-Generate a DITA 1.3 compliant task topic.
-Save as AEM-123-task.dita, validate, and enrich.
+Generate a flowchart diagram for this task topic:
+<task id="deploy"><title>Deploy App</title><taskbody><steps>...</steps></taskbody></task>
 ```
 
----
-
-## MCP Tools Reference
-
-### Jira Tools
-| Tool | Description |
-|------|-------------|
-| `get_jira_issue` | Fetch single issue by key |
-| `get_jira_issue_with_comments` | Fetch issue + all comments |
-| `search_jira_issues` | Search via JQL |
-| `find_similar_jira_issues` | Semantic similarity search |
-| `index_jira_issues` | Index issues to local DB |
-
-### RAG Tools
-| Tool | Description |
-|------|-------------|
-| `check_rag_status` | Check what's indexed |
-| `crawl_experience_league` | Crawl AEM Guides docs |
-| `index_dita_spec_pdfs` | Index DITA 1.2/1.3 spec |
-| `query_experience_league` | Search AEM docs |
-| `query_dita_spec` | Search DITA spec |
-| `query_dita_graph` | Query element nesting rules |
-| `query_combined_context` | Query all sources at once |
-
-### DITA Examples Tools
-| Tool | Description |
-|------|-------------|
-| `clone_dita_example_repos` | Clone DITAWriter GitHub repos |
-| `index_dita_example_repos` | Index expert DITA examples |
-| `query_dita_examples` | Search expert examples |
-| `list_dita_example_repos` | List available repos |
-
-### Output Tools
-| Tool | Description |
-|------|-------------|
-| `save_dita_file` | Save single DITA file |
-| `save_dita_files` | Save multiple files at once |
-| `enrich_dita_output` | Auto-add shortdesc + prolog |
-| `list_dita_files` | List generated files |
-| `read_dita_file` | Read a generated file |
-| `validate_dita_file` | Validate DITA structure |
-| `validate_and_fix_dita` | Validate + instruct Cursor to fix |
-| `score_dita_quality` | Score output quality |
-
-### Pipeline Tools
-| Tool | Description |
-|------|-------------|
-| `run_jira_dita_analysis_pipeline` | Full Jira→DITA analysis |
-| `batch_generate_plan` | Plan batch generation |
-| `mark_issue_generated` | Track generation history |
-| `check_issue_generated` | Check if already generated |
-| `list_generation_history` | View all generated issues |
-
----
-
-## Example Cursor Prompts
-
-**Single issue:**
+**Map visualization:**
 ```
-Fetch AEM-123 with comments, query combined context,
-query DITA examples for task topics, generate DITA 1.3
-task topic, save as AEM-123-task.dita, validate and enrich.
+Visualize this map:
+<map><title>User Guide</title><topicref href="intro.dita">...</topicref></map>
 ```
 
-**Batch generation:**
+**Style check:**
 ```
-Create a batch plan for JQL: "project = AEM AND status = Done
-AND updated >= -7d". Execute each step, validate all files,
-then bundle into a package.
-```
-
-**Find and generate similar:**
-```
-Find 5 issues similar to AEM-456, generate a concept topic
-for each, assemble into a ditamap called AEM-456-cluster.ditamap
+Check this topic against style guidelines:
+<concept id="overview"><title>Overview</title><conbody>...</conbody></concept>
 ```
 
 ---
 
-## Fine-tuning Embeddings
+## AEM Upload
 
-After generating 50+ validated DITA files, improve retrieval quality:
+The platform supports uploading generated datasets directly to AEM instances.
 
-```bash
-python -m scripts.finetune_dita_embeddings \
-  --epochs 5 \
-  --output models/dita_embeddings_v1
-```
+### AEM Cloud Service (AEMaaCS)
+1. Go to your AEM Developer Console
+2. Navigate to **Integrations** > **Local Token**
+3. Copy the `accessToken` (valid for 24 hours)
+4. On the Upload page, select **Bearer Token** auth mode and paste the token
 
-Then set in `.env`:
-```env
-DITA_EMBEDDING_MODEL_PATH=models/dita_embeddings_v1
-```
+### AEM On-Premise / AMS
+1. Use **Basic Auth** mode with your AEM username and password
+
+The upload page auto-detects `adobeaemcloud.com` URLs and switches to Bearer Token mode.
 
 ---
 
-## For Teams
+## Chat Tools Reference (22 Tools)
 
-### Run as shared server
+### Core DITA Tools
+| Tool | Description |
+|------|-------------|
+| `generate_dita` | Generate DITA XML from natural language descriptions |
+| `review_dita_xml` | Validate DITA structure and content |
+| `fix_dita_xml` | Auto-fix DITA XML issues |
+| `lookup_dita_spec` | Look up DITA 1.3 specification details |
+| `lookup_dita_attribute` | Look up valid values for DITA attributes |
 
-```bash
-# On a shared team server
-python mcp_server.py --transport sse --host 0.0.0.0 --port 8765
-```
+### Content Intelligence
+| Tool | Description |
+|------|-------------|
+| `generate_shortdesc` | Generate DITA-compliant short descriptions |
+| `advise_topic_type` | Classify and recommend correct topic type |
+| `check_style_guide` | Enforce style rules (passive voice, sentence length, etc.) |
+| `migrate_content` | Convert Markdown/HTML/plain text to DITA |
 
-Each teammate's `mcp.json`:
+### Visual Tools
+| Tool | Description |
+|------|-------------|
+| `generate_diagram` | Generate Mermaid flowcharts, mindmaps, and process flows |
+| `visualize_map` | Parse DITA maps into interactive graph visualizations |
+
+### Search and Retrieval
+| Tool | Description |
+|------|-------------|
+| `lookup_aem_guides` | Search AEM Guides documentation |
+| `search_tenant_knowledge` | Search tenant-specific knowledge base |
+| `search_jira_issues` | Search related Jira issues |
+| `find_recipes` | Search available dataset generation recipes |
+| `lookup_output_preset` | Look up AEM output preset configuration |
+| `list_indexed_pdfs` | List indexed PDF documents |
+
+### Job Management
+| Tool | Description |
+|------|-------------|
+| `create_job` | Create dataset generation job with recipe type |
+| `get_job_status` | Check job progress and status |
+| `list_jobs` | List recent dataset generation jobs |
+| `browse_dataset` | Browse generated dataset files |
+| `generate_native_pdf_config` | Get Native PDF template configuration guidance |
+
+---
+
+## MCP Server
+
+Two MCP integrations are available for use with Cursor, Claude Code, or Codex:
+
+### In-Process MCP (`mcp_server.py`)
+Full-featured MCP server with direct access to all services (Jira, RAG, DITA tools).
+
 ```json
 {
   "mcpServers": {
     "aem-dataset-studio": {
-      "url": "http://your-team-server:8765/sse"
+      "command": "python",
+      "args": ["mcp_server.py"]
     }
   }
 }
 ```
 
-No Python setup needed on individual machines.
+### REST API Adapter (`mcp_api_adapter/`)
+Lightweight MCP proxy that forwards to the FastAPI backend over HTTP.
+
+```json
+{
+  "mcpServers": {
+    "dataset-studio-api": {
+      "command": "python",
+      "args": ["-m", "mcp_api_adapter"],
+      "env": {
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8000"
+      }
+    }
+  }
+}
+```
+
+See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint mapping.
+
+---
+
+## Dataset Recipes (20+ Types)
+
+| Category | Recipes |
+|----------|---------|
+| **Topics** | Task topics, concept topics, reference topics, glossary entries |
+| **Maps** | Bookmaps, relationship tables, incremental topicref maps |
+| **Advanced** | Conref packs, keydef chains, keyscope demos, conditional content |
+| **Enterprise** | Customer reuse packs, localization, insurance domain, media-rich content |
+| **Testing** | Performance scale, map parse stress, heavy conditional |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, Vite, Tailwind CSS, Radix UI, react-markdown, react-syntax-highlighter |
+| Backend | Python 3.11+, FastAPI, SQLAlchemy, Pydantic |
+| Vector Store | ChromaDB (persistent, cosine similarity) |
+| Embeddings | Sentence Transformers (all-MiniLM-L6-v2) |
+| LLM Providers | OpenAI, Anthropic, Groq |
+| AEM Upload | Node.js, @adobe/aem-upload v3+ |
+| MCP | Model Context Protocol SDK |
+
+---
+
+## Testing
+
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+
+**78 test files** covering:
+- Chat service (tool dispatch, grounding, fallback, streaming)
+- Content intelligence (shortdesc, topic type, style rules)
+- Content migration (Markdown/HTML/plain text to DITA)
+- Diagram generation (flowcharts, mindmaps, process flows)
+- Map visualizer (graph parsing, Mermaid output)
+- DITA validation (conref, keyref, xref, glossary)
+- Recipe execution and scoring
+- Tool result caching, error taxonomy, observability
+- AEM upload service
+
+---
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_PROVIDER` | LLM provider: `openai`, `anthropic`, `groq` | `openai` |
+| `OPENAI_API_KEY` | OpenAI API key | -- |
+| `ANTHROPIC_API_KEY` | Anthropic API key | -- |
+| `GROQ_API_KEY` | Groq API key (free tier available) | -- |
+| `JIRA_BASE_URL` | Jira instance URL | -- |
+| `JIRA_USERNAME` / `JIRA_PASSWORD` | Jira credentials | -- |
+| `DITA_EMBEDDING_MODEL` | Sentence transformer model | `all-MiniLM-L6-v2` |
+| `CHUNK_METADATA_ENABLED` | Enable DITA-aware metadata extraction | `false` |
+| `HIERARCHICAL_RETRIEVAL_ENABLED` | Enable weighted multi-signal retrieval | `false` |
+| `CHAT_TOOL_CACHE_ENABLED` | Enable tool result LRU caching | `false` |
+| `DITA_IMAGE_GENERATION_ENABLED` | Enable AI image generation in DITA | `false` |
+| `DATABASE_URL` | SQLite/Postgres connection string | `sqlite:///...` |
 
 ---
 
@@ -358,20 +500,22 @@ No Python setup needed on individual machines.
 
 1. Fork the repo
 2. Create a feature branch: `git checkout -b feature/my-tool`
-3. Add your MCP tool following the patterns in `mcp_server.py`
-4. Open a PR with a description of what the tool does
+3. Add your changes with tests
+4. Run `python -m pytest tests/ -v` to verify
+5. Open a PR with a description of what changed
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT -- see [LICENSE](LICENSE)
 
 ---
 
 ## Credits
 
-- [DITAWriter](https://github.com/DITAWriter) — expert DITA example repos
-- [OASIS DITA TC](https://www.oasis-open.org/committees/dita/) — DITA 1.2/1.3 spec
-- [Adobe Experience League](https://experienceleague.adobe.com/en/docs/experience-manager-guides) — AEM Guides docs
-- [Model Context Protocol](https://modelcontextprotocol.io/) — MCP SDK
+- [DITAWriter](https://github.com/DITAWriter) -- expert DITA example repos
+- [OASIS DITA TC](https://www.oasis-open.org/committees/dita/) -- DITA 1.2/1.3 spec
+- [Adobe Experience League](https://experienceleague.adobe.com/en/docs/experience-manager-guides) -- AEM Guides docs
+- [Model Context Protocol](https://modelcontextprotocol.io/) -- MCP SDK
+- [Mermaid.js](https://mermaid.js.org/) -- diagram rendering

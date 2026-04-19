@@ -43,6 +43,9 @@ AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
 LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "").lower().strip()
+# Provider chain: comma-separated ordered list e.g. "openai,anthropic,groq"
+# Each provider is tried in order; first with valid credentials wins.
+LLM_PROVIDER_CHAIN = os.getenv("LLM_PROVIDER_CHAIN", "").lower().strip()
 
 # Reasoning / quality tuning — configurable via .env
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))           # generation (JSON, text)
@@ -221,7 +224,24 @@ def _is_bedrock_available() -> bool:
 
 
 def _effective_provider() -> str:
-    """Resolve provider: bedrock if LLM_PROVIDER=bedrock or CLAUDE_CODE_USE_BEDROCK=1."""
+    """Resolve provider using chain, explicit setting, or bedrock override.
+
+    Priority:
+    1. LLM_PROVIDER_CHAIN (comma-separated, first with credentials wins)
+    2. LLM_PROVIDER=bedrock or CLAUDE_CODE_USE_BEDROCK=1
+    3. LLM_PROVIDER (single provider)
+    """
+    # Provider chain: try each in order, pick first with valid credentials
+    if LLM_PROVIDER_CHAIN:
+        chain = [p.strip() for p in LLM_PROVIDER_CHAIN.split(",") if p.strip()]
+        for provider in chain:
+            if _provider_has_credentials(provider):
+                return provider
+        # If no provider in chain has credentials, fall through to single provider
+        logger.warning(
+            f"No provider in chain [{LLM_PROVIDER_CHAIN}] has valid credentials, "
+            f"falling back to LLM_PROVIDER={LLM_PROVIDER}"
+        )
     if LLM_PROVIDER == "bedrock" or USE_BEDROCK:
         return "bedrock"
     return _normalize_provider_name(LLM_PROVIDER)
@@ -300,6 +320,11 @@ def _create_openai_client(
         timeout=timeout_sec,
     )
     return _maybe_wrap_openai_client(client)
+
+
+def get_active_llm_provider() -> str:
+    """Public accessor for the resolved LLM provider name."""
+    return _effective_provider()
 
 
 def is_llm_available() -> bool:
@@ -414,14 +439,16 @@ def store_chat_llm_run(
 
 
 def _is_retryable_llm_error(e: Exception) -> bool:
-    """Return True if error is rate limit (429) or server error (503) and fallback may help."""
+    """Return True if error is rate limit (429), too large (413), or server error (503) and fallback may help."""
     err_str = str(e).lower()
     if "429" in err_str or "rate" in err_str or "overloaded" in err_str:
+        return True
+    if "413" in err_str or "too large" in err_str or "request too large" in err_str:
         return True
     if "503" in err_str or "service" in err_str or "unavailable" in err_str:
         return True
     status = getattr(e, "status_code", None)
-    if status in (429, 503):
+    if status in (413, 429, 503):
         return True
     return False
 
@@ -1257,6 +1284,9 @@ async def _stream_with_tools_groq(
     # Accumulate tool calls across streamed chunks
     tool_calls_acc: dict[int, dict] = {}  # index -> {id, name, arguments}
     input_tok = output_tok = None
+    # Accumulate text to detect inline <function> XML that Groq/Llama sometimes emits
+    _text_acc_parts: list[str] = []
+    _text_chunks_yielded: list[str] = []
 
     async for chunk in stream:
         if hasattr(chunk, "usage") and chunk.usage:
@@ -1268,9 +1298,18 @@ async def _stream_with_tools_groq(
         choice = chunk.choices[0]
         delta = choice.delta
 
-        # Stream text content
+        # Stream text content (but buffer to detect inline function XML)
         if delta and hasattr(delta, "content") and delta.content:
-            yield ("chunk", delta.content)
+            _text_acc_parts.append(delta.content)
+            # Only yield text chunks that are clearly not inline function XML.
+            # We buffer and check periodically. If we see <function start, hold back.
+            full_so_far = "".join(_text_acc_parts)
+            if "<function" not in full_so_far and "</function>" not in full_so_far:
+                # Safe to yield buffered text
+                to_yield = "".join(_text_acc_parts)
+                _text_acc_parts.clear()
+                _text_chunks_yielded.append(to_yield)
+                yield ("chunk", to_yield)
 
         # Accumulate tool calls
         if delta and hasattr(delta, "tool_calls") and delta.tool_calls:
@@ -1299,25 +1338,121 @@ async def _stream_with_tools_groq(
             "output_tokens": output_tok or 0,
         })
 
-    # Emit tool_use_blocks if any tool calls were accumulated
+    # Emit tool_use_blocks if any tool calls were accumulated via API
     if tool_calls_acc:
+        from app.services.tool_arg_parser import parse_tool_arguments
         blocks = []
         for idx in sorted(tool_calls_acc.keys()):
             tc = tool_calls_acc[idx]
-            try:
-                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
-            except json.JSONDecodeError:
-                args = {}
-            blocks.append({
+            args, parse_err = parse_tool_arguments(
+                tc["arguments"] or "",
+                tool_name=tc["name"],
+                attempt_repair=True,
+            )
+            block: dict = {
                 "id": tc["id"],
                 "name": tc["name"],
                 "input": args,
-            })
+            }
+            if parse_err:
+                block["_parse_error"] = parse_err
+            blocks.append(block)
         if blocks:
+            # Flush any remaining buffered text that was clean
+            remaining = "".join(_text_acc_parts)
+            clean_part = _strip_inline_function_xml(remaining)
+            if clean_part:
+                yield ("chunk", clean_part)
             yield ("tool_use_blocks", blocks)
             return
 
+    # ── Groq/Llama inline <function> XML recovery ──
+    # Sometimes Groq outputs tool calls as raw XML text instead of API tool_calls.
+    # Detect and convert both formats:
+    #   Format 1: <function name="tool" parameters="{...}" />
+    #   Format 2: <function>tool</function>{...}
+    remaining_text = "".join(_text_acc_parts)
+    if remaining_text:
+        inline_blocks = _parse_inline_function_xml(remaining_text)
+        if inline_blocks:
+            # Don't yield the raw XML to the user; yield a friendly note instead
+            clean_text = _strip_inline_function_xml(remaining_text)
+            if clean_text:
+                yield ("chunk", clean_text)
+            yield ("chunk", "\n⏳ Executing tool...\n")
+            yield ("tool_use_blocks", inline_blocks)
+            return
+        else:
+            # No inline function XML — just yield the buffered text
+            yield ("chunk", remaining_text)
+
     yield ("done", None)
+
+
+def _strip_inline_function_xml(text: str) -> str:
+    """Remove all inline function-call XML variants from text, leaving only clean prose."""
+    # Format 1: <function name="..." parameters="..." />
+    cleaned = re.sub(
+        r'<function\s+name=["\'][^"\']*["\']\s+parameters=["\'].*?["\']\s*/?>',
+        '', text, flags=re.DOTALL,
+    )
+    # Format 2: <function>tool_name</function>{...}
+    cleaned = re.sub(
+        r'<function>\s*\w+\s*</function>\s*\{.*?\}(?=\s*(?:<function>|$))',
+        '', cleaned, flags=re.DOTALL,
+    )
+    # Also strip bare <function>...</function> tags without JSON (malformed)
+    cleaned = re.sub(r'</?function[^>]*>', '', cleaned)
+    return cleaned.strip()
+
+
+def _parse_inline_function_xml(text: str) -> list[dict] | None:
+    """Parse inline function-call XML emitted by Groq/Llama instead of proper tool_calls.
+
+    Handles multiple format variants:
+      1. <function name="tool" parameters="{...}" />
+      2. <function>tool</function>{"key": "value"}
+      3. <function>tool</function> {"key": "value"}  (with whitespace)
+
+    Returns list of tool_use blocks or None if no match found.
+    """
+    import html
+    from app.services.tool_arg_parser import parse_tool_arguments
+
+    blocks: list[dict] = []
+
+    # ── Format 1: <function name="..." parameters="..." /> ──
+    pattern_attr = re.compile(
+        r'<function\s+name=["\']([^"\']+)["\']\s+parameters=["\'](.+?)["\']\s*/?>',
+        re.DOTALL,
+    )
+    for i, (name, raw_params) in enumerate(pattern_attr.findall(text)):
+        params_str = html.unescape(raw_params)
+        args, parse_err = parse_tool_arguments(
+            params_str, tool_name=name, attempt_repair=True,
+        )
+        block: dict = {"id": f"inline_call_{i}", "name": name, "input": args}
+        if parse_err:
+            block["_parse_error"] = parse_err
+        blocks.append(block)
+
+    # ── Format 2: <function>tool_name</function>{json} ──
+    # Groq/Llama sometimes emits tool name as element content followed by JSON body.
+    pattern_body = re.compile(
+        r'<function>\s*(\w+)\s*</function>\s*(\{.+?\})(?=\s*(?:<function>|$))',
+        re.DOTALL,
+    )
+    for j, (name, raw_json) in enumerate(pattern_body.findall(text)):
+        params_str = html.unescape(raw_json)
+        args, parse_err = parse_tool_arguments(
+            params_str, tool_name=name, attempt_repair=True,
+        )
+        block = {"id": f"inline_body_call_{j}", "name": name, "input": args}
+        if parse_err:
+            block["_parse_error"] = parse_err
+        blocks.append(block)
+
+    return blocks if blocks else None
 
 
 async def _stream_with_tools_openai(
@@ -1390,18 +1525,23 @@ async def _stream_with_tools_openai(
         })
 
     if tool_calls_acc:
+        from app.services.tool_arg_parser import parse_tool_arguments
         blocks = []
         for idx in sorted(tool_calls_acc.keys()):
             tc = tool_calls_acc[idx]
-            try:
-                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
-            except json.JSONDecodeError:
-                args = {}
-            blocks.append({
+            args, parse_err = parse_tool_arguments(
+                tc["arguments"] or "",
+                tool_name=tc["name"],
+                attempt_repair=True,
+            )
+            block: dict = {
                 "id": tc["id"],
                 "name": tc["name"],
                 "input": args,
-            })
+            }
+            if parse_err:
+                block["_parse_error"] = parse_err
+            blocks.append(block)
         if blocks:
             yield ("tool_use_blocks", blocks)
             return

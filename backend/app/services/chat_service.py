@@ -16,6 +16,7 @@ from app.services.llm_service import (
     _coerce_llm_text_response,
     clear_llm_trace,
     format_llm_error_for_user,
+    get_active_llm_provider,
     generate_chat_stream_with_tools,
     generate_text,
     is_llm_available,
@@ -64,6 +65,8 @@ from app.services.chat_agent_service import (
 )
 from app.services.corrective_rag_service import run_chat_corrective_rag
 from app.services.doc_retriever_service import retrieve_relevant_docs, format_docs_for_prompt
+from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
+from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
@@ -98,6 +101,21 @@ CHAT_CONTEXT_WINDOW_MESSAGES = int(os.getenv("CHAT_CONTEXT_WINDOW_MESSAGES", "20
 
 # Session generation context for conversational refinement (in-memory, keyed by session_id)
 _session_last_generation: dict[str, dict] = {}
+# Hierarchical retrieval feature flag (Phase C3) — uses richer formatting from
+# hierarchical_retriever but does NOT yet do async structural expansion (parent/child/conref).
+# Full expansion requires CHUNK_METADATA_ENABLED + async retrieval path (future enhancement).
+HIERARCHICAL_RETRIEVAL_ENABLED = os.getenv("HIERARCHICAL_RETRIEVAL_ENABLED", "false").lower() == "true"
+
+# D7: Tool result caching — avoids re-executing identical read-only tool calls
+CHAT_TOOL_CACHE_ENABLED = os.getenv("CHAT_TOOL_CACHE_ENABLED", "false").lower() == "true"
+_tool_cache = None
+def _get_tool_cache():
+    global _tool_cache
+    if _tool_cache is None:
+        from app.services.tool_result_cache import ToolResultCache
+        _tool_cache = ToolResultCache()
+    return _tool_cache
+
 _CHAT_CONTEXT_MAX_TOKENS_RAW = os.getenv("CHAT_CONTEXT_MAX_TOKENS", "120000").strip()
 CHAT_CONTEXT_MAX_TOKENS = int(_CHAT_CONTEXT_MAX_TOKENS_RAW) if _CHAT_CONTEXT_MAX_TOKENS_RAW else None
 
@@ -2003,6 +2021,60 @@ def _build_aem_create_authoring_actions(question: str, sentences: list[str]) -> 
 
     return actions[:4]
 
+    Retains the key answer-quality rules from chat_system.json without the
+    full 37K prompt.  Total size ~3-4K chars (~800-1000 tokens).
+    """
+    base = (
+        "You are **DITA Dataset Studio Chat** — an expert assistant for DITA XML, "
+        "AEM Guides, and technical documentation.\n\n"
+        "# ANSWER RULES\n"
+        "1. **Always include XML examples** when the question involves DITA elements, "
+        "attributes, or structure. Wrap in ```xml fenced blocks.\n"
+        "2. **Common mistakes**: If the evidence lists common mistakes for an element, "
+        "include a ⚠️ Common Mistakes section.\n"
+        "3. **Be specific**: Name parent/child elements, required attributes, content "
+        "models. Never say 'various attributes' — list them.\n"
+        "4. **Comparisons**: When comparing elements (e.g., choicetable vs simpletable "
+        "vs table), use a markdown table with columns for each element.\n"
+        "5. **Depth**: Give thorough, expert-level answers. A single paragraph is never "
+        "enough for a structural DITA question.\n"
+        "6. Use markdown formatting: headers (##), bullets, code blocks, bold for "
+        "element names.\n"
+        "7. When evidence is provided, ground your answer in it. When evidence is thin, "
+        "use your knowledge of DITA 1.3 / AEM Guides and note what comes from general "
+        "DITA knowledge.\n"
+        "8. Do not invent download URLs, product links, or claim features exist without "
+        "evidence.\n\n"
+        "# ANSWER STRUCTURE\n"
+        "Use clear markdown sections. Choose the structure that fits the question:\n"
+        "- **Definitional** (What is X?): Overview → Content model → Attributes → "
+        "Example XML → Common mistakes\n"
+        "- **Comparison** (X vs Y): Summary table → Detailed breakdown → When to use "
+        "each → Example XML for each\n"
+        "- **How-to** (How do I...?): Steps → Example XML → Tips / gotchas\n"
+        "- **Troubleshooting**: Problem → Root cause → Fix → Corrected XML\n\n"
+        "Do NOT use the rigid '## Short answer / ## How it works / ## What is verified' "
+        "format. Use natural, helpful markdown sections instead.\n\n"
+        "# CONTENT INTELLIGENCE TOOLS\n"
+        "- ALWAYS call `generate_shortdesc` when the user asks to generate or improve a shortdesc, "
+        "or when reviewing a topic that is missing one.\n"
+        "- ALWAYS call `advise_topic_type` when the user asks about topic type classification, "
+        "or when reviewing XML that may be misclassified (e.g., steps in a concept).\n"
+        "- ALWAYS call `check_style_guide` when the user asks to check writing quality, style, "
+        "terminology, passive voice, or asks for a content review.\n"
+        "- You can chain these tools: review_dita_xml → check_style_guide → advise_topic_type → "
+        "generate_shortdesc for a comprehensive content audit.\n\n"
+        "# CONTENT MIGRATION\n"
+        "- Call `migrate_content` when the user wants to convert Word, Markdown, HTML, or plain text into DITA. "
+        "It auto-classifies sections as task/concept/reference and generates proper DITA topics + a ditamap.\n\n"
+        "# VISUAL TOOLS\n"
+        "- Call `generate_diagram` to create Mermaid.js flowcharts from task steps, mind maps from concept sections, "
+        "or structure diagrams from ditamaps. Present the Mermaid code in a ```mermaid fenced block.\n"
+        "- Call `visualize_map` to analyze a ditamap structure and show the topic hierarchy with AI suggestions."
+    )
+    if rag_context:
+        base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
+    return base
 
 def _build_aem_guidance_actions(
     question: str,
@@ -2500,9 +2572,61 @@ def _normalize_grounded_tool_facts(
     return None
 
 
-def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
-    short_answer = " ".join(str(facts.canonical_definition or "").split()).strip()
-    if not short_answer:
+def _select_tools_for_query(all_tools: list[dict], query: str, max_tools: int = 8, max_extra: int = 4) -> list[dict]:
+    """Select most relevant tools for a query (used when provider has limited context like Groq).
+
+    Always includes core tools, then adds query-relevant ones up to max_tools.
+    max_extra: maximum number of non-core tools to add (default 4).
+    """
+    q = query.lower()
+    # Core tools always included
+    core_tools = {"generate_dita", "lookup_aem_guides", "lookup_dita_spec", "search_tenant_knowledge"}
+    # Relevance keywords for optional tools
+    tool_keywords: dict[str, list[str]] = {
+        "create_job": ["dataset", "recipe", "generate", "create", "bulk", "sample", "smoke"],
+        "search_jira_issues": ["jira", "issue", "ticket", "bug", "story"],
+        "review_dita_xml": ["review", "validate", "check", "xml", "error"],
+        "find_recipes": ["recipe", "template", "pattern", "dataset"],
+        "get_job_status": ["job", "status", "progress", "running"],
+        "lookup_output_preset": ["output", "preset", "pdf", "publish", "site"],
+        "list_jobs": ["job", "history", "recent", "list"],
+        "fix_dita_xml": ["fix", "repair", "correct", "error", "invalid"],
+        "lookup_dita_attribute": ["attribute", "property", "element"],
+        "list_indexed_pdfs": ["pdf", "indexed", "document", "upload"],
+        "generate_native_pdf_config": ["pdf", "native", "config", "template", "stylesheet"],
+        "browse_dataset": ["browse", "dataset", "explore", "view"],
+        # Phase F: Content Intelligence Tools
+        "generate_shortdesc": ["shortdesc", "short description", "summary", "abstract", "missing"],
+        "advise_topic_type": ["topic type", "misclassified", "wrong type", "concept", "task", "reference", "classify"],
+        "check_style_guide": ["style", "style guide", "passive voice", "terminology", "writing", "quality", "grammar", "tone"],
+        # Phase I: Visual & Interactive Tools
+        "generate_diagram": ["diagram", "flowchart", "mindmap", "mind map", "visualize", "mermaid", "chart", "flow", "graph"],
+        "migrate_content": ["migrate", "convert", "word", "markdown", "html", "import", "migration", "docx", "transform"],
+        "visualize_map": ["visualize", "map structure", "topic map", "graph", "tree", "hierarchy", "ditamap"],
+    }
+    # Score each optional tool by keyword matches
+    selected_names = set(core_tools)
+    scored: list[tuple[str, int]] = []
+    for name, keywords in tool_keywords.items():
+        if name in selected_names:
+            continue
+        score = sum(1 for kw in keywords if kw in q)
+        scored.append((name, score))
+    # Sort by relevance, add top tools up to budget
+    scored.sort(key=lambda x: x[1], reverse=True)
+    extras_added = 0
+    for name, score in scored:
+        if len(selected_names) >= max_tools or extras_added >= max_extra:
+            break
+        if score > 0 or len(selected_names) < max_tools:
+            selected_names.add(name)
+            extras_added += 1
+    return [t for t in all_tools if t.get("name") in selected_names]
+
+
+def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
+    """Retrieve RAG chunks and format for system prompt. Uses more chunks for better retrieval."""
+    if not query or not str(query).strip():
         return ""
 
     sections: list[str] = ["## Short answer", short_answer]
@@ -3230,9 +3354,60 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
             max_snippet_chars=RAG_SNIPPET_CHARS,
         )
         if docs:
-            formatted = format_docs_for_prompt(docs)
-            if formatted:
-                parts.append("AEM GUIDES DOCUMENTATION:\n" + formatted)
+            if HIERARCHICAL_RETRIEVAL_ENABLED:
+                # Phase C3: Use hierarchical retriever formatting for richer context.
+                # This builds a RetrievalBundle from flat retrieval results and formats
+                # with structured headers (doc_type/element_name). No async expansion
+                # yet — full parent/child/conref expansion requires CHUNK_METADATA_ENABLED
+                # and an async retrieval path (future enhancement).
+                try:
+                    primary_chunks = [
+                        ScoredChunk(
+                            chunk_id=f"aem_{i}",
+                            content=d.get("snippet", ""),
+                            metadata=ChunkMetadata(
+                                chunk_id=f"aem_{i}",
+                                source_type="crawl",
+                                source_url=d.get("url", ""),
+                                doc_type="aem_doc",
+                                element_name=d.get("title", "doc"),
+                                section_title=d.get("title", ""),
+                            ),
+                            semantic_similarity=max(0.0, 1.0 - i * 0.05),
+                            authority_score=0.78,
+                            structural_relevance=0.0,
+                            final_score=max(0.0, 1.0 - i * 0.05) * 0.40 + 0.78 * 0.25,
+                            relationship_type=None,
+                        )
+                        for i, d in enumerate(docs)
+                    ]
+                    bundle = RetrievalBundle(
+                        primary_chunks=primary_chunks,
+                        context_chunks=[],
+                        total_tokens=sum(max(1, len(c.content) // 3) for c in primary_chunks),
+                        root_docs=[],
+                        relationships_used=[],
+                        query=query[:500],
+                    )
+                    formatted = format_bundle_for_prompt(bundle, max_chars=RAG_CONTEXT_MAX_CHARS)
+                    if formatted:
+                        parts.append("AEM GUIDES DOCUMENTATION:\n" + formatted)
+                    logger.debug_structured(
+                        "Hierarchical retrieval formatting used",
+                        extra_fields={"num_chunks": len(primary_chunks)},
+                    )
+                except Exception as he:
+                    # Fallback to flat formatting if hierarchical formatting fails
+                    logger.warning(
+                        f"Hierarchical formatting failed, falling back to flat: {he}"
+                    )
+                    formatted = format_docs_for_prompt(docs)
+                    if formatted:
+                        parts.append("AEM GUIDES DOCUMENTATION:\n" + formatted)
+            else:
+                formatted = format_docs_for_prompt(docs)
+                if formatted:
+                    parts.append("AEM GUIDES DOCUMENTATION:\n" + formatted)
     except Exception as e:
         logger.debug_structured("RAG AEM docs failed", extra_fields={"error": str(e)})
 
@@ -4258,52 +4433,65 @@ def _build_agent_evidence_prompt(tool_results_by_name: dict[str, dict[str, Any]]
                 lines.append(f"   URL: {url}")
         sections.append("\n".join(lines))
 
-    return "\n\n".join(section for section in sections if section).strip()
+def _messages_to_llm_format(messages: list[dict]) -> list[dict]:
+    """Convert DB messages to LLM format (role + content).
+
+    When an assistant message has tool_results, append a compact summary so the LLM
+    can reason about previous tool invocations on subsequent turns.
+    """
+    out = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content") or ""
+        if role in ("user", "assistant") and content:
+            enriched = content
+            if role == "assistant":
+                tool_results = m.get("tool_results")
+                if isinstance(tool_results, dict) and tool_results:
+                    summary = _summarize_tool_results_for_context(tool_results)
+                    if summary:
+                        enriched = f"{content}\n\n[Previous tool results: {summary}]"
+            out.append({"role": role, "content": enriched})
+    return out
 
 
-async def _synthesize_agent_answer(
-    *,
-    user_content: str,
-    plan: dict[str, Any],
-    tool_results_by_name: dict[str, dict[str, Any]],
-) -> str:
-    evidence_prompt = _build_agent_evidence_prompt(tool_results_by_name)
-    if evidence_prompt and is_llm_available():
-        system_prompt = (
-            "You are an enterprise technical documentation assistant for AEM Guides and DITA.\n"
-            "Answer using ONLY the evidence provided.\n"
-            "Do not narrate the research plan or step completion status.\n"
-            "If evidence is incomplete, say exactly what is not verified.\n"
-            "Return markdown with exactly these sections in order:\n"
-            "## Short answer\n"
-            "## How it works\n"
-            "## What is verified / what is not verified\n"
-            "## Sources\n"
-            "In 'How it works', give concrete bullets derived from the evidence.\n"
-            "In 'Sources', list only the provided sources.\n"
-            "Do not invent facts, URLs, product behavior, or citations."
-        )
-        user_prompt = (
-            f"Question:\n{user_content}\n\n"
-            f"Plan goal:\n{str(plan.get('goal') or '').strip()}\n\n"
-            f"Evidence:\n{evidence_prompt}"
-        )
-        try:
-            text = await generate_text(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=1400,
-                step_name="chat_agent_research_answer",
-            )
-            text = _coerce_llm_text_response(text).strip()
-            if text:
-                return text
-        except Exception as exc:
-            logger.warning_structured(
-                "Agent answer synthesis fell back to local summary",
-                extra_fields={"error": str(exc)},
-            )
-    return summarize_agent_results_locally(user_content, plan, tool_results_by_name)
+def _summarize_tool_results_for_context(tool_results: dict) -> str:
+    """Build a compact summary of tool results for LLM context (< 300 chars per tool)."""
+    parts: list[str] = []
+    for name, result in tool_results.items():
+        if name == "_grounding":
+            continue  # Skip grounding metadata
+        if not isinstance(result, dict):
+            continue
+        if result.get("error"):
+            parts.append(f"{name}: error - {str(result['error'])[:100]}")
+        elif name == "generate_dita":
+            jira_id = result.get("jira_id", "")
+            dl = result.get("download_url", "")
+            parts.append(f"{name}: jira_id={jira_id}, download_url={dl}")
+        elif name == "create_job":
+            parts.append(f"{name}: job_id={result.get('job_id', '')}, status={result.get('status', '')}")
+        elif name == "search_jira_issues":
+            issues = result.get("issues", [])
+            parts.append(f"{name}: {len(issues)} issues found")
+        elif name == "review_dita_xml":
+            parts.append(f"{name}: score={result.get('quality_score', '?')}")
+        elif name == "lookup_dita_spec":
+            chunks = result.get("spec_chunks", [])
+            parts.append(f"{name}: {len(chunks)} spec results")
+        elif name == "list_jobs":
+            jobs = result.get("jobs", [])
+            parts.append(f"{name}: {len(jobs)} jobs listed")
+        else:
+            parts.append(f"{name}: completed")
+    return "; ".join(parts)
+
+
+def _truncate_messages_for_context(messages: list[dict], max_messages: int = CHAT_CONTEXT_WINDOW_MESSAGES) -> list[dict]:
+    """Sliding window: keep only the most recent messages to fit LLM context."""
+    if len(messages) <= max_messages:
+        return messages
+    return messages[-max_messages:]
 
 
 async def _emit_streamed_text(text: str) -> AsyncGenerator[dict, None]:
@@ -5129,7 +5317,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if answer_mode in {"generation_request", "xml_review_answer"}:
+    if _should_use_tool_mode(user_content, session_id=session_id):
         async for event in _stream_tool_mode_reply(
             session_id,
             user_content=user_content,
@@ -5265,6 +5453,11 @@ async def _stream_assistant_reply(
 
         for chunk in _stream_text_chunks(grounded_answer.answer):
             yield {"type": "chunk", "content": chunk}
+
+        followups = _build_suggested_followups(user_content, {}, grounded_answer.answer)
+        if followups:
+            yield {"type": "suggested_followups", "followups": followups}
+
         yield {"type": "done"}
         clear_llm_trace(assistant_msg_id)
         return
@@ -5360,6 +5553,222 @@ async def _stream_direct_jira_search_reply(
     yield {"type": "done"}
 
 
+def _is_transient_error(error_msg: str) -> bool:
+    """Classify whether a tool error is transient (worth retrying) vs permanent.
+
+    When CHAT_ERROR_TAXONOMY is enabled, delegates to the structured error taxonomy.
+    Otherwise falls back to the original keyword-based matching.
+    """
+    from app.core.agentic_config import agentic_config
+    if getattr(agentic_config, "chat_error_taxonomy_enabled", True):
+        from app.services.tool_error_taxonomy import is_retryable
+        return is_retryable(error_msg)
+    # Legacy fallback
+    transient_keywords = [
+        "timeout", "timed out", "connection", "unavailable", "rate limit",
+        "429", "503", "502", "504", "temporary", "retry", "ECONNRESET",
+        "network", "socket",
+    ]
+    lower = (error_msg or "").lower()
+    return any(kw in lower for kw in transient_keywords)
+
+
+async def _execute_tool_with_retry(
+    *,
+    tool_name: str,
+    tool_input: dict,
+    user_id: str,
+    session_id: str | None,
+    run_id: str | None,
+    tenant_id: str,
+    max_retries: int = 1,
+) -> dict:
+    """Execute a tool with optional retry on transient errors."""
+    from app.services.chat_tools import run_tool
+
+    result = await run_tool(
+        tool_name,
+        tool_input,
+        user_id=user_id,
+        session_id=session_id,
+        run_id=run_id,
+        tenant_id=tenant_id,
+    )
+
+    if max_retries > 0 and result.get("error") and _is_transient_error(str(result["error"])):
+        # Use structured error taxonomy for backoff when available
+        _use_taxonomy = getattr(agentic_config, "chat_error_taxonomy_enabled", True)
+        for retry_num in range(1, max_retries + 1):
+            err_str = str(result.get("error", ""))
+            delay = 0.5 * retry_num  # Legacy default
+            error_cat = ""
+            if _use_taxonomy:
+                from app.services.tool_error_taxonomy import classify_error, get_retry_delay, get_retry_strategy
+                category = classify_error(err_str)
+                error_cat = category.value
+                strategy = get_retry_strategy(category)
+                if not strategy.should_retry:
+                    result["_error_category"] = error_cat
+                    break  # Don't retry auth/validation errors
+                delay = get_retry_delay(category, retry_num)
+
+            logger.info_structured(
+                "Retrying tool error",
+                extra_fields={
+                    "tool": tool_name,
+                    "retry": retry_num,
+                    "delay_sec": round(delay, 2),
+                    "error_category": error_cat,
+                    "error": err_str[:200],
+                },
+            )
+            await asyncio.sleep(delay)
+            result = await run_tool(
+                tool_name,
+                tool_input,
+                user_id=user_id,
+                session_id=session_id,
+                run_id=run_id,
+                tenant_id=tenant_id,
+            )
+            if not result.get("error") or not _is_transient_error(str(result["error"])):
+                result["_retried"] = True
+                result["_retry_count"] = retry_num
+                if error_cat:
+                    result["_error_category"] = error_cat
+                break
+        else:
+            result["_retried"] = True
+            result["_retry_count"] = max_retries
+
+    return result
+
+
+def _check_approval_gate(tool_name: str, tool_input: dict, topic_threshold: int = 1000) -> str:
+    """Return an approval reason string if the action requires user confirmation, else empty string."""
+    if tool_name == "create_job":
+        config = tool_input.get("config") or {}
+        recipes = config.get("recipes") or [{}]
+        for recipe in recipes:
+            topic_count = recipe.get("topic_count", 0)
+            if isinstance(topic_count, int) and topic_count >= topic_threshold:
+                return f"This will generate a large dataset with {topic_count} topics. Please confirm."
+        recipe_type = tool_input.get("recipe_type", "")
+        if recipe_type in ("flat_hierarchical_dita", "bulk_dita_map_topics", "large_scale"):
+            # Check if default counts are large
+            default_large = {
+                "flat_hierarchical_dita": 5000,
+                "bulk_dita_map_topics": 100,
+                "large_scale": 500,
+            }
+            default_count = default_large.get(recipe_type, 0)
+            if default_count >= topic_threshold:
+                return f"Recipe '{recipe_type}' defaults to {default_count} topics. Please confirm."
+    return ""
+
+
+def _build_thinking_summary(user_content: str, context: Optional[dict] = None) -> str:
+    """Build a short thinking/planning summary shown to the user before tool calls."""
+    text = (user_content or "").lower()
+    parts: list[str] = []
+
+    # Detect intent categories
+    if any(k in text for k in ("generate", "create dita", "jira", "convert", "bundle", "zip")):
+        parts.append("Preparing to generate DITA content")
+    if any(k in text for k in ("recipe", "dataset", "job", "bulk")):
+        parts.append("Setting up dataset generation")
+    if any(k in text for k in ("review", "validate", "check", "fix", "correct")):
+        parts.append("Reviewing content for quality")
+    if any(k in text for k in ("what is", "how do", "explain", "tell me about", "what are", "lookup", "look up")):
+        parts.append("Looking up reference information")
+    if any(k in text for k in ("pdf", "native pdf", "template", "output preset", "publish")):
+        parts.append("Checking PDF/publishing configuration")
+    if any(k in text for k in ("aem", "experience league", "guides")):
+        parts.append("Searching AEM Guides documentation")
+
+    if not parts:
+        parts.append("Determining the best approach")
+
+    # Add context awareness
+    if context:
+        if context.get("last_download_url"):
+            parts.append("Previous generation available for refinement")
+        if context.get("issue_key"):
+            parts.append(f"Context: Jira {context['issue_key']}")
+
+    return " → ".join(parts)
+
+
+def _build_suggested_followups(
+    user_content: str,
+    tool_results: dict[str, dict],
+    assistant_text: str,
+) -> list[dict[str, str]]:
+    """Generate 2-3 contextual follow-up suggestions based on what just happened."""
+    suggestions: list[dict[str, str]] = []
+    text = (user_content or "").lower()
+
+    # After DITA generation → suggest review, refine, download
+    if "generate_dita" in tool_results:
+        result = tool_results["generate_dita"]
+        if not result.get("error"):
+            suggestions.append({"label": "Review XML quality", "text": "Review the generated DITA XML for quality issues"})
+            suggestions.append({"label": "Refine output", "text": "Make the steps more detailed and add prerequisites"})
+            if result.get("download_url"):
+                suggestions.append({"label": "Browse files", "text": f"Show me the files in this generated bundle"})
+
+    # After job creation → suggest check status, browse
+    elif "create_job" in tool_results:
+        result = tool_results["create_job"]
+        if not result.get("error"):
+            job_id = result.get("job_id", "")
+            suggestions.append({"label": "Check job status", "text": f"What's the status of job {job_id}?"})
+            suggestions.append({"label": "List all jobs", "text": "Show me all my recent dataset jobs"})
+
+    # After DITA spec lookup → suggest related lookups
+    elif "lookup_dita_spec" in tool_results or "lookup_dita_attribute" in tool_results:
+        suggestions.append({"label": "Show XML example", "text": "Show me a complete XML example using this element"})
+        suggestions.append({"label": "Compare elements", "text": "What are the differences between similar elements?"})
+
+    # After review → suggest fix
+    elif "review_dita_xml" in tool_results:
+        result = tool_results["review_dita_xml"]
+        if not result.get("error"):
+            score = result.get("quality_score")
+            if isinstance(score, (int, float)) and score < 90:
+                suggestions.append({"label": "Auto-fix issues", "text": "Fix the issues found in my XML"})
+            suggestions.append({"label": "Explain issues", "text": "Explain the validation issues in detail"})
+
+    # After fix → suggest re-review
+    elif "fix_dita_xml" in tool_results:
+        suggestions.append({"label": "Re-review", "text": "Review the fixed XML again to verify quality"})
+
+    # After Jira search → suggest generate from result
+    elif "search_jira_issues" in tool_results:
+        result = tool_results["search_jira_issues"]
+        issues = result.get("issues", [])
+        if issues and isinstance(issues[0], dict):
+            key = issues[0].get("issue_key", "")
+            if key:
+                suggestions.append({"label": f"Generate from {key}", "text": f"Generate DITA from Jira issue {key}"})
+
+    # After AEM Guides lookup → suggest deeper dives
+    elif "lookup_aem_guides" in tool_results:
+        suggestions.append({"label": "Show output presets", "text": "What output preset types are available in AEM Guides?"})
+
+    # Generic: if no tools were used, suggest based on content
+    if not suggestions:
+        if any(k in text for k in ("dita", "xml", "element", "attribute")):
+            suggestions.append({"label": "Look up DITA spec", "text": "Look up the DITA spec for this element"})
+        if any(k in text for k in ("aem", "guides", "publish", "output")):
+            suggestions.append({"label": "Search AEM docs", "text": "Search AEM Guides documentation for this topic"})
+        if not suggestions:
+            suggestions.append({"label": "Generate DITA", "text": "Generate a DITA topic from this description"})
+            suggestions.append({"label": "Find recipes", "text": "What dataset recipes are available?"})
+
+    return suggestions[:3]
+
+
 async def _stream_tool_mode_reply(
     session_id: str,
     *,
@@ -5371,13 +5780,24 @@ async def _stream_tool_mode_reply(
     human_prompts: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """Original tool-capable chat loop for generation and job actions."""
+    from app.core.agentic_config import agentic_config
+
     rag_context = _build_rag_context(user_content, tenant_id=tenant_id)
+
+    # Groq free tier: 12K TPM — aggressively trim RAG context to leave room for tools + history
+    _active_provider = get_active_llm_provider()
+    if _active_provider == "groq" and len(rag_context) > 2000:
+        rag_context = rag_context[:2000] + "\n[truncated for model limit]"
+
     # Use compact prompt to stay within Groq 12K TPM limit
     system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context)
     # Inject session context (previous generation download URL, refinement hints)
     context_block = _build_context_block(context, user_content, session_id=session_id)
     if context_block:
         system_prompt += context_block
+
+    emit_thinking = bool(getattr(agentic_config, "chat_thinking_enabled", True))
+    emit_state = bool(getattr(agentic_config, "chat_state_events_enabled", True))
 
     if not is_llm_available():
         fallback_text = await _build_local_fallback_response(
@@ -5392,6 +5812,16 @@ async def _stream_tool_mode_reply(
         yield {"type": "done"}
         return
 
+    # --- Thinking phase: emit plan before first LLM call ---
+    if emit_thinking:
+        yield {
+            "type": "thinking",
+            "content": _build_thinking_summary(user_content, context),
+        }
+
+    if emit_state:
+        yield {"type": "state", "state": "analyzing", "message": "Analyzing your request..."}
+
     history = get_messages(session_id)
     llm_messages = _messages_to_llm_format(history)
 
@@ -5403,15 +5833,41 @@ async def _stream_tool_mode_reply(
         llm_messages = _truncate_messages_for_context(llm_messages)
 
     tools = get_tool_definitions()
+
+    # Smart tool selection for Groq: reduce tool count to stay under 12K TPM.
+    # Groq free tier has very tight limits; 19 tools + system prompt + RAG + history overwhelms it.
+    if _active_provider == "groq":
+        if len(tools) > 5:
+            tools = _select_tools_for_query(tools, user_content, max_tools=5, max_extra=1)
+        # Also limit conversation history to 4 messages for Groq
+        if len(llm_messages) > 4:
+            llm_messages = llm_messages[-4:]
+
     full_content: list[str] = []
-    max_tool_rounds = 5
+    max_tool_rounds = int(getattr(agentic_config, "max_chat_tool_rounds", 8))
+    tool_retry_enabled = bool(getattr(agentic_config, "chat_tool_retry_enabled", True))
+    tool_max_retries = int(getattr(agentic_config, "chat_tool_max_retries", 1))
+    approval_gates = bool(getattr(agentic_config, "chat_approval_gates_enabled", True))
+    approval_threshold = int(getattr(agentic_config, "chat_approval_topic_threshold", 1000))
+    job_progress_streaming = bool(getattr(agentic_config, "chat_job_progress_streaming", True))
+    # Phase A feature flags
+    _obs_enabled = bool(getattr(agentic_config, "chat_tool_observability_enabled", True))
+    _obs_sse = bool(getattr(agentic_config, "chat_tool_metrics_sse_enabled", False))
+    _parse_validation = bool(getattr(agentic_config, "chat_tool_parse_validation_enabled", True))
+    _extended_gates = bool(getattr(agentic_config, "chat_extended_approval_gates_enabled", False))
     total_input_tokens = 0
     total_output_tokens = 0
     tool_results_by_name: dict[str, dict] = {}
     tool_use_blocks = None
 
+    # A3: Observability collector
+    obs_collector = None
+    if _obs_enabled:
+        from app.services.tool_observability import ToolObservabilityCollector
+        obs_collector = ToolObservabilityCollector(session_id=session_id or "", trace_id=trace_id)
+
     try:
-        for _ in range(max_tool_rounds):
+        for round_idx in range(max_tool_rounds):
             round_text: list[str] = []
             tool_use_blocks = None
             async for evt_type, data in generate_chat_stream_with_tools(
@@ -5446,9 +5902,93 @@ async def _stream_tool_mode_reply(
                     )
                 llm_messages.append({"role": "assistant", "content": assistant_blocks})
 
+                # --- A1: Check for parse errors on tool arguments ---
+                if _parse_validation:
+                    parse_error_blocks = [b for b in tool_use_blocks if b.get("_parse_error")]
+                    if parse_error_blocks:
+                        # Return error to LLM so it can retry with valid JSON
+                        err_results = []
+                        for b in parse_error_blocks:
+                            err_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": b["id"],
+                                "content": json.dumps({
+                                    "error": f"Malformed tool arguments: {b['_parse_error']}. Please retry with valid JSON.",
+                                }),
+                                "is_error": True,
+                            })
+                            if obs_collector:
+                                obs_collector.record_execution(
+                                    tool_name=b["name"], round_idx=round_idx,
+                                    latency_ms=0, success=False,
+                                    error_category="parse_error", was_parse_error=True,
+                                    error_message=b["_parse_error"][:200],
+                                )
+                        llm_messages.append({"role": "user", "content": err_results})
+                        continue  # Let LLM retry in the next round
+
+                # --- Phase 3: Approval gates for destructive/costly actions ---
+                needs_approval = False
+                approval_reason = ""
+                if approval_gates:
+                    for b in tool_use_blocks:
+                        reason = _check_approval_gate(b["name"], b.get("input") or {}, approval_threshold)
+                        if reason:
+                            needs_approval = True
+                            approval_reason = reason
+                            break
+
+                # --- A5: Extended approval gates ---
+                if not needs_approval and _extended_gates:
+                    from app.services.approval_gates import get_default_registry
+                    gate_config = {
+                        "topic_threshold": approval_threshold,
+                        "generate_char_threshold": int(getattr(agentic_config, "chat_approval_generate_char_threshold", 50000)),
+                        "max_parallel_tools": int(getattr(agentic_config, "chat_approval_max_parallel_tools", 3)),
+                        "tool_count_in_round": len(tool_use_blocks),
+                    }
+                    for b in tool_use_blocks:
+                        reason = get_default_registry().check_gates(b["name"], b.get("input") or {}, gate_config)
+                        if reason:
+                            needs_approval = True
+                            approval_reason = reason
+                            break
+
+                if needs_approval:
+                    yield {
+                        "type": "approval_required",
+                        "message": approval_reason,
+                        "tools": [b["name"] for b in tool_use_blocks],
+                        "round": round_idx + 1,
+                    }
+                    # Don't execute — let LLM know approval is needed
+                    approval_result = {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_blocks[0]["id"],
+                        "content": json.dumps({
+                            "status": "approval_required",
+                            "message": f"Action requires user approval: {approval_reason}. Ask the user to confirm before proceeding.",
+                        }),
+                    }
+                    llm_messages.append({"role": "user", "content": [approval_result]})
+                    continue
+
+                if emit_state:
+                    tool_names = [b["name"] for b in tool_use_blocks]
+                    yield {
+                        "type": "state",
+                        "state": "tool_calling",
+                        "message": f"Using {', '.join(tool_names)}...",
+                        "tools": tool_names,
+                        "round": round_idx + 1,
+                        "max_rounds": max_tool_rounds,
+                    }
+
                 tool_results = []
                 for b in tool_use_blocks:
-                    run_id = str(uuid4()) if b["name"] == "generate_dita" else None
+                    tool_name = b["name"]
+                    tool_input = b.get("input") or {}
+                    run_id = str(uuid4()) if tool_name == "generate_dita" else None
                     if run_id:
                         from app.api.v1.routes.ai_dataset import _update_generate_progress
 
@@ -5459,36 +5999,117 @@ async def _stream_tool_mode_reply(
                             jira_id=f"TEXT-{run_id[:8]}",
                         )
                         yield {"type": "tool_start", "name": "generate_dita", "run_id": run_id}
-                    result = await run_tool(
-                        b["name"],
-                        b.get("input") or {},
-                        user_id=user_id,
-                        session_id=session_id,
-                        run_id=run_id,
-                        tenant_id=tenant_id,
-                    )
+
+                    # --- D7: Check tool result cache before execution ---
+                    _cached_result = None
+                    if CHAT_TOOL_CACHE_ENABLED:
+                        _cached_result = _get_tool_cache().get(tool_name, tool_input)
+
+                    # --- Phase 2: Auto-retry with error classification ---
+                    # A3: Time tool execution
+                    _tool_start_ts = __import__("time").monotonic()
+
+                    if _cached_result is not None:
+                        result = _cached_result
+                        result["_cached"] = True
+                    else:
+                        result = await _execute_tool_with_retry(
+                            tool_name=tool_name,
+                            tool_input=tool_input,
+                            user_id=user_id,
+                            session_id=session_id,
+                            run_id=run_id,
+                            tenant_id=tenant_id,
+                            max_retries=tool_max_retries if tool_retry_enabled else 0,
+                        )
+                        # Store in cache on success
+                        if CHAT_TOOL_CACHE_ENABLED and not result.get("error"):
+                            _get_tool_cache().put(tool_name, tool_input, result)
+
+                    _tool_elapsed_ms = (__import__("time").monotonic() - _tool_start_ts) * 1000
+
+                    was_retried = result.pop("_retried", False)
+                    retry_count = result.pop("_retry_count", 0)
+                    error_cat = result.pop("_error_category", "")
+
                     logger.info_structured(
                         "Chat tool invoked",
                         extra_fields={
                             "session_id": session_id,
-                            "tool": b["name"],
+                            "tool": tool_name,
                             "trace_id": assistant_msg_id,
+                            "had_error": bool(result.get("error")),
+                            "retried": was_retried,
+                            "retry_count": retry_count,
+                            "latency_ms": round(_tool_elapsed_ms, 1),
                         },
                     )
+
+                    # A3: Record to observability collector
+                    if obs_collector:
+                        from app.services.tool_observability import _truncate_for_summary
+                        obs_collector.record_execution(
+                            tool_name=tool_name,
+                            round_idx=round_idx,
+                            latency_ms=_tool_elapsed_ms,
+                            success=not bool(result.get("error")),
+                            error_category=error_cat,
+                            error_message=str(result.get("error", ""))[:200] if result.get("error") else "",
+                            retry_count=retry_count,
+                            input_summary=_truncate_for_summary(tool_input),
+                            output_summary=_truncate_for_summary(result),
+                        )
+
+                    # Emit retry state so frontend shows recovery indicator
+                    if was_retried and emit_state:
+                        yield {
+                            "type": "state",
+                            "state": "retrying",
+                            "message": f"Retried {tool_name} ({retry_count}x) — {'recovered' if not result.get('error') else 'still failing'}",
+                        }
                     tool_results.append(result)
-                    tool_results_by_name[b["name"]] = result
-                    yield {"type": "tool", "name": b["name"], "result": result}
+                    tool_results_by_name[tool_name] = result
+                    yield {"type": "tool", "name": tool_name, "result": result}
+
+                    # --- Phase 3: Live job progress for create_job ---
+                    if tool_name == "create_job" and job_progress_streaming and not result.get("error"):
+                        job_id = result.get("job_id")
+                        if job_id:
+                            yield {
+                                "type": "job_progress",
+                                "job_id": job_id,
+                                "name": result.get("name", ""),
+                                "recipe_type": result.get("recipe_type", ""),
+                                "status": result.get("status", "pending"),
+                                "download_url": result.get("download_url", ""),
+                            }
+
+                # Groq free tier: truncate tool results to fit within 12K TPM
+                def _truncate_result_for_llm(r: dict, max_chars: int = 6000) -> str:
+                    full = json.dumps(r)
+                    if _active_provider == "groq" and len(full) > max_chars:
+                        return full[:max_chars] + '..."truncated for model limit"}'
+                    return full
 
                 result_blocks = [
-                    {"type": "tool_result", "tool_use_id": b["id"], "content": json.dumps(r)}
+                    {"type": "tool_result", "tool_use_id": b["id"], "content": _truncate_result_for_llm(r)}
                     for b, r in zip(tool_use_blocks, tool_results)
                 ]
                 llm_messages.append({"role": "user", "content": result_blocks})
-                direct_tool_response = _build_post_tool_assistant_text(tool_results_by_name)
-                if direct_tool_response:
-                    separator = "\n\n" if full_content else ""
-                    full_content.append(separator + direct_tool_response)
-                    yield {"type": "chunk", "content": separator + direct_tool_response}
+
+                if emit_state and round_idx < max_tool_rounds - 1:
+                    yield {"type": "state", "state": "synthesizing", "message": "Processing tool results..."}
+
+                # Let the LLM synthesize a response from tool results instead of
+                # using canned text. The loop continues to the next round where the
+                # LLM will see the tool results and produce a natural response.
+                # Only fall back to canned text if we've exhausted all rounds.
+                if round_idx >= max_tool_rounds - 1:
+                    direct_tool_response = _build_post_tool_assistant_text(tool_results_by_name)
+                    if direct_tool_response:
+                        separator = "\n\n" if full_content else ""
+                        full_content.append(separator + direct_tool_response)
+                        yield {"type": "chunk", "content": separator + direct_tool_response}
                     break
             else:
                 break
@@ -5524,13 +6145,60 @@ async def _stream_tool_mode_reply(
                     extra_fields={"session_id": session_id, "error": str(store_err)},
                 )
 
+        # A3: Emit observability summary
+        if obs_collector:
+            obs_collector.emit_summary()
+            if _obs_sse:
+                yield {"type": "tool_metrics", "data": obs_collector.to_summary_dict()}
+
+        # Emit suggested follow-ups based on tool usage and content
+        followups = _build_suggested_followups(user_content, tool_results_by_name, full_text)
+        if followups:
+            yield {"type": "suggested_followups", "followups": followups}
+
         yield {"type": "done"}
     except Exception as e:
+        err_str = str(e)
         logger.error_structured(
             "Chat turn failed",
-            extra_fields={"session_id": session_id, "error": str(e)},
+            extra_fields={"session_id": session_id, "error": err_str},
             exc_info=True,
         )
+        # If Groq failed on tool calling or request too large, retry the LLM call without tools
+        _err_lower = err_str.lower()
+        is_tool_call_failure = (
+            "failed to call a function" in _err_lower
+            or "failed_generation" in _err_lower
+            or "413" in _err_lower
+            or "request too large" in _err_lower
+            or ("rate_limit" in _err_lower and "tokens" in _err_lower)
+        )
+        if is_tool_call_failure:
+            logger.warning("Tool-call failure detected — retrying without tools")
+            try:
+                retry_content: list[str] = []
+                async for evt_type, data in generate_chat_stream_with_tools(
+                    system_prompt=system_prompt,
+                    messages=llm_messages,
+                    tools=None,
+                    max_tokens=4096,
+                ):
+                    if evt_type == "chunk":
+                        retry_content.append(data)
+                        yield {"type": "chunk", "content": data}
+                    elif evt_type in ("done",):
+                        break
+                retry_text = "".join(retry_content)
+                if retry_text.strip():
+                    _persist_assistant_message(session_id, assistant_msg_id, retry_text)
+                    yield {"type": "done"}
+                    return
+            except Exception as retry_exc:
+                logger.error_structured(
+                    "No-tool retry also failed",
+                    extra_fields={"session_id": session_id, "error": str(retry_exc)},
+                    exc_info=True,
+                )
         try:
             fallback_text = await _build_local_fallback_response(
                 user_content,
@@ -5538,7 +6206,15 @@ async def _stream_tool_mode_reply(
                 context,
                 rag_context=rag_context,
             )
-            fallback_text = _append_provider_note(fallback_text, _format_exposed_chat_error(e))
+            # For tool-call failures, don't append the scary provider error — the local
+            # fallback is sufficient and the error note confuses users.
+            if not is_tool_call_failure:
+                fallback_text = _append_provider_note(fallback_text, _format_exposed_chat_error(e))
+            else:
+                fallback_text = _append_provider_note(
+                    fallback_text,
+                    "Note: The assistant is temporarily unavailable. Please try again in a moment.",
+                )
             _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
             yield {"type": "chunk", "content": fallback_text}
             yield {"type": "done"}

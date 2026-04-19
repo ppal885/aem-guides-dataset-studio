@@ -1078,6 +1078,18 @@ export function ChatInput({
         )}
 
         <div className="flex shrink-0 flex-col gap-2 self-end">
+          {sessionId && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || uploading}
+              className="h-11 rounded-lg border-slate-300 text-slate-600 hover:bg-slate-50"
+              title="Upload files (images, XML, DITA)"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          )}
           {showStop && (
             <Button
               type="button"

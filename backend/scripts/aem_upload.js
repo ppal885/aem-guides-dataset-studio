@@ -2,10 +2,9 @@
 
 const {
     FileSystemUploadOptions,
-    FileSystemUpload
+    FileSystemUpload,
+    DirectBinaryUploadOptions
 } = require('@adobe/aem-upload');
-
-const {RegularExpressions} = require("@adobe/aem-upload/dist/constants");
 
 async function uploadToAem(config) {
     const {
@@ -14,25 +13,46 @@ async function uploadToAem(config) {
         targetPath,
         username,
         password,
+        accessToken,
         maxConcurrent = 20,
         maxUploadFiles = 70000
     } = config;
 
-    if (!sourcePath || !aemBaseUrl || !targetPath || !username || !password) {
-        throw new Error('Missing required parameters: sourcePath, aemBaseUrl, targetPath, username, password');
+    if (!sourcePath || !aemBaseUrl || !targetPath) {
+        throw new Error('Missing required parameters: sourcePath, aemBaseUrl, targetPath');
+    }
+
+    // Require at least one auth method
+    const hasBasicAuth = username && password;
+    const hasBearerToken = accessToken && accessToken.trim().length > 0;
+
+    if (!hasBasicAuth && !hasBearerToken) {
+        throw new Error('Authentication required: provide username+password (Basic Auth) or accessToken (Bearer Token for AEM Cloud Service)');
     }
 
     const uploadUrl = `${aemBaseUrl.replace(/\/$/, '')}/${targetPath.replace(/^\//, '')}`;
 
-    const options = new FileSystemUploadOptions()
-        .withUrl(uploadUrl)
+    // Build auth header — Bearer token takes precedence (AEM Cloud Service)
+    let authHeader;
+    if (hasBearerToken) {
+        authHeader = `Bearer ${accessToken.trim()}`;
+    } else {
+        const authToken = Buffer.from(`${username}:${password}`).toString('base64');
+        authHeader = `Basic ${authToken}`;
+    }
+
+    // FileSystemUploadOptions handles filesystem-specific settings
+    const fsOptions = new FileSystemUploadOptions()
         .withDeepUpload(true)
-        .withMaxUploadFiles(maxUploadFiles)
-        .withMaxConcurrent(maxConcurrent)
-        .withBasicAuth(`${username}:${password}`)
-        .withFolderNodeNameProcessor(async (folderName) => {
-            return folderName.replace(RegularExpressions.INVALID_FOLDER_CHARACTERS_REGEX, '-');
-        });
+        .withMaxUploadFiles(maxUploadFiles);
+
+    // Inject URL, auth, and concurrency directly into the options object
+    // The upload() method reads these from fsOptions.options internally
+    fsOptions.options.url = uploadUrl;
+    fsOptions.options.maxConcurrent = maxConcurrent;
+    fsOptions.options.headers = {
+        'Authorization': authHeader
+    };
 
     const fileUpload = new FileSystemUpload();
     
@@ -58,7 +78,7 @@ async function uploadToAem(config) {
     
     try {
         const startTime = Date.now();
-        await fileUpload.upload(options, [sourcePath]);
+        await fileUpload.upload(fsOptions, [sourcePath]);
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
         
         // Restore console

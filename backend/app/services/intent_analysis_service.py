@@ -1,15 +1,64 @@
-"""Extract IntentRecord from user/Jira text (LLM JSON + keyword boosts)."""
+"""Extract IntentRecord from user/Jira text (LLM JSON + keyword boosts).
+
+Keyword rules are loaded from ``topic_type_keywords.json`` so they can be
+updated without touching code.  The JSON file is re-read on every call in
+dev mode (``RELOAD_KEYWORDS=true``) and cached otherwise.
+"""
 from __future__ import annotations
 
+import json
+import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.schemas_dita_pipeline import DetectedDitaConstruct, DomainSignals, IntentRecord
 from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "templates" / "prompts"
+_KEYWORDS_PATH = PROMPTS_DIR / "topic_type_keywords.json"
+
+# ── JSON keyword config loader (hot-reloadable) ──
+_keyword_config_cache: dict[str, Any] | None = None
+_keyword_config_mtime: float = 0.0
+
+
+def _load_keyword_config() -> dict[str, Any]:
+    """Load topic_type_keywords.json, with optional hot-reload in dev mode."""
+    global _keyword_config_cache, _keyword_config_mtime
+
+    if not _KEYWORDS_PATH.exists():
+        return {}
+
+    mtime = _KEYWORDS_PATH.stat().st_mtime
+    reload = os.getenv("RELOAD_KEYWORDS", "true").lower() == "true"
+
+    if _keyword_config_cache is not None and (not reload or mtime == _keyword_config_mtime):
+        return _keyword_config_cache
+
+    try:
+        raw = _KEYWORDS_PATH.read_text(encoding="utf-8")
+        _keyword_config_cache = json.loads(raw)
+        _keyword_config_mtime = mtime
+        return _keyword_config_cache  # type: ignore[return-value]
+    except Exception as e:
+        logger.warning_structured(
+            "Failed to load topic_type_keywords.json, using hardcoded fallback",
+            extra_fields={"error": str(e)},
+        )
+        return {}
+
+
+def _match_any(text: str, patterns: list[str]) -> bool:
+    """Return True if any regex pattern from the list matches text."""
+    for p in patterns:
+        try:
+            if re.search(rf"\b(?:{p})\b", text, re.IGNORECASE):
+                return True
+        except re.error:
+            continue
+    return False
 
 
 # Jira issue type → (dita_topic_type_guess, content_intent) mapping
@@ -174,7 +223,64 @@ def _keyword_boost_intent(
         if content_intent == "unknown":
             content_intent = "feature_request"
 
-    # --- Original keyword patterns ---
+    # ══════════════════════════════════════════════════════════════
+    # JSON-driven keyword engine (edit topic_type_keywords.json to add keywords)
+    # ══════════════════════════════════════════════════════════════
+    kw_cfg = _load_keyword_config()
+    intent_map = kw_cfg.get("content_intent_map", {})
+
+    # ── 1. Explicit overrides (highest priority — user explicitly asked for a type) ──
+    explicit = kw_cfg.get("explicit_overrides", {})
+    for tt, tt_patterns in explicit.items():
+        if tt.startswith("_"):
+            continue
+        if isinstance(tt_patterns, list) and _match_any(t, tt_patterns):
+            topic_type = tt
+            content_intent = intent_map.get(tt, content_intent if content_intent != "unknown" else "documentation")
+            # Add related patterns (e.g., glossary → glossary pattern)
+            if tt == "glossentry" and "glossary" not in patterns:
+                patterns.append("glossary")
+            break
+
+    # ── 2. Inferred keywords (secondary — only when type is still ambiguous) ──
+    if topic_type in ("unknown", "topic"):
+        inferred = kw_cfg.get("inferred_keywords", {})
+        for tt in ("reference", "task", "concept"):  # priority order
+            tt_patterns = inferred.get(tt, [])
+            if isinstance(tt_patterns, list) and _match_any(t, tt_patterns):
+                topic_type = tt
+                if content_intent == "unknown":
+                    content_intent = intent_map.get(tt, "documentation")
+                break
+
+    # ── 3. Pattern boosters (add required_dita_patterns from keywords) ──
+    boosters = kw_cfg.get("pattern_boosters", {})
+    for pat_name, pat_keywords in boosters.items():
+        if pat_name.startswith("_"):
+            continue
+        if isinstance(pat_keywords, list) and _match_any(t, pat_keywords):
+            if pat_name not in patterns:
+                patterns.append(pat_name)
+            # Some patterns also imply a topic type
+            if pat_name == "task_steps" and topic_type in ("unknown", "topic"):
+                topic_type = "task"
+            elif pat_name == "properties" and topic_type in ("unknown", "topic"):
+                topic_type = "reference"
+
+    # ── 4. Domain signal detection (from JSON) ──
+    domain_cfg = kw_cfg.get("domain_signals", {})
+    if isinstance(domain_cfg.get("aem_guides"), list) and _match_any(t, domain_cfg["aem_guides"]):
+        dom.aem_guides = True
+    if isinstance(domain_cfg.get("web_editor"), list) and _match_any(t, domain_cfg["web_editor"]):
+        dom.web_editor = True
+    if isinstance(domain_cfg.get("ui_workflow"), list) and _match_any(t, domain_cfg["ui_workflow"]):
+        dom.ui_workflow = True
+    if isinstance(domain_cfg.get("dita_ot"), list) and _match_any(t, domain_cfg["dita_ot"]):
+        dom.dita_ot = True
+    # Note: localization and publishing signals are informational (no DomainSignals field yet)
+    # but they still help the LLM intent analyzer via keyword presence.
+
+    # ── Legacy table/alignment patterns (kept for backward compat) ──
     if "table" in t or "tables" in t or "cell" in t or "column" in t:
         if "table" not in patterns and "none" not in patterns:
             patterns.append("table")

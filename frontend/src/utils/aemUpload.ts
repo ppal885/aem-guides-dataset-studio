@@ -1,8 +1,9 @@
 export interface AemUploadConfig {
   aem_base_url: string;
   target_path: string;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  access_token?: string;
   max_concurrent?: number;
   max_upload_files?: number;
 }
