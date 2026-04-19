@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { TaskTopicsConfig } from '@/components/TaskTopicsConfig';
 import { ConceptTopicsConfig } from '@/components/ConceptTopicsConfig';
 import { ReferenceTopicsConfig } from '@/components/ReferenceTopicsConfig';
+import { SyntaxDiagramReferenceConfig } from '@/components/SyntaxDiagramReferenceConfig';
 import { GlossaryPackConfig } from '@/components/GlossaryPackConfig';
 import { BookmapStructureConfig } from '@/components/BookmapStructureConfig';
 import { MediaRichConfig } from '@/components/MediaRichConfig';
@@ -235,20 +236,17 @@ export function Builder() {
   }, [currentRecipe, scheduledAt, timezone, validation.isValid]);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Hero Section */}
-      <div className="text-center py-6 pb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">
-          Dataset Builder
-        </h1>
-        <p className="text-base text-slate-600 max-w-2xl mx-auto">
-          Create and configure AEM Guides datasets with ease
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="border-l-4 border-teal-500 pl-4">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dataset Builder</h1>
+        <p className="mt-2 max-w-2xl text-slate-600">
+          Create and configure AEM Guides dataset generation jobs — same workflow as Job History and Dataset Explorer.
         </p>
       </div>
 
-      <div className="space-y-6 pb-6">
+      <div className="space-y-6 pb-2">
         {/* Recipe Configuration */}
-        <Card className="border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <Card className="border border-slate-200 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/[0.04] transition-shadow duration-200 hover:shadow-md">
               <CardHeader className="border-b border-slate-200 pb-3">
                 <CardTitle className="text-xl font-semibold text-slate-900 mb-1.5">
                   Recipe Configuration
@@ -624,6 +622,45 @@ export function Builder() {
                           include_map: true,
                           pretty_print: true,
                         });
+                      // Enterprise scenarios
+                      } else if (type === 'parent_child_maps_keys_conref_conkeyref_selfrefs') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'compact_parent_child_key_resolution') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'conrefend_cyclic_duplicate_id') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'large_root_map_1000_topics_100kb') {
+                        setCurrentRecipe({ type, topic_count: 1000, pretty_print: true });
+                      // Specialized additions
+                      } else if (type === 'properties_table_reference') {
+                        setCurrentRecipe({ type, topic_count: 30, properties_per_ref: 5, include_map: true, pretty_print: true });
+                      } else if (type === 'syntax_diagram_reference') {
+                        setCurrentRecipe({ type, topic_count: 30, include_map: true, pretty_print: true });
+                      } else if (type === 'bookmap_elements_reference') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'table_semantics_reference') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'topic_ph_keyword_related_links') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      // Advanced additions
+                      } else if (type === 'topic_svg_mathml_foreign') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'inline_formatting_nested') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'nested_topic_inline') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'self_conrefend_range') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      } else if (type === 'self_xref_conref_positive') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
+                      // Performance addition
+                      } else if (type === 'bulk_dita_map_topics') {
+                        setCurrentRecipe({ type, topic_count: 20000, include_local_dtd_stubs: true, pretty_print: true });
+                      } else if (type === 'flat_hierarchical_dita') {
+                        setCurrentRecipe({ type, topic_count: 5000, topics_per_section: 50, include_xrefs: false, pretty_print: true });
+                      // Validation & Negative
+                      } else if (type === 'validation_duplicate_id_negative' || type === 'validation_invalid_child_negative' || type === 'validation_missing_body_negative') {
+                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
                       }
                     } else {
                       setCurrentRecipe(null);
@@ -741,9 +778,9 @@ export function Builder() {
                 <CustomerReusePackConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
               )}
               {currentRecipe?.type === 'output_optimized' && (
-                <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-200/50">
+                <div className="rounded-lg border border-teal-200/80 bg-teal-50/60 p-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <div className="h-2 w-2 shrink-0 rounded-full bg-teal-600" />
                     <p className="text-sm text-slate-700">
                       Output Optimized recipe configured. Select base recipe and output format.
                     </p>
@@ -766,18 +803,15 @@ export function Builder() {
               {/* Create Job Button */}
               {currentRecipe && validation.isValid && (
                 <div className="pt-3">
-                  <Button 
+                  <Button
                     onClick={handleCreateJob}
                     disabled={loading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold py-3.5 text-base shadow-md hover:shadow-lg active:shadow-sm transition-all duration-200"
+                    className="w-full py-3.5 text-base font-semibold shadow-md shadow-teal-900/15 transition-all duration-200 hover:shadow-lg disabled:shadow-none"
                     size="lg"
                   >
                     {loading ? (
                       <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                        <Loader2 className="h-5 w-5 animate-spin" />
                         Creating...
                       </span>
                     ) : scheduledAt ? (
@@ -805,7 +839,7 @@ export function Builder() {
 
           {/* Created Jobs - Below main card */}
           {createdJobs.length > 0 && (
-            <Card className="border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <Card className="border border-slate-200 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/[0.04] transition-shadow duration-200 hover:shadow-md">
               <CardHeader className="border-b border-slate-200 pb-3">
                 <CardTitle className="text-lg font-semibold text-slate-900">
                   Created Jobs ({createdJobs.length})
@@ -833,7 +867,7 @@ export function Builder() {
                     return (
                       <div
                         key={job.id}
-                        className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors"
+                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/90 p-3 transition-colors hover:border-teal-200/80 hover:bg-teal-50/40"
                       >
                         <div className="flex-1 min-w-0 pr-3">
                           <p className="text-sm font-semibold text-slate-900 truncate mb-1">

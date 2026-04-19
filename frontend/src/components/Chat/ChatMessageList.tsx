@@ -1,12 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings2 } from 'lucide-react';
+import { Settings2, ArrowDown } from 'lucide-react';
 import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { GenerationProgressCard } from './GenerationProgressCard';
-import { SuggestedFollowups } from './SuggestedFollowups';
-import type { ChatMessage as ChatMessageType, AgentState, AgentStateInfo, JobProgressInfo, SuggestedFollowup } from '@/api/chat';
+import type { ChatMessage as ChatMessageType, ChatDitaGenerationOptions } from '@/api/chat';
+import type { AuthoringVisualContext } from '@/components/Authoring/AuthoringGenerationSplitReview';
 
 const EXAMPLE_PROMPTS: { label: string; text: string }[] = [
   {
@@ -58,10 +58,25 @@ function isErrorAssistantMessage(m: ChatMessageType): boolean {
   );
 }
 
+function indexOfLatestAuthoringResult(messages: ChatMessageType[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'assistant' || !m.tool_results) continue;
+    const raw = m.tool_results.generate_dita_from_attachments;
+    if (raw != null && typeof raw === 'object' && !('error' in raw && (raw as { error?: string }).error)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 interface ChatMessageListProps {
   messages: ChatMessageType[];
+  sessionId?: string;
   streamingContent: string | null;
+  streamingToolResults?: Record<string, unknown> | null;
   generationRunId?: string | null;
+  messagesLoading?: boolean;
   onGenerationComplete?: () => void;
   onCopyMessage?: (content: string) => void;
   /** Fills the composer when the user picks an example prompt */
@@ -70,54 +85,84 @@ interface ChatMessageListProps {
   onSaveUserMessage?: (messageIndex: number, messageId: string, newContent: string) => Promise<void>;
   actionDisabled?: boolean;
   onRegenerate?: () => void;
+  /** Screenshot authoring result panel: regenerate with optional generation option overrides. */
+  onRegenerateAuthoring?: (options: ChatDitaGenerationOptions) => void;
   onRetry?: () => void;
-  /** Agentic state props */
-  thinking?: string | null;
-  agentState?: AgentState | null;
-  agentStateMessage?: string | null;
-  agentStateInfo?: AgentStateInfo | null;
-  /** Approval gate props */
-  approvalMessage?: string | null;
-  approvalTools?: string[];
-  /** Job progress streaming */
-  jobProgress?: JobProgressInfo | null;
-  /** Suggested follow-ups after assistant response */
-  suggestedFollowups?: SuggestedFollowup[];
-  onFollowupSelect?: (text: string) => void;
+  /** Screenshot thumbnail + filenames + options for the latest authoring result row only. */
+  authoringVisualContext?: AuthoringVisualContext | null;
+}
+
+/** Skeleton placeholder while messages are loading. */
+function MessageSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6 p-4">
+      {[1, 2, 3].map(i => (
+        <div key={i} className={`flex gap-3 ${i % 2 === 0 ? 'flex-row-reverse' : ''}`}>
+          <div className="w-9 h-9 rounded-lg bg-slate-200 shrink-0" />
+          <div className="space-y-2.5 flex-1 max-w-[70%]">
+            <div className="h-3 bg-slate-200 rounded w-20" />
+            <div className="h-4 bg-slate-200/80 rounded w-full" />
+            <div className="h-4 bg-slate-200/60 rounded w-3/4" />
+            {i % 2 !== 0 && <div className="h-4 bg-slate-200/40 rounded w-1/2" />}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ChatMessageList({
   messages,
+  sessionId,
   streamingContent,
+  streamingToolResults,
   generationRunId,
+  messagesLoading,
   onGenerationComplete,
   onCopyMessage,
   onExamplePromptSelect,
   onSaveUserMessage,
   actionDisabled,
   onRegenerate,
+  onRegenerateAuthoring,
   onRetry,
-  thinking,
-  agentState,
-  agentStateMessage,
-  agentStateInfo,
-  approvalMessage,
-  approvalTools,
-  jobProgress,
-  suggestedFollowups,
-  onFollowupSelect,
+  authoringVisualContext,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lastIdx = messages.length - 1;
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > 200);
+    };
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth bg-gradient-to-b from-slate-50/50 to-white/30">
-      <div className="mx-auto flex w-full max-w-[min(100%,56rem)] flex-col gap-5 px-4 py-6 sm:px-8">
-      {messages.length === 0 && !streamingContent && (
+    <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto scroll-smooth bg-slate-50/70">
+      {showScrollBtn && (
+        <button
+          type="button"
+          onClick={() => endRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="absolute bottom-20 right-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white shadow-lg transition-all hover:bg-slate-50 hover:shadow-xl"
+          title="Scroll to bottom"
+        >
+          <ArrowDown className="h-4 w-4 text-slate-600" />
+        </button>
+      )}
+      <div className="mx-auto flex w-full max-w-[min(100%,72rem)] flex-col gap-6 px-4 py-6 sm:px-6">
+      {messagesLoading && messages.length === 0 && <MessageSkeleton />}
+      {!messagesLoading && messages.length === 0 && !streamingContent && (
         <div className="flex min-h-[12rem] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
           <AssistantAvatar size="lg" className="mb-4 opacity-90" />
           <p className="text-sm font-semibold text-slate-900">This conversation is empty</p>
@@ -136,19 +181,20 @@ export function ChatMessageList({
             </Link>
           </p>
           {onExamplePromptSelect && (
-            <div className="mt-8 w-full max-w-lg">
-              <p className="mb-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Suggested starters
+            <div className="mt-8 w-full max-w-xl">
+              <p className="mb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Try one of these
               </p>
-              <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {EXAMPLE_PROMPTS.map((ex) => (
                   <button
                     key={ex.label}
                     type="button"
                     onClick={() => onExamplePromptSelect(ex.text)}
-                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                    className="group flex flex-col items-start rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:shadow-md"
                   >
-                    {ex.label}
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-teal-700 transition-colors">{ex.label}</span>
+                    <span className="mt-1 text-[11px] leading-relaxed text-slate-500 line-clamp-2">{ex.text}</span>
                   </button>
                 ))}
               </div>
@@ -156,18 +202,25 @@ export function ChatMessageList({
           )}
         </div>
       )}
-      {messages.map((m, i) => {
+      {(() => {
+        const latestAuthoringIdx = indexOfLatestAuthoringResult(messages);
+        return messages.map((m, i) => {
         if (m.role !== 'user' && m.role !== 'assistant') return null;
         const showRetry = i === lastIdx && isErrorAssistantMessage(m);
         const showRegenerate =
           i === lastIdx && m.role === 'assistant' && !isErrorAssistantMessage(m) && Boolean(onRegenerate);
+        const authoringCtxForRow =
+          m.role === 'assistant' && i === latestAuthoringIdx ? authoringVisualContext : undefined;
         return (
           <ChatMessage
             key={m.id}
             messageId={m.id}
+            sessionId={sessionId}
             role={m.role}
             content={m.content || ''}
+            createdAt={m.created_at}
             toolResults={m.tool_results ?? undefined}
+            authoringVisualContext={authoringCtxForRow}
             onCopy={
               m.content && onCopyMessage ? () => onCopyMessage(m.content!) : undefined
             }
@@ -179,22 +232,17 @@ export function ChatMessageList({
             actionDisabled={actionDisabled}
             showRegenerate={showRegenerate}
             onRegenerate={onRegenerate}
+            onRegenerateAuthoring={
+              showRegenerate && onRegenerateAuthoring ? onRegenerateAuthoring : undefined
+            }
             showRetry={showRetry}
             onRetry={onRetry}
           />
         );
-      })}
+      });
+      })()}
       {streamingContent !== null && (
-        <StreamingMessage
-          content={streamingContent}
-          thinking={thinking}
-          agentState={agentState}
-          agentStateMessage={agentStateMessage}
-          agentStateInfo={agentStateInfo}
-          approvalMessage={approvalMessage}
-          approvalTools={approvalTools}
-          jobProgress={jobProgress}
-        />
+        <StreamingMessage content={streamingContent} toolResults={streamingToolResults} />
       )}
       {generationRunId && (
         <div className="mt-2">

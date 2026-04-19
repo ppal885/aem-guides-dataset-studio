@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
+import { LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -20,22 +20,30 @@ export function Layout({ children }: LayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50/35 to-slate-100">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/50 sticky top-0 z-50 shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                <Package className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            <Link
+              to="/"
+              className="group flex items-center gap-3 rounded-xl outline-none ring-offset-2 transition hover:opacity-95 focus-visible:ring-2 focus-visible:ring-teal-500/40"
+            >
+              <img
+                src="/app-icon.svg"
+                alt=""
+                width={40}
+                height={40}
+                className="h-10 w-10 shrink-0 rounded-xl shadow-md shadow-slate-900/10 ring-1 ring-slate-900/5 transition group-hover:ring-teal-500/25"
+                decoding="async"
+              />
+              <div className="text-left">
+                <p className="text-xl font-bold bg-gradient-to-r from-teal-800 via-teal-700 to-teal-600 bg-clip-text text-transparent">
                   AEM Guides Dataset Studio
-                </h1>
-                <p className="text-xs text-slate-500">Generate & Manage Datasets</p>
+                </p>
+                <p className="text-xs text-slate-500">Generate &amp; manage datasets</p>
               </div>
-            </div>
+            </Link>
             <nav className="flex items-center gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -47,7 +55,7 @@ export function Layout({ children }: LayoutProps) {
                     className={cn(
                       "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
                       isActive
-                        ? "bg-blue-600 text-white shadow-md"
+                        ? "bg-teal-600 text-white shadow-md shadow-teal-900/15"
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     )}
                   >

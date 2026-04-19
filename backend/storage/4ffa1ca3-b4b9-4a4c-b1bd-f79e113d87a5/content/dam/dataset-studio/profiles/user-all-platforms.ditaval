@@ -1,2 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<val xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/"><propdef att="audience" val="user" action="include" /><propdef att="platform" val="windows" action="include" /><propdef att="platform" val="mac" action="include" /><propdef att="platform" val="linux" action="include" /></val>

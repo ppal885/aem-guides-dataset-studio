@@ -10,6 +10,8 @@ class DatasetRun(Base):
     __tablename__ = "dataset_runs"
 
     id = Column(String(36), primary_key=True)
+    user_id = Column(String(120), nullable=True, index=True)
+    tenant_id = Column(String(120), nullable=True, index=True)
     jira_id = Column(String(50), nullable=False, index=True)
     scenario_type = Column(String(50), nullable=True, index=True)
     recipes_used = Column(Text, nullable=True)  # JSON array of recipe ids

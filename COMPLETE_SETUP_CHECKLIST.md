@@ -56,7 +56,7 @@ POSTGRES_DB=dataset_studio
 POSTGRES_PORT=5432
 
 # Backend Configuration
-BACKEND_PORT=8000
+BACKEND_PORT=8001
 LOG_LEVEL=INFO
 ENVIRONMENT=production
 STRUCTURED_LOGGING=false
@@ -114,7 +114,7 @@ sudo ufw allow 22/tcp comment 'SSH'
 sudo ufw allow 80/tcp comment 'Frontend HTTP'
 
 # Allow Backend API
-sudo ufw allow 8000/tcp comment 'Backend API'
+sudo ufw allow 8001/tcp comment 'Backend API'
 
 # Optional: Allow PostgreSQL (if accessing externally)
 sudo ufw allow 5432/tcp comment 'PostgreSQL'
@@ -134,7 +134,7 @@ To                         Action      From
 --                         ------      ----
 22/tcp                     ALLOW       Anywhere
 80/tcp                     ALLOW       Anywhere
-8000/tcp                   ALLOW       Anywhere
+8001/tcp                   ALLOW       Anywhere
 ```
 
 ---
@@ -177,7 +177,7 @@ docker compose ps
 **Expected Output:**
 ```
 NAME                        STATUS              PORTS
-dataset-studio-backend      Up                  0.0.0.0:8000->8000/tcp
+dataset-studio-backend      Up                  0.0.0.0:8001->8000/tcp
 dataset-studio-frontend     Up                  0.0.0.0:80->80/tcp
 dataset-studio-db           Up (healthy)        0.0.0.0:5432->5432/tcp
 dataset-studio-redis        Up (healthy)        0.0.0.0:6379->6379/tcp
@@ -220,7 +220,7 @@ docker compose ps
 # All should show "Up" status
 
 # 2. Check backend health
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 # Should return: {"status":"healthy",...}
 
 # 3. Check frontend
@@ -259,13 +259,13 @@ ip addr show | grep "inet " | grep -v 127.0.0.1
 1. **Frontend**: `http://<VM_IP>/`
    - Should show the Dataset Generator UI
 
-2. **Backend API**: `http://<VM_IP>:8000`
+2. **Backend API**: `http://<VM_IP>:8001`
    - Should show API response
 
-3. **API Docs**: `http://<VM_IP>:8000/docs`
+3. **API Docs**: `http://<VM_IP>:8001/docs`
    - Should show Swagger UI
 
-4. **Health Check**: `http://<VM_IP>:8000/health`
+4. **Health Check**: `http://<VM_IP>:8001/health`
    - Should return: `{"status":"healthy",...}`
 
 ---
@@ -383,7 +383,7 @@ After setup, verify everything:
 - [ ] Docker is installed: `docker --version`
 - [ ] Docker Compose works: `docker compose version`
 - [ ] All containers running: `docker compose ps`
-- [ ] Backend health check: `curl http://localhost:8000/health`
+- [ ] Backend health check: `curl http://localhost:8001/health`
 - [ ] Frontend accessible: `curl http://localhost/`
 - [ ] Database connected: Check backend logs
 - [ ] Storage directory exists: `ls -ld /home/ubuntu/datasets`
@@ -400,7 +400,7 @@ After setup, verify everything:
 
 ```bash
 # Check what's using the port
-sudo lsof -i :8000
+sudo lsof -i :8001
 sudo lsof -i :80
 
 # Stop conflicting service or change port in .env
@@ -442,7 +442,7 @@ sudo ufw status
 docker compose ps
 
 # 4. Test locally first
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ### Issue 5: Storage Permission Denied
@@ -475,7 +475,7 @@ sudo chmod 755 /home/ubuntu/datasets
 1. ✅ **Copy project files** to VM
 2. ✅ **Create .env file** (environment configuration)
 3. ✅ **Create storage directory** (`/home/ubuntu/datasets`)
-4. ✅ **Configure firewall** (ports 22, 80, 8000)
+4. ✅ **Configure firewall** (ports 22, 80, 8001)
 5. ✅ **Build Docker images** (`docker compose build`)
 6. ✅ **Start services** (`docker compose up -d`)
 7. ✅ **Verify services** (health checks, logs)

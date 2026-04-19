@@ -2,12 +2,11 @@ import { cn } from '@/lib/utils';
 import type { AgentState, AgentStateInfo, JobProgressInfo } from '@/api/chat';
 import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
-import { AgentStateIndicator } from './AgentStateIndicator';
-import { ApprovalGate } from './ApprovalGate';
-import { DatasetJobStatusCard } from './DatasetJobStatusCard';
+import { ToolResult } from './ChatMessage';
 
 interface StreamingMessageProps {
   content: string;
+  toolResults?: Record<string, unknown> | null;
   className?: string;
   thinking?: string | null;
   agentState?: AgentState | null;
@@ -18,17 +17,7 @@ interface StreamingMessageProps {
   jobProgress?: JobProgressInfo | null;
 }
 
-export function StreamingMessage({
-  content,
-  className,
-  thinking,
-  agentState,
-  agentStateMessage,
-  agentStateInfo,
-  approvalMessage,
-  approvalTools,
-  jobProgress,
-}: StreamingMessageProps) {
+export function StreamingMessage({ content, toolResults, className }: StreamingMessageProps) {
   const showCursor = content.length > 0;
 
   return (
@@ -81,6 +70,13 @@ export function StreamingMessage({
             />
           )}
         </div>
+        {toolResults && Object.keys(toolResults).length > 0 && (
+          <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
+            {Object.entries(toolResults).map(([name, result]) => (
+              <ToolResult key={name} name={name} result={result} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

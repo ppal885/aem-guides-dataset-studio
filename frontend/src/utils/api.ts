@@ -9,12 +9,37 @@ function normalizeApiBase(raw: string): string {
   if (s.startsWith('http://') || s.startsWith('https://')) return s.replace(/\/$/, '');
   return `http://${s.replace(/\/$/, '')}`;
 }
-const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string);
+
+function inferLocalDevApiBase(): string {
+  if (typeof window === 'undefined') return '';
+  const host = window.location.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+    return 'http://127.0.0.1:8001';
+  }
+  return '';
+}
+
+const API_BASE =
+  normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string) || inferLocalDevApiBase();
 
 export function apiUrl(path: string): string {
   const base = API_BASE;
   const p = path.startsWith('/') ? path : `/${path}`;
   return base ? `${base}${p}` : p;
+}
+
+export function canonicalJobsRouteErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  if (/not found/i.test(raw) || /\b404\b/.test(raw)) {
+    return 'The canonical jobs API was not found on the backend. This usually means the frontend is pointing at the wrong backend instance or the jobs router is missing.';
+  }
+  if (/failed to fetch|networkerror|network request failed/i.test(raw)) {
+    return 'The backend could not be reached. Check that the API server is running and that the frontend is pointed at the correct backend URL.';
+  }
+  if (/401|403|unauthorized|forbidden|access denied/i.test(raw)) {
+    return 'The backend rejected the request due to authentication or authorization. Please sign in again or verify your access.';
+  }
+  return raw;
 }
 
 export interface RetryOptions {

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.core.agentic_config import agentic_config
+from app.core.auth import AdminUser, CurrentUser, UserIdentity
 from app.core.content_validation import validate_generate_text
 from app.core.validation import validate_jira_id, sanitize_error_for_client
 from app.utils.api_rate_limit import check_generate_from_text_limit
@@ -33,6 +34,15 @@ from app.services.dataset_packager_service import package_bundle
 from app.utils.dita_validator import validate_dita_folder
 from app.services.doc_retriever_service import check_rag_readiness
 from app.services.jira_generate_resolve import resolve_text_for_generate_from_text
+from app.services.tenant_service import get_authorized_tenant_id
+from app.services.generate_from_text_service import (
+    build_evidence_pack_from_text as _shared_build_evidence_pack_from_text,
+    generate_progress_store,
+    run_generate_from_text as _shared_run_generate_from_text,
+    set_generate_progress as _shared_set_generate_progress,
+    update_generate_progress as _shared_update_generate_progress,
+    write_scenario_metadata as _shared_write_scenario_metadata,
+)
 from app.storage import get_storage
 from app.core.structured_logging import get_structured_logger
 from app.core.observability import get_observability_logger
@@ -43,10 +53,10 @@ from app.services.llm_service import _get_prompt_versions
 logger = get_structured_logger(__name__)
 obs_log = get_observability_logger("dita_generation")
 
-router = APIRouter(prefix="/ai", tags=["AI"])
+router = APIRouter(prefix="/ai", tags=["AI"], dependencies=[CurrentUser])
 
 # In-memory progress store for async generate; keyed by run_id
-_generate_progress: dict[str, dict] = {}
+_generate_progress = generate_progress_store
 
 GENERATE_FROM_TEXT_USE_PIPELINE = os.environ.get("GENERATE_FROM_TEXT_USE_PIPELINE", "false").lower() in ("true", "1", "yes")
 GENERATE_FROM_TEXT_USE_INTENT_PIPELINE = os.environ.get(
@@ -61,15 +71,13 @@ def _write_scenario_metadata(
     generator_recipes: list[str],
     evidence: list[str],
 ) -> None:
-    """Write metadata.json into scenario folder."""
-    metadata = {
-        "jira_id": jira_id,
-        "scenario_type": scenario_type,
-        "generator_recipes": generator_recipes,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "evidence": evidence,
-    }
-    (scenario_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    _shared_write_scenario_metadata(
+        scenario_dir,
+        jira_id=jira_id,
+        scenario_type=scenario_type,
+        generator_recipes=generator_recipes,
+        evidence=evidence,
+    )
 
 
 class GenerateFromTextRequest(BaseModel):
@@ -80,6 +88,7 @@ class GenerateFromTextRequest(BaseModel):
 
 @router.get("/datasets/search")
 def search_datasets(
+    request: Request,
     jira_id: str | None = Query(None, description="Filter by Jira issue key"),
     scenario_type: str | None = Query(None, description="Filter by scenario type"),
     recipe: str | None = Query(None, description="Filter by recipe id used"),
@@ -88,9 +97,13 @@ def search_datasets(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Page size"),
     session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
 ):
     """Search dataset runs with filters. Returns paginated results."""
+    tenant_id = get_authorized_tenant_id(request, user)
     q = session.query(DatasetRun)
+    if not user.is_admin:
+        q = q.filter(DatasetRun.user_id == user.id, DatasetRun.tenant_id == tenant_id)
     if jira_id:
         q = q.filter(DatasetRun.jira_id == jira_id)
     if scenario_type:
@@ -137,7 +150,7 @@ def search_datasets(
 
 
 @router.get("/bundle/{jira_id}/{run_id}/download")
-def download_ai_bundle(jira_id: str, run_id: str):
+def download_ai_bundle(jira_id: str, run_id: str, request: Request, session: Session = Depends(get_db), user: UserIdentity = CurrentUser):
     """Download the AI-generated dataset bundle ZIP for a Jira run."""
     err = validate_jira_id(jira_id)
     if err:
@@ -146,6 +159,13 @@ def download_ai_bundle(jira_id: str, run_id: str):
         UUID(run_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="run_id must be a valid UUID")
+
+    tenant_id = get_authorized_tenant_id(request, user)
+    run = session.query(DatasetRun).filter(DatasetRun.id == run_id, DatasetRun.jira_id == jira_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+    if not user.is_admin and (run.user_id != user.id or run.tenant_id != tenant_id):
+        raise HTTPException(status_code=404, detail="Bundle not found")
 
     storage = get_storage()
     zip_path = storage.base_path / "zips" / jira_id / run_id / f"{jira_id}_bundle.zip"
@@ -185,339 +205,51 @@ def _extract_jira_section(text: str, heading_pattern: str) -> str:
 def _build_evidence_pack_from_text(
     text: str, run_id: str, forced_issue_key: str | None = None
 ) -> dict:
-    """
-    Parse raw Jira-style text into evidence_pack for generate-from-text.
-    Extracts structured fields (issue_type, priority, steps_to_reproduce, acceptance_criteria, etc.)
-    so downstream intent analysis and generation planning can use them.
-    """
-    text = (text or "").strip()
-    if not text:
-        return {"primary": {"summary": "", "description": "", "issue_key": "TEXT"}, "similar": []}
-
-    issue_key = forced_issue_key or f"TEXT-{run_id[:8]}"
-
-    # Extract structured metadata fields from formatted Jira text
-    issue_type = _extract_jira_field(text, r"^Issue\s+Type:\s*(.+)$")
-    priority = _extract_jira_field(text, r"^Priority:\s*(.+)$")
-    status = _extract_jira_field(text, r"^Status:\s*(.+)$")
-    labels_raw = _extract_jira_field(text, r"^Labels:\s*(.+)$")
-    labels = [l.strip() for l in labels_raw.split(",") if l.strip()] if labels_raw else []
-    components_raw = _extract_jira_field(text, r"^Components:\s*(.+)$")
-    components = [c.strip() for c in components_raw.split(",") if c.strip()] if components_raw else []
-
-    # Extract structured sections
-    acceptance_criteria = _extract_jira_section(text, r"##\s*Acceptance\s+Criteria\s*\n")
-    steps_to_reproduce = _extract_jira_section(text, r"##\s*Steps?\s+to\s+Reproduce\s*\n")
-    expected_behavior = _extract_jira_section(text, r"##\s*Expected\s+(?:Behavior|Result|Outcome)\s*\n")
-    actual_behavior = _extract_jira_section(text, r"##\s*(?:Actual\s+(?:Behavior|Result|Outcome)|Current\s+Behavior)\s*\n")
-    environment = _extract_jira_section(text, r"##\s*Environment\s*\n")
-
-    # Extract summary and description (main content sections)
-    summary = ""
-    description = text
-
-    if forced_issue_key:
-        sum_m = re.search(
-            r"##\s*Issue\s+Summary\s*\n(.*?)(?=\n\s*##\s*Issue\s+Description|\Z)",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-        desc_m = re.search(r"##\s*Issue\s+Description\s*\n(.*?)(?=\n\s*##\s|\Z)", text, re.IGNORECASE | re.DOTALL)
-        if sum_m:
-            summary = (sum_m.group(1) or "").strip()[:500]
-        if desc_m:
-            description = (desc_m.group(1) or "").strip()
-    else:
-        # Jira-style headings: h3. Issue Description, h3. Issue Summary, etc.
-        desc_match = re.search(
-            r"(?:h3\.\s*)?Issue\s+Description\s*\n",
-            text,
-            re.IGNORECASE,
-        )
-        sum_match = re.search(
-            r"(?:h3\.\s*)?Issue\s+Summary\s*\n",
-            text,
-            re.IGNORECASE,
-        )
-
-        if desc_match or sum_match:
-            parts = re.split(r"\n(?:h3\.\s*)?(?:Issue\s+Summary|Issue\s+Description)\s*\n", text, maxsplit=1, flags=re.IGNORECASE)
-            if len(parts) >= 2:
-                summary = (parts[0] or "").strip()[:500]
-                description = (parts[1] or "").strip()
-            else:
-                summary = (parts[0] or "").strip()[:500]
-                description = ""
-        else:
-            summary = text[:500].strip()
-            description = text[500:].strip() if len(text) > 500 else ""
-
-    primary: dict = {
-        "summary": summary,
-        "description": description,
-        "issue_key": issue_key,
-    }
-    # Attach structured fields so intent analysis + generation plan can use them
-    if issue_type:
-        primary["issue_type"] = issue_type
-    if priority:
-        primary["priority"] = priority
-    if status:
-        primary["status"] = status
-    if labels:
-        primary["labels"] = labels
-    if components:
-        primary["components"] = components
-    if acceptance_criteria:
-        primary["acceptance_criteria"] = acceptance_criteria
-    if steps_to_reproduce:
-        primary["steps_to_reproduce"] = steps_to_reproduce
-    if expected_behavior:
-        primary["expected_behavior"] = expected_behavior
-    if actual_behavior:
-        primary["actual_behavior"] = actual_behavior
-    if environment:
-        primary["environment"] = environment
-
-    return {"primary": primary, "similar": []}
+    return _shared_build_evidence_pack_from_text(
+        text,
+        run_id,
+        forced_issue_key=forced_issue_key,
+    )
 
 
 def _update_generate_progress(run_id: str, **kwargs) -> None:
-    """Update progress dict for run_id. Merges kwargs into existing state."""
-    if run_id not in _generate_progress:
-        _generate_progress[run_id] = {}
-    _generate_progress[run_id].update(kwargs)
+    _shared_update_generate_progress(run_id, **kwargs)
+
+
+def _authorize_generate_progress_access(run_id: str, *, user: UserIdentity, tenant_id: str) -> dict:
+    payload = _generate_progress.get(run_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if user.is_admin:
+        return payload
+    owner = str(payload.get("user_id") or "").strip()
+    progress_tenant = str(payload.get("tenant_id") or "").strip()
+    if owner and owner != user.id:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if progress_tenant and progress_tenant != tenant_id:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return payload
 
 
 async def _run_generate_from_text(
     body: GenerateFromTextRequest,
     run_id: str,
     request: Request | None,
+    user_id: str,
+    tenant_id: str,
     skip_rag_check: bool = False,
     progress_run_id: str | None = None,
 ) -> dict:
-    """
-    ChatGPT-style generate: paste text or natural language -> LLM interprets intent and generates DITA.
-    Always uses llm_generated_dita so the LLM understands natural language (e.g. "create a task topic
-    about printer installation") instead of deterministic recipes that ignore user intent.
-    When progress_run_id is set, updates _generate_progress at each stage for streaming/polling.
-    """
-    pid = progress_run_id or run_id
-    resolved_text, real_jira_id, resolution_warning = resolve_text_for_generate_from_text(body.text)
-    jira_id = real_jira_id or f"TEXT-{run_id[:8]}"
-    _update_generate_progress(pid, status="running", stage="planning", jira_id=jira_id, scenarios_total=1, scenarios_done=0)
-
-    trace_id = str(uuid4())
-    start_time = time.perf_counter()
-    obs_log.info(
-        "dita_generation_started",
+    return await _shared_run_generate_from_text(
+        text=body.text,
+        instructions=body.instructions,
         run_id=run_id,
-        session_id=progress_run_id or run_id,
-        trace_id=trace_id,
-        topic_count=1,
-        scenarios_total=1,
+        request=request,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        skip_rag_check=skip_rag_check,
+        progress_run_id=progress_run_id,
     )
-    evidence_pack = _build_evidence_pack_from_text(
-        resolved_text, run_id, forced_issue_key=real_jira_id
-    )
-
-    # Merge instructions into evidence description so LLM sees full context (refinements, clarifications)
-    instructions = (body.instructions or "").strip() or None
-    if instructions:
-        primary = evidence_pack.get("primary") or {}
-        desc = (primary.get("description") or "").strip()
-        merged_desc = f"{desc}\n\nAdditional instructions / refinements:\n{instructions}" if desc else instructions
-        evidence_pack = {
-            **evidence_pack,
-            "primary": {**primary, "description": merged_desc},
-        }
-
-    rag_status = check_rag_readiness()
-    if not skip_rag_check:
-        if not rag_status["any_ready"]:
-            raise HTTPException(
-                status_code=503,
-                detail=rag_status["message"],
-            )
-    elif not rag_status["any_ready"]:
-        # When skip_rag_check=True (default for paste flow), include warning in result
-        rag_status["rag_warning"] = (
-            "RAG sources not indexed. For better DITA accuracy, run POST /api/v1/ai/crawl-aem-guides "
-            "and POST /api/v1/ai/index-dita-pdf, then retry."
-        )
-
-    storage = get_storage()
-    temp_base = storage.base_path / "ai_runs" / jira_id / run_id
-    temp_base.mkdir(parents=True, exist_ok=True)
-    scenario_dir = temp_base / "S1_MIN_REPRO"
-    scenario_dir.mkdir(parents=True, exist_ok=True)
-
-    exec_result: dict | None = None
-    plan: GeneratorInvocationPlan | None = None
-    pipeline_out: dict | None = None
-
-    # Plan + execute: intent pipeline OR Jira-style recipe pipeline OR direct LLM (then execute if not already run)
-    if GENERATE_FROM_TEXT_USE_INTENT_PIPELINE:
-        from app.services.dita_pipeline_orchestrator import run_intent_pipeline_with_execution
-
-        _update_generate_progress(pid, stage="intent_pipeline", message="Analyzing intent and selecting recipe...")
-        pipeline_out = await run_intent_pipeline_with_execution(
-            evidence_pack,
-            jira_id,
-            scenario_dir,
-            seed=run_id,
-            trace_id=trace_id,
-            user_instructions=instructions,
-        )
-        inv = pipeline_out.get("invocation_plan")
-        if inv is not None:
-            plan = inv
-        exec_result = pipeline_out["exec_result"]
-        sem = pipeline_out.get("semantic_report")
-        if sem and not sem.ok and exec_result:
-            for v in sem.violations:
-                exec_result.setdefault("warnings", []).append(
-                    f"semantic:{v.rule_id}: {v.message}"
-                )
-    elif GENERATE_FROM_TEXT_USE_PIPELINE:
-        pipeline_result = await run_recipe_pipeline(
-            evidence_pack, jira_id, trace_id=trace_id
-        )
-        per_scenario = pipeline_result.get("per_scenario") or {}
-        plan_dict = (per_scenario.get("S1_MIN_REPRO") or {}).get("plan") or {}
-        plan = GeneratorInvocationPlan.model_validate(plan_dict)
-    else:
-        rep_xml = pre_extract_representative_xml(evidence_pack.get("primary") or {})
-        plan = GeneratorInvocationPlan(
-            recipes=[
-                SelectedRecipe(
-                    recipe_id="llm_generated_dita",
-                    params={
-                        "evidence_pack": evidence_pack,
-                        "representative_xml": rep_xml or [],
-                        "trace_id": trace_id,
-                        "jira_id": jira_id,
-                        "additional_instructions": None,
-                    },
-                    evidence_used=[],
-                )
-            ],
-            selection_rationale=["generate-from-text: natural language chat"],
-        )
-
-    if exec_result is None:
-        assert plan is not None
-        _update_generate_progress(pid, stage="generating", message="Generating DITA...")
-        exec_result = await asyncio.to_thread(
-            execute_plan,
-            plan,
-            str(scenario_dir),
-            seed=run_id[:8],
-            skip_experience_league_companion=True,
-        )
-
-    _update_generate_progress(pid, stage="enriching", message="Enriching DITA...")
-    await asyncio.to_thread(enrich_dita_folder, scenario_dir)
-    await asyncio.to_thread(auto_fix_dita_folder, scenario_dir)
-
-    # --- Phase E1: Generate images for DITA topics ---
-    from app.services.image_generation_service import (
-        DITA_IMAGE_GENERATION_ENABLED,
-        generate_images_for_dita,
-    )
-    if DITA_IMAGE_GENERATION_ENABLED:
-        _update_generate_progress(pid, stage="images", message="Generating images...")
-        try:
-            dita_files = list(scenario_dir.glob("**/*.dita")) + list(scenario_dir.glob("**/*.xml"))
-            for dita_file in dita_files:
-                dita_xml = dita_file.read_text(encoding="utf-8", errors="replace")
-                await generate_images_for_dita(
-                    dita_xml=dita_xml,
-                    output_dir=dita_file.parent,
-                    topic_title=dita_file.stem,
-                )
-        except Exception as img_err:
-            logger.warning_structured(
-                "Image generation failed (non-fatal)",
-                extra_fields={"error": str(img_err)},
-            )
-
-    _update_generate_progress(pid, stage="validating", message="Validating...")
-    val_result = await asyncio.to_thread(validate_dita_folder, scenario_dir)
-
-    plans = {
-        "S1_MIN_REPRO": {
-            "recipes_executed": exec_result.get("recipes_executed", ["llm_generated_dita"]),
-            "warnings": exec_result.get("warnings", []),
-        }
-    }
-    validation_results = {"S1_MIN_REPRO": val_result or {"errors": [], "warnings": []}}
-    scenario_outputs = {"S1_MIN_REPRO": scenario_dir}
-
-    _write_scenario_metadata(
-        scenario_dir,
-        jira_id=jira_id,
-        scenario_type="MIN_REPRO",
-        generator_recipes=plans["S1_MIN_REPRO"].get("recipes_executed", []),
-        evidence=[],
-    )
-
-    _update_generate_progress(pid, stage="bundling", message="Building bundle...")
-    bundle_path = await asyncio.to_thread(
-        build_bundle,
-        jira_id,
-        run_id,
-        scenario_outputs,
-        evidence_pack,
-        plans,
-        validation_results,
-    )
-    zip_path = await asyncio.to_thread(package_bundle, bundle_path, jira_id, run_id)
-
-    try:
-        topic_count = sum(len(list(p.glob("**/*.dita*"))) for p in scenario_outputs.values() if p.exists())
-    except Exception:
-        topic_count = len(scenario_outputs)
-
-    duration_ms = int((time.perf_counter() - start_time) * 1000)
-    obs_log.info(
-        "dita_generation_completed",
-        run_id=run_id,
-        session_id=pid,
-        trace_id=trace_id,
-        topic_count=topic_count,
-        duration_ms=duration_ms,
-        jira_id=jira_id,
-    )
-
-    result = {
-        "jira_id": jira_id,
-        "run_id": run_id,
-        "resolved_source_text": resolved_text,
-        "trace_id": trace_id,
-        "scenarios": list(scenario_outputs.keys()),
-        "bundle": {
-            "zip_path": str(zip_path),
-            "bundle_dir": str(bundle_path),
-        },
-        "manifest": {
-            "jira_id": jira_id,
-            "run_id": run_id,
-            "scenarios": ["S1_MIN_REPRO"],
-        },
-    }
-    if pipeline_out is not None:
-        result["generation_debug"] = {
-            "trace_path": pipeline_out.get("generation_trace_path"),
-            "outcome": pipeline_out.get("generation_outcome"),
-        }
-    if rag_status.get("rag_warning"):
-        result["rag_warning"] = rag_status["rag_warning"]
-    if resolution_warning:
-        result["resolution_warning"] = resolution_warning
-    result["download_url"] = f"/api/v1/ai/bundle/{jira_id}/{run_id}/download"
-    _generate_progress[pid] = {"status": "completed", "result": result}
-    return result
 
 
 @router.get("/prompt-versions")
@@ -530,6 +262,7 @@ def get_prompt_versions():
 def get_pipeline_metrics(
     limit: int = Query(100, ge=1, le=500, description="Max feedback records to aggregate"),
     session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
 ):
     """Return pipeline metrics for observability: validation rate, top failed recipes, recent run count."""
     from collections import defaultdict
@@ -564,7 +297,7 @@ def get_pipeline_metrics(
 
 
 @router.get("/agentic-config")
-def get_agentic_config():
+def get_agentic_config(user: UserIdentity = AdminUser):
     """Return current agentic config (base + runtime overrides)."""
     cfg = agentic_config
     return {
@@ -588,7 +321,10 @@ def get_agentic_config():
 
 
 @router.patch("/agentic-config")
-def patch_agentic_config(overrides: dict[str, int | float] = Body(default_factory=dict)):
+def patch_agentic_config(
+    overrides: dict[str, int | float] = Body(default_factory=dict),
+    user: UserIdentity = AdminUser,
+):
     """Apply runtime config overrides (e.g. max_validation_retries, recipe_candidates_k). Resets on restart."""
     for k, v in overrides.items():
         if isinstance(v, (int, float)):
@@ -628,7 +364,10 @@ class IndexGithubDitaRequest(BaseModel):
 
 
 @router.post("/crawl-aem-guides")
-async def crawl_aem_guides(body: CrawlRequest | None = Body(None)):
+async def crawl_aem_guides(
+    body: CrawlRequest | None = Body(None),
+    user: UserIdentity = AdminUser,
+):
     """Crawl AEM Guides documentation from Experience League, index chunks, and store for RAG.
     Run this before using doc enrichment in Jira analysis. Returns pages_crawled, chunks_stored, errors.
     Optional body: { \"urls\": [\"https://...\"] } to crawl specific URLs; omit to use config file."""
@@ -705,14 +444,18 @@ def _check_crawl_status() -> dict:
 
 
 @router.get("/crawl-status")
-def get_crawl_status():
+def get_crawl_status(user: UserIdentity = CurrentUser):
     """Return Playwright/chromium availability and crawl output diagnostics.
     Use before running crawl to verify Playwright is working."""
     return _check_crawl_status()
 
 
 @router.get("/rag-status")
-def get_rag_status(tenant_id: str = Query("default", description="Tenant for GitHub DITA registry summary")):
+def get_rag_status(
+    request: Request,
+    tenant_id: str = Query("default", description="Tenant for GitHub DITA registry summary"),
+    user: UserIdentity = CurrentUser,
+):
     """Return RAG source status: ChromaDB collection counts for AEM Guides (Experience League) and DITA PDF.
     When counts are 0, run POST /api/v1/ai/crawl-aem-guides, POST /api/v1/ai/index-dita-pdf, and optionally
     POST /api/v1/ai/index-github-dita-examples (for Oxygen GitHub DITA / dev_guide in the same collection)."""
@@ -726,6 +469,9 @@ def get_rag_status(tenant_id: str = Query("default", description="Tenant for Git
     from app.services.tavily_search_service import get_tavily_rag_status
     from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
 
+    requested_tenant = tenant_id if str(tenant_id or "").strip() not in {"", "default"} else None
+    authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
+
     def _payload(chroma_ok: bool, aem_count: int, dita_count: int, err: str | None = None) -> dict:
         try:
             tavily = get_tavily_rag_status()
@@ -737,7 +483,7 @@ def get_rag_status(tenant_id: str = Query("default", description="Tenant for Git
             }
             err = f"{err}; tavily: {ex}" if err else str(ex)
         try:
-            github_dita = get_github_dita_rag_summary(tenant_id=tenant_id)
+            github_dita = get_github_dita_rag_summary(tenant_id=authorized_tenant_id)
         except Exception as ex:
             merge_github = os.getenv("GITHUB_DITA_ALSO_MERGE_TO_AEM_RAG", "true").lower() in ("true", "1", "yes")
             github_dita = {
@@ -805,7 +551,10 @@ def get_rag_status(tenant_id: str = Query("default", description="Tenant for Git
 
 
 @router.post("/index-dita-pdf")
-async def index_dita_pdf(body: IndexDitaPdfRequest | None = Body(None)):
+async def index_dita_pdf(
+    body: IndexDitaPdfRequest | None = Body(None),
+    user: UserIdentity = AdminUser,
+):
     """Index DITA 1.2 and 1.3 Part 1 Base PDFs (or custom urls). Download, load with LangChain, split, embed, and store in ChromaDB for RAG.
     Run this to enable DITA spec retrieval. Returns pages_loaded, chunks_stored, sources_indexed, errors."""
     try:
@@ -823,7 +572,11 @@ async def index_dita_pdf(body: IndexDitaPdfRequest | None = Body(None)):
 
 
 @router.post("/index-github-dita-examples")
-async def index_github_dita_examples_route(body: IndexGithubDitaRequest | None = Body(None)):
+async def index_github_dita_examples_route(
+    request: Request,
+    body: IndexGithubDitaRequest | None = Body(None),
+    user: UserIdentity = AdminUser,
+):
     """Index DITA files from a GitHub folder (e.g. Oxygen userguide `DITA` or `DITA/dev_guide`) into ChromaDB.
     Uses codeload zip, not HTML crawl. When `index_all` is true, indexes `GITHUB_DITA_SOURCE_URL` plus defaults
     (including dev_guide) and `GITHUB_DITA_ADDITIONAL_SOURCE_URLS`. Merges into global `aem_guides` for chat when
@@ -836,9 +589,10 @@ async def index_github_dita_examples_route(body: IndexGithubDitaRequest | None =
         )
 
         b = body or IndexGithubDitaRequest()
+        effective_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=b.tenant_id)
         if b.index_all:
             results = await index_all_github_dita_examples(
-                tenant_id=b.tenant_id,
+                tenant_id=effective_tenant_id,
                 max_files=b.max_files,
                 include_maps=b.include_maps,
                 index_into_rag=b.index_into_rag,
@@ -850,7 +604,7 @@ async def index_github_dita_examples_route(body: IndexGithubDitaRequest | None =
             }
         src = (b.source_url or DEFAULT_GITHUB_DITA_SOURCE_URL).strip()
         result = await index_github_dita_examples(
-            tenant_id=b.tenant_id,
+            tenant_id=effective_tenant_id,
             source_url=src,
             max_files=b.max_files,
             include_maps=b.include_maps,
@@ -876,6 +630,7 @@ def list_feedback(
     run_id: str | None = Query(None, description="Filter by run ID"),
     limit: int = Query(20, ge=1, le=100, description="Max records to return"),
     session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
 ):
     """List RunFeedback records for debugging and analysis."""
     q = session.query(RunFeedback)
@@ -909,6 +664,7 @@ def get_feedback_insights(
     jira_id: str | None = Query(None, description="Filter by Jira issue key"),
     limit: int = Query(200, ge=1, le=1000, description="Max feedback records to aggregate"),
     session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
 ):
     """Aggregate RunFeedback across runs for cross-run learning and recommendations."""
     return aggregate_feedback_insights(session, limit=limit, jira_id=jira_id)
@@ -919,6 +675,7 @@ def apply_feedback_overrides(
     limit: int = Query(200, ge=1, le=1000, description="Max feedback records to aggregate"),
     jira_id: str | None = Query(None, description="Filter by Jira issue key"),
     session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
 ):
     """Compute prompt overrides from RunFeedback and persist. Trigger manually or via cron."""
     overrides = compute_prompt_overrides_from_feedback(session, limit=limit, jira_id=jira_id)
@@ -935,6 +692,7 @@ def apply_feedback_overrides(
 def export_feedback_pairs(
     limit: int = Query(200, ge=1, le=1000, description="Max feedback records to export"),
     session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
 ):
     """Export (evidence, recipe_id, label) pairs to JSON for eval retrieval accuracy. Returns path and count."""
     output_path = str(get_storage().base_path / "recipe_feedback_pairs.json")
@@ -1044,6 +802,7 @@ def get_feedback(feedback_id: str, session: Session = Depends(get_db)):
 @router.post("/run-eval")
 async def run_eval(
     run_execution: bool = Query(True, description="Run dataset execution and validation (set false for planning-only eval)"),
+    user: UserIdentity = AdminUser,
 ):
     """Run evaluation on eval_cases.json and return metrics report."""
     report = await run_evaluation(run_execution=run_execution)
@@ -1051,24 +810,23 @@ async def run_eval(
 
 
 @router.get("/generate-status/{run_id}")
-def get_generate_status(run_id: str):
+def get_generate_status(run_id: str, request: Request, user: UserIdentity = CurrentUser):
     """Poll generate progress. Returns status, current_scenario, scenarios_done/total, and result when completed."""
-    if run_id not in _generate_progress:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return _generate_progress[run_id]
+    tenant_id = get_authorized_tenant_id(request, user)
+    return _authorize_generate_progress_access(run_id, user=user, tenant_id=tenant_id)
 
 
 @router.get("/generate-stream/{run_id}")
-async def get_generate_stream(run_id: str):
+async def get_generate_stream(run_id: str, request: Request, user: UserIdentity = CurrentUser):
     """SSE stream of generate progress. Emits events when progress updates. Closes when completed or failed."""
-    if run_id not in _generate_progress:
-        raise HTTPException(status_code=404, detail="Run not found")
+    tenant_id = get_authorized_tenant_id(request, user)
+    _authorize_generate_progress_access(run_id, user=user, tenant_id=tenant_id)
 
     async def event_generator():
         last_sent = None
         poll_interval = 1.0
         while True:
-            data = _generate_progress.get(run_id, {})
+            data = _authorize_generate_progress_access(run_id, user=user, tenant_id=tenant_id)
             status = data.get("status", "unknown")
             if data != last_sent:
                 last_sent = dict(data)
@@ -1088,12 +846,30 @@ async def get_generate_stream(run_id: str):
     )
 
 
-async def _generate_from_text_background_task(body: GenerateFromTextRequest, run_id: str, skip_rag_check: bool = False) -> None:
+async def _generate_from_text_background_task(
+    body: GenerateFromTextRequest,
+    run_id: str,
+    user_id: str,
+    tenant_id: str,
+    skip_rag_check: bool = False,
+) -> None:
     """Run generate-from-text in background; updates _generate_progress."""
     try:
-        await _run_generate_from_text(body, run_id, request=None, skip_rag_check=skip_rag_check)
+        await _run_generate_from_text(
+            body,
+            run_id,
+            request=None,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            skip_rag_check=skip_rag_check,
+        )
     except Exception as e:
-        _generate_progress[run_id] = {"status": "failed", "error": str(e)}
+        _generate_progress[run_id] = {
+            "status": "failed",
+            "error": str(e),
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+        }
         logger.error_structured(
             "Background generate-from-text failed",
             extra_fields={"run_id": run_id, "error": str(e)},
@@ -1107,6 +883,7 @@ async def generate_from_text(
     body: GenerateFromTextRequest,
     async_mode: bool = Query(False, alias="async", description="If true, return immediately and poll /generate-status/{run_id}"),
     skip_rag_check: bool = Query(True, description="Skip RAG readiness check (default True so paste works without indexing)"),
+    user: UserIdentity = CurrentUser,
 ):
     """ChatGPT-style: paste raw Jira text -> DITA directly via LLM (no mechanism/pattern pipeline)."""
     err = check_generate_from_text_limit(request)
@@ -1116,6 +893,7 @@ async def generate_from_text(
     if err:
         raise HTTPException(status_code=400, detail=err)
 
+    tenant_id = get_authorized_tenant_id(request, user)
     run_id = str(uuid4())
     if async_mode:
         _generate_progress[run_id] = {
@@ -1124,7 +902,24 @@ async def generate_from_text(
             "scenarios_total": 1,
             "scenarios_done": 0,
             "current_scenario": None,
+            "user_id": user.id,
+            "tenant_id": tenant_id,
         }
-        asyncio.create_task(_generate_from_text_background_task(body, run_id, skip_rag_check))
+        asyncio.create_task(
+            _generate_from_text_background_task(
+                body,
+                run_id,
+                user_id=user.id,
+                tenant_id=tenant_id,
+                skip_rag_check=skip_rag_check,
+            )
+        )
         return {"run_id": run_id, "status": "running", "message": f"Poll GET /ai/generate-status/{run_id} for progress"}
-    return await _run_generate_from_text(body, run_id, request=request, skip_rag_check=skip_rag_check)
+    return await _run_generate_from_text(
+        body,
+        run_id,
+        request=request,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        skip_rag_check=skip_rag_check,
+    )

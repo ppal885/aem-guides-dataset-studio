@@ -9,8 +9,11 @@ import os
 import xml.etree.ElementTree as ET
 from app.generator.dita_utils import stable_id
 from app.generator.generate import safe_join, sanitize_filename, _map_xml
+from app.services.dita_xml_headers import DITA_DOCTYPES
 from app.utils.xml_escape import xml_escape_text, xml_escape_attr, xml_escape_href
 
+_DEFAULT_DOCTYPE_TOPIC = DITA_DOCTYPES["topic"]
+_DEFAULT_DOCTYPE_CONCEPT = DITA_DOCTYPES["concept"]
 # If config omits doctype_reference (older clients), still emit correct OASIS public id for <reference>.
 _DEFAULT_DOCTYPE_REFERENCE = (
     '<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">'
@@ -18,6 +21,93 @@ _DEFAULT_DOCTYPE_REFERENCE = (
 _DEFAULT_DOCTYPE_TASK = (
     '<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">'
 )
+_DEFAULT_DOCTYPE_GLOSSENTRY = DITA_DOCTYPES["glossentry"]
+
+
+def _append_prolog_metadata(root: ET.Element, metadata: Optional[dict]) -> None:
+    if not metadata:
+        return
+    clean = {
+        str(key or "").strip().lower(): str(value or "").strip()
+        for key, value in (metadata or {}).items()
+        if str(key or "").strip() and str(value or "").strip()
+    }
+    if not clean:
+        return
+
+    prolog = ET.SubElement(root, "prolog")
+    metadata_elem: Optional[ET.Element] = None
+
+    author_value = clean.get("author")
+    if author_value:
+        author = ET.SubElement(prolog, "author")
+        author.text = xml_escape_text(author_value)
+
+    def _metadata_parent() -> ET.Element:
+        nonlocal metadata_elem
+        if metadata_elem is None:
+            metadata_elem = ET.SubElement(prolog, "metadata")
+        return metadata_elem
+
+    keywords_value = clean.get("keywords")
+    if keywords_value:
+        keywords = ET.SubElement(_metadata_parent(), "keywords")
+        for keyword_value in [item.strip() for item in keywords_value.split(",") if item.strip()]:
+            keyword = ET.SubElement(keywords, "keyword")
+            keyword.text = xml_escape_text(keyword_value)
+
+    audience_value = clean.get("audience")
+    if audience_value:
+        ET.SubElement(_metadata_parent(), "othermeta", {
+            "name": xml_escape_attr("audience"),
+            "content": xml_escape_attr(audience_value),
+        })
+
+    critdates_value = clean.get("critdates")
+    if critdates_value:
+        ET.SubElement(_metadata_parent(), "othermeta", {
+            "name": xml_escape_attr("critdates"),
+            "content": xml_escape_attr(critdates_value),
+        })
+
+    permissions_value = clean.get("permissions")
+    if permissions_value:
+        ET.SubElement(_metadata_parent(), "permissions", {
+            "view": xml_escape_attr(permissions_value),
+        })
+
+    prodinfo_value = clean.get("prodinfo")
+    if prodinfo_value:
+        prodinfo = ET.SubElement(_metadata_parent(), "prodinfo")
+        prodname = ET.SubElement(prodinfo, "prodname")
+        prodname.text = xml_escape_text(prodinfo_value)
+
+
+def _build_map_topicref_entries(
+    map_path: str,
+    topic_paths: List[str],
+    map_topicref_attribute_distributions: Optional[List[dict]] = None,
+) -> List[dict]:
+    from app.generator.generate import _rel_href
+
+    entries: List[dict] = [
+        {"href": _rel_href(map_path, topic_path), "attrs": {}}
+        for topic_path in topic_paths
+    ]
+    for distribution in map_topicref_attribute_distributions or []:
+        if not isinstance(distribution, dict):
+            continue
+        attribute_name = str(distribution.get("attribute_name") or "").strip()
+        attribute_value = str(distribution.get("attribute_value") or "").strip()
+        try:
+            count = max(0, int(distribution.get("count") or 0))
+        except (TypeError, ValueError):
+            count = 0
+        if not attribute_name or not attribute_value or count <= 0:
+            continue
+        for entry in entries[: min(len(entries), count)]:
+            entry.setdefault("attrs", {})[attribute_name] = attribute_value
+    return entries
 
 
 class SpecializedContentGenerator:
@@ -35,8 +125,10 @@ class SpecializedContentGenerator:
         include_prereq: bool = True,
         include_result: bool = True,
         include_choicetable: bool = False,
+        include_stepxmp: bool = False,
         steps_list: Optional[List[str]] = None,
         shortdesc_override: Optional[str] = None,
+        prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a Task topic with steps; optionally include choicetable inside a step. Use steps_list for Jira-derived content."""
         task = ET.Element("task", {"id": topic_id, "xml:lang": "en"})
@@ -48,6 +140,7 @@ class SpecializedContentGenerator:
         # Short description
         shortdesc = ET.SubElement(task, "shortdesc")
         shortdesc.text = xml_escape_text(shortdesc_override if shortdesc_override else f"Task: {title}")
+        _append_prolog_metadata(task, prolog_metadata)
 
         # Task body
         taskbody = ET.SubElement(task, "taskbody")
@@ -67,7 +160,23 @@ class SpecializedContentGenerator:
         # Steps
         steps = ET.SubElement(taskbody, "steps")
 
-        step_texts = steps_list if steps_list else [f"Step {i}: Perform action {i}" for i in range(1, step_count + 1)]
+        if steps_list:
+            step_texts = steps_list
+        else:
+            title_phrase = title.lower()
+            step_templates = [
+                f"Review the current {title_phrase} requirements.",
+                f"Open the relevant {title_phrase} settings, files, or controls.",
+                f"Apply the required {title_phrase} changes.",
+                f"Verify the updated {title_phrase} behavior.",
+                f"Document the final {title_phrase} state.",
+            ]
+            step_texts = [
+                step_templates[(i - 1) % len(step_templates)]
+                if i <= len(step_templates)
+                else f"Repeat the validation for {title_phrase} area {i}."
+                for i in range(1, step_count + 1)
+            ]
         for i, step_text in enumerate(step_texts):
             step = ET.SubElement(steps, "step")
 
@@ -78,6 +187,11 @@ class SpecializedContentGenerator:
                 info = ET.SubElement(step, "info")
                 info_p = ET.SubElement(info, "p")
                 info_p.text = xml_escape_text(f"Additional information for step {i + 1}.")
+
+            if include_stepxmp and i == 0:
+                stepxmp = ET.SubElement(step, "stepxmp")
+                stepxmp_p = ET.SubElement(stepxmp, "p")
+                stepxmp_p.text = xml_escape_text("Example output or sample details for this step.")
 
             if self.rand.random() > 0.8 and not steps_list:
                 substeps = ET.SubElement(step, "substeps")
@@ -123,6 +237,48 @@ class SpecializedContentGenerator:
         xml_body = ET.tostring(task, encoding="utf-8", xml_declaration=False)
         doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype_task}\n'
         return doc.encode("utf-8") + xml_body
+
+    def generate_generic_topic(
+        self,
+        topic_id: str,
+        title: str,
+        section_count: int = 3,
+        shortdesc_override: Optional[str] = None,
+        body_snippet: Optional[str] = None,
+        prolog_metadata: Optional[dict] = None,
+    ) -> bytes:
+        """Generate a generic DITA topic with subject-aware body text."""
+        topic = ET.Element("topic", {"id": topic_id, "xml:lang": "en"})
+
+        title_elem = ET.SubElement(topic, "title")
+        title_elem.text = xml_escape_text(title)
+
+        shortdesc = ET.SubElement(topic, "shortdesc")
+        shortdesc.text = xml_escape_text(shortdesc_override if shortdesc_override else f"Overview of {title}.")
+        _append_prolog_metadata(topic, prolog_metadata)
+
+        body = ET.SubElement(topic, "body")
+
+        lead = ET.SubElement(body, "p")
+        lead.text = xml_escape_text(body_snippet if body_snippet else f"This topic provides practical information about {title.lower()}.")
+
+        for i in range(1, max(2, section_count) + 1):
+            section = ET.SubElement(body, "section")
+            section.set("id", xml_escape_attr(f"section_{topic_id}_{i}"))
+
+            section_title = ET.SubElement(section, "title")
+            section_title.text = xml_escape_text(f"{title} detail {i}")
+
+            section_p = ET.SubElement(section, "p")
+            if body_snippet:
+                section_p.text = xml_escape_text(f"{body_snippet} This section expands on detail {i} for {title.lower()}.")
+            else:
+                section_p.text = xml_escape_text(f"This section expands on detail {i} for {title.lower()}.")
+
+        doctype_topic = getattr(self.config, "doctype_topic", None) or _DEFAULT_DOCTYPE_TOPIC
+        xml_body = ET.tostring(topic, encoding="utf-8", xml_declaration=False)
+        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype_topic}\n'
+        return doc.encode("utf-8") + xml_body
     
     def generate_concept_topic(
         self,
@@ -131,6 +287,7 @@ class SpecializedContentGenerator:
         section_count: int = 3,
         shortdesc_override: Optional[str] = None,
         body_snippets: Optional[List[str]] = None,
+        prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a Concept topic. Use body_snippets for Jira-derived content."""
         concept = ET.Element("concept", {"id": topic_id, "xml:lang": "en"})
@@ -142,14 +299,31 @@ class SpecializedContentGenerator:
         # Short description
         shortdesc = ET.SubElement(concept, "shortdesc")
         shortdesc.text = xml_escape_text(shortdesc_override if shortdesc_override else f"Concept: {title}")
+        _append_prolog_metadata(concept, prolog_metadata)
         
         # Concept body
         conbody = ET.SubElement(concept, "conbody")
         
         if body_snippets:
-            for snippet in body_snippets:
+            lead_snippet = body_snippets[0]
+            intro_p = ET.SubElement(conbody, "p")
+            intro_p.text = xml_escape_text(lead_snippet)
+
+            for extra_snippet in body_snippets[1:]:
                 p_elem = ET.SubElement(conbody, "p")
-                p_elem.text = xml_escape_text(snippet)
+                p_elem.text = xml_escape_text(extra_snippet)
+
+            for i in range(1, section_count + 1):
+                section = ET.SubElement(conbody, "section")
+                section.set("id", xml_escape_attr(f"section_{topic_id}_{i}"))
+
+                section_title = ET.SubElement(section, "title")
+                section_title.text = xml_escape_text(f"{title} detail {i}")
+
+                section_p = ET.SubElement(section, "p")
+                section_p.text = xml_escape_text(
+                    f"{lead_snippet} This section expands on detail {i} for {title.lower()}."
+                )
         else:
             # Introduction paragraph
             intro_p = ET.SubElement(conbody, "p")
@@ -161,10 +335,12 @@ class SpecializedContentGenerator:
                 section.set("id", xml_escape_attr(f"section_{topic_id}_{i}"))
                 
                 section_title = ET.SubElement(section, "title")
-                section_title.text = xml_escape_text(f"Section {i}")
+                section_title.text = xml_escape_text(f"{title} detail {i}")
                 
                 section_p = ET.SubElement(section, "p")
-                section_p.text = xml_escape_text(f"Content for section {i}.")
+                section_p.text = xml_escape_text(
+                    f"This section expands on detail {i} for {title.lower()}."
+                )
             
             # Nested sections (optional)
             if self.rand.random() > 0.7:
@@ -183,8 +359,9 @@ class SpecializedContentGenerator:
             linktext.text = xml_escape_text("Related topic")
         
         # Generate XML
+        doctype_concept = getattr(self.config, "doctype_concept", None) or _DEFAULT_DOCTYPE_CONCEPT
         xml_body = ET.tostring(concept, encoding="utf-8", xml_declaration=False)
-        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{self.config.doctype_topic}\n'
+        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype_concept}\n'
         return doc.encode("utf-8") + xml_body
     
     def generate_reference_topic(
@@ -195,6 +372,10 @@ class SpecializedContentGenerator:
         include_choicetable: bool = False,
         *,
         include_prophead: bool = False,
+        shortdesc_override: Optional[str] = None,
+        property_seed: Optional[str] = None,
+        detail_snippet: Optional[str] = None,
+        prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a Reference topic with refbody, refsyn, section, properties; optionally choicetable.
 
@@ -209,7 +390,8 @@ class SpecializedContentGenerator:
         
         # Short description
         shortdesc = ET.SubElement(reference, "shortdesc")
-        shortdesc.text = xml_escape_text(f"Reference: {title}")
+        shortdesc.text = xml_escape_text(shortdesc_override if shortdesc_override else f"Reference: {title}")
+        _append_prolog_metadata(reference, prolog_metadata)
         
         # Refbody
         refbody = ET.SubElement(reference, "refbody")
@@ -240,11 +422,17 @@ class SpecializedContentGenerator:
                 prop_type.text = xml_escape_text("String")
                 
                 prop_value = ET.SubElement(property_elem, "propvalue")
-                prop_value.text = xml_escape_text(f"param.{topic_id}.{i}")
+                prop_value.text = xml_escape_text(
+                    f"{property_seed}.setting.{i}" if property_seed else f"param.{topic_id}.{i}"
+                )
                 
                 prop_desc = ET.SubElement(property_elem, "propdesc")
                 prop_desc_p = ET.SubElement(prop_desc, "p")
-                prop_desc_p.text = xml_escape_text(f"Description of parameter {i} for {title}.")
+                prop_desc_p.text = xml_escape_text(
+                    f"Reference details for {property_seed} setting {i}."
+                    if property_seed
+                    else f"Description of parameter {i} for {title}."
+                )
         
         # Simpletable (valid in refbody per reference.dtd; choicetable is task-only)
         if include_choicetable:
@@ -268,7 +456,7 @@ class SpecializedContentGenerator:
         section_title = ET.SubElement(section, "title")
         section_title.text = xml_escape_text("Details")
         section_p = ET.SubElement(section, "p")
-        section_p.text = xml_escape_text("Detailed reference information.")
+        section_p.text = xml_escape_text(detail_snippet if detail_snippet else "Detailed reference information.")
         
         # Reference root must use DITA Reference public id + reference.dtd (not topic.dtd).
         doctype_ref = getattr(self.config, "doctype_reference", None) or _DEFAULT_DOCTYPE_REFERENCE
@@ -310,8 +498,9 @@ class SpecializedContentGenerator:
             body_p.text = xml_escape_text("Extended definition content.")
         
         # Generate XML
+        doctype_glossentry = getattr(self.config, "doctype_glossentry", None) or _DEFAULT_DOCTYPE_GLOSSENTRY
         xml_body = ET.tostring(glossentry, encoding="utf-8", xml_declaration=False)
-        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{self.config.doctype_glossentry}\n'
+        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype_glossentry}\n'
         return doc.encode("utf-8") + xml_body
 
     def generate_bookmap(
@@ -419,6 +608,10 @@ def generate_task_topics_dataset(
     content_titles: Optional[List[str]] = None,
     content_shortdescs: Optional[List[str]] = None,
     content_steps: Optional[List[str]] = None,
+    content_steps_by_topic: Optional[List[List[str]]] = None,
+    content_include_stepxmp: bool = False,
+    content_prolog_metadata: Optional[dict] = None,
+    map_topicref_attribute_distributions: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
     """Generate a dataset with Task topics; optionally include choicetable in taskbody. Use content_* for Jira-derived production content."""
     if rand is None:
@@ -428,6 +621,7 @@ def generate_task_topics_dataset(
     titles = content_titles if content_titles else None
     shortdescs = content_shortdescs if content_shortdescs else None
     steps = content_steps if content_steps else None
+    steps_by_topic = content_steps_by_topic if content_steps_by_topic else None
     use_content = bool(titles)
     n_topics = len(titles) if titles else topic_count
     
@@ -444,7 +638,10 @@ def generate_task_topics_dataset(
         
         title = titles[i - 1] if titles else f"Task {i:05d}"
         shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
-        steps_list = steps if use_content and steps and i == 1 else None
+        if steps_by_topic and i <= len(steps_by_topic):
+            steps_list = steps_by_topic[i - 1]
+        else:
+            steps_list = steps if use_content and steps and i == 1 else None
         
         if steps_list:
             step_count = len(steps_list)
@@ -460,6 +657,8 @@ def generate_task_topics_dataset(
             steps_list=steps_list,
             shortdesc_override=shortdesc,
             include_choicetable=include_choicetable or rand.random() > 0.8,  # ~20% get choicetable when not explicit
+            include_stepxmp=content_include_stepxmp,
+            prolog_metadata=content_prolog_metadata,
         )
         
         files[path] = topic_xml
@@ -487,8 +686,12 @@ def generate_task_topics_dataset(
         map_path = safe_join(base, map_filename)
         map_id = stable_id(config.seed, "task_topics_map", "", used_ids)
         
-        from app.generator.generate import _rel_href
-        hrefs = [_rel_href(map_path, tp) for tp in topic_paths]
+        topicref_entries = _build_map_topicref_entries(
+            map_path,
+            topic_paths,
+            map_topicref_attribute_distributions=map_topicref_attribute_distributions,
+        )
+        hrefs = [str(item.get("href") or "").strip() for item in topicref_entries]
         
         logger.debug(
             f"Generating task topics map with {len(hrefs)} topicrefs "
@@ -500,6 +703,7 @@ def generate_task_topics_dataset(
             map_id=map_id,
             title="Task Topics Map",
             topicref_hrefs=hrefs,
+            topicref_entries=topicref_entries,
             keydef_entries=[],
             scoped_blocks=[],
         )
@@ -523,6 +727,8 @@ def generate_concept_topics_dataset(
     content_titles: Optional[List[str]] = None,
     content_shortdescs: Optional[List[str]] = None,
     content_body_snippets: Optional[List[str]] = None,
+    content_prolog_metadata: Optional[dict] = None,
+    map_topicref_attribute_distributions: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
     """Generate a dataset with Concept topics. Use content_* for Jira-derived production content."""
     if rand is None:
@@ -548,7 +754,8 @@ def generate_concept_topics_dataset(
         
         title = titles[i - 1] if titles else f"Concept {i:05d}"
         shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
-        snippets = body_snippets if body_snippets and i == 1 else None
+        snippet = body_snippets[i - 1] if body_snippets and i <= len(body_snippets) else None
+        snippets = [snippet] if snippet else None
         
         topic_xml = generator.generate_concept_topic(
             topic_id,
@@ -556,6 +763,7 @@ def generate_concept_topics_dataset(
             section_count=rand.randint(2, sections_per_concept),
             shortdesc_override=shortdesc,
             body_snippets=snippets,
+            prolog_metadata=content_prolog_metadata,
         )
         
         files[path] = topic_xml
@@ -583,8 +791,12 @@ def generate_concept_topics_dataset(
         map_path = safe_join(base, map_filename)
         map_id = stable_id(config.seed, "concept_topics_map", "", used_ids)
         
-        from app.generator.generate import _rel_href
-        hrefs = [_rel_href(map_path, tp) for tp in topic_paths]
+        topicref_entries = _build_map_topicref_entries(
+            map_path,
+            topic_paths,
+            map_topicref_attribute_distributions=map_topicref_attribute_distributions,
+        )
+        hrefs = [str(item.get("href") or "").strip() for item in topicref_entries]
         
         logger.debug(
             f"Generating concept topics map with {len(hrefs)} topicrefs "
@@ -596,6 +808,7 @@ def generate_concept_topics_dataset(
             map_id=map_id,
             title="Concept Topics Map",
             topicref_hrefs=hrefs,
+            topicref_entries=topicref_entries,
             keydef_entries=[],
             scoped_blocks=[],
         )
@@ -609,6 +822,79 @@ def generate_concept_topics_dataset(
     return files
 
 
+def generate_topic_topics_dataset(
+    config,
+    base: str,
+    topic_count: int = 50,
+    include_map: bool = True,
+    rand=None,
+    content_titles: Optional[List[str]] = None,
+    content_shortdescs: Optional[List[str]] = None,
+    content_body_snippets: Optional[List[str]] = None,
+    content_prolog_metadata: Optional[dict] = None,
+    map_topicref_attribute_distributions: Optional[List[dict]] = None,
+) -> Dict[str, bytes]:
+    """Generate a dataset with plain DITA topics using subject-aware content overrides."""
+    if rand is None:
+        import random
+        rand = random.Random(config.seed)
+
+    titles = content_titles if content_titles else None
+    shortdescs = content_shortdescs if content_shortdescs else None
+    body_snippets = content_body_snippets if content_body_snippets else None
+    n_topics = len(titles) if titles else topic_count
+
+    generator = SpecializedContentGenerator(config, rand)
+    files = {}
+    used_ids = set()
+    topic_dir = safe_join(base, "topics", "generic")
+    topic_paths = []
+
+    for i in range(1, n_topics + 1):
+        filename = sanitize_filename(f"topic_{i:05d}.dita", config.windows_safe_filenames)
+        path = safe_join(topic_dir, filename)
+        topic_id = stable_id(config.seed, "topic", str(i), used_ids)
+
+        title = titles[i - 1] if titles else f"Topic {i:05d}"
+        shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
+        body_snippet = body_snippets[i - 1] if body_snippets and i <= len(body_snippets) else None
+
+        topic_xml = generator.generate_generic_topic(
+            topic_id,
+            title,
+            section_count=rand.randint(2, 4),
+            shortdesc_override=shortdesc,
+            body_snippet=body_snippet,
+            prolog_metadata=content_prolog_metadata,
+        )
+
+        files[path] = topic_xml
+        topic_paths.append(path)
+
+    if include_map:
+        map_filename = sanitize_filename("generic_topics.ditamap", config.windows_safe_filenames)
+        map_path = safe_join(base, map_filename)
+        map_id = stable_id(config.seed, "generic_topics_map", "", used_ids)
+
+        topicref_entries = _build_map_topicref_entries(
+            map_path,
+            topic_paths,
+            map_topicref_attribute_distributions=map_topicref_attribute_distributions,
+        )
+        hrefs = [str(item.get("href") or "").strip() for item in topicref_entries]
+
+        map_xml = _map_xml(
+            config,
+            map_id=map_id,
+            title="Generic Topics Map",
+            hrefs=hrefs,
+            topicref_entries=topicref_entries,
+        )
+        files[map_path] = map_xml
+
+    return files
+
+
 def generate_reference_topics_dataset(
     config,
     base: str,
@@ -617,6 +903,12 @@ def generate_reference_topics_dataset(
     include_map: bool = True,
     include_choicetable: bool = False,
     rand=None,
+    content_titles: Optional[List[str]] = None,
+    content_shortdescs: Optional[List[str]] = None,
+    content_property_seeds: Optional[List[str]] = None,
+    content_detail_snippets: Optional[List[str]] = None,
+    content_prolog_metadata: Optional[dict] = None,
+    map_topicref_attribute_distributions: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
     """Generate a dataset with Reference topics (refbody, refsyn, section, properties; optionally choicetable)."""
     if rand is None:
@@ -628,18 +920,31 @@ def generate_reference_topics_dataset(
     used_ids = set()
     topic_dir = safe_join(base, "topics", "references")
     topic_paths = []
+    titles = content_titles if content_titles else None
+    shortdescs = content_shortdescs if content_shortdescs else None
+    property_seeds = content_property_seeds if content_property_seeds else None
+    detail_snippets = content_detail_snippets if content_detail_snippets else None
+    n_topics = len(titles) if titles else topic_count
     
-    for i in range(1, topic_count + 1):
+    for i in range(1, n_topics + 1):
         filename = sanitize_filename(f"reference_{i:05d}.dita", config.windows_safe_filenames)
         path = safe_join(topic_dir, filename)
         topic_id = stable_id(config.seed, "reference", str(i), used_ids)
+        title = titles[i - 1] if titles else f"Reference {i:05d}"
+        shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
+        property_seed = property_seeds[i - 1] if property_seeds and i <= len(property_seeds) else None
+        detail_snippet = detail_snippets[i - 1] if detail_snippets and i <= len(detail_snippets) else None
         
         topic_xml = generator.generate_reference_topic(
             topic_id,
-            f"Reference {i:05d}",
+            title,
             property_count=rand.randint(3, properties_per_ref),
             include_choicetable=include_choicetable or rand.random() > 0.7,  # ~30% get choicetable when not explicit
             include_prophead=False,
+            shortdesc_override=shortdesc,
+            property_seed=property_seed,
+            detail_snippet=detail_snippet,
+            prolog_metadata=content_prolog_metadata,
         )
         
         files[path] = topic_xml
@@ -649,30 +954,34 @@ def generate_reference_topics_dataset(
     import logging
     logger = logging.getLogger(__name__)
     
-    if len(topic_paths) != topic_count:
+    if len(topic_paths) != n_topics:
         logger.error(
-            f"Reference topics generation mismatch: Expected {topic_count} topics, "
+            f"Reference topics generation mismatch: Expected {n_topics} topics, "
             f"but only {len(topic_paths)} paths were collected"
         )
     
     # Generate map if requested - ONLY after ALL topics are created
     if include_map:
         # Ensure we have all topic paths before generating map
-        if len(topic_paths) != topic_count:
+        if len(topic_paths) != n_topics:
             logger.warning(
-                f"Generating map with incomplete topic list: {len(topic_paths)}/{topic_count} topics"
+                f"Generating map with incomplete topic list: {len(topic_paths)}/{n_topics} topics"
             )
         
         map_filename = sanitize_filename("reference_topics.ditamap", config.windows_safe_filenames)
         map_path = safe_join(base, map_filename)
         map_id = stable_id(config.seed, "reference_topics_map", "", used_ids)
         
-        from app.generator.generate import _rel_href
-        hrefs = [_rel_href(map_path, tp) for tp in topic_paths]
+        topicref_entries = _build_map_topicref_entries(
+            map_path,
+            topic_paths,
+            map_topicref_attribute_distributions=map_topicref_attribute_distributions,
+        )
+        hrefs = [str(item.get("href") or "").strip() for item in topicref_entries]
         
         logger.debug(
             f"Generating reference topics map with {len(hrefs)} topicrefs "
-            f"(expected {topic_count} topics)"
+            f"(expected {n_topics} topics)"
         )
         
         map_xml = _map_xml(
@@ -680,6 +989,7 @@ def generate_reference_topics_dataset(
             map_id=map_id,
             title="Reference Topics Map",
             topicref_hrefs=hrefs,
+            topicref_entries=topicref_entries,
             keydef_entries=[],
             scoped_blocks=[],
         )
@@ -690,6 +1000,115 @@ def generate_reference_topics_dataset(
             f"{len(files)} total files (including map)"
         )
     
+    return files
+
+
+def _syntax_diagram_fragment(refsyn: ET.Element, variant: int, diagram_title: str) -> None:
+    """Append one DITA tech comm syntaxdiagram under refsyn (DTD stub in dtd_stubs.REFERENCE_TOPIC_DTD)."""
+    sd = ET.SubElement(refsyn, "syntaxdiagram")
+    t = ET.SubElement(sd, "title")
+    t.text = xml_escape_text(diagram_title)
+
+    if variant % 3 == 0:
+        g = ET.SubElement(sd, "groupseq")
+        k = ET.SubElement(g, "kwd")
+        k.text = xml_escape_text("SELECT")
+        s = ET.SubElement(g, "sep")
+        s.text = xml_escape_text(",")
+        k2 = ET.SubElement(g, "kwd")
+        k2.text = xml_escape_text("FROM")
+        r = ET.SubElement(g, "repsep")
+        r.text = xml_escape_text(",")
+        k3 = ET.SubElement(g, "kwd")
+        k3.text = xml_escape_text("WHERE")
+    elif variant % 3 == 1:
+        gc = ET.SubElement(sd, "groupchoice")
+        k1 = ET.SubElement(gc, "kwd")
+        k1.text = xml_escape_text("--verbose")
+        k2 = ET.SubElement(gc, "kwd")
+        k2.text = xml_escape_text("--quiet")
+    else:
+        outer = ET.SubElement(sd, "groupseq")
+        k0 = ET.SubElement(outer, "kwd")
+        k0.text = xml_escape_text("RUN")
+        d1 = ET.SubElement(outer, "delim")
+        d1.text = xml_escape_text("(")
+        inner = ET.SubElement(outer, "groupseq")
+        ia = ET.SubElement(inner, "kwd")
+        ia.text = xml_escape_text("arg1")
+        op = ET.SubElement(inner, "oper")
+        op.text = xml_escape_text("|")
+        ib = ET.SubElement(inner, "kwd")
+        ib.text = xml_escape_text("arg2")
+        d2 = ET.SubElement(outer, "delim")
+        d2.text = xml_escape_text(")")
+
+
+def generate_syntax_diagram_reference_dataset(
+    config,
+    base: str,
+    topic_count: int = 30,
+    include_map: bool = True,
+    rand=None,
+) -> Dict[str, bytes]:
+    """Reference topics with syntaxdiagram (groupseq / groupchoice) under refsyn; valid against bundled reference.dtd stub."""
+    if rand is None:
+        import random
+        rand = random.Random(config.seed)
+
+    files: Dict[str, bytes] = {}
+    used_ids: set = set()
+    topic_dir = safe_join(base, "topics", "references", "syntax_diagrams")
+    topic_paths: list[str] = []
+
+    doctype_ref = getattr(config, "doctype_reference", None) or _DEFAULT_DOCTYPE_REFERENCE
+    if "DITA Topic//EN" in doctype_ref and "<!DOCTYPE reference" in doctype_ref:
+        doctype_ref = _DEFAULT_DOCTYPE_REFERENCE
+
+    for i in range(1, topic_count + 1):
+        filename = sanitize_filename(f"syntax_diagram_ref_{i:05d}.dita", config.windows_safe_filenames)
+        path = safe_join(topic_dir, filename)
+        topic_id = stable_id(config.seed, "syntax_diagram_ref", str(i), used_ids)
+
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": "en"})
+        title_elem = ET.SubElement(reference, "title")
+        title_elem.text = xml_escape_text(f"Syntax diagram reference {i:05d}")
+
+        shortdesc = ET.SubElement(reference, "shortdesc")
+        shortdesc.text = xml_escape_text(
+            "Command and keyword syntax patterns for validation and publishing QA."
+        )
+
+        refbody = ET.SubElement(reference, "refbody")
+        refsyn = ET.SubElement(refbody, "refsyn")
+        intro = ET.SubElement(refsyn, "p")
+        intro.text = xml_escape_text(
+            f"Structured syntax fragment {i:05d} for DITA syntaxdiagram rendering tests."
+        )
+        _syntax_diagram_fragment(refsyn, i, f"Pattern variant {(i % 3) + 1}")
+
+        xml_body = ET.tostring(reference, encoding="utf-8", xml_declaration=False)
+        doc = f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype_ref}\n'
+        files[path] = doc.encode("utf-8") + xml_body
+        topic_paths.append(path)
+
+    if include_map:
+        map_filename = sanitize_filename("syntax_diagram_reference.ditamap", config.windows_safe_filenames)
+        map_path = safe_join(base, map_filename)
+        map_id = stable_id(config.seed, "syntax_diagram_reference_map", "", used_ids)
+        from app.generator.generate import _rel_href
+
+        hrefs = [_rel_href(map_path, tp) for tp in topic_paths]
+        map_xml = _map_xml(
+            config,
+            map_id=map_id,
+            title="Syntax diagram reference topics",
+            topicref_hrefs=hrefs,
+            keydef_entries=[],
+            scoped_blocks=[],
+        )
+        files[map_path] = map_xml
+
     return files
 
 
@@ -756,6 +1175,9 @@ def generate_glossary_dataset(
     base: str,
     entry_count: int = 100,
     rand=None,
+    content_terms: Optional[List[str]] = None,
+    content_definitions: Optional[List[str]] = None,
+    content_acronyms: Optional[List[str]] = None,
 ) -> Dict[str, bytes]:
     """Generate a Glossary dataset."""
     if rand is None:
@@ -766,16 +1188,20 @@ def generate_glossary_dataset(
     files = {}
     used_ids = set()
     glossary_dir = safe_join(base, "glossary")
+    terms = content_terms if content_terms else None
+    definitions = content_definitions if content_definitions else None
+    acronyms = content_acronyms if content_acronyms else None
+    n_entries = len(terms) if terms else entry_count
     
     # Generate individual glossary entries
-    for i in range(1, entry_count + 1):
+    for i in range(1, n_entries + 1):
         filename = sanitize_filename(f"glossentry_{i:05d}.dita", config.windows_safe_filenames)
         path = safe_join(glossary_dir, filename)
         entry_id = stable_id(config.seed, "gloss", str(i), used_ids)
         
-        term = f"Term {i}"
-        definition = f"Definition for term {i}."
-        acronym = f"T{i}" if rand.random() > 0.7 else None
+        term = terms[i - 1] if terms else f"Term {i}"
+        definition = definitions[i - 1] if definitions and i <= len(definitions) else f"Definition for term {i}."
+        acronym = acronyms[i - 1] if acronyms and i <= len(acronyms) else (f"T{i}" if rand.random() > 0.7 else None)
         
         entry_xml = generator.generate_glossary_entry(
             entry_id,
@@ -792,7 +1218,7 @@ def generate_glossary_dataset(
     map_id = stable_id(config.seed, "glossary-map", "", used_ids)
     
     refs = []
-    for i in range(1, min(entry_count + 1, 50)):  # Limit map size
+    for i in range(1, min(n_entries + 1, 50)):  # Limit map size
         filename = sanitize_filename(f"glossentry_{i:05d}.dita", config.windows_safe_filenames)
         ref_path = safe_join(glossary_dir, filename)
         refs.append(ref_path)
@@ -1254,8 +1680,8 @@ RECIPE_SPECS = [
         "tags": ["task", "procedure", "steps"],
         "module": "app.generator.specialized",
         "function": "generate_task_topics_dataset",
-        "params_schema": {"topic_count": "int", "steps_per_task": "int", "include_map": "bool", "include_choicetable": "bool"},
-        "default_params": {"topic_count": 50, "steps_per_task": 5, "include_map": True, "include_choicetable": False},
+        "params_schema": {"topic_count": "int", "steps_per_task": "int", "include_map": "bool", "include_choicetable": "bool", "map_topicref_attribute_distributions": "list"},
+        "default_params": {"topic_count": 50, "steps_per_task": 5, "include_map": True, "include_choicetable": False, "map_topicref_attribute_distributions": []},
         "stability": "stable",
         "constructs": ["task", "steps", "prereq", "result"],
         "scenario_types": ["MIN_REPRO", "BOUNDARY", "SCALE"],
@@ -1272,13 +1698,31 @@ RECIPE_SPECS = [
         "tags": ["concept", "explanation", "sections"],
         "module": "app.generator.specialized",
         "function": "generate_concept_topics_dataset",
-        "params_schema": {"topic_count": "int", "sections_per_concept": "int", "include_map": "bool"},
-        "default_params": {"topic_count": 50, "sections_per_concept": 3, "include_map": True},
+        "params_schema": {"topic_count": "int", "sections_per_concept": "int", "include_map": "bool", "map_topicref_attribute_distributions": "list"},
+        "default_params": {"topic_count": 50, "sections_per_concept": 3, "include_map": True, "map_topicref_attribute_distributions": []},
         "stability": "stable",
         "constructs": ["concept", "section", "explanation"],
         "scenario_types": ["MIN_REPRO", "BOUNDARY", "SCALE"],
         "use_when": ["concept topic", "explanation", "background"],
         "avoid_when": ["task only", "reference only"],
+        "positive_negative": "positive",
+        "complexity": "medium",
+        "output_scale": "medium",
+    },
+    {
+        "id": "topic_topics",
+        "title": "Generic Topics",
+        "description": "Generate plain DITA topic files with subject-aware overview content",
+        "tags": ["topic", "overview", "generic"],
+        "module": "app.generator.specialized",
+        "function": "generate_topic_topics_dataset",
+        "params_schema": {"topic_count": "int", "include_map": "bool", "map_topicref_attribute_distributions": "list"},
+        "default_params": {"topic_count": 50, "include_map": True, "map_topicref_attribute_distributions": []},
+        "stability": "stable",
+        "constructs": ["topic", "body", "section"],
+        "scenario_types": ["MIN_REPRO", "BOUNDARY", "SCALE"],
+        "use_when": ["generic topic", "overview topic", "plain dita topic"],
+        "avoid_when": ["task only", "concept only", "reference only"],
         "positive_negative": "positive",
         "complexity": "medium",
         "output_scale": "medium",
@@ -1290,8 +1734,8 @@ RECIPE_SPECS = [
         "tags": ["reference", "properties", "definitions", "refbody", "refsyn", "choicetable"],
         "module": "app.generator.specialized",
         "function": "generate_reference_topics_dataset",
-        "params_schema": {"topic_count": "int", "properties_per_ref": "int", "include_map": "bool", "include_choicetable": "bool"},
-        "default_params": {"topic_count": 50, "properties_per_ref": 5, "include_map": True, "include_choicetable": False},
+        "params_schema": {"topic_count": "int", "properties_per_ref": "int", "include_map": "bool", "include_choicetable": "bool", "map_topicref_attribute_distributions": "list"},
+        "default_params": {"topic_count": 50, "properties_per_ref": 5, "include_map": True, "include_choicetable": False, "map_topicref_attribute_distributions": []},
         "stability": "stable",
         "constructs": ["reference", "properties", "definitions"],
         "scenario_types": ["MIN_REPRO", "BOUNDARY", "SCALE"],
@@ -1300,6 +1744,25 @@ RECIPE_SPECS = [
         "positive_negative": "positive",
         "complexity": "medium",
         "output_scale": "medium",
+    },
+    {
+        "id": "syntax_diagram_reference",
+        "title": "Syntax diagram (reference)",
+        "description": "Reference topics with syntaxdiagram under refsyn (groupseq, groupchoice, kwd, delim, oper, sep, repsep)",
+        "tags": ["reference", "syntaxdiagram", "groupseq", "groupchoice", "refsyn", "tech comm"],
+        "module": "app.generator.specialized",
+        "function": "generate_syntax_diagram_reference_dataset",
+        "params_schema": {"topic_count": "int", "include_map": "bool"},
+        "default_params": {"topic_count": 30, "include_map": True},
+        "stability": "stable",
+        "constructs": ["reference", "refsyn", "syntaxdiagram", "groupseq", "groupchoice", "kwd"],
+        "scenario_types": ["MIN_REPRO", "BOUNDARY"],
+        "use_when": ["syntax diagram", "command syntax", "BNF-style reference", "API keyword syntax"],
+        "avoid_when": ["task procedures only", "concept-only"],
+        "positive_negative": "positive",
+        "complexity": "low",
+        "output_scale": "medium",
+        "topic_type": "reference",
     },
     {
         "id": "properties_table_reference",

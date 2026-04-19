@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "../technicalContent/dtd/topic.dtd">
-<topic id="topic_invalid_07" xml:lang="en">
-  <title>Invalid Audience Topic</title>
-  <body audience="test">
-    <p>This topic intentionally violates the subject scheme.</p>
-  </body>
-</topic>

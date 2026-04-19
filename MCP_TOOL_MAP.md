@@ -28,7 +28,7 @@ Admin routes and other `/api/v1` routers are **not** exposed as MCP tools.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATASET_STUDIO_API_BASE_URL` | `http://127.0.0.1:8000` | FastAPI base URL (no trailing slash) |
+| `DATASET_STUDIO_API_BASE_URL` | `http://127.0.0.1:8001` | FastAPI base URL (no trailing slash) |
 | `DATASET_STUDIO_API_BEARER_TOKEN` | (empty) | `Authorization: Bearer …` if set; else falls back to `API_BEARER_TOKEN` |
 | `DATASET_STUDIO_API_TIMEOUT_SECONDS` | `120` | httpx timeout (generation can be slow) |
 | `DATASET_STUDIO_API_EXTRA_HEADERS_JSON` | (empty) | JSON object of extra headers (e.g. tenant), merged on every request |
@@ -38,7 +38,7 @@ Dotenv: if installed, `mcp_api_adapter` loads `.env` from the repo root and `bac
 
 ## Client configuration samples
 
-Replace paths with your machine’s paths. Start the API first (for example `uvicorn` on port 8000).
+Replace paths with your machine’s paths. Start the API first (for example `run_local.py` / `uvicorn` on port 8001 by default).
 
 ### Cursor
 
@@ -52,7 +52,7 @@ Project file [`.cursor/mcp.json`](https://docs.cursor.com/context/mcp) or user `
       "args": ["-m", "mcp_api_adapter"],
       "cwd": "C:\\path\\to\\aem-guides-dataset-studio",
       "env": {
-        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8000",
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8001",
         "DATASET_STUDIO_API_BEARER_TOKEN": "your-bearer-token-if-required"
       }
     }
@@ -77,7 +77,7 @@ Example (structure only; exact file location depends on your Claude Code version
       "args": ["-m", "mcp_api_adapter"],
       "cwd": "/path/to/aem-guides-dataset-studio",
       "env": {
-        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8000",
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8001",
         "DATASET_STUDIO_API_BEARER_TOKEN": ""
       }
     }
@@ -100,7 +100,7 @@ env_vars = ["DATASET_STUDIO_API_BEARER_TOKEN"]
 
 [mcp_servers.dataset_studio_api.env]
 PYTHONUTF8 = "1"
-DATASET_STUDIO_API_BASE_URL = "http://127.0.0.1:8000"
+DATASET_STUDIO_API_BASE_URL = "http://127.0.0.1:8001"
 ```
 
 Set `DATASET_STUDIO_API_BEARER_TOKEN` in your shell or user environment when the API requires Bearer auth (production or when dev bypass is disabled).

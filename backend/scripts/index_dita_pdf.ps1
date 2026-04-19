@@ -1,7 +1,7 @@
 # Index DITA 1.2 PDF - calls POST /api/v1/ai/index-dita-pdf
-# Run from project root or backend directory. Ensure backend is running on port 8000.
+# Run from project root or backend directory. Ensure backend is running (default port 8001).
 
-$baseUrl = $env:API_BASE_URL ?? "http://localhost:8000"
+$baseUrl = $env:API_BASE_URL ?? "http://localhost:8001"
 $url = "$baseUrl/api/v1/ai/index-dita-pdf"
 
 Write-Host "Indexing DITA 1.2 PDF..." -ForegroundColor Cyan
@@ -24,7 +24,7 @@ try {
         Write-Host ""
         Write-Host "404 Not Found - try:" -ForegroundColor Yellow
         Write-Host "  1. Restart the backend (stop and run START_BACKEND_SIMPLE.ps1 again)"
-        Write-Host "  2. Open http://localhost:8000/docs and search for 'index-dita-pdf'"
+        Write-Host "  2. Open http://localhost:8001/docs and search for 'index-dita-pdf'"
         Write-Host "  3. If backend runs on different port, set: `$env:API_BASE_URL='http://localhost:PORT'"
     }
     exit 1

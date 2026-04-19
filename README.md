@@ -253,7 +253,11 @@ npx vite --port 5173 --host 0.0.0.0
 
 Open `http://localhost:5173` -- the chat copilot is ready to use.
 
-### 4. Populate RAG knowledge base (optional, improves quality)
+The package [`mcp_api_adapter/`](mcp_api_adapter/) runs a **stdio MCP server** that calls your running FastAPI app under **`/api/v1`** via httpx. It does **not** import application services; it only forwards REST requests. This is useful when agents must use the same contract as the UI/API, or when the API runs on another host.
+
+**Prerequisite:** start the backend (for example from `backend/` with uvicorn on the configured port, default `8001` via `PORT` / `run_local.py`).
+
+**Install MCP dependencies** (lightweight; can be the same venv as the backend or a separate one):
 
 ```bash
 # In the chat, or via API:
@@ -264,7 +268,9 @@ POST /api/v1/ai/crawl-aem-guides
 POST /api/v1/ai/index-dita-spec
 ```
 
----
+**Environment** (optional): `DATASET_STUDIO_API_BASE_URL` (default `http://127.0.0.1:8001`), `DATASET_STUDIO_API_BEARER_TOKEN` or `API_BEARER_TOKEN`, `DATASET_STUDIO_API_TIMEOUT_SECONDS`, `DATASET_STUDIO_API_EXTRA_HEADERS_JSON`. See [`MCP_TOOL_MAP.md`](MCP_TOOL_MAP.md) for the full tool-to-endpoint table and copy-paste config for Cursor, Claude Code, and Codex.
+
+**Compared to [`mcp_server.py`](mcp_server.py):** the root `mcp_server.py` exposes many **in-process** tools (Jira, RAG, DITA files). The API adapter exposes only the **13 REST-mapped** tools and requires a live HTTP API.
 
 ## Chat Copilot -- Example Prompts
 
@@ -273,10 +279,23 @@ POST /api/v1/ai/index-dita-spec
 Generate a DITA task topic about configuring OAuth authentication in AEM
 ```
 
-**Validate and fix:**
-```
-Review this DITA XML and fix any issues:
-<task id="my-task"><title>Test</title><taskbody>...</taskbody></task>
+```json
+{
+  "mcpServers": {
+    "aem-dataset-studio": {
+      "command": "C:\\path\\to\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe",
+      "args": ["C:\\path\\to\\aem-guides-dataset-studio\\mcp_server.py"]
+    },
+    "dataset-studio-api": {
+      "command": "C:\\path\\to\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe",
+      "args": ["-m", "mcp_api_adapter"],
+      "cwd": "C:\\path\\to\\aem-guides-dataset-studio",
+      "env": {
+        "DATASET_STUDIO_API_BASE_URL": "http://127.0.0.1:8001"
+      }
+    }
+  }
+}
 ```
 
 **Content migration:**

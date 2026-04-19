@@ -1,5 +1,5 @@
 # Run Backend + Frontend together
-# Backend must be running for API calls to work (frontend proxies /api to backend:8000)
+# Backend must be running for API calls to work (frontend proxies /api to backend:8001 by default)
 
 $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
@@ -8,20 +8,20 @@ Write-Host "AEM Guides Dataset Studio - Starting Backend + Frontend" -Foreground
 Write-Host ""
 
 # Stop existing processes on ports (retry loop for reliability)
-Write-Host "Clearing ports 8000 and 5173..." -ForegroundColor Yellow
+Write-Host "Clearing ports 8001 (backend) and 5173 (frontend)..." -ForegroundColor Yellow
 for ($i = 1; $i -le 5; $i++) {
-    $pids8000 = @()
+    $pids8001 = @()
     $pids5173 = @()
     try {
-        Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | ForEach-Object { $pids8000 += $_.OwningProcess }
+        Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | ForEach-Object { $pids8001 += $_.OwningProcess }
         Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | ForEach-Object { $pids5173 += $_.OwningProcess }
     } catch { }
-    $pids8000 | Select-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+    $pids8001 | Select-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
     $pids5173 | Select-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 3
-    $still8000 = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+    $still8001 = Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue
     $still5173 = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue
-    if (-not $still8000 -and -not $still5173) { break }
+    if (-not $still8001 -and -not $still5173) { break }
 }
 Start-Sleep -Seconds 2
 
@@ -33,7 +33,7 @@ if (-not (Test-Path $venvPython)) {
     exit 1
 }
 
-Write-Host "Starting Backend on http://localhost:8000 ..." -ForegroundColor Cyan
+Write-Host "Starting Backend on http://localhost:8001 ..." -ForegroundColor Cyan
 Start-Process -FilePath $venvPython -ArgumentList "run_local.py" -WorkingDirectory $backendDir -WindowStyle Normal
 
 # Wait up to 30 seconds for backend health check (backend may load embeddings, DB on first run)
@@ -41,7 +41,7 @@ $healthOk = $false
 for ($i = 1; $i -le 30; $i++) {
     Start-Sleep -Seconds 1
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "http://localhost:8001/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
         Write-Host "Backend OK (health: $($r.StatusCode))" -ForegroundColor Green
         $healthOk = $true
         break
@@ -54,7 +54,7 @@ for ($i = 1; $i -le 30; $i++) {
 if (-not $healthOk) {
     Write-Host ""
     Write-Host "ERROR: Backend did not respond after 30 seconds." -ForegroundColor Red
-    Write-Host "  - Port 8000 may be in use. Run: .\KILL_PORTS.ps1" -ForegroundColor Yellow
+    Write-Host "  - Port 8001 may be in use. Run: .\KILL_PORTS.ps1" -ForegroundColor Yellow
     Write-Host "  - Check the backend window for errors (look for 'address already in use')." -ForegroundColor Yellow
     Write-Host "  - Or start backend manually: .\START_BACKEND_SIMPLE.ps1" -ForegroundColor Yellow
     Write-Host ""
@@ -79,9 +79,9 @@ if (-not $npmExe) {
 
 Write-Host "Starting Frontend on http://localhost:5173 ..." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Backend:  http://localhost:8000" -ForegroundColor White
+Write-Host "  Backend:  http://localhost:8001" -ForegroundColor White
 Write-Host "  Frontend: http://localhost:5173" -ForegroundColor White
-Write-Host "  API docs: http://localhost:8000/docs" -ForegroundColor White
+Write-Host "  API docs: http://localhost:8001/docs" -ForegroundColor White
 Write-Host ""
 Write-Host "Press Ctrl+C to stop both." -ForegroundColor Gray
 Write-Host ""

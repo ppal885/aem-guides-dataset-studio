@@ -87,21 +87,21 @@ LLM calls are stored in the `llm_runs` table (tokens_input, tokens_output, laten
 
 ### Index one issue
 ```bash
-curl -X POST "http://localhost:8000/api/v1/ai/jira/index-one" \
+curl -X POST "http://localhost:8001/api/v1/ai/jira/index-one" \
   -H "Content-Type: application/json" \
   -d '{"issue_key": "DXML-123"}'
 ```
 
 ### Index recent issues
 ```bash
-curl -X POST "http://localhost:8000/api/v1/ai/jira/index-recent" \
+curl -X POST "http://localhost:8001/api/v1/ai/jira/index-recent" \
   -H "Content-Type: application/json" \
   -d '{"jql": "project = DXML AND updated >= -30d", "limit": 100}'
 ```
 
 ### Find similar issues
 ```bash
-curl "http://localhost:8000/api/v1/ai/jira/similar?issue_key=DXML-123&k=5"
+curl "http://localhost:8001/api/v1/ai/jira/similar?issue_key=DXML-123&k=5"
 ```
 
 ## Plan from Jira
@@ -109,7 +109,7 @@ curl "http://localhost:8000/api/v1/ai/jira/similar?issue_key=DXML-123&k=5"
 Returns EvidencePack, ScenarioSet, per-scenario candidates, and domain classification.
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/ai/plan-from-jira" \
+curl -X POST "http://localhost:8001/api/v1/ai/plan-from-jira" \
   -H "Content-Type: application/json" \
   -d '{"jira_id": "DXML-123"}'
 ```
@@ -121,7 +121,7 @@ If the index has fewer than `AI_INDEX_MIN_ISSUES` (default 200), it will automat
 Full pipeline: evidence pack -> scenario expansion -> recipe retrieval -> planning -> execution -> validation -> bundle -> ZIP.
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/ai/generate-from-jira" \
+curl -X POST "http://localhost:8001/api/v1/ai/generate-from-jira" \
   -H "Content-Type: application/json" \
   -d '{"jira_id": "DXML-123"}'
 ```
@@ -175,19 +175,19 @@ Search dataset runs:
 
 ```bash
 # Filter by Jira issue
-curl "http://localhost:8000/api/v1/ai/datasets/search?jira_id=DXML-123"
+curl "http://localhost:8001/api/v1/ai/datasets/search?jira_id=DXML-123"
 
 # Filter by scenario type
-curl "http://localhost:8000/api/v1/ai/datasets/search?scenario_type=MIN_REPRO"
+curl "http://localhost:8001/api/v1/ai/datasets/search?scenario_type=MIN_REPRO"
 
 # Filter by recipe used
-curl "http://localhost:8000/api/v1/ai/datasets/search?recipe=conref_pack"
+curl "http://localhost:8001/api/v1/ai/datasets/search?recipe=conref_pack"
 
 # Date range
-curl "http://localhost:8000/api/v1/ai/datasets/search?date_from=2026-03-01&date_to=2026-03-04"
+curl "http://localhost:8001/api/v1/ai/datasets/search?date_from=2026-03-01&date_to=2026-03-04"
 
 # Pagination
-curl "http://localhost:8000/api/v1/ai/datasets/search?page=1&limit=20"
+curl "http://localhost:8001/api/v1/ai/datasets/search?page=1&limit=20"
 ```
 
 Response: `{items: [...], total, page, limit, pages}`.
@@ -208,7 +208,7 @@ To expand coverage, add elements to the seed or more URLs to `dita_spec_index_se
 Check which LangChain sources are populated and used:
 
 ```bash
-curl http://localhost:8000/api/v1/ai/rag-status
+curl http://localhost:8001/api/v1/ai/rag-status
 ```
 
 Returns `aem_guides` (Experience League) and `dita_spec` (DITA 1.2 PDF) chunk counts. When `chunk_count` is 0, run the populate endpoints. Logs show `source: chromadb` or `source: db_seed_fallback` when DITA/AEM docs are retrieved.

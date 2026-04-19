@@ -113,8 +113,29 @@ def run_migrations() -> None:
                         conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))
                         conn.commit()
                         logger.info("Migration: added last_generation_json to chat_sessions")
+                    if cs_cols and "user_id" not in cs_cols:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added user_id to chat_sessions")
+                    if cs_cols and "tenant_id" not in cs_cols:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN tenant_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added tenant_id to chat_sessions")
                 except Exception as e:
                     logger.debug("chat_sessions last_generation_json migration skipped: %s", e)
+                try:
+                    res = conn.execute(text("PRAGMA table_info(dataset_runs)"))
+                    dr_cols = [row[1] for row in res.fetchall()]
+                    if dr_cols and "user_id" not in dr_cols:
+                        conn.execute(text("ALTER TABLE dataset_runs ADD COLUMN user_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added user_id to dataset_runs")
+                    if dr_cols and "tenant_id" not in dr_cols:
+                        conn.execute(text("ALTER TABLE dataset_runs ADD COLUMN tenant_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added tenant_id to dataset_runs")
+                except Exception as e:
+                    logger.debug("dataset_runs user/tenant migration skipped: %s", e)
             else:
                 def col_exists(table: str, c: str) -> bool:
                     r = conn.execute(
@@ -206,7 +227,26 @@ def run_migrations() -> None:
                         conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))
                         conn.commit()
                         logger.info("Migration: added last_generation_json to chat_sessions (PostgreSQL)")
+                    if col_exists("chat_sessions", "user_id") is False:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added user_id to chat_sessions (PostgreSQL)")
+                    if col_exists("chat_sessions", "tenant_id") is False:
+                        conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN tenant_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added tenant_id to chat_sessions (PostgreSQL)")
                 except Exception as e:
                     logger.debug("chat_sessions last_generation_json migration skipped: %s", e)
+                try:
+                    if col_exists("dataset_runs", "user_id") is False:
+                        conn.execute(text("ALTER TABLE dataset_runs ADD COLUMN user_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added user_id to dataset_runs (PostgreSQL)")
+                    if col_exists("dataset_runs", "tenant_id") is False:
+                        conn.execute(text("ALTER TABLE dataset_runs ADD COLUMN tenant_id VARCHAR(120)"))
+                        conn.commit()
+                        logger.info("Migration: added tenant_id to dataset_runs (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("dataset_runs user/tenant migration skipped: %s", e)
     except Exception as e:
         logger.warning("Migration skipped or failed (table may not exist yet): %s", e)

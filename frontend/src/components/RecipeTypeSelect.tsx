@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { ChevronDown, Check, Sparkles, Zap, BarChart3, FileText, Link2, Workflow, Code, Database, Search, Map } from 'lucide-react';
+import { ChevronDown, Check, Sparkles, Zap, BarChart3, FileText, Link2, Workflow, Code, Database, Search, Map, AlertTriangle, Building2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +21,8 @@ const RECIPE_GROUPS: Record<string, { label: string; icon: ReactNode }> = {
   output: { label: 'Output Optimization', icon: <Zap className="w-4 h-4" /> },
   legacy: { label: 'Legacy Patterns', icon: <Code className="w-4 h-4" /> },
   maps: { label: 'Map Structure', icon: <Map className="w-4 h-4" /> },
+  enterprise: { label: 'Enterprise Scenarios', icon: <Building2 className="w-4 h-4" /> },
+  validation: { label: 'Validation & Negative', icon: <AlertTriangle className="w-4 h-4" /> },
 };
 
 const RECIPE_OPTIONS: RecipeOption[] = [
@@ -67,6 +69,30 @@ const RECIPE_OPTIONS: RecipeOption[] = [
   { value: 'hub_spoke_inbound', label: 'Hub-Spoke Inbound', group: 'legacy', description: 'Hub-spoke reference pattern' },
   { value: 'keydef_heavy', label: 'Keydef Heavy', group: 'legacy', description: 'Maps with many key definitions' },
   { value: 'map_cyclic', label: 'Map Cyclic References', group: 'legacy', description: 'Mapref cycle: map_a -> map_b -> map_a' },
+  // Enterprise Scenarios
+  { value: 'parent_child_maps_keys_conref_conkeyref_selfrefs', label: 'Parent-Child Maps (Keys + Conref)', group: 'enterprise', description: 'Complex map hierarchy with keydefs, conref, conkeyref, and self-references (13 files)' },
+  { value: 'compact_parent_child_key_resolution', label: 'Compact Key Resolution', group: 'enterprise', description: 'Parent-child maps with keydefs demonstrating scoped key resolution (6 files)' },
+  { value: 'conrefend_cyclic_duplicate_id', label: 'Conrefend Cyclic (Duplicate ID Bug)', group: 'enterprise', description: 'Cyclic conref+conrefend ranges that trigger false duplicate ID warnings' },
+  { value: 'large_root_map_1000_topics_100kb', label: 'Large Root Map (1000×100KB)', group: 'enterprise', description: 'Enterprise-scale: 1000 topics each ~100KB for map parsing performance testing' },
+  // Specialized additions
+  { value: 'properties_table_reference', label: 'Properties Table Reference', group: 'specialized', description: 'Reference topics with properties tables (proptype/propvalue/propdesc)' },
+  { value: 'syntax_diagram_reference', label: 'Syntax Diagram Reference', group: 'specialized', description: 'Reference topics with syntaxdiagram (groupseq / groupchoice) under refsyn' },
+  { value: 'bookmap_elements_reference', label: 'Bookmap Elements Reference', group: 'specialized', description: 'Bookmap with bookmeta, frontmatter, chapters, and backmatter sections' },
+  { value: 'table_semantics_reference', label: 'Table Semantics Reference', group: 'specialized', description: 'Concept topic documenting table @align attribute values' },
+  { value: 'topic_ph_keyword_related_links', label: 'Phrase / Keyword / Related Links', group: 'specialized', description: 'Topics with prolog keywords, inline ph, keyword, and related-links' },
+  // Advanced additions
+  { value: 'topic_svg_mathml_foreign', label: 'SVG + MathML (Foreign)', group: 'advanced', description: 'Topics with SVG images and MathML in foreign elements' },
+  { value: 'inline_formatting_nested', label: 'Nested Inline Formatting', group: 'advanced', description: 'Nested bold/italic/underline inline formatting for RTE testing' },
+  { value: 'nested_topic_inline', label: 'Nested Topic + Inline', group: 'advanced', description: 'Topic with nested child topic and inline formatting' },
+  { value: 'self_conrefend_range', label: 'Self Conrefend Range', group: 'advanced', description: 'Same-file conref+conrefend pulling multiple paragraphs' },
+  { value: 'self_xref_conref_positive', label: 'Self Xref + Conref', group: 'advanced', description: 'Same-file xref (to section) and conref (to paragraph)' },
+  // Performance addition
+  { value: 'bulk_dita_map_topics', label: 'Bulk DITA (20K Topics)', group: 'performance', description: 'Bulk 20,000 simple topics with root map and DTD stubs' },
+  { value: 'flat_hierarchical_dita', label: 'Flat + Hierarchical (5K–10K)', group: 'performance', description: 'Self-contained flat & hierarchical structures with DTDs and clean internal refs' },
+  // Validation & Negative
+  { value: 'validation_duplicate_id_negative', label: 'Duplicate ID (Negative)', group: 'validation', description: 'Intentionally duplicate section IDs for validation error testing' },
+  { value: 'validation_invalid_child_negative', label: 'Invalid Child (Negative)', group: 'validation', description: 'Invalid body-in-body structure for structural validation testing' },
+  { value: 'validation_missing_body_negative', label: 'Missing Body (Negative)', group: 'validation', description: 'Topic missing required body element for validation testing' },
 ];
 
 function filterOptions(options: RecipeOption[], query: string): RecipeOption[] {

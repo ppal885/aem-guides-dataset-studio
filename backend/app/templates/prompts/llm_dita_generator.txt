@@ -10,6 +10,7 @@ CRITICAL RULES:
 - When Representative Sample XML is provided, use it as reference but ensure valid structure. Do NOT invent if sample is sufficient.
 - When no Representative Sample, infer structure from Jira summary and description. Create minimal valid DITA that demonstrates the described scenario.
 - When DITA KNOWLEDGE, DITA STRUCTURE, or AEM GUIDES DOCUMENTATION is provided in the prompt, follow it strictly. Do not invent nesting or attributes not present in the retrieved knowledge. RAG context is authoritative for correctness.
+- If evidence is weak, incomplete, or ambiguous, stay conservative. Do not invent missing sections, steps, attributes, or domain-specific elements just to make the file look complete.
 - When **PATTERN-SPECIFIC HINTS** appear after USER INPUT, treat them as mandatory additions on top of these global rules (table semantics, RTE inline tags, keyref/map structure, etc.).
 - When **ADDITIONAL INSTRUCTIONS** include **GENERATION_PLAN_JSON**, that JSON is the authoritative contract: you MUST emit every listed **required_constructs** (with at least the minimum counts) and you MUST NOT use **forbidden_patterns** (e.g. do not substitute a paragraph or unordered list for a required DITA **table** when the plan requires tabular markup).
 - When **RECIPE_EXECUTION_CONTRACT_JSON** appears, it restates the same hard contract from recipe selection: **required_constructs**, **forbidden_fallback_patterns**, **validation_rules**, and **repair_hints**. If you omit required constructs, generation aborts before success (fail-fast)—emit complete markup in the first JSON response.
@@ -17,54 +18,21 @@ CRITICAL RULES:
 
 JIRA / BUG SCENARIO FIDELITY (when USER INPUT is Jira evidence):
 - Do NOT output a "dump" that only restates summary/description in generic <p> elements. The goal is a minimal REPRODUCTION dataset: structures and steps a human can follow to see the issue.
+- Do NOT emit filler scaffolding such as Introduction / Body / Conclusion unless the evidence explicitly supports that shape.
 - Menu / context-menu paths: use <menucascade><uicontrol>...</uicontrol>...</menucascade> in order.
 - URLs in evidence: use <xref format="html" scope="external"> (adjust format if not HTML).
 - Verbatim reporter sentences that matter for reproduction: put in <note> or <lq>, then clarify if needed.
 - A metadata-style <simpletable> of issue fields alone does NOT replace the above; at most add it as a small appendix section, not as the only structured content.
 
-TOPIC TYPE TEMPLATES — use the CORRECT root element and body element for each type:
+DITA MAP: Root element <map>. Can contain: <title>, <topicref href="...">, <topichead navtitle="...">, <topicgroup>, <topicset>, <mapref href="...">, <keydef keys="..." href="...">, <reltable>, <topicmeta>.
+DITA BOOKMAP: Root element <bookmap>. Contains <bookmeta> (metadata: <booktitle>, <booktitlealt>, <shortdesc>, <author>, etc.), <frontmatter>, <chapter>, <part>, <appendices>, <backmatter>. Use <bookmeta> for book-level metadata.
+DITA TOPIC: Root element <topic id="..." xml:lang="en">. Contains: <title>, <shortdesc>, <body> with <section> or <p>. May use <foreign> for non-DITA content.
+DITA REFERENCE: Root element <reference id="...">. Use when the evidence is field-heavy, parameter-oriented, or clearly reference content. Prefer structured tables, sections, or definition-list style content over narrative filler.
 
-DITA MAP: Root <map id="..." xml:lang="en">. Children: <title>, <topicref href="...">, <topichead navtitle="...">, <topicgroup>, <topicset>, <mapref>, <keydef keys="..." href="...">, <reltable>, <topicmeta>.
-DITA BOOKMAP: Root <bookmap id="...">. Children: <bookmeta>, <frontmatter>, <chapter>, <part>, <appendices>, <backmatter>.
-
-DITA TASK: Root <task id="..." xml:lang="en">. Body: <taskbody>. Children: <prereq>, <context>, <steps> with <step>/<cmd>, <result>, <postreq>.
-  Trigger words: how to, install, configure, set up, deploy, migrate, enable, disable, troubleshoot, publish, connect, procedure, steps, tutorial, walkthrough, workflow.
-  Example skeleton:
-    <task id="t-id"><title>...</title><shortdesc>...</shortdesc>
-      <taskbody><prereq>...</prereq><context>...</context>
-        <steps><step><cmd>...</cmd></step></steps>
-        <result>...</result></taskbody></task>
-
-DITA CONCEPT: Root <concept id="..." xml:lang="en">. Body: <conbody>. Children: <section>, <p>, <ul>, <ol>, <table>, <note>.
-  Trigger words: what is, overview, introduction, explain, understand, architecture, comparison, difference, best practice, benefit, use case, definition, terminology.
-  Example skeleton:
-    <concept id="c-id"><title>...</title><shortdesc>...</shortdesc>
-      <conbody><section><title>...</title><p>...</p></section></conbody></concept>
-
-DITA REFERENCE: Root <reference id="..." xml:lang="en">. Body: <refbody>. Children: <section>, <properties>, <table>, <simpletable>, <example>.
-  Trigger words: API reference, parameter list/table, configuration reference, command reference, error codes, status codes, supported values, syntax reference, settings, environment variables, permissions, CLI options, file formats.
-  Example skeleton:
-    <reference id="r-id"><title>...</title><shortdesc>...</shortdesc>
-      <refbody><section><title>...</title><p>...</p></section>
-        <properties><prophead><proptypehd>Type</proptypehd><propvaluehd>Value</propvaluehd><propdeschd>Description</propdeschd></prophead>
-          <property><proptype>...</proptype><propvalue>...</propvalue><propdesc>...</propdesc></property>
-        </properties></refbody></reference>
-
-DITA TOPIC (generic): Root <topic id="..." xml:lang="en">. Body: <body>. Use ONLY when no specific type fits. Prefer task/concept/reference when the content clearly matches.
-
-DITA GLOSSENTRY: Root <glossentry id="...">. Children: <glossterm>, <glossdef>, <glossBody> with <glossSurfaceForm>, <glossUsage>, <glossAlt>.
-  Trigger words: glossary, term, definition, acronym, abbreviation.
-
-TOPIC TYPE ENFORCEMENT (CRITICAL — read this carefully):
-1. When GENERATION_PLAN_JSON specifies topic_type, you MUST use that EXACT root element.
-2. "reference" → <reference>/<refbody> — NEVER <concept>/<conbody>
-3. "task" → <task>/<taskbody>/<steps> — NEVER <concept>/<conbody> or <topic>/<body>
-4. "concept" → <concept>/<conbody>
-5. If the user text contains "reference topic", "task topic", or "concept topic", that is an EXPLICIT request for that type.
-6. NEVER default to <concept> when a different type was requested. This is a critical error.
-7. When generating a reference topic, include <properties> or <table>/<simpletable> — don't use only <section>/<p>.
-8. When generating a task topic, include <steps>/<step>/<cmd> — don't use only <section>/<p>.
-9. The ditamap <topicref> must use type= matching the actual topic type: type="reference", type="task", type="concept".
+FAIL-SAFE BEHAVIOR:
+- Never invent specialization/domain tags unless the retrieved evidence explicitly supports them.
+- Never guess unsupported child nesting.
+- If you cannot support a complete structure from the evidence, emit the smallest correct DITA structure you can justify instead of a padded generic topic.
 
 OUTPUT SCHEMA (strict JSON):
 {

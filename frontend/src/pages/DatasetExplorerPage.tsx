@@ -5,6 +5,7 @@ import { DatasetExplorer } from '@/components/DatasetExplorer';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { apiUrl, canonicalJobsRouteErrorMessage } from '@/utils/api';
 
 interface Job {
   id: string;
@@ -35,9 +36,9 @@ export function DatasetExplorerPage() {
     setLoading(true);
     try {
       // Fetch only completed jobs
-      const response = await fetch('/api/v1/jobs?status=completed');
+      const response = await fetch(apiUrl('/api/v1/jobs?status=completed'));
       if (!response.ok) {
-        throw new Error(`Failed to load jobs: ${response.statusText}`);
+        throw new Error(canonicalJobsRouteErrorMessage(`HTTP ${response.status}: ${response.statusText}`));
       }
 
       const data = await response.json();
@@ -59,7 +60,7 @@ export function DatasetExplorerPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
       if (isMountedRef.current) {
-        feedback.error('Failed to load completed jobs', 'Please try again.');
+        feedback.error('Failed to load completed jobs', canonicalJobsRouteErrorMessage(error));
       }
     } finally {
       if (isMountedRef.current) {
@@ -94,17 +95,17 @@ export function DatasetExplorerPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Dataset Explorer</h1>
-        <p className="text-slate-600">
+      <div className="border-l-4 border-teal-500 pl-4">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dataset Explorer</h1>
+        <p className="mt-2 text-slate-600">
           Browse and explore your generated datasets. Select a completed job to view its structure and files.
         </p>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
   CheckCircle2,
-  Check,
   Copy,
+  Check,
   Info,
   ListChecks,
   Lightbulb,
@@ -40,16 +40,16 @@ export const CHAT_MARKDOWN_PROSE_CLASS =
   'prose-code:text-slate-800 prose-code:text-[0.8125rem] prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono prose-code:font-normal ' +
   'prose-pre:bg-[#1e293b] prose-pre:text-slate-200 prose-pre:rounded-xl prose-pre:p-4 prose-pre:text-[0.8125rem] prose-pre:overflow-x-auto prose-pre:shadow-inner ' +
   'prose-strong:text-slate-900 prose-strong:font-semibold ' +
-  'prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline ' +
+  'prose-a:text-teal-700 prose-a:no-underline hover:prose-a:underline ' +
   'prose-hr:border-slate-200 prose-hr:my-6';
 
 const CALLOUT_TONES: CalloutTone[] = [
   {
     label: 'Summary',
     pattern: /^(summary|overview|key takeaways?|takeaway):\s*/i,
-    container: 'border-sky-200 bg-[linear-gradient(135deg,#eff6ff_0%,#f8fbff_100%)] text-sky-950',
-    badge: 'border-sky-200 bg-white text-sky-700',
-    iconWrap: 'bg-sky-600 text-white',
+    container: 'border-teal-200 bg-[linear-gradient(135deg,#f0fdfa_0%,#f8fafc_100%)] text-teal-950',
+    badge: 'border-teal-200 bg-white text-teal-800',
+    iconWrap: 'bg-teal-600 text-white',
     Icon: CheckCircle2,
   },
   {
@@ -143,6 +143,46 @@ function stripLeadingPattern(children: React.ReactNode, pattern: RegExp): React.
   return walk(children);
 }
 
+/** Fenced code block with syntax highlighting and one-click copy. */
+function CodeBlock({ className, children }: { className?: string; children: string }) {
+  const [copied, setCopied] = useState(false);
+  const lang = className?.replace('language-', '') || 'text';
+  const code = String(children).replace(/\n$/, '');
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative group my-3 rounded-lg overflow-hidden border border-slate-700/30">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800 text-xs text-slate-400 border-b border-slate-700/40">
+        <span className="font-mono">{lang}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 hover:text-white transition-colors"
+          title="Copy code"
+        >
+          {copied ? (
+            <><Check className="w-3.5 h-3.5 text-emerald-400" /> <span className="text-emerald-400">Copied</span></>
+          ) : (
+            <><Copy className="w-3.5 h-3.5" /> Copy</>
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        language={lang}
+        style={oneDark}
+        customStyle={{ margin: 0, borderRadius: 0, fontSize: '0.8125rem' }}
+        wrapLongLines
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
 function CalloutCard({
   tone,
   children,
@@ -220,7 +260,7 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
               href={safeHref}
               target="_blank"
               rel="noreferrer"
-              className="font-semibold text-blue-600 no-underline hover:underline"
+              className="font-semibold text-teal-700 no-underline hover:underline"
             >
               {children}
             </a>
@@ -237,21 +277,7 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
         tr: ({ children }) => (
           <tr className="transition-colors hover:bg-slate-50/50">{children}</tr>
         ),
-        pre: ({ children }) => {
-          // When code block has syntax highlighting, skip the default pre wrapper
-          // because SyntaxHighlighter renders its own pre element.
-          const child = React.Children.toArray(children)[0];
-          if (React.isValidElement(child)) {
-            const childProps = child.props as { className?: string };
-            const hasLanguage = Boolean(childProps.className && /\blanguage-/.test(childProps.className));
-            if (hasLanguage) {
-              return <div className="my-4">{children}</div>;
-            }
-          }
-          return (
-            <pre className="my-4 overflow-x-auto rounded-xl bg-[#1e293b] p-4 shadow-inner ring-1 ring-slate-700/20">{children}</pre>
-          );
-        },
+        pre: ({ children }) => <>{children}</>,
         code: ({ className, children, ...rest }) => {
           const inlineFlag = (rest as { inline?: boolean }).inline;
           const hasLanguage = Boolean(className && /\blanguage-/.test(className));
@@ -266,26 +292,11 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
               </code>
             );
           }
-          // Extract language from className (e.g. "language-xml" -> "xml")
-          const languageMatch = className ? /language-(\w+)/.exec(className) : null;
-          const language = languageMatch ? languageMatch[1] : 'text';
-          if (hasLanguage) {
-            return <CodeBlock language={language}>{text}</CodeBlock>;
-          }
-          return (
-            <code
-              className={cn(
-                'block w-full min-w-0 whitespace-pre-wrap break-words font-mono text-[0.8125rem] leading-relaxed text-slate-200',
-                className
-              )}
-            >
-              {children}
-            </code>
-          );
+          return <CodeBlock className={className}>{text}</CodeBlock>;
         },
         h2: ({ children }) => (
           <h2 className="flex items-center gap-2.5 mt-6 mb-3 text-base font-bold text-slate-800">
-            <span className="inline-block w-1 h-5 rounded-full bg-gradient-to-b from-indigo-500 to-blue-500" />
+            <span className="inline-block w-1 h-5 rounded-full bg-gradient-to-b from-teal-600 to-teal-500" />
             <span>{children}</span>
           </h2>
         ),

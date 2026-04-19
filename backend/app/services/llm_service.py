@@ -1,4 +1,4 @@
-"""LLM service for JSON generation and chat streaming via Anthropic, AWS Bedrock, or Groq API."""
+"""LLM service for JSON generation and chat streaming via Anthropic, Bedrock, Groq, OpenAI, or Azure OpenAI."""
 import json
 import os
 import re
@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator, Optional, Tuple
+from typing import Any, AsyncGenerator, Optional, Tuple
 
 from app.core.agentic_config import agentic_config
 from app.core.observability import get_observability_logger
@@ -32,6 +32,14 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+AZURE_OPENAI_MODEL = (
+    os.getenv("AZURE_OPENAI_MODEL", "")
+    or os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+    or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "")
+).strip()
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
 LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "").lower().strip()
@@ -53,6 +61,35 @@ CIRCUIT_BREAKER_WINDOW_SEC = float(os.getenv("LLM_CIRCUIT_BREAKER_WINDOW_SEC", "
 _llm_failure_count = 0
 _llm_last_failure_time: float = 0.0
 _circuit_lock = threading.Lock()
+_llm_trace_lock = threading.Lock()
+_llm_trace_runs: dict[str, list[dict[str, Any]]] = {}
+
+_AZURE_PROVIDER_ALIASES = {"azure", "azure_openai", "azure-openai"}
+
+
+def _azure_only_mode_enabled(provider: str | None = None) -> bool:
+    resolved = _normalize_provider_name(provider or _effective_provider())
+    return resolved == "azure_openai"
+
+
+def _fallbacks_allowed(primary_provider: str | None) -> bool:
+    return not _azure_only_mode_enabled(primary_provider)
+
+
+def _provider_configuration_error(provider: str | None = None) -> str:
+    normalized = _normalize_provider_name(provider or _effective_provider())
+    if normalized == "azure_openai":
+        return (
+            "Azure OpenAI is required but not fully configured. Set AZURE_OPENAI_API_KEY, "
+            "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, and AZURE_OPENAI_MODEL in backend/.env."
+        )
+    if normalized == "openai":
+        return "OpenAI is not fully configured. Set OPENAI_API_KEY in backend/.env."
+    if normalized == "groq":
+        return "Groq is not fully configured. Set GROQ_API_KEY in backend/.env."
+    if normalized == "bedrock":
+        return "Bedrock is not fully configured. Set AWS credentials and AWS_REGION (or AWS_PROFILE)."
+    return "Anthropic is not fully configured. Set ANTHROPIC_API_KEY in backend/.env."
 
 
 def _circuit_breaker_record_failure() -> None:
@@ -86,6 +123,89 @@ def _circuit_breaker_is_open() -> bool:
             _llm_failure_count = 0
             return False
         return True
+
+
+def get_llm_provider_configuration() -> dict[str, Any]:
+    """Return the currently configured provider/model pair and availability."""
+    provider = _effective_provider()
+    if provider == "groq":
+        model = GROQ_MODEL
+    elif provider == "azure_openai":
+        model = _openai_model_for_provider(provider)
+    elif provider == "openai":
+        model = OPENAI_MODEL
+    elif provider == "bedrock":
+        model = BEDROCK_MODEL
+    else:
+        model = ANTHROPIC_MODEL
+    return {
+        "provider": provider,
+        "provider_label": _provider_label(provider),
+        "model": model,
+        "available": is_llm_available(),
+        "fallback_allowed": _fallbacks_allowed(provider),
+    }
+
+
+def start_llm_trace(trace_id: str | None) -> None:
+    if not trace_id:
+        return
+    with _llm_trace_lock:
+        _llm_trace_runs[trace_id] = []
+
+
+def clear_llm_trace(trace_id: str | None) -> None:
+    if not trace_id:
+        return
+    with _llm_trace_lock:
+        _llm_trace_runs.pop(trace_id, None)
+
+
+def _append_llm_trace(trace_id: str | None, event: dict[str, Any]) -> None:
+    if not trace_id:
+        return
+    with _llm_trace_lock:
+        _llm_trace_runs.setdefault(trace_id, []).append(dict(event))
+
+
+def get_llm_trace(trace_id: str | None) -> list[dict[str, Any]]:
+    if not trace_id:
+        return []
+    with _llm_trace_lock:
+        return [dict(item) for item in _llm_trace_runs.get(trace_id, [])]
+
+
+def summarize_llm_trace(
+    trace_id: str | None,
+    *,
+    default_path: str = "tool_only",
+    llm_used_path: str = "llm_assisted",
+) -> dict[str, Any]:
+    configured = get_llm_provider_configuration()
+    calls = get_llm_trace(trace_id)
+    successful = [item for item in calls if str(item.get("status") or "").strip().lower() == "success"]
+    steps: list[str] = []
+    for item in calls:
+        step_name = str(item.get("step_name") or "").strip()
+        if step_name and step_name not in steps:
+            steps.append(step_name)
+    last_success = successful[-1] if successful else (calls[-1] if calls else {})
+    return {
+        "configured_provider": configured["provider"],
+        "configured_provider_label": configured["provider_label"],
+        "configured_model": configured["model"],
+        "provider": str(last_success.get("provider") or configured["provider"]).strip(),
+        "provider_label": _provider_label(str(last_success.get("provider") or configured["provider"]).strip()),
+        "model": str(last_success.get("model") or configured["model"]).strip(),
+        "available": bool(configured["available"]),
+        "llm_used": bool(successful),
+        "path": llm_used_path if successful else default_path,
+        "call_count": len(successful),
+        "attempt_count": len(calls),
+        "steps": steps,
+        "fallback_used": any(bool(item.get("used_fallback")) for item in calls),
+        "calls": calls,
+    }
 
 
 def _is_bedrock_available() -> bool:
@@ -124,7 +244,82 @@ def _effective_provider() -> str:
         )
     if LLM_PROVIDER == "bedrock" or USE_BEDROCK:
         return "bedrock"
-    return LLM_PROVIDER
+    return _normalize_provider_name(LLM_PROVIDER)
+
+
+def _normalize_provider_name(provider: str | None) -> str:
+    normalized = (provider or "").lower().strip()
+    if normalized in _AZURE_PROVIDER_ALIASES:
+        return "azure_openai"
+    return normalized
+
+
+def _openai_model_for_provider(provider: str | None) -> str:
+    provider = _normalize_provider_name(provider)
+    if provider == "azure_openai":
+        return AZURE_OPENAI_MODEL or OPENAI_MODEL
+    return OPENAI_MODEL
+
+
+def _azure_openai_is_available() -> bool:
+    return bool(
+        AZURE_OPENAI_API_KEY
+        and AZURE_OPENAI_ENDPOINT
+        and AZURE_OPENAI_API_VERSION
+        and _openai_model_for_provider("azure_openai")
+    )
+
+
+def _import_openai_clients():
+    try:
+        from openai import AsyncAzureOpenAI, AsyncOpenAI
+    except ImportError:
+        raise ImportError(
+            "openai package is required for OpenAI and Azure OpenAI. Install with: pip install openai"
+        )
+    return AsyncOpenAI, AsyncAzureOpenAI
+
+
+def _maybe_wrap_openai_client(client):
+    if _is_langsmith_tracing_enabled():
+        try:
+            from langsmith.wrappers import wrap_openai
+
+            client = wrap_openai(client)
+        except ImportError:
+            pass
+    return client
+
+
+def _create_openai_client(
+    *,
+    timeout_sec: float,
+    provider: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+):
+    provider = _normalize_provider_name(provider or _effective_provider())
+    AsyncOpenAI, AsyncAzureOpenAI = _import_openai_clients()
+    if base_url:
+        client = AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout_sec,
+        )
+        return _maybe_wrap_openai_client(client)
+    if provider == "azure_openai":
+        client = AsyncAzureOpenAI(
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            timeout=timeout_sec,
+        )
+        return _maybe_wrap_openai_client(client)
+    client = AsyncOpenAI(
+        api_key=OPENAI_API_KEY,
+        timeout=timeout_sec,
+    )
+    return _maybe_wrap_openai_client(client)
 
 
 def get_active_llm_provider() -> str:
@@ -135,12 +330,14 @@ def get_active_llm_provider() -> str:
 def is_llm_available() -> bool:
     """Return True if the configured LLM provider has credentials; False enables mock mode.
     Set AI_USE_MOCK_LLM=true to force mock mode (no API key needed).
-    Use LLM_PROVIDER=anthropic|bedrock|groq|openai. For Bedrock (Claude Code setup): LLM_PROVIDER=bedrock + AWS_REGION."""
+    Use LLM_PROVIDER=anthropic|bedrock|groq|openai|azure_openai. For Bedrock (Claude Code setup): LLM_PROVIDER=bedrock + AWS_REGION."""
     if os.getenv("AI_USE_MOCK_LLM", "").lower() in ("true", "1", "yes"):
         return False
     provider = _effective_provider()
     if provider == "groq":
         return bool(GROQ_API_KEY and GROQ_API_KEY.strip())
+    if provider == "azure_openai":
+        return _azure_openai_is_available()
     if provider == "openai":
         return bool(OPENAI_API_KEY and OPENAI_API_KEY.strip())
     if provider == "bedrock":
@@ -310,9 +507,11 @@ def _anthropic_message_parts(message) -> tuple[list[str], list[dict[str, object]
 
 
 def _provider_has_credentials(provider: str) -> bool:
-    provider = (provider or "").lower().strip()
+    provider = _normalize_provider_name(provider)
     if provider == "groq":
         return bool(GROQ_API_KEY and GROQ_API_KEY.strip())
+    if provider == "azure_openai":
+        return _azure_openai_is_available()
     if provider == "openai":
         return bool(OPENAI_API_KEY and OPENAI_API_KEY.strip())
     if provider == "bedrock":
@@ -328,23 +527,15 @@ def _provider_label(provider: str | None) -> str:
         "bedrock": "AWS Bedrock",
         "groq": "Groq",
         "openai": "OpenAI",
+        "azure_openai": "Azure OpenAI",
     }
-    return labels.get((provider or "").lower().strip(), "the AI provider")
+    return labels.get(_normalize_provider_name(provider), "the AI provider")
 
 
 def _get_chat_fallback_provider(primary_provider: str) -> str | None:
-    # If provider chain is set, fallback is the next provider in chain after primary
-    if LLM_PROVIDER_CHAIN:
-        chain = [p.strip() for p in LLM_PROVIDER_CHAIN.split(",") if p.strip()]
-        found_primary = False
-        for provider in chain:
-            if provider == primary_provider:
-                found_primary = True
-                continue
-            if found_primary and _provider_has_credentials(provider):
-                return provider
-    # Legacy single fallback
-    candidate = (LLM_FALLBACK_PROVIDER or "").lower().strip()
+    if not _fallbacks_allowed(primary_provider):
+        return None
+    candidate = _normalize_provider_name(LLM_FALLBACK_PROVIDER)
     if not candidate or candidate == primary_provider:
         return None
     if _provider_has_credentials(candidate):
@@ -354,11 +545,15 @@ def _get_chat_fallback_provider(primary_provider: str) -> str | None:
 
 def _get_generation_fallback(primary_provider: str) -> tuple[str | None, object | None, str | None]:
     """Resolve explicit fallback for JSON/text generation only when configured."""
-    candidate = (LLM_FALLBACK_PROVIDER or "").lower().strip()
+    if not _fallbacks_allowed(primary_provider):
+        return None, None, None
+    candidate = _normalize_provider_name(LLM_FALLBACK_PROVIDER)
     if not candidate or candidate == primary_provider:
         return None, None, None
     if candidate == "groq" and GROQ_API_KEY and GROQ_API_KEY.strip():
         return GROQ_MODEL, _generate_groq, None
+    if candidate == "azure_openai" and _azure_openai_is_available():
+        return _openai_model_for_provider(candidate), _generate_openai, None
     if candidate == "openai" and OPENAI_API_KEY and OPENAI_API_KEY.strip():
         return OPENAI_MODEL, _generate_openai, None
     if candidate == "bedrock" and _is_bedrock_available():
@@ -517,22 +712,11 @@ async def _generate_groq(
     timeout_sec: float,
 ) -> Tuple[str, Optional[int], Optional[int]]:
     """Call Groq API (OpenAI-compatible) with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for Groq. Install with: pip install openai")
-
-    client = AsyncOpenAI(
+    client = _create_openai_client(
+        timeout_sec=timeout_sec,
         base_url=GROQ_BASE_URL,
         api_key=GROQ_API_KEY,
-        timeout=timeout_sec,
     )
-    if _is_langsmith_tracing_enabled():
-        try:
-            from langsmith.wrappers import wrap_openai
-            client = wrap_openai(client)
-        except ImportError:
-            pass
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -570,21 +754,8 @@ async def _generate_openai(
     timeout_sec: float,
 ) -> Tuple[str, Optional[int], Optional[int]]:
     """Call OpenAI API with streaming. Collects full response. Returns (content, input_tokens, output_tokens)."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
-
-    client = AsyncOpenAI(
-        api_key=OPENAI_API_KEY,
-        timeout=timeout_sec,
-    )
-    if _is_langsmith_tracing_enabled():
-        try:
-            from langsmith.wrappers import wrap_openai
-            client = wrap_openai(client)
-        except ImportError:
-            pass
+    provider = _effective_provider()
+    client = _create_openai_client(timeout_sec=timeout_sec, provider=provider)
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -594,7 +765,7 @@ async def _generate_openai(
     chunks: list[str] = []
     input_tok = output_tok = None
     stream = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=_openai_model_for_provider(provider),
         messages=messages,
         max_tokens=max_tokens,
         temperature=LLM_TEMPERATURE,
@@ -626,10 +797,7 @@ async def generate_chat_stream(
     messages: list of {"role": "user"|"assistant", "content": str}
     """
     if not is_llm_available():
-        raise RuntimeError(
-            "LLM unavailable: set ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or LLM_PROVIDER=bedrock with AWS credentials. "
-            "For Bedrock (Claude Code setup): LLM_PROVIDER=bedrock, AWS_REGION=us-west-2."
-        )
+        raise RuntimeError(_provider_configuration_error())
     if _circuit_breaker_is_open():
         raise RuntimeError(
             "LLM temporarily unavailable (circuit open). Set LLM_CIRCUIT_BREAKER_ENABLED=false to disable, or wait and retry."
@@ -645,7 +813,7 @@ async def generate_chat_stream(
             async for chunk in _generate_chat_stream_groq(system_prompt, messages, max_tokens, timeout_sec):
                 yield chunk
             return
-        if active_provider == "openai":
+        if active_provider in {"openai", "azure_openai"}:
             async for chunk in _generate_chat_stream_openai(system_prompt, messages, max_tokens, timeout_sec):
                 yield chunk
             return
@@ -711,9 +879,7 @@ async def generate_chat_stream_with_tools(
     Only supports Anthropic and Bedrock; Groq falls back to no tools.
     """
     if not is_llm_available():
-        raise RuntimeError(
-            "LLM unavailable: set ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or LLM_PROVIDER=bedrock with AWS credentials."
-        )
+        raise RuntimeError(_provider_configuration_error())
     if _circuit_breaker_is_open():
         raise RuntimeError(
             "LLM temporarily unavailable (circuit open). Set LLM_CIRCUIT_BREAKER_ENABLED=false to disable, or wait and retry."
@@ -730,7 +896,7 @@ async def generate_chat_stream_with_tools(
                 yield evt
             return
 
-        if active_provider == "openai":
+        if active_provider in {"openai", "azure_openai"}:
             async for evt in _stream_with_tools_openai(system_prompt, messages, tools, max_tokens, timeout_sec):
                 yield evt
             return
@@ -1091,15 +1257,10 @@ async def _stream_with_tools_groq(
     timeout_sec: float,
 ) -> AsyncGenerator[Tuple[str, object], None]:
     """Stream with tool support via Groq API (OpenAI-compatible). Same yield format as Anthropic."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for Groq. Install with: pip install openai")
-
-    client = AsyncOpenAI(
+    client = _create_openai_client(
+        timeout_sec=timeout_sec,
         base_url=GROQ_BASE_URL,
         api_key=GROQ_API_KEY,
-        timeout=timeout_sec,
     )
 
     openai_messages = _build_openai_messages(system_prompt, messages)
@@ -1302,27 +1463,14 @@ async def _stream_with_tools_openai(
     timeout_sec: float,
 ) -> AsyncGenerator[Tuple[str, object], None]:
     """Stream with tool support via OpenAI API. Same yield format as Anthropic."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
-
-    client = AsyncOpenAI(
-        api_key=OPENAI_API_KEY,
-        timeout=timeout_sec,
-    )
-    if _is_langsmith_tracing_enabled():
-        try:
-            from langsmith.wrappers import wrap_openai
-            client = wrap_openai(client)
-        except ImportError:
-            pass
+    provider = _effective_provider()
+    client = _create_openai_client(timeout_sec=timeout_sec, provider=provider)
 
     openai_messages = _build_openai_messages(system_prompt, messages)
     openai_tools = _anthropic_tools_to_openai(tools) if tools else None
 
     kwargs = {
-        "model": OPENAI_MODEL,
+        "model": _openai_model_for_provider(provider),
         "messages": openai_messages,
         "max_tokens": max_tokens,
         "temperature": LLM_TEMPERATURE_CHAT,
@@ -1408,15 +1556,10 @@ async def _generate_chat_stream_groq(
     timeout_sec: float,
 ) -> AsyncGenerator[str, None]:
     """Stream via Groq API (OpenAI-compatible) without tools."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for Groq. Install with: pip install openai")
-
-    client = AsyncOpenAI(
+    client = _create_openai_client(
+        timeout_sec=timeout_sec,
         base_url=GROQ_BASE_URL,
         api_key=GROQ_API_KEY,
-        timeout=timeout_sec,
     )
 
     openai_messages = _build_openai_messages(system_prompt, messages)
@@ -1445,26 +1588,13 @@ async def _generate_chat_stream_openai(
     timeout_sec: float,
 ) -> AsyncGenerator[str, None]:
     """Stream via OpenAI API without tools."""
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        raise ImportError("openai package is required for OpenAI. Install with: pip install openai")
-
-    client = AsyncOpenAI(
-        api_key=OPENAI_API_KEY,
-        timeout=timeout_sec,
-    )
-    if _is_langsmith_tracing_enabled():
-        try:
-            from langsmith.wrappers import wrap_openai
-            client = wrap_openai(client)
-        except ImportError:
-            pass
+    provider = _effective_provider()
+    client = _create_openai_client(timeout_sec=timeout_sec, provider=provider)
 
     openai_messages = _build_openai_messages(system_prompt, messages)
 
     stream = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=_openai_model_for_provider(provider),
         messages=openai_messages,
         max_tokens=max_tokens,
         temperature=LLM_TEMPERATURE_CHAT,
@@ -1497,6 +1627,13 @@ async def _generate_json_impl(
             if not GROQ_API_KEY or not GROQ_API_KEY.strip():
                 raise ValueError("GROQ_API_KEY is not set (LLM_PROVIDER=groq)")
             return GROQ_MODEL, _generate_groq, None
+        if provider == "azure_openai":
+            if not _azure_openai_is_available():
+                raise ValueError(
+                    "Azure OpenAI is not fully configured. Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, "
+                    "AZURE_OPENAI_API_VERSION, and AZURE_OPENAI_MODEL in backend/.env."
+                )
+            return _openai_model_for_provider(provider), _generate_openai, None
         if provider == "openai":
             if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
                 raise ValueError("OPENAI_API_KEY is not set (LLM_PROVIDER=openai)")
@@ -1550,6 +1687,20 @@ async def _generate_json_impl(
 
             result = _extract_json(content)
             if result is not None:
+                _append_llm_trace(
+                    trace_id,
+                    {
+                        "status": "success",
+                        "kind": "json",
+                        "step_name": step_name,
+                        "provider": provider,
+                        "model": model_name,
+                        "tokens_input": input_tok,
+                        "tokens_output": output_tok,
+                        "latency_ms": elapsed_ms,
+                        "used_fallback": used_fallback,
+                    },
+                )
                 _store_llm_run(
                     trace_id=trace_id,
                     jira_id=jira_id,
@@ -1612,9 +1763,39 @@ async def _generate_json_impl(
                     "error_type": type(last_error).__name__,
                 },
             )
+            _append_llm_trace(
+                trace_id,
+                {
+                    "status": "failed",
+                    "kind": "json",
+                    "step_name": step_name,
+                    "provider": provider,
+                    "model": model_name,
+                    "tokens_input": input_tok,
+                    "tokens_output": output_tok,
+                    "latency_ms": elapsed_ms,
+                    "used_fallback": used_fallback,
+                    "error_type": type(last_error).__name__,
+                    "error": str(last_error),
+                },
+            )
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             last_error = e
+            _append_llm_trace(
+                trace_id,
+                {
+                    "status": "failed",
+                    "kind": "json",
+                    "step_name": step_name,
+                    "provider": provider,
+                    "model": model_name,
+                    "latency_ms": elapsed_ms,
+                    "used_fallback": used_fallback,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+            )
             _store_llm_run(
                 trace_id=trace_id,
                 jira_id=jira_id,
@@ -1655,6 +1836,7 @@ async def _generate_json_impl(
                     },
                 )
                 used_fallback = True
+                provider = _normalize_provider_name(LLM_FALLBACK_PROVIDER or provider) or provider
                 model_name = fallback_model
                 generate_fn = fallback_fn
                 model_override = fallback_override
@@ -1714,6 +1896,13 @@ async def _generate_text_impl(
             if not GROQ_API_KEY or not GROQ_API_KEY.strip():
                 raise ValueError("GROQ_API_KEY is not set (LLM_PROVIDER=groq)")
             return GROQ_MODEL, _generate_groq, None
+        if provider == "azure_openai":
+            if not _azure_openai_is_available():
+                raise ValueError(
+                    "Azure OpenAI is not fully configured. Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, "
+                    "AZURE_OPENAI_API_VERSION, and AZURE_OPENAI_MODEL in backend/.env."
+                )
+            return _openai_model_for_provider(provider), _generate_openai, None
         if provider == "openai":
             if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
                 raise ValueError("OPENAI_API_KEY is not set (LLM_PROVIDER=openai)")
@@ -1762,6 +1951,20 @@ async def _generate_text_impl(
             content, input_tok, output_tok = await _try_generate(generate_fn, model_override)
             text_out = _coerce_llm_text_response(content).strip()
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            _append_llm_trace(
+                trace_id,
+                {
+                    "status": "success",
+                    "kind": "text",
+                    "step_name": step_name,
+                    "provider": provider,
+                    "model": model_name,
+                    "tokens_input": input_tok,
+                    "tokens_output": output_tok,
+                    "latency_ms": elapsed_ms,
+                    "used_fallback": used_fallback,
+                },
+            )
             _store_llm_run(
                 trace_id=trace_id,
                 jira_id=jira_id,
@@ -1790,6 +1993,20 @@ async def _generate_text_impl(
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             last_error = e
+            _append_llm_trace(
+                trace_id,
+                {
+                    "status": "failed",
+                    "kind": "text",
+                    "step_name": step_name,
+                    "provider": provider,
+                    "model": model_name,
+                    "latency_ms": elapsed_ms,
+                    "used_fallback": used_fallback,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+            )
             _store_llm_run(
                 trace_id=trace_id,
                 jira_id=jira_id,
@@ -1822,6 +2039,7 @@ async def _generate_text_impl(
                 and fallback_model
             ):
                 used_fallback = True
+                provider = _normalize_provider_name(LLM_FALLBACK_PROVIDER or provider) or provider
                 model_name = fallback_model
                 generate_fn = fallback_fn
                 model_override = fallback_override

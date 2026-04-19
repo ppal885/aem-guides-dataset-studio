@@ -3,7 +3,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.auth import UserIdentity
+from app.db.base import Base
+from app.db.migrations import run_migrations
+from app.db.session import engine
 from app.main import app
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _initialize_test_database():
+    """Keep the test database schema aligned with model and migration changes."""
+    Base.metadata.create_all(bind=engine)
+    run_migrations()
+    yield
 
 
 @pytest.fixture

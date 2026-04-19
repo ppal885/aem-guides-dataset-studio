@@ -35,9 +35,9 @@ python3 run_local.py
 
 ## Verify Backend is Running
 Once started, the backend should be available at:
-- **API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
+- **API**: http://localhost:8001
+- **API Docs**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
 
 ## Note
 The fixes I made to handle the 500 error are already in place in `backend/app/api/v1/routes/schedule.py`. Once the backend starts, test the `/api/v1/jobs` endpoint again.

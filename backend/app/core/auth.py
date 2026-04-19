@@ -148,6 +148,18 @@ def _load_token_config_map() -> dict[str, UserIdentity]:
     return token_map
 
 
+def has_configured_auth_tokens(*, include_test_token: bool = False) -> bool:
+    """Return True when at least one non-dev bearer token is configured."""
+    token_map = _load_token_config_map()
+    if include_test_token:
+        return bool(token_map)
+    return any(
+        token
+        for token, identity in token_map.items()
+        if identity.auth_method not in {"test_token"}
+    )
+
+
 def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),

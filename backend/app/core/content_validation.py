@@ -10,6 +10,8 @@ from typing import Optional
 CHAT_MESSAGE_MAX_LEN = int(os.getenv("CHAT_MESSAGE_MAX_LEN", "50000"))
 GENERATE_TEXT_MAX_LEN = int(os.getenv("GENERATE_TEXT_MAX_LEN", "100000"))
 GENERATE_INSTRUCTIONS_MAX_LEN = int(os.getenv("GENERATE_INSTRUCTIONS_MAX_LEN", "10000"))
+# Optional Jira / ticket paste for screenshot authoring (separate from main chat prompt)
+AUTHORING_JIRA_CONTEXT_MAX_LEN = int(os.getenv("AUTHORING_JIRA_CONTEXT_MAX_LEN", "32000"))
 
 # Prompt-injection / jailbreak / system-prompt override patterns (case-insensitive)
 # Block inputs that attempt to override instructions or jailbreak the model
@@ -69,6 +71,28 @@ def _check_pii(text: str) -> Optional[str]:
 def _strip_control_chars(text: str) -> str:
     """Remove control characters and null bytes."""
     return CONTROL_CHAR_PATTERN.sub("", text)
+
+
+def validate_authoring_jira_context(raw: str | None) -> Optional[str]:
+    """
+    Validate optional Jira/issue text attached to screenshot authoring.
+    Empty or whitespace-only input is valid (returns None).
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        return "Jira context must be a string"
+    text = raw.strip()
+    if not text:
+        return None
+    if len(text) > AUTHORING_JIRA_CONTEXT_MAX_LEN:
+        return f"Jira context exceeds maximum length of {AUTHORING_JIRA_CONTEXT_MAX_LEN} characters"
+    if CONTROL_CHAR_PATTERN.search(text):
+        return "Jira context contains invalid control characters"
+    err = _check_injection(text)
+    if err:
+        return err
+    return None
 
 
 def validate_chat_content(content: str) -> Optional[str]:

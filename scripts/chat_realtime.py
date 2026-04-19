@@ -14,7 +14,7 @@ Optional:
 
 Environment (same as ``mcp_api_adapter``):
 
-  DATASET_STUDIO_API_BASE_URL   default http://127.0.0.1:8000
+  DATASET_STUDIO_API_BASE_URL   default http://127.0.0.1:8001
   DATASET_STUDIO_API_BEARER_TOKEN or API_BEARER_TOKEN
 
 Commands (input line):

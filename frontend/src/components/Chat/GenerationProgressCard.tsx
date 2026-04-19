@@ -42,7 +42,7 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
     return (
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
         <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
           <span className="text-blue-800">Connecting...</span>
         </div>
       </div>
@@ -80,7 +80,7 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
   return (
     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
       <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+        <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
         <span className="text-blue-800">{stageLabel}</span>
       </div>
     </div>

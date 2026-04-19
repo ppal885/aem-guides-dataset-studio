@@ -30,7 +30,7 @@ class Settings:
 
 def get_settings() -> Settings:
     load_dotenv_optional()
-    base = (os.getenv("DATASET_STUDIO_API_BASE_URL") or "http://127.0.0.1:8000").rstrip("/")
+    base = (os.getenv("DATASET_STUDIO_API_BASE_URL") or "http://127.0.0.1:8001").rstrip("/")
     raw_token = (os.getenv("DATASET_STUDIO_API_BEARER_TOKEN") or os.getenv("API_BEARER_TOKEN") or "").strip()
     bearer_token = raw_token or None
     timeout_seconds = float(os.getenv("DATASET_STUDIO_API_TIMEOUT_SECONDS") or "120")

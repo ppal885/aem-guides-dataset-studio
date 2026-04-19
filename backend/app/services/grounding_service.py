@@ -14,6 +14,7 @@ _STOPWORDS = {
     "a", "an", "and", "or", "the", "to", "for", "from", "with", "without", "this", "that", "these", "those",
     "issue", "ticket", "topic", "task", "story", "feature", "bug", "page", "document", "article", "guide",
     "guides", "user", "users", "when", "where", "what", "how", "using", "used", "into", "onto",
+    "you", "your", "mean", "means", "meant",
 }
 
 _NEGATION_TERMS = {"not", "never", "without", "unsupported", "disabled", "disable", "cannot", "can't"}
@@ -60,6 +61,32 @@ _DOC_TYPE_LABELS = {
     "user_manual": "User Manual",
     "release_notes": "Release Notes",
 }
+
+_DITA_EXAMPLE_REQUEST_PATTERN = re.compile(
+    r"\b(example|sample|snippet|skeleton|template|boilerplate|minimal|show me|give me)\b",
+    re.IGNORECASE,
+)
+_DITA_STRUCTURE_QUERY_PATTERN = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9._:-]*>|"
+    r"\b(dita|ditamap|xml|doctype|element|attribute|content model|topicref|topichead|topicgroup|mapref|navref|"
+    r"keydef|keyref|conref|conkeyref|href|reltable|bookmap|glossentry|subject scheme|"
+    r"task topic|concept topic|reference topic|specialization|constraint|keyscope)\b",
+    re.IGNORECASE,
+)
+_DITA_ROOT_HINTS = (
+    ("reference", re.compile(r"\b(reference topic|reference|refbody)\b", re.IGNORECASE)),
+    ("task", re.compile(r"\b(task topic|task|taskbody|steps?)\b", re.IGNORECASE)),
+    ("concept", re.compile(r"\b(concept topic|concept|conbody)\b", re.IGNORECASE)),
+    ("topic", re.compile(r"\b(topic|body)\b", re.IGNORECASE)),
+)
+_PLACEHOLDER_PHRASES = (
+    "briefly introduce",
+    "provide an overview",
+    "present detailed information",
+    "summarize the key points",
+    "replace this",
+    "placeholder",
+)
 
 
 @dataclass
@@ -599,6 +626,12 @@ def build_grounding_metadata(
     corrected_query: str = "",
     correction_applied: bool = False,
     unsupported_points: list[str] | None = None,
+    llm: dict[str, Any] | None = None,
+    answer_kind: str = "",
+    source_policy: str = "",
+    example_verified: bool = False,
+    semantic_warnings: list[str] | None = None,
+    retrieval: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     citations = [citation.to_dict() for citation in evidence_pack.citations(limit=6)]
     return {
@@ -613,6 +646,12 @@ def build_grounding_metadata(
         "citations": citations,
         "evidence_summary": evidence_pack.evidence_summary(),
         "unsupported_points": unsupported_points or [],
+        "llm": llm or {},
+        "answer_kind": answer_kind,
+        "source_policy": source_policy,
+        "example_verified": example_verified,
+        "semantic_warnings": semantic_warnings or [],
+        "retrieval": retrieval or {},
     }
 
 
@@ -651,14 +690,179 @@ def _heuristic_supported_sentences(answer: str, evidence_pack: EvidencePack) -> 
     supported: list[str] = []
     unsupported: list[str] = []
     for sentence in _sentence_split(answer):
-        if len(sentence) < 25:
-            supported.append(sentence)
+        normalized_sentence = re.sub(r"^[#>\-\*\s`]+", "", sentence or "").replace("`", "").strip()
+        if not normalized_sentence:
             continue
-        if max((_term_overlap_ratio(sentence, chunk.content) for chunk in evidence_pack.chunks[:4]), default=0.0) >= 0.18:
-            supported.append(sentence)
+        if len(normalized_sentence) < 25:
+            supported.append(normalized_sentence)
+            continue
+        if max((_term_overlap_ratio(normalized_sentence, chunk.content) for chunk in evidence_pack.chunks[:4]), default=0.0) >= 0.18:
+            supported.append(normalized_sentence)
         else:
-            unsupported.append(sentence)
+            unsupported.append(normalized_sentence)
     return supported, unsupported
+
+
+def _looks_like_dita_structure_question(question: str) -> bool:
+    return bool(_DITA_STRUCTURE_QUERY_PATTERN.search(question or ""))
+
+
+def _looks_like_dita_example_request(question: str) -> bool:
+    return bool(_looks_like_dita_structure_question(question) and _DITA_EXAMPLE_REQUEST_PATTERN.search(question or ""))
+
+
+def _requested_dita_root(question: str) -> str | None:
+    text = question or ""
+    for root_name, pattern in _DITA_ROOT_HINTS:
+        if pattern.search(text):
+            return root_name
+    return None
+
+
+def _safe_example_for_root(root_name: str) -> str | None:
+    root = (root_name or "").strip().lower()
+    if root == "task":
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">\n'
+            '<task id="sample-task">\n'
+            '  <title>Sample task</title>\n'
+            '  <shortdesc>Describe the task outcome.</shortdesc>\n'
+            '  <taskbody>\n'
+            '    <steps>\n'
+            '      <step>\n'
+            '        <cmd>Perform the action.</cmd>\n'
+            '      </step>\n'
+            '    </steps>\n'
+            '  </taskbody>\n'
+            '</task>'
+        )
+    if root == "concept":
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "technicalContent/dtd/concept.dtd">\n'
+            '<concept id="sample-concept">\n'
+            '  <title>Sample concept</title>\n'
+            '  <shortdesc>Summarize the concept in one sentence.</shortdesc>\n'
+            '  <conbody>\n'
+            '    <p>Explain the concept here.</p>\n'
+            '  </conbody>\n'
+            '</concept>'
+        )
+    if root == "reference":
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">\n'
+            '<reference id="sample-reference">\n'
+            '  <title>Sample reference</title>\n'
+            '  <shortdesc>Summarize what this reference topic covers.</shortdesc>\n'
+            '  <refbody>\n'
+            '    <section>\n'
+            '      <title>Details</title>\n'
+            '      <p>Document the supported details here.</p>\n'
+            '    </section>\n'
+            '  </refbody>\n'
+            '</reference>'
+        )
+    if root == "topic":
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">\n'
+            '<topic id="sample-topic">\n'
+            '  <title>Sample topic</title>\n'
+            '  <shortdesc>Summarize the topic.</shortdesc>\n'
+            '  <body>\n'
+            '    <p>Write the topic content here.</p>\n'
+            '  </body>\n'
+            '</topic>'
+        )
+    return None
+
+
+def _extract_xml_code_blocks(answer: str) -> list[str]:
+    if not answer:
+        return []
+    blocks = re.findall(r"```(?:xml)?\s*([\s\S]*?)```", answer, flags=re.IGNORECASE)
+    extracted = [block.strip() for block in blocks if block and block.strip()]
+    if extracted:
+        return extracted
+    stripped = answer.strip()
+    if stripped.startswith("<?xml") or stripped.startswith("<!DOCTYPE") or stripped.startswith("<topic") or stripped.startswith("<task") or stripped.startswith("<concept") or stripped.startswith("<reference"):
+        return [stripped]
+    return []
+
+
+def _xml_block_has_placeholder_content(xml_text: str) -> bool:
+    lowered = (xml_text or "").lower()
+    if any(phrase in lowered for phrase in _PLACEHOLDER_PHRASES):
+        return True
+    return (
+        lowered.count("<title>introduction</title>") >= 1
+        and lowered.count("<title>body</title>") >= 1
+        and lowered.count("<title>conclusion</title>") >= 1
+    )
+
+
+def _looks_like_overconfident_draft(
+    *,
+    question: str,
+    draft_answer: str,
+    evidence_pack: EvidencePack,
+    supported: list[str],
+    unsupported: list[str],
+) -> bool:
+    if evidence_pack.decision.status in {"abstain", "conflict"}:
+        return True
+    xml_blocks = _extract_xml_code_blocks(draft_answer)
+    if xml_blocks and _looks_like_dita_structure_question(question):
+        return True
+    if any(_xml_block_has_placeholder_content(block) for block in xml_blocks):
+        return True
+    if (
+        "## Short answer" in draft_answer
+        and ("## Verified details" in draft_answer or "## Sources" in draft_answer)
+        and not unsupported
+    ):
+        return False
+    if unsupported and (not supported or len(unsupported) >= len(supported)):
+        return True
+    return False
+
+
+def _build_evidence_only_answer(
+    *,
+    question: str,
+    evidence_pack: EvidencePack,
+    verified_examples: list[dict[str, Any]] | None = None,
+) -> str:
+    citations = evidence_pack.citations(limit=4)
+    short_answer = _first_sentence(evidence_pack.chunks[0].content) if evidence_pack.chunks else ""
+    if not short_answer:
+        short_answer = "I don't have enough verified information in the indexed evidence to answer that confidently."
+    how_it_works = []
+    for chunk in evidence_pack.chunks[:3]:
+        sentence = _first_sentence(chunk.content)
+        if sentence and sentence not in how_it_works:
+            how_it_works.append(sentence)
+    verified_points = [evidence_pack.decision.reason]
+    not_verified_points: list[str] = []
+    missing_terms = _missing_query_terms(question, evidence_pack)
+    for term in missing_terms[:3]:
+        not_verified_points.append(f"The term `{term}` was not directly verified in the retrieved evidence.")
+    answer = _format_structured_answer(
+        short_answer=short_answer,
+        how_it_works=how_it_works[:3],
+        verified_points=verified_points,
+        not_verified_points=not_verified_points,
+        citations=citations,
+    )
+    examples = [item for item in (verified_examples or []) if isinstance(item, dict) and str(item.get("snippet") or "").strip()]
+    if examples:
+        first = examples[0]
+        label = str(first.get("label") or "Verified example").strip()
+        snippet = str(first.get("snippet") or "").strip()
+        answer = answer + f"\n\n## {label}\n```xml\n{snippet}\n```"
+    return answer
 
 
 async def verify_grounded_answer(
@@ -667,8 +871,11 @@ async def verify_grounded_answer(
     draft_answer: str,
     evidence_pack: EvidencePack,
     jira_id: str | None = None,
+    verified_examples: list[dict[str, Any]] | None = None,
+    structured_tool_answer: bool = False,
 ) -> GroundedAnswer:
     draft_answer = _coerce_llm_text_response(draft_answer)
+    verified_examples = [item for item in (verified_examples or []) if isinstance(item, dict)]
 
     # When we have a good draft answer (generated with full RAG context and
     # the rich chat_system prompt), pass it through directly — the draft is
@@ -676,11 +883,57 @@ async def verify_grounded_answer(
     # sources section gives the user provenance without a second LLM call
     # that was reformatting / destroying the answer.
     if draft_answer.strip():
+        supported, unsupported = _heuristic_supported_sentences(draft_answer, evidence_pack)
         citation_objects = evidence_pack.citations(limit=5)
         citation_ids = [c.id for c in citation_objects]
-        # Append sources footer if not already present
+        if not structured_tool_answer and (verified_examples or _looks_like_overconfident_draft(
+            question=question,
+            draft_answer=draft_answer,
+            evidence_pack=evidence_pack,
+            supported=supported,
+            unsupported=unsupported,
+        )):
+            answer_text = _build_evidence_only_answer(
+                question=question,
+                evidence_pack=evidence_pack,
+                verified_examples=verified_examples,
+            )
+            return GroundedAnswer(
+                answer=answer_text,
+                citation_ids=citation_ids,
+                unsupported_points=list(unsupported[:4]),
+                grounding_status="partial",
+                reason="The draft answer was narrowed to verified evidence before being returned.",
+            )
         answer_text = draft_answer.strip()
-        if citation_objects and "## Sources" not in answer_text:
+        if "## Short answer" not in answer_text:
+            draft_points = [
+                sentence
+                for sentence in (_first_sentence(part.strip()) for part in draft_answer.splitlines() if part.strip())
+                if sentence
+            ]
+            short_answer = draft_points[0] if draft_points else supported[0] if supported else ""
+            how_it_works = draft_points[1:3] if len(draft_points) > 1 else supported[1:3]
+            if not how_it_works:
+                how_it_works = _top_evidence_points(evidence_pack, limit=2)
+            verified_points = _top_evidence_points(evidence_pack, limit=3)
+            not_verified = list(unsupported[:3])
+            for term in _missing_query_terms(question, evidence_pack)[:3]:
+                note = f"The term `{term}` was not directly verified in the retrieved evidence."
+                if note not in not_verified:
+                    not_verified.append(note)
+            if not short_answer:
+                short_answer = _first_sentence(evidence_pack.chunks[0].content) if evidence_pack.chunks else ""
+            if not short_answer:
+                short_answer = "I don't have enough verified information to answer that confidently."
+            answer_text = _format_structured_answer(
+                short_answer=short_answer,
+                how_it_works=how_it_works[:3],
+                verified_points=verified_points,
+                not_verified_points=not_verified,
+                citations=citation_objects,
+            )
+        elif citation_objects and "## Sources" not in answer_text:
             sources_lines = ["\n\n## Sources"]
             for c in citation_objects:
                 label = c.label or c.id
@@ -741,6 +994,12 @@ def grounding_metadata_from_pack(
     *,
     corrected_query: str = "",
     correction_applied: bool = False,
+    llm: dict[str, Any] | None = None,
+    answer_kind: str = "",
+    source_policy: str = "",
+    example_verified: bool = False,
+    semantic_warnings: list[str] | None = None,
+    retrieval: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     citation_lookup = {citation.id: citation.to_dict() for citation in evidence_pack.citations(limit=8)}
     selected = [citation_lookup[citation_id] for citation_id in grounded_answer.citation_ids if citation_id in citation_lookup]
@@ -749,6 +1008,12 @@ def grounding_metadata_from_pack(
         corrected_query=corrected_query,
         correction_applied=correction_applied,
         unsupported_points=grounded_answer.unsupported_points,
+        llm=llm,
+        answer_kind=answer_kind,
+        source_policy=source_policy,
+        example_verified=example_verified,
+        semantic_warnings=semantic_warnings,
+        retrieval=retrieval,
     )
     payload["status"] = grounded_answer.grounding_status
     payload["reason"] = grounded_answer.reason or payload["reason"]

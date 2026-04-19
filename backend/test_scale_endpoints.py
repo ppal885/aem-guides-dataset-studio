@@ -9,7 +9,7 @@ import requests
 import json
 from typing import Dict
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 def test_large_scale_preview():
     """Test large-scale preview endpoint."""

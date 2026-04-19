@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "../../technicalContent/dtd/task.dtd">
-<task id="task_dbf5bcda" xml:lang="en"><title>Task 00008</title><shortdesc>Task: Task 00008</shortdesc><taskbody><prereq><p>Prerequisites for this task.</p></prereq><context><p>Context information for this task.</p></context><steps><step><cmd>Step 1: Perform action 1</cmd><substeps><substep><cmd>Substep 1.1</cmd></substep><substep><cmd>Substep 1.2</cmd></substep></substeps></step><step><cmd>Step 2: Perform action 2</cmd></step><step><cmd>Step 3: Perform action 3</cmd><info><p>Additional information for step 3.</p></info></step></steps><result><p>Expected result after completing this task.</p></result></taskbody></task>

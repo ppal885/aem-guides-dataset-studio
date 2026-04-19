@@ -46,6 +46,44 @@ export interface ChatGroundingCitation {
   uri?: string;
 }
 
+export interface ChatLlmUsageCall {
+  status?: string;
+  kind?: string;
+  step_name?: string;
+  provider?: string;
+  model?: string;
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  latency_ms?: number | null;
+  used_fallback?: boolean;
+  error_type?: string;
+  error?: string;
+}
+
+export interface ChatLlmUsage {
+  configured_provider?: string;
+  configured_provider_label?: string;
+  configured_model?: string;
+  provider?: string;
+  provider_label?: string;
+  model?: string;
+  available?: boolean;
+  llm_used?: boolean;
+  path?: string;
+  call_count?: number;
+  attempt_count?: number;
+  steps?: string[];
+  fallback_used?: boolean;
+  calls?: ChatLlmUsageCall[];
+  draft_stage?: {
+    llm_draft_used?: boolean;
+    path?: string;
+    fields?: string[];
+    step_name?: string;
+    warning?: string;
+  };
+}
+
 export interface ChatGrounding {
   query: string;
   status: 'grounded' | 'partial' | 'abstain' | 'conflict' | string;
@@ -59,6 +97,195 @@ export interface ChatGrounding {
     top_titles?: string[];
   };
   unsupported_points?: string[];
+  llm?: ChatLlmUsage;
+}
+
+export interface ChatAttachmentMeta {
+  asset_id?: string;
+  kind: 'image' | 'reference_dita' | 'generated_dita' | string;
+  filename: string;
+  mime_type?: string;
+  size_bytes?: number;
+  url?: string;
+  storage_path?: string | null;
+  content_preview?: string | null;
+}
+
+export type ChatStyleStrictness = 'low' | 'medium' | 'high';
+export type ChatAuthoringOutputMode =
+  | 'xml_only'
+  | 'xml_explanation'
+  | 'xml_validation'
+  | 'xml_style_diff';
+
+/** Task/topic structural mode for reference-guided generation. */
+export type ChatAuthoringPattern = 'default' | 'cisco_task' | 'cisco_reference' | 'auto';
+
+/** Single topic vs diagram → map + stub topics. */
+export type ChatScreenshotDeliverableMode = 'single_topic' | 'map_hierarchy';
+
+export interface ChatDitaGenerationOptions {
+  dita_type?: 'topic' | 'task' | 'concept' | 'reference' | 'map' | null;
+  save_path?: string | null;
+  file_name?: string | null;
+  strict_validation?: boolean;
+  style_strictness?: ChatStyleStrictness;
+  preserve_prolog?: boolean;
+  xref_placeholders?: boolean;
+  auto_ids?: boolean;
+  output_mode?: ChatAuthoringOutputMode;
+  /** default | cisco_task | cisco_reference | auto (infer from reference). */
+  authoring_pattern?: ChatAuthoringPattern;
+  /** Use reference DOCTYPE line when serializing (also on for cisco_task / cisco_reference). */
+  preserve_reference_doctype?: boolean;
+  screenshot_deliverable?: ChatScreenshotDeliverableMode;
+}
+
+export interface ChatBundleArtifact {
+  role: 'map' | 'topic';
+  dita_type: string;
+  filename: string;
+  href: string;
+  asset_id?: string | null;
+  url?: string | null;
+  xml_preview?: string;
+}
+
+export interface ChatDitaValidationResult {
+  valid: boolean;
+  repaired?: boolean;
+  quality_score?: number | null;
+  validator_errors?: string[];
+  validator_warnings?: string[];
+  structural_issues?: string[];
+  review_issues?: Array<Record<string, unknown>>;
+  aem_guides_validation_errors?: string[];
+  applied_repairs?: string[];
+}
+
+export interface ChatAction {
+  key: string;
+  label: string;
+  url?: string | null;
+  description?: string | null;
+}
+
+export interface ChatSemanticPlanSection {
+  name: string;
+  purpose: string;
+  details?: string[];
+}
+
+export interface ChatSemanticPlan {
+  title: string;
+  dita_type: 'topic' | 'task' | 'concept' | 'reference' | 'map' | string;
+  shortdesc: string;
+  audience?: string;
+  purpose?: string;
+  sections?: ChatSemanticPlanSection[];
+  style_notes?: string[];
+  source_notes?: string[];
+}
+
+export interface ChatLinkRecommendation {
+  kind?: string;
+  severity?: string;
+  summary?: string;
+  action?: string;
+}
+
+export interface ChatDitaAuthoringResult {
+  status: 'saved' | 'valid' | 'repaired' | 'invalid' | 'error' | string;
+  title: string;
+  dita_type: 'topic' | 'task' | 'concept' | 'reference' | 'map' | string;
+  xml_preview: string;
+  validation_result: ChatDitaValidationResult;
+  saved_asset_path?: string | null;
+  artifact_url?: string | null;
+  actions?: ChatAction[];
+  message?: string;
+  semantic_plan?: ChatSemanticPlan | null;
+  image_context?: Record<string, unknown> | null;
+  /** First reference summary (compat); prefer when only one reference attachment exists. */
+  reference_summary?: Record<string, unknown> | null;
+  /** Multi-reference order (future); server may emit alongside reference_summary. */
+  reference_summaries?: Record<string, unknown>[];
+  assumptions?: string[];
+  style_profile_diff_summary?: string | null;
+  screenshot_confidence?: number | null;
+  explanation?: string | null;
+  /** Safe xref/conref guidance — server never invents repository paths. */
+  link_recommendations?: ChatLinkRecommendation[];
+  debug?: Record<string, unknown>;
+  bundle_artifacts?: ChatBundleArtifact[];
+}
+
+export interface ChatAgentStep {
+  id: string;
+  title: string;
+  tool_name?: string;
+  status?: string;
+  approval_required?: boolean;
+  summary?: string;
+  note?: string;
+  error?: string;
+}
+
+export interface ChatAgentPlan {
+  goal: string;
+  mode: string;
+  status: string;
+  requires_approval?: boolean;
+  expected_outputs?: string[];
+  resume_tokens?: string[];
+  steps?: ChatAgentStep[];
+}
+
+export interface ChatAgentExecution {
+  status: string;
+  current_step_id?: string | null;
+  steps?: ChatAgentStep[];
+}
+
+export interface ChatApprovalState {
+  state: string;
+  pending_step_id?: string;
+  pending_tool_name?: string;
+  prompt?: string;
+  affected_artifacts?: string[];
+  allowed_responses?: string[];
+}
+
+export interface ChatToolSchemaProperty {
+  type?: string;
+  description?: string;
+  enum?: string[];
+  items?: { type?: string };
+}
+
+export interface ChatToolSchema {
+  type?: string;
+  properties?: Record<string, ChatToolSchemaProperty>;
+  required?: string[];
+}
+
+export interface ChatToolCatalogItem {
+  name: string;
+  slash_alias: string;
+  title: string;
+  description: string;
+  category: string;
+  args_schema: ChatToolSchema;
+  approval_required: boolean;
+  read_only: boolean;
+  enabled: boolean;
+  primary_arg?: string;
+}
+
+export interface ChatToolIntent {
+  name: string;
+  args: Record<string, unknown>;
+  source: 'slash';
 }
 
 export type AgentState = 'analyzing' | 'tool_calling' | 'synthesizing' | 'retrying';
@@ -69,25 +296,17 @@ export interface SuggestedFollowup {
 }
 
 export interface SSEEvent {
-  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding' | 'thinking' | 'state' | 'approval_required' | 'job_progress' | 'suggested_followups' | 'tool_metrics';
+  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding' | 'plan' | 'approval_required' | 'step_status';
   content?: string;
   message?: string;
   name?: string;
   result?: unknown;
   run_id?: string;
   grounding?: ChatGrounding;
-  /** Agentic state indicator */
-  state?: AgentState;
-  tools?: string[];
-  round?: number;
-  max_rounds?: number;
-  /** Job progress streaming (Phase 3) */
-  job_id?: string;
-  recipe_type?: string;
-  status?: string;
-  download_url?: string;
-  /** Suggested follow-ups */
-  followups?: SuggestedFollowup[];
+  plan?: ChatAgentPlan;
+  approval?: ChatApprovalState;
+  execution?: ChatAgentExecution;
+  step?: ChatAgentStep;
 }
 
 function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
@@ -101,31 +320,12 @@ function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
     callbacks.onToolStart?.(event.name, event.run_id);
   } else if (event.type === 'grounding' && event.grounding != null) {
     callbacks.onGrounding?.(event.grounding);
-  } else if (event.type === 'thinking' && event.content != null) {
-    callbacks.onThinking?.(event.content);
-  } else if (event.type === 'state' && event.state != null) {
-    callbacks.onState?.(event.state, event.message ?? '', {
-      tools: event.tools,
-      round: event.round,
-      maxRounds: event.max_rounds,
-    });
-  } else if (event.type === 'suggested_followups' && event.followups) {
-    callbacks.onSuggestedFollowups?.(event.followups);
-  } else if (event.type === 'approval_required') {
-    callbacks.onApprovalRequired?.(event.message ?? '', event.tools ?? []);
-  } else if (event.type === 'job_progress') {
-    callbacks.onJobProgress?.({
-      jobId: event.job_id ?? '',
-      name: event.name ?? '',
-      recipeType: event.recipe_type ?? '',
-      status: event.status ?? 'pending',
-      downloadUrl: event.download_url ?? '',
-    });
-  } else if (event.type === 'tool_metrics') {
-    // A3: Tool execution metrics — log to console in dev, optional callback
-    if (import.meta.env.DEV) {
-      console.debug('[tool_metrics]', (event as unknown as Record<string, unknown>).data);
-    }
+  } else if (event.type === 'plan' && event.plan != null) {
+    callbacks.onPlan?.(event.plan);
+  } else if (event.type === 'approval_required' && event.plan != null && event.approval != null) {
+    callbacks.onApprovalRequired?.(event.plan, event.approval);
+  } else if (event.type === 'step_status' && event.execution != null) {
+    callbacks.onStepStatus?.(event.execution, event.step);
   } else if (event.type === 'error') {
     callbacks.onError?.(event.message ?? 'Unknown error');
   }
@@ -151,11 +351,9 @@ export interface SseCallbacks {
   onTool?: (name: string, result: unknown) => void;
   onToolStart?: (name: string, runId?: string) => void;
   onGrounding?: (grounding: ChatGrounding) => void;
-  onThinking?: (content: string) => void;
-  onState?: (state: AgentState, message: string, info: AgentStateInfo) => void;
-  onSuggestedFollowups?: (followups: SuggestedFollowup[]) => void;
-  onApprovalRequired?: (message: string, tools: string[]) => void;
-  onJobProgress?: (info: JobProgressInfo) => void;
+  onPlan?: (plan: ChatAgentPlan) => void;
+  onApprovalRequired?: (plan: ChatAgentPlan, approval: ChatApprovalState) => void;
+  onStepStatus?: (execution: ChatAgentExecution, step?: ChatAgentStep) => void;
   onError?: (message: string) => void;
 }
 
@@ -326,6 +524,14 @@ export interface SendMessageOptions {
   context?: ChatContext;
   /** When true, server appends human-precision rules (concise, less filler). Omit to use server env default. */
   humanPrompts?: boolean;
+  toolIntent?: ChatToolIntent;
+  attachments?: {
+    imageFile?: File | null;
+    referenceDitaFile?: File | null;
+  };
+  generationOptions?: ChatDitaGenerationOptions;
+  /** Optional Jira/issue text merged into screenshot authoring (server length-capped). */
+  jiraContext?: string | null;
   /** Abort ongoing stream (Stop button). */
   signal?: AbortSignal;
 }
@@ -336,19 +542,87 @@ export async function sendMessage(
   callbacks: SseCallbacks,
   options?: SendMessageOptions
 ): Promise<void> {
-  const body: Record<string, unknown> = {
-    content,
-    context: options?.context ?? undefined,
-  };
-  if (options?.humanPrompts !== undefined) {
-    body.human_prompts = options.humanPrompts;
+  const imageFile = options?.attachments?.imageFile ?? null;
+  const referenceDitaFile = options?.attachments?.referenceDitaFile ?? null;
+  const hasAuthoringAttachments = Boolean(imageFile);
+
+  let res: Response;
+  if (hasAuthoringAttachments) {
+    const formData = new FormData();
+    formData.append('content', content);
+    if (options?.context) {
+      formData.append('context', JSON.stringify(options.context));
+    }
+    if (options?.humanPrompts !== undefined) {
+      formData.append('human_prompts', String(options.humanPrompts));
+    }
+    if (options?.generationOptions?.dita_type) {
+      formData.append('dita_type', String(options.generationOptions.dita_type));
+    }
+    if (options?.generationOptions?.save_path) {
+      formData.append('save_path', String(options.generationOptions.save_path));
+    }
+    if (options?.generationOptions?.file_name) {
+      formData.append('file_name', String(options.generationOptions.file_name));
+    }
+    if (options?.generationOptions?.strict_validation !== undefined) {
+      formData.append('strict_validation', String(options.generationOptions.strict_validation));
+    }
+    if (options?.generationOptions?.style_strictness) {
+      formData.append('style_strictness', String(options.generationOptions.style_strictness));
+    }
+    if (options?.generationOptions?.preserve_prolog !== undefined) {
+      formData.append('preserve_prolog', String(options.generationOptions.preserve_prolog));
+    }
+    if (options?.generationOptions?.xref_placeholders !== undefined) {
+      formData.append('xref_placeholders', String(options.generationOptions.xref_placeholders));
+    }
+    if (options?.generationOptions?.auto_ids !== undefined) {
+      formData.append('auto_ids', String(options.generationOptions.auto_ids));
+    }
+    if (options?.generationOptions?.output_mode) {
+      formData.append('output_mode', String(options.generationOptions.output_mode));
+    }
+    if (options?.generationOptions?.authoring_pattern) {
+      formData.append('authoring_pattern', String(options.generationOptions.authoring_pattern));
+    }
+    if (options?.generationOptions?.preserve_reference_doctype !== undefined) {
+      formData.append('preserve_reference_doctype', String(options.generationOptions.preserve_reference_doctype));
+    }
+    if (options?.generationOptions?.screenshot_deliverable) {
+      formData.append('screenshot_deliverable', String(options.generationOptions.screenshot_deliverable));
+    }
+    const jc = (options?.jiraContext ?? '').trim();
+    if (jc) {
+      formData.append('jira_context', jc);
+    }
+    formData.append('image_attachment', imageFile);
+    if (referenceDitaFile) {
+      formData.append('reference_dita', referenceDitaFile);
+    }
+    res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages/authoring`), {
+      method: 'POST',
+      body: formData,
+      signal: options?.signal,
+    });
+  } else {
+    const body: Record<string, unknown> = {
+      content,
+      context: options?.context ?? undefined,
+    };
+    if (options?.humanPrompts !== undefined) {
+      body.human_prompts = options.humanPrompts;
+    }
+    if (options?.toolIntent) {
+      body.tool_intent = options.toolIntent;
+    }
+    res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    });
   }
-  const res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: options?.signal,
-  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail || res.statusText);
@@ -364,6 +638,28 @@ export async function sendMessage(
   }
 }
 
+export async function listChatTools(): Promise<{ tools: ChatToolCatalogItem[] }> {
+  return fetchJson(apiUrl('/api/v1/chat/tools'));
+}
+
+/** JSON body shape for POST /regenerate (snake_case for FastAPI). */
+function generationOptionsToApiPayload(opts: ChatDitaGenerationOptions): Record<string, unknown> {
+  return {
+    dita_type: opts.dita_type ?? null,
+    save_path: opts.save_path ?? null,
+    file_name: opts.file_name ?? null,
+    strict_validation: opts.strict_validation,
+    style_strictness: opts.style_strictness,
+    preserve_prolog: opts.preserve_prolog,
+    xref_placeholders: opts.xref_placeholders,
+    auto_ids: opts.auto_ids,
+    output_mode: opts.output_mode,
+    authoring_pattern: opts.authoring_pattern,
+    preserve_reference_doctype: opts.preserve_reference_doctype,
+    screenshot_deliverable: opts.screenshot_deliverable,
+  };
+}
+
 export async function regenerateAssistant(
   sessionId: string,
   callbacks: SseCallbacks,
@@ -373,6 +669,9 @@ export async function regenerateAssistant(
     context: options?.context ?? undefined,
     human_prompts: options?.humanPrompts,
   };
+  if (options?.generationOptions) {
+    body.generation_options = generationOptionsToApiPayload(options.generationOptions);
+  }
   const res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/regenerate`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -391,6 +690,18 @@ export async function regenerateAssistant(
     await readChatSseBody(reader, callbacks);
   } finally {
     reader.releaseLock();
+  }
+}
+
+/** Fetch suggested prompts from backend (if available). */
+export async function getSuggestedPrompts(): Promise<string[]> {
+  try {
+    const res = await fetch(apiUrl('/api/v1/chat/suggested-prompts'));
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.prompts || data || [];
+  } catch {
+    return [];
   }
 }
 

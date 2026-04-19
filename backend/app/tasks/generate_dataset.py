@@ -85,6 +85,13 @@ def run_generate_dataset(
             total_files_estimated += n + 1  # topics + root map
             if getattr(recipe, "include_readme", True):
                 total_files_estimated += 1
+        elif recipe_type == "flat_hierarchical_dita":
+            n = getattr(recipe, 'topic_count', 5000)
+            tps = getattr(recipe, 'topics_per_section', 50)
+            sections = -(-n // tps)  # ceil division
+            flat_files = n + 1 + 2  # topics + rootmap + 2 dtd stubs
+            hier_files = n + sections + 1 + 2  # topics + submaps + rootmap + 2 dtd stubs
+            total_files_estimated += flat_files + hier_files + 1  # +1 for README
         elif recipe_type == "conrefend_cyclic_duplicate_id":
             total_files_estimated += 4  # 2 topics, 1 map, 1 readme
         elif recipe_type == "dita_conref_title_dataset_recipe":
@@ -134,6 +141,9 @@ def run_generate_dataset(
             "validation_missing_body_negative",
         ):
             total_files_estimated += 1
+        elif recipe_type == "syntax_diagram_reference":
+            n = getattr(recipe, "topic_count", 30) or 30
+            total_files_estimated += n + (1 if getattr(recipe, "include_map", True) else 0)
         else:
             total_files_estimated += 10  # Default estimate
     
@@ -213,6 +223,19 @@ def run_generate_dataset(
                     topic_count=recipe.topic_count if hasattr(recipe, "topic_count") else 30,
                     rows_per_table=recipe.rows_per_table if hasattr(recipe, "rows_per_table") else 8,
                     include_prophead=recipe.include_prophead if hasattr(recipe, "include_prophead") else True,
+                    include_map=recipe.include_map if hasattr(recipe, "include_map") else True,
+                    rand=rand,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "syntax_diagram_reference":
+                from app.generator.specialized import generate_syntax_diagram_reference_dataset
+                recipe_files = generate_syntax_diagram_reference_dataset(
+                    dataset_config,
+                    base,
+                    topic_count=recipe.topic_count if hasattr(recipe, "topic_count") else 30,
                     include_map=recipe.include_map if hasattr(recipe, "include_map") else True,
                     rand=rand,
                 )
@@ -680,7 +703,21 @@ def run_generate_dataset(
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
                 update_progress(f"Completed {stage_name}")
-            
+
+            elif recipe_type == "flat_hierarchical_dita":
+                from app.generator.flat_hierarchical_dita import generate_flat_hierarchical_dita
+                recipe_files = generate_flat_hierarchical_dita(
+                    dataset_config,
+                    base,
+                    topic_count=getattr(recipe, 'topic_count', 5000),
+                    topics_per_section=getattr(recipe, 'topics_per_section', 50),
+                    include_xrefs=getattr(recipe, 'include_xrefs', False),
+                    pretty_print=getattr(recipe, 'pretty_print', True),
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
             elif recipe_type == "localized_content":
                 from app.generator.localization import generate_localized_dataset
                 # First generate base content from base_recipe

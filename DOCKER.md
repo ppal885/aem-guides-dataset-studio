@@ -23,7 +23,7 @@
 .\DOCKER_RUN.ps1 -Dev
 ```
 
-- Backend: http://localhost:8000
+- Backend: http://localhost:8001
 - Frontend: http://localhost:5173
 
 ### Build images first
@@ -70,6 +70,6 @@ docker compose up
 |-----------|------|--------------------------------|
 | frontend  | 80   | Nginx + React (production)     |
 | frontend  | 5173 | Vite dev server (dev mode)     |
-| backend   | 8000 | FastAPI API                    |
+| backend   | 8001 | FastAPI API (host; container listens on 8000) |
 | postgres  | 5432 | PostgreSQL database           |
 | redis     | 6379 | Redis (for future Celery)     |
