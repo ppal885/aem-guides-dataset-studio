@@ -233,7 +233,8 @@ async def test_chat_turn_grounded_dita_attribute_question_uses_attribute_aware_s
         text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
         assert "## Short answer" in text
         assert "@format attribute identifies the format" in text
-        assert "## Valid values" in text
+        assert "## Valid values" not in text
+        assert "not treated as a closed enum" in text
         assert "## Sources" in text
         assert "oxygenxml.com" in text.lower()
         grounding_event = next(event for event in events if event.get("type") == "grounding")
@@ -747,8 +748,9 @@ async def test_chat_turn_grounded_conref_vs_conkeyref_renders_deterministic_comp
             events.append(event)
         text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
         assert "## Comparison" in text
-        assert "`conref`" in text
-        assert "`conkeyref`" in text
+        assert "| Attribute | What it does | Syntax | Typical use | Supported elements |" in text
+        assert "`@conref`" in text
+        assert "`@conkeyref`" in text
         grounding_event = next(event for event in events if event.get("type") == "grounding")
         assert grounding_event["grounding"]["answer_kind"] == "dita_attribute_comparison"
     finally:
@@ -820,6 +822,7 @@ async def test_chat_turn_dita_comparison_with_xml_examples_does_not_generate_dit
         assert not any(event.get("type") == "tool_start" and event.get("name") == "generate_dita" for event in events)
         text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
         assert "## Comparison" in text
+        assert "| Attribute | What it does | Syntax | Typical use | Supported elements |" in text
         assert "## Verified XML examples" in text
         assert 'conref="file.dita#topicId/elementId"' in text
         assert '<xref keyref="support-page">Support</xref>' in text
@@ -1049,9 +1052,9 @@ def test_dita_element_comparison_renders_deterministic_comparison_sections():
     assert "## Comparison" in rendered
     assert "`<data>`" in rendered
     assert "`<data-about>`" in rendered
-    assert "valid parents" in rendered
-    assert "common attributes" in rendered
-    assert "typical usage" in rendered
+    assert "Valid parents" in rendered
+    assert "Common attributes" in rendered
+    assert "Typical use" in rendered
     assert "## Verified details" not in rendered
 
 
@@ -1172,6 +1175,57 @@ async def test_chat_turn_keyscope_example_request_omits_unverified_xml_example(m
         assert grounding_event["grounding"]["example_verified"] is False
     finally:
         chat_service.delete_session(session_id)
+
+
+def test_open_token_attribute_values_are_not_rendered_as_valid_values():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="What is keyscope in DITA?",
+        tool_results_by_name={
+            "lookup_dita_attribute": {
+                "attribute_name": "keyscope",
+                "attribute_semantic_class": "open_token",
+                "attribute_syntax": 'keyscope="scope-name"',
+                "all_valid_values": ["single-scope", "nested-scopes"],
+                "supported_elements": ["map", "topicref"],
+                "combination_attributes": ["keys", "keyref"],
+                "text_content": "The @keyscope attribute creates a named scope for key definitions.",
+            },
+            "lookup_dita_spec": {"error": "attribute path used"},
+        },
+    )
+
+    assert facts is not None
+    assert facts.answer_kind == "dita_map_construct"
+    assert facts.valid_values == []
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "## Valid values" not in rendered
+    assert "not treated as a closed enum" in rendered
+
+
+def test_closed_map_attribute_values_are_still_rendered():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="What does processing-role mean in DITA?",
+        tool_results_by_name={
+            "lookup_dita_attribute": {
+                "attribute_name": "processing-role",
+                "attribute_semantic_class": "map_scoped",
+                "attribute_syntax": 'processing-role="normal|resource-only"',
+                "all_valid_values": ["normal", "resource-only"],
+                "supported_elements": ["topicref", "keydef"],
+                "text_content": "The @processing-role attribute controls whether a referenced topic contributes to output navigation.",
+            },
+            "lookup_dita_spec": {"error": "attribute path used"},
+        },
+    )
+
+    assert facts is not None
+    assert facts.answer_kind == "dita_map_construct"
+    assert facts.valid_values == ["normal", "resource-only"]
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "## Valid values" in rendered
+    assert "`resource-only`" in rendered
 
 
 def test_aem_translation_workflow_guidance_builds_verified_workflow_summary_and_actions():

@@ -1344,6 +1344,51 @@ _MAP_CONSTRUCT_ELEMENT_NAMES = frozenset(
 )
 
 
+_CLOSED_VALUE_ATTR_NAMES = frozenset(
+    {
+        "chunk",
+        "collection-type",
+        "expanse",
+        "frame",
+        "importance",
+        "linking",
+        "locktitle",
+        "print",
+        "processing-role",
+        "scale",
+        "scalefit",
+        "search",
+        "toc",
+    }
+)
+
+
+def _should_render_attribute_valid_values(
+    attr_name: str,
+    semantic_class: str,
+    values: list[str],
+) -> bool:
+    if not values:
+        return False
+    normalized_name = str(attr_name or "").strip().lower()
+    normalized_class = str(semantic_class or "").strip().lower()
+    if normalized_class in {"enum", "boolean_like"}:
+        return True
+    return normalized_name in _CLOSED_VALUE_ATTR_NAMES
+
+
+def _attribute_valid_value_warning(attr_name: str, semantic_class: str, values: list[str]) -> str | None:
+    if _should_render_attribute_valid_values(attr_name, semantic_class, values):
+        return None
+    if not values:
+        return None
+    normalized = str(attr_name or "").strip()
+    return (
+        f"`@{normalized}` is not treated as a closed enum here, so unverified value labels were omitted. "
+        "Use the syntax/usage sections for the value shape instead."
+    )
+
+
 def _clean_grounded_strings(items: Any, *, limit: int | None = None) -> list[str]:
     values: list[str] = []
     if not isinstance(items, list):
@@ -2409,6 +2454,12 @@ def _normalize_grounded_tool_facts(
         if isinstance(attr, dict) and not attr.get("error") and attr.get("attribute_name"):
             attr_name = str(attr.get("attribute_name") or "").strip()
             semantic_class = str(attr.get("attribute_semantic_class") or "").strip().lower()
+            raw_valid_values = _clean_grounded_strings(attr.get("all_valid_values") or [], limit=12)
+            valid_values = (
+                raw_valid_values
+                if _should_render_attribute_valid_values(attr_name, semantic_class, raw_valid_values)
+                else []
+            )
             answer_kind: GroundedAnswerKind = (
                 "dita_map_construct"
                 if semantic_class == "map_scoped" or attr_name.lower() in _MAP_SCOPED_ATTR_NAMES
@@ -2420,12 +2471,16 @@ def _normalize_grounded_tool_facts(
                 raw_examples=_clean_grounded_strings(attr.get("correct_examples") or [], limit=3),
                 attr_name=attr_name,
             )
+            semantic_warnings = common_warnings + example_warnings
+            value_warning = _attribute_valid_value_warning(attr_name, semantic_class, raw_valid_values)
+            if value_warning:
+                semantic_warnings.append(value_warning)
             return NormalizedGroundedFactSet(
                 answer_kind=answer_kind,
                 source_policy=source_policy,
                 canonical_definition=_first_summary_sentence(str(attr.get("text_content") or "").strip()),
                 syntax=str(attr.get("attribute_syntax") or _extract_attribute_syntax_line(str(attr.get("text_content") or ""))).strip(),
-                valid_values=_clean_grounded_strings(attr.get("all_valid_values") or [], limit=12),
+                valid_values=valid_values,
                 supported_elements=_clean_grounded_strings(attr.get("supported_elements") or [], limit=10),
                 companion_attributes=_clean_grounded_strings(attr.get("combination_attributes") or [], limit=8),
                 usage_patterns=_clean_grounded_strings(attr.get("usage_contexts") or [], limit=3),
@@ -2433,7 +2488,7 @@ def _normalize_grounded_tool_facts(
                 common_mistakes=_clean_grounded_strings(attr.get("common_mistakes") or [], limit=3),
                 verified_examples=examples,
                 example_verified=bool(examples),
-                semantic_warnings=common_warnings + example_warnings,
+                semantic_warnings=semantic_warnings,
                 thin_evidence=False,
                 cross_source_mixed=False,
             )
@@ -2624,9 +2679,18 @@ def _select_tools_for_query(all_tools: list[dict], query: str, max_tools: int = 
     return [t for t in all_tools if t.get("name") in selected_names]
 
 
-def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
-    """Retrieve RAG chunks and format for system prompt. Uses more chunks for better retrieval."""
-    if not query or not str(query).strip():
+def _markdown_table_cell(value: Any) -> str:
+    if isinstance(value, list):
+        text = "<br>".join(str(item).strip() for item in value if str(item or "").strip())
+    else:
+        text = str(value or "").strip()
+    text = " ".join(text.split()).replace("|", "\\|")
+    return text or "-"
+
+
+def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
+    short_answer = " ".join(str(facts.canonical_definition or "").split()).strip()
+    if not short_answer:
         return ""
 
     sections: list[str] = ["## Short answer", short_answer]
@@ -2698,39 +2762,63 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
         if facts.common_mistakes:
             sections.extend(["", "## Common mistakes", *[f"- {value}" for value in facts.common_mistakes[:3]]])
     elif facts.answer_kind == "dita_attribute_comparison":
-        sections.extend(["", "## Comparison"])
-        for row in facts.comparison_rows[:4]:
-            label = f"`{row.label}`"
-            if row.definition:
-                sections.append(f"- {label}: {row.definition}")
-            else:
-                sections.append(f"- {label}")
-            if row.syntax:
-                sections.append(f"- {label} syntax: {row.syntax}")
-            if row.usage_patterns:
-                sections.append(f"- {label} typical usage: {'; '.join(row.usage_patterns[:2])}")
-            if row.supported_elements:
-                sections.append(f"- {label} supported elements: {', '.join(row.supported_elements[:8])}")
         if not facts.comparison_rows:
             return ""
+        sections.extend(
+            [
+                "",
+                "## Comparison",
+                "| Attribute | What it does | Syntax | Typical use | Supported elements |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in facts.comparison_rows[:4]:
+            sections.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`@{_markdown_table_cell(row.label.lstrip('@'))}`",
+                        _markdown_table_cell(row.definition),
+                        _markdown_table_cell(row.syntax),
+                        _markdown_table_cell(row.usage_patterns[:2]),
+                        _markdown_table_cell([f"`{value}`" for value in row.supported_elements[:8]]),
+                    ]
+                )
+                + " |"
+            )
     elif facts.answer_kind == "dita_element_comparison":
-        sections.extend(["", "## Comparison"])
-        for row in facts.comparison_rows[:4]:
-            label = f"`<{row.label}>`"
-            if row.definition:
-                sections.append(f"- {label}: {row.definition}")
-            else:
-                sections.append(f"- {label}")
-            if row.supported_elements:
-                sections.append(f"- {label} valid parents: {', '.join(f'`{value}`' for value in row.supported_elements[:8])}")
-            if row.companion_attributes:
-                sections.append(f"- {label} common attributes: {', '.join(f'`{value}`' for value in row.companion_attributes[:8])}")
-            if row.usage_patterns:
-                sections.append(f"- {label} typical usage: {'; '.join(row.usage_patterns[:2])}")
-            if row.common_mistakes:
-                sections.append(f"- {label} common mistake: {'; '.join(row.common_mistakes[:2])}")
         if not facts.comparison_rows:
             return ""
+        sections.extend(
+            [
+                "",
+                "## Comparison",
+                "| Element | What it does | Valid parents | Common attributes | Typical use |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in facts.comparison_rows[:4]:
+            sections.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`<{_markdown_table_cell(row.label.strip('<>'))}>`",
+                        _markdown_table_cell(row.definition),
+                        _markdown_table_cell([f"`{value}`" for value in row.supported_elements[:8]]),
+                        _markdown_table_cell([f"`{value}`" for value in row.companion_attributes[:8]]),
+                        _markdown_table_cell(row.usage_patterns[:2]),
+                    ]
+                )
+                + " |"
+            )
+        mistakes = []
+        for row in facts.comparison_rows[:4]:
+            for mistake in row.common_mistakes[:2]:
+                item = f"`<{row.label}>`: {mistake}"
+                if mistake and item not in mistakes:
+                    mistakes.append(item)
+        if mistakes:
+            sections.extend(["", "## Common mistakes", *[f"- {value}" for value in mistakes[:4]]])
     elif facts.answer_kind == "native_pdf_guidance":
         if facts.recommended_actions:
             sections.extend(["", "## Recommended actions", *[f"- {value}" for value in facts.recommended_actions[:4]]])
