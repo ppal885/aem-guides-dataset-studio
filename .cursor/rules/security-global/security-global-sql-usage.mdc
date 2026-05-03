@@ -32,11 +32,33 @@ Generated code must not violate these rules. If a rule is violated, a comment mu
   $result = $stmt->get_result();
   ```
 
-## 2. Validate and Sanitize All Input
-- **Rule:** All external input used in queries must be validated for type, length, and format. Apply allow-lists where possible.
+## 2. Validate Inputs Before Query Use
+- **Rule:** All external input used in query logic must be validated for type, length, format, and business constraints before use. Validation is defense in depth; it does not replace parameterized queries or prepared statements.
+- **Rule:** Do not SQL-escape, quote, or otherwise encode input at collection or storage time. Keep values as data and pass them through parameterized query APIs at the point of database use.
 
 ## 3. Avoid Dynamic SQL Unless Absolutely Necessary
-- **Rule:** Do not use dynamic SQL (e.g., building table or column names from user input) unless there is no alternative. If unavoidable, strictly validate and allow-list all dynamic parts.
+- **Rule:** Do not build dynamic SQL structure (e.g., table names, column names, schema names, sort directions, operators) from user-controlled strings unless there is no safe alternative.
+- **Rule:** If dynamic SQL structure is unavoidable, user input may only select a key from a closed mapping or enum whose values are developer-defined SQL fragments. The user-provided string must never be inserted into the SQL text, even after validation or allow-list checks.
+- **Example (unsafe, Python - validated user string still enters SQL):**
+  ```python
+  ALLOWED_COLUMNS = {"created_at", "email", "username"}
+  if sort_column not in ALLOWED_COLUMNS:
+      raise ValueError("invalid sort column")
+  cursor.execute(f"SELECT * FROM users ORDER BY {sort_column}")
+  ```
+- **Example (safe, Python - user input selects a developer-defined literal):**
+  ```python
+  SORT_COLUMNS = {
+      "created": "created_at",
+      "email": "email",
+      "name": "username",
+  }
+  sort_sql_fragment = SORT_COLUMNS.get(requested_sort)
+  if sort_sql_fragment is None:
+      raise ValueError("invalid sort option")
+  # Safe: sort_sql_fragment is a developer-defined literal, not user input.
+  cursor.execute(f"SELECT * FROM users ORDER BY {sort_sql_fragment}")
+  ```
 
 ## 4. Use Least Privilege Database Accounts
 - **Rule:** Connect to the database using accounts with the minimum privileges required for the task. Never use admin or superuser accounts for application queries.

@@ -579,6 +579,16 @@ async def test_chat_turn_grounded_native_pdf_question_prefers_tool_evidence(monk
                 "status": "warning",
                 "status_tone": "warning",
             }
+        if name == "lookup_aem_guides":
+            return {
+                "query": params.get("query"),
+                "results": [],
+                "count": 0,
+                "warnings": [],
+                "sources": [],
+                "status": "success",
+                "status_tone": "success",
+            }
         raise AssertionError(f"Unexpected tool {name}")
 
     async def fail_generate_text(*_args, **_kwargs):

@@ -182,7 +182,10 @@ def run_generate_dataset(
                     steps_per_task=recipe.steps_per_task if hasattr(recipe, 'steps_per_task') else 3,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
                     include_choicetable=recipe.include_choicetable if hasattr(recipe, 'include_choicetable') else False,
-                    rand=rand
+                    rand=rand,
+                    content_titles=getattr(recipe, "content_titles", None) or None,
+                    content_shortdescs=getattr(recipe, "content_shortdescs", None) or None,
+                    content_steps_by_topic=getattr(recipe, "content_steps_by_topic", None) or None,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -195,7 +198,10 @@ def run_generate_dataset(
                     topic_count=recipe.topic_count if hasattr(recipe, 'topic_count') else 20,
                     sections_per_concept=recipe.sections_per_concept if hasattr(recipe, 'sections_per_concept') else 3,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
-                    rand=rand
+                    rand=rand,
+                    content_titles=getattr(recipe, "content_titles", None) or None,
+                    content_shortdescs=getattr(recipe, "content_shortdescs", None) or None,
+                    content_body_snippets=getattr(recipe, "content_body_snippets", None) or None,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -209,7 +215,11 @@ def run_generate_dataset(
                     properties_per_ref=recipe.properties_per_ref if hasattr(recipe, 'properties_per_ref') else 5,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
                     include_choicetable=recipe.include_choicetable if hasattr(recipe, 'include_choicetable') else False,
-                    rand=rand
+                    rand=rand,
+                    content_titles=getattr(recipe, "content_titles", None) or None,
+                    content_shortdescs=getattr(recipe, "content_shortdescs", None) or None,
+                    content_property_seeds=getattr(recipe, "content_property_seeds", None) or None,
+                    content_detail_snippets=getattr(recipe, "content_detail_snippets", None) or None,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -248,7 +258,10 @@ def run_generate_dataset(
                 recipe_files = generate_glossary_dataset(
                     dataset_config, base,
                     entry_count=recipe.entry_count if hasattr(recipe, 'entry_count') else 50,
-                    rand=rand
+                    rand=rand,
+                    content_terms=getattr(recipe, "content_terms", None) or None,
+                    content_definitions=getattr(recipe, "content_definitions", None) or None,
+                    content_acronyms=getattr(recipe, "content_acronyms", None) or None,
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
@@ -578,6 +591,9 @@ def run_generate_dataset(
                     test_params={
                         "topic_count": recipe.topic_count if hasattr(recipe, 'topic_count') else 1000,
                         "batch_size": recipe.batch_size if hasattr(recipe, 'batch_size') else 100,
+                        "content_subject": getattr(recipe, "content_subject", "") or "",
+                        "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                        "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
                     },
                     rand=rand,
                     stream_callback=stream_cb
@@ -600,6 +616,9 @@ def run_generate_dataset(
                         "depth": recipe.depth if hasattr(recipe, 'depth') else 10,
                         "children_per_level": recipe.children_per_level if hasattr(recipe, 'children_per_level') else 5,
                         "include_maps": recipe.include_maps if hasattr(recipe, 'include_maps') else True,
+                        "content_subject": getattr(recipe, "content_subject", "") or "",
+                        "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                        "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
                     },
                     rand=rand
                 )
@@ -615,6 +634,9 @@ def run_generate_dataset(
                     test_params={
                         "root_topics": recipe.root_topics if hasattr(recipe, 'root_topics') else 10,
                         "children_per_root": recipe.children_per_root if hasattr(recipe, 'children_per_root') else 1000,
+                        "content_subject": getattr(recipe, "content_subject", "") or "",
+                        "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                        "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
                     },
                     rand=rand
                 )
@@ -713,6 +735,9 @@ def run_generate_dataset(
                     topics_per_section=getattr(recipe, 'topics_per_section', 50),
                     include_xrefs=getattr(recipe, 'include_xrefs', False),
                     pretty_print=getattr(recipe, 'pretty_print', True),
+                    content_subject=getattr(recipe, 'content_subject', '') or '',
+                    content_titles=list(getattr(recipe, 'content_titles', []) or []),
+                    content_bodies=list(getattr(recipe, 'content_bodies', []) or []),
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
