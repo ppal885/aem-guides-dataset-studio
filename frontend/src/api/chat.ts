@@ -231,6 +231,14 @@ export interface ChatAgentStep {
   error?: string;
 }
 
+export interface ChatGenerateDitaPreview {
+  clarification_needed?: boolean;
+  clarification_question?: string;
+  clarification_request?: {
+    options?: string[];
+  };
+}
+
 export interface ChatAgentPlan {
   goal: string;
   mode: string;
@@ -239,6 +247,7 @@ export interface ChatAgentPlan {
   expected_outputs?: string[];
   resume_tokens?: string[];
   steps?: ChatAgentStep[];
+  preview?: ChatGenerateDitaPreview | null;
 }
 
 export interface ChatAgentExecution {
@@ -249,6 +258,7 @@ export interface ChatAgentExecution {
 
 export interface ChatApprovalState {
   state: string;
+  kind?: string;
   pending_step_id?: string;
   pending_tool_name?: string;
   prompt?: string;

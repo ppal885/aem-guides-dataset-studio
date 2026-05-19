@@ -5,8 +5,9 @@ import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { GenerationProgressCard } from './GenerationProgressCard';
-import type { ChatMessage as ChatMessageType, ChatDitaGenerationOptions } from '@/api/chat';
+import type { ChatMessage as ChatMessageType, ChatDitaGenerationOptions, SuggestedFollowup } from '@/api/chat';
 import type { AuthoringVisualContext } from '@/components/Authoring/AuthoringGenerationSplitReview';
+import { SuggestedFollowups } from './SuggestedFollowups';
 
 const EXAMPLE_PROMPTS: { label: string; text: string }[] = [
   {
@@ -90,6 +91,10 @@ interface ChatMessageListProps {
   onRetry?: () => void;
   /** Screenshot thumbnail + filenames + options for the latest authoring result row only. */
   authoringVisualContext?: AuthoringVisualContext | null;
+  suggestedFollowups?: SuggestedFollowup[];
+  onFollowupSelect?: (text: string) => void;
+  /** Called when a quick-reply button inside an approval gate is clicked. */
+  onQuickReply?: (text: string) => void;
 }
 
 /** Skeleton placeholder while messages are loading. */
@@ -127,6 +132,9 @@ export function ChatMessageList({
   onRegenerateAuthoring,
   onRetry,
   authoringVisualContext,
+  suggestedFollowups,
+  onFollowupSelect,
+  onQuickReply,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -237,6 +245,7 @@ export function ChatMessageList({
             }
             showRetry={showRetry}
             onRetry={onRetry}
+            onQuickReply={onQuickReply}
           />
         );
       });

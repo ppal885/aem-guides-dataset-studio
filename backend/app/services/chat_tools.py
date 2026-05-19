@@ -262,6 +262,13 @@ _TOOL_READ_ONLY: frozenset[str] = frozenset({
     "review_dita_xml",
 })
 
+# Tools shown in the chat input palette (slash-command picker).
+# All other tools remain available to the LLM internally.
+_PALETTE_TOOLS: frozenset[str] = frozenset({
+    "generate_dita",
+    "generate_xml_flowchart",
+})
+
 
 def _extract_dita_attribute_from_query(query: str) -> str:
     matches = _extract_dita_attributes_from_query(query)
@@ -2576,9 +2583,12 @@ def _normalize_tool_result(name: str, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_tool_catalog() -> list[dict[str, Any]]:
+    """Return tools visible in the chat input palette (slash-command picker)."""
     catalog: list[dict[str, Any]] = []
     for tool in get_tool_definitions():
         name = str(tool.get("name") or "").strip()
+        if name not in _PALETTE_TOOLS:
+            continue
         meta = _TOOL_UI_META.get(name, {})
         catalog.append(
             {

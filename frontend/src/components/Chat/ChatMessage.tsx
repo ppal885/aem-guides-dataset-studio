@@ -44,6 +44,8 @@ interface ChatMessageProps {
   /** Error-style assistant bubble: retry (same as regenerate for server) */
   showRetry?: boolean;
   onRetry?: () => void;
+  /** Approval gate quick-reply clicked — sends text directly */
+  onQuickReply?: (text: string) => void;
 }
 
 function verifiedBundleUrlFromTools(toolResults?: Record<string, unknown>): string {
@@ -259,6 +261,7 @@ export function ChatMessage({
   onRegenerateAuthoring,
   showRetry,
   onRetry,
+  onQuickReply,
 }: ChatMessageProps) {
   const isUser = role === 'user';
   const verifiedUrl = verifiedBundleUrlFromTools(toolResults);
@@ -496,6 +499,7 @@ export function ChatMessage({
                 authoringVisualContext={
                   name === 'generate_dita_from_attachments' ? authoringVisualContext : undefined
                 }
+                onQuickReply={onQuickReply}
               />
             ))}
           </div>
@@ -511,6 +515,7 @@ export function ToolResult({
   authoringOnRegenerate,
   authoringOnRegenerateWithOptions,
   authoringVisualContext,
+  onQuickReply,
 }: {
   name: string;
   result: unknown;
@@ -518,6 +523,7 @@ export function ToolResult({
   authoringOnRegenerate?: () => void;
   authoringOnRegenerateWithOptions?: (options: ChatDitaGenerationOptions) => void;
   authoringVisualContext?: AuthoringVisualContext | null;
+  onQuickReply?: (text: string) => void;
 }) {
   const r = result as Record<string, unknown> | null;
   if (!r) return null;
@@ -525,7 +531,7 @@ export function ToolResult({
     return <AgentPlanPanel plan={r as unknown as ChatAgentPlan} />;
   }
   if (name === '_approval_state') {
-    return <ApprovalStatePanel approval={r as unknown as ChatApprovalState} />;
+    return <ApprovalStatePanel approval={r as unknown as ChatApprovalState} onQuickReply={onQuickReply} />;
   }
   if (name === '_agent_execution') {
     return <AgentExecutionPanel execution={r as unknown as ChatAgentExecution} />;
@@ -2637,7 +2643,13 @@ function AgentPlanPanel({ plan }: { plan: ChatAgentPlan }) {
   );
 }
 
-function ApprovalStatePanel({ approval }: { approval: ChatApprovalState }) {
+function ApprovalStatePanel({
+  approval,
+  onQuickReply,
+}: {
+  approval: ChatApprovalState;
+  onQuickReply?: (text: string) => void;
+}) {
   if (!approval.state) return null;
   const pending = approval.state === 'required';
   const review = String(approval.kind || '').toLowerCase() === 'review';
@@ -2658,15 +2670,15 @@ function ApprovalStatePanel({ approval }: { approval: ChatApprovalState }) {
           <span className="text-xs opacity-80">Next step: {approval.pending_tool_name.replace(/_/g, ' ')}</span>
         )}
       </div>
-        {approval.prompt && <p className="mt-2 text-sm leading-relaxed">{approval.prompt}</p>}
-        {pending && (
-          <p className="mt-2 text-xs opacity-85">
-            A short reply is enough here. You do not need to paste the original request again.
-          </p>
-        )}
-        {Array.isArray(approval.affected_artifacts) && approval.affected_artifacts.length > 0 && (
-          <div className="mt-3 rounded-lg border border-white/60 bg-white/70 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em]">Affected artifacts</p>
+      {approval.prompt && <p className="mt-2 text-sm leading-relaxed">{approval.prompt}</p>}
+      {pending && (
+        <p className="mt-2 text-xs opacity-85">
+          A short reply is enough here. You do not need to paste the original request again.
+        </p>
+      )}
+      {Array.isArray(approval.affected_artifacts) && approval.affected_artifacts.length > 0 && (
+        <div className="mt-3 rounded-lg border border-white/60 bg-white/70 px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]">Affected artifacts</p>
           <ul className="mt-1 space-y-1 text-xs">
             {approval.affected_artifacts.map((artifact) => (
               <li key={artifact}>- {artifact}</li>
@@ -2674,23 +2686,30 @@ function ApprovalStatePanel({ approval }: { approval: ChatApprovalState }) {
           </ul>
         </div>
       )}
-        {Array.isArray(approval.allowed_responses) && approval.allowed_responses.length > 0 && (
-          <div className="mt-3">
-            <p className="text-xs opacity-80">Quick replies</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {approval.allowed_responses.map((response) => (
-                <span
-                  key={response}
-                  className="rounded-full border border-current/20 bg-white/80 px-2.5 py-1 text-[11px] font-semibold"
-                >
-                  {response}
-                </span>
-              ))}
-            </div>
+      {Array.isArray(approval.allowed_responses) && approval.allowed_responses.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs opacity-80">Quick replies</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {approval.allowed_responses.map((response) => (
+              <button
+                key={response}
+                type="button"
+                onClick={() => onQuickReply?.(response)}
+                className={cn(
+                  'rounded-full border border-current/20 bg-white/80 px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                  onQuickReply
+                    ? 'cursor-pointer hover:bg-white hover:border-current/40 active:scale-95'
+                    : 'cursor-default'
+                )}
+              >
+                {response}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-    );
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AgentExecutionPanel({ execution }: { execution: ChatAgentExecution }) {

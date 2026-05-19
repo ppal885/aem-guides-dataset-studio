@@ -48,6 +48,7 @@ export function SettingsPage() {
   const [indexingDita, setIndexingDita] = useState(false);
   const [crawlingAem, setCrawlingAem] = useState(false);
   const [indexingDitaOt, setIndexingDitaOt] = useState(false);
+  const [indexingJiraQa, setIndexingJiraQa] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
   const loadRagStatus = useCallback(async () => {
@@ -138,6 +139,33 @@ export function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Crawl AEM Guides failed');
     } finally {
       setCrawlingAem(false);
+    }
+  }, [loadRagStatus]);
+
+  const handleIndexJiraQa = useCallback(async () => {
+    setIndexingJiraQa(true);
+    setLastAction(null);
+    setError(null);
+    try {
+      const result = await fetchJson<{ indexed?: number; chunks_stored?: number; errors?: string[] }>(
+        apiUrl('/api/v1/jira-rag/index'),
+        {
+          method: 'POST',
+          body: JSON.stringify({ sync_mode: 'incremental', project_key: 'GUIDES', force_reindex: false }),
+        }
+      );
+      const indexed = result.indexed ?? result.chunks_stored ?? 0;
+      const errs = result.errors ?? [];
+      if (errs.length > 0) {
+        setLastAction(`Indexed ${indexed} Jira QA issues with errors: ${errs.join('; ')}`);
+      } else {
+        setLastAction(`Indexed ${indexed} Jira QA issues successfully`);
+      }
+      await loadRagStatus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Index Jira QA failed');
+    } finally {
+      setIndexingJiraQa(false);
     }
   }, [loadRagStatus]);
 
@@ -341,8 +369,22 @@ export function SettingsPage() {
                 <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.jira_qa.count_scope}</p>
               ) : null}
               <p className="text-xs text-slate-500 mt-2">
-                Index via: <code className="text-xs">POST /api/v1/jira-rag/index</code> — indexes Jira issues into the RAG knowledge base.
+                Uses <code className="text-xs">sync_mode=incremental</code> with <code className="text-xs">project_key=GUIDES</code>.
               </p>
+              <button
+                onClick={handleIndexJiraQa}
+                disabled={indexingJiraQa}
+                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {indexingJiraQa ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Indexing...
+                  </>
+                ) : (
+                  'Index Jira QA'
+                )}
+              </button>
             </div>
           </div>
         )}

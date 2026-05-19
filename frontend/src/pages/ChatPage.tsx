@@ -22,6 +22,10 @@ import {
   type ChatApprovalState,
   type ChatToolCatalogItem,
   type ChatToolIntent,
+  type AgentState,
+  type AgentStateInfo,
+  type JobProgressInfo,
+  type SuggestedFollowup,
 } from '@/api/chat';
 import { apiUrl } from '@/utils/api';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
@@ -916,6 +920,7 @@ export function ChatPage() {
                 onRegenerateAuthoring={handleRegenerateAuthoring}
                 onRetry={handleRetry}
                 authoringVisualContext={authoringVisualContext}
+                onQuickReply={handleQuickReply}
               />
               <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
           <ChatInput
