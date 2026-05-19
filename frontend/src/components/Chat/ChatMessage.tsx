@@ -509,6 +509,40 @@ export function ChatMessage({
   );
 }
 
+function XmlExamplesPanel({ result }: { result: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const raw = result.xml_examples;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const examples = raw as Array<{ filename: string; xml: string }>;
+  return (
+    <div className="rounded-lg border border-white/70 bg-white/80">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 hover:text-slate-700"
+      >
+        <span>XML Examples ({examples.length} file{examples.length > 1 ? 's' : ''})</span>
+        <span className="text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 px-3 pb-3 pt-2 space-y-3">
+          {examples.map((ex) => (
+            <div key={ex.filename}>
+              <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
+                <FileCode2 className="h-3.5 w-3.5 shrink-0" />
+                {ex.filename}
+              </p>
+              <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap break-all">
+                {ex.xml}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ToolResult({
   name,
   result,
@@ -725,6 +759,7 @@ export function ToolResult({
               </div>
             </div>
           )}
+        <XmlExamplesPanel result={r} />
         <p className="text-xs text-slate-600">
           You can refine: &quot;Add a concept topic&quot;, &quot;Make steps more detailed&quot;, etc.
         </p>
@@ -736,6 +771,7 @@ export function ToolResult({
     const initialStatus = (r.status as string | undefined) ?? null;
     const recipeType = (r.recipe_type as string | undefined) ?? null;
     const downloadUrl = (r.download_url as string | undefined) ?? null;
+    const runnerScriptUrl = (r.runner_script_url as string | undefined) ?? null;
     const jobName =
       (r.job_name as string | undefined) ??
       (recipeType ? `Dataset job: ${recipeType}` : 'Dataset generation in progress');
@@ -745,6 +781,7 @@ export function ToolResult({
         initialStatus={initialStatus}
         recipeType={recipeType}
         downloadUrl={downloadUrl}
+        runnerScriptUrl={runnerScriptUrl}
         jobName={jobName}
       />
     );

@@ -359,7 +359,7 @@ export function SettingsPage() {
                 <span className="font-medium">Jira QA Knowledge Base</span>
               </div>
               <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.jira_qa?.source ?? 'Indexed Jira QA issues (bug reports, QA patterns, past resolutions) for chat RAG and UAC Copilot.'}
+                {ragStatus.jira_qa?.source ?? 'Indexed Jira QA issues (bug reports, QA patterns, past resolutions) for chat RAG.'}
               </p>
               <p className="text-sm font-mono">
                 Chunks in <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code>:{' '}

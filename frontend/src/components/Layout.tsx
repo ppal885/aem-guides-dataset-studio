@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -16,7 +16,6 @@ export function Layout({ children }: LayoutProps) {
     { path: '/job-history', label: 'Job History', icon: History },
     { path: '/dataset-explorer', label: 'Dataset Explorer', icon: FolderOpen },
     { path: '/upload', label: 'Upload to AEM', icon: Upload },
-    { path: '/uac-copilot', label: 'UAC Copilot', icon: ClipboardCheck },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];
 

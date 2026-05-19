@@ -222,8 +222,12 @@ def build_evidence_pack_from_text(
     return {"primary": primary, "similar": []}
 
 
+_XML_EXAMPLE_MAX_CHARS = 1200
+
+
 def _summarize_generated_bundle(scenario_outputs: dict[str, Path]) -> dict[str, Any]:
     files: list[str] = []
+    example_paths: list[Path] = []
     map_files = 0
     dita_files = 0
     topic_files = 0
@@ -240,8 +244,20 @@ def _summarize_generated_bundle(scenario_outputs: dict[str, Path]) -> dict[str, 
                 map_files += 1
             else:
                 topic_files += 1
+                if len(example_paths) < 2:
+                    example_paths.append(path)
             files.append(path.name)
     representative_files = files[:6]
+    # Read up to 2 topic files as XML examples (truncated)
+    xml_examples: list[dict[str, str]] = []
+    for ep in example_paths:
+        try:
+            text = ep.read_text(encoding="utf-8", errors="ignore")
+            if len(text) > _XML_EXAMPLE_MAX_CHARS:
+                text = text[:_XML_EXAMPLE_MAX_CHARS] + "\n<!-- ... truncated ... -->"
+            xml_examples.append({"filename": ep.name, "xml": text})
+        except Exception:
+            pass
     parts: list[str] = []
     if map_files:
         parts.append(f"{map_files} map file{'s' if map_files != 1 else ''}")
@@ -262,6 +278,7 @@ def _summarize_generated_bundle(scenario_outputs: dict[str, Path]) -> dict[str, 
             "topic_files": topic_files,
         },
         "representative_files": representative_files,
+        "xml_examples": xml_examples,
     }
 
 
@@ -321,8 +338,48 @@ def _configured_count_for_selected_recipe(selected: SelectedRecipe) -> int:
 def _normalize_draft_items(value: object, count: int) -> list[str]:
     if not isinstance(value, list):
         return []
-    items = [str(item or "").strip() for item in value if str(item or "").strip()]
-    return items[:count]
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, dict):
+            text = str(item.get("content") or item.get("text") or "").strip()
+        elif isinstance(item, list):
+            # LLM returned list-of-section-dicts for a single topic; join content fields
+            parts = []
+            for s in item:
+                if isinstance(s, dict):
+                    parts.append(str(s.get("content") or s.get("text") or "").strip())
+                elif isinstance(s, str):
+                    parts.append(s.strip())
+            text = " ".join(p for p in parts if p)
+        else:
+            continue
+        if text:
+            items.append(text)
+        if len(items) >= count:
+            break
+    return items
+
+
+def _normalize_draft_sections(value: object, count: int) -> list[list[dict]]:
+    """Extract structured per-topic sections when LLM returns list-of-section-dicts per topic."""
+    if not isinstance(value, list):
+        return []
+    result: list[list[dict]] = []
+    for item in value:
+        if isinstance(item, list) and item and all(isinstance(s, dict) for s in item):
+            sections = []
+            for s in item:
+                title = str(s.get("section_title") or s.get("title") or "").strip()
+                content = str(s.get("content") or s.get("text") or "").strip()
+                if content:
+                    sections.append({"title": title, "content": content})
+            if sections:
+                result.append(sections)
+        if len(result) >= count:
+            break
+    return result
 
 
 def _normalize_draft_steps(value: object, count: int) -> list[list[str]]:
@@ -448,6 +505,7 @@ async def _maybe_apply_llm_deterministic_drafts(
     titles = _normalize_draft_items(draft.get("titles"), count)
     shortdescs = _normalize_draft_items(draft.get("shortdescs"), count)
     body_snippets = _normalize_draft_items(draft.get("body_snippets"), count)
+    body_sections = _normalize_draft_sections(draft.get("body_snippets"), count)
     property_seeds = _normalize_draft_items(draft.get("property_seeds"), count)
     detail_snippets = _normalize_draft_items(draft.get("detail_snippets"), count)
     terms = _normalize_draft_items(draft.get("terms"), count)
@@ -461,9 +519,13 @@ async def _maybe_apply_llm_deterministic_drafts(
     if shortdescs:
         params["content_shortdescs"] = shortdescs
         applied_fields.append("shortdescs")
-    if recipe_id in {"topic_topics", "concept_topics"} and body_snippets:
-        params["content_body_snippets"] = body_snippets
-        applied_fields.append("body_snippets")
+    if recipe_id in {"topic_topics", "concept_topics"}:
+        if body_sections:
+            params["content_sections_by_topic"] = body_sections
+            applied_fields.append("body_sections")
+        elif body_snippets:
+            params["content_body_snippets"] = body_snippets
+            applied_fields.append("body_snippets")
     if recipe_id == "task_topics" and steps_by_topic:
         params["content_steps_by_topic"] = steps_by_topic
         applied_fields.append("steps_by_topic")

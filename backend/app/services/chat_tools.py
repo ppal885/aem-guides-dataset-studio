@@ -264,10 +264,7 @@ _TOOL_READ_ONLY: frozenset[str] = frozenset({
 
 # Tools shown in the chat input palette (slash-command picker).
 # All other tools remain available to the LLM internally.
-_PALETTE_TOOLS: frozenset[str] = frozenset({
-    "generate_dita",
-    "generate_xml_flowchart",
-})
+_PALETTE_TOOLS: frozenset[str] = frozenset(_TOOL_UI_META.keys())
 
 
 def _extract_dita_attribute_from_query(query: str) -> str:
@@ -1068,6 +1065,26 @@ async def execute_create_job(
             raise RuntimeError("Dataset job creation did not return a job id")
         start_dataset_job_in_background(job_id, base_config)
         urls = build_dataset_job_urls(job_id)
+
+        # Generate a standalone Python runner script so the user can re-run locally.
+        runner_script_url: str | None = None
+        try:
+            from app.services.dataset_runner_script_service import render_jobs_api_python_script
+            from app.storage import get_storage
+            from pathlib import Path as _Path
+            script_body = render_jobs_api_python_script(config=base_config)
+            tid = (user_id or "default").replace("/", "_")[:40]
+            rel = f"runner_scripts/{tid}/{job_id}.py"
+            script_path = _Path(get_storage().base_path) / rel
+            script_path.parent.mkdir(parents=True, exist_ok=True)
+            script_path.write_bytes(script_body.encode("utf-8"))
+            runner_script_url = f"/api/v1/jobs/{job_id}/runner-script"
+        except Exception as script_exc:
+            logger.warning_structured(
+                "runner_script_generation_failed",
+                extra_fields={"job_id": job_id, "error": str(script_exc)},
+            )
+
         result: dict[str, Any] = {
             "job_id": job_id,
             "name": str(job.get("name") or base_config.get("name") or "Chat Job"),
@@ -1076,6 +1093,8 @@ async def execute_create_job(
             **urls,
             "message": "Dataset generation started. The in-chat status card will update when the ZIP is ready.",
         }
+        if runner_script_url:
+            result["runner_script_url"] = runner_script_url
         if subject_enrichment is not None:
             result["subject_enrichment"] = subject_enrichment
         return result

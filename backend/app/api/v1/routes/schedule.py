@@ -3,7 +3,7 @@ from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.core.auth import CurrentUser, UserIdentity
@@ -265,6 +265,36 @@ def get_job(
             exc_info=True,
         )
         return JSONResponse(status_code=500, content={"detail": f"Failed to get job: {str(exc)}"})
+
+
+@router.get("/{job_id}/runner-script")
+def download_runner_script(
+    job_id: str,
+    user: UserIdentity = CurrentUser,
+    session: Session = Depends(get_db),
+):
+    """Download the standalone Python runner script for a dataset job."""
+    job = crud.get_job(session, job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"detail": "Job not found"})
+    if job.user_id != user.id:
+        return JSONResponse(status_code=403, content={"detail": "Access denied"})
+
+    from app.storage import get_storage
+    storage = get_storage()
+    tid = (user.id or "default").replace("/", "_")[:40]
+    rel = f"runner_scripts/{tid}/{job_id}.py"
+    script_path = storage.base_path / rel
+    if not script_path.exists():
+        return JSONResponse(status_code=404, content={"detail": "Runner script not found for this job"})
+
+    script_bytes = script_path.read_bytes()
+    filename = f"run_dataset_{job_id[:8]}.py"
+    return Response(
+        content=script_bytes,
+        media_type="text/x-python",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("")

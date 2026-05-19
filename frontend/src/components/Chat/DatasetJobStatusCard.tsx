@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   DatabaseZap,
   Download,
+  FileCode2,
   Loader2,
 } from 'lucide-react';
 
@@ -18,6 +19,7 @@ interface DatasetJobStatusCardProps {
   jobName?: string | null;
   recipeType?: string | null;
   downloadUrl?: string | null;
+  runnerScriptUrl?: string | null;
 }
 
 const POLL_INTERVAL_MS = 1200;
@@ -28,6 +30,7 @@ export function DatasetJobStatusCard({
   jobName,
   recipeType,
   downloadUrl,
+  runnerScriptUrl,
 }: DatasetJobStatusCardProps) {
   const [status, setStatus] = useState<DatasetJobStatus | null>(null);
 
@@ -74,6 +77,11 @@ export function DatasetJobStatusCard({
     return downloadUrl.startsWith('/api/') ? apiUrl(downloadUrl) : downloadUrl;
   }, [downloadUrl]);
 
+  const resolvedScriptUrl = useMemo(() => {
+    if (!runnerScriptUrl) return '';
+    return runnerScriptUrl.startsWith('/api/') ? apiUrl(runnerScriptUrl) : runnerScriptUrl;
+  }, [runnerScriptUrl]);
+
   if (currentStatus === 'failed') {
     return (
       <div className="rounded-2xl border border-rose-200 bg-[linear-gradient(135deg,#fff1f2_0%,#fff8f8_100%)] p-4 text-sm text-rose-950">
@@ -119,14 +127,24 @@ export function DatasetJobStatusCard({
               {recipeType ? <span className="rounded-full border border-teal-200 bg-white px-3 py-1">Recipe: {recipeType}</span> : null}
             </div>
           </div>
-          {resolvedDownloadUrl ? (
-            <a href={resolvedDownloadUrl} target="_blank" rel="noreferrer" className="shrink-0">
-              <Button size="sm" className="gap-2 rounded-full bg-teal-600 px-4 text-white hover:bg-teal-700">
-                <Download className="h-4 w-4" />
-                Download ZIP
-              </Button>
-            </a>
-          ) : null}
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            {resolvedDownloadUrl ? (
+              <a href={resolvedDownloadUrl} target="_blank" rel="noreferrer">
+                <Button size="sm" className="gap-2 rounded-full bg-teal-600 px-4 text-white hover:bg-teal-700">
+                  <Download className="h-4 w-4" />
+                  Download ZIP
+                </Button>
+              </a>
+            ) : null}
+            {resolvedScriptUrl ? (
+              <a href={resolvedScriptUrl} target="_blank" rel="noreferrer" download>
+                <Button size="sm" variant="outline" className="gap-2 rounded-full border-teal-300 px-4 text-teal-700 hover:bg-teal-50">
+                  <FileCode2 className="h-4 w-4" />
+                  Download .py script
+                </Button>
+              </a>
+            ) : null}
+          </div>
         </div>
       </div>
     );

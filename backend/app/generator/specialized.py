@@ -245,6 +245,7 @@ class SpecializedContentGenerator:
         section_count: int = 3,
         shortdesc_override: Optional[str] = None,
         body_snippet: Optional[str] = None,
+        body_sections: Optional[List[dict]] = None,
         prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a generic DITA topic with subject-aware body text."""
@@ -259,21 +260,32 @@ class SpecializedContentGenerator:
 
         body = ET.SubElement(topic, "body")
 
-        lead = ET.SubElement(body, "p")
-        lead.text = xml_escape_text(body_snippet if body_snippet else f"This topic provides practical information about {title.lower()}.")
+        if body_sections:
+            for j, sec in enumerate(body_sections, start=1):
+                section = ET.SubElement(body, "section")
+                section.set("id", xml_escape_attr(f"section_{topic_id}_{j}"))
+                sec_title = str(sec.get("title") or "").strip()
+                if sec_title:
+                    sec_title_elem = ET.SubElement(section, "title")
+                    sec_title_elem.text = xml_escape_text(sec_title)
+                sec_p = ET.SubElement(section, "p")
+                sec_p.text = xml_escape_text(str(sec.get("content") or ""))
+        else:
+            lead = ET.SubElement(body, "p")
+            lead.text = xml_escape_text(body_snippet if body_snippet else f"This topic provides practical information about {title.lower()}.")
 
-        for i in range(1, max(2, section_count) + 1):
-            section = ET.SubElement(body, "section")
-            section.set("id", xml_escape_attr(f"section_{topic_id}_{i}"))
+            for i in range(1, max(2, section_count) + 1):
+                section = ET.SubElement(body, "section")
+                section.set("id", xml_escape_attr(f"section_{topic_id}_{i}"))
 
-            section_title = ET.SubElement(section, "title")
-            section_title.text = xml_escape_text(f"{title} detail {i}")
+                section_title = ET.SubElement(section, "title")
+                section_title.text = xml_escape_text(f"{title} detail {i}")
 
-            section_p = ET.SubElement(section, "p")
-            if body_snippet:
-                section_p.text = xml_escape_text(f"{body_snippet} This section expands on detail {i} for {title.lower()}.")
-            else:
-                section_p.text = xml_escape_text(f"This section expands on detail {i} for {title.lower()}.")
+                section_p = ET.SubElement(section, "p")
+                if body_snippet:
+                    section_p.text = xml_escape_text(f"{body_snippet} This section expands on detail {i} for {title.lower()}.")
+                else:
+                    section_p.text = xml_escape_text(f"This section expands on detail {i} for {title.lower()}.")
 
         doctype_topic = getattr(self.config, "doctype_topic", None) or _DEFAULT_DOCTYPE_TOPIC
         xml_body = ET.tostring(topic, encoding="utf-8", xml_declaration=False)
@@ -287,24 +299,35 @@ class SpecializedContentGenerator:
         section_count: int = 3,
         shortdesc_override: Optional[str] = None,
         body_snippets: Optional[List[str]] = None,
+        content_sections: Optional[List[dict]] = None,
         prolog_metadata: Optional[dict] = None,
     ) -> bytes:
-        """Generate a Concept topic. Use body_snippets for Jira-derived content."""
+        """Generate a Concept topic. Use content_sections for LLM-authored structured sections."""
         concept = ET.Element("concept", {"id": topic_id, "xml:lang": "en"})
-        
+
         # Title
         title_elem = ET.SubElement(concept, "title")
         title_elem.text = xml_escape_text(title)
-        
+
         # Short description
         shortdesc = ET.SubElement(concept, "shortdesc")
         shortdesc.text = xml_escape_text(shortdesc_override if shortdesc_override else f"Concept: {title}")
         _append_prolog_metadata(concept, prolog_metadata)
-        
+
         # Concept body
         conbody = ET.SubElement(concept, "conbody")
-        
-        if body_snippets:
+
+        if content_sections:
+            for j, sec in enumerate(content_sections, start=1):
+                section = ET.SubElement(conbody, "section")
+                section.set("id", xml_escape_attr(f"section_{topic_id}_{j}"))
+                sec_title = str(sec.get("title") or "").strip()
+                if sec_title:
+                    sec_title_elem = ET.SubElement(section, "title")
+                    sec_title_elem.text = xml_escape_text(sec_title)
+                sec_p = ET.SubElement(section, "p")
+                sec_p.text = xml_escape_text(str(sec.get("content") or ""))
+        elif body_snippets:
             lead_snippet = body_snippets[0]
             intro_p = ET.SubElement(conbody, "p")
             intro_p.text = xml_escape_text(lead_snippet)
@@ -727,6 +750,7 @@ def generate_concept_topics_dataset(
     content_titles: Optional[List[str]] = None,
     content_shortdescs: Optional[List[str]] = None,
     content_body_snippets: Optional[List[str]] = None,
+    content_sections_by_topic: Optional[List[List[dict]]] = None,
     content_prolog_metadata: Optional[dict] = None,
     map_topicref_attribute_distributions: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
@@ -734,35 +758,37 @@ def generate_concept_topics_dataset(
     if rand is None:
         import random
         rand = random.Random(config.seed)
-    
+
     titles = content_titles if content_titles else None
     shortdescs = content_shortdescs if content_shortdescs else None
     body_snippets = content_body_snippets if content_body_snippets else None
-    use_content = bool(titles)
+    sections_by_topic = content_sections_by_topic if content_sections_by_topic else None
     n_topics = len(titles) if titles else topic_count
-    
+
     generator = SpecializedContentGenerator(config, rand)
     files = {}
     used_ids = set()
     topic_dir = safe_join(base, "topics", "concepts")
     topic_paths = []
-    
+
     for i in range(1, n_topics + 1):
         filename = sanitize_filename(f"concept_{i:05d}.dita", config.windows_safe_filenames)
         path = safe_join(topic_dir, filename)
         topic_id = stable_id(config.seed, "concept", str(i), used_ids)
-        
+
         title = titles[i - 1] if titles else f"Concept {i:05d}"
         shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
-        snippet = body_snippets[i - 1] if body_snippets and i <= len(body_snippets) else None
+        sections = sections_by_topic[i - 1] if sections_by_topic and i <= len(sections_by_topic) else None
+        snippet = body_snippets[i - 1] if body_snippets and not sections and i <= len(body_snippets) else None
         snippets = [snippet] if snippet else None
-        
+
         topic_xml = generator.generate_concept_topic(
             topic_id,
             title,
             section_count=rand.randint(2, sections_per_concept),
             shortdesc_override=shortdesc,
             body_snippets=snippets,
+            content_sections=sections,
             prolog_metadata=content_prolog_metadata,
         )
         
@@ -831,6 +857,7 @@ def generate_topic_topics_dataset(
     content_titles: Optional[List[str]] = None,
     content_shortdescs: Optional[List[str]] = None,
     content_body_snippets: Optional[List[str]] = None,
+    content_sections_by_topic: Optional[List[List[dict]]] = None,
     content_prolog_metadata: Optional[dict] = None,
     map_topicref_attribute_distributions: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
@@ -842,6 +869,7 @@ def generate_topic_topics_dataset(
     titles = content_titles if content_titles else None
     shortdescs = content_shortdescs if content_shortdescs else None
     body_snippets = content_body_snippets if content_body_snippets else None
+    sections_by_topic = content_sections_by_topic if content_sections_by_topic else None
     n_topics = len(titles) if titles else topic_count
 
     generator = SpecializedContentGenerator(config, rand)
@@ -857,7 +885,8 @@ def generate_topic_topics_dataset(
 
         title = titles[i - 1] if titles else f"Topic {i:05d}"
         shortdesc = shortdescs[i - 1] if shortdescs and i <= len(shortdescs) else None
-        body_snippet = body_snippets[i - 1] if body_snippets and i <= len(body_snippets) else None
+        sections = sections_by_topic[i - 1] if sections_by_topic and i <= len(sections_by_topic) else None
+        body_snippet = body_snippets[i - 1] if body_snippets and not sections and i <= len(body_snippets) else None
 
         topic_xml = generator.generate_generic_topic(
             topic_id,
@@ -865,6 +894,7 @@ def generate_topic_topics_dataset(
             section_count=rand.randint(2, 4),
             shortdesc_override=shortdesc,
             body_snippet=body_snippet,
+            body_sections=sections,
             prolog_metadata=content_prolog_metadata,
         )
 
