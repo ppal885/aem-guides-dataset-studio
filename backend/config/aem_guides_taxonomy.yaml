@@ -1,0 +1,367 @@
+# AEM Guides / DITA enrichment taxonomy — domains, keywords, entity detectors, outputs, test layers.
+# Loaded by app.core.aem_guides_taxonomy (fallback baked in code if file missing).
+
+version: 1
+
+defaults:
+  keyword_weight: 2.5
+
+customer_detection:
+  label_exclude_extras:
+    - regression
+    - automation
+    - smoke
+    - flaky
+    - qa
+    - qe
+    - bug
+    - blocker
+    - critical
+    - backend
+    - frontend
+    - cloud
+    - aemaacs
+    - onprem
+    - hotfix
+    - release
+    - sprint
+    - story
+    - epic
+
+feature_signals:
+  translation:
+    - translation
+    - worldserver
+    - xliff
+    - l10n
+  review:
+    - review
+    - annotation
+    - approval
+  search:
+    - search
+    - solr
+    - omnisearch
+  workflow:
+    - workflow
+    - approval workflow
+
+domains:
+  editor:
+    keyword_weight: 2.0
+    keywords:
+      - web editor
+      - xml editor
+      - dita map editor
+      - author view
+      - content properties
+      - quick insert
+      - insert element
+      - validation errors in editor
+    entities:
+      - navtitle
+      - topicref
+      - mapref
+      - bookmap
+      - processing-role
+      - resource-only
+      - scale
+      - scalefit
+      - preview
+      - output preset
+      - { label: "validatexml", regex: "validatexml|validate\\s+xml" }
+    outputs:
+      - name: preview
+        phrases:
+          - preview
+          - quick preview
+    test_layers:
+      - UI
+      - Manual
+
+  publishing:
+    keyword_weight: 1.8
+    keywords:
+      - publish
+      - publishing
+      - dita-ot
+      - dita ot
+      - output generator
+      - publish job
+      - queue publish
+      - publish servlet
+      - open toolkit
+    entities:
+      - topicref
+      - mapref
+      - output preset
+    outputs:
+      - name: DITA-OT
+        phrases:
+          - dita-ot
+          - dita ot
+          - open toolkit
+      - name: HTML5 / Web
+        phrases:
+          - html5
+          - webhelp
+          - responsive
+    test_layers:
+      - Publishing
+      - API
+      - Manual
+
+  native_pdf:
+    keyword_weight: 3.2
+    keywords:
+      - native pdf
+      - native-pdf
+      - pdf native
+      - fop
+      - ah formatter
+      - antenna house
+      - pdf plugin
+      - pdf template
+      - watermark
+      - table of contents
+      - toc
+    entities:
+      - { label: "Native PDF", regex: "native\\s*pdf" }
+    outputs:
+      - name: Native PDF
+        phrases:
+          - native pdf
+          - native-pdf
+          - pdf output
+          - fop
+          - ah formatter
+    test_layers:
+      - Publishing
+      - UI
+      - Manual
+
+  aem_sites:
+    keyword_weight: 2.8
+    keywords:
+      - aem sites
+      - experience fragment
+      - xf path
+      - "/content/sites"
+      - sites page
+      - cq:Page
+    entities:
+      - { label: "AEM Sites", regex: "aem\\s+sites" }
+    outputs:
+      - name: AEM Sites
+        phrases:
+          - aem sites
+          - sites output
+          - html5 sites
+    test_layers:
+      - Publishing
+      - API
+      - UI
+
+  baseline:
+    keyword_weight: 3.0
+    keywords:
+      - baseline
+      - baseline manager
+      - snapshot
+      - compare baseline
+    entities:
+      - baseline
+    outputs: []
+    test_layers:
+      - UI
+      - API
+      - Manual
+
+  ditaval:
+    keyword_weight: 3.0
+    keywords:
+      - ditaval
+      - ".ditaval"
+      - profiling attribute
+      - ditavalref
+      - filter dita
+      - branch filter
+    entities:
+      - ditaval
+    outputs: []
+    test_layers:
+      - UI
+      - Publishing
+      - Manual
+
+  keyref:
+    keyword_weight: 3.0
+    keywords:
+      - keyref
+      - keydef
+      - keydef map
+      - key scope
+      - keyspace
+    entities:
+      - keydef
+      - keyref
+    outputs: []
+    test_layers:
+      - UI
+      - Publishing
+      - Manual
+
+  conref:
+    keyword_weight: 3.0
+    keywords:
+      - conref
+      - conkeyref
+      - content reference
+    entities:
+      - conkeyref
+      - conref
+    outputs: []
+    test_layers:
+      - UI
+      - Manual
+
+  subject_scheme:
+    keyword_weight: 3.0
+    keywords:
+      - subject scheme
+      - subjectscheme
+      - controlled values
+      - enumeration of values
+    entities:
+      - { label: "subject scheme", regex: "subject\\s+scheme|subjectscheme" }
+    outputs: []
+    test_layers:
+      - UI
+      - Manual
+
+  assets:
+    keyword_weight: 2.0
+    keywords:
+      - dam asset
+      - asset manager
+      - aem assets
+      - content fragment
+      - "/content/dam"
+    entities:
+      - { label: "asset update", regex: "asset\\s+update|update\\s+asset" }
+    outputs: []
+    test_layers:
+      - UI
+      - API
+      - Manual
+
+  image_rendition:
+    keyword_weight: 2.5
+    keywords:
+      - rendition
+      - image profile
+      - dam rendition
+      - dynamic media
+      - smart crop
+    entities: []
+    outputs: []
+    test_layers:
+      - UI
+      - API
+      - Manual
+
+  glossary:
+    keyword_weight: 3.0
+    keywords:
+      - glossary
+      - glossentry
+      - glossdef
+      - glossstatus
+      - glossref
+    entities:
+      - glossentry
+      - { label: "glossStatus", regex: "glossstatus" }
+    outputs: []
+    test_layers:
+      - UI
+      - Publishing
+      - Manual
+
+  metadata:
+    keyword_weight: 2.5
+    keywords:
+      - metadata panel
+      - metadatum
+      - "dc:format"
+      - metadata field
+      - "cq:tags"
+    entities:
+      - { label: "dc:format", regex: "dc:format|dc\\s*:\\s*format" }
+    outputs: []
+    test_layers:
+      - UI
+      - API
+
+  uuid:
+    keyword_weight: 3.0
+    keywords:
+      - uuid
+      - duplicate uuid
+      - uuid collision
+      - uuid mismatch
+    entities:
+      - "UUID"
+    outputs: []
+    test_layers:
+      - API
+      - Publishing
+      - Manual
+
+  post_processing:
+    keyword_weight: 2.5
+    keywords:
+      - post process
+      - post-processing
+      - post publish
+      - dita xml postprocessor
+      - postprocessor
+    entities: []
+    outputs: []
+    test_layers:
+      - Publishing
+      - API
+
+  migration:
+    keyword_weight: 2.5
+    keywords:
+      - migration
+      - migrate
+      - upgrade from
+      - import dita
+      - bulk import
+    entities: []
+    outputs: []
+    test_layers:
+      - API
+      - Manual
+
+  performance:
+    keyword_weight: 2.5
+    keywords:
+      - performance
+      - slow
+      - latency
+      - timeout
+      - memory leak
+      - oom
+      - cpu spike
+      - bsonobj too large
+    entities:
+      - { label: "BSONObj too large", regex: "bsonobj\\s+too\\s+large|bson\\s*obj" }
+      - { label: "ReferenceListener", regex: "referencelistener" }
+      - { label: "validatexml", regex: "validatexml|validate\\s+xml" }
+    outputs: []
+    test_layers:
+      - API
+      - Publishing
+      - Performance

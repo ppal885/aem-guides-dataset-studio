@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="bench_ref_only_xyz987" xml:lang="en-US">
+  <title>Reference install task</title>
+  <shortdesc>Reference shortdesc used only for benchmark style profiling.</shortdesc>
+  <taskbody>
+    <context>
+      <p>Context block from the reference organization pattern.</p>
+    </context>
+    <steps>
+      <step><cmd>First reference action</cmd></step>
+      <step><cmd>Second reference action</cmd></step>
+    </steps>
+  </taskbody>
+</task>
