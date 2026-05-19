@@ -3528,6 +3528,34 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     except Exception as e:
         logger.debug_structured("RAG DITA OT GitHub failed", extra_fields={"error": str(e)})
 
+    # Jira QA knowledge base (bug reports, QA patterns, past resolutions)
+    try:
+        from app.services.embedding_service import embed_query as _embed_query, is_embedding_available
+        from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, query_collection as _qc
+        if is_embedding_available():
+            _jira_emb = _embed_query(query[:500])
+            if _jira_emb:
+                _jira_rows = _qc(CHROMA_COLLECTION_JIRA_QA, _jira_emb, k=3)
+                if _jira_rows:
+                    jira_rag_parts = []
+                    for row in _jira_rows:
+                        meta = row.get("metadata") or {}
+                        jira_key = meta.get("jira_key", "")
+                        title = meta.get("title", "") or meta.get("summary", "")
+                        chunk_type = meta.get("chunk_type", "")
+                        doc = (row.get("document") or "")[:500]
+                        if doc:
+                            header = jira_key or "Issue"
+                            if title:
+                                header += f": {title}"
+                            if chunk_type:
+                                header += f" [{chunk_type}]"
+                            jira_rag_parts.append(f"{header}\n{doc}")
+                    if jira_rag_parts:
+                        parts.append("JIRA QA KNOWLEDGE BASE:\n" + "\n\n".join(jira_rag_parts))
+    except Exception as e:
+        logger.debug_structured("RAG Jira QA failed", extra_fields={"error": str(e)})
+
     if not parts:
         return ""
     combined = "\n\n".join(parts)

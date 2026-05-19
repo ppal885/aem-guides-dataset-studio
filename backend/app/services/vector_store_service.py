@@ -231,3 +231,42 @@ def get_collection_count(collection_name: str) -> int:
         return coll.count()
     except Exception:
         return 0
+
+
+def get_documents_where(
+    collection_name: str,
+    where: dict,
+    limit: int = 10,
+) -> list[dict]:
+    """Fetch documents matching a metadata filter from a ChromaDB collection.
+    Returns list of dicts with keys: id, document, metadata.
+    Returns [] when collection does not exist or filter matches nothing.
+    """
+    client = _get_client()
+    if not client:
+        return []
+    if not _collection_exists(client, collection_name):
+        return []
+    try:
+        coll = client.get_collection(name=collection_name)
+        if coll.count() == 0:
+            return []
+        result = coll.get(
+            where=where,
+            limit=limit,
+            include=["documents", "metadatas"],
+        )
+        if not result or not result.get("ids"):
+            return []
+        rows = []
+        for i, doc_id in enumerate(result["ids"]):
+            doc = (result["documents"][i] or "") if result.get("documents") else ""
+            meta = (result["metadatas"][i] or {}) if result.get("metadatas") else {}
+            rows.append({"id": doc_id, "document": doc, "metadata": meta})
+        return rows
+    except Exception as e:
+        logger.warning_structured(
+            "ChromaDB get_documents_where failed",
+            extra_fields={"collection": collection_name, "error": str(e)},
+        )
+        return []

@@ -25,6 +25,13 @@ interface RagStatus {
     count_scope?: string;
     populate_via: string;
   };
+  jira_qa?: {
+    source: string;
+    collection?: string;
+    chunk_count: number;
+    count_scope?: string;
+    populate_via: string;
+  };
   /** Tavily API for chat web search (no secrets exposed) */
   tavily?: {
     configured: boolean;
@@ -199,7 +206,9 @@ export function SettingsPage() {
               <code className="text-xs">{ragStatus.dita_spec?.collection ?? 'dita_spec'}</code> ={' '}
               <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong> chunks ·{' '}
               <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code> ={' '}
-              <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong> chunks. Recipe catalog is not counted here.
+              <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong> chunks ·{' '}
+              <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code> ={' '}
+              <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong> chunks. Recipe catalog is not counted here.
             </p>
 
             <p className="text-sm text-slate-600">
@@ -314,6 +323,26 @@ export function SettingsPage() {
                   'Index DITA OT GitHub'
                 )}
               </button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-slate-500" />
+                <span className="font-medium">Jira QA Knowledge Base</span>
+              </div>
+              <p className="text-sm text-slate-600 mb-2">
+                {ragStatus.jira_qa?.source ?? 'Indexed Jira QA issues (bug reports, QA patterns, past resolutions) for chat RAG and UAC Copilot.'}
+              </p>
+              <p className="text-sm font-mono">
+                Chunks in <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code>:{' '}
+                <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong>
+              </p>
+              {ragStatus.jira_qa?.count_scope ? (
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.jira_qa.count_scope}</p>
+              ) : null}
+              <p className="text-xs text-slate-500 mt-2">
+                Index via: <code className="text-xs">POST /api/v1/jira-rag/index</code> — indexes Jira issues into the RAG knowledge base.
+              </p>
             </div>
           </div>
         )}

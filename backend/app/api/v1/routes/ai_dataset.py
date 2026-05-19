@@ -463,6 +463,7 @@ def get_rag_status(
         CHROMA_COLLECTION_AEM_GUIDES,
         CHROMA_COLLECTION_DITA_SPEC,
         CHROMA_COLLECTION_DITA_OT_GITHUB,
+        CHROMA_COLLECTION_JIRA_QA,
         get_collection_count,
         is_chroma_available,
     )
@@ -473,7 +474,7 @@ def get_rag_status(
     requested_tenant = tenant_id if str(tenant_id or "").strip() not in {"", "default"} else None
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
 
-    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, err: str | None = None) -> dict:
+    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, jira_qa_count: int = 0, err: str | None = None) -> dict:
         try:
             tavily = get_tavily_rag_status()
         except Exception as ex:
@@ -530,6 +531,14 @@ def get_rag_status(
                 "used_in": ["chat_rag (DITA OT / publishing queries)"],
                 "populate_via": "POST /api/v1/ai/index-dita-ot-github",
             },
+            "jira_qa": {
+                "source": "Indexed Jira QA issues (bug reports, QA patterns, past resolutions)",
+                "collection": CHROMA_COLLECTION_JIRA_QA,
+                "chunk_count": jira_qa_count,
+                "count_scope": "Embeddings in Chroma `jira_qa` only.",
+                "used_in": ["chat_rag (Jira QA knowledge base)", "UAC Copilot similar Jiras"],
+                "populate_via": "POST /api/v1/jira-rag/index (index Jira issues into RAG)",
+            },
             "github_dita": github_dita,
         }
 
@@ -538,12 +547,13 @@ def get_rag_status(
         aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
         dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
         dita_ot_count = get_collection_count(CHROMA_COLLECTION_DITA_OT_GITHUB) if chroma_ok else 0
-        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, None)
+        jira_qa_count = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
+        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, jira_qa_count, None)
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
         # Always return the same shape so Settings UI can show all sections (with zeros).
         try:
-            return _payload(False, 0, 0, 0, str(e))
+            return _payload(False, 0, 0, 0, 0, str(e))
         except Exception as e2:
             logger.warning_structured("RAG status fallback failed", extra_fields={"error": str(e2)})
             return {
