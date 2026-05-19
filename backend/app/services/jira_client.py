@@ -23,6 +23,11 @@ def _timeout() -> float:
         return 60.0
 
 
+def _ssl_verify() -> bool:
+    """Return False when JIRA_SSL_VERIFY=false (corporate CAs not in system store)."""
+    return os.getenv("JIRA_SSL_VERIFY", "true").strip().lower() not in {"false", "0", "no"}
+
+
 class JiraClient:
     """Client for Jira REST API v2 or v3."""
 
@@ -61,7 +66,7 @@ class JiraClient:
             "Content-Type": "application/json",
             "cache-control": "no-cache",
         }
-        with httpx.Client(auth=self._auth, timeout=_timeout()) as client:
+        with httpx.Client(auth=self._auth, timeout=_timeout(), verify=_ssl_verify()) as client:
             response = client.request(
                 method,
                 url,
@@ -75,7 +80,7 @@ class JiraClient:
     def _download(self, content_url: str) -> bytes:
         """Download attachment content. Jira requires same auth for content URLs."""
         get_jira_limiter().acquire()
-        with httpx.Client(auth=self._auth, timeout=max(60.0, _timeout()), follow_redirects=True) as client:
+        with httpx.Client(auth=self._auth, timeout=max(60.0, _timeout()), follow_redirects=True, verify=_ssl_verify()) as client:
             response = client.get(content_url)
             response.raise_for_status()
             return response.content
