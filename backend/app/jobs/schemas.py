@@ -320,6 +320,22 @@ class TaskTopicsRecipe(BaseModel):
     include_choicetable: bool = False
     include_map: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(
+        default="",
+        description="Subject the dataset is about (e.g. 'Terraform'). Drives titles, map names, and per-topic content when populated.",
+    )
+    content_titles: List[str] = Field(
+        default_factory=list,
+        description="Per-topic titles (1 per topic, sequential). Shorter lists fall back to subject-templated titles.",
+    )
+    content_shortdescs: List[str] = Field(
+        default_factory=list,
+        description="Per-topic shortdescs (1 per topic, sequential). Same fallback semantics as content_titles.",
+    )
+    content_steps_by_topic: List[List[str]] = Field(
+        default_factory=list,
+        description="Per-topic step lists. Each inner list is the ordered <cmd> texts for one task topic.",
+    )
 
 class ConceptTopicsRecipe(BaseModel):
     """
@@ -338,6 +354,22 @@ class ConceptTopicsRecipe(BaseModel):
     sections_per_concept: int = Field(default=3, ge=1, le=10)
     include_map: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(
+        default="",
+        description="Subject the dataset is about (e.g. 'Terraform'). Drives titles, map names, and per-topic content when populated.",
+    )
+    content_titles: List[str] = Field(
+        default_factory=list,
+        description="Per-topic titles (1 per topic, sequential). Shorter lists fall back to subject-templated titles.",
+    )
+    content_shortdescs: List[str] = Field(
+        default_factory=list,
+        description="Per-topic shortdescs (1 per topic, sequential). Same fallback semantics as content_titles.",
+    )
+    content_body_snippets: List[str] = Field(
+        default_factory=list,
+        description="Per-topic concept body paragraphs (1 per topic). Folded into <conbody> when present.",
+    )
 
 class ReferenceTopicsRecipe(BaseModel):
     """
@@ -358,6 +390,26 @@ class ReferenceTopicsRecipe(BaseModel):
     include_choicetable: bool = False
     include_map: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(
+        default="",
+        description="Subject the dataset is about (e.g. 'Terraform'). Drives titles, map names, and per-topic content when populated.",
+    )
+    content_titles: List[str] = Field(
+        default_factory=list,
+        description="Per-topic titles (1 per topic, sequential). Shorter lists fall back to subject-templated titles.",
+    )
+    content_shortdescs: List[str] = Field(
+        default_factory=list,
+        description="Per-topic shortdescs (1 per topic, sequential). Same fallback semantics as content_titles.",
+    )
+    content_property_seeds: List[str] = Field(
+        default_factory=list,
+        description="Per-topic property-name seeds for the <properties> table (e.g. Terraform variable / argument names).",
+    )
+    content_detail_snippets: List[str] = Field(
+        default_factory=list,
+        description="Per-topic refbody detail paragraphs (1 per topic).",
+    )
 
 
 class PropertiesTableReferenceRecipe(BaseModel):
@@ -406,6 +458,22 @@ class GlossaryPackRecipe(BaseModel):
     include_acronyms: bool = True
     include_map: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(
+        default="",
+        description="Subject the glossary is about (e.g. 'Terraform'). Drives entry naming when content_terms is empty.",
+    )
+    content_terms: List[str] = Field(
+        default_factory=list,
+        description="Per-entry glossary terms (1 per entry). Shorter lists fall back to subject-templated terms.",
+    )
+    content_definitions: List[str] = Field(
+        default_factory=list,
+        description="Per-entry definitions (1 per entry, aligned with content_terms by index).",
+    )
+    content_acronyms: List[str] = Field(
+        default_factory=list,
+        description="Per-entry acronym expansions (1 per entry, optional).",
+    )
 
 class ChoicetableTaskTopicsRecipe(BaseModel):
     """
@@ -549,6 +617,13 @@ class LargeScaleRecipe(BaseModel):
     batch_size: int = Field(default=1000, ge=100, le=10000)
     include_map: bool = False
     pretty_print: bool = False
+    # Subject-aware content overrides (optional). When non-empty, the generator
+    # uses these to produce real subject-themed titles/bodies instead of the
+    # default "Topic 00001" placeholders. Populated by the chat layer when the
+    # user asks for content about a real domain (e.g. "Kubernetes").
+    content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
+    content_titles: List[str] = Field(default_factory=list, description="Per-topic titles aligned to topic indices. When shorter than topic_count, the rest fall back to subject-templated titles.")
+    content_bodies: List[str] = Field(default_factory=list, description="Per-topic body paragraphs aligned to topic indices. When shorter, the rest fall back to subject-templated bodies.")
 
 class DeepHierarchyRecipe(BaseModel):
     """
@@ -568,6 +643,9 @@ class DeepHierarchyRecipe(BaseModel):
     children_per_level: int = Field(default=5, ge=2, le=100)
     include_maps: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
+    content_titles: List[str] = Field(default_factory=list, description="Per-node titles in BFS order (level 0 first, then level 1 left-to-right, ...). Shorter lists fall back to subject-templated titles.")
+    content_bodies: List[str] = Field(default_factory=list, description="Per-node body paragraphs in BFS order. Shorter lists fall back to subject-templated bodies.")
 
 class WideBranchingRecipe(BaseModel):
     """
@@ -587,6 +665,30 @@ class WideBranchingRecipe(BaseModel):
     children_per_root: int = Field(default=1000, ge=10, le=10000)
     include_maps: bool = True
     pretty_print: bool = True
+    content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
+    content_titles: List[str] = Field(default_factory=list, description="Per-node titles in (root_idx, child_idx) order: roots first, then children grouped by root. Shorter lists fall back to subject-templated titles.")
+    content_bodies: List[str] = Field(default_factory=list, description="Per-node body paragraphs in (root_idx, child_idx) order. Shorter lists fall back to subject-templated bodies.")
+
+
+class FlatHierarchicalDitaRecipe(BaseModel):
+    """
+    Recipe for flat + hierarchical DITA dataset.
+
+    Generates two layouts in one bundle:
+    - Flat: topics/topic_XXXXX.dita with one root map listing all topicrefs
+    - Hierarchical: sections/section_XX/topics/topic_XXXXX.dita with section submaps and a root map
+
+    Subject-aware fields (content_subject, content_titles, content_bodies) make titles
+    and per-topic content domain-specific instead of "Generated Topic 00001" placeholders.
+    """
+    type: Literal["flat_hierarchical_dita"] = "flat_hierarchical_dita"
+    topic_count: int = Field(default=5000, ge=1, le=25000)
+    topics_per_section: int = Field(default=50, ge=1, le=1000)
+    include_xrefs: bool = False
+    pretty_print: bool = True
+    content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
+    content_titles: List[str] = Field(default_factory=list, description="Per-topic titles aligned to topic indices (1..topic_count). Shorter lists fall back to subject-templated titles.")
+    content_bodies: List[str] = Field(default_factory=list, description="Per-topic body paragraphs aligned to topic indices. Shorter lists fall back to subject-templated bodies.")
 
 class AdvancedRelationshipRecipe(BaseModel):
     """
@@ -1190,6 +1292,7 @@ Recipe = Annotated[
         LargeScaleRecipe,
         DeepHierarchyRecipe,
         WideBranchingRecipe,
+        FlatHierarchicalDitaRecipe,
         AdvancedRelationshipRecipe,
         HubSpokeInboundRecipe,
         KeydefHeavyRecipe,

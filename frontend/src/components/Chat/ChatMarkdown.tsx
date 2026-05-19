@@ -30,11 +30,11 @@ interface ChatMarkdownProps {
 
 /** Shared Tailwind Typography wrapper for chat markdown (ChatMessage + StreamingMessage). */
 export const CHAT_MARKDOWN_PROSE_CLASS =
-  'prose prose-sm max-w-none ' +
+  'prose prose-base max-w-none ' +
   'prose-headings:text-slate-800 prose-headings:font-semibold prose-headings:mt-5 prose-headings:mb-2.5 ' +
   'prose-p:my-2 prose-p:leading-[1.75] ' +
   'prose-ul:my-2.5 prose-li:my-0.5 ' +
-  'prose-table:border-collapse prose-table:w-full prose-table:text-[13px] ' +
+  'prose-table:border-collapse prose-table:w-full prose-table:text-sm ' +
   'prose-th:bg-slate-50 prose-th:border prose-th:border-slate-200 prose-th:px-3 prose-th:py-2.5 prose-th:text-left prose-th:font-semibold prose-th:text-slate-700 ' +
   'prose-td:border prose-td:border-slate-100 prose-td:px-3 prose-td:py-2 prose-td:text-slate-600 ' +
   'prose-code:text-slate-800 prose-code:text-[0.8125rem] prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono prose-code:font-normal ' +
@@ -209,36 +209,6 @@ function CalloutCard({
   );
 }
 
-/** Syntax-highlighted code block with a hover copy button. */
-function CodeBlock({ language, children }: { language: string; children: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(children);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [children]);
-
-  return (
-    <div className="relative group">
-      <button
-        onClick={handleCopy}
-        className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-700 hover:bg-gray-600 text-white rounded p-1.5"
-        aria-label="Copy code"
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </button>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        customStyle={{ margin: 0, borderRadius: '0.5rem', fontSize: '0.85rem' }}
-        wrapLongLines={true}
-      >
-        {children}
-      </SyntaxHighlighter>
-    </div>
-  );
-}
 
 export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownProps) {
   return (

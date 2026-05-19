@@ -1,9 +1,9 @@
 {
-  "version": "ml8zf198",
-  "releaseTag": "rules-2026.02.05.1770267256556",
-  "generated": "2026-02-05T04:54:16.604Z",
-  "lastUpdated": "2026-03-04T08:05:52.553Z",
-  "lastUpdateReleaseTag": "rules-2026.02.05.1770267256556",
+  "version": "mohxki3f",
+  "releaseTag": "rules-2026.04.28.1777338695005",
+  "generated": "2026-04-28T01:11:35.067Z",
+  "lastUpdated": "2026-05-02T17:39:15.620Z",
+  "lastUpdateReleaseTag": "rules-2026.04.28.1777338695005",
   "installedDomains": [
     "security-global",
     "security-lang"
@@ -66,7 +66,7 @@
       "domain": "security-global"
     },
     "security-global/security-global-sql-usage.mdc": {
-      "sha256": "15ec05dfd5e77947fdebfa18a77fe4834c317d5cc05fee6878c1ef10e7c1b2ca",
+      "sha256": "b2fcbc0a8c26625e0e2099c26e17a78ba3b01a98672a28f2fed817f71dd19b7e",
       "domain": "security-global"
     },
     "security-global/security-global-ssrf-prevention.mdc": {
@@ -74,7 +74,7 @@
       "domain": "security-global"
     },
     "security-global/security-global-xxe-prevention.mdc": {
-      "sha256": "602001540bf52109be10a76e9626c98781aa532d3b12896b797258c4b0f49ee4",
+      "sha256": "e9711b4f1db3b3c3146a21d17af4610209c4e56bb070e2c16c416c22e7fb5409",
       "domain": "security-global"
     },
     "security-lang/security-lang-node.mdc": {
@@ -82,7 +82,7 @@
       "domain": "security-lang"
     },
     "security-lang/security-lang-python.mdc": {
-      "sha256": "c4cc160b53c1065346307aaf686d8fe627f3dfef6983af108623584901ad89b9",
+      "sha256": "ed404b0b4c21e1ffd4cd9bd28222ac29f68027cdba2e767a9ca1ca13872141b4",
       "domain": "security-lang"
     }
   },

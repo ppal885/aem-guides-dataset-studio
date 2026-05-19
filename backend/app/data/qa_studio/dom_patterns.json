@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "patterns": [
+    {
+      "id": "tablist",
+      "aem_guides_area": "panels",
+      "description": "Tab list container (Spectrum/React)",
+      "stable_xpath_examples": ["//div[@role='tablist']"],
+      "assertion_hints": ["Selected tab state via tabpanel association"]
+    },
+    {
+      "id": "tabpanel",
+      "aem_guides_area": "panels",
+      "description": "Active tab panel",
+      "stable_xpath_examples": ["//div[@role='tabpanel']"],
+      "assertion_hints": ["Scope content assertions inside active panel"]
+    },
+    {
+      "id": "spectrum-menu-label",
+      "aem_guides_area": "menus",
+      "description": "Spectrum menu item label",
+      "stable_xpath_examples": [
+        "//span[@class='spectrum-Menu-itemLabel'][normalize-space()='Repository']"
+      ],
+      "assertion_hints": ["Match visible menu label text; scope to open menu"]
+    },
+    {
+      "id": "properties-panel-label",
+      "aem_guides_area": "editor",
+      "description": "Common Properties heading",
+      "stable_xpath_examples": ["//span[normalize-space()='Properties']"],
+      "assertion_hints": []
+    },
+    {
+      "id": "copy-path",
+      "aem_guides_area": "repository",
+      "description": "Copy path action label",
+      "stable_xpath_examples": ["//span[normalize-space()='Copy path']"],
+      "assertion_hints": []
+    }
+  ]
+}

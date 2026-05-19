@@ -155,11 +155,13 @@ def handle_specialized_recipe(recipe, config, base: str, files: Dict[str, bytes]
             test_params={
                 "topic_count": recipe.topic_count,
                 "batch_size": recipe.batch_size,
+                "content_subject": getattr(recipe, "content_subject", "") or "",
+                "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
             },
             rand=rand,
         )
         files.update(scale_files)
-        # Store metrics in files metadata (can be added to manifest later)
         if not hasattr(config, '_performance_metrics'):
             config._performance_metrics = {}
         config._performance_metrics[recipe.type] = perf_metrics
@@ -172,6 +174,9 @@ def handle_specialized_recipe(recipe, config, base: str, files: Dict[str, bytes]
             test_params={
                 "depth": recipe.depth,
                 "children_per_level": recipe.children_per_level,
+                "content_subject": getattr(recipe, "content_subject", "") or "",
+                "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
             },
             rand=rand,
         )
@@ -188,6 +193,9 @@ def handle_specialized_recipe(recipe, config, base: str, files: Dict[str, bytes]
             test_params={
                 "root_topics": recipe.root_topics,
                 "children_per_root": recipe.children_per_root,
+                "content_subject": getattr(recipe, "content_subject", "") or "",
+                "content_titles": list(getattr(recipe, "content_titles", []) or []),
+                "content_bodies": list(getattr(recipe, "content_bodies", []) or []),
             },
             rand=rand,
         )

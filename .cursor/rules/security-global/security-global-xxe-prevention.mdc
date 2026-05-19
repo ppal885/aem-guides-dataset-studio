@@ -1,6 +1,5 @@
 ---
-description: 
-globs: 
+description: USE WHEN code parses or processes XML, regardless of language or framework, including generated code.
 alwaysApply: false
 ---
 # XXE Prevention

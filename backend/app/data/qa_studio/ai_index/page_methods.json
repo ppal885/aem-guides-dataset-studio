@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "methods": [
+    {"class": "EditorPage", "method": "open_topic_by_title", "source_file": "bundled_sample/editor_page.py"},
+    {"class": "EditorPage", "method": "click_publish_dropdown", "source_file": "bundled_sample/editor_page.py"},
+    {"class": "MapViewPage", "method": "expand_child_topics", "source_file": "bundled_sample/map_view.py"},
+    {"class": "MetadataPanel", "method": "set_title", "source_file": "bundled_sample/panels/metadata.py"},
+    {"class": "BaselinesDialog", "method": "create_baseline", "source_file": "bundled_sample/dialogs/baselines.py"},
+    {"class": "AssetsPickerPanel", "method": "filter_by_type", "source_file": "bundled_sample/assets/picker.py"},
+    {"class": "ReviewCommentsPanel", "method": "add_comment", "source_file": "bundled_sample/review.py"},
+    {"class": "GlobalSearchPage", "method": "run_query", "source_file": "bundled_sample/search.py"},
+    {"class": "OutlinePanel", "method": "select_section", "source_file": "bundled_sample/outline.py"},
+    {"class": "OutputPresetsDialog", "method": "choose_preset", "source_file": "bundled_sample/output/presets.py"},
+    {"class": "KeyrefPanel", "method": "assign_key", "source_file": "bundled_sample/keyrefs.py"},
+    {"class": "TagManagerDialog", "method": "apply_tag", "source_file": "bundled_sample/tags.py"},
+    {"class": "TopicEditorPanel", "method": "focus_body_iframe", "source_file": "bundled_sample/editor/iframe.py"},
+    {"class": "ConditionalTextDialog", "method": "toggle_profile", "source_file": "bundled_sample/conditional_text.py"}
+  ]
+}

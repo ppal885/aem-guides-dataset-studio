@@ -1204,6 +1204,153 @@ Suggestions for Cursor to fix:
 # =============================================================================
 
 @mcp.tool()
+async def generate_dita(
+        text: str,
+        instructions: str = "",
+) -> str:
+    """
+    Generate a DITA bundle from free-text instructions.
+
+    text: freeform prompt describing the desired DITA output
+    instructions: optional refinements such as topic family, constructs, or formatting constraints
+
+    This is the standalone text-based generation entry point for Cursor MCP use.
+    """
+    try:
+        from app.services.chat_tools import execute_generate_dita
+
+        result = await execute_generate_dita(
+            text=text,
+            instructions=(instructions or "").strip() or None,
+            bundle_contract=None,
+            run_id=None,
+            session_id=None,
+            user_id="mcp-user",
+            tenant_id="kone",
+        )
+
+        if result.get("error"):
+            return f"generate_dita failed: {result['error']}"
+
+        representative = result.get("representative_files") or []
+        representative_lines = "\n".join(f"- {name}" for name in representative[:10]) or "- None"
+        artifact_counts = result.get("artifact_counts") or {}
+        count_lines = (
+            "\n".join(f"- {k}: {v}" for k, v in artifact_counts.items())
+            if artifact_counts
+            else "- Not available"
+        )
+        bundle_summary = result.get("bundle_summary") or "DITA bundle generated."
+        download_url = result.get("download_url") or "Not available"
+        contract_summary = result.get("contract_summary") or "No contract summary available."
+        resolution_warning = result.get("resolution_warning")
+
+        lines = [
+            "DITA bundle generated successfully.",
+            "",
+            f"Summary: {bundle_summary}",
+            f"Run ID: {result.get('run_id', 'unknown')}",
+            f"Jira/Text ID: {result.get('jira_id', 'unknown')}",
+            f"Download URL: {download_url}",
+            "",
+            "Artifact counts:",
+            count_lines,
+            "",
+            "Representative files:",
+            representative_lines,
+            "",
+            "Contract summary:",
+            contract_summary,
+        ]
+        if resolution_warning:
+            lines.extend(["", f"Resolution warning: {resolution_warning}"])
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error generating DITA from text: {e}"
+
+
+@mcp.tool()
+async def generate_dita_from_screenshot(
+        image_path: str,
+        prompt: str = "",
+        dita_type: str = "",
+        reference_xml: str = "",
+        jira_context: str = "",
+) -> str:
+    """
+    Run screenshot-guided DITA authoring from a local image path.
+
+    image_path: absolute local path to the screenshot file
+    prompt: optional authoring instruction
+    dita_type: optional forced type ('concept', 'task', 'reference', 'topic')
+    reference_xml: optional reference DITA XML to guide structure/style
+    jira_context: optional Jira/context text to merge into authoring
+    """
+    try:
+        import httpx
+
+        backend_url = (os.getenv("AEM_STUDIO_URL") or "http://127.0.0.1:8001").rstrip("/")
+        token = (os.getenv("AEM_STUDIO_TOKEN") or "test-token").strip() or "test-token"
+
+        payload = {
+            "image_path": image_path,
+            "image_filename": Path(image_path).name or "screenshot.png",
+            "prompt": prompt or "Convert this screenshot to DITA XML.",
+        }
+        if dita_type:
+            payload["dita_type"] = dita_type
+        if reference_xml:
+            payload["reference_xml"] = reference_xml
+        if jira_context:
+            payload["jira_context"] = jira_context
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{backend_url}/api/v1/mcp/screenshot-to-dita",
+                json=payload,
+                headers=headers,
+            )
+
+        if response.status_code >= 400:
+            return f"generate_dita_from_screenshot failed: HTTP {response.status_code}: {response.text}"
+
+        data = response.json()
+        validation = data.get("validation") or {}
+        validation_status = validation.get("status") or data.get("status") or "unknown"
+        assumptions = data.get("assumptions") or []
+        assumption_lines = "\n".join(f"- {item}" for item in assumptions[:10]) or "- None"
+        semantic_plan = data.get("semantic_plan") or {}
+        section_count = len((semantic_plan.get("sections") or [])) if isinstance(semantic_plan, dict) else 0
+        xml_preview = (data.get("xml") or "").strip()
+        if len(xml_preview) > 1500:
+            xml_preview = xml_preview[:1500] + "\n..."
+
+        lines = [
+            f"Status: {data.get('status', 'unknown')}",
+            f"DITA type: {data.get('dita_type', 'unknown')}",
+            f"Title: {data.get('title', '') or 'Untitled'}",
+            f"Screenshot confidence: {data.get('screenshot_confidence', 'unknown')}",
+            f"Validation status: {validation_status}",
+            f"Semantic plan sections: {section_count}",
+            f"Artifact URL: {data.get('artifact_url') or 'Not available'}",
+            f"Saved asset path: {data.get('saved_asset_path') or 'Not available'}",
+            "",
+            "Assumptions:",
+            assumption_lines,
+        ]
+        message = data.get("message")
+        if message:
+            lines.extend(["", f"Message: {message}"])
+        if xml_preview:
+            lines.extend(["", "XML preview:", xml_preview])
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error generating DITA from screenshot: {e}"
+
+
+@mcp.tool()
 def generate_dita_from_jira(
         issue_key: str,
         dita_type: str = "auto",

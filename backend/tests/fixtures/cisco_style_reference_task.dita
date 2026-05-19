@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="T-sample-ref-only-do-not-copy" xml:lang="en-US">
+  <title>Sample enterprise procedure (reference shell)</title>
+  <shortdesc>Fictitious shell demonstrating Cisco-style task structure for pattern detection.</shortdesc>
+  <prolog>
+    <metadata>
+      <audience experiencelevel="expert" name="eng"/>
+      <keywords>
+        <keyword>sample-shell</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <taskbody>
+    <prereq>
+      <p>Administrator access to the controller.</p>
+    </prereq>
+    <context>
+      <p>Use this pattern when documenting UI workflows.</p>
+    </context>
+    <steps>
+      <step id="T-sample-ref-only-step-1">
+        <cmd>Select <uicontrol>Policies</uicontrol> from the navigation pane.</cmd>
+        <info>
+          <p>The navigation pane may be collapsed; expand it first.</p>
+        </info>
+      </step>
+      <step id="T-sample-ref-only-step-2">
+        <cmd>Enter <codeph>commit</codeph> in the CLI field.</cmd>
+        <substeps>
+          <substep>
+            <cmd>Press <uicontrol>Apply</uicontrol>.</cmd>
+          </substep>
+        </substeps>
+      </step>
+    </steps>
+    <result>
+      <p>The policy appears in the active list.</p>
+    </result>
+    <example>
+      <title>Sample output</title>
+      <codeblock>OK: policy-001</codeblock>
+    </example>
+    <postreq>
+      <p>Verify telemetry shows the policy as active.</p>
+    </postreq>
+  </taskbody>
+</task>

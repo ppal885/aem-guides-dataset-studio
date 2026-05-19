@@ -344,6 +344,21 @@ def is_llm_available() -> bool:
         return _is_bedrock_available()
     return bool(ANTHROPIC_API_KEY and ANTHROPIC_API_KEY.strip())
 
+def build_openai_chat_completion_kwargs(*, provider: str | None = None, **kwargs) -> dict:
+    """
+    Return OpenAI/Azure chat.completions.create kwargs, dropping None values.
+
+    Newer OpenAI-compatible model families on Azure reject `max_tokens` and require
+    `max_completion_tokens` instead. Normalize that here so every OpenAI/Azure chat
+    path stays consistent.
+    """
+    normalized = {k: v for k, v in kwargs.items() if v is not None}
+    active_provider = provider or _effective_provider()
+    if active_provider in {"openai", "azure_openai"} and "max_tokens" in normalized:
+        normalized["max_completion_tokens"] = normalized.pop("max_tokens")
+    return normalized
+
+
 PROMPTS_VERSIONS_PATH = str(Path(__file__).resolve().parent.parent / "templates" / "prompts" / "versions.json")
 
 _prompt_versions_cache: Optional[dict] = None
@@ -765,14 +780,17 @@ async def _generate_openai(
     chunks: list[str] = []
     input_tok = output_tok = None
     stream = await client.chat.completions.create(
-        model=_openai_model_for_provider(provider),
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=LLM_TEMPERATURE,
-        top_p=LLM_TOP_P,
-        frequency_penalty=LLM_FREQUENCY_PENALTY,
-        stream=True,
-        stream_options={"include_usage": True},
+        **build_openai_chat_completion_kwargs(
+            provider=provider,
+            model=_openai_model_for_provider(provider),
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=LLM_TEMPERATURE,
+            top_p=LLM_TOP_P,
+            frequency_penalty=LLM_FREQUENCY_PENALTY,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
     )
     async for chunk in stream:
         if hasattr(chunk, "usage") and chunk.usage:
@@ -1469,15 +1487,16 @@ async def _stream_with_tools_openai(
     openai_messages = _build_openai_messages(system_prompt, messages)
     openai_tools = _anthropic_tools_to_openai(tools) if tools else None
 
-    kwargs = {
-        "model": _openai_model_for_provider(provider),
-        "messages": openai_messages,
-        "max_tokens": max_tokens,
-        "temperature": LLM_TEMPERATURE_CHAT,
-        "top_p": LLM_TOP_P,
-        "frequency_penalty": LLM_FREQUENCY_PENALTY,
-        "stream": True,
-    }
+    kwargs = build_openai_chat_completion_kwargs(
+        provider=provider,
+        model=_openai_model_for_provider(provider),
+        messages=openai_messages,
+        max_tokens=max_tokens,
+        temperature=LLM_TEMPERATURE_CHAT,
+        top_p=LLM_TOP_P,
+        frequency_penalty=LLM_FREQUENCY_PENALTY,
+        stream=True,
+    )
     if openai_tools:
         kwargs["tools"] = openai_tools
         kwargs["tool_choice"] = "auto"
@@ -1594,13 +1613,16 @@ async def _generate_chat_stream_openai(
     openai_messages = _build_openai_messages(system_prompt, messages)
 
     stream = await client.chat.completions.create(
-        model=_openai_model_for_provider(provider),
-        messages=openai_messages,
-        max_tokens=max_tokens,
-        temperature=LLM_TEMPERATURE_CHAT,
-        top_p=LLM_TOP_P,
-        frequency_penalty=LLM_FREQUENCY_PENALTY,
-        stream=True,
+        **build_openai_chat_completion_kwargs(
+            provider=provider,
+            model=_openai_model_for_provider(provider),
+            messages=openai_messages,
+            max_tokens=max_tokens,
+            temperature=LLM_TEMPERATURE_CHAT,
+            top_p=LLM_TOP_P,
+            frequency_penalty=LLM_FREQUENCY_PENALTY,
+            stream=True,
+        )
     )
 
     async for chunk in stream:
