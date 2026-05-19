@@ -231,6 +231,37 @@ _TOOL_KIND_BY_NAME: dict[str, str] = {
     "generate_image": "artifact",
 }
 
+# Tools that require explicit user approval before execution (e.g. write/job-creation tools)
+_TOOL_APPROVAL_REQUIRED: frozenset[str] = frozenset({
+    "create_job",
+    "generate_dita",
+    "fix_dita_xml",
+})
+
+# Tools that show a preview result before committing (preview_then_generate mode)
+_TOOL_REVIEW_FIRST: frozenset[str] = frozenset({
+    "generate_dita",
+    "fix_dita_xml",
+    "generate_native_pdf_config",
+    "generate_xml_flowchart",
+})
+
+# Tools that only read data and never modify state
+_TOOL_READ_ONLY: frozenset[str] = frozenset({
+    "lookup_dita_spec",
+    "lookup_aem_guides",
+    "lookup_output_preset",
+    "lookup_dita_attribute",
+    "search_jira_issues",
+    "search_tenant_knowledge",
+    "find_recipes",
+    "get_job_status",
+    "list_jobs",
+    "list_indexed_pdfs",
+    "browse_dataset",
+    "review_dita_xml",
+})
+
 
 def _extract_dita_attribute_from_query(query: str) -> str:
     matches = _extract_dita_attributes_from_query(query)
