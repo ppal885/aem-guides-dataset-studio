@@ -11,6 +11,7 @@ const DatasetExplorerPage = lazy(() => import('./pages/DatasetExplorerPage').the
 const AemUploadPage = lazy(() => import('./pages/AemUploadPage').then(module => ({ default: module.AemUploadPage })))
 const ChatPage = lazy(() => import('./pages/ChatPage').then(module => ({ default: module.ChatPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
+const UacCopilotPage = lazy(() => import('./pages/UacCopilotPage').then(module => ({ default: module.UacCopilotPage })))
 function App() {
   return (
     <ErrorBoundary>
@@ -31,6 +32,7 @@ function App() {
                   <Route path="/chat" element={<ChatPage />} />
                   <Route path="/upload" element={<AemUploadPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/uac-copilot" element={<UacCopilotPage />} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>

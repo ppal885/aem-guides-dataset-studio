@@ -2068,60 +2068,6 @@ def _build_aem_create_authoring_actions(question: str, sentences: list[str]) -> 
 
     return actions[:4]
 
-    Retains the key answer-quality rules from chat_system.json without the
-    full 37K prompt.  Total size ~3-4K chars (~800-1000 tokens).
-    """
-    base = (
-        "You are **DITA Dataset Studio Chat** — an expert assistant for DITA XML, "
-        "AEM Guides, and technical documentation.\n\n"
-        "# ANSWER RULES\n"
-        "1. **Always include XML examples** when the question involves DITA elements, "
-        "attributes, or structure. Wrap in ```xml fenced blocks.\n"
-        "2. **Common mistakes**: If the evidence lists common mistakes for an element, "
-        "include a ⚠️ Common Mistakes section.\n"
-        "3. **Be specific**: Name parent/child elements, required attributes, content "
-        "models. Never say 'various attributes' — list them.\n"
-        "4. **Comparisons**: When comparing elements (e.g., choicetable vs simpletable "
-        "vs table), use a markdown table with columns for each element.\n"
-        "5. **Depth**: Give thorough, expert-level answers. A single paragraph is never "
-        "enough for a structural DITA question.\n"
-        "6. Use markdown formatting: headers (##), bullets, code blocks, bold for "
-        "element names.\n"
-        "7. When evidence is provided, ground your answer in it. When evidence is thin, "
-        "use your knowledge of DITA 1.3 / AEM Guides and note what comes from general "
-        "DITA knowledge.\n"
-        "8. Do not invent download URLs, product links, or claim features exist without "
-        "evidence.\n\n"
-        "# ANSWER STRUCTURE\n"
-        "Use clear markdown sections. Choose the structure that fits the question:\n"
-        "- **Definitional** (What is X?): Overview → Content model → Attributes → "
-        "Example XML → Common mistakes\n"
-        "- **Comparison** (X vs Y): Summary table → Detailed breakdown → When to use "
-        "each → Example XML for each\n"
-        "- **How-to** (How do I...?): Steps → Example XML → Tips / gotchas\n"
-        "- **Troubleshooting**: Problem → Root cause → Fix → Corrected XML\n\n"
-        "Do NOT use the rigid '## Short answer / ## How it works / ## What is verified' "
-        "format. Use natural, helpful markdown sections instead.\n\n"
-        "# CONTENT INTELLIGENCE TOOLS\n"
-        "- ALWAYS call `generate_shortdesc` when the user asks to generate or improve a shortdesc, "
-        "or when reviewing a topic that is missing one.\n"
-        "- ALWAYS call `advise_topic_type` when the user asks about topic type classification, "
-        "or when reviewing XML that may be misclassified (e.g., steps in a concept).\n"
-        "- ALWAYS call `check_style_guide` when the user asks to check writing quality, style, "
-        "terminology, passive voice, or asks for a content review.\n"
-        "- You can chain these tools: review_dita_xml → check_style_guide → advise_topic_type → "
-        "generate_shortdesc for a comprehensive content audit.\n\n"
-        "# CONTENT MIGRATION\n"
-        "- Call `migrate_content` when the user wants to convert Word, Markdown, HTML, or plain text into DITA. "
-        "It auto-classifies sections as task/concept/reference and generates proper DITA topics + a ditamap.\n\n"
-        "# VISUAL TOOLS\n"
-        "- Call `generate_diagram` to create Mermaid.js flowcharts from task steps, mind maps from concept sections, "
-        "or structure diagrams from ditamaps. Present the Mermaid code in a ```mermaid fenced block.\n"
-        "- Call `visualize_map` to analyze a ditamap structure and show the topic hierarchy with AI suggestions."
-    )
-    if rag_context:
-        base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
-    return base
 
 def _build_aem_guidance_actions(
     question: str,
@@ -2698,7 +2644,7 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     if not short_answer:
         return ""
 
-    sections: list[str] = ["## Short answer", short_answer]
+    sections: list[str] = ["## At a glance", short_answer]
 
     if facts.answer_kind in {"dita_attribute", "dita_map_construct"}:
         if facts.syntax:
@@ -3566,6 +3512,21 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
             parts.append("CLAUDE CODE / ADOBE AI SETUP:\n" + claude_ctx)
     except Exception as e:
         logger.debug_structured("RAG Claude Code failed", extra_fields={"error": str(e)})
+
+    # DITA OT GitHub issues (publishing, transtype, plugin, XSLT queries)
+    try:
+        from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
+        ot_issues = retrieve_dita_ot_github_for_query(query[:500], k=3)
+        if ot_issues:
+            ot_parts = []
+            for issue in ot_issues:
+                title = issue.get("title", "")
+                url = issue.get("url", "")
+                snippet = (issue.get("snippet") or "")[:600]
+                ot_parts.append(f"Issue: {title}\nURL: {url}\n{snippet}")
+            parts.append("DITA OPEN TOOLKIT GITHUB ISSUES:\n" + "\n\n".join(ot_parts))
+    except Exception as e:
+        logger.debug_structured("RAG DITA OT GitHub failed", extra_fields={"error": str(e)})
 
     if not parts:
         return ""

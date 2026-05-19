@@ -318,16 +318,16 @@ def _format_structured_answer(
     not_verified_points: Iterable[str] | None = None,
     citations: Iterable[Citation] | None = None,
 ) -> str:
-    sections: list[str] = ["## Short answer", _normalize_space(short_answer) or "I don't have enough verified information to answer that confidently."]
+    sections: list[str] = ["## At a glance", _normalize_space(short_answer) or "I don't have enough verified information to answer that confidently."]
 
     how_points = [_normalize_space(point) for point in (how_it_works or []) if _normalize_space(point)]
     if how_points:
-        sections.extend(["", "## How it works", *[f"- {point}" for point in how_points]])
+        sections.extend(["", "## Details", *[f"- {point}" for point in how_points]])
 
     verified = [_normalize_space(point) for point in (verified_points or []) if _normalize_space(point)]
     not_verified = [_normalize_space(point) for point in (not_verified_points or []) if _normalize_space(point)]
     if verified or not_verified:
-        sections.extend(["", "## What is verified / not verified"])
+        sections.extend(["", "## Notes"])
         sections.extend([f"- Verified: {point}" for point in verified])
         sections.extend([f"- Not verified: {point}" for point in not_verified])
 
@@ -819,8 +819,8 @@ def _looks_like_overconfident_draft(
     if any(_xml_block_has_placeholder_content(block) for block in xml_blocks):
         return True
     if (
-        "## Short answer" in draft_answer
-        and ("## Verified details" in draft_answer or "## Sources" in draft_answer)
+        ("## At a glance" in draft_answer or "## Short answer" in draft_answer)
+        and ("## Verified details" in draft_answer or "## Sources" in draft_answer or "## Details" in draft_answer)
         and not unsupported
     ):
         return False
@@ -906,7 +906,7 @@ async def verify_grounded_answer(
                 reason="The draft answer was narrowed to verified evidence before being returned.",
             )
         answer_text = draft_answer.strip()
-        if "## Short answer" not in answer_text:
+        if "## At a glance" not in answer_text and "## Short answer" not in answer_text:
             draft_points = [
                 sentence
                 for sentence in (_first_sentence(part.strip()) for part in draft_answer.splitlines() if part.strip())

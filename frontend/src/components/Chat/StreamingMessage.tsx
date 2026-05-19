@@ -3,6 +3,9 @@ import type { AgentState, AgentStateInfo, JobProgressInfo } from '@/api/chat';
 import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
 import { ToolResult } from './ChatMessage';
+import { AgentStateIndicator } from './AgentStateIndicator';
+import { ApprovalGate } from './ApprovalGate';
+import { DatasetJobStatusCard } from './DatasetJobStatusCard';
 
 interface StreamingMessageProps {
   content: string;
@@ -17,7 +20,18 @@ interface StreamingMessageProps {
   jobProgress?: JobProgressInfo | null;
 }
 
-export function StreamingMessage({ content, toolResults, className }: StreamingMessageProps) {
+export function StreamingMessage({
+  content,
+  toolResults,
+  className,
+  thinking,
+  agentState,
+  agentStateMessage,
+  agentStateInfo,
+  approvalMessage,
+  approvalTools,
+  jobProgress,
+}: StreamingMessageProps) {
   const showCursor = content.length > 0;
 
   return (

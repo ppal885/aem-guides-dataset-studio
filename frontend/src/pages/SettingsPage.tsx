@@ -18,6 +18,13 @@ interface RagStatus {
     count_scope?: string;
     populate_via: string;
   };
+  dita_ot_github?: {
+    source: string;
+    collection?: string;
+    chunk_count: number;
+    count_scope?: string;
+    populate_via: string;
+  };
   /** Tavily API for chat web search (no secrets exposed) */
   tavily?: {
     configured: boolean;
@@ -33,6 +40,7 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [indexingDita, setIndexingDita] = useState(false);
   const [crawlingAem, setCrawlingAem] = useState(false);
+  const [indexingDitaOt, setIndexingDitaOt] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
   const loadRagStatus = useCallback(async () => {
@@ -74,6 +82,30 @@ export function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Index DITA PDF failed');
     } finally {
       setIndexingDita(false);
+    }
+  }, [loadRagStatus]);
+
+  const handleIndexDitaOt = useCallback(async () => {
+    setIndexingDitaOt(true);
+    setLastAction(null);
+    setError(null);
+    try {
+      const result = await fetchJson<{ indexed?: number; errors?: string[] }>(
+        apiUrl('/api/v1/ai/index-dita-ot-github'),
+        { method: 'POST' }
+      );
+      const indexed = result.indexed ?? 0;
+      const errs = result.errors ?? [];
+      if (errs.length > 0) {
+        setLastAction(`Indexed ${indexed} DITA OT issues with errors: ${errs.join('; ')}`);
+      } else {
+        setLastAction(`Indexed ${indexed} DITA OT GitHub issues successfully`);
+      }
+      await loadRagStatus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Index DITA OT GitHub failed');
+    } finally {
+      setIndexingDitaOt(false);
     }
   }, [loadRagStatus]);
 
@@ -165,7 +197,9 @@ export function SettingsPage() {
               <code className="text-xs">{ragStatus.aem_guides?.collection ?? 'aem_guides'}</code> ={' '}
               <strong>{ragStatus.aem_guides?.chunk_count ?? 0}</strong> chunks ·{' '}
               <code className="text-xs">{ragStatus.dita_spec?.collection ?? 'dita_spec'}</code> ={' '}
-              <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong> chunks. Recipe catalog is not counted here.
+              <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong> chunks ·{' '}
+              <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code> ={' '}
+              <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong> chunks. Recipe catalog is not counted here.
             </p>
 
             <p className="text-sm text-slate-600">
@@ -247,6 +281,37 @@ export function SettingsPage() {
                   </>
                 ) : (
                   'Index DITA PDF'
+                )}
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-slate-500" />
+                <span className="font-medium">DITA OT GitHub Issues</span>
+              </div>
+              <p className="text-sm text-slate-600 mb-2">
+                {ragStatus.dita_ot_github?.source ?? 'dita-ot/dita-ot GitHub issues for DITA Open Toolkit RAG.'}
+              </p>
+              <p className="text-sm font-mono">
+                Chunks in <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code>:{' '}
+                <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong>
+              </p>
+              {ragStatus.dita_ot_github?.count_scope ? (
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.dita_ot_github.count_scope}</p>
+              ) : null}
+              <button
+                onClick={handleIndexDitaOt}
+                disabled={indexingDitaOt}
+                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {indexingDitaOt ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Indexing...
+                  </>
+                ) : (
+                  'Index DITA OT GitHub'
                 )}
               </button>
             </div>

@@ -462,6 +462,7 @@ def get_rag_status(
     from app.services.vector_store_service import (
         CHROMA_COLLECTION_AEM_GUIDES,
         CHROMA_COLLECTION_DITA_SPEC,
+        CHROMA_COLLECTION_DITA_OT_GITHUB,
         get_collection_count,
         is_chroma_available,
     )
@@ -472,7 +473,7 @@ def get_rag_status(
     requested_tenant = tenant_id if str(tenant_id or "").strip() not in {"", "default"} else None
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
 
-    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, err: str | None = None) -> dict:
+    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, err: str | None = None) -> dict:
         try:
             tavily = get_tavily_rag_status()
         except Exception as ex:
@@ -521,6 +522,14 @@ def get_rag_status(
                 "used_in": ["scenario_expander", "plan_for_scenario"],
                 "populate_via": "POST /api/v1/ai/index-dita-pdf",
             },
+            "dita_ot_github": {
+                "source": "dita-ot/dita-ot GitHub issues (REST API, no auth required)",
+                "collection": CHROMA_COLLECTION_DITA_OT_GITHUB,
+                "chunk_count": dita_ot_count,
+                "count_scope": "Embeddings in Chroma `dita_ot_github` only.",
+                "used_in": ["chat_rag (DITA OT / publishing queries)"],
+                "populate_via": "POST /api/v1/ai/index-dita-ot-github",
+            },
             "github_dita": github_dita,
         }
 
@@ -528,12 +537,13 @@ def get_rag_status(
         chroma_ok = is_chroma_available()
         aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
         dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
-        return _payload(chroma_ok, aem_count, dita_count, None)
+        dita_ot_count = get_collection_count(CHROMA_COLLECTION_DITA_OT_GITHUB) if chroma_ok else 0
+        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, None)
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
         # Always return the same shape so Settings UI can show all sections (with zeros).
         try:
-            return _payload(False, 0, 0, str(e))
+            return _payload(False, 0, 0, 0, str(e))
         except Exception as e2:
             logger.warning_structured("RAG status fallback failed", extra_fields={"error": str(e2)})
             return {
@@ -565,6 +575,35 @@ async def index_dita_pdf(
     except Exception as e:
         logger.error_structured(
             "DITA PDF index failed",
+            extra_fields={"error": str(e)},
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=sanitize_error_for_client(e))
+
+
+@router.post("/index-dita-ot-github")
+async def index_dita_ot_github_route(
+    max_issues: int = Query(3500, ge=1, le=5000, description="Max GitHub issues to fetch"),
+    force_reindex: bool = Query(False, description="Delete collection before reindexing"),
+    state: str = Query("all", description="Issue state filter: all | open | closed"),
+    since: str | None = Query(None, description="ISO 8601 timestamp for incremental re-index"),
+    user: UserIdentity = AdminUser,
+):
+    """Index dita-ot/dita-ot GitHub issues into the dita_ot_github ChromaDB collection for RAG.
+    Run this to populate or refresh the DITA Open Toolkit issues RAG. Returns indexed count and errors."""
+    try:
+        from app.services.dita_ot_github_rag_service import index_dita_ot_github_issues
+        stats = await asyncio.to_thread(
+            index_dita_ot_github_issues,
+            max_issues=max_issues,
+            force_reindex=force_reindex,
+            state=state,
+            since=since,
+        )
+        return stats
+    except Exception as e:
+        logger.error_structured(
+            "DITA OT GitHub index failed",
             extra_fields={"error": str(e)},
             exc_info=True,
         )
