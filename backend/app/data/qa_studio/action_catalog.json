@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "actions": [
+    {
+      "id": "po_click",
+      "summary": "Click via Page Object method",
+      "layer": "page_object",
+      "behaviors": ["click"],
+      "allows_override_click": true,
+      "notes": "click(override=True) only for documented flaky ellipsis/overflow per framework policy"
+    },
+    {
+      "id": "po_read_text",
+      "summary": "Read visible text via Page Object reader",
+      "layer": "page_object",
+      "behaviors": ["read"]
+    },
+    {
+      "id": "po_wait_visible",
+      "summary": "Wait for element visible via framework wait helpers",
+      "layer": "page_object",
+      "behaviors": ["wait"]
+    },
+    {
+      "id": "keyboard_helper",
+      "summary": "Framework keyboard helper (no direct Selenium Keys)",
+      "layer": "framework",
+      "behaviors": ["keyboard"]
+    }
+  ]
+}

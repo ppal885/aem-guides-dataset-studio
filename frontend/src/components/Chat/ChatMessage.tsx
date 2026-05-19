@@ -438,7 +438,7 @@ export function ChatMessage({
           </div>
         </div>
 
-        <div className="text-[0.9375rem] leading-relaxed">
+        <div className="text-base leading-relaxed">
           {isUser ? (
             editing ? (
               <div className="space-y-2">
@@ -1120,11 +1120,11 @@ export function ToolResult({
       <div className="rounded-xl border border-slate-300/80 bg-slate-50/50 p-3 shadow-sm">
         <div className="mb-2 flex items-center gap-2">
           <div className="text-sm font-bold text-slate-800">DITA attributes</div>
-          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-700">
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
             {attrs.length} matched
           </span>
         </div>
-        {r.summary && <p className="mb-3 text-xs leading-5 text-slate-700">{String(r.summary)}</p>}
+        {r.summary && <p className="mb-3 text-sm leading-6 text-slate-700">{String(r.summary)}</p>}
         <div className="space-y-2">
           {attrs.map((item, index) => {
             const attrName = String(item.attribute_name || '').trim();
@@ -1134,51 +1134,38 @@ export function ToolResult({
             const commonMistakes = Array.isArray(item.common_mistakes) ? (item.common_mistakes as string[]) : [];
             const examples = Array.isArray(item.correct_examples) ? (item.correct_examples as string[]) : [];
             const textContent = String(item.text_content || '').trim();
-            const textPreview = textContent.slice(0, 220);
-            const hasMoreText = textContent.length > 220;
             return (
-              <div key={`${attrName}-${index}`} className="rounded-lg border border-slate-200 bg-white/80 p-2.5">
-                <div className="text-xs font-bold text-slate-800">@{attrName}</div>
+              <div key={`${attrName}-${index}`} className="rounded-lg border border-slate-200 bg-white/80 p-3">
+                <div className="text-sm font-bold text-slate-800">@{attrName}</div>
                 {textContent && (
-                  <div className="mt-1">
-                    <p className="text-[11px] leading-5 text-slate-600 whitespace-pre-wrap">
-                      {textPreview}
-                      {hasMoreText ? '…' : ''}
+                  <div className="mt-2">
+                    <p className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {textContent}
                     </p>
-                    {hasMoreText && (
-                      <details className="mt-1 text-[11px]">
-                        <summary className="cursor-pointer font-semibold text-slate-700 hover:underline">
-                          Show full guidance
-                        </summary>
-                        <div className="mt-1 whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50/60 p-2 leading-5 text-slate-700">
-                          {textContent}
-                        </div>
-                      </details>
-                    )}
                   </div>
                 )}
                 {values.length > 0 && (
-                  <div className="mt-2">
-                    <span className="text-[10px] font-semibold uppercase text-slate-500">Valid values</span>
-                    <div className="mt-0.5 text-[11px] text-slate-600">
+                  <div className="mt-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valid values</span>
+                    <div className="mt-1 text-sm text-slate-700">
                       {values.slice(0, 8).join(', ')}
                       {values.length > 8 ? `, +${values.length - 8} more` : ''}
                     </div>
                   </div>
                 )}
                 {elements.length > 0 && (
-                  <div className="mt-1.5">
-                    <span className="text-[10px] font-semibold uppercase text-slate-500">Supported on</span>
-                    <div className="mt-0.5 text-[11px] text-slate-600">
+                  <div className="mt-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported on</span>
+                    <div className="mt-1 text-sm text-slate-700">
                       {elements.slice(0, 8).join(', ')}
                       {elements.length > 8 ? `, +${elements.length - 8} more` : ''}
                     </div>
                   </div>
                 )}
                 {usageContexts.length > 0 && (
-                  <div className="mt-2">
-                    <span className="text-[10px] font-semibold uppercase text-slate-500">Used for</span>
-                    <ul className="mt-1 space-y-1 text-[11px] text-slate-600">
+                  <div className="mt-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Used for</span>
+                    <ul className="mt-1.5 space-y-1.5 text-sm text-slate-700">
                       {usageContexts.slice(0, 2).map((context) => (
                         <li key={context} className="flex gap-1.5">
                           <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-300" />
@@ -1189,19 +1176,19 @@ export function ToolResult({
                   </div>
                 )}
                 {commonMistakes.length > 0 && (
-                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1.5">
-                    <span className="text-[10px] font-semibold uppercase text-amber-700">Watch out</span>
-                    <p className="mt-0.5 text-[11px] leading-5 text-amber-900">
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/80 px-2.5 py-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Watch out</span>
+                    <p className="mt-1 text-sm leading-6 text-amber-950">
                       {commonMistakes[0]}
                     </p>
                   </div>
                 )}
                 {examples.length > 0 && (
-                  <details className="mt-2 text-[11px]">
-                    <summary className="cursor-pointer font-semibold text-slate-700 hover:underline">
+                  <details className="mt-3 text-sm">
+                    <summary className="cursor-pointer font-semibold text-slate-800 hover:underline">
                       Show example
                     </summary>
-                    <pre className="mt-1.5 overflow-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2 text-[10px] leading-4 text-slate-700">
+                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-xs leading-6 text-slate-800">
                       {examples[0]}
                     </pre>
                   </details>
@@ -1223,66 +1210,58 @@ export function ToolResult({
     const commonMistakes = (r.common_mistakes as string[]) || [];
     const examples = (r.correct_examples as string[]) || [];
     const textContent = String(r.text_content || '').trim();
-    const textPreview = textContent.slice(0, 320);
-    const hasMoreText = textContent.length > 320;
     return (
-      <div className="rounded-xl border border-slate-300/80 bg-slate-50/50 p-3 shadow-sm">
-        <div className="mb-2 flex items-center gap-2">
-          <div className="text-sm font-bold text-slate-800">@{attrName}</div>
+      <div className="rounded-xl border border-slate-300/80 bg-slate-50/50 p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="text-base font-bold text-slate-800">@{attrName}</div>
           {name === 'lookup_dita_spec' && (
-            <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-700">
+            <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
               via spec lookup
             </span>
           )}
         </div>
         {textContent && (
-          <div className="mb-2">
-            <p className="text-xs leading-5 text-slate-700 whitespace-pre-wrap">
-              {textPreview}
-              {hasMoreText ? '…' : ''}
+          <div className="mb-3">
+            <p className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-800">
+              {textContent}
             </p>
-            {hasMoreText && (
-              <details className="mt-1 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-700 hover:underline">
-                  Show full guidance
-                </summary>
-                <div className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-white/90 p-2 text-[11px] leading-5 text-slate-700">
-                  {textContent}
-                </div>
-              </details>
-            )}
           </div>
         )}
         {values.length > 0 && (
-          <div className="mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase">Valid values</span>
-            <div className="flex flex-wrap gap-1 mt-0.5">
+          <div className="mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valid values</span>
+            <div className="mt-1 flex flex-wrap gap-1.5">
               {values.slice(0, 20).map((v, i) => (
-                <span key={i} className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11px] font-mono">{v}</span>
+                <span key={i} className="rounded-md bg-slate-200 px-2 py-0.5 font-mono text-sm text-slate-800">
+                  {v}
+                </span>
               ))}
-              {values.length > 20 && <span className="text-[10px] text-slate-400">+{values.length - 20} more</span>}
+              {values.length > 20 && <span className="text-xs text-slate-500">+{values.length - 20} more</span>}
             </div>
           </div>
         )}
         {elements.length > 0 && (
-          <div className="mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase">Supported on</span>
-            <div className="text-xs text-slate-600 mt-0.5">{elements.slice(0, 15).join(', ')}{elements.length > 15 ? `, +${elements.length - 15} more` : ''}</div>
+          <div className="mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported on</span>
+            <div className="mt-1 text-sm text-slate-700">
+              {elements.slice(0, 15).join(', ')}
+              {elements.length > 15 ? `, +${elements.length - 15} more` : ''}
+            </div>
           </div>
         )}
         {combos.length > 0 && (
-          <div className="mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase">Combines with</span>
-            <div className="text-xs text-slate-600 mt-0.5">{combos.join(', ')}</div>
+          <div className="mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Combines with</span>
+            <div className="mt-1 text-sm text-slate-700">{combos.join(', ')}</div>
           </div>
         )}
         {usageContexts.length > 0 && (
-          <div className="mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase">Used for</span>
-            <ul className="mt-1 space-y-1 text-xs text-slate-600">
+          <div className="mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Used for</span>
+            <ul className="mt-1.5 space-y-1.5 text-sm text-slate-700">
               {usageContexts.slice(0, 3).map((context) => (
                 <li key={context} className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-300" />
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
                   <span>{context}</span>
                 </li>
               ))}
@@ -1291,19 +1270,17 @@ export function ToolResult({
         )}
         {scenarios.length > 0 && (
           <div>
-            <span className="text-[10px] font-semibold text-slate-500 uppercase">Typical scenarios</span>
-            <div className="mt-0.5 text-xs text-slate-600">
-              {scenarios.slice(0, 3).join(' | ')}
-            </div>
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Typical scenarios</span>
+            <div className="mt-1 text-sm text-slate-700">{scenarios.slice(0, 3).join(' | ')}</div>
           </div>
         )}
         {commonMistakes.length > 0 && (
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/90 px-2.5 py-2">
-            <div className="text-[10px] font-semibold uppercase text-amber-700">Watch out</div>
-            <ul className="mt-1 space-y-1 text-xs leading-5 text-amber-900">
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2.5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Watch out</div>
+            <ul className="mt-1.5 space-y-1.5 text-sm leading-6 text-amber-950">
               {commonMistakes.slice(0, 2).map((mistake) => (
                 <li key={mistake} className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                   <span>{mistake}</span>
                 </li>
               ))}
@@ -1311,11 +1288,115 @@ export function ToolResult({
           </div>
         )}
         {examples.length > 0 && (
-          <details className="mt-2 text-xs">
-            <summary className="cursor-pointer font-semibold text-slate-700 hover:underline">Show example</summary>
-            <pre className="mt-1.5 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white/90 p-2 text-[11px] leading-5 text-slate-700">
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer font-semibold text-slate-800 hover:underline">Show example</summary>
+            <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white/90 p-2.5 text-xs leading-6 text-slate-800">
               {examples[0]}
             </pre>
+          </details>
+        )}
+      </div>
+    );
+  }
+  if (
+    name === 'lookup_dita_spec' &&
+    String(r.query_type || '').trim() === 'element_comparison' &&
+    Array.isArray(r.comparisons) &&
+    (r.comparisons as unknown[]).length >= 2
+  ) {
+    const comparisons = r.comparisons as Array<Record<string, unknown>>;
+    const heading = String(r.comparison_heading || '').trim();
+    const summaryCmp = String(r.summary || '').trim();
+    const warningsCmp = Array.isArray(r.warnings) ? (r.warnings as string[]) : [];
+    const fmtList = (items: string[], cap: number) => {
+      if (items.length <= cap) return items.join(', ');
+      return `${items.slice(0, cap).join(', ')}, +${items.length - cap} more`;
+    };
+    return (
+      <div className="rounded-xl border border-teal-200/80 bg-teal-50/50 p-3 shadow-sm">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="text-sm font-bold text-teal-900">DITA element comparison</div>
+          {heading && (
+            <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-800">
+              {heading}
+            </span>
+          )}
+        </div>
+        <ToolLead result={r} />
+        {summaryCmp && (
+          <p className="mb-3 whitespace-pre-wrap text-xs leading-5 text-slate-700">{summaryCmp}</p>
+        )}
+        {warningsCmp.length > 0 && (
+          <ul className="mb-3 list-inside list-disc text-[11px] text-amber-800">
+            {warningsCmp.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
+        <div className="overflow-x-auto rounded-lg border border-teal-100 bg-white/80">
+          <table className="w-full min-w-[560px] border-collapse text-left text-[11px] text-slate-800">
+            <thead>
+              <tr className="border-b border-teal-200 bg-teal-100/50">
+                <th className="px-2 py-2 font-semibold text-teal-900">Element</th>
+                <th className="px-2 py-2 font-semibold text-teal-900">Allowed children</th>
+                <th className="px-2 py-2 font-semibold text-teal-900">Can appear inside</th>
+                <th className="px-2 py-2 font-semibold text-teal-900">Common attributes</th>
+                <th className="px-2 py-2 font-semibold text-teal-900">Spec</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisons.map((row, idx) => {
+                const en = String(row.element_name || '').trim();
+                const ch = Array.isArray(row.allowed_children) ? (row.allowed_children as string[]) : [];
+                const par = Array.isArray(row.parent_elements) ? (row.parent_elements as string[]) : [];
+                const attr = Array.isArray(row.supported_attributes) ? (row.supported_attributes as string[]) : [];
+                const specUrl = String(row.source_url || '').trim();
+                return (
+                  <tr key={`${en}-${idx}`} className="border-b border-teal-100 align-top last:border-b-0">
+                    <td className="px-2 py-2 font-mono font-medium text-teal-900">{en ? `<${en}>` : '…'}</td>
+                    <td className="px-2 py-2 text-slate-700">{ch.length ? fmtList(ch, 24) : '—'}</td>
+                    <td className="px-2 py-2 text-slate-700">{par.length ? fmtList(par, 14) : '—'}</td>
+                    <td className="px-2 py-2 text-slate-700">{attr.length ? fmtList(attr, 12) : '—'}</td>
+                    <td className="px-2 py-2">
+                      {specUrl ? (
+                        <a
+                          href={specUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-teal-800 underline hover:text-teal-950"
+                        >
+                          Reference
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {comparisons.some((row) => String(row.text_content || '').trim()) && (
+          <details className="mt-2 text-xs">
+            <summary className="cursor-pointer font-semibold text-teal-800 hover:underline">
+              Summary text per element
+            </summary>
+            <div className="mt-2 space-y-2">
+              {comparisons.map((row, idx) => {
+                const en = String(row.element_name || '').trim();
+                const desc = String(row.text_content || '').trim();
+                if (!desc) return null;
+                return (
+                  <div key={`d-${en}-${idx}`} className="rounded border border-teal-100 bg-white/90 p-2.5">
+                    <div className="font-mono text-xs font-semibold text-teal-900">{en}</div>
+                    <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap font-sans text-sm leading-6 text-slate-800">
+                      {desc}
+                    </pre>
+                  </div>
+                );
+              })}
+            </div>
           </details>
         )}
       </div>
@@ -1330,35 +1411,31 @@ export function ToolResult({
     const parentElements = Array.isArray(r.parent_elements) ? (r.parent_elements as string[]) : [];
     const supportedAttributes = Array.isArray(r.supported_attributes) ? (r.supported_attributes as string[]) : [];
     const textContent = String(r.text_content || '').trim();
-    const textPreview = textContent.slice(0, 320);
-    const hasMoreText = textContent.length > 320;
     const sources = Array.isArray(r.sources)
       ? (r.sources as Array<Record<string, unknown>>).filter((item) => item && typeof item === 'object')
       : [];
     return (
-      <div className="rounded-xl border border-teal-200/80 bg-teal-50/50 p-3 shadow-sm">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <div className="text-sm font-bold text-teal-900">{`<${elementName}>`}</div>
-          <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-800">
+      <div className="rounded-xl border border-teal-200/80 bg-teal-50/50 p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="text-base font-bold text-teal-900">{`<${elementName}>`}</div>
+          <span className="rounded bg-teal-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-teal-800">
             {queryType === 'content_model' ? 'content model' : queryType === 'placement' ? 'placement' : 'element'}
           </span>
         </div>
         <ToolLead result={r} />
         {(contentModelSummary || placementSummary) && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-white/80 px-2.5 py-2 text-xs leading-5 text-slate-700">
+          <div className="mb-3 rounded-lg border border-teal-100 bg-white/80 px-3 py-2.5 text-sm leading-6 text-slate-800">
             {contentModelSummary || placementSummary}
           </div>
         )}
         {allowedChildren.length > 0 && (
-          <div className="mb-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700">
-              Allowed children
-            </div>
+          <div className="mb-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800">Allowed children</div>
             <div className="flex flex-wrap gap-1.5">
-              {allowedChildren.slice(0, 12).map((child) => (
+              {allowedChildren.slice(0, 28).map((child) => (
                 <span
                   key={child}
-                  className="rounded-full border border-teal-200 bg-white/90 px-2 py-0.5 text-[11px] font-medium text-teal-900"
+                  className="rounded-full border border-teal-200 bg-white/90 px-2 py-0.5 text-sm font-medium text-teal-900"
                 >
                   {child}
                 </span>
@@ -1367,48 +1444,29 @@ export function ToolResult({
           </div>
         )}
         {parentElements.length > 0 && (
-          <div className="mb-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700">
-              Can appear inside
-            </div>
-            <div className="text-xs text-slate-600">{parentElements.slice(0, 12).join(', ')}</div>
+          <div className="mb-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800">Can appear inside</div>
+            <div className="text-sm text-slate-700">{parentElements.slice(0, 12).join(', ')}</div>
           </div>
         )}
         {supportedAttributes.length > 0 && (
-          <div className="mb-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700">
-              Common attributes
-            </div>
-            <div className="text-xs text-slate-600">{supportedAttributes.slice(0, 12).join(', ')}</div>
+          <div className="mb-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800">Common attributes</div>
+            <div className="text-sm text-slate-700">{supportedAttributes.slice(0, 12).join(', ')}</div>
           </div>
         )}
         {textContent && (
-          <div className="mb-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700">
-              Spec excerpt
-            </div>
-            <p className="mt-1 text-xs leading-5 text-slate-700 whitespace-pre-wrap">
-              {textPreview}
-              {hasMoreText ? '…' : ''}
+          <div className="mb-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-teal-800">Spec excerpt</div>
+            <p className="mt-1.5 max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-800">
+              {textContent}
             </p>
-            {hasMoreText && (
-              <details className="mt-1 text-xs">
-                <summary className="cursor-pointer font-semibold text-teal-800 hover:underline">
-                  Show full excerpt
-                </summary>
-                <div className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-teal-100 bg-white/90 p-2 text-[11px] leading-5 text-slate-700">
-                  {textContent}
-                </div>
-              </details>
-            )}
           </div>
         )}
         {sources.length > 0 && (
-          <div className="border-t border-teal-100 pt-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700">
-              Sources
-            </div>
-            <div className="space-y-1.5">
+          <div className="border-t border-teal-100 pt-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800">Sources</div>
+            <div className="space-y-2">
               {sources.slice(0, 4).map((source, index) => {
                 const label = String(source.label || source.title || source.url || source.uri || '').trim();
                 const url = String(source.url || source.uri || '').trim();
@@ -1419,15 +1477,15 @@ export function ToolResult({
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="block text-[11px] text-teal-800 hover:underline"
+                    className="block text-sm text-teal-800 hover:underline"
                   >
                     <span className="font-medium">{label || url}</span>
-                    {snippet && <span className="block text-slate-500">{snippet}</span>}
+                    {snippet && <span className="mt-0.5 block text-slate-600">{snippet}</span>}
                   </a>
                 ) : (
-                  <div key={`${label}-${index}`} className="text-[11px] text-slate-700">
+                  <div key={`${label}-${index}`} className="text-sm text-slate-700">
                     <span className="font-medium">{label}</span>
-                    {snippet && <span className="block text-slate-500">{snippet}</span>}
+                    {snippet && <span className="mt-0.5 block text-slate-600">{snippet}</span>}
                   </div>
                 );
               })}
@@ -1491,6 +1549,24 @@ export function ToolResult({
     const warnings = ((r.warnings as unknown[]) || [])
       .map((item) => String(item || '').trim())
       .filter(Boolean);
+    const retrievalStatus = String(r.retrieval_status || '').trim();
+    const genericTroubleshooting =
+      r.generic_troubleshooting && typeof r.generic_troubleshooting === 'object'
+        ? (r.generic_troubleshooting as Record<string, unknown>)
+        : null;
+    const fallbackActions = Array.isArray(genericTroubleshooting?.recommended_actions)
+      ? (genericTroubleshooting!.recommended_actions as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const fallbackSettings = Array.isArray(genericTroubleshooting?.relevant_settings)
+      ? (genericTroubleshooting!.relevant_settings as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const fallbackMistakes = Array.isArray(genericTroubleshooting?.common_mistakes)
+      ? (genericTroubleshooting!.common_mistakes as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const fallbackShort = String(genericTroubleshooting?.short_answer || '').trim();
+    const fallbackSnippets = Array.isArray(genericTroubleshooting?.xml_or_css_snippets)
+      ? (genericTroubleshooting!.xml_or_css_snippets as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
     const seedSignals = ((r.seed_signals as unknown[]) || [])
       .map((item) => String(item || '').trim())
       .filter(Boolean);
@@ -1519,6 +1595,14 @@ export function ToolResult({
               </span>
             )}
           </div>
+
+          {retrievalStatus === 'no_docs' && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-950">
+              <span className="font-semibold">No matching product documentation was retrieved.</span> The summary below is
+              not grounded in Experience League. Expand &quot;Generic checklist&quot; only if you want non-verified
+              troubleshooting ideas.
+            </div>
+          )}
 
           {shortAnswer && (
             <p className="mb-3 text-sm leading-6 text-slate-700">
@@ -1596,6 +1680,69 @@ export function ToolResult({
             <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900">
               {warnings[0]}
             </div>
+          )}
+
+          {genericTroubleshooting && retrievalStatus === 'no_docs' && (
+            <details className="mb-3 rounded-xl border border-slate-200 bg-white/90">
+              <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-800 hover:underline">
+                Generic checklist (not from product docs)
+              </summary>
+              <div className="space-y-3 border-t border-slate-100 px-3 py-3 text-sm text-slate-700">
+                {fallbackShort && <p className="leading-6">{fallbackShort}</p>}
+                {fallbackActions.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Suggested actions
+                    </div>
+                    <ul className="space-y-1">
+                      {fallbackActions.slice(0, 6).map((action, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                          <span>{action}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {fallbackSettings.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Settings areas</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {fallbackSettings.slice(0, 6).map((setting) => (
+                        <span
+                          key={setting}
+                          className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-800"
+                        >
+                          {setting}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {fallbackSnippets.length > 0 &&
+                  fallbackSnippets.slice(0, 2).map((snippet, i) => (
+                    <pre
+                      key={i}
+                      className="overflow-auto rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs leading-5 text-slate-800"
+                    >
+                      {snippet}
+                    </pre>
+                  ))}
+                {fallbackMistakes.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-800">Watch outs</div>
+                    <ul className="space-y-1">
+                      {fallbackMistakes.slice(0, 4).map((m, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-amber-950">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                          <span>{m}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </details>
           )}
 
           {(evidence.length > 0 || seedSignals.length > 0 || seeds.length > 0) && (

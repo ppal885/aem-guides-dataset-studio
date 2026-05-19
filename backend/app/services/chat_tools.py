@@ -309,20 +309,21 @@ def _find_parent_elements(element_name: str) -> list[str]:
 
 def _collect_exact_spec_chunks(query: str, element_name: str) -> list[dict[str, Any]]:
     from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
+    from app.services.dita_spec_registry_service import canonical_element_name, _normalize_name
 
-    target = str(element_name or "").strip().lower()
+    target = canonical_element_name(_normalize_name(str(element_name or "").strip()))
     if not target:
         return []
 
     merged: list[dict[str, Any]] = []
     seen_keys: set[tuple[str, str]] = set()
-    for search_query in (query, target):
+    for search_query in (query, element_name, target):
         if not str(search_query or "").strip():
             continue
         for chunk in retrieve_dita_knowledge(str(search_query), k=12):
             if not isinstance(chunk, dict):
                 continue
-            chunk_name = str(chunk.get("element_name") or "").strip().lower()
+            chunk_name = canonical_element_name(_normalize_name(str(chunk.get("element_name") or "").strip()))
             if chunk_name != target:
                 continue
             text_content = str(chunk.get("text_content") or "").strip()
@@ -415,6 +416,14 @@ def _build_dita_element_comparison_guidance(query: str, element_names: list[str]
     summary = (
         f"Compared DITA elements {_format_inline_list([item['element_name'] for item in comparisons], limit=4)}."
     )
+    comparison_notes = (
+        "Use `<fig>` for a captioned figure (exhibit): optional `title` and `desc`, then images, lists, tables, etc. "
+        "Use `<figgroup>` only inside a `<fig>` (or nested in another `<figgroup>`) to split one figure into labeled segments — "
+        "narrower content model (e.g. `image`, nested `figgroup`, `xref`, `fn`), intended for sub-panels and specialization."
+    )
+    if {item["element_name"] for item in comparisons} >= {"fig", "figgroup"}:
+        summary = summary.rstrip(".") + f". {comparison_notes}"
+
     warnings: list[str] = []
     if missing:
         warnings.append(
@@ -426,6 +435,7 @@ def _build_dita_element_comparison_guidance(query: str, element_names: list[str]
         "query_type": "element_comparison",
         "comparison_type": "element",
         "element_names": [item["element_name"] for item in comparisons],
+        "comparison_heading": " vs ".join(item["element_name"] for item in comparisons),
         "comparisons": comparisons,
         "summary": summary,
         "warnings": warnings,
@@ -500,7 +510,13 @@ def _build_dita_element_guidance(
         return None
 
     warnings: list[str] = []
-    if not source_url and (children or parent_elements or graph_knowledge):
+    has_registry_body = bool(registry_spec and (registry_spec.description or "").strip())
+    if (
+        not source_url
+        and not exact_chunks
+        and not has_registry_body
+        and (children or parent_elements or graph_knowledge)
+    ):
         warnings.append(
             f"Exact spec excerpts for `{element_name}` were limited, so this answer leans on the internal DITA structure graph."
         )
@@ -836,10 +852,25 @@ async def execute_create_job(
     recipe_type: str,
     config: dict | None = None,
     user_id: str = "chat-user",
+    *,
+    subject: str = "",
+    prompt_text: str = "",
+    trace_id: str | None = None,
+    jira_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a dataset generation job.
     recipe_type must be in allowlist. config is optional overrides.
+
+    Subject-aware hierarchy enrichment:
+        When ``subject`` (or an inferred subject from ``prompt_text``) is non-empty
+        AND ``recipe_type`` is one of the structural / scale recipes
+        (deep_hierarchy, wide_branching, flat_hierarchical_dita, large_scale),
+        the LLM is asked to author the leading N (capped) titles + 1-paragraph
+        bodies for that subject. The result is injected into the recipe via the
+        ``content_subject`` / ``content_titles`` / ``content_bodies`` fields so
+        the generator produces real domain content (e.g. Kubernetes Pods,
+        Deployments) instead of "Level 0 Topic 00000" placeholders.
     """
     recipe_type = (recipe_type or "").strip().lower()
     if not recipe_type:
@@ -848,6 +879,12 @@ async def execute_create_job(
         return {
             "error": f"recipe_type must be one of: {', '.join(sorted(RECIPE_TYPE_ALLOWLIST))}",
         }
+
+    # Validate subject / prompt_text inputs (rule 5: input validation).
+    # Strip control chars, cap length to keep LLM payload bounded and prevent
+    # log/storage abuse (rule 8: output encoding deferred to generator's _xml_safe).
+    safe_subject = _CONTROL_CHAR_PATTERN.sub("", str(subject or "")).strip()[:200]
+    safe_prompt_text = _CONTROL_CHAR_PATTERN.sub("", str(prompt_text or "")).strip()[:4000]
 
     # Build minimal config from recipe type
     base_config: dict = {
@@ -907,6 +944,80 @@ async def execute_create_job(
             if k != "recipes" and v is not None:
                 base_config[k] = v
 
+    # Subject-aware enrichment. Without this:
+    #   * structural/scale recipes (deep_hierarchy / wide_branching / flat_hierarchical_dita
+    #     / large_scale) produce "Level 0 Topic 00000" placeholders, and
+    #   * flat content recipes (task_topics / concept_topics / reference_topics /
+    #     glossary_pack) called via this chat shortcut produce generic seeded
+    #     content (e.g. "Reference Topic 1") regardless of the user's prompt.
+    #
+    # With this, the LLM authors the leading N items for the user's subject and
+    # the generator's templated fallback handles the rest (still subject-flavored).
+    subject_enrichment: dict[str, Any] | None = None
+    try:
+        from app.services.subject_aware_hierarchy_service import (
+            generate_flat_content,
+            generate_subject_content,
+            is_flat_content_recipe,
+            is_hierarchy_recipe,
+        )
+
+        primary_recipe = base_config["recipes"][0] if base_config.get("recipes") else None
+        if isinstance(primary_recipe, dict) and (safe_subject or safe_prompt_text):
+            if is_hierarchy_recipe(recipe_type):
+                enrichment = await generate_subject_content(
+                    subject=safe_subject,
+                    recipe_type=recipe_type,
+                    recipe_params=primary_recipe,
+                    user_prompt=safe_prompt_text or None,
+                    trace_id=trace_id,
+                    jira_id=jira_id,
+                )
+                if enrichment.get("applied"):
+                    if enrichment.get("subject"):
+                        primary_recipe["content_subject"] = enrichment["subject"]
+                    if enrichment.get("titles"):
+                        primary_recipe["content_titles"] = list(enrichment["titles"])
+                    if enrichment.get("bodies"):
+                        primary_recipe["content_bodies"] = list(enrichment["bodies"])
+                    subject_enrichment = {
+                        "path": "hierarchy",
+                        "subject": enrichment.get("subject", ""),
+                        "authored_node_count": enrichment.get("node_count", 0),
+                        "fallback_used": bool(enrichment.get("fallback_used", False)),
+                        "reason": enrichment.get("reason", ""),
+                    }
+            elif is_flat_content_recipe(recipe_type):
+                enrichment = await generate_flat_content(
+                    subject=safe_subject,
+                    recipe_type=recipe_type,
+                    recipe_params=primary_recipe,
+                    user_prompt=safe_prompt_text or None,
+                    trace_id=trace_id,
+                    jira_id=jira_id,
+                )
+                if enrichment.get("applied"):
+                    if enrichment.get("subject"):
+                        primary_recipe["content_subject"] = enrichment["subject"]
+                    for field_name, field_value in (enrichment.get("fields") or {}).items():
+                        primary_recipe[field_name] = (
+                            list(field_value) if isinstance(field_value, list) else field_value
+                        )
+                    subject_enrichment = {
+                        "path": "flat_content",
+                        "subject": enrichment.get("subject", ""),
+                        "authored_item_count": enrichment.get("item_count", 0),
+                        "fallback_used": bool(enrichment.get("fallback_used", False)),
+                        "fields_applied": sorted((enrichment.get("fields") or {}).keys()),
+                        "reason": enrichment.get("reason", ""),
+                    }
+    except Exception as enrich_exc:
+        # Enrichment is best-effort; never fail the job for this.
+        logger.warning_structured(
+            "subject_aware_enrichment_skipped",
+            extra_fields={"recipe_type": recipe_type, "error": str(enrich_exc)},
+        )
+
     try:
         enforce_concurrent_job_limit(user_id)
         job = create_dataset_job_record(
@@ -919,7 +1030,7 @@ async def execute_create_job(
             raise RuntimeError("Dataset job creation did not return a job id")
         start_dataset_job_in_background(job_id, base_config)
         urls = build_dataset_job_urls(job_id)
-        return {
+        result: dict[str, Any] = {
             "job_id": job_id,
             "name": str(job.get("name") or base_config.get("name") or "Chat Job"),
             "recipe_type": recipe_type,
@@ -927,6 +1038,9 @@ async def execute_create_job(
             **urls,
             "message": "Dataset generation started. The in-chat status card will update when the ZIP is ready.",
         }
+        if subject_enrichment is not None:
+            result["subject_enrichment"] = subject_enrichment
+        return result
     except Exception as e:
         logger.warning_structured(
             "create_job tool failed",
@@ -1800,6 +1914,11 @@ async def execute_generate_native_pdf_config(
     enriched = f"Native PDF {config_type}: {query}"
     config_area = _detect_native_pdf_area(query, config_type)
     guidance = _NATIVE_PDF_GUIDANCE.get(config_area, _NATIVE_PDF_GUIDANCE["general"])
+    _NO_RETRIEVAL_SHORT = (
+        "No matching Native PDF product documentation was retrieved for this query. "
+        "Rephrase using a specific area (for example: Native PDF template, output preset, page layout, stylesheet, TOC, or watermark), "
+        "or ask a broader AEM Guides question so documentation search can find Experience League topics."
+    )
     try:
         seed_chunks = retrieve_dita_knowledge(enriched, k=5)
         doc_chunks = retrieve_relevant_docs(enriched, k=5)
@@ -1838,21 +1957,53 @@ async def execute_generate_native_pdf_config(
             term for term in guidance.get("matched_terms", []) if term in f"{query} {config_type}".lower()
         ]
 
-        return {
-            "query": query,
-            "config_type": config_type,
-            "config_area": config_area,
+        has_doc_evidence = bool(evidence)
+        retrieval_status = "retrieved" if has_doc_evidence else "no_docs"
+
+        if has_doc_evidence:
+            return {
+                "query": query,
+                "config_type": config_type,
+                "config_area": config_area,
+                "retrieval_status": retrieval_status,
+                "short_answer": guidance.get("short_answer", ""),
+                "recommended_actions": list(guidance.get("recommended_actions", []))[:6],
+                "relevant_settings": list(guidance.get("relevant_settings", []))[:6],
+                "xml_or_css_snippets": list(guidance.get("xml_or_css_snippets", []))[:3],
+                "common_mistakes": list(guidance.get("common_mistakes", []))[:6],
+                "matched_keywords": matched_keywords,
+                "seed_signals": seed_signals,
+                "evidence": evidence,
+                "warnings": [],
+                "seed_results": seed_results,
+                "doc_results": doc_results,
+            }
+
+        generic_troubleshooting = {
             "short_answer": guidance.get("short_answer", ""),
             "recommended_actions": list(guidance.get("recommended_actions", []))[:6],
             "relevant_settings": list(guidance.get("relevant_settings", []))[:6],
             "xml_or_css_snippets": list(guidance.get("xml_or_css_snippets", []))[:3],
             "common_mistakes": list(guidance.get("common_mistakes", []))[:6],
+        }
+        return {
+            "query": query,
+            "config_type": config_type,
+            "config_area": config_area,
+            "retrieval_status": retrieval_status,
+            "short_answer": _NO_RETRIEVAL_SHORT,
+            "recommended_actions": [],
+            "relevant_settings": [],
+            "xml_or_css_snippets": [],
+            "common_mistakes": [],
             "matched_keywords": matched_keywords,
             "seed_signals": seed_signals,
             "evidence": evidence,
-            "warnings": [] if evidence else [
-                "No Native PDF documentation hits were retrieved for this query, so the answer is based on the built-in guidance playbook."
+            "warnings": [
+                "No Native PDF documentation hits were retrieved — the structured answer above is not grounded in Experience League. "
+                "Optional generic troubleshooting items are under generic_troubleshooting in this tool result."
             ],
+            "generic_troubleshooting": generic_troubleshooting,
             "seed_results": seed_results,
             "doc_results": doc_results,
         }
@@ -2211,6 +2362,15 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
                     suffix = ", ..." if len(elements) > 4 else ""
                     element_clause = f" It is commonly used on {preview}{suffix}."
             return f"Retrieved DITA attribute guidance for `{attr}`.{value_clause}{element_clause}"
+        if str(result.get("query_type") or "").strip() == "element_comparison":
+            names = result.get("element_names") or []
+            heading = str(result.get("comparison_heading") or "").strip()
+            if isinstance(names, list) and len(names) >= 2:
+                label = heading if heading else " vs ".join(str(n).strip() for n in names if str(n).strip())
+                return (
+                    f"Compared DITA elements ({label}). Structured comparison is in the tool result card; "
+                    "interpret differences and practical use in your reply without duplicating the full table."
+                )
         element_name = str(result.get("element_name") or "").strip()
         if element_name:
             content_model_summary = str(result.get("content_model_summary") or "").strip()
@@ -2311,6 +2471,11 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
         count = int(result.get("count") or len(result.get("documents") or []))
         return f"Found {count} indexed PDF document{'s' if count != 1 else ''}."
     if name == "generate_native_pdf_config":
+        if str(result.get("retrieval_status") or "").strip() == "no_docs":
+            return (
+                "Native PDF documentation search returned no hits; the tool states that explicitly. "
+                "Optional generic checklist is under generic_troubleshooting."
+            )
         short_answer = str(result.get("short_answer") or "").strip()
         if short_answer:
             return _clean_summary_text(short_answer)
@@ -2514,7 +2679,14 @@ def get_tool_definitions() -> list[dict]:
         },
         {
             "name": "create_job",
-            "description": "Create a dataset generation job with a specific recipe type. Use find_recipes first to discover available types if the user hasn't specified one.",
+            "description": (
+                "Create a dataset generation job with a specific recipe type. Use find_recipes first to "
+                "discover available types if the user hasn't specified one. "
+                "When the user names a real domain subject (e.g. 'Kubernetes', 'AEM Sites', 'OpenAPI specs') "
+                "AND picks a structural / scale recipe (deep_hierarchy, wide_branching, flat_hierarchical_dita, "
+                "large_scale), you MUST also pass `subject` (and optionally `prompt_text`) so the dataset gets "
+                "real domain-themed titles and per-topic content instead of 'Level 0 Topic 00000' placeholders."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -2524,7 +2696,23 @@ def get_tool_definitions() -> list[dict]:
                     },
                     "config": {
                         "type": "object",
-                        "description": "Optional config overrides (e.g. topic_count)",
+                        "description": "Optional config overrides (e.g. topic_count, depth, children_per_level).",
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": (
+                            "REQUIRED when the recipe is structural/scale (deep_hierarchy, wide_branching, "
+                            "flat_hierarchical_dita, large_scale) AND the user mentions a real domain subject. "
+                            "Short noun phrase, ≤ 200 chars (e.g. 'Kubernetes', 'AEM Sites publishing')."
+                        ),
+                    },
+                    "prompt_text": {
+                        "type": "string",
+                        "description": (
+                            "Optional verbatim user prompt (or a focused excerpt up to 4000 chars). Used to "
+                            "extract a subject when `subject` is empty and to give the LLM extra hints when "
+                            "authoring titles/bodies (e.g. 'focus on networking and storage')."
+                        ),
                     },
                 },
                 "required": ["recipe_type"],
@@ -2917,6 +3105,8 @@ async def run_tool(
             recipe_type=params.get("recipe_type", ""),
             config=params.get("config"),
             user_id=user_id,
+            subject=str(params.get("subject") or "").strip(),
+            prompt_text=str(params.get("prompt_text") or "").strip(),
         )
     elif name == "search_jira_issues":
         result = await execute_search_jira_issues(

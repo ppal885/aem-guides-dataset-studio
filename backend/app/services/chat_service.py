@@ -300,7 +300,7 @@ _AEM_UI_CONFIGURATION_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _NATIVE_PDF_QUERY_PATTERN = re.compile(
-    r"\b(native pdf|pdf template|pdf output|watermark|page layout|headers?|footers?|table of contents|toc|cover page)\b",
+    r"\b(native pdf|pdf template|watermark|page layout|headers?|footers?|table of contents|toc|cover page)\b",
     re.IGNORECASE,
 )
 _OUTPUT_PRESET_QUERY_PATTERN = re.compile(
@@ -993,6 +993,7 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
         if _NATIVE_PDF_QUERY_PATTERN.search(lowered):
             requests.append(("generate_native_pdf_config", {"query": user_content}))
             requests.append(("lookup_output_preset", {"query": user_content, "output_type": "native_pdf"}))
+            requests.append(("lookup_aem_guides", {"query": user_content}))
         elif _OUTPUT_PRESET_QUERY_PATTERN.search(lowered):
             requests.append(("lookup_output_preset", {"query": user_content}))
         else:
@@ -1079,7 +1080,7 @@ def _tool_result_to_grounding_candidates(
     elif tool_name == "lookup_output_preset":
         has_positive_evidence = bool(result.get("doc_results") or result.get("seed_results"))
     elif tool_name == "generate_native_pdf_config":
-        has_positive_evidence = bool(result.get("short_answer") or result.get("recommended_actions"))
+        has_positive_evidence = bool(result.get("evidence"))
     elif tool_name == "search_tenant_knowledge":
         has_positive_evidence = bool(result.get("results"))
 
@@ -1230,16 +1231,17 @@ def _tool_result_to_grounding_candidates(
                 metadata={"title": "DITA graph knowledge"},
             )
     elif tool_name == "generate_native_pdf_config":
-        short_answer = str(result.get("short_answer") or "").strip()
-        actions = [str(item).strip() for item in (result.get("recommended_actions") or []) if str(item).strip()]
-        if short_answer or actions:
-            _append_grounding_candidate(
-                candidates,
-                source=source_kind,
-                label=str(result.get("config_area") or "Native PDF guidance").strip(),
-                text=" ".join([short_answer, *actions[:3]]).strip(),
-                metadata={"title": str(result.get("config_area") or "Native PDF guidance").strip()},
-            )
+        if result.get("evidence"):
+            short_answer = str(result.get("short_answer") or "").strip()
+            actions = [str(item).strip() for item in (result.get("recommended_actions") or []) if str(item).strip()]
+            if short_answer or actions:
+                _append_grounding_candidate(
+                    candidates,
+                    source=source_kind,
+                    label=str(result.get("config_area") or "Native PDF guidance").strip(),
+                    text=" ".join([short_answer, *actions[:3]]).strip(),
+                    metadata={"title": str(result.get("config_area") or "Native PDF guidance").strip()},
+                )
     elif tool_name == "lookup_output_preset":
         snippets = [str(item.get("text_content") or "").strip() for item in (result.get("seed_results") or []) if isinstance(item, dict)]
         if snippets:
@@ -1342,6 +1344,51 @@ _MAP_CONSTRUCT_ELEMENT_NAMES = frozenset(
         "subjectscheme",
     }
 )
+
+
+_CLOSED_VALUE_ATTR_NAMES = frozenset(
+    {
+        "chunk",
+        "collection-type",
+        "expanse",
+        "frame",
+        "importance",
+        "linking",
+        "locktitle",
+        "print",
+        "processing-role",
+        "scale",
+        "scalefit",
+        "search",
+        "toc",
+    }
+)
+
+
+def _should_render_attribute_valid_values(
+    attr_name: str,
+    semantic_class: str,
+    values: list[str],
+) -> bool:
+    if not values:
+        return False
+    normalized_name = str(attr_name or "").strip().lower()
+    normalized_class = str(semantic_class or "").strip().lower()
+    if normalized_class in {"enum", "boolean_like"}:
+        return True
+    return normalized_name in _CLOSED_VALUE_ATTR_NAMES
+
+
+def _attribute_valid_value_warning(attr_name: str, semantic_class: str, values: list[str]) -> str | None:
+    if _should_render_attribute_valid_values(attr_name, semantic_class, values):
+        return None
+    if not values:
+        return None
+    normalized = str(attr_name or "").strip()
+    return (
+        f"`@{normalized}` is not treated as a closed enum here, so unverified value labels were omitted. "
+        "Use the syntax/usage sections for the value shape instead."
+    )
 
 
 def _clean_grounded_strings(items: Any, *, limit: int | None = None) -> list[str]:
@@ -2409,6 +2456,12 @@ def _normalize_grounded_tool_facts(
         if isinstance(attr, dict) and not attr.get("error") and attr.get("attribute_name"):
             attr_name = str(attr.get("attribute_name") or "").strip()
             semantic_class = str(attr.get("attribute_semantic_class") or "").strip().lower()
+            raw_valid_values = _clean_grounded_strings(attr.get("all_valid_values") or [], limit=12)
+            valid_values = (
+                raw_valid_values
+                if _should_render_attribute_valid_values(attr_name, semantic_class, raw_valid_values)
+                else []
+            )
             answer_kind: GroundedAnswerKind = (
                 "dita_map_construct"
                 if semantic_class == "map_scoped" or attr_name.lower() in _MAP_SCOPED_ATTR_NAMES
@@ -2420,12 +2473,16 @@ def _normalize_grounded_tool_facts(
                 raw_examples=_clean_grounded_strings(attr.get("correct_examples") or [], limit=3),
                 attr_name=attr_name,
             )
+            semantic_warnings = common_warnings + example_warnings
+            value_warning = _attribute_valid_value_warning(attr_name, semantic_class, raw_valid_values)
+            if value_warning:
+                semantic_warnings.append(value_warning)
             return NormalizedGroundedFactSet(
                 answer_kind=answer_kind,
                 source_policy=source_policy,
                 canonical_definition=_first_summary_sentence(str(attr.get("text_content") or "").strip()),
                 syntax=str(attr.get("attribute_syntax") or _extract_attribute_syntax_line(str(attr.get("text_content") or ""))).strip(),
-                valid_values=_clean_grounded_strings(attr.get("all_valid_values") or [], limit=12),
+                valid_values=valid_values,
                 supported_elements=_clean_grounded_strings(attr.get("supported_elements") or [], limit=10),
                 companion_attributes=_clean_grounded_strings(attr.get("combination_attributes") or [], limit=8),
                 usage_patterns=_clean_grounded_strings(attr.get("usage_contexts") or [], limit=3),
@@ -2433,7 +2490,7 @@ def _normalize_grounded_tool_facts(
                 common_mistakes=_clean_grounded_strings(attr.get("common_mistakes") or [], limit=3),
                 verified_examples=examples,
                 example_verified=bool(examples),
-                semantic_warnings=common_warnings + example_warnings,
+                semantic_warnings=semantic_warnings,
                 thin_evidence=False,
                 cross_source_mixed=False,
             )
@@ -2531,7 +2588,10 @@ def _normalize_grounded_tool_facts(
         and ((isinstance(aem, dict) and (aem.get("results") or aem.get("count"))) or (isinstance(output_preset, dict) and (output_preset.get("doc_results") or output_preset.get("seed_results"))))
     )
 
-    if isinstance(native_pdf, dict) and native_pdf and not native_pdf.get("error"):
+    native_pdf_has_doc_evidence = bool(
+        isinstance(native_pdf, dict) and native_pdf.get("evidence") and not native_pdf.get("error")
+    )
+    if isinstance(native_pdf, dict) and native_pdf and not native_pdf.get("error") and native_pdf_has_doc_evidence:
         examples = [
             VerifiedExampleSnippet(label="Verified config snippet", snippet=str(item).strip(), source="native_pdf_tool")
             for item in _clean_grounded_strings(native_pdf.get("xml_or_css_snippets") or [], limit=2)
@@ -2624,9 +2684,18 @@ def _select_tools_for_query(all_tools: list[dict], query: str, max_tools: int = 
     return [t for t in all_tools if t.get("name") in selected_names]
 
 
-def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
-    """Retrieve RAG chunks and format for system prompt. Uses more chunks for better retrieval."""
-    if not query or not str(query).strip():
+def _markdown_table_cell(value: Any) -> str:
+    if isinstance(value, list):
+        text = "<br>".join(str(item).strip() for item in value if str(item or "").strip())
+    else:
+        text = str(value or "").strip()
+    text = " ".join(text.split()).replace("|", "\\|")
+    return text or "-"
+
+
+def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
+    short_answer = " ".join(str(facts.canonical_definition or "").split()).strip()
+    if not short_answer:
         return ""
 
     sections: list[str] = ["## Short answer", short_answer]
@@ -2698,39 +2767,63 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
         if facts.common_mistakes:
             sections.extend(["", "## Common mistakes", *[f"- {value}" for value in facts.common_mistakes[:3]]])
     elif facts.answer_kind == "dita_attribute_comparison":
-        sections.extend(["", "## Comparison"])
-        for row in facts.comparison_rows[:4]:
-            label = f"`{row.label}`"
-            if row.definition:
-                sections.append(f"- {label}: {row.definition}")
-            else:
-                sections.append(f"- {label}")
-            if row.syntax:
-                sections.append(f"- {label} syntax: {row.syntax}")
-            if row.usage_patterns:
-                sections.append(f"- {label} typical usage: {'; '.join(row.usage_patterns[:2])}")
-            if row.supported_elements:
-                sections.append(f"- {label} supported elements: {', '.join(row.supported_elements[:8])}")
         if not facts.comparison_rows:
             return ""
+        sections.extend(
+            [
+                "",
+                "## Comparison",
+                "| Attribute | What it does | Syntax | Typical use | Supported elements |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in facts.comparison_rows[:4]:
+            sections.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`@{_markdown_table_cell(row.label.lstrip('@'))}`",
+                        _markdown_table_cell(row.definition),
+                        _markdown_table_cell(row.syntax),
+                        _markdown_table_cell(row.usage_patterns[:2]),
+                        _markdown_table_cell([f"`{value}`" for value in row.supported_elements[:8]]),
+                    ]
+                )
+                + " |"
+            )
     elif facts.answer_kind == "dita_element_comparison":
-        sections.extend(["", "## Comparison"])
-        for row in facts.comparison_rows[:4]:
-            label = f"`<{row.label}>`"
-            if row.definition:
-                sections.append(f"- {label}: {row.definition}")
-            else:
-                sections.append(f"- {label}")
-            if row.supported_elements:
-                sections.append(f"- {label} valid parents: {', '.join(f'`{value}`' for value in row.supported_elements[:8])}")
-            if row.companion_attributes:
-                sections.append(f"- {label} common attributes: {', '.join(f'`{value}`' for value in row.companion_attributes[:8])}")
-            if row.usage_patterns:
-                sections.append(f"- {label} typical usage: {'; '.join(row.usage_patterns[:2])}")
-            if row.common_mistakes:
-                sections.append(f"- {label} common mistake: {'; '.join(row.common_mistakes[:2])}")
         if not facts.comparison_rows:
             return ""
+        sections.extend(
+            [
+                "",
+                "## Comparison",
+                "| Element | What it does | Valid parents | Common attributes | Typical use |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in facts.comparison_rows[:4]:
+            sections.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`<{_markdown_table_cell(row.label.strip('<>'))}>`",
+                        _markdown_table_cell(row.definition),
+                        _markdown_table_cell([f"`{value}`" for value in row.supported_elements[:8]]),
+                        _markdown_table_cell([f"`{value}`" for value in row.companion_attributes[:8]]),
+                        _markdown_table_cell(row.usage_patterns[:2]),
+                    ]
+                )
+                + " |"
+            )
+        mistakes = []
+        for row in facts.comparison_rows[:4]:
+            for mistake in row.common_mistakes[:2]:
+                item = f"`<{row.label}>`: {mistake}"
+                if mistake and item not in mistakes:
+                    mistakes.append(item)
+        if mistakes:
+            sections.extend(["", "## Common mistakes", *[f"- {value}" for value in mistakes[:4]]])
     elif facts.answer_kind == "native_pdf_guidance":
         if facts.recommended_actions:
             sections.extend(["", "## Recommended actions", *[f"- {value}" for value in facts.recommended_actions[:4]]])
@@ -3128,51 +3221,65 @@ async def _build_local_fallback_response(
     return _builtin_unavailable_response(trimmed, tenant_id)
 
 
-def _build_compact_chat_system_prompt(rag_context: str = "") -> str:
+def _build_compact_chat_system_prompt(
+    rag_context: str = "",
+    *,
+    human_prompts: bool = False,
+) -> str:
     """Compact system prompt for grounded chat — fits within Groq 12K TPM limit.
 
     Retains the key answer-quality rules from chat_system.json without the
     full 37K prompt.  Total size ~3-4K chars (~800-1000 tokens).
     """
     base = (
-        "You are **DITA Dataset Studio Chat** — an expert assistant for DITA XML, "
-        "AEM Guides, and technical documentation.\n\n"
+        "You are **DITA Dataset Studio Chat** — a senior assistant for DITA XML, "
+        "AEM Guides, and technical documentation. Use a clear, professional tone "
+        "appropriate for enterprise technical communication.\n\n"
+        "# VOICE AND STRUCTURE\n"
+        "- Open with a direct answer; follow with `##` sections only as needed.\n"
+        "- Make each reply self-contained: the reader should understand without guessing from prior turns.\n"
+        "- Prefer precise terminology; avoid marketing tone and filler.\n"
+        "- Use emoji or decorative callouts sparingly; only when they aid scanning.\n\n"
         "# ANSWER RULES\n"
-        "1. **Only include XML examples when the user asks for them or when a short verified snippet clearly helps.** "
-        "Never guess XML structure.\n"
-        "2. **Common mistakes**: If the evidence lists common mistakes for an element, "
-        "include a ⚠️ Common Mistakes section.\n"
-        "3. **Be specific**: Name parent/child elements, required attributes, content "
-        "models. Never say 'various attributes' — list them.\n"
-        "4. **Comparisons**: When comparing elements (e.g., choicetable vs simpletable "
-        "vs table), use a markdown table with columns for each element.\n"
-        "5. **Depth**: Give thorough, expert-level answers. A single paragraph is never "
-        "enough for a structural DITA question.\n"
-        "6. Use markdown formatting: headers (##), bullets, code blocks, bold for "
-        "element names.\n"
-        "7. When evidence is provided, ground your answer in it. When evidence is thin, "
-        "stay narrow, say what is not verified, and do not fill gaps with confident guesses.\n"
-        "8. Do not invent download URLs, product links, or claim features exist without "
-        "evidence.\n\n"
-        "# ANSWER STRUCTURE\n"
-        "Use clear markdown sections. Choose the structure that fits the question:\n"
-        "- **Definitional** (What is X?): Overview → Content model → Attributes → "
-        "Example XML → Common mistakes\n"
-        "- **Comparison** (X vs Y): Summary table → Detailed breakdown → When to use "
-        "each → Example XML for each\n"
-        "- **How-to** (How do I...?): Steps → Example XML → Tips / gotchas\n"
-        "- **Troubleshooting**: Problem → Root cause → Fix → Corrected XML\n\n"
-        "Do NOT use the rigid '## Short answer / ## How it works / ## What is verified' "
-        "format. Use natural, helpful markdown sections instead."
+        "1. **XML examples**: Include when the user asks for examples or when a short, spec-aligned snippet "
+        "is essential. Never invent element nesting or attributes. Do not force XML into purely UI or "
+        "product-navigation questions.\n"
+        "2. **Common mistakes**: If evidence lists common mistakes, add a concise **Common mistakes** subsection "
+        "with incorrect vs correct patterns (prose or XML as fits).\n"
+        "3. **Be specific**: Name parents, children, and attributes that matter. Do not say "
+        "'various attributes' — enumerate them.\n"
+        "4. **Comparisons** (vs / compare / difference between): Use a **markdown table** with columns for each "
+        "item compared (e.g. purpose, content model, typical parents, when to use). Bullet-only side-by-side "
+        "comparisons are insufficient for element or attribute comparisons.\n"
+        "5. **Depth**: Structural DITA topics need enough depth (multiple sections). Narrow factual questions "
+        "may be shorter while remaining complete.\n"
+        "6. **Markdown**: Use `##`, bullets, fenced code blocks; **bold** or `backticks` for element and attribute names.\n"
+        "7. **Evidence**: Ground claims in context supplied below. If evidence is thin, say so in one clear sentence; "
+        "do not substitute confident guesses.\n"
+        "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
+        "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
+        "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
+        "# ANSWER PATTERNS (choose what fits)\n"
+        "- **Definitional**: Overview, content model, attributes, optional example, common mistakes.\n"
+        "- **Comparison**: Short lead-in, **comparison table**, when to use each, optional examples.\n"
+        "- **How-to**: Prerequisites, numbered steps, optional snippet, caveats.\n"
+        "- **Troubleshooting**: Likely cause, checks, fix.\n\n"
+        "Do **not** use a rigid global template of '## Short answer / ## How it works / ## What is verified' for "
+        "normal chat replies. (Long-form **agent research** answers use a separate prescribed outline from the "
+        "synthesis step.)\n"
     )
     if rag_context:
         base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
+    if human_prompts:
+        addon = _get_human_precision_addon().strip()
+        if addon:
+            base += f"\n\n# PRECISION MODE\n{addon}"
     return base
 
 
 def _build_grounded_answer_system_prompt(*, human_prompts: bool = False) -> str:
     """Legacy structured prompt — kept for heuristic fallback paths only."""
-    return _build_compact_chat_system_prompt()
+    return _build_compact_chat_system_prompt(human_prompts=human_prompts)
 
 
 def _recent_chat_transcript(session_id: str, *, limit: int = 6) -> str:
@@ -4494,6 +4601,54 @@ def _truncate_messages_for_context(messages: list[dict], max_messages: int = CHA
     return messages[-max_messages:]
 
 
+async def _synthesize_agent_answer(
+    *,
+    user_content: str,
+    plan: dict[str, Any],
+    tool_results_by_name: dict[str, dict[str, Any]],
+) -> str:
+    evidence_prompt = _build_agent_evidence_prompt(tool_results_by_name)
+    if evidence_prompt and is_llm_available():
+        system_prompt = (
+            "You are an enterprise technical documentation assistant for AEM Guides and DITA.\n"
+            "Answer using ONLY the evidence provided.\n"
+            "Do not narrate the research plan or step completion status.\n"
+            "If evidence is incomplete, state exactly what could not be verified.\n"
+            "Use a professional tone. Avoid emoji unless the evidence uses them.\n"
+            "Return markdown with exactly these sections in order:\n"
+            "## Summary\n"
+            "## Details\n"
+            "## Limits of evidence\n"
+            "## Sources\n"
+            "In **Summary**, give 2–4 sentences with the direct answer.\n"
+            "In **Details**, use concrete bullets derived only from the evidence.\n"
+            "In **Limits of evidence**, list gaps, uncertainty, or topics not covered by the evidence.\n"
+            "In **Sources**, list only sources that appear in the evidence block.\n"
+            "Do not invent facts, URLs, product behavior, or citations."
+        )
+        user_prompt = (
+            f"Question:\n{user_content}\n\n"
+            f"Plan goal:\n{str(plan.get('goal') or '').strip()}\n\n"
+            f"Evidence:\n{evidence_prompt}"
+        )
+        try:
+            text = await generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=1400,
+                step_name="chat_agent_research_answer",
+            )
+            text = _coerce_llm_text_response(text).strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning_structured(
+                "Agent answer synthesis fell back to local summary",
+                extra_fields={"error": str(exc)},
+            )
+    return summarize_agent_results_locally(user_content, plan, tool_results_by_name)
+
+
 async def _emit_streamed_text(text: str) -> AsyncGenerator[dict, None]:
     for chunk in _stream_text_chunks(text):
         yield {"type": "chunk", "content": chunk}
@@ -5399,6 +5554,7 @@ async def _stream_assistant_reply(
             # combined with evidence + DITA RAG + user message.
             system_prompt = _build_compact_chat_system_prompt(
                 rag_context=rag_context,
+                human_prompts=human_prompts,
             )
             draft_answer = await generate_text(
                 system_prompt=system_prompt,
@@ -5790,7 +5946,7 @@ async def _stream_tool_mode_reply(
         rag_context = rag_context[:2000] + "\n[truncated for model limit]"
 
     # Use compact prompt to stay within Groq 12K TPM limit
-    system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context)
+    system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context, human_prompts=human_prompts)
     # Inject session context (previous generation download URL, refinement hints)
     context_block = _build_context_block(context, user_content, session_id=session_id)
     if context_block:

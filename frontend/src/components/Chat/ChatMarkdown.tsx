@@ -30,11 +30,11 @@ interface ChatMarkdownProps {
 
 /** Shared Tailwind Typography wrapper for chat markdown (ChatMessage + StreamingMessage). */
 export const CHAT_MARKDOWN_PROSE_CLASS =
-  'prose prose-sm max-w-none ' +
+  'prose prose-base max-w-none ' +
   'prose-headings:text-slate-800 prose-headings:font-semibold prose-headings:mt-5 prose-headings:mb-2.5 ' +
   'prose-p:my-2 prose-p:leading-[1.75] ' +
   'prose-ul:my-2.5 prose-li:my-0.5 ' +
-  'prose-table:border-collapse prose-table:w-full prose-table:text-[13px] ' +
+  'prose-table:border-collapse prose-table:w-full prose-table:text-sm ' +
   'prose-th:bg-slate-50 prose-th:border prose-th:border-slate-200 prose-th:px-3 prose-th:py-2.5 prose-th:text-left prose-th:font-semibold prose-th:text-slate-700 ' +
   'prose-td:border prose-td:border-slate-100 prose-td:px-3 prose-td:py-2 prose-td:text-slate-600 ' +
   'prose-code:text-slate-800 prose-code:text-[0.8125rem] prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono prose-code:font-normal ' +

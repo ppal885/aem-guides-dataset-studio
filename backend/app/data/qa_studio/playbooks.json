@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "playbooks": [
+    {
+      "id": "repository-search-filters",
+      "area": "repository",
+      "workflow": "search",
+      "title": "Search repository, filters, apply, assert results",
+      "action_types": ["search", "filter", "click", "assert"],
+      "component_types": ["panel", "grid", "dialog", "menu"],
+      "assertion_types": ["visibility", "text", "count", "state"],
+      "risk_tags": ["scroll", "async_results"],
+      "steps": [
+        "Open repository search / search panel",
+        "Enter query and optional path or file-type filters",
+        "Apply filters and wait for stable result grid",
+        "Assert filtered results match expectation (scoped to grid/panel)"
+      ],
+      "locator_guidance": [
+        "Prefer //div[@role='tablist'] and //div[@role='tabpanel'] for tabs",
+        "Scope Spectrum menus: //span[@class='spectrum-Menu-itemLabel'][normalize-space()='…'] inside visible dialog/menu",
+        "Scroll inside scrollable dialog panels before interacting with off-viewport items"
+      ],
+      "scroll_guidance": [
+        "Use scroll-container-aware actions; avoid global page-only scroll when target is in dialog/menu"
+      ],
+      "assertion_guidance": [
+        "Assert on stable labels or grid rows; avoid bare indexed XPath",
+        "Tie Then steps to Jira acceptance/Criteria quotes"
+      ],
+      "anti_patterns": [
+        "react-spectrum-* generated ids",
+        "tabView-jui-react-* generated ids",
+        "hard-coded topic_id__* hashes",
+        "(//button)[n] global indexes",
+        "raw XPath or CSS inside Behave step lines"
+      ],
+      "examples": [
+        "//span[normalize-space()='Properties']",
+        "//span[@class='spectrum-Menu-itemLabel'][normalize-space()='Repository']"
+      ],
+      "related_dom_pattern_ids": ["tablist", "tabpanel", "spectrum-menu-label"],
+      "related_ui_reference_ids": ["editor-map-view"]
+    },
+    {
+      "id": "locate-in-repository-map",
+      "area": "editor",
+      "workflow": "navigation",
+      "title": "Locate in Repository / Map",
+      "action_types": ["menu", "navigation"],
+      "component_types": ["menu", "tree"],
+      "assertion_types": ["presence"],
+      "risk_tags": ["menu_scope"],
+      "steps": [
+        "Open Locate in menu",
+        "Choose Repository or Map target",
+        "Assert destination panel/tree reflects selection"
+      ],
+      "locator_guidance": [
+        "Normalize-space label matching for Spectrum menu items",
+        "Dialog/menu submenus must be scoped to the active overlay"
+      ],
+      "scroll_guidance": [],
+      "assertion_guidance": [],
+      "anti_patterns": ["unscoped //span[text()='Repository'] across entire DOM"],
+      "examples": ["Locate in -> Repository", "Locate in -> Map"],
+      "related_dom_pattern_ids": ["spectrum-menu-label"],
+      "related_ui_reference_ids": []
+    }
+  ]
+}

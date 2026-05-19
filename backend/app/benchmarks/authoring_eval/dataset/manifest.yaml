@@ -1,0 +1,56 @@
+# Screenshot + reference DITA authoring benchmark (offline, vision stubbed).
+version: 1
+defaults:
+  tenant_id: benchmark-tenant
+  session_id: benchmark-session
+  user_id: benchmark-user
+cases:
+  - id: task_programmatic_with_reference
+    prompt: Generate a DITA task topic from this screenshot for the administration workflow.
+    expected_dita_type: task
+    reference_path: references/ref_task_benchmark.dita
+    style_strictness: high
+    strict_validation: true
+    vision:
+      summary: Install the connector from the administration console.
+      structured:
+        numbered_steps:
+          - Open Administration > Connectors.
+          - Click Install and confirm the dialog.
+          - Verify the connector appears as Active.
+        confidence: 0.88
+    notes: Deterministic serializer path (LLM disabled); reference supplies style profile only.
+
+  - id: task_mocked_aem_insertion
+    prompt: Create a DITA task documenting the save workflow shown in the screenshot.
+    expected_dita_type: task
+    reference_path: references/ref_task_benchmark.dita
+    style_strictness: high
+    save_path: /content/dam/benchmark/out
+    expect_saved_to_aem: true
+    vision:
+      summary: Save settings from the dialog.
+      structured:
+        numbered_steps:
+          - Open the Save dialog.
+          - Enter a file name.
+          - Click Save.
+        confidence: 0.9
+    notes: Requires mock AEM save in harness; measures insertion_success / status=saved.
+
+  - id: concept_from_screenshot
+    prompt: Write a DITA concept topic explaining the UI in the screenshot.
+    expected_dita_type: concept
+    dita_type_override: concept
+    reference_path: references/ref_task_benchmark.dita
+    style_strictness: high
+    vision:
+      summary: Overview of the connectors administration page.
+      structured:
+        title: Connectors administration
+        ui_labels:
+          - Connectors
+          - Install
+          - Status
+        confidence: 0.82
+    notes: User override to concept; reference remains task-shaped to stress style adherence vs type override.

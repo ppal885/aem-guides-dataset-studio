@@ -1,0 +1,51 @@
+{
+  "capture": {
+    "session_id": "rec-test",
+    "started_at": "2026-01-01T00:00:00Z",
+    "ended_at": "2026-01-01T00:05:00Z",
+    "app_url": "https://aem.local/",
+    "browser": "Chrome",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "workflow_name": "repository search",
+    "user_notes": "capture test",
+    "aem_guides_context": {
+      "primary_panel": "Repository",
+      "screen": "search"
+    },
+    "steps": [
+      {
+        "step_id": "s1",
+        "action_type": "click",
+        "timestamp": "2026-01-01T00:01:00Z",
+        "target_summary": "Open search",
+        "visible_text": "Search",
+        "accessible_name": "Search repository",
+        "role": "button",
+        "aria": "",
+        "stable_attributes": {
+          "data-testid": "repo-search"
+        },
+        "locator_candidates": [
+          "//*[@role=\"searchbox\"]"
+        ],
+        "dom_snippet": "<button>Search</button>",
+        "ancestor_context": "Repository toolbar",
+        "scroll_context": null,
+        "redaction_applied": false,
+        "confidence": 0.9
+      }
+    ],
+    "jira_key": "GUIDES-999"
+  },
+  "meta": {
+    "id": "3eac4da2-ef05-4950-a5b0-d2719129a7ca",
+    "created_at_utc": "2026-05-18T07:10:43.267809+00:00",
+    "updated_at_utc": "2026-05-18T07:10:43.268535+00:00",
+    "attached_jira_key": null,
+    "authoring_job_id": null,
+    "user_notes_overlay": ""
+  }
+}

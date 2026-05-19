@@ -14,8 +14,53 @@ import xml.etree.ElementTree as ET
 import time
 import psutil
 import os
+from xml.sax.saxutils import escape as _xml_escape
 from app.generator.dita_utils import stable_id
 from app.generator.generate import safe_join, sanitize_filename, _map_xml
+
+
+# ---------------------------------------------------------------------------
+# Subject-aware fallback content
+#
+# When ``content_titles`` / ``content_bodies`` lists are passed in, they take
+# precedence per topic. Missing entries fall back to subject-templated text so
+# the dataset is still themed by the user's prompt instead of using the
+# original "Level 0 Topic 00000" / "Root Topic 00001" placeholders.
+# ---------------------------------------------------------------------------
+
+def _xml_text(value: str) -> str:
+    """XML-escape value for safe inclusion in element text (rule 8: output encoding)."""
+    return _xml_escape(value or "", entities={'"': "&quot;", "'": "&apos;"})
+
+
+def _subject_aware_title(
+    flat_index: int,
+    fallback: str,
+    subject: str,
+    content_titles: Optional[List[str]],
+) -> str:
+    if content_titles and 0 <= flat_index < len(content_titles):
+        title = (content_titles[flat_index] or "").strip()
+        if title:
+            return title
+    if subject:
+        return f"{subject} — {fallback}"
+    return fallback
+
+
+def _subject_aware_body(
+    flat_index: int,
+    fallback_body: str,
+    subject: str,
+    content_bodies: Optional[List[str]],
+) -> str:
+    if content_bodies and 0 <= flat_index < len(content_bodies):
+        body = (content_bodies[flat_index] or "").strip()
+        if body:
+            return body
+    if subject:
+        return f"{fallback_body} This entry covers one slice of the {subject} domain."
+    return fallback_body
 
 
 class PerformanceMetrics:
@@ -86,12 +131,16 @@ class ScalabilityGenerator:
         self.rand = rand
         self.metrics = metrics or PerformanceMetrics()
     
-    def generate_large_scale_dataset(
+    def generate_large_scale_dataset(  # noqa: PLR0913
         self,
         base: str,
         topic_count: int = 100000,
         batch_size: int = 1000,
         stream_callback: Optional[Callable[[Dict[str, bytes]], None]] = None,
+        *,
+        content_subject: str = "",
+        content_titles: Optional[List[str]] = None,
+        content_bodies: Optional[List[str]] = None,
     ) -> Dict[str, bytes]:
         """
         Generate large-scale dataset (100k+ topics).
@@ -102,6 +151,11 @@ class ScalabilityGenerator:
             batch_size: Batch size for processing
             stream_callback: Optional callback function(file_batch_dict) to stream batches directly to storage.
                            If provided, files are written in batches instead of accumulating in memory.
+            content_subject: Optional subject (e.g. "Kubernetes"). When set, titles/bodies become
+                subject-flavored ("Kubernetes — Topic 00000001") instead of "Topic 00000001".
+            content_titles: Optional per-topic titles (indexed 0..topic_count-1). Missing entries fall
+                back to subject-templated titles. Useful for the first N LLM-authored entries.
+            content_bodies: Optional per-topic body paragraphs aligned to indices.
         
         Returns:
             Dictionary of files (empty if stream_callback is used, otherwise full dict)
@@ -109,6 +163,9 @@ class ScalabilityGenerator:
         files = {} if stream_callback is None else None
         used_ids = set()
         topic_dir = safe_join(base, "topics", "pool")
+        subject = (content_subject or "").strip()
+        titles = list(content_titles or [])
+        bodies = list(content_bodies or [])
         
         # Generate topics in batches to manage memory
         for batch_start in range(0, topic_count, batch_size):
@@ -119,13 +176,18 @@ class ScalabilityGenerator:
                 filename = sanitize_filename(f"topic_{i:08d}.dita", self.config.windows_safe_filenames)
                 path = safe_join(topic_dir, filename)
                 topic_id = stable_id(self.config.seed, "scale-topic", str(i), used_ids)
-                
+
+                fallback_title = f"Topic {i:08d}"
+                fallback_body = f"Content for topic {i}."
+                title_text = _xml_text(_subject_aware_title(i - 1, fallback_title, subject, titles))
+                body_text = _xml_text(_subject_aware_body(i - 1, fallback_body, subject, bodies))
+
                 topic_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 {self.config.doctype_topic}
 <topic id="{topic_id}">
-    <title>Topic {i:08d}</title>
+    <title>{title_text}</title>
     <body>
-        <p>Content for topic {i}.</p>
+        <p>{body_text}</p>
     </body>
 </topic>"""
                 
@@ -186,15 +248,26 @@ class ScalabilityGenerator:
         depth: int = 10,
         children_per_level: int = 5,
         include_maps: bool = True,
+        *,
+        content_subject: str = "",
+        content_titles: Optional[List[str]] = None,
+        content_bodies: Optional[List[str]] = None,
     ) -> Dict[str, bytes]:
-        """Generate deep hierarchy dataset (10+ levels)."""
+        """Generate deep hierarchy dataset (10+ levels).
+
+        When ``content_subject`` is set, titles and bodies are themed for that
+        subject. ``content_titles`` / ``content_bodies`` are consumed in BFS order
+        (level 0 first, then level 1, ...); missing entries fall back to subject-
+        templated text instead of the original "Level 0 Topic 00000" placeholders.
+        """
         files = {}
         used_ids = set()
         topic_dir = safe_join(base, "topics")
-        
-        # Calculate total topics needed
-        total_topics = sum(children_per_level ** level for level in range(depth + 1))
-        
+        subject = (content_subject or "").strip()
+        titles = list(content_titles or [])
+        bodies = list(content_bodies or [])
+        flat_idx = 0
+
         # Generate topics level by level
         level_topics = {}  # {level: [(path, id), ...]}
         
@@ -208,13 +281,19 @@ class ScalabilityGenerator:
                 filename = sanitize_filename(f"topic_l{level}_{i:05d}.dita", self.config.windows_safe_filenames)
                 path = safe_join(level_dir, filename)
                 topic_id = stable_id(self.config.seed, f"depth-l{level}", str(i), used_ids)
-                
+
+                fallback_title = f"Level {level} Topic {i:05d}"
+                fallback_body = f"Content at depth level {level}."
+                title_text = _xml_text(_subject_aware_title(flat_idx, fallback_title, subject, titles))
+                body_text = _xml_text(_subject_aware_body(flat_idx, fallback_body, subject, bodies))
+                flat_idx += 1
+
                 topic_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 {self.config.doctype_topic}
 <topic id="{topic_id}">
-    <title>Level {level} Topic {i:05d}</title>
+    <title>{title_text}</title>
     <body>
-        <p>Content at depth level {level}.</p>
+        <p>{body_text}</p>
     </body>
 </topic>"""
                 
@@ -247,10 +326,11 @@ class ScalabilityGenerator:
                 for parent_path, _ in parent_topics[:min(len(parent_topics), 10)]:  # Limit for performance
                     topicref_hrefs.append(parent_path)
                 
+                map_title = f"{subject} — Level {level} Map" if subject else f"Level {level} Map"
                 map_xml = _map_xml(
                     self.config,
                     map_id=stable_id(self.config.seed, f"depth-map-l{level}", "", used_ids),
-                    title=f"Level {level} Map",
+                    title=map_title,
                     topicref_hrefs=topicref_hrefs,
                     keydef_entries=[],
                     scoped_blocks=[],
@@ -268,13 +348,27 @@ class ScalabilityGenerator:
         base: str,
         root_topics: int = 10,
         children_per_root: int = 1000,
+        *,
+        content_subject: str = "",
+        content_titles: Optional[List[str]] = None,
+        content_bodies: Optional[List[str]] = None,
     ) -> Dict[str, bytes]:
-        """Generate wide branching dataset (1000+ children)."""
+        """Generate wide branching dataset (1000+ children).
+
+        When ``content_subject`` is set, titles and bodies are themed for that
+        subject. ``content_titles`` / ``content_bodies`` are consumed in order:
+        all roots first, then children grouped by root index. Missing entries
+        fall back to subject-templated text instead of "Root Topic 00001"
+        placeholders.
+        """
         files = {}
         used_ids = set()
         topic_dir = safe_join(base, "topics")
-        
-        # Generate root topics
+        subject = (content_subject or "").strip()
+        titles = list(content_titles or [])
+        bodies = list(content_bodies or [])
+        flat_idx = 0
+
         root_dir = safe_join(topic_dir, "roots")
         root_topics_list = []
         
@@ -282,13 +376,19 @@ class ScalabilityGenerator:
             filename = sanitize_filename(f"root_{i:05d}.dita", self.config.windows_safe_filenames)
             path = safe_join(root_dir, filename)
             topic_id = stable_id(self.config.seed, "root", str(i), used_ids)
-            
+
+            fallback_title = f"Root Topic {i:05d}"
+            fallback_body = f"Root topic {i}."
+            title_text = _xml_text(_subject_aware_title(flat_idx, fallback_title, subject, titles))
+            body_text = _xml_text(_subject_aware_body(flat_idx, fallback_body, subject, bodies))
+            flat_idx += 1
+
             topic_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 {self.config.doctype_topic}
 <topic id="{topic_id}">
-    <title>Root Topic {i:05d}</title>
+    <title>{title_text}</title>
     <body>
-        <p>Root topic {i}.</p>
+        <p>{body_text}</p>
     </body>
 </topic>"""
             
@@ -300,7 +400,6 @@ class ScalabilityGenerator:
                 self.metrics.add_topic()
                 self.metrics.add_file(len(topic_bytes))
         
-        # Generate children for each root
         for root_idx, (root_path, root_id) in enumerate(root_topics_list):
             children_dir = safe_join(topic_dir, "children", f"root_{root_idx + 1}")
             children_list = []
@@ -309,13 +408,19 @@ class ScalabilityGenerator:
                 filename = sanitize_filename(f"child_{i:05d}.dita", self.config.windows_safe_filenames)
                 path = safe_join(children_dir, filename)
                 topic_id = stable_id(self.config.seed, f"child-r{root_idx}", str(i), used_ids)
-                
+
+                fallback_title = f"Child {i:05d} of Root {root_idx + 1}"
+                fallback_body = f"Child topic {i}."
+                title_text = _xml_text(_subject_aware_title(flat_idx, fallback_title, subject, titles))
+                body_text = _xml_text(_subject_aware_body(flat_idx, fallback_body, subject, bodies))
+                flat_idx += 1
+
                 topic_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 {self.config.doctype_topic}
 <topic id="{topic_id}">
-    <title>Child {i:05d} of Root {root_idx + 1}</title>
+    <title>{title_text}</title>
     <body>
-        <p>Child topic {i}.</p>
+        <p>{body_text}</p>
     </body>
 </topic>"""
                 
@@ -327,17 +432,16 @@ class ScalabilityGenerator:
                     self.metrics.add_topic()
                     self.metrics.add_file(len(topic_bytes))
             
-            # Generate map for root with all children
             map_path = safe_join(base, "maps", f"root_{root_idx + 1}_map.ditamap")
-            
-            # Limit topicrefs for performance (first 500 children)
             topicref_hrefs = [path for path, _ in children_list[:500]]
-            topicref_hrefs.insert(0, root_path)  # Add root first
-            
+            topicref_hrefs.insert(0, root_path)
+
+            map_title_base = f"Root {root_idx + 1} Map ({len(children_list)} children)"
+            map_title = f"{subject} — {map_title_base}" if subject else map_title_base
             map_xml = _map_xml(
                 self.config,
                 map_id=stable_id(self.config.seed, f"wide-map-r{root_idx}", "", used_ids),
-                title=f"Root {root_idx + 1} Map ({len(children_list)} children)",
+                title=map_title,
                 topicref_hrefs=topicref_hrefs,
                 keydef_entries=[],
                 scoped_blocks=[],
@@ -460,18 +564,41 @@ def generate_performance_test_dataset(
     if test_type == "large_scale":
         topic_count = test_params.get("topic_count", 100000)
         batch_size = test_params.get("batch_size", 1000)
-        files = generator.generate_large_scale_dataset(base, topic_count, batch_size, stream_callback)
+        files = generator.generate_large_scale_dataset(
+            base,
+            topic_count,
+            batch_size,
+            stream_callback,
+            content_subject=test_params.get("content_subject", "") or "",
+            content_titles=test_params.get("content_titles") or [],
+            content_bodies=test_params.get("content_bodies") or [],
+        )
     
     elif test_type == "deep_hierarchy":
         depth = test_params.get("depth", 10)
         children_per_level = test_params.get("children_per_level", 5)
         include_maps = test_params.get("include_maps", True)
-        files = generator.generate_deep_hierarchy_dataset(base, depth, children_per_level, include_maps)
-    
+        files = generator.generate_deep_hierarchy_dataset(
+            base,
+            depth,
+            children_per_level,
+            include_maps,
+            content_subject=test_params.get("content_subject", "") or "",
+            content_titles=test_params.get("content_titles") or [],
+            content_bodies=test_params.get("content_bodies") or [],
+        )
+
     elif test_type == "wide_branching":
         root_topics = test_params.get("root_topics", 10)
         children_per_root = test_params.get("children_per_root", 1000)
-        files = generator.generate_wide_branching_dataset(base, root_topics, children_per_root)
+        files = generator.generate_wide_branching_dataset(
+            base,
+            root_topics,
+            children_per_root,
+            content_subject=test_params.get("content_subject", "") or "",
+            content_titles=test_params.get("content_titles") or [],
+            content_bodies=test_params.get("content_bodies") or [],
+        )
     
     elif test_type == "incremental_topicref_maps":
         pool_size = test_params.get("pool_size", 10000)
