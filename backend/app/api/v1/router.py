@@ -10,6 +10,7 @@ from app.api.v1.routes import (
     chat,
     dataset_explorer,
     doc_pdf,
+    jira_rag,
     kb_search,
     limits,
     performance,
@@ -97,5 +98,6 @@ api_router.include_router(ai_flow.router)
 api_router.include_router(tenants.router, prefix="/admin/tenants", tags=["admin-tenants"])
 api_router.include_router(smart_suggestions.router, prefix="/smart", tags=["smart"])
 api_router.include_router(doc_pdf.router, prefix="/docs", tags=["docs"])
+api_router.include_router(jira_rag.router, prefix="/jira-rag", tags=["jira-rag"])
 api_router.include_router(kb_search.router, prefix="/jira-kb", tags=["jira-kb"])
 api_router.include_router(uac_copilot.router, prefix="/uac-copilot", tags=["uac-copilot"])

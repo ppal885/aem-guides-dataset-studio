@@ -83,7 +83,8 @@ def _write_scenario_metadata(
 class GenerateFromTextRequest(BaseModel):
     """Request to generate DITA from raw text (ChatGPT-style: paste Jira text, get DITA)."""
     text: str
-    instructions: str | None = None  # Optional additional instructions (GPT-like: user-provided guidance)
+    instructions: str | None = None
+    generate_mode: str = "recipe"  # "recipe" (default) or "freeform" (LLM-first, no recipe)
 
 
 @router.get("/datasets/search")
@@ -247,6 +248,7 @@ async def _run_generate_from_text(
         request=request,
         user_id=user_id,
         tenant_id=tenant_id,
+        freeform_mode=(getattr(body, "generate_mode", "recipe") == "freeform"),
         skip_rag_check=skip_rag_check,
         progress_run_id=progress_run_id,
     )

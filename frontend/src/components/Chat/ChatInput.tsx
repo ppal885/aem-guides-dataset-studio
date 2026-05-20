@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { GenerateWizard } from './GenerateWizard';
 import { Button } from '@/components/ui/button';
 import {
   Send,
@@ -1078,6 +1079,7 @@ export function ChatInput({
         )}
 
         <div className="flex shrink-0 flex-col gap-2 self-end">
+          <GenerateWizard onInsert={(prompt) => onChange(prompt)} />
           {showStop && (
             <Button
               type="button"

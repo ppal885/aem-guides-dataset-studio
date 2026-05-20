@@ -1597,6 +1597,7 @@ async def run_generate_from_text(
     request: Request | None,
     user_id: str,
     tenant_id: str,
+    freeform_mode: bool = False,
     skip_rag_check: bool = False,
     progress_run_id: str | None = None,
 ) -> dict[str, Any]:
@@ -1666,13 +1667,31 @@ async def run_generate_from_text(
     }
 
     try:
+        if freeform_mode:
+            from app.services.freeform_dita_generation_service import run_freeform_generation
+            update_generate_progress(pid, stage="freeform_generation", message="LLM is reasoning about the domain and generating DITA...")
+            exec_result = await run_freeform_generation(
+                prompt=text,
+                jira_id=jira_id,
+                run_id=run_id,
+                scenario_dir=scenario_dir,
+                trace_id=trace_id,
+            )
+            if exec_result.get("error"):
+                raise ValueError(f"FREEFORM_GENERATION_FAILED: {exec_result['error']}")
+            generation_llm_stage = {
+                "llm_draft_used": True,
+                "path": "freeform_llm_generation",
+                "fields": ["topic_outline", "dita_xml"],
+            }
+
         contract_plan = _build_generator_plan_from_bundle_contract(
             bundle_contract,
             evidence_pack=evidence_pack,
             clean_instructions=clean_instructions,
             trace_id=trace_id,
             jira_id=jira_id,
-        )
+        ) if not freeform_mode else None
         if contract_plan is not None:
             plan = contract_plan
             update_generate_progress(

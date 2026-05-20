@@ -129,7 +129,7 @@ _RECIPE_TYPE_GENERATION_PATTERN = re.compile(
     r"\b(generate|create|build|make|run)\b.*\b(task_topics|concept_topics|glossary_pack|reference_topics|"
     r"properties_table_reference|syntax_diagram_reference|bookmap|conref_pack|keyscope|bulk_dita|incremental_topicref|insurance_incremental|"
     r"map_parse|relationship_table|validation_duplicate|maps_topicref|maps_reltable|maps_mapref|"
-    r"deep_hierarchy|wide_branching|flat_hierarchical_dita|large_scale)\b",
+    r"deep_hierarchy|wide_branching|flat_hierarchical_dita|large_scale|freeform)\b",
     re.IGNORECASE,
 )
 _DITA_GENERATION_PATTERN = re.compile(

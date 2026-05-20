@@ -100,6 +100,8 @@ RECIPE_TYPE_ALLOWLIST = frozenset({
     # Validation & Negative
     "validation_duplicate_id_negative", "validation_invalid_child_negative",
     "validation_missing_body_negative",
+    # Freeform LLM-first generation (no recipe, real domain content)
+    "freeform",
 })
 
 _TOOL_UI_META: dict[str, dict[str, Any]] = {
@@ -914,6 +916,40 @@ async def execute_create_job(
         return {
             "error": f"recipe_type must be one of: {', '.join(sorted(RECIPE_TYPE_ALLOWLIST))}",
         }
+
+    # ── Freeform path: LLM generates real DITA from reasoning, no recipe ──
+    if recipe_type == "freeform":
+        safe_sub = _CONTROL_CHAR_PATTERN.sub("", str(subject or "")).strip()[:200]
+        safe_pt = _CONTROL_CHAR_PATTERN.sub("", str(prompt_text or "")).strip()[:4000]
+        freeform_prompt = safe_pt or safe_sub
+        if not freeform_prompt:
+            return {"error": "subject or prompt_text is required for freeform generation"}
+        try:
+            from uuid import uuid4 as _uuid4
+            from app.services.generate_from_text_service import run_generate_from_text as _run_gft
+            result = await _run_gft(
+                text=freeform_prompt,
+                instructions=None,
+                bundle_contract=None,
+                run_id=str(_uuid4()),
+                request=None,
+                user_id=user_id,
+                tenant_id="default",
+                freeform_mode=True,
+                skip_rag_check=True,
+            )
+            return {
+                "status": "completed",
+                "generate_mode": "freeform",
+                "topic_count": (result.get("artifact_counts") or {}).get("topic_files", 0),
+                "jira_id": result.get("jira_id"),
+                "run_id": result.get("run_id"),
+                "download_url": result.get("download_url"),
+                "message": "Freeform DITA generated — real domain content, no recipe placeholders.",
+            }
+        except Exception as exc:
+            logger.warning_structured("freeform_chat_job_failed", extra_fields={"error": str(exc)})
+            return {"error": str(exc)}
 
     # Validate subject / prompt_text inputs (rule 5: input validation).
     # Strip control chars, cap length to keep LLM payload bounded and prevent
@@ -2721,7 +2757,7 @@ def get_tool_definitions() -> list[dict]:
     return [
         {
             "name": "generate_dita",
-            "description": "Prepare a DITA-only bundle from text or natural language, then show a review-first preview before generation. Use when the user pastes Jira content or asks to create DITA. Ask one scoped clarification when the request is materially ambiguous, especially for bundle counts or glossary subject areas.",
+            "description": "Prepare a single DITA topic or small bundle from pasted text or Jira content, then show a review-first preview. Use ONLY for single-topic authoring or when the user pastes raw Jira/document text. Do NOT use for dataset generation requests (recipe_type, freeform, deep_hierarchy, topic_count etc.) — use create_job for those.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -2740,12 +2776,12 @@ def get_tool_definitions() -> list[dict]:
         {
             "name": "create_job",
             "description": (
-                "Create a dataset generation job with a specific recipe type. Use find_recipes first to "
-                "discover available types if the user hasn't specified one. "
-                "When the user names a real domain subject (e.g. 'Kubernetes', 'AEM Sites', 'OpenAPI specs') "
-                "AND picks a structural / scale recipe (deep_hierarchy, wide_branching, flat_hierarchical_dita, "
-                "large_scale), you MUST also pass `subject` (and optionally `prompt_text`) so the dataset gets "
-                "real domain-themed titles and per-topic content instead of 'Level 0 Topic 00000' placeholders."
+                "Create a DITA dataset generation job. Use for any dataset, bulk, or multi-topic generation request. "
+                "recipe_type='freeform' is the BEST option when the user wants real domain content (actual field names, "
+                "real commands, accurate descriptions) instead of template placeholders — use it whenever the user says "
+                "'freeform', 'real content', 'LLM-generated', or asks for a dataset about a specific technology domain. "
+                "For structural recipes (deep_hierarchy, wide_branching, flat_hierarchical_dita, large_scale) with a named "
+                "domain, also pass `subject` so titles use real domain terms instead of placeholders."
             ),
             "input_schema": {
                 "type": "object",
