@@ -121,10 +121,15 @@ CHAT_CONTEXT_MAX_TOKENS = int(_CHAT_CONTEXT_MAX_TOKENS_RAW) if _CHAT_CONTEXT_MAX
 
 _CHAT_PROMPT_BUILDER: Optional[PromptBuilder] = None
 _DATASET_REQUEST_PATTERN = re.compile(
-    r"\b(generate|create|build|make|run|start)\b.*\b(dataset|recipe|sample|smoke test|test data)\b|"
+    r"\b(generate|create|build|make|run|start)\b.*\b(dataset|recipe|sample|smoke test|test data)\b",
+    re.IGNORECASE,
+)
+# Explicit recipe type names always mean "generate this" — route directly to generation_request
+_RECIPE_TYPE_GENERATION_PATTERN = re.compile(
     r"\b(generate|create|build|make|run)\b.*\b(task_topics|concept_topics|glossary_pack|reference_topics|"
     r"properties_table_reference|syntax_diagram_reference|bookmap|conref_pack|keyscope|bulk_dita|incremental_topicref|insurance_incremental|"
-    r"map_parse|relationship_table|validation_duplicate|maps_topicref|maps_reltable|maps_mapref)\b",
+    r"map_parse|relationship_table|validation_duplicate|maps_topicref|maps_reltable|maps_mapref|"
+    r"deep_hierarchy|wide_branching|flat_hierarchical_dita|large_scale)\b",
     re.IGNORECASE,
 )
 _DITA_GENERATION_PATTERN = re.compile(
@@ -905,6 +910,8 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     if not text:
         return "default"
     if _detect_jira_style_text(text):
+        return "generation_request"
+    if _RECIPE_TYPE_GENERATION_PATTERN.search(text):
         return "generation_request"
     if _DATASET_REQUEST_PATTERN.search(text):
         return "agent_research_plan"

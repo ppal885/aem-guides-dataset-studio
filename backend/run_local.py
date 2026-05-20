@@ -29,8 +29,19 @@ _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 
+import asyncio
 import uvicorn
 from app.core.logging_config import setup_logging
+
+
+def _silence_proactor_pipe_lost(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    # WinError 10054: client forcibly closed an SSE/streaming connection — harmless noise on Windows
+    exc = context.get("exception")
+    if isinstance(exc, ConnectionResetError) and "call_connection_lost" in context.get("source_traceback", ""):
+        return
+    if isinstance(exc, ConnectionResetError) and context.get("message", "").startswith("Exception in callback"):
+        return
+    loop.default_exception_handler(context)
 
 if __name__ == "__main__":
     # Set up logging
@@ -54,11 +65,15 @@ if __name__ == "__main__":
     logger.info("=" * 60)
     
     try:
+        # Silence noisy Windows asyncio ProactorEventLoop pipe-lost errors
+        if sys.platform == "win32":
+            loop = asyncio.new_event_loop()
+            loop.set_exception_handler(_silence_proactor_pipe_lost)
+            asyncio.set_event_loop(loop)
+
         # Disable reload on Windows to avoid OSError: [Errno 22] Invalid argument
-        # Reload doesn't work well in background processes or on Windows
-        import sys
         use_reload = sys.platform != "win32" and os.getenv("DISABLE_RELOAD") != "1"
-        
+
         uvicorn.run(
             "app.main:app",
             host="0.0.0.0",  # Bind to all interfaces to allow access from network
