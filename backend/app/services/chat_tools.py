@@ -25,6 +25,12 @@ _DITA_ATTRIBUTE_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_ATTRIBUTE_STOPWORDS = frozenset({"attribute", "dita", "xml", "topic", "map"})
+_FREEFORM_REDIRECT_PATTERN = re.compile(
+    r"\b(conref|conkeyref|keydef|keyref|keyscope|mapref|nested\s+map|mathml|equation.block|"
+    r"m:math|bookmap|frontmatter|backmatter|ditaval|profiling|reltable|relationship\s+table|"
+    r"tgroup|colspec|spanning|coderef|codeblock|codeph|filepath|scope\s*=\s*external)\b",
+    re.IGNORECASE,
+)
 _DITA_ATTRIBUTE_TOKEN_PATTERN = re.compile(r"@?[A-Za-z_:][A-Za-z0-9_.:-]*")
 _DITA_CONTENT_MODEL_QUERY_PATTERN = re.compile(
     r"\b("
@@ -832,6 +838,23 @@ async def execute_generate_dita(
     if not source_text:
         return {"error": "Text is required for DITA generation"}
 
+    # Detect freeform-mode keywords and redirect to create_job(freeform) to avoid
+    # the contract-service clarification loop for advanced DITA constructs.
+    _freeform_match = _FREEFORM_REDIRECT_PATTERN.search(source_text)
+    if _freeform_match:
+        logger.info_structured(
+            "generate_dita redirected to freeform",
+            extra_fields={"trigger": _freeform_match.group(0)},
+        )
+        return await execute_create_job(
+            recipe_type="freeform",
+            config=None,
+            user_id=user_id,
+            subject="",
+            prompt_text=source_text,
+            jira_id=None,
+        )
+
     update_generate_progress(run_id, status="running", stage="starting", jira_id=f"TEXT-{run_id[:8]}")
 
     try:
@@ -1137,6 +1160,30 @@ async def execute_create_job(
     elif recipe_type == "dita_glossary_abbrev_dataset_recipe":
         base_config["recipes"] = [{
             "type": "dita_glossary_abbrev_dataset_recipe",
+            "pretty_print": True,
+        }]
+    elif recipe_type in ("flat_hierarchical_dita", "large_scale"):
+        # Large flat dataset — default 100 for chat; user can override via config.topic_count
+        base_config["recipes"] = [{
+            "type": recipe_type,
+            "topic_count": 100,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "deep_hierarchy":
+        base_config["recipes"] = [{
+            "type": "deep_hierarchy",
+            "depth": 3,
+            "children_per_level": 5,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "wide_branching":
+        base_config["recipes"] = [{
+            "type": "wide_branching",
+            "root_topics": 10,
+            "children_per_root": 8,
+            "include_map": True,
             "pretty_print": True,
         }]
     else:
@@ -2903,7 +2950,19 @@ def get_tool_definitions() -> list[dict]:
     return [
         {
             "name": "generate_dita",
-            "description": "Prepare a single DITA topic from pasted text or Jira content, then show a review-first preview. Use ONLY for single-topic authoring or when the user pastes raw Jira/document text. Do NOT use for dataset, multi-topic, or bulk generation requests (recipe_type, freeform, deep_hierarchy, topic_count, small dataset, few topics etc.) — use create_job for those.",
+            "description": (
+                "Prepare a single DITA topic from pasted text or Jira content, then show a review-first preview. "
+                "Use ONLY for single-topic authoring or when the user pastes raw Jira/document text and wants ONE topic reviewed. "
+                "Do NOT use for dataset, multi-topic, or bulk generation requests — use create_job for those. "
+                "CRITICAL — do NOT call generate_dita when the user mentions ANY of these keywords; use create_job(recipe_type='freeform') instead: "
+                "conref, conkeyref, keydef, keyref, keyscope, nested map, mapref, "
+                "mathml, equation-block, formula, m:math, "
+                "bookmap, chapter, frontmatter, backmatter, "
+                "ditaval, profiling, @audience, @platform, @product, conditional content, "
+                "reltable, relationship table, relcell, relcolspec, "
+                "tgroup, colspec, spanname, morerows, table spanning, "
+                "codeblock, codeph, coderef, filepath, scope=external, code domain."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -2928,17 +2987,29 @@ def get_tool_definitions() -> list[dict]:
                 "recipe_type='freeform' is the BEST option when the user wants real domain content (actual field names, "
                 "real commands, accurate descriptions) instead of template placeholders — use it whenever the user says "
                 "'freeform', 'real content', 'LLM-generated', or asks for a dataset about a specific technology domain. "
-                "freeform also auto-detects advanced DITA constructs from the prompt: "
-                "say 'conref' → generates source topics with @id elements + consumer topics with correct relative @conref paths; "
-                "say 'keydef' or 'keyref' → generates keydef map + consumer topics using @keyref; "
-                "say 'glossary' → generates glossentry topics + consuming topics. "
+                "freeform AUTOMATICALLY detects the right DITA construct from keywords in your prompt_text — just pass the user's request verbatim: "
+                "'conref' → source topics with @id + consumer topics with @conref paths; "
+                "'conkeyref' → conkeyref reuse pattern; "
+                "'keydef' or 'keyref' → keydef map + consumer topics using @keyref; "
+                "'glossary' or 'glossentry' → glossentry topics + consuming topics; "
+                "'mathml' or 'equation-block' or 'formula' or 'm:math' → MathML equations inside <equation-block><mathml><m:math>; "
+                "'bookmap' or 'chapter' or 'frontmatter' or 'backmatter' → full bookmap publication; "
+                "'ditaval' or 'profiling' or '@audience' or 'conditional content' → profiled content with DITAVAL filter file; "
+                "'reltable' or 'relationship table' → topics linked via reltable in the map; "
+                "'tgroup' or 'colspec' or 'spanning' or 'table domain' → complex DITA tables with spanning cells; "
+                "'nested map' or 'keyscope' or 'mapref' → nested submaps with keyscoped key definitions; "
+                "'codeblock' or 'codeph' or 'coderef' or 'filepath' or 'scope=external' → code domain with real code files. "
                 "For deterministic recipes: use conref_pack (conref reuse), glossary_pack (glossary entries), "
                 "keyscope_demo (keyscope resolution), dita_conref_keyref_dataset_recipe (conref+keyref combo), "
                 "parent_child_maps_keys_conref_conkeyref_selfrefs (full enterprise combo). "
-                "Pass `config` with `topic_count` (or `entry_count` for glossary) to control dataset size. "
-                "For structural recipes (deep_hierarchy, wide_branching, flat_hierarchical_dita, large_scale) "
-                "and flat content recipes (task_topics, concept_topics, reference_topics, glossary_pack, conref_pack) "
-                "with a named domain, also pass `subject` so the LLM authors real domain-specific content."
+                "LARGE DATASET GUIDE — for 100+ topics from a single prompt: "
+                "use recipe_type='flat_hierarchical_dita' (flat content) or 'deep_hierarchy' (tree) or 'task_topics' (procedures) "
+                "and pass config={'topic_count': N} with your desired count. ALWAYS also pass subject='domain name' so titles/bodies are real. "
+                "Examples: create_job(recipe_type='flat_hierarchical_dita', config={'topic_count': 500}, subject='Kubernetes networking'); "
+                "create_job(recipe_type='task_topics', config={'topic_count': 200}, subject='AEM Sites deployment'); "
+                "create_job(recipe_type='deep_hierarchy', config={'depth': 4, 'children_per_level': 6}, subject='Docker orchestration'). "
+                "Pass `config` with `topic_count` (or `entry_count` for glossary, or `depth`+`children_per_level` for hierarchy) to control dataset size. "
+                "Without config.topic_count, defaults are: task_topics=10, flat_hierarchical_dita=100, concept_topics=10, reference_topics=10."
             ),
             "input_schema": {
                 "type": "object",
@@ -2949,7 +3020,7 @@ def get_tool_definitions() -> list[dict]:
                     },
                     "config": {
                         "type": "object",
-                        "description": "Optional config overrides (e.g. topic_count, depth, children_per_level).",
+                        "description": "Optional config overrides. IMPORTANT: always set topic_count explicitly for large runs — e.g. {\"topic_count\": 500} for 500 topics, {\"topic_count\": 1000} for 1000 topics. For hierarchy recipes use {\"depth\": 4, \"children_per_level\": 6}.",
                     },
                     "subject": {
                         "type": "string",
