@@ -2505,6 +2505,7 @@ def auto_index_research_to_rag(force: bool = False) -> str:
 
     try:
         from tavily import TavilyClient
+
         from backend.app.services.embedding_service import (
             embed_texts_batched, embed_texts, is_embedding_available
         )

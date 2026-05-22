@@ -1588,6 +1588,120 @@ def _run_build_validation(*, scenario_dir: Path) -> dict[str, Any]:
     }
 
 
+def _enrich_evidence_pack_with_jira_rag(
+    evidence_pack: dict[str, Any],
+    jira_key: str,
+) -> dict[str, Any]:
+    """Enrich evidence pack with Jira RAG chunks, related issues, and live enrichment metadata.
+
+    Three-layer enrichment (each layer non-blocking):
+      1. Indexed Jira RAG chunks — full_ticket_summary, customer_problem, steps_expected_actual,
+         test_case_candidates, qa_testing_scope injected as jira_rag_context in primary.
+         Related Jiras found via similar_ticket_signals query added to similar[].
+      2. Live Jira REST call → enrich_jira() — injects domain, sub_domain, dita_entities,
+         customer_names, affected_outputs, symptoms into primary for the generation LLM.
+    """
+    primary: dict[str, Any] = dict(evidence_pack.get("primary") or {})
+    similar: list[dict[str, Any]] = list(evidence_pack.get("similar") or [])
+
+    # --- Layer 1: Jira QA RAG indexed chunks ---
+    try:
+        from app.services.jira_qa_retrieval_service import (
+            get_chunks_for_jira_key,
+            related_tickets_for_issue,
+            semantic_search_jira_qa,
+        )
+        from app.services.vector_store_service import is_chroma_available
+        from app.services.embedding_service import is_embedding_available
+
+        if is_chroma_available() and is_embedding_available():
+            _CONTENT_CHUNKS = {
+                "full_ticket_summary", "customer_problem",
+                "steps_expected_actual", "test_case_candidates", "qa_testing_scope",
+            }
+            chunks = get_chunks_for_jira_key(jira_key, limit=15)
+            if chunks:
+                rag_parts: list[str] = []
+                for chunk in chunks:
+                    ct = chunk.get("chunk_type", "")
+                    doc = (chunk.get("document") or "").strip()
+                    if ct in _CONTENT_CHUNKS and doc:
+                        rag_parts.append(f"[{ct.replace('_', ' ').title()}]\n{doc[:800]}")
+                    if ct == "steps_expected_actual" and doc and not primary.get("steps_to_reproduce"):
+                        primary["steps_to_reproduce"] = doc[:2000]
+                if rag_parts:
+                    primary["jira_rag_context"] = "\n\n".join(rag_parts)
+
+            # Use proper hybrid retrieval: labels + components + domain + DITA entities + reranking.
+            # Falls back to a description-based query when the Jira is not yet indexed.
+            related_hits, signal_used = related_tickets_for_issue(jira_key, top_k=5)
+
+            # If signal fell back to just the bare key (Jira not indexed), retry with
+            # summary + description from the evidence pack as the embedding query.
+            if signal_used.strip() == jira_key.strip() or not related_hits:
+                _fallback_query = " ".join(filter(None, [
+                    (primary.get("summary") or ""),
+                    (primary.get("description") or "")[:400],
+                ])).strip()[:600]
+                if len(_fallback_query) > 50:
+                    related_hits = semantic_search_jira_qa(
+                        _fallback_query, top_k=5, exclude_jira_key=jira_key
+                    )
+
+            if related_hits:
+                existing_keys = {s.get("issue_key") for s in similar}
+                for hit in related_hits[:5]:
+                    rkey = hit.get("jira_key", "")
+                    if not rkey or rkey in existing_keys:
+                        continue
+                    similar.append({
+                        "issue_key": rkey,
+                        "summary": (hit.get("title") or "")[:200],
+                        "snippet": (hit.get("document") or "").strip()[:500],
+                        "score": round(float(hit.get("score") or 0.0), 4),
+                    })
+                    existing_keys.add(rkey)
+    except Exception as _e:
+        logger.debug_structured(
+            "jira_rag_enrich_evidence_pack_skipped",
+            extra_fields={"jira_key": jira_key, "error": str(_e)},
+        )
+
+    # --- Layer 2: Live Jira → domain / entity / customer classification ---
+    try:
+        from app.services.jira_client import JiraClient
+        from app.services.jira_enrichment_service import enrich_jira
+
+        client = JiraClient()
+        _has_auth = (client.username and client.password) or (client.email and client.api_token)
+        if client.base_url and _has_auth:
+            live_issue = client.get_issue(jira_key)
+            enriched = enrich_jira(live_issue)
+            if enriched.domain and enriched.domain != "unknown":
+                primary["domain"] = enriched.domain
+            if enriched.sub_domain:
+                primary["sub_domain"] = enriched.sub_domain
+            if enriched.dita_entities:
+                primary["dita_entities"] = list(enriched.dita_entities[:20])
+            if enriched.customer_names:
+                primary["customer_names"] = list(enriched.customer_names[:10])
+            if enriched.affected_outputs:
+                primary["affected_outputs"] = list(enriched.affected_outputs[:10])
+            if enriched.symptoms:
+                primary["symptoms"] = enriched.symptoms[:2000]
+            if enriched.expected_behavior and not primary.get("expected_behavior"):
+                primary["expected_behavior"] = enriched.expected_behavior[:2000]
+            if enriched.actual_behavior and not primary.get("actual_behavior"):
+                primary["actual_behavior"] = enriched.actual_behavior[:2000]
+    except Exception as _e:
+        logger.debug_structured(
+            "jira_live_enrich_evidence_pack_skipped",
+            extra_fields={"jira_key": jira_key, "error": str(_e)},
+        )
+
+    return {"primary": primary, "similar": similar}
+
+
 async def run_generate_from_text(
     *,
     text: str,
@@ -1641,6 +1755,11 @@ async def run_generate_from_text(
             else clean_instructions
         )
         evidence_pack = {**evidence_pack, "primary": {**primary, "description": merged_description}}
+
+    # Enrich with Jira QA RAG chunks, related issues, and live enrichment metadata
+    # when a real Jira key was resolved from the input text.
+    if real_jira_id:
+        evidence_pack = _enrich_evidence_pack_with_jira_rag(evidence_pack, real_jira_id)
 
     rag_status = check_rag_readiness()
     if not skip_rag_check and not rag_status["any_ready"]:

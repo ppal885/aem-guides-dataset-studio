@@ -55,6 +55,7 @@ FLAT_CONTENT_RECIPE_TYPES = {
     "concept_topics",
     "reference_topics",
     "glossary_pack",
+    "conref_pack",
 }
 
 # Hard cap for flat-content authoring. The recipe schemas allow up to 5000 (or
@@ -232,11 +233,22 @@ async def generate_subject_content(
         }
 
     structure_hint = _structure_hint(rt, recipe_params)
+    _has_jira = bool(user_prompt and any(marker in user_prompt for marker in (
+        "## Issue Summary", "Issue Key:", "## Steps to Reproduce",
+        "PRIMARY JIRA [", "RELATED JIRA ISSUES", "FULL TICKET SUMMARY", "CUSTOMER PROBLEM",
+    )))
     system_prompt = (
         "You author concrete, domain-specific DITA topic titles and one-paragraph bodies "
         "for a structural test dataset. You return strict JSON only. "
         "Titles must be unique and informative — no 'Topic 1' style placeholders. "
         "Each body is one to three sentences and stays focused on the subject."
+        + (
+            " When jira_issue_content is present, derive every title and body DIRECTLY from "
+            "the Jira issue steps, description, and acceptance criteria. "
+            "Use RELATED JIRA ISSUES (if present) to add breadth — cover scenarios and edge cases "
+            "those related issues describe. Do not use generic knowledge about the subject."
+            if _has_jira else ""
+        )
     )
     user_payload = {
         "task": "Author leading hierarchy nodes for a structural DITA dataset.",
@@ -256,9 +268,14 @@ async def generate_subject_content(
         "expected_fields": ["titles", "bodies"],
     }
     if user_prompt:
-        # Pass through (truncated) user prompt so the LLM can pick up extra hints
-        # (e.g. "focus on networking and storage").
-        user_payload["user_prompt_excerpt"] = user_prompt.strip()[:1500]
+        if _has_jira:
+            user_payload["jira_issue_content"] = user_prompt.strip()[:2500]
+            user_payload["rules"].append(
+                "Derive titles/bodies from the PRIMARY JIRA steps and description. "
+                "Use RELATED JIRA ISSUES for additional topics that cover related scenarios and edge cases."
+            )
+        else:
+            user_payload["user_prompt_excerpt"] = user_prompt.strip()[:1500]
 
     try:
         # Each title + body averages ~80 + 220 chars; budget ~200 tokens per node + framing.
@@ -381,6 +398,8 @@ def estimate_flat_item_count(recipe_type: str, params: dict[str, Any]) -> int:
     try:
         if rt == "glossary_pack":
             total = max(1, int(p.get("entry_count", 100) or 100))
+        elif rt == "conref_pack":
+            total = max(1, int(p.get("topic_count", 50) or 50))
         else:
             total = max(1, int(p.get("topic_count", 50) or 50))
     except (TypeError, ValueError):
@@ -413,6 +432,8 @@ def _expected_fields_for_flat_recipe(recipe_type: str) -> list[str]:
         return ["titles", "shortdescs", "property_seeds", "detail_snippets"]
     if recipe_type == "glossary_pack":
         return ["terms", "definitions", "acronyms"]
+    if recipe_type == "conref_pack":
+        return ["titles", "shortdescs"]
     return ["titles", "shortdescs"]
 
 
@@ -499,13 +520,25 @@ async def generate_flat_content(
         "concept_topics": "Conceptual topics. Each topic explains an idea, mechanism, or piece of architecture.",
         "reference_topics": "Reference topics. Each topic documents a configuration, command, API, or property table.",
         "glossary_pack": "Glossary entries. Each entry defines one term concisely.",
+        "conref_pack": "Conref source topics. Each topic is a reusable content block whose paragraphs and sections will be referenced (conref'd) by consumer topics. Titles should be noun-phrase names for reusable content modules (e.g. 'Common Prerequisites', 'Standard Warning Notices').",
     }.get(rt, "DITA topics for the requested subject.")
 
+    _has_jira = bool(user_prompt and any(marker in user_prompt for marker in (
+        "## Issue Summary", "Issue Key:", "## Steps to Reproduce",
+        "PRIMARY JIRA [", "RELATED JIRA ISSUES", "FULL TICKET SUMMARY", "CUSTOMER PROBLEM",
+    )))
     system_prompt = (
         "You author concrete, domain-specific DITA content for a deterministic generator. "
         "You return strict JSON only. Titles must be unique, informative, and specific to the subject — "
         "no 'Topic 1' style placeholders. Each shortdesc is one sentence. "
         "Stay strictly on subject and never invent fake APIs."
+        + (
+            " When jira_issue_content is present, derive every title and shortdesc DIRECTLY from "
+            "the Jira issue steps, description, and acceptance criteria. "
+            "Use RELATED JIRA ISSUES (if present) to add breadth — cover scenarios and edge cases "
+            "those related issues describe. Do not use generic knowledge about the subject."
+            if _has_jira else ""
+        )
     )
     user_payload: dict[str, Any] = {
         "task": "Author leading items for a flat DITA dataset.",
@@ -535,7 +568,14 @@ async def generate_flat_content(
             "terms[i] is the glossary term, definitions[i] its definition, acronyms[i] the expansion (or empty string)."
         )
     if user_prompt:
-        user_payload["user_prompt_excerpt"] = user_prompt.strip()[:1500]
+        if _has_jira:
+            user_payload["jira_issue_content"] = user_prompt.strip()[:2500]
+            user_payload["rules"].append(
+                "Derive titles/shortdescs from the PRIMARY JIRA steps and description. "
+                "Use RELATED JIRA ISSUES for additional topics that cover related scenarios and edge cases."
+            )
+        else:
+            user_payload["user_prompt_excerpt"] = user_prompt.strip()[:1500]
 
     try:
         max_tokens = min(8000, 600 + 180 * item_count)
@@ -597,6 +637,10 @@ async def generate_flat_content(
         acronyms = _normalize_str_list(draft.get("acronyms"), item_count)
         if acronyms:
             fields["content_acronyms"] = acronyms
+    elif rt == "conref_pack":
+        # conref_pack uses content_subject + content_titles + content_shortdescs
+        # titles and shortdescs are already extracted above; just pass through
+        pass
 
     if not fields:
         return {

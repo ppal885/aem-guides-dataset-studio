@@ -144,37 +144,56 @@ class ConrefGenerator:
         base: str,
         topic_count: int = 50,
         conref_density: float = 0.3,
+        content_subject: str = "",
+        content_titles: Optional[List[str]] = None,
+        content_shortdescs: Optional[List[str]] = None,
     ) -> Dict[str, bytes]:
         """Generate a dataset focused on conref usage."""
         files = {}
         topic_dir = safe_join(base, "topics", "pool")
         used_ids = set()
-        
+        subject_prefix = (content_subject or "").strip()
+
         # Generate topics with reusable elements
         topics_with_reusables = []
         reusable_elements_map = {}  # path -> [(type, id, content)]
-        
+
         for i in range(1, topic_count + 1):
             filename = sanitize_filename(f"topic_{i:05d}.dita", self.config.windows_safe_filenames)
             path = safe_join(topic_dir, filename)
             topic_id = stable_id(self.config.seed, "conref-topic", str(i), used_ids)
-            
+
+            # Use LLM-authored title when available, else subject-themed fallback
+            if content_titles and i <= len(content_titles):
+                title = content_titles[i - 1]
+            elif subject_prefix:
+                title = f"{subject_prefix} — Topic {i:05d}"
+            else:
+                title = f"Topic {i:05d}"
+
+            # Use LLM-authored shortdesc content for reusable element text
+            reusable_text = ""
+            if content_shortdescs and i <= len(content_shortdescs):
+                reusable_text = content_shortdescs[i - 1]
+            elif subject_prefix:
+                reusable_text = f"{subject_prefix} reusable content {i}"
+
             # Generate reusable elements for this topic
             num_reusables = self.rand.randint(2, 5)
             reusables = []
             for j in range(num_reusables):
                 elem_id = f"{topic_id}_reusable_{j}"
                 elem_type = self.rand.choice(["p", "section", "li"])
-                content = f"Reusable content {i}-{j}"
+                content = reusable_text if j == 0 and reusable_text else f"Reusable content {i}-{j}"
                 reusables.append((elem_type, elem_id, content))
-            
+
             reusable_elements_map[path] = reusables
-            
+
             # Generate topic with reusable elements
             topic_xml = self.generate_conref_topic(
                 path,
                 topic_id,
-                f"Topic {i:05d}",
+                title,
                 reusables,
                 [],  # No conrefs yet
             )
@@ -254,15 +273,26 @@ def generate_conref_pack(
     base: str,
     topic_count: int = 50,
     conref_density: float = 0.3,
+    content_subject: str = "",
+    content_titles: Optional[List[str]] = None,
+    content_shortdescs: Optional[List[str]] = None,
     rand=None,
+    **kwargs,
 ) -> Dict[str, bytes]:
     """Generate a dataset focused on conref usage."""
     if rand is None:
         import random
         rand = random.Random(config.seed)
-    
+
     generator = ConrefGenerator(config, rand)
-    return generator.generate_conref_dataset(base, topic_count, conref_density)
+    return generator.generate_conref_dataset(
+        base,
+        topic_count,
+        conref_density,
+        content_subject=content_subject,
+        content_titles=content_titles,
+        content_shortdescs=content_shortdescs,
+    )
 
 
 RECIPE_SPECS = [
@@ -274,7 +304,10 @@ RECIPE_SPECS = [
         "tags": ["conref", "reuse", "content-reference"],
         "module": "app.generator.conrefs",
         "function": "generate_conref_pack",
-        "params_schema": {"topic_count": "int", "conref_density": "float", "include_map": "bool"},
+        "params_schema": {
+            "topic_count": "int", "conref_density": "float", "include_map": "bool",
+            "content_subject": "str", "content_titles": "list", "content_shortdescs": "list",
+        },
         "default_params": {"topic_count": 50, "conref_density": 0.3, "include_map": True},
         "stability": "stable",
         "constructs": ["conref", "topicref", "topic", "map"],

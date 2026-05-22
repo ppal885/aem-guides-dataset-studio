@@ -931,7 +931,10 @@ _MULTI_TOPIC_NL_PATTERN = re.compile(
     r"\bscale\s+up\b.{0,80}\btopics?\b|"
     r"\bbigger\s+preview\b.{0,80}\btopics?\b|"
     r"\bsame\s+subject\b.{0,60}\bmore\s+topics?\b|"
-    r"\b(?:more|extra)\s+(?:concept|task|reference)\s+topics?\b",
+    r"\b(?:more|extra)\s+(?:concept|task|reference)\s+topics?\b|"
+    r"\b(?:small|minimal|basic|simple|few|a\s+few|some)\s+(?:dita\s+)?(?:dataset|bundle|topics?|collection|set\s+of\s+topics?)\b|"
+    r"\b(?:generate|create|produce|build|make)\s+(?:a\s+)?(?:dita\s+)?dataset\b|"
+    r"\bdita\s+dataset\b|\bbundle\s+of\s+dita\b",
     re.IGNORECASE | re.DOTALL,
 )
 _HIERARCHY_MAP_NL_PATTERN = re.compile(

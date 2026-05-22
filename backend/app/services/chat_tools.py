@@ -917,11 +917,116 @@ async def execute_create_job(
             "error": f"recipe_type must be one of: {', '.join(sorted(RECIPE_TYPE_ALLOWLIST))}",
         }
 
-    # ── Freeform path: LLM generates real DITA from reasoning, no recipe ──
+    # Sanitize inputs first — must happen before ALL paths including freeform.
+    safe_subject = _CONTROL_CHAR_PATTERN.sub("", str(subject or "")).strip()[:200]
+    safe_prompt_text = _CONTROL_CHAR_PATTERN.sub("", str(prompt_text or "")).strip()[:4000]
+
+    # When a Jira key is provided, build a rich context from the Jira RAG and live API.
+    # This runs BEFORE the freeform branch so freeform also gets Jira-grounded content.
+    # Priority:
+    #   1. Indexed RAG chunks for the specific Jira (pre-processed summaries, customer problem)
+    #   2. Semantically related Jiras from RAG (broadens dataset topic coverage)
+    #   3. Live Jira fetch for current steps / acceptance criteria (fallback if not indexed)
+    if jira_id and len(safe_prompt_text) < 300:
+        _jira_ctx_parts: list[str] = []
+        _rag_enriched = False
+
+        try:
+            from app.services.jira_qa_retrieval_service import (
+                get_chunks_for_jira_key,
+                semantic_search_jira_qa,
+            )
+            from app.services.vector_store_service import is_chroma_available
+            from app.services.embedding_service import is_embedding_available as _emb_avail
+            if is_chroma_available() and _emb_avail():
+                _PRIORITY_CHUNKS = {"full_ticket_summary", "customer_problem", "similar_ticket_signals"}
+                _chunks = get_chunks_for_jira_key(jira_id, limit=10)
+                _key_chunks = [c for c in _chunks if c.get("chunk_type") in _PRIORITY_CHUNKS]
+                if _key_chunks:
+                    _rag_enriched = True
+                    _primary_parts: list[str] = []
+                    for _c in _key_chunks:
+                        _ct = (_c.get("chunk_type") or "").replace("_", " ").upper()
+                        _doc = (_c.get("document") or "").strip()[:800]
+                        if _doc:
+                            _primary_parts.append(f"[{_ct}]\n{_doc}")
+                    if _primary_parts:
+                        _jira_ctx_parts.append(
+                            f"PRIMARY JIRA [{jira_id}]:\n" + "\n\n".join(_primary_parts)
+                        )
+                    # Use the proper hybrid retrieval (labels+components+domain+entities+reranking)
+                    # instead of a bare semantic call with a key string.
+                    from app.services.jira_qa_retrieval_service import related_tickets_for_issue
+                    _related, _signal_used = related_tickets_for_issue(jira_id, top_k=3)
+
+                    # If Jira is not indexed the signal falls back to the bare key — useless as a query.
+                    # Retry with the summary we already have from safe_subject / safe_prompt_text.
+                    if _signal_used.strip() == jira_id.strip() or not _related:
+                        _fb_query = (safe_subject + " " + safe_prompt_text[:300]).strip()[:600]
+                        if len(_fb_query) > 50:
+                            _related = semantic_search_jira_qa(_fb_query, top_k=3, exclude_jira_key=jira_id)
+
+                    if _related:
+                        _rel_lines: list[str] = []
+                        for _hit in _related[:3]:
+                            _rkey = _hit.get("jira_key", "")
+                            _rtitle = (_hit.get("title") or "")[:120]
+                            _rdoc = (_hit.get("document") or "").strip()[:400]
+                            if _rkey and _rdoc:
+                                _rel_lines.append(f"[{_rkey}] {_rtitle}\n{_rdoc}")
+                        if _rel_lines:
+                            _jira_ctx_parts.append(
+                                "RELATED JIRA ISSUES (use these for broader dataset coverage):\n\n"
+                                + "\n\n".join(_rel_lines)
+                            )
+        except Exception as _rag_e:
+            logger.debug_structured(
+                "jira_rag_enrichment_skipped",
+                extra_fields={"jira_id": jira_id, "error": str(_rag_e)},
+            )
+
+        try:
+            from app.services.jira_generate_resolve import fetch_issue_text_for_generate
+            _jira_text, _jira_err = fetch_issue_text_for_generate(jira_id)
+            if _jira_text:
+                if not _rag_enriched:
+                    _jira_ctx_parts.append(_jira_text.strip())
+                else:
+                    _sections: dict[str, list[str]] = {}
+                    _cur_sec: str | None = None
+                    for _ln in _jira_text.splitlines():
+                        if _ln.startswith("## "):
+                            _cur_sec = _ln[3:].strip()
+                            _sections[_cur_sec] = []
+                        elif _cur_sec and _ln.strip():
+                            _sections[_cur_sec].append(_ln)
+                    for _sec_name in ("Steps to Reproduce", "Acceptance Criteria", "Expected Behavior"):
+                        if _sections.get(_sec_name):
+                            _body = "\n".join(_sections[_sec_name])[:600]
+                            if _body:
+                                _jira_ctx_parts.append(f"{_sec_name}:\n{_body}")
+                if not safe_subject:
+                    _txt_lines = _jira_text.splitlines()
+                    for _i, _ln in enumerate(_txt_lines):
+                        if _ln.strip() == "## Issue Summary" and _i + 1 < len(_txt_lines):
+                            _s = _txt_lines[_i + 1].strip()
+                            if _s and _s != "(no summary)":
+                                safe_subject = _s[:200]
+                            break
+        except Exception as _je:
+            logger.debug_structured(
+                "jira_fetch_for_enrichment_skipped",
+                extra_fields={"jira_id": jira_id, "error": str(_je)},
+            )
+
+        if _jira_ctx_parts:
+            _combined = _CONTROL_CHAR_PATTERN.sub("", "\n\n".join(_jira_ctx_parts)).strip()
+            safe_prompt_text = (safe_prompt_text + "\n\n" + _combined).strip()[:3500]
+
+    # ── Freeform path: LLM generates real DITA XML from the enriched prompt ──
+    # Uses safe_prompt_text which already contains Jira RAG context when jira_id is set.
     if recipe_type == "freeform":
-        safe_sub = _CONTROL_CHAR_PATTERN.sub("", str(subject or "")).strip()[:200]
-        safe_pt = _CONTROL_CHAR_PATTERN.sub("", str(prompt_text or "")).strip()[:4000]
-        freeform_prompt = safe_pt or safe_sub
+        freeform_prompt = safe_prompt_text or safe_subject
         if not freeform_prompt:
             return {"error": "subject or prompt_text is required for freeform generation"}
         try:
@@ -950,12 +1055,6 @@ async def execute_create_job(
         except Exception as exc:
             logger.warning_structured("freeform_chat_job_failed", extra_fields={"error": str(exc)})
             return {"error": str(exc)}
-
-    # Validate subject / prompt_text inputs (rule 5: input validation).
-    # Strip control chars, cap length to keep LLM payload bounded and prevent
-    # log/storage abuse (rule 8: output encoding deferred to generator's _xml_safe).
-    safe_subject = _CONTROL_CHAR_PATTERN.sub("", str(subject or "")).strip()[:200]
-    safe_prompt_text = _CONTROL_CHAR_PATTERN.sub("", str(prompt_text or "")).strip()[:4000]
 
     # Build minimal config from recipe type
     base_config: dict = {
@@ -1005,12 +1104,59 @@ async def execute_create_job(
             "include_readme": True,
             "pretty_print": True,
         }]
+    elif recipe_type == "reference_topics":
+        base_config["recipes"] = [{
+            "type": "reference_topics",
+            "topic_count": 10,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "conref_pack":
+        base_config["recipes"] = [{
+            "type": "conref_pack",
+            "topic_count": 8,
+            "conref_density": 0.4,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "keyscope_demo":
+        base_config["recipes"] = [{
+            "type": "keyscope_demo",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "dita_conref_keyref_dataset_recipe":
+        base_config["recipes"] = [{
+            "type": "dita_conref_keyref_dataset_recipe",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "parent_child_maps_keys_conref_conkeyref_selfrefs":
+        base_config["recipes"] = [{
+            "type": "parent_child_maps_keys_conref_conkeyref_selfrefs",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "dita_glossary_abbrev_dataset_recipe":
+        base_config["recipes"] = [{
+            "type": "dita_glossary_abbrev_dataset_recipe",
+            "pretty_print": True,
+        }]
     else:
         base_config["recipes"] = [{"type": recipe_type, "pretty_print": True}]
 
+    _RECIPE_LEVEL_PARAMS = frozenset({
+        "topic_count", "entry_count", "depth", "children_per_level", "root_topics",
+        "children_per_root", "steps_per_task", "sections_per_concept",
+        "include_map", "include_prereq", "include_result", "include_choicetable",
+        "include_acronyms", "pretty_print", "include_readme",
+    })
     if config and isinstance(config, dict):
         if "recipes" in config and config["recipes"]:
             base_config["recipes"] = config["recipes"]
+        else:
+            # Propagate recipe-level params from config into the first recipe
+            if base_config.get("recipes"):
+                for k, v in config.items():
+                    if k in _RECIPE_LEVEL_PARAMS and v is not None:
+                        base_config["recipes"][0][k] = v
         for k, v in config.items():
             if k != "recipes" and v is not None:
                 base_config[k] = v
@@ -1019,7 +1165,7 @@ async def execute_create_job(
     #   * structural/scale recipes (deep_hierarchy / wide_branching / flat_hierarchical_dita
     #     / large_scale) produce "Level 0 Topic 00000" placeholders, and
     #   * flat content recipes (task_topics / concept_topics / reference_topics /
-    #     glossary_pack) called via this chat shortcut produce generic seeded
+    #     glossary_pack / conref_pack) called via this chat shortcut produce generic seeded
     #     content (e.g. "Reference Topic 1") regardless of the user's prompt.
     #
     # With this, the LLM authors the leading N items for the user's subject and
@@ -2757,7 +2903,7 @@ def get_tool_definitions() -> list[dict]:
     return [
         {
             "name": "generate_dita",
-            "description": "Prepare a single DITA topic or small bundle from pasted text or Jira content, then show a review-first preview. Use ONLY for single-topic authoring or when the user pastes raw Jira/document text. Do NOT use for dataset generation requests (recipe_type, freeform, deep_hierarchy, topic_count etc.) — use create_job for those.",
+            "description": "Prepare a single DITA topic from pasted text or Jira content, then show a review-first preview. Use ONLY for single-topic authoring or when the user pastes raw Jira/document text. Do NOT use for dataset, multi-topic, or bulk generation requests (recipe_type, freeform, deep_hierarchy, topic_count, small dataset, few topics etc.) — use create_job for those.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -2776,12 +2922,23 @@ def get_tool_definitions() -> list[dict]:
         {
             "name": "create_job",
             "description": (
-                "Create a DITA dataset generation job. Use for any dataset, bulk, or multi-topic generation request. "
+                "Create a DITA dataset generation job. Use for ANY dataset request — small, medium, or large, "
+                "single recipe type or combination. This is the correct tool whenever the user asks for a dataset, "
+                "bundle, collection of topics, or mentions topic_count / recipe_type. "
                 "recipe_type='freeform' is the BEST option when the user wants real domain content (actual field names, "
                 "real commands, accurate descriptions) instead of template placeholders — use it whenever the user says "
                 "'freeform', 'real content', 'LLM-generated', or asks for a dataset about a specific technology domain. "
-                "For structural recipes (deep_hierarchy, wide_branching, flat_hierarchical_dita, large_scale) with a named "
-                "domain, also pass `subject` so titles use real domain terms instead of placeholders."
+                "freeform also auto-detects advanced DITA constructs from the prompt: "
+                "say 'conref' → generates source topics with @id elements + consumer topics with correct relative @conref paths; "
+                "say 'keydef' or 'keyref' → generates keydef map + consumer topics using @keyref; "
+                "say 'glossary' → generates glossentry topics + consuming topics. "
+                "For deterministic recipes: use conref_pack (conref reuse), glossary_pack (glossary entries), "
+                "keyscope_demo (keyscope resolution), dita_conref_keyref_dataset_recipe (conref+keyref combo), "
+                "parent_child_maps_keys_conref_conkeyref_selfrefs (full enterprise combo). "
+                "Pass `config` with `topic_count` (or `entry_count` for glossary) to control dataset size. "
+                "For structural recipes (deep_hierarchy, wide_branching, flat_hierarchical_dita, large_scale) "
+                "and flat content recipes (task_topics, concept_topics, reference_topics, glossary_pack, conref_pack) "
+                "with a named domain, also pass `subject` so the LLM authors real domain-specific content."
             ),
             "input_schema": {
                 "type": "object",

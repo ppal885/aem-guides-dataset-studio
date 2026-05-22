@@ -15,6 +15,7 @@ CHROMA_COLLECTION_AEM_GUIDES = "aem_guides"
 CHROMA_COLLECTION_DITA_SPEC = "dita_spec"
 CHROMA_COLLECTION_JIRA_QA = "jira_qa"
 CHROMA_COLLECTION_DITA_OT_GITHUB = "dita_ot_github"
+CHROMA_COLLECTION_DOCKER_DOCS = "docker_docs"
 CHROMA_DB_DIR = "chroma_db"
 
 _chroma_client = None
