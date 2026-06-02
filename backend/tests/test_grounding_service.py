@@ -139,9 +139,51 @@ async def test_verify_grounded_answer_abstains_on_conflict():
         evidence_pack=pack,
     )
 
-    assert grounded.grounding_status == "conflict"
+    assert grounded.grounding_status == "partial"
+    assert grounded.answer.startswith("I couldn't verify")
+    assert "what it usually means" in grounded.answer.lower()
     assert "## Sources" in grounded.answer
-    assert "supported and unsupported signals" in grounded.answer.lower()
+    assert "plain-language summary" in grounded.reason.lower()
+
+
+@pytest.mark.anyio
+async def test_verify_grounded_answer_rewrites_retrieval_style_thin_answer():
+    pack = build_evidence_pack(
+        query="What is call out attribute in dita?",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="dita_spec",
+                text="The following attributes are available on this element: Universal attribute group, outputclass, and the attributes defined below.",
+                metadata={"title": "dita_spec"},
+            ),
+            _candidate(
+                source="dita_spec",
+                title="ditaval",
+                text="DITAVAL files define include/exclude/flag rules.",
+                metadata={"title": "ditaval"},
+            ),
+        ],
+    )
+
+    draft = """## At a glance
+Retrieved DITA specification guidance for `What is call out attribute in dita?`.
+
+## Details
+- Retrieved DITA specification guidance for `What is call out attribute in dita?`
+"""
+
+    grounded = await verify_grounded_answer(
+        question="What is call out attribute in dita?",
+        draft_answer=draft,
+        evidence_pack=pack,
+    )
+
+    assert grounded.grounding_status == "partial"
+    assert grounded.answer.startswith("I couldn't verify a standard DITA attribute")
+    assert "What it usually means:" in grounded.answer
+    assert "Retrieved DITA specification guidance" not in grounded.answer
 
 
 @pytest.mark.anyio

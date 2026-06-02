@@ -4,7 +4,7 @@ import copy
 import json
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
@@ -76,6 +76,8 @@ from app.services.grounding_service import (
     build_evidence_pack,
     grounding_metadata_from_pack,
     grounding_to_notice,
+    _build_thin_evidence_answer,
+    _looks_like_retrieval_summary,
     verify_grounded_answer,
 )
 from app.services.tenant_service import retrieve_tenant_context, retrieve_tenant_examples
@@ -3301,6 +3303,7 @@ def _build_compact_chat_system_prompt(
         "appropriate for enterprise technical communication.\n\n"
         "# VOICE AND STRUCTURE\n"
         "- Open with a direct answer; follow with `##` sections only as needed.\n"
+        "- Never open with retrieval-language like 'Retrieved DITA specification guidance' unless the user explicitly asks for sources.\n"
         "- Make each reply self-contained: the reader should understand without guessing from prior turns.\n"
         "- Prefer precise terminology; avoid marketing tone and filler.\n"
         "- Use emoji or decorative callouts sparingly; only when they aid scanning.\n\n"
@@ -3318,8 +3321,8 @@ def _build_compact_chat_system_prompt(
         "5. **Depth**: Structural DITA topics need enough depth (multiple sections). Narrow factual questions "
         "may be shorter while remaining complete.\n"
         "6. **Markdown**: Use `##`, bullets, fenced code blocks; **bold** or `backticks` for element and attribute names.\n"
-        "7. **Evidence**: Ground claims in context supplied below. If evidence is thin, say so in one clear sentence; "
-        "do not substitute confident guesses.\n"
+        "7. **Evidence**: Ground claims in context supplied below. If evidence is thin or conflicting, keep the answer useful "
+        "and direct, then add a brief caveat; do not replace the answer with a source-by-source recap or a retrieval summary.\n"
         "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
         "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
         "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
@@ -3380,8 +3383,8 @@ def _build_grounded_answer_user_prompt(
     parts.append(
         "Evidence:\n"
         f"{evidence_context}\n\n"
-        "If the question asks what something is, base the definition and structure on the evidence above; "
-        "quote or paraphrase only what is supported."
+        "Write in a natural assistant voice. Base the answer on the evidence above, but do not narrate the retrieval process. "
+        "If evidence is thin or conflicting, answer directly with the best supported explanation, then add a short caution in a `## Verification notes` section."
     )
     if answer_shape_hint.strip():
         parts.append(f"Answer shape guidance:\n{answer_shape_hint.strip()}")
@@ -5041,11 +5044,8 @@ async def _build_grounded_dita_answer_payload(
         _has_spec_tool_evidence = bool(
             grounded_tool_results.get("lookup_dita_spec") or grounded_tool_results.get("lookup_dita_attribute")
         )
-        _evidence_allows_synthesis = (
-            evidence_pack.decision.status not in {"abstain", "conflict"} or _has_spec_tool_evidence
-        )
         should_enrich_with_llm = _should_enrich_grounded_answer_with_llm(question, normalized_grounded_facts)
-        if (not draft_answer or should_enrich_with_llm) and _evidence_allows_synthesis and is_llm_available():
+        if (not draft_answer or should_enrich_with_llm) and is_llm_available():
             dita_rag = ""
             if _should_include_structural_dita_rag(question):
                 try:
@@ -5064,17 +5064,37 @@ async def _build_grounded_dita_answer_payload(
             )
             if dita_rag:
                 evidence_ctx = dita_rag + "\n\n" + evidence_ctx
+            evidence_ctx_for_prompt = evidence_ctx[:3000]
+            if evidence_pack.decision.status in {"abstain", "conflict"}:
+                evidence_ctx_for_prompt = (
+                    "The indexed evidence is thin or conflicting. Answer directly from your general DITA knowledge in a "
+                    "helpful, natural voice, then add a short `## Verification notes` section.\n\n"
+                    "Do not echo the evidence snippets or write a retrieval recap."
+                )
+            answer_shape_hint = _grounded_answer_shape_hint(question, normalized_grounded_facts)
+            if evidence_pack.decision.status in {"abstain", "conflict"}:
+                thin_evidence_hint = (
+                    "The retrieved evidence is thin or conflicting. Answer directly in natural prose with the best supported "
+                    "interpretation, then add a brief `## Verification notes` section. Do not start with 'Retrieved ...' "
+                    "or turn the answer into a source-by-source recap."
+                )
+                answer_shape_hint = "\n\n".join(part for part in [answer_shape_hint, thin_evidence_hint] if part)
+            structured_answer_hint = (
+                draft_answer
+                if should_enrich_with_llm and evidence_pack.decision.status not in {"abstain", "conflict"}
+                else ""
+            )
             try:
                 llm_draft = await generate_text(
                     system_prompt=_build_compact_chat_system_prompt(rag_context=_build_rag_context(question, tenant_id=tenant_id)),
                     user_prompt=_build_grounded_answer_user_prompt(
                         question=question,
-                        evidence_context=evidence_ctx[:3000],
+                        evidence_context=evidence_ctx_for_prompt,
                         transcript=transcript,
                         corrected_query=str(retrieval_meta.get("corrected_query") or ""),
                         correction_applied=bool(retrieval_meta.get("correction_applied")),
-                        structured_answer_hint=draft_answer if should_enrich_with_llm else "",
-                        answer_shape_hint=_grounded_answer_shape_hint(question, normalized_grounded_facts),
+                        structured_answer_hint=structured_answer_hint,
+                        answer_shape_hint=answer_shape_hint,
                     ),
                     max_tokens=1600,
                     step_name="chat_mixed_grounded_dita_answer",
@@ -5100,6 +5120,18 @@ async def _build_grounded_dita_answer_payload(
             structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
             structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
         )
+        if evidence_pack.decision.status in {"abstain", "conflict"} and _looks_like_retrieval_summary(grounded_answer.answer):
+            grounded_answer = replace(
+                grounded_answer,
+                answer=_build_thin_evidence_answer(
+                    question=question,
+                    evidence_pack=evidence_pack,
+                    unsupported=grounded_answer.unsupported_points,
+                ),
+                unsupported_points=grounded_answer.unsupported_points[:4],
+                grounding_status="partial",
+                reason="The draft answer was rewritten into a clearer plain-language summary because the evidence was too thin.",
+            )
         llm_summary = summarize_llm_trace(
             trace_id,
             default_path=grounding_path,
@@ -5675,12 +5707,8 @@ async def _stream_assistant_reply(
         _has_spec_tool_evidence_gen = bool(
             grounded_tool_results.get("lookup_dita_spec") or grounded_tool_results.get("lookup_dita_attribute")
         )
-        _evidence_allows_synthesis_gen = (
-            evidence_pack.decision.status not in {"abstain", "conflict"}
-            or _has_spec_tool_evidence_gen
-        )
         should_enrich_with_llm = _should_enrich_grounded_answer_with_llm(user_content, normalized_grounded_facts)
-        if (not draft_answer or should_enrich_with_llm) and _evidence_allows_synthesis_gen and is_llm_available():
+        if (not draft_answer or should_enrich_with_llm) and is_llm_available():
             # Only inject structural DITA chunks when the question is actually about DITA/XML structure.
             dita_rag = ""
             if _should_include_structural_dita_rag(user_content):
@@ -5704,6 +5732,13 @@ async def _stream_assistant_reply(
             if dita_rag:
                 evidence_ctx = dita_rag + "\n\n" + evidence_ctx
             rag_context = _build_rag_context(user_content, tenant_id=tenant_id)
+            evidence_ctx_for_prompt = evidence_ctx[:3000]
+            if evidence_pack.decision.status in {"abstain", "conflict"}:
+                evidence_ctx_for_prompt = (
+                    "The indexed evidence is thin or conflicting. Answer directly from your general DITA knowledge in a "
+                    "helpful, natural voice, then add a short `## Verification notes` section.\n\n"
+                    "Do not echo the evidence snippets or write a retrieval recap."
+                )
             # Use compact prompt to stay within Groq 12K TPM limit.
             # The full chat_system.json (~10K tokens) exceeds the limit when
             # combined with evidence + DITA RAG + user message.
@@ -5711,17 +5746,30 @@ async def _stream_assistant_reply(
                 rag_context=rag_context,
                 human_prompts=human_prompts,
             )
+            answer_shape_hint = _grounded_answer_shape_hint(user_content, normalized_grounded_facts)
+            if evidence_pack.decision.status in {"abstain", "conflict"}:
+                thin_evidence_hint = (
+                    "The retrieved evidence is thin or conflicting. Answer directly in natural prose with the best supported "
+                    "interpretation, then add a brief `## Verification notes` section. Do not start with 'Retrieved ...' "
+                    "or turn the answer into a source-by-source recap."
+                )
+                answer_shape_hint = "\n\n".join(part for part in [answer_shape_hint, thin_evidence_hint] if part)
+            structured_answer_hint = (
+                draft_answer
+                if should_enrich_with_llm and evidence_pack.decision.status not in {"abstain", "conflict"}
+                else ""
+            )
             try:
                 llm_draft = await generate_text(
                     system_prompt=system_prompt,
                     user_prompt=_build_grounded_answer_user_prompt(
                         question=user_content,
-                        evidence_context=evidence_ctx[:3000],
+                        evidence_context=evidence_ctx_for_prompt,
                         transcript=transcript,
                         corrected_query=str(retrieval_meta.get("corrected_query") or ""),
                         correction_applied=bool(retrieval_meta.get("correction_applied")),
-                        structured_answer_hint=draft_answer if should_enrich_with_llm else "",
-                        answer_shape_hint=_grounded_answer_shape_hint(user_content, normalized_grounded_facts),
+                        structured_answer_hint=structured_answer_hint,
+                        answer_shape_hint=answer_shape_hint,
                     ),
                     max_tokens=2400,
                     step_name="chat_grounded_answer",
@@ -5746,6 +5794,18 @@ async def _stream_assistant_reply(
             ),
             structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
             structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
+        )
+        if evidence_pack.decision.status in {"abstain", "conflict"} and _looks_like_retrieval_summary(grounded_answer.answer):
+            grounded_answer = replace(
+                grounded_answer,
+                answer=_build_thin_evidence_answer(
+                    question=user_content,
+                    evidence_pack=evidence_pack,
+                    unsupported=grounded_answer.unsupported_points,
+                ),
+                unsupported_points=grounded_answer.unsupported_points[:4],
+                grounding_status="partial",
+                reason="The draft answer was rewritten into a clearer plain-language summary because the evidence was too thin.",
             )
 
         llm_summary = summarize_llm_trace(

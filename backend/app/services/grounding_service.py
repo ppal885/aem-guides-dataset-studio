@@ -861,6 +861,46 @@ def _looks_like_overconfident_draft(
     return False
 
 
+def _looks_like_retrieval_summary(answer_text: str) -> bool:
+    lowered = (answer_text or "").strip().lower()
+    return (
+        lowered.startswith("retrieved ")
+        or lowered.startswith("## at a glance")
+        or "retrieved dita specification guidance" in lowered
+    )
+
+
+def _build_thin_evidence_answer(
+    *,
+    question: str,
+    evidence_pack: EvidencePack,
+    unsupported: list[str],
+) -> str:
+    term_candidates = _missing_query_terms(question, evidence_pack)
+    term = term_candidates[0] if term_candidates else question.strip().rstrip("?") or "that term"
+    lowered_points = "\n".join(unsupported).lower()
+    lines = [
+        f"I couldn't verify a standard DITA attribute named `{term}` in the indexed evidence.",
+        "",
+        "What it usually means:",
+    ]
+    if "outputclass" in lowered_points:
+        lines.append("- `@outputclass` is often used as a styling hook to make content look like a callout.")
+    if "ditaval" in lowered_points:
+        lines.append("- Conditional processing is usually handled with DITA attributes plus a `.ditaval` file.")
+    if "note" in lowered_points:
+        lines.append("- A visible callout box is often implemented with the semantic `note` element and output styling.")
+    if len(lines) == 3:
+        lines.append("- It is usually a vendor-specific styling or specialization feature rather than a base DITA attribute.")
+    lines.extend(
+        [
+            "",
+            "If you share the exact element or snippet where you saw `callout`, I can map it to the right DITA or AEM Guides construct.",
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
 def _build_evidence_only_answer(
     *,
     question: str,
@@ -940,7 +980,13 @@ async def verify_grounded_answer(
                 )
 
         if evidence_pack.decision.status in {"abstain", "conflict"}:
-            if structured_fallback_answer.strip():
+            if structured_fallback_answer.strip() and _looks_like_overconfident_draft(
+                question=question,
+                draft_answer=draft_answer,
+                evidence_pack=evidence_pack,
+                supported=supported,
+                unsupported=unsupported,
+            ):
                 return GroundedAnswer(
                     answer=_append_sources_if_missing(structured_fallback_answer, citation_objects),
                     citation_ids=citation_ids,
@@ -949,6 +995,38 @@ async def verify_grounded_answer(
                     reason="Returned the structured tool-backed answer because the broader synthesized draft added unsupported detail.",
                     confidence_override=max(0.74, evidence_pack.decision.confidence),
                     thin_evidence_override=False,
+                )
+            if draft_answer.strip():
+                verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
+                for term in _missing_query_terms(question, evidence_pack)[:3]:
+                    note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."
+                    if note not in verification_notes:
+                        verification_notes.append(note)
+                if not verification_notes:
+                    verification_notes.append(
+                        "Not verified: The retrieved evidence is thin or conflicting, so this answer should be treated as tentative."
+                    )
+                answer_text = _build_thin_evidence_answer(
+                    question=question,
+                    evidence_pack=evidence_pack,
+                    unsupported=unsupported,
+                )
+                answer_text = answer_text.rstrip() + "\n\n## Verification notes\n" + "\n".join(
+                    f"- {note}" for note in verification_notes[:3]
+                )
+                if citation_objects and "## Sources" not in answer_text:
+                    sources_lines = ["\n\n## Sources"]
+                    for c in citation_objects:
+                        label = c.label or c.id
+                        uri_part = f" - {c.uri}" if c.uri else ""
+                        sources_lines.append(f"- [{c.id}] {label}{uri_part}")
+                    answer_text += "\n".join(sources_lines)
+                return GroundedAnswer(
+                    answer=answer_text,
+                    citation_ids=citation_ids,
+                    unsupported_points=verification_notes,
+                    grounding_status="partial",
+                    reason="The answer was rewritten into a clearer plain-language summary because the evidence was thin or conflicting.",
                 )
             answer_text = _build_evidence_only_answer(
                 question=question,
