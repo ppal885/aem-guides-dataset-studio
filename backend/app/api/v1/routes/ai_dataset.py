@@ -44,6 +44,8 @@ from app.services.generate_from_text_service import (
     write_scenario_metadata as _shared_write_scenario_metadata,
 )
 from app.storage import get_storage
+from app.services.dita_link_validator_service import validate_bundle
+from app.services.script_generator_service import make_link_checker_script, make_regeneration_script
 from app.core.structured_logging import get_structured_logger
 from app.core.observability import get_observability_logger
 from app.evaluation.run_eval import run_evaluation
@@ -365,6 +367,17 @@ class IndexGithubDitaRequest(BaseModel):
         return s if s else "default"
 
 
+@router.get("/crawl-urls")
+async def get_crawl_urls_list(user: UserIdentity = AdminUser):
+    """Return the list of URLs currently configured for AEM Guides RAG crawling."""
+    try:
+        from app.services.crawl_service import get_crawl_urls
+        urls = get_crawl_urls()
+        return {"urls": urls, "count": len(urls)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=sanitize_error_for_client(e))
+
+
 @router.post("/crawl-aem-guides")
 async def crawl_aem_guides(
     body: CrawlRequest | None = Body(None),
@@ -372,10 +385,13 @@ async def crawl_aem_guides(
 ):
     """Crawl AEM Guides documentation from Experience League, index chunks, and store for RAG.
     Run this before using doc enrichment in Jira analysis. Returns pages_crawled, chunks_stored, errors.
-    Optional body: { \"urls\": [\"https://...\"] } to crawl specific URLs; omit to use config file."""
+    Optional body: { \"urls\": [\"https://...\"] } to crawl specific URLs; omit to use config file.
+    When specific URLs are provided, they are also persisted to the config for future full crawls."""
     try:
-        from app.services.crawl_service import crawl_and_index
+        from app.services.crawl_service import crawl_and_index, save_urls_to_config
         urls = body.urls if body and body.urls else None
+        if urls:
+            save_urls_to_config(urls)
         stats = await asyncio.to_thread(crawl_and_index, urls=urls)
         return stats
     except Exception as e:
@@ -973,4 +989,152 @@ async def generate_from_text(
         user_id=user.id,
         tenant_id=tenant_id,
         skip_rag_check=skip_rag_check,
+    )
+
+
+# ── Link validation & script download endpoints ───────────────────────────────
+
+@router.get("/bundle/{jira_id}/{run_id}/validate-links")
+def validate_bundle_links(
+    jira_id: str,
+    run_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """
+    Scan a generated DITA bundle for broken href / conref / keyref links.
+
+    Returns a structured report: total files, broken_link_count, per-link details,
+    external links list, and a summary broken down by attribute type.
+    """
+    err = validate_jira_id(jira_id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    try:
+        UUID(run_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="run_id must be a valid UUID")
+
+    run = session.query(DatasetRun).filter(
+        DatasetRun.id == run_id, DatasetRun.jira_id == jira_id
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+
+    tenant_id = get_authorized_tenant_id(request, user)
+    if not user.is_admin and (run.user_id != user.id or run.tenant_id != tenant_id):
+        raise HTTPException(status_code=404, detail="Bundle not found")
+
+    storage = get_storage()
+    # Try the extracted scenario dir first, then fall back to the ZIP location
+    scenario_dir = storage.base_path / "ai_runs" / jira_id / run_id / "S1_MIN_REPRO"
+    if not scenario_dir.is_dir():
+        # Some bundles are stored flat under storage root
+        scenario_dir = storage.base_path / f"{jira_id}_bundle"
+    if not scenario_dir.is_dir():
+        # Last resort: unzip if bundle ZIP exists but scenario_dir doesn't
+        zip_path = storage.base_path / "zips" / jira_id / run_id / f"{jira_id}_bundle.zip"
+        if not zip_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Bundle directory not found. Download and extract the ZIP locally, then use the link-checker script.",
+            )
+        import zipfile, tempfile
+        tmp = Path(tempfile.mkdtemp(prefix="dita_validate_"))
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(tmp)
+        scenario_dir = tmp
+
+    try:
+        report = validate_bundle(scenario_dir)
+    except Exception as exc:
+        logger.warning_structured("validate_bundle_failed", extra_fields={"error": str(exc)})
+        raise HTTPException(status_code=500, detail=f"Validation failed: {exc}")
+
+    return report
+
+
+@router.get("/scripts/link-checker")
+def download_link_checker_script(user: UserIdentity = CurrentUser):
+    """
+    Download check_dita_links.py — a standalone Python script (stdlib-only, Python 3.8+)
+    that scans any DITA bundle directory for broken href / conref / keyref links.
+
+    Usage after download:
+        python check_dita_links.py /path/to/your/dita/bundle/
+        python check_dita_links.py /path/to/bundle/ --csv report.csv
+        python check_dita_links.py /path/to/bundle/ --json
+    """
+    script_content = make_link_checker_script()
+    return StreamingResponse(
+        iter([script_content.encode()]),
+        media_type="text/x-python",
+        headers={"Content-Disposition": 'attachment; filename="check_dita_links.py"'},
+    )
+
+
+@router.get("/bundle/{jira_id}/{run_id}/scripts/regenerate")
+def download_regeneration_script(
+    jira_id: str,
+    run_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """
+    Download regenerate.py — a pre-filled standalone Python script (stdlib-only)
+    that re-runs the exact same generation call that produced this bundle.
+
+    The script is self-contained: it embeds the original payload and calls
+    POST /api/v1/ai-dataset/generate-from-text.  Edit --api-url / --token as needed.
+    """
+    err = validate_jira_id(jira_id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    run = session.query(DatasetRun).filter(
+        DatasetRun.id == run_id, DatasetRun.jira_id == jira_id
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+
+    tenant_id = get_authorized_tenant_id(request, user)
+    if not user.is_admin and (run.user_id != user.id or run.tenant_id != tenant_id):
+        raise HTTPException(status_code=404, detail="Bundle not found")
+
+    # Reconstruct the payload from what was stored at generation time
+    result = run.result or {}
+    payload: dict = {}
+
+    # Try to pull from the run result fields
+    resolved_text = result.get("resolved_source_text") or ""
+    if resolved_text:
+        payload["text"] = resolved_text[:8000]
+
+    contract = result.get("generation_contract") or {}
+    summary = result.get("contract_summary") or {}
+    if summary.get("subject"):
+        payload["instructions"] = f"subject: {summary['subject']}"
+    elif contract.get("example_request"):
+        payload["instructions"] = contract["example_request"]
+
+    # Fall back to raw config if result lacks detail
+    if not payload:
+        payload = {"text": f"Re-generate dataset for {jira_id}", "instructions": ""}
+
+    # Determine API base URL from the incoming request
+    base_url = str(request.base_url).rstrip("/")
+    token = request.headers.get("authorization", "Bearer dev-bypass").replace("Bearer ", "")
+
+    script_content = make_regeneration_script(
+        api_url=base_url,
+        token=token,
+        payload=payload,
+    )
+    filename = f"regenerate_{jira_id}.py"
+    return StreamingResponse(
+        iter([script_content.encode()]),
+        media_type="text/x-python",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

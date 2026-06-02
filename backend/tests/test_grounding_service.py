@@ -5,6 +5,7 @@ import pytest
 from app.services.grounding_service import (
     build_evidence_pack,
     build_section_evidence_map,
+    grounding_metadata_from_pack,
     verify_grounded_answer,
 )
 
@@ -139,7 +140,8 @@ async def test_verify_grounded_answer_abstains_on_conflict():
     )
 
     assert grounded.grounding_status == "conflict"
-    assert "don't have enough verified information" in grounded.answer.lower()
+    assert "## Sources" in grounded.answer
+    assert "supported and unsupported signals" in grounded.answer.lower()
 
 
 @pytest.mark.anyio
@@ -170,8 +172,46 @@ async def test_verify_grounded_answer_marks_unknown_term_as_not_verified():
     )
 
     assert grounded.grounding_status == "partial"
+    assert grounded.answer.startswith("href points to the represented resource")
     assert "not verified" in grounded.answer.lower()
     assert "hasinstance" in grounded.answer.lower()
+
+
+@pytest.mark.anyio
+async def test_verify_grounded_answer_preserves_supported_draft_with_light_caveat():
+    pack = build_evidence_pack(
+        query="How does keyref work in DITA?",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="tenant_context",
+                title="DITA keyref",
+                text="The keyref attribute references a key defined in a map and lets topics reuse that target without hardcoding the destination.",
+                metadata={"title": "DITA keyref", "doc_type": "terminology", "credibility": "0.95"},
+            ),
+            _candidate(
+                source="tenant_examples",
+                title="DITA keydef",
+                text="The keydef element defines a key name and the resource it points to.",
+                metadata={"title": "DITA keydef"},
+            ),
+        ],
+    )
+
+    grounded = await verify_grounded_answer(
+        question="How does keyref work in DITA?",
+        draft_answer=(
+            "The keyref attribute references a key defined in a map and helps topics reuse the same target "
+            "without hardcoding the destination. It can also simplify translation workflows."
+        ),
+        evidence_pack=pack,
+    )
+
+    assert grounded.grounding_status == "partial"
+    assert grounded.answer.startswith("The keyref attribute references a key defined in a map")
+    assert "translation workflows" in grounded.answer.lower()
+    assert "verification notes" in grounded.answer.lower()
+    assert "## Sources" in grounded.answer
 
 
 @pytest.mark.anyio
@@ -214,3 +254,57 @@ async def test_verify_grounded_answer_replaces_unsafe_dita_example_with_safe_exa
     assert "safe dita 1.3 example" in grounded.answer.lower()
     assert "<!DOCTYPE task PUBLIC" in grounded.answer
     assert "<shortcut>" not in grounded.answer
+
+
+@pytest.mark.anyio
+async def test_verify_grounded_answer_prefers_structured_fallback_over_thin_evidence_summary():
+    pack = build_evidence_pack(
+        query="Different types of tables in dita",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="table",
+                text="<table> is a formal CALS table with thead, tbody, rows, and entries.",
+                metadata={"title": "table"},
+            ),
+            _candidate(
+                source="dita_spec",
+                title="simpletable",
+                text="<simpletable> is a lightweight table for simple grids.",
+                metadata={"title": "simpletable"},
+            ),
+            _candidate(
+                source="dita_spec",
+                title="choicetable",
+                text="<choicetable> is a two-column options table inside a task step.",
+                metadata={"title": "choicetable"},
+            ),
+        ],
+    )
+
+    structured_answer = """## At a glance
+The main DITA table types are `<table>`, `<simpletable>`, and `<choicetable>`.
+
+## Types
+- `<table>`: Use it for CALS-style tables with richer structure.
+- `<simpletable>`: Use it for lightweight grids without spanning.
+- `<choicetable>`: Use it inside a task `<step>` for option/description pairs.
+"""
+
+    grounded = await verify_grounded_answer(
+        question="Different types of tables in dita",
+        draft_answer="DITA has several table families for structured authoring and advanced presentation patterns.",
+        evidence_pack=pack,
+        verified_examples=[{"label": "table", "snippet": "<table/>"}],
+        structured_fallback_answer=structured_answer,
+    )
+
+    metadata = grounding_metadata_from_pack(pack, grounded)
+
+    assert grounded.grounding_status == "grounded"
+    assert "## Types" in grounded.answer
+    assert "not verified" not in grounded.answer.lower()
+    assert metadata["status"] == "grounded"
+    assert metadata["confidence"] >= 0.74
+    assert metadata["thin_evidence"] is False

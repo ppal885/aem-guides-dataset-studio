@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { apiUrl, fetchJson } from '@/utils/api';
-import { Settings, Database, FileText, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Settings, Database, FileText, Loader2, CheckCircle, XCircle, Plus, Link } from 'lucide-react';
 
 interface RagStatus {
   chroma_available: boolean;
@@ -32,7 +32,6 @@ interface RagStatus {
     count_scope?: string;
     populate_via: string;
   };
-  /** Tavily API for chat web search (no secrets exposed) */
   tavily?: {
     configured: boolean;
     chat_enabled: boolean;
@@ -50,6 +49,11 @@ export function SettingsPage() {
   const [indexingDitaOt, setIndexingDitaOt] = useState(false);
   const [indexingJiraQa, setIndexingJiraQa] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
+
+  // Custom URL indexing state
+  const [customUrlsText, setCustomUrlsText] = useState('');
+  const [indexingCustomUrls, setIndexingCustomUrls] = useState(false);
+  const [customUrlsResult, setCustomUrlsResult] = useState<{ message: string; isError: boolean } | null>(null);
 
   const loadRagStatus = useCallback(async () => {
     setLoading(true);
@@ -169,6 +173,51 @@ export function SettingsPage() {
     }
   }, [loadRagStatus]);
 
+  const handleIndexCustomUrls = useCallback(async () => {
+    const urls = customUrlsText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('http://') || line.startsWith('https://'));
+
+    if (urls.length === 0) {
+      setCustomUrlsResult({ message: 'No valid URLs found. Enter one URL per line starting with http:// or https://', isError: true });
+      return;
+    }
+
+    setIndexingCustomUrls(true);
+    setCustomUrlsResult(null);
+    try {
+      const result = await fetchJson<{ chunks_stored?: number; pages_crawled?: number; errors?: string[] }>(
+        apiUrl('/api/v1/ai/crawl-aem-guides'),
+        { method: 'POST', body: JSON.stringify({ urls }) }
+      );
+      const chunks = result.chunks_stored ?? 0;
+      const pages = result.pages_crawled ?? 0;
+      const errs = result.errors ?? [];
+      if (errs.length > 0) {
+        setCustomUrlsResult({
+          message: `Indexed ${pages} page(s), ${chunks} chunks. Errors: ${errs.join('; ')}`,
+          isError: true,
+        });
+      } else {
+        setCustomUrlsResult({
+          message: `${pages} page(s) indexed — ${chunks} chunks added to RAG knowledge base`,
+          isError: false,
+        });
+        setCustomUrlsText('');
+      }
+      await loadRagStatus();
+    } catch (e) {
+      setCustomUrlsResult({ message: e instanceof Error ? e.message : 'Indexing failed', isError: true });
+    } finally {
+      setIndexingCustomUrls(false);
+    }
+  }, [customUrlsText, loadRagStatus]);
+
+  const validUrlCount = customUrlsText
+    .split('\n')
+    .filter(line => line.trim().startsWith('http://') || line.trim().startsWith('https://')).length;
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-8">
@@ -236,7 +285,7 @@ export function SettingsPage() {
               <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code> ={' '}
               <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong> chunks ·{' '}
               <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code> ={' '}
-              <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong> chunks. Recipe catalog is not counted here.
+              <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong> chunks.
             </p>
 
             <p className="text-sm text-slate-600">
@@ -250,47 +299,90 @@ export function SettingsPage() {
               ) : (
                 <span className="font-medium text-slate-500">
                   not configured — set <code className="text-xs">TAVILY_API_KEY</code> in{' '}
-                  <code className="text-xs">backend/.env</code> or project-root <code className="text-xs">.env</code>, then
-                  restart the backend
+                  <code className="text-xs">backend/.env</code>, then restart
                 </span>
               )}
             </p>
-            {ragStatus.tavily?.hint ? (
-              <p className="text-xs text-slate-500 mt-1">{ragStatus.tavily.hint}</p>
-            ) : null}
 
+            {/* AEM Guides */}
             <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-slate-600" />
-                <span className="font-medium">AEM Guides (Experience League)</span>
+                <span className="font-medium">AEM Guides &amp; Assets (Experience League)</span>
               </div>
               <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.aem_guides?.source ??
-                  'Chroma `aem_guides`: Experience League documentation crawl for chat RAG.'}
+                {ragStatus.aem_guides?.source ?? 'Experience League documentation crawl for chat RAG.'}
               </p>
-              <p className="text-sm font-mono">
+              <p className="text-sm font-mono mb-3">
                 Chunks in <code className="text-xs">{ragStatus.aem_guides?.collection ?? 'aem_guides'}</code>:{' '}
                 <strong>{ragStatus.aem_guides?.chunk_count ?? 0}</strong>
               </p>
-              {ragStatus.aem_guides?.count_scope ? (
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.aem_guides.count_scope}</p>
-              ) : null}
+
+              {/* Custom URL indexing */}
+              <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/40 mb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Link className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Add URLs to Knowledge Base</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-2">
+                  Paste one Experience League (or other) URL per line. Each page is crawled, chunked, and added to the RAG index immediately. URLs are also saved for future full re-crawls.
+                </p>
+                <textarea
+                  value={customUrlsText}
+                  onChange={e => {
+                    setCustomUrlsText(e.target.value);
+                    setCustomUrlsResult(null);
+                  }}
+                  placeholder={`https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/...\nhttps://experienceleague.adobe.com/en/docs/...`}
+                  rows={4}
+                  className="w-full text-xs font-mono border border-slate-200 rounded-md p-2 bg-white resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                {customUrlsResult && (
+                  <div className={`flex items-start gap-2 mt-2 text-xs rounded-md p-2 ${customUrlsResult.isError ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                    {customUrlsResult.isError
+                      ? <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      : <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+                    <span>{customUrlsResult.message}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleIndexCustomUrls}
+                  disabled={indexingCustomUrls || validUrlCount === 0}
+                  className="mt-2 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {indexingCustomUrls ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Indexing {validUrlCount} URL{validUrlCount !== 1 ? 's' : ''}…
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      {validUrlCount > 0
+                        ? `Index ${validUrlCount} URL${validUrlCount !== 1 ? 's' : ''}`
+                        : 'Index URLs'}
+                    </>
+                  )}
+                </button>
+              </div>
+
               <button
                 onClick={handleCrawlAem}
                 disabled={crawlingAem}
-                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {crawlingAem ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Crawling...
+                    Re-crawling all URLs…
                   </>
                 ) : (
-                  'Crawl AEM Guides'
+                  'Re-crawl All AEM Guides URLs'
                 )}
               </button>
             </div>
 
+            {/* DITA Spec */}
             <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-slate-600" />
@@ -299,22 +391,19 @@ export function SettingsPage() {
               <p className="text-sm text-slate-600 mb-2">
                 {ragStatus.dita_spec?.source ?? 'DITA 1.2 + 1.3 Part 1 Base PDFs in Chroma `dita_spec`.'}
               </p>
-              <p className="text-sm font-mono">
+              <p className="text-sm font-mono mb-3">
                 Chunks in <code className="text-xs">{ragStatus.dita_spec?.collection ?? 'dita_spec'}</code>:{' '}
                 <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong>
               </p>
-              {ragStatus.dita_spec?.count_scope ? (
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.dita_spec.count_scope}</p>
-              ) : null}
               <button
                 onClick={handleIndexDita}
                 disabled={indexingDita}
-                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {indexingDita ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing...
+                    Indexing…
                   </>
                 ) : (
                   'Index DITA PDF'
@@ -322,6 +411,7 @@ export function SettingsPage() {
               </button>
             </div>
 
+            {/* DITA OT GitHub */}
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-slate-500" />
@@ -330,22 +420,19 @@ export function SettingsPage() {
               <p className="text-sm text-slate-600 mb-2">
                 {ragStatus.dita_ot_github?.source ?? 'dita-ot/dita-ot GitHub issues for DITA Open Toolkit RAG.'}
               </p>
-              <p className="text-sm font-mono">
+              <p className="text-sm font-mono mb-3">
                 Chunks in <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code>:{' '}
                 <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong>
               </p>
-              {ragStatus.dita_ot_github?.count_scope ? (
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.dita_ot_github.count_scope}</p>
-              ) : null}
               <button
                 onClick={handleIndexDitaOt}
                 disabled={indexingDitaOt}
-                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {indexingDitaOt ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing...
+                    Indexing…
                   </>
                 ) : (
                   'Index DITA OT GitHub'
@@ -353,6 +440,7 @@ export function SettingsPage() {
               </button>
             </div>
 
+            {/* Jira QA */}
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-4 h-4 text-slate-500" />
@@ -361,25 +449,22 @@ export function SettingsPage() {
               <p className="text-sm text-slate-600 mb-2">
                 {ragStatus.jira_qa?.source ?? 'Indexed Jira QA issues (bug reports, QA patterns, past resolutions) for chat RAG.'}
               </p>
-              <p className="text-sm font-mono">
+              <p className="text-sm font-mono mb-3">
                 Chunks in <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code>:{' '}
                 <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong>
               </p>
-              {ragStatus.jira_qa?.count_scope ? (
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{ragStatus.jira_qa.count_scope}</p>
-              ) : null}
-              <p className="text-xs text-slate-500 mt-2">
+              <p className="text-xs text-slate-500 mb-3">
                 Uses <code className="text-xs">sync_mode=incremental</code> with <code className="text-xs">project_key=GUIDES</code>.
               </p>
               <button
                 onClick={handleIndexJiraQa}
                 disabled={indexingJiraQa}
-                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {indexingJiraQa ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing...
+                    Indexing…
                   </>
                 ) : (
                   'Index Jira QA'

@@ -261,6 +261,17 @@ def test_route_prompt_routes_standalone_map_zip_request_to_generation():
     assert chat_service._determine_answer_mode(prompt) == "generation_request"
 
 
+def test_route_prompt_routes_embedded_jira_generation_request_to_preview():
+    prompt = "Create data for GUIDES-46526"
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dita_generation"
+    assert route.legacy_answer_mode == "generation_request"
+    assert policy.action in {"preview_first", "clarify_first"}
+    assert chat_service._determine_answer_mode(prompt) == "generation_request"
+
+
 def test_route_prompt_does_not_misroute_zip_definition_question_to_generation():
     prompt = "What is a zip file in DITA output workflows?"
     route = route_prompt(prompt)

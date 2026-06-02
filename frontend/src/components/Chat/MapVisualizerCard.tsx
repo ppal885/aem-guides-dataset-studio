@@ -6,7 +6,7 @@ import {
   FolderOpen,
   Info,
   Layers,
-  Map,
+  Map as MapIcon,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -98,7 +98,7 @@ function NodeIcon({ type }: { type: string }) {
   const cls = 'h-4 w-4 shrink-0';
   switch (type) {
     case 'map':
-      return <Map className={cls} />;
+      return <MapIcon className={cls} />;
     case 'topicgroup':
     case 'topichead':
       return <FolderOpen className={cls} />;
@@ -180,7 +180,7 @@ export function MapVisualizerCard({ data }: MapVisualizerCardProps) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
-          <Map className="h-5 w-5" />
+          <MapIcon className="h-5 w-5" />
         </div>
         <div>
           <div className="text-sm font-semibold text-indigo-950">{data.title}</div>

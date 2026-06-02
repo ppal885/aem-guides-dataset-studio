@@ -226,17 +226,89 @@ export interface ChatAgentStep {
   tool_name?: string;
   status?: string;
   approval_required?: boolean;
+  gate_type?: string;
   summary?: string;
   note?: string;
   error?: string;
 }
 
+export interface ChatGenerateDitaPreviewArtifact {
+  kind?: string;
+  count?: number;
+  label?: string;
+  topic_family?: string | null;
+}
+
+export interface ChatGenerateDitaPreviewRequiredElement {
+  name: string;
+  required?: boolean;
+  source?: string;
+  scope?: string;
+  implied_family?: string | null;
+  allowed_parents?: string[];
+  supported_attributes?: string[];
+}
+
+export interface ChatGenerateDitaPreviewRequiredAttribute {
+  attribute_name: string;
+  required?: boolean;
+  source?: string;
+  scope?: string;
+  required_values?: string[];
+  supported_elements?: string[];
+  valid_values?: string[];
+  implied_family?: string | null;
+}
+
+export interface ChatGenerateDitaPreviewRequiredMetadata {
+  field_name: string;
+  required?: boolean;
+  source?: string;
+  scope?: string;
+  value?: string | null;
+}
+
+export interface ChatGenerateDitaPreviewConflict {
+  kind?: string;
+  message: string;
+  requested?: string | null;
+  reason?: string;
+  suggested_families?: string[];
+}
+
+export interface ChatGenerateDitaPreviewFamilyDecision {
+  requested?: string | null;
+  inferred?: string | null;
+  resolved?: string | null;
+  reason?: string;
+  source?: string;
+  compatible_families?: string[];
+}
+
 export interface ChatGenerateDitaPreview {
+  summary?: string;
   clarification_needed?: boolean;
   clarification_question?: string;
   clarification_request?: {
+    missing_field?: string;
+    question?: string;
     options?: string[];
   };
+  warnings?: string[];
+  assumptions?: string[];
+  conflicts?: ChatGenerateDitaPreviewConflict[];
+  content_mode?: string;
+  bundle_type?: string;
+  topic_family?: string;
+  subject?: string | null;
+  artifacts?: ChatGenerateDitaPreviewArtifact[];
+  include_map?: boolean;
+  glossary_usage_mode?: string;
+  required_elements?: ChatGenerateDitaPreviewRequiredElement[];
+  required_attributes?: ChatGenerateDitaPreviewRequiredAttribute[];
+  required_metadata?: ChatGenerateDitaPreviewRequiredMetadata[];
+  influence_inputs?: string[];
+  family_decision?: ChatGenerateDitaPreviewFamilyDecision;
 }
 
 export interface ChatAgentPlan {

@@ -654,8 +654,12 @@ def root():
 
 
 @app.get("/health")
-def health():
-    """Health check endpoint with disk space monitoring and resource information."""
+def health(include_storage_stats: bool = False):
+    """Health check endpoint with disk space monitoring and resource information.
+
+    `storage_stats` can be expensive on large storages (recursive scan), so it's disabled by default.
+    Enable it with `?include_storage_stats=true`.
+    """
     from app.utils.disk_monitor import get_disk_usage, get_storage_size
     from app.db.session import engine
     from sqlalchemy import text, func
@@ -680,14 +684,17 @@ def health():
         health_status["database"] = f"unhealthy: {str(e)}"
         health_status["status"] = "unhealthy"
     
-    # Storage health check
+    # Storage health check (keep fast by default; storage size scan can take 30s+)
     try:
         from app.storage import get_storage
         storage = get_storage()
         if storage.base_path.exists():
             health_status["storage"] = "healthy"
             health_status["disk_space"] = get_disk_usage()
-            health_status["storage_stats"] = get_storage_size()
+            if include_storage_stats:
+                health_status["storage_stats"] = get_storage_size()
+            else:
+                health_status["storage_stats"] = {"skipped": True, "reason": "disabled by default"}
         else:
             health_status["storage"] = "unhealthy: storage path does not exist"
     except Exception as e:

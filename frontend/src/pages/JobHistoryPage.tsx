@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { Download, Search, Filter, Loader2, CheckCircle2, XCircle, Clock, PlayCircle, Copy } from 'lucide-react';
+import { Download, Search, Filter, Loader2, CheckCircle2, XCircle, Clock, PlayCircle, Copy, ShieldCheck, FileCode2, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { apiUrl, canonicalJobsRouteErrorMessage } from '@/utils/api';
@@ -35,6 +35,7 @@ export function JobHistoryPage() {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+  const [linkReports, setLinkReports] = useState<Record<string, { broken_link_count: number; total_files: number; checking: boolean }>>({});
   const isMountedRef = useRef(true);
   const navigate = useNavigate();
   const DEFAULT_LIMIT = 50;
@@ -163,6 +164,47 @@ export function JobHistoryPage() {
   const handleExplore = useCallback((jobId: string) => {
     navigate(`/dataset-explorer?jobId=${jobId}`);
   }, [navigate]);
+
+  const handleValidateLinks = useCallback(async (job: Job) => {
+    const result = job.result || {};
+    const jiraId = result.jira_id || result.run_id?.slice(0, 8) || job.id;
+    const runId = result.run_id || job.id;
+    setLinkReports(prev => ({ ...prev, [job.id]: { broken_link_count: 0, total_files: 0, checking: true } }));
+    try {
+      const resp = await fetch(apiUrl(`/api/v1/ai/bundle/${jiraId}/${runId}/validate-links`));
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => 'Unknown error');
+        feedback.error('Validation failed', text);
+        setLinkReports(prev => { const n = { ...prev }; delete n[job.id]; return n; });
+        return;
+      }
+      const report = await resp.json();
+      setLinkReports(prev => ({
+        ...prev,
+        [job.id]: { broken_link_count: report.broken_link_count ?? 0, total_files: report.total_files ?? 0, checking: false },
+      }));
+    } catch (err) {
+      feedback.error('Validation failed', 'Could not reach the backend.');
+      setLinkReports(prev => { const n = { ...prev }; delete n[job.id]; return n; });
+    }
+  }, [feedback]);
+
+  const handleDownloadLinkChecker = useCallback(() => {
+    window.open(apiUrl('/api/v1/ai/scripts/link-checker'), '_blank');
+  }, []);
+
+  const handleDownloadRegenerateScript = useCallback(async (job: Job) => {
+    const result = job.result || {};
+    const jiraId = result.jira_id || result.run_id?.slice(0, 8) || job.id;
+    const runId = result.run_id || job.id;
+    const url = apiUrl(`/api/v1/ai/bundle/${jiraId}/${runId}/scripts/regenerate`);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `regenerate_${jiraId}.py`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
 
   const handleCopyJobId = useCallback(async (jobId: string, e?: React.MouseEvent) => {
     if (e) {
@@ -398,9 +440,22 @@ export function JobHistoryPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4">
+                  <div className="flex items-center gap-2 ml-4 flex-wrap justify-end">
                     {job.status === 'completed' && (
                       <>
+                        {/* Link validation badge */}
+                        {linkReports[job.id] && !linkReports[job.id].checking && (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            linkReports[job.id].broken_link_count === 0
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {linkReports[job.id].broken_link_count === 0
+                              ? <><CheckCircle2 className="w-3 h-3" /> No broken links</>
+                              : <><AlertTriangle className="w-3 h-3" /> {linkReports[job.id].broken_link_count} broken</>
+                            }
+                          </span>
+                        )}
                         <Button
                           onClick={() => handleDownload(job.id, job.name)}
                           size="sm"
@@ -409,6 +464,30 @@ export function JobHistoryPage() {
                         >
                           <Download className="w-4 h-4" />
                           Download
+                        </Button>
+                        <Button
+                          onClick={() => handleValidateLinks(job)}
+                          size="sm"
+                          variant="outline"
+                          disabled={linkReports[job.id]?.checking}
+                          className="flex items-center gap-2"
+                          title="Scan generated bundle for broken href / conref / keyref links"
+                        >
+                          {linkReports[job.id]?.checking
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <ShieldCheck className="w-4 h-4" />
+                          }
+                          {linkReports[job.id]?.checking ? 'Checking…' : 'Check Links'}
+                        </Button>
+                        <Button
+                          onClick={() => handleDownloadRegenerateScript(job)}
+                          size="sm"
+                          variant="outline"
+                          className="flex items-center gap-2"
+                          title="Download a pre-filled Python script to re-run this generation"
+                        >
+                          <FileCode2 className="w-4 h-4" />
+                          .py
                         </Button>
                         <Button
                           onClick={() => handleExplore(job.id)}

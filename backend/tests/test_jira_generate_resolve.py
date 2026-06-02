@@ -3,6 +3,7 @@ import pytest
 
 from app.services.jira_generate_resolve import (
     extract_issue_key_from_shortcut,
+    extract_issue_key_from_generation_request,
     is_jira_shortcut_input,
     resolve_text_for_generate_from_text,
 )
@@ -45,6 +46,13 @@ def test_extract_key_from_variants():
     assert extract_issue_key_from_shortcut("no key here") is None
 
 
+def test_extract_key_from_embedded_generation_request():
+    assert extract_issue_key_from_generation_request("Create data for GUIDES-46526") == "GUIDES-46526"
+    assert extract_issue_key_from_generation_request("Generate a bundle for guides-77") == "GUIDES-77"
+    assert extract_issue_key_from_generation_request("What is GUIDES-46526?") is None
+    assert extract_issue_key_from_generation_request("Find related issues for GUIDES-46526") is None
+
+
 def test_resolve_without_jira_config(monkeypatch):
     monkeypatch.delenv("JIRA_BASE_URL", raising=False)
     monkeypatch.delenv("JIRA_URL", raising=False)
@@ -52,6 +60,20 @@ def test_resolve_without_jira_config(monkeypatch):
     assert text == "GUIDES-19555"
     assert jid is None
     assert warn is None
+
+
+def test_resolve_embedded_generation_request_uses_fetched_issue(monkeypatch):
+    def _fake_fetch(issue_key: str):
+        return (f"Issue Key: {issue_key}\n\n## Issue Summary\nBroken publish", None)
+
+    monkeypatch.setattr("app.services.jira_generate_resolve.fetch_issue_text_for_generate", _fake_fetch)
+
+    text, jid, warn = resolve_text_for_generate_from_text("Create data for GUIDES-46526")
+    assert jid == "GUIDES-46526"
+    assert warn is None
+    assert "Issue Key: GUIDES-46526" in text
+    assert "## Generation Request" in text
+    assert "Create data for GUIDES-46526" in text
 
 
 def test_build_evidence_pack_forced_key():

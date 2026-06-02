@@ -27,14 +27,33 @@ Start-Sleep -Seconds 2
 
 # Start backend
 $backendDir = Join-Path $projectRoot "backend"
-$venvPython = Join-Path $backendDir ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPython)) {
-    Write-Host "ERROR: Backend venv not found. Run: cd backend; python -m venv .venv; .venv\Scripts\pip install -r requirements.txt" -ForegroundColor Red
+$repoVenvPython = Join-Path $projectRoot "venv\Scripts\python.exe"
+$backendVenvPython = Join-Path $backendDir ".venv\Scripts\python.exe"
+$fallbackPython = "C:\Users\prashantp\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe"
+
+function Resolve-PythonExe {
+    param([string[]]$Candidates)
+
+    foreach ($candidate in $Candidates) {
+        if ($candidate -ne "python" -and -not (Test-Path $candidate)) { continue }
+        & $candidate --version *> $null
+        if ($LASTEXITCODE -eq 0) { return $candidate }
+    }
+    return $null
+}
+
+$pythonExe = Resolve-PythonExe @($repoVenvPython, $backendVenvPython, $fallbackPython, "python")
+if (-not $pythonExe) {
+    Write-Host "ERROR: Could not find a working Python executable." -ForegroundColor Red
+    Write-Host "Try installing Python from https://www.python.org/downloads/ (check 'Add Python to PATH')." -ForegroundColor Yellow
     exit 1
+}
+if ($pythonExe -eq "python") {
+    Write-Host "WARNING: Using system python. Run 'pip install -r requirements.txt' in backend if modules are missing." -ForegroundColor Yellow
 }
 
 Write-Host "Starting Backend on http://localhost:8001 ..." -ForegroundColor Cyan
-Start-Process -FilePath $venvPython -ArgumentList "run_local.py" -WorkingDirectory $backendDir -WindowStyle Normal
+Start-Process -FilePath $pythonExe -ArgumentList "run_local.py" -WorkingDirectory $backendDir -WindowStyle Normal
 
 # Wait up to 30 seconds for backend health check (backend may load embeddings, DB on first run)
 $healthOk = $false

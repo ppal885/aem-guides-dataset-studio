@@ -15,6 +15,8 @@ _STOPWORDS = {
     "issue", "ticket", "topic", "task", "story", "feature", "bug", "page", "document", "article", "guide",
     "guides", "user", "users", "when", "where", "what", "how", "using", "used", "into", "onto",
     "you", "your", "mean", "means", "meant",
+    "different", "various", "type", "types", "kind", "kinds", "compare", "comparison", "difference",
+    "about", "dita", "xml",
 }
 
 _NEGATION_TERMS = {"not", "never", "without", "unsupported", "disabled", "disable", "cannot", "can't"}
@@ -225,6 +227,8 @@ class GroundedAnswer:
     unsupported_points: list[str]
     grounding_status: str
     reason: str
+    confidence_override: float | None = None
+    thin_evidence_override: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -342,6 +346,21 @@ def _format_structured_answer(
         )
 
     return "\n".join(sections).strip()
+
+
+def _append_sources_if_missing(answer_text: str, citations: Iterable[Citation] | None = None) -> str:
+    rendered = str(answer_text or "").strip()
+    if not rendered:
+        return ""
+    citation_list = list(citations or [])
+    if not citation_list or "## Sources" in rendered:
+        return rendered
+    source_lines = ["", "## Sources"]
+    for citation in citation_list:
+        source_lines.append(
+            f"- [{citation.id}] {citation.label}{f' - {citation.uri}' if citation.uri else ''}"
+        )
+    return rendered + "\n" + "\n".join(source_lines)
 
 
 def _doc_type_label(doc_type: str) -> str:
@@ -462,9 +481,9 @@ def _detect_conflicts(query: str, chunks: list[EvidenceChunk]) -> tuple[bool, st
         text = chunk.content.lower()
         has_neg = any(term in text for term in _NEGATION_TERMS)
         has_aff = any(term in text for term in _AFFIRMATION_TERMS)
-        if has_neg and not has_aff:
+        if has_neg:
             neg_only_chunks.add(idx)
-        elif has_aff and not has_neg:
+        elif has_aff:
             aff_only_chunks.add(idx)
     if neg_only_chunks and aff_only_chunks:
         return True, "Top evidence contains both supported and unsupported signals."
@@ -803,6 +822,25 @@ def _xml_block_has_placeholder_content(xml_text: str) -> bool:
     )
 
 
+def _xml_block_looks_unsafe(xml_text: str, question: str) -> bool:
+    lowered = (xml_text or "").lower()
+    if _xml_block_has_placeholder_content(xml_text):
+        return True
+    if "<shortcut" in lowered:
+        return True
+    if "<task" in lowered and "<taskbody" not in lowered:
+        return True
+    if "<concept" in lowered and "<conbody" not in lowered:
+        return True
+    if "<reference" in lowered and "<refbody" not in lowered:
+        return True
+    if _looks_like_dita_structure_question(question) and "<body>" in lowered and not any(
+        marker in lowered for marker in ("<taskbody", "<conbody", "<refbody")
+    ):
+        return True
+    return False
+
+
 def _looks_like_overconfident_draft(
     *,
     question: str,
@@ -814,17 +852,11 @@ def _looks_like_overconfident_draft(
     if evidence_pack.decision.status in {"abstain", "conflict"}:
         return True
     xml_blocks = _extract_xml_code_blocks(draft_answer)
-    if xml_blocks and _looks_like_dita_structure_question(question):
+    if any(_xml_block_looks_unsafe(block, question) for block in xml_blocks):
         return True
-    if any(_xml_block_has_placeholder_content(block) for block in xml_blocks):
+    if unsupported and not supported:
         return True
-    if (
-        ("## At a glance" in draft_answer or "## Short answer" in draft_answer)
-        and ("## Verified details" in draft_answer or "## Sources" in draft_answer or "## Details" in draft_answer)
-        and not unsupported
-    ):
-        return False
-    if unsupported and (not supported or len(unsupported) >= len(supported)):
+    if unsupported and len(unsupported) > max(1, len(supported) * 2):
         return True
     return False
 
@@ -873,8 +905,10 @@ async def verify_grounded_answer(
     jira_id: str | None = None,
     verified_examples: list[dict[str, Any]] | None = None,
     structured_tool_answer: bool = False,
+    structured_fallback_answer: str = "",
 ) -> GroundedAnswer:
     draft_answer = _coerce_llm_text_response(draft_answer)
+    structured_fallback_answer = _coerce_llm_text_response(structured_fallback_answer)
     verified_examples = [item for item in (verified_examples or []) if isinstance(item, dict)]
 
     # When we have a good draft answer (generated with full RAG context and
@@ -886,13 +920,36 @@ async def verify_grounded_answer(
         supported, unsupported = _heuristic_supported_sentences(draft_answer, evidence_pack)
         citation_objects = evidence_pack.citations(limit=5)
         citation_ids = [c.id for c in citation_objects]
-        if not structured_tool_answer and (verified_examples or _looks_like_overconfident_draft(
-            question=question,
-            draft_answer=draft_answer,
-            evidence_pack=evidence_pack,
-            supported=supported,
-            unsupported=unsupported,
-        )):
+
+        xml_blocks = _extract_xml_code_blocks(draft_answer)
+        if xml_blocks and _looks_like_dita_structure_question(question) and any(
+            _xml_block_looks_unsafe(block, question) for block in xml_blocks
+        ):
+            safe_root = _requested_dita_root(question) or ""
+            safe_example = _safe_example_for_root(safe_root)
+            if safe_example:
+                safe_answer = "## Safe DITA 1.3 example\n\n```xml\n" + safe_example + "\n```"
+                return GroundedAnswer(
+                    answer=_append_sources_if_missing(safe_answer, citation_objects),
+                    citation_ids=citation_ids,
+                    unsupported_points=["The original XML draft was replaced with a safe verified DITA skeleton."],
+                    grounding_status="partial",
+                    reason="The draft XML example was replaced with a safe verified DITA skeleton.",
+                    confidence_override=max(0.74, evidence_pack.decision.confidence),
+                    thin_evidence_override=False,
+                )
+
+        if evidence_pack.decision.status in {"abstain", "conflict"}:
+            if structured_fallback_answer.strip():
+                return GroundedAnswer(
+                    answer=_append_sources_if_missing(structured_fallback_answer, citation_objects),
+                    citation_ids=citation_ids,
+                    unsupported_points=[],
+                    grounding_status="grounded",
+                    reason="Returned the structured tool-backed answer because the broader synthesized draft added unsupported detail.",
+                    confidence_override=max(0.74, evidence_pack.decision.confidence),
+                    thin_evidence_override=False,
+                )
             answer_text = _build_evidence_only_answer(
                 question=question,
                 evidence_pack=evidence_pack,
@@ -902,38 +959,37 @@ async def verify_grounded_answer(
                 answer=answer_text,
                 citation_ids=citation_ids,
                 unsupported_points=list(unsupported[:4]),
-                grounding_status="partial",
+                grounding_status=evidence_pack.decision.status,
                 reason="The draft answer was narrowed to verified evidence before being returned.",
             )
-        answer_text = draft_answer.strip()
-        if "## At a glance" not in answer_text and "## Short answer" not in answer_text:
-            draft_points = [
-                sentence
-                for sentence in (_first_sentence(part.strip()) for part in draft_answer.splitlines() if part.strip())
-                if sentence
-            ]
-            short_answer = draft_points[0] if draft_points else supported[0] if supported else ""
-            how_it_works = draft_points[1:3] if len(draft_points) > 1 else supported[1:3]
-            if not how_it_works:
-                how_it_works = _top_evidence_points(evidence_pack, limit=2)
-            verified_points = _top_evidence_points(evidence_pack, limit=3)
-            not_verified = list(unsupported[:3])
-            for term in _missing_query_terms(question, evidence_pack)[:3]:
-                note = f"The term `{term}` was not directly verified in the retrieved evidence."
-                if note not in not_verified:
-                    not_verified.append(note)
-            if not short_answer:
-                short_answer = _first_sentence(evidence_pack.chunks[0].content) if evidence_pack.chunks else ""
-            if not short_answer:
-                short_answer = "I don't have enough verified information to answer that confidently."
-            answer_text = _format_structured_answer(
-                short_answer=short_answer,
-                how_it_works=how_it_works[:3],
-                verified_points=verified_points,
-                not_verified_points=not_verified,
-                citations=citation_objects,
+
+        if not structured_tool_answer and structured_fallback_answer.strip() and _looks_like_overconfident_draft(
+            question=question,
+            draft_answer=draft_answer,
+            evidence_pack=evidence_pack,
+            supported=supported,
+            unsupported=unsupported,
+        ):
+            return GroundedAnswer(
+                answer=_append_sources_if_missing(structured_fallback_answer, citation_objects),
+                citation_ids=citation_ids,
+                unsupported_points=[],
+                grounding_status="grounded",
+                reason="Returned the structured tool-backed answer because the broader synthesized draft added unsupported detail.",
+                confidence_override=max(0.74, evidence_pack.decision.confidence),
+                thin_evidence_override=False,
             )
-        elif citation_objects and "## Sources" not in answer_text:
+        answer_text = draft_answer.strip()
+        verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
+        for term in _missing_query_terms(question, evidence_pack)[:3]:
+            note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."
+            if note not in verification_notes:
+                verification_notes.append(note)
+        if verification_notes and "not verified" not in answer_text.lower():
+            answer_text = answer_text.rstrip() + "\n\n## Verification notes\n" + "\n".join(
+                f"- {note}" for note in verification_notes
+            )
+        if citation_objects and "## Sources" not in answer_text:
             sources_lines = ["\n\n## Sources"]
             for c in citation_objects:
                 label = c.label or c.id
@@ -941,14 +997,21 @@ async def verify_grounded_answer(
                 sources_lines.append(f"- [{c.id}] {label}{uri_part}")
             answer_text += "\n".join(sources_lines)
         status = evidence_pack.decision.status
+        if verification_notes and status == "grounded":
+            status = "partial"
         if status in {"abstain", "conflict"}:
             status = "partial"
+        reason = evidence_pack.decision.reason
+        if verification_notes and evidence_pack.decision.status == "grounded":
+            reason = "The answer stays close to verified evidence, with a few details not directly verified."
+        elif verification_notes and evidence_pack.decision.status == "partial":
+            reason = "The answer is mostly grounded, with a few details not directly verified."
         return GroundedAnswer(
             answer=answer_text,
             citation_ids=citation_ids,
-            unsupported_points=[],
+            unsupported_points=verification_notes,
             grounding_status=status,
-            reason=evidence_pack.decision.reason,
+            reason=reason,
         )
 
     # No draft answer — evidence only (abstention path)
@@ -1018,6 +1081,10 @@ def grounding_metadata_from_pack(
     payload["status"] = grounded_answer.grounding_status
     payload["reason"] = grounded_answer.reason or payload["reason"]
     payload["citations"] = selected or payload["citations"]
+    if grounded_answer.confidence_override is not None:
+        payload["confidence"] = grounded_answer.confidence_override
+    if grounded_answer.thin_evidence_override is not None:
+        payload["thin_evidence"] = grounded_answer.thin_evidence_override
     return payload
 
 
@@ -1025,7 +1092,7 @@ def grounding_to_notice(metadata: dict[str, Any]) -> dict[str, Any]:
     status = str(metadata.get("status") or "partial").strip().lower()
     title_map = {
         "grounded": "Grounded answer",
-        "partial": "Partially grounded answer",
+        "partial": "Verified with caveats",
         "abstain": "Grounding limit reached",
         "conflict": "Conflicting evidence",
     }

@@ -123,6 +123,43 @@ def _load_crawl_config() -> dict:
         return {}
 
 
+def get_crawl_urls() -> list[str]:
+    """Return the resolved list of configured crawl URLs."""
+    return _load_crawl_urls()
+
+
+def save_urls_to_config(new_urls: list[str]) -> int:
+    """
+    Append new_urls to the config JSON file (deduplicating).
+    Returns the number of URLs actually added.
+    """
+    path = _get_crawl_config_path()
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            data = {"base_url": AEM_GUIDES_BASE, "urls": []}
+
+        existing = set(data.get("urls") or [])
+        added = 0
+        for url in new_urls:
+            url = (url or "").strip()
+            if url and url not in existing:
+                data.setdefault("urls", []).append(url)
+                existing.add(url)
+                added += 1
+
+        if added:
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return added
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning_structured(
+            "Failed to save URLs to crawl config",
+            extra_fields={"error": str(e)},
+        )
+        return 0
+
+
 def crawl_and_index(
     urls: Optional[list[str]] = None,
     chunk_size: int = CHUNK_SIZE,

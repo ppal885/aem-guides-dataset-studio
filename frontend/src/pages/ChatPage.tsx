@@ -854,6 +854,13 @@ export function ChatPage() {
               <code className="rounded border border-amber-200 bg-white px-1.5 py-0.5 font-mono text-xs">
                 .\RUN_BOTH.ps1
               </code>
+              . If PowerShell blocks scripts, either run{' '}
+              <span className="font-mono text-xs">
+                powershell -ExecutionPolicy Bypass -File .\START_BACKEND_SIMPLE.ps1
+              </span>{' '}
+              or use the CMD launchers{' '}
+              <span className="font-mono text-xs">start_backend.cmd</span> /{' '}
+              <span className="font-mono text-xs">start_both.cmd</span>.
               . Wrong port? Set{' '}
               <code className="rounded border border-amber-200 bg-white px-1.5 py-0.5 font-mono text-xs">
                 VITE_PROXY_TARGET

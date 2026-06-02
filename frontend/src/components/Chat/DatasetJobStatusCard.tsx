@@ -144,6 +144,12 @@ export function DatasetJobStatusCard({
                 </Button>
               </a>
             ) : null}
+            <a href={apiUrl('/api/v1/ai/scripts/link-checker')} download="check_dita_links.py">
+              <Button size="sm" variant="outline" className="gap-2 rounded-full border-teal-300 px-4 text-teal-700 hover:bg-teal-50" title="Standalone Python script — scan any DITA bundle for broken links (no dependencies)">
+                <FileCode2 className="h-4 w-4" />
+                Link Checker
+              </Button>
+            </a>
           </div>
         </div>
       </div>

@@ -70,6 +70,7 @@ from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundl
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
+from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
 from app.services.intent_analysis_service import analyze_intent_sync
 from app.services.grounding_service import (
     build_evidence_pack,
@@ -296,6 +297,10 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
 _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
     r"^\s*(can|could|would)\s+you\s+"
     r"(generate|create|write|draft|make|build|produce|prepare)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_COMPARISON_REQUEST_PATTERN = re.compile(
+    r"\b(vs\.?|versus|compare|comparison|difference\s+between)\b",
     re.IGNORECASE,
 )
 _AEM_UI_CONFIGURATION_QUERY_PATTERN = re.compile(
@@ -860,7 +865,11 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
         return False
     if _is_dita_answer_request(text):
         return False
-    return bool(_detect_jira_style_text(text) or _DITA_GENERATION_PATTERN.search(text))
+    return bool(
+        _detect_jira_style_text(text)
+        or _DITA_GENERATION_PATTERN.search(text)
+        or extract_issue_key_from_generation_request(text)
+    )
 
 
 def _looks_like_generate_dita_clarification_response(
@@ -910,6 +919,8 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     if not text:
         return "default"
     if _detect_jira_style_text(text):
+        return "generation_request"
+    if extract_issue_key_from_generation_request(text):
         return "generation_request"
     if _RECIPE_TYPE_GENERATION_PATTERN.search(text):
         return "generation_request"
@@ -2370,6 +2381,45 @@ def _normalize_grounded_tool_facts(
                     cross_source_mixed=False,
                 )
 
+        if isinstance(spec, dict) and not spec.get("error") and spec.get("query_type") == "element_family_overview":
+            rows: list[ComparisonRow] = []
+            common_mistakes: list[str] = []
+            for item in (spec.get("comparisons") or [])[:4]:
+                if not isinstance(item, dict):
+                    continue
+                label = str(item.get("element_name") or item.get("label") or "").strip()
+                if not label:
+                    continue
+                row_mistakes = _clean_grounded_strings(item.get("common_mistakes") or [], limit=2)
+                for mistake in row_mistakes:
+                    bullet = f"`<{label}>`: {mistake}"
+                    if bullet not in common_mistakes:
+                        common_mistakes.append(bullet)
+                rows.append(
+                    ComparisonRow(
+                        label=label,
+                        definition=_first_summary_sentence(
+                            str(item.get("text_content") or item.get("summary") or "").strip()
+                        ),
+                        usage_patterns=_clean_grounded_strings(item.get("usage_contexts") or [], limit=2),
+                        supported_elements=_clean_grounded_strings(item.get("parent_elements") or [], limit=8),
+                        companion_attributes=_clean_grounded_strings(item.get("supported_attributes") or [], limit=8),
+                        common_mistakes=row_mistakes,
+                    )
+                )
+            if rows:
+                return NormalizedGroundedFactSet(
+                    answer_kind="dita_element_family_overview",
+                    source_policy=source_policy,
+                    canonical_definition=_first_summary_sentence(str(spec.get("summary") or "").strip())
+                    or f"The main DITA elements in this family are {', '.join(f'<{row.label}>' for row in rows[:4])}.",
+                    comparison_rows=rows,
+                    common_mistakes=common_mistakes,
+                    semantic_warnings=common_warnings,
+                    thin_evidence=False,
+                    cross_source_mixed=False,
+                )
+
         if isinstance(spec, dict) and not spec.get("error") and spec.get("query_type") == "attribute_comparison":
             rows: list[ComparisonRow] = []
             raw_examples: list[str] = []
@@ -2514,7 +2564,11 @@ def _normalize_grounded_tool_facts(
                     placement_notes=notes,
                     semantic_warnings=common_warnings,
                 )
-            if summary or element_name:
+            # Only render a structured direct answer when the tool identified a specific DITA element
+            # (element_name, query_type, or child/parent lists populated). For general spec queries
+            # returning raw ChromaDB PDF chunks, return None so the LLM synthesises a proper answer.
+            has_structural_metadata = bool(element_name or query_type or allowed_children or parent_elements)
+            if has_structural_metadata and (summary or element_name):
                 return NormalizedGroundedFactSet(
                     answer_kind="dita_element",
                     source_policy=source_policy,
@@ -2777,6 +2831,31 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
                     mistakes.append(item)
         if mistakes:
             sections.extend(["", "## Common mistakes", *[f"- {value}" for value in mistakes[:4]]])
+    elif facts.answer_kind == "dita_element_family_overview":
+        if not facts.comparison_rows:
+            return ""
+        sections.extend(["", "## Types"])
+        for row in facts.comparison_rows[:4]:
+            detail_parts = [item for item in [row.definition] if item]
+            if row.usage_patterns:
+                detail_parts.append(f"Typical use: {'; '.join(row.usage_patterns[:2])}")
+            if row.supported_elements:
+                detail_parts.append(
+                    "Valid parents: " + ", ".join(f"`{value}`" for value in row.supported_elements[:5] if str(value).strip())
+                )
+            sections.append(f"- `<{row.label.strip('<>')}>`: {' '.join(detail_parts).strip()}")
+        mistakes = []
+        for row in facts.comparison_rows[:4]:
+            for mistake in row.common_mistakes[:2]:
+                item = f"`<{row.label}>`: {mistake}"
+                if mistake and item not in mistakes:
+                    mistakes.append(item)
+        if facts.common_mistakes:
+            for mistake in facts.common_mistakes[:4]:
+                if mistake and mistake not in mistakes:
+                    mistakes.append(mistake)
+        if mistakes:
+            sections.extend(["", "## Common mistakes", *[f"- {value}" for value in mistakes[:4]]])
     elif facts.answer_kind == "native_pdf_guidance":
         if facts.recommended_actions:
             sections.extend(["", "## Recommended actions", *[f"- {value}" for value in facts.recommended_actions[:4]]])
@@ -2841,6 +2920,38 @@ def _build_grounded_tool_draft_answer(
     if facts is None:
         return "", None
     return _render_normalized_grounded_fact_set(facts), facts
+
+
+def _should_enrich_grounded_answer_with_llm(
+    question: str,
+    facts: NormalizedGroundedFactSet | None,
+) -> bool:
+    if facts is None:
+        return False
+    if facts.answer_kind == "dita_element_family_overview":
+        return True
+    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"}:
+        return not bool(_EXPLICIT_COMPARISON_REQUEST_PATTERN.search(question or ""))
+    return False
+
+
+def _grounded_answer_shape_hint(
+    question: str,
+    facts: NormalizedGroundedFactSet | None,
+) -> str:
+    if facts is None:
+        return ""
+    if facts.answer_kind == "dita_element_family_overview":
+        return (
+            "Answer as an overview of the main DITA table types and when to use each one. "
+            "Do not force a comparison table unless the user explicitly asked to compare."
+        )
+    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and not _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(question or ""):
+        return (
+            "The user did not explicitly ask for a comparison table. Prefer a natural overview that explains each item "
+            "and when to use it, using a comparison table only if it genuinely improves clarity."
+        )
+    return ""
 
 
 def _is_direct_jira_search_request(user_content: str) -> bool:
@@ -3256,18 +3367,24 @@ def _build_grounded_answer_user_prompt(
     transcript: str,
     corrected_query: str = "",
     correction_applied: bool = False,
+    structured_answer_hint: str = "",
+    answer_shape_hint: str = "",
 ) -> str:
     parts = [f"Question:\n{question}"]
     if transcript:
         parts.append(f"Recent conversation:\n{transcript}")
     if correction_applied and corrected_query:
         parts.append(f"Retrieval query used:\n{corrected_query}")
+    if structured_answer_hint.strip():
+        parts.append(f"Grounded structured facts:\n{structured_answer_hint.strip()[:2000]}")
     parts.append(
         "Evidence:\n"
         f"{evidence_context}\n\n"
         "If the question asks what something is, base the definition and structure on the evidence above; "
         "quote or paraphrase only what is supported."
     )
+    if answer_shape_hint.strip():
+        parts.append(f"Answer shape guidance:\n{answer_shape_hint.strip()}")
     return "\n\n".join(parts)
 
 
@@ -4164,15 +4281,26 @@ def _build_generate_dita_preview_plan(
     text: str,
     instructions: str | None = None,
 ) -> dict[str, Any]:
-    preview = build_generate_dita_preview(text=text, instructions=instructions)
-    bundle_contract = build_generate_dita_execution_contract(preview=preview)
-    preview_status = str(preview.get("status") or "").strip().lower()
-    preview_ready = preview_status == "preview_ready"
-    clarification_required = preview_status == "clarification_required" or bool(preview.get("clarification_needed"))
+    from app.services.chat_tools import _FREEFORM_REDIRECT_PATTERN
+    _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(text or ""))
+    if _is_freeform:
+        # Freeform advanced-construct request: skip the contract service entirely.
+        # execute_generate_dita will detect the same keywords and redirect to
+        # execute_create_job(freeform), so we just need plan_status="proposed".
+        preview = {"status": "preview_ready", "summary": "Freeform DITA bundle generation"}
+        bundle_contract = None
+        preview_ready = True
+        clarification_required = False
+    else:
+        preview = build_generate_dita_preview(text=text, instructions=instructions)
+        bundle_contract = build_generate_dita_execution_contract(preview=preview)
+        preview_status = str(preview.get("status") or "").strip().lower()
+        preview_ready = preview_status == "preview_ready"
+        clarification_required = preview_status == "clarification_required" or bool(preview.get("clarification_needed"))
     title = "Generate DITA bundle"
     step_status = "pending" if preview_ready else "blocked"
     summary = str(preview.get("summary") or "Preview the DITA bundle before generation.").strip()
-    plan_status = "unsupported" if preview_status == "unsupported" else ("proposed" if preview_ready else "clarification_required")
+    plan_status = "proposed" if preview_ready else ("unsupported" if str(preview.get("status") or "").strip().lower() == "unsupported" else "clarification_required")
     resume_tokens = ["approve", "continue"] if preview_ready else []
     return {
         "goal": "Review the interpreted DITA bundle before generation",
@@ -4907,8 +5035,17 @@ async def _build_grounded_dita_answer_payload(
             question=question,
             tool_results_by_name=grounded_tool_results,
         )
+        structured_fallback_answer = draft_answer
         grounding_path = "tool_only"
-        if not draft_answer and evidence_pack.decision.status not in {"abstain", "conflict"} and is_llm_available():
+        llm_enriched = False
+        _has_spec_tool_evidence = bool(
+            grounded_tool_results.get("lookup_dita_spec") or grounded_tool_results.get("lookup_dita_attribute")
+        )
+        _evidence_allows_synthesis = (
+            evidence_pack.decision.status not in {"abstain", "conflict"} or _has_spec_tool_evidence
+        )
+        should_enrich_with_llm = _should_enrich_grounded_answer_with_llm(question, normalized_grounded_facts)
+        if (not draft_answer or should_enrich_with_llm) and _evidence_allows_synthesis and is_llm_available():
             dita_rag = ""
             if _should_include_structural_dita_rag(question):
                 try:
@@ -4927,20 +5064,31 @@ async def _build_grounded_dita_answer_payload(
             )
             if dita_rag:
                 evidence_ctx = dita_rag + "\n\n" + evidence_ctx
-            draft_answer = await generate_text(
-                system_prompt=_build_compact_chat_system_prompt(rag_context=_build_rag_context(question, tenant_id=tenant_id)),
-                user_prompt=_build_grounded_answer_user_prompt(
-                    question=question,
-                    evidence_context=evidence_ctx[:3000],
-                    transcript=transcript,
-                    corrected_query=str(retrieval_meta.get("corrected_query") or ""),
-                    correction_applied=bool(retrieval_meta.get("correction_applied")),
-                ),
-                max_tokens=1600,
-                step_name="chat_mixed_grounded_dita_answer",
-                trace_id=trace_id,
-            )
-            grounding_path = "tool_plus_llm"
+            try:
+                llm_draft = await generate_text(
+                    system_prompt=_build_compact_chat_system_prompt(rag_context=_build_rag_context(question, tenant_id=tenant_id)),
+                    user_prompt=_build_grounded_answer_user_prompt(
+                        question=question,
+                        evidence_context=evidence_ctx[:3000],
+                        transcript=transcript,
+                        corrected_query=str(retrieval_meta.get("corrected_query") or ""),
+                        correction_applied=bool(retrieval_meta.get("correction_applied")),
+                        structured_answer_hint=draft_answer if should_enrich_with_llm else "",
+                        answer_shape_hint=_grounded_answer_shape_hint(question, normalized_grounded_facts),
+                    ),
+                    max_tokens=1600,
+                    step_name="chat_mixed_grounded_dita_answer",
+                    trace_id=trace_id,
+                )
+                if str(llm_draft or "").strip():
+                    draft_answer = llm_draft
+                    grounding_path = "tool_plus_llm"
+                    llm_enriched = True
+            except Exception as exc:
+                logger.warning_structured(
+                    "Grounded DITA LLM enrichment skipped",
+                    extra_fields={"trace_id": trace_id, "error": str(exc)},
+                )
 
         grounded_answer = await verify_grounded_answer(
             question=question,
@@ -4949,7 +5097,8 @@ async def _build_grounded_dita_answer_payload(
             verified_examples=(
                 [item.to_dict() for item in (normalized_grounded_facts.verified_examples if normalized_grounded_facts else [])]
             ),
-            structured_tool_answer=normalized_grounded_facts is not None,
+            structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
+            structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
         )
         llm_summary = summarize_llm_trace(
             trace_id,
@@ -5520,8 +5669,18 @@ async def _stream_assistant_reply(
             question=user_content,
             tool_results_by_name=grounded_tool_results,
         )
+        structured_fallback_answer = draft_answer
         grounding_path = "tool_only"
-        if not draft_answer and evidence_pack.decision.status not in {"abstain", "conflict"} and is_llm_available():
+        llm_enriched = False
+        _has_spec_tool_evidence_gen = bool(
+            grounded_tool_results.get("lookup_dita_spec") or grounded_tool_results.get("lookup_dita_attribute")
+        )
+        _evidence_allows_synthesis_gen = (
+            evidence_pack.decision.status not in {"abstain", "conflict"}
+            or _has_spec_tool_evidence_gen
+        )
+        should_enrich_with_llm = _should_enrich_grounded_answer_with_llm(user_content, normalized_grounded_facts)
+        if (not draft_answer or should_enrich_with_llm) and _evidence_allows_synthesis_gen and is_llm_available():
             # Only inject structural DITA chunks when the question is actually about DITA/XML structure.
             dita_rag = ""
             if _should_include_structural_dita_rag(user_content):
@@ -5552,20 +5711,31 @@ async def _stream_assistant_reply(
                 rag_context=rag_context,
                 human_prompts=human_prompts,
             )
-            draft_answer = await generate_text(
-                system_prompt=system_prompt,
-                user_prompt=_build_grounded_answer_user_prompt(
-                    question=user_content,
-                    evidence_context=evidence_ctx[:3000],
-                    transcript=transcript,
-                    corrected_query=str(retrieval_meta.get("corrected_query") or ""),
-                    correction_applied=bool(retrieval_meta.get("correction_applied")),
-                ),
-                max_tokens=2400,
-                step_name="chat_grounded_answer",
-                trace_id=assistant_msg_id,
-            )
-            grounding_path = "tool_plus_llm"
+            try:
+                llm_draft = await generate_text(
+                    system_prompt=system_prompt,
+                    user_prompt=_build_grounded_answer_user_prompt(
+                        question=user_content,
+                        evidence_context=evidence_ctx[:3000],
+                        transcript=transcript,
+                        corrected_query=str(retrieval_meta.get("corrected_query") or ""),
+                        correction_applied=bool(retrieval_meta.get("correction_applied")),
+                        structured_answer_hint=draft_answer if should_enrich_with_llm else "",
+                        answer_shape_hint=_grounded_answer_shape_hint(user_content, normalized_grounded_facts),
+                    ),
+                    max_tokens=2400,
+                    step_name="chat_grounded_answer",
+                    trace_id=assistant_msg_id,
+                )
+                if str(llm_draft or "").strip():
+                    draft_answer = llm_draft
+                    grounding_path = "tool_plus_llm"
+                    llm_enriched = True
+            except Exception as exc:
+                logger.warning_structured(
+                    "Grounded chat LLM enrichment skipped",
+                    extra_fields={"trace_id": assistant_msg_id, "error": str(exc)},
+                )
 
         grounded_answer = await verify_grounded_answer(
             question=user_content,
@@ -5574,7 +5744,8 @@ async def _stream_assistant_reply(
             verified_examples=(
                 [item.to_dict() for item in (normalized_grounded_facts.verified_examples if normalized_grounded_facts else [])]
             ),
-            structured_tool_answer=normalized_grounded_facts is not None,
+            structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
+            structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
             )
 
         llm_summary = summarize_llm_trace(

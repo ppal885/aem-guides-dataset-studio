@@ -15,6 +15,7 @@ from app.services.dataset_job_service import (
 )
 from app.services.generate_from_text_service import run_generate_from_text, update_generate_progress
 from app.services.jira_chat_search_service import search_related_jira_issues
+from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -309,6 +310,8 @@ def _detect_dita_spec_query_type(query: str) -> str:
         return "attribute_comparison"
     if mode == "element_comparison":
         return "element_comparison"
+    if mode == "element_family_overview":
+        return "element_family_overview"
     return "element_definition"
 
 
@@ -487,6 +490,30 @@ def _build_dita_element_comparison_guidance(query: str, element_names: list[str]
     }
 
 
+def _build_dita_element_family_overview_guidance(query: str, element_names: list[str]) -> dict[str, Any] | None:
+    comparison = _build_dita_element_comparison_guidance(query, element_names)
+    if not comparison:
+        return None
+
+    names = [str(item.get("element_name") or "").strip() for item in (comparison.get("comparisons") or []) if isinstance(item, dict)]
+    lowered_names = {name.lower() for name in names}
+    summary = f"The main DITA types in this family are {_format_inline_list(names, limit=4)}."
+    if {"table", "simpletable", "choicetable"}.issubset(lowered_names):
+        summary = (
+            "The main DITA table types are `<table>`, `<simpletable>`, and `<choicetable>`. "
+            "Use `<table>` for CALS complexity, `<simpletable>` for lightweight grids, and "
+            "`<choicetable>` for two-column choices inside a task `<step>`."
+        )
+
+    return {
+        **comparison,
+        "query_type": "element_family_overview",
+        "comparison_type": "element_family",
+        "family_name": "dita_table_family" if {"table", "simpletable", "choicetable"} & lowered_names else "dita_element_family",
+        "summary": summary,
+    }
+
+
 def _build_dita_element_guidance(
     query: str,
     elements: list[str] | None = None,
@@ -500,6 +527,9 @@ def _build_dita_element_guidance(
     matched_elements = intent.element_names
     if not matched_elements:
         return None
+
+    if intent.mode == "element_family_overview" and len(matched_elements) >= 2:
+        return _build_dita_element_family_overview_guidance(query, matched_elements)
 
     if intent.mode == "element_comparison" and len(matched_elements) >= 2:
         return _build_dita_element_comparison_guidance(query, matched_elements)
@@ -837,6 +867,7 @@ async def execute_generate_dita(
     source_text = (text or "").strip()
     if not source_text:
         return {"error": "Text is required for DITA generation"}
+    extracted_jira_id = extract_issue_key_from_generation_request(source_text)
 
     # Detect freeform-mode keywords and redirect to create_job(freeform) to avoid
     # the contract-service clarification loop for advanced DITA constructs.
@@ -844,7 +875,7 @@ async def execute_generate_dita(
     if _freeform_match:
         logger.info_structured(
             "generate_dita redirected to freeform",
-            extra_fields={"trigger": _freeform_match.group(0)},
+            extra_fields={"trigger": _freeform_match.group(0), "jira_id": extracted_jira_id},
         )
         return await execute_create_job(
             recipe_type="freeform",
@@ -852,7 +883,7 @@ async def execute_generate_dita(
             user_id=user_id,
             subject="",
             prompt_text=source_text,
-            jira_id=None,
+            jira_id=extracted_jira_id,
         )
 
     update_generate_progress(run_id, status="running", stage="starting", jira_id=f"TEXT-{run_id[:8]}")
@@ -868,6 +899,7 @@ async def execute_generate_dita(
             tenant_id=tenant_id,
             skip_rag_check=True,
             progress_run_id=run_id,
+            forced_jira_id=extracted_jira_id,
         )
         jira_id = result.get("jira_id", f"TEXT-{run_id[:8]}")
         run_id = result.get("run_id", run_id)
@@ -950,7 +982,7 @@ async def execute_create_job(
     #   1. Indexed RAG chunks for the specific Jira (pre-processed summaries, customer problem)
     #   2. Semantically related Jiras from RAG (broadens dataset topic coverage)
     #   3. Live Jira fetch for current steps / acceptance criteria (fallback if not indexed)
-    if jira_id and len(safe_prompt_text) < 300:
+    if jira_id:
         _jira_ctx_parts: list[str] = []
         _rag_enriched = False
 
@@ -1065,6 +1097,7 @@ async def execute_create_job(
                 tenant_id="default",
                 freeform_mode=True,
                 skip_rag_check=True,
+                forced_jira_id=jira_id or None,
             )
             return {
                 "status": "completed",
@@ -1360,13 +1393,66 @@ async def execute_lookup_dita_spec(
         retrieve_dita_graph_knowledge,
     )
 
+    raw_query = (query or "").strip()
+    if not raw_query:
+        return {"error": "query is required"}
+
     try:
-        chunks = retrieve_dita_knowledge(query, k=5)
+        explicit_elements = _extract_dita_elements_from_query(raw_query, explicit_elements=elements)
+        attribute_names = _extract_dita_attributes_from_query(raw_query)
+
+        if len(attribute_names) >= 2:
+            structured_attribute_comparison = _build_dita_attribute_comparison_guidance(raw_query, attribute_names)
+            if structured_attribute_comparison:
+                structured_attribute_comparison["sources"] = [
+                    {
+                        "label": str(item.get("attribute_name") or "").strip(),
+                        "snippet": _first_sentence(str(item.get("text_content") or "").strip()),
+                        "url": str(item.get("source_url") or "").strip(),
+                    }
+                    for item in (structured_attribute_comparison.get("comparisons") or [])[:4]
+                    if isinstance(item, dict)
+                ]
+                return structured_attribute_comparison
+
+        structured_element_guidance = _build_dita_element_guidance(raw_query, explicit_elements or elements)
+        if structured_element_guidance:
+            if str(structured_element_guidance.get("query_type") or "").strip() in {"element_comparison", "element_family_overview"}:
+                structured_element_guidance["sources"] = [
+                    {
+                        "label": str(item.get("element_name") or "").strip(),
+                        "snippet": _first_sentence(str(item.get("text_content") or "").strip()),
+                        "url": str(item.get("source_url") or "").strip(),
+                    }
+                    for item in (structured_element_guidance.get("comparisons") or [])[:4]
+                    if isinstance(item, dict)
+                ]
+            else:
+                source_url = str(structured_element_guidance.get("source_url") or "").strip()
+                element_name = str(structured_element_guidance.get("element_name") or "").strip()
+                snippet = _first_sentence(
+                    str(
+                        structured_element_guidance.get("text_content")
+                        or structured_element_guidance.get("summary")
+                        or ""
+                    ).strip()
+                )
+                if element_name or snippet or source_url:
+                    structured_element_guidance["sources"] = [
+                        {
+                            "label": element_name or "dita_spec",
+                            "snippet": snippet,
+                            "url": source_url,
+                        }
+                    ]
+            return structured_element_guidance
+
+        chunks = retrieve_dita_knowledge(raw_query, k=5)
         graph_text = ""
         if elements:
             graph_text = retrieve_dita_graph_knowledge(elements=elements)
-        elif query:
-            graph_text = retrieve_dita_graph_knowledge(element_hint=query)
+        elif raw_query:
+            graph_text = retrieve_dita_graph_knowledge(element_hint=raw_query)
         return {
             "spec_chunks": [
                 {
@@ -1376,12 +1462,21 @@ async def execute_lookup_dita_spec(
                 for c in chunks[:5]
             ],
             "graph_knowledge": graph_text,
-            "query": query,
+            "query": raw_query,
+            "sources": [
+                {
+                    "label": str(c.get("element_name") or c.get("title") or "dita_spec").strip(),
+                    "snippet": _first_sentence(str(c.get("text_content") or "").strip()),
+                    "url": str(c.get("source_url") or "").strip(),
+                }
+                for c in chunks[:5]
+                if isinstance(c, dict)
+            ],
         }
     except Exception as e:
         logger.warning_structured(
             "lookup_dita_spec tool failed",
-            extra_fields={"query": query, "error": str(e)},
+            extra_fields={"query": raw_query, "error": str(e)},
         )
         return {"error": str(e)}
 
@@ -2648,11 +2743,16 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
                     suffix = ", ..." if len(elements) > 4 else ""
                     element_clause = f" It is commonly used on {preview}{suffix}."
             return f"Retrieved DITA attribute guidance for `{attr}`.{value_clause}{element_clause}"
-        if str(result.get("query_type") or "").strip() == "element_comparison":
+        if str(result.get("query_type") or "").strip() in {"element_comparison", "element_family_overview"}:
             names = result.get("element_names") or []
             heading = str(result.get("comparison_heading") or "").strip()
             if isinstance(names, list) and len(names) >= 2:
-                label = heading if heading else " vs ".join(str(n).strip() for n in names if str(n).strip())
+                label = heading if heading else ", ".join(str(n).strip() for n in names if str(n).strip())
+                if str(result.get("query_type") or "").strip() == "element_family_overview":
+                    return (
+                        f"Summarized the DITA element family ({label}). Structured grounded details are in the tool result; "
+                        "explain the main types and when to use each one."
+                    )
                 return (
                     f"Compared DITA elements ({label}). Structured comparison is in the tool result card; "
                     "interpret differences and practical use in your reply without duplicating the full table."

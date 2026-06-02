@@ -111,7 +111,8 @@ async def test_chat_turn_persists_grounding_metadata_for_supported_answer(monkey
         assert grounding_event["grounding"]["citations"]
         assert grounding_event["grounding"]["status"] in {"grounded", "partial"}
         answer_chunks = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
-        assert "## Short answer" in answer_chunks
+        assert "Use the term door operator in the topic title and steps." in answer_chunks
+        assert "## At a glance" not in answer_chunks
         assert "## Sources" in answer_chunks
 
         messages = chat_service.get_messages(session_id)
@@ -1066,6 +1067,82 @@ def test_dita_element_comparison_renders_deterministic_comparison_sections():
     assert "Common attributes" in rendered
     assert "Typical use" in rendered
     assert "## Verified details" not in rendered
+
+
+def test_dita_element_family_overview_renders_types_not_comparison():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="Different types of tables in dita",
+        tool_results_by_name={
+            "lookup_dita_attribute": {"error": "No attribute requested"},
+            "lookup_dita_spec": {
+                "query_type": "element_family_overview",
+                "summary": (
+                    "The main DITA table types are `<table>`, `<simpletable>`, and `<choicetable>`. "
+                    "Use `<table>` for CALS complexity, `<simpletable>` for lightweight grids, and "
+                    "`<choicetable>` for task-step choices."
+                ),
+                "comparisons": [
+                    {
+                        "element_name": "table",
+                        "text_content": "<table> is a formal CALS table with thead, tbody, rows, and entries.",
+                        "parent_elements": ["body", "section"],
+                        "supported_attributes": ["frame", "colsep"],
+                        "usage_contexts": ["Complex data tables requiring column width control or spanning."],
+                        "common_mistakes": ["Forgetting `<tgroup cols=\"N\">` inside `<table>`."],
+                    },
+                    {
+                        "element_name": "simpletable",
+                        "text_content": "<simpletable> is a lightweight table for simple grids.",
+                        "parent_elements": ["body", "refbody"],
+                        "supported_attributes": ["relcolwidth"],
+                        "usage_contexts": ["Key-value grids without spanning needs."],
+                        "common_mistakes": ["Using `<row>/<entry>` instead of `<strow>/<stentry>`."],
+                    },
+                    {
+                        "element_name": "choicetable",
+                        "text_content": "<choicetable> is a two-column options table inside `<step>`.",
+                        "parent_elements": ["step"],
+                        "supported_attributes": ["relcolwidth", "keycol"],
+                        "usage_contexts": ["Choices with descriptions inside task steps."],
+                        "common_mistakes": ["Placing `<choicetable>` outside `<step>`."],
+                    },
+                ],
+                "status": "success",
+            },
+        },
+    )
+
+    assert facts is not None
+    assert facts.answer_kind == "dita_element_family_overview"
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "## Types" in rendered
+    assert "## Comparison" not in rendered
+    assert "`<table>`" in rendered
+    assert "`<simpletable>`" in rendered
+    assert "`<choicetable>`" in rendered
+    assert "## Common mistakes" in rendered
+
+
+def test_family_overview_requests_llm_enrichment():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="Different types of tables in dita",
+        tool_results_by_name={
+            "lookup_dita_spec": {
+                "query_type": "element_family_overview",
+                "summary": "The main DITA table types are `<table>`, `<simpletable>`, and `<choicetable>`.",
+                "comparisons": [
+                    {"element_name": "table", "text_content": "<table> is a CALS table."},
+                    {"element_name": "simpletable", "text_content": "<simpletable> is a lightweight table."},
+                    {"element_name": "choicetable", "text_content": "<choicetable> is a task-step choice table."},
+                ],
+            }
+        },
+    )
+
+    assert facts is not None
+    assert chat_service._should_enrich_grounded_answer_with_llm("Different types of tables in dita", facts) is True
 
 
 @pytest.mark.anyio

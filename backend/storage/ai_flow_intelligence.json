@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-05-20T12:15:55.631178+00:00",
+  "updated_at": "2026-05-25T05:23:24.768576+00:00",
   "query_health": {
     "kone": {
       "aem_guides": {
@@ -212,14 +212,14 @@
         "learning_note": "",
         "sources": {
           "rag": {
-            "successes": 121,
+            "successes": 124,
             "failures": 0,
             "empty_results": 0,
-            "consecutive_successes": 121,
+            "consecutive_successes": 124,
             "consecutive_failures": 0,
             "last_error": "",
-            "last_used_at": "2026-05-20T12:15:55.631178+00:00",
-            "last_success_at": "2026-05-20T12:15:55.631178+00:00",
+            "last_used_at": "2026-05-25T05:23:24.767587+00:00",
+            "last_success_at": "2026-05-25T05:23:24.767587+00:00",
             "last_failure_at": ""
           },
           "tavily": {

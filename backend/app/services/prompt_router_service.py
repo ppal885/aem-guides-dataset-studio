@@ -8,6 +8,7 @@ from app.services.generate_dita_preview_service import (
     build_generate_dita_execution_contract,
     build_generate_dita_preview,
 )
+from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
 
 _NON_DITA_AUTOMATION_PATTERN = re.compile(
     r"\b(feature files?|gherkin|cucumber|step definitions?|page objects?|page object|playwright|selenium)\b",
@@ -502,6 +503,28 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             reasoning_notes=[
                 "Detected dataset/job/recipe management; defer to chat mode so explicit dataset routing can pick the agent plan."
             ],
+        )
+
+    if extract_issue_key_from_generation_request(trimmed):
+        preview = build_generate_dita_preview(text=trimmed, instructions=None)
+        execution_contract = build_generate_dita_execution_contract(preview=preview)
+        supported = str(preview.get("bundle_type") or "").strip().lower() != "unsupported"
+        return PromptRouteDecision(
+            intent="dita_generation",
+            confidence=0.92,
+            supported=supported,
+            needs_clarification=bool(preview.get("clarification_needed")),
+            execution_hint="preview_first",
+            legacy_answer_mode="generation_request",
+            reasoning_notes=[
+                "Detected a Jira issue-key generation request; use the DITA preview flow instead of grounded documentation Q&A."
+            ],
+            candidate_contract={
+                "text": trimmed,
+                "instructions": None,
+                "preview": preview,
+                "execution_contract": execution_contract,
+            },
         )
 
     if _JIRA_STYLE_PATTERN.search(trimmed) or _DITA_GENERATION_PATTERN.search(trimmed):

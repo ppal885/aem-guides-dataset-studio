@@ -68,6 +68,12 @@ _VALID_VALUES_PATTERN = re.compile(
 )
 _EXAMPLE_PATTERN = re.compile(r"\b(example|sample|snippet)\b", re.IGNORECASE)
 _COMPARISON_PATTERN = re.compile(r"\b(vs\.?|versus|compare|difference\s+between)\b", re.IGNORECASE)
+_TABLE_FAMILY_OVERVIEW_PATTERN = re.compile(
+    r"\b(?:different|various|types?|kinds?)\b.{0,40}\btables?\b|"
+    r"\btables?\b.{0,40}\b(?:different|various|types?|kinds?)\b",
+    re.IGNORECASE,
+)
+_TABLE_FAMILY_ELEMENTS = ("table", "simpletable", "choicetable")
 
 
 @dataclass(frozen=True)
@@ -129,6 +135,15 @@ def extract_element_names(query: str, explicit_elements: list[str] | None = None
 
     for candidate in candidates:
         normalized = _normalize_token(candidate)
+        if normalized not in known:
+            plural_candidates: list[str] = []
+            if normalized.endswith("ies") and len(normalized) > 3:
+                plural_candidates.append(normalized[:-3] + "y")
+            if normalized.endswith("es") and len(normalized) > 2:
+                plural_candidates.append(normalized[:-2])
+            if normalized.endswith("s") and len(normalized) > 1:
+                plural_candidates.append(normalized[:-1])
+            normalized = next((item for item in plural_candidates if item in known), normalized)
         explicit_element_mention = normalized in explicit_normalized or re.search(
             rf"<\s*{re.escape(str(candidate).lstrip('<').lstrip('/'))}\b|\b{re.escape(str(candidate))}\s+element\b",
             query or "",
@@ -154,6 +169,13 @@ def interpret_dita_query(query: str, explicit_elements: list[str] | None = None)
     attribute_names = extract_attribute_names(raw_query)
     element_names = extract_element_names(raw_query, explicit_elements=explicit_elements)
     wants_examples = bool(_EXAMPLE_PATTERN.search(lowered))
+    table_family_overview = False
+
+    if _TABLE_FAMILY_OVERVIEW_PATTERN.search(lowered):
+        table_family = [name for name in _TABLE_FAMILY_ELEMENTS if name in set(list_element_names())]
+        if table_family:
+            element_names = table_family
+            table_family_overview = True
 
     if _COMPARISON_PATTERN.search(lowered):
         if len(attribute_names) >= 2:
@@ -172,7 +194,11 @@ def interpret_dita_query(query: str, explicit_elements: list[str] | None = None)
         else:
             mode = "attribute_definition"
     elif element_names:
-        if _CONTENT_MODEL_PATTERN.search(lowered):
+        if table_family_overview:
+            mode = "element_family_overview"
+        elif len(element_names) >= 2:
+            mode = "element_comparison"
+        elif _CONTENT_MODEL_PATTERN.search(lowered):
             mode = "content_model_query"
         elif _PLACEMENT_PATTERN.search(lowered):
             mode = "allowed_usage_query"

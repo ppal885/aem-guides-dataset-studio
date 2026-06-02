@@ -12,6 +12,7 @@ GroundedAnswerKind = Literal[
     "dita_output_behavior",
     "dita_attribute_comparison",
     "dita_element_comparison",
+    "dita_element_family_overview",
     "dita_map_construct",
     "aem_guides_guidance",
     "native_pdf_guidance",

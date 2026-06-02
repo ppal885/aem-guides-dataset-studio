@@ -54,6 +54,13 @@ def test_interpret_dita_query_detects_attribute_and_element_comparisons():
     assert element_intent.element_names == ["task", "concept"]
 
 
+def test_interpret_dita_query_detects_table_family_overview_question():
+    intent = interpret_dita_query("Different types of tables in dita")
+
+    assert intent.mode == "element_family_overview"
+    assert intent.element_names[:3] == ["table", "simpletable", "choicetable"]
+
+
 def test_fig_merges_fig_element_rows_including_figgroup_children():
     spec = get_element_spec("fig")
 

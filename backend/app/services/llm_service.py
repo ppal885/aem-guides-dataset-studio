@@ -348,14 +348,19 @@ def build_openai_chat_completion_kwargs(*, provider: str | None = None, **kwargs
     """
     Return OpenAI/Azure chat.completions.create kwargs, dropping None values.
 
-    Newer OpenAI-compatible model families on Azure reject `max_tokens` and require
-    `max_completion_tokens` instead. Normalize that here so every OpenAI/Azure chat
-    path stays consistent.
+    `max_completion_tokens` is only supported on OpenAI API >= 2024-09-01 (o1 reasoning
+    models). Standard Azure deployments on API version 2024-02-01 use `max_tokens`.
+    Keep `max_tokens` as-is; only upgrade to `max_completion_tokens` for o1/o3 models.
     """
     normalized = {k: v for k, v in kwargs.items() if v is not None}
     active_provider = provider or _effective_provider()
     if active_provider in {"openai", "azure_openai"} and "max_tokens" in normalized:
-        normalized["max_completion_tokens"] = normalized.pop("max_tokens")
+        model_name = str(os.getenv("AZURE_OPENAI_MODEL", "") or os.getenv("OPENAI_MODEL", "")).lower()
+        api_version = str(os.getenv("AZURE_OPENAI_API_VERSION", "")).strip()
+        _is_reasoning_model = model_name.startswith(("o1", "o3", "o4"))
+        _supports_max_completion = _is_reasoning_model or api_version >= "2024-09-01"
+        if _supports_max_completion:
+            normalized["max_completion_tokens"] = normalized.pop("max_tokens")
     return normalized
 
 

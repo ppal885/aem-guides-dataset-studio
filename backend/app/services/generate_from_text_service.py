@@ -1714,12 +1714,14 @@ async def run_generate_from_text(
     freeform_mode: bool = False,
     skip_rag_check: bool = False,
     progress_run_id: str | None = None,
+    forced_jira_id: str | None = None,
 ) -> dict[str, Any]:
     """Shared generate-from-text execution used by the API route and chat tools."""
     from app.services.dita_pipeline_orchestrator import run_intent_pipeline_with_execution
 
     pid = progress_run_id or run_id
     resolved_text, real_jira_id, resolution_warning = resolve_text_for_generate_from_text(text)
+    real_jira_id = real_jira_id or forced_jira_id
     jira_id = real_jira_id or f"TEXT-{run_id[:8]}"
     update_generate_progress(
         pid,
@@ -1886,6 +1888,11 @@ async def run_generate_from_text(
 
         if exec_result is None:
             assert plan is not None
+            if not plan.recipes:
+                raise ValueError(
+                    "PIPELINE_FAILED: Recipe pipeline returned no selected recipes. "
+                    "Cannot execute an empty plan."
+                )
             update_generate_progress(pid, stage="generating", message="Generating DITA...")
             exec_result = await asyncio.to_thread(
                 execute_plan,
@@ -1912,11 +1919,14 @@ async def run_generate_from_text(
                 for item in ((exec_result or {}).get("warnings") or [])
                 if str(item).strip()
             ]
-            if executor_warnings:
-                raise ValueError(
-                    "GENERATION_EXECUTION_FAILED: No generated DITA files were produced. "
-                    "Executor warnings: " + " | ".join(executor_warnings[:8])
-                )
+            detail = (
+                "Executor warnings: " + " | ".join(executor_warnings[:8])
+                if executor_warnings
+                else "No DITA files were produced and no executor warnings were logged."
+            )
+            raise ValueError(
+                "GENERATION_EXECUTION_FAILED: No generated DITA files were produced. " + detail
+            )
         build_validation = _run_build_validation(scenario_dir=scenario_dir)
         if build_validation.get("enabled") and str(build_validation.get("status") or "").strip().lower() == "failed":
             raise ValueError("GENERATION_BUILD_VALIDATION_FAILED: " + str(build_validation.get("message") or "").strip())

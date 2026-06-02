@@ -11,13 +11,43 @@ class DocType(str, Enum):
     MAP = "map"
     BOOKMAP = "bookmap"
     DITAVAL = "ditaval"
+    GLOSSENTRY = "glossentry"
+    SUBJECT_SCHEME = "subject_scheme"
+    KEYDEF_MAP = "keydef_map"
+    AEM_DOC = "aem_doc"
+    JIRA_ISSUE = "jira_issue"
+    UNKNOWN = "unknown"
+
+
+class RegionType(str, Enum):
+    TITLE = "title"
+    SHORTDESC = "shortdesc"
+    BODY = "body"
+    PREREQ = "prereq"
+    STEPS = "steps"
+    RESULT = "result"
+    EXAMPLE = "example"
+    TABLE = "table"
+    CODEBLOCK = "codeblock"
+    NOTE = "note"
+    RELATED_LINKS = "related_links"
+    PROLOG = "prolog"
+    FULL_TOPIC = "full_topic"
+    UNKNOWN = "unknown"
+
+
+class SourceType(str, Enum):
+    SEED = "seed"
+    CRAWL = "crawl"
+    JIRA = "jira"
+    UPLOAD = "upload"
     UNKNOWN = "unknown"
 
 
 @dataclass
 class ChunkMetadata:
     chunk_id: str = ""
-    source_type: str = "crawl"
+    source_type: SourceType = SourceType.CRAWL
     doc_type: DocType = DocType.UNKNOWN
     chunk_priority: float = 0.5
     content_hash: Optional[str] = None

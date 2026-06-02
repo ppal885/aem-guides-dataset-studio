@@ -22,10 +22,26 @@ _QUERY_KEY = re.compile(
     r"(?:^|[?&])(?:selectedIssue|issueKey|issue_key)=([A-Za-z][A-Za-z0-9_]*-\d+)",
     re.IGNORECASE,
 )
+_EMBEDDED_ISSUE_KEY = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*-\d+)\b")
+_EMBEDDED_GENERATION_VERB = re.compile(
+    r"\b(generate|create|build|make|draft|prepare|produce|write|convert|turn)\b",
+    re.IGNORECASE,
+)
+_EMBEDDED_GENERATION_OBJECT = re.compile(
+    r"\b(data|dita|xml|topic|topics|map|ditamap|bundle|zip|content|docs?|documentation)\b",
+    re.IGNORECASE,
+)
+_EMBEDDED_NON_GENERATION_PATTERN = re.compile(
+    r"^\s*(what|how|why|where|when|who|is|are|can|could|would|should|do|does)\b|"
+    r"^\s*(find|search|show|lookup|look\s+up|status|comment|discussion|related|similar|history|"
+    r"explain|define|compare)\b",
+    re.IGNORECASE,
+)
 
 # Do not scan megabyte pastes for keys
 _MAX_SHORTCUT_LEN = 2048
 _MAX_URL_ONLY_LEN = 800
+_MAX_EMBEDDED_GENERATION_LEN = 400
 
 
 def _normalize_issue_key(key: str) -> str:
@@ -69,6 +85,38 @@ def extract_issue_key_from_shortcut(text: str) -> Optional[str]:
         if m3:
             return _normalize_issue_key(m3.group(1))
     return None
+
+
+def extract_issue_key_from_generation_request(text: str) -> Optional[str]:
+    """Extract a Jira issue key from a short generation-style request.
+
+    Supports plain Jira shortcuts such as ``GUIDES-123`` and short imperative
+    requests like ``Create data for GUIDES-123`` without treating search or
+    question phrasing as generation.
+    """
+    t = (text or "").strip()
+    if not t or len(t) > _MAX_EMBEDDED_GENERATION_LEN:
+        return None
+
+    shortcut = extract_issue_key_from_shortcut(t)
+    if shortcut:
+        return shortcut
+
+    matches = [m.group(1) for m in _EMBEDDED_ISSUE_KEY.finditer(t)]
+    if len(matches) != 1:
+        return None
+    if "?" in t:
+        return None
+    if not _EMBEDDED_GENERATION_VERB.search(t):
+        return None
+    if _EMBEDDED_NON_GENERATION_PATTERN.search(t):
+        return None
+    if not (
+        _EMBEDDED_GENERATION_OBJECT.search(t)
+        or re.search(rf"\b(?:for|from)\s+{re.escape(matches[0])}\b", t, re.IGNORECASE)
+    ):
+        return None
+    return _normalize_issue_key(matches[0])
 
 
 def _jira_client_ready(client: JiraClient) -> bool:
@@ -234,6 +282,14 @@ def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[s
     """
     raw = (body_text or "").strip()
     if not is_jira_shortcut_input(raw):
+        key = extract_issue_key_from_generation_request(raw)
+        if not key:
+            return body_text, None, None
+        formatted, err = fetch_issue_text_for_generate(key)
+        if formatted:
+            return f"{formatted}\n\n## Generation Request\n{raw}", key, None
+        if err:
+            return body_text, None, err
         return body_text, None, None
 
     key = extract_issue_key_from_shortcut(raw)

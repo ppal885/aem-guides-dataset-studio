@@ -261,6 +261,19 @@ async def test_lookup_dita_spec_returns_structured_attribute_comparison():
 
 
 @pytest.mark.anyio
+async def test_lookup_dita_spec_returns_table_family_comparison_for_overview_question():
+    result = await execute_lookup_dita_spec("Different types of tables in dita")
+
+    assert result["query_type"] == "element_family_overview"
+    assert result["comparison_type"] == "element_family"
+    assert result["element_names"][:3] == ["table", "simpletable", "choicetable"]
+    assert len(result["comparisons"]) >= 3
+    assert any(str(item.get("element_name") or "") == "table" for item in result["comparisons"])
+    assert any(str(item.get("element_name") or "") == "simpletable" for item in result["comparisons"])
+    assert any(str(item.get("element_name") or "") == "choicetable" for item in result["comparisons"])
+
+
+@pytest.mark.anyio
 async def test_lookup_dita_attribute_parses_natural_language_multi_attribute_queries():
     result = await execute_lookup_dita_attribute("please let me know about conref and conkeyref attributes?")
 
