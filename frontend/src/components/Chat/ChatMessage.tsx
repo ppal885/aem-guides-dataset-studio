@@ -2813,7 +2813,7 @@ function GroundingPanel({ grounding }: { grounding: ChatGrounding }) {
     status === 'grounded'
       ? 'Grounded'
       : status === 'partial'
-        ? 'Partially grounded'
+        ? 'Verified with caveats'
         : status === 'conflict'
           ? 'Conflicting evidence'
           : 'Grounding limit';
@@ -2838,7 +2838,7 @@ function GroundingPanel({ grounding }: { grounding: ChatGrounding }) {
       )}
       {unsupportedPoints.length > 0 && (
         <div className="mt-3 rounded-lg border border-white/50 bg-white/60 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]">Not fully verified</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]">Verification notes</p>
           <ul className="mt-1 space-y-1 text-xs leading-relaxed">
             {unsupportedPoints.slice(0, 3).map((point) => (
               <li key={point}>- {point}</li>
