@@ -24,7 +24,7 @@ from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.api.v1.router import api_router as v1_router
-from app.core.runtime_safety import cors_allowed_origins, validate_runtime_safety
+from app.core.runtime_safety import validate_runtime_safety
 from app.core.structured_logging import get_structured_logger, LoggingContext
 from app.services.cleaning_service import clean_old_data
 
@@ -384,8 +384,8 @@ async def startup_event():
         try:
             from app.db.session import DATABASE_URL, engine
             from app.db.base import Base
-            from app.db.chat_models import ChatSession, ChatMessage, ChatMessageFeedback  # noqa: F401 - register for create_all
-            from app.db.llm_models import LLMRun  # noqa: F401 - register for create_all
+            from app.db.chat_models import ChatSession, ChatMessage, ChatMessageFeedback  # noqa: F401
+            from app.db.llm_models import LLMRun  # noqa: F401
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
                 logger.info_structured(
@@ -703,8 +703,8 @@ def health(include_storage_stats: bool = False):
     # Resource monitoring (memory, CPU)
     try:
         import psutil
-        import os
-        process = psutil.Process(os.getpid())
+        import os as os_module
+        process = psutil.Process(os_module.getpid())
         memory_info = process.memory_info()
         cpu_percent = process.cpu_percent(interval=0.1)
         system_memory = psutil.virtual_memory()
