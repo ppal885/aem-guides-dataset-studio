@@ -129,4 +129,4 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Logger instance
     """
-    return logging.getLogger(f"app.{name}")
+    return logging.getLogger(name)
