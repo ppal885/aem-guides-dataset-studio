@@ -194,9 +194,10 @@ def use_recipe(
     # Increment usage count
     increment_recipe_usage(session, recipe_id)
     session.commit()
-    
+    session.refresh(recipe)
+
     return {
         "id": recipe.id,
         "recipe_config": recipe.recipe_config,
-        "usage_count": recipe.usage_count + 1,
+        "usage_count": recipe.usage_count,
     }

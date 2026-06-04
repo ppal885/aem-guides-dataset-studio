@@ -17,7 +17,11 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB as _PG_JSONB
+
+# Use JSONB on PostgreSQL (GIN index support); fall back to JSON on SQLite/others.
+JSONB = JSON().with_variant(_PG_JSONB(), "postgresql")  # type: ignore[assignment]
 
 from app.db.base import Base
 

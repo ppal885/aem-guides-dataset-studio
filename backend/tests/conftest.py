@@ -33,3 +33,29 @@ def auth_headers():
 def mock_user():
     """Create a mock user identity."""
     return UserIdentity(id="test-user-id", name="Test User", email="test@example.com")
+
+
+@pytest.fixture
+def saved_recipe_id(client: TestClient, auth_headers: dict) -> str:
+    """Create a saved recipe and return its ID for tests that need an existing recipe."""
+    response = client.post(
+        "/api/v1/recipes/save",
+        json={
+            "name": "Fixture Recipe",
+            "description": "Created by test fixture",
+            "recipe_config": {
+                "recipes": [{
+                    "type": "incremental_topicref_maps",
+                    "pool_size": 10,
+                    "map_topicref_counts": [5],
+                    "pretty_print": True,
+                    "deep_folders": False,
+                }]
+            },
+            "is_public": False,
+            "tags": ["fixture"],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, f"Failed to create fixture recipe: {response.text}"
+    return response.json()["id"]
