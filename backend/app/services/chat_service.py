@@ -418,6 +418,50 @@ def _is_dita_construct_output_query(text: str) -> bool:
     )
 
 
+_DITA_ELEMENT_TAG_PATTERN = re.compile(r"</?[a-z][a-z0-9\-]*>", re.IGNORECASE)
+_DITA_ELEMENT_DEFINITION_INTENT = re.compile(
+    r"^(what\s+is|what('s| is)\s+the\s+(use|purpose|role|function)|explain|how\s+(do\s+I\s+)?use|when\s+(do\s+I\s+)?use|tell\s+me\s+about)\b",
+    re.IGNORECASE,
+)
+_DITA_STRUCTURE_FEEDBACK_CONSTRUCTS = re.compile(
+    r"\b(choicetables?|simpletable|properties\s*table|reltable|relationship\s*table|topicref|conref|keyref|"
+    r"bookmap|ditamap|xref|shortdesc|taskbody|prereq|postreq|substeps?|choices?|result|"
+    r"codeblock|note|warning|hazardstatement|uicontrol|cmdname|varname|filepath|apiname)\b",
+    re.IGNORECASE,
+)
+_DITA_STRUCTURE_FEEDBACK_KEYWORDS = re.compile(
+    r"\b(incorrect|wrong|broken|bad|off|invalid|error|not\s+right|doesn't?\s+look|isn't?\s+right|"
+    r"markup\s+is|example\s+is|structure\s+is|syntax\s+is)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_dita_element_definition_query(text: str) -> bool:
+    """Return True for short 'what is <elem>?' style questions about a specific DITA element."""
+    t = (text or "").strip()
+    if not t or len(t) > 200:
+        return False
+    if _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN.search(t):
+        return False
+    return bool(_DITA_ELEMENT_TAG_PATTERN.search(t) and _DITA_ELEMENT_DEFINITION_INTENT.search(t))
+
+
+def _is_dita_structure_feedback_query(text: str) -> bool:
+    """Return True when the user is flagging a DITA construct example/markup as incorrect."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(
+        _DITA_STRUCTURE_FEEDBACK_CONSTRUCTS.search(t)
+        and _DITA_STRUCTURE_FEEDBACK_KEYWORDS.search(t)
+    )
+
+
+def _should_skip_aem_rag_for_dita_query(text: str) -> bool:
+    """Return True when AEM Experience League RAG adds noise rather than signal."""
+    return _is_dita_structure_feedback_query(text) or _is_dita_element_definition_query(text)
+
+
 def _get_human_precision_addon() -> str:
     global _HUMAN_PRECISION_ADDON
     if _HUMAN_PRECISION_ADDON is not None:
