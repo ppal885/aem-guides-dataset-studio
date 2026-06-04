@@ -12,6 +12,7 @@ from app.core.structured_logging import get_structured_logger
 logger = get_structured_logger(__name__)
 
 CHROMA_COLLECTION_AEM_GUIDES = "aem_guides"
+CHROMA_COLLECTION_ENTERPRISE_QA = CHROMA_COLLECTION_AEM_GUIDES
 CHROMA_COLLECTION_DITA_SPEC = "dita_spec"
 CHROMA_COLLECTION_JIRA_QA = "jira_qa"
 CHROMA_COLLECTION_DITA_OT_GITHUB = "dita_ot_github"

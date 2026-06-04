@@ -20,6 +20,7 @@ from app.services.vector_store_service import (
     get_collection_count,
     CHROMA_COLLECTION_AEM_GUIDES,
     CHROMA_COLLECTION_DITA_SPEC,
+    CHROMA_COLLECTION_JIRA_QA,
 )
 from app.core.structured_logging import get_structured_logger
 
@@ -63,23 +64,33 @@ def _load_chunks() -> list[dict]:
 def check_rag_readiness() -> dict:
     """
     Verify at least one RAG source (AEM Guides or DITA spec) has content.
-    Returns dict with aem_guides_ready, dita_spec_ready, any_ready, message.
+    Returns dict with aem_guides_ready, enterprise_qa_ready, dita_spec_ready,
+    jira_qa_ready, any_ready, message.
     """
     aem_guides_ready = False
     dita_spec_ready = False
+    jira_qa_ready = False
 
     if is_chroma_available():
         aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES)
         dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC)
+        jira_count = get_collection_count(CHROMA_COLLECTION_JIRA_QA)
         aem_guides_ready = aem_count > 0
         dita_spec_ready = dita_count > 0
+        jira_qa_ready = jira_count > 0
 
     if not aem_guides_ready:
         chunks = _load_chunks()
         aem_guides_ready = len(chunks) > 0
 
-    any_ready = aem_guides_ready or dita_spec_ready
-    if any_ready:
+    enterprise_qa_ready = aem_guides_ready
+    any_ready = enterprise_qa_ready or dita_spec_ready
+
+    if any_ready and not jira_qa_ready:
+        message = (
+            "RAG sources ready. Run POST /api/v1/ai/index-jira-rag to enable jira-rag augmentation."
+        )
+    elif any_ready:
         message = "RAG sources ready"
     else:
         message = (
@@ -88,7 +99,9 @@ def check_rag_readiness() -> dict:
         )
     return {
         "aem_guides_ready": aem_guides_ready,
+        "enterprise_qa_ready": enterprise_qa_ready,
         "dita_spec_ready": dita_spec_ready,
+        "jira_qa_ready": jira_qa_ready,
         "any_ready": any_ready,
         "message": message,
     }

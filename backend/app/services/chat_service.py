@@ -97,6 +97,7 @@ CHAT_GROUNDED_EVIDENCE_MAX_CHARS = int(os.getenv("CHAT_GROUNDED_EVIDENCE_MAX_CHA
 RAG_AEM_K = int(os.getenv("RAG_AEM_K", "8"))
 RAG_DITA_K = int(os.getenv("RAG_DITA_K", "8"))
 RAG_SNIPPET_CHARS = int(os.getenv("RAG_SNIPPET_CHARS", "1000"))
+RAG_QUERY_MAX_CHARS = int(os.getenv("RAG_QUERY_MAX_CHARS", "500"))
 
 # Chat limits (prevent unbounded growth)
 CHAT_MAX_MESSAGES_PER_SESSION = int(os.getenv("CHAT_MAX_MESSAGES_PER_SESSION", "500"))
@@ -3568,12 +3569,13 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     if not query or not str(query).strip():
         return ""
 
+    capped_query = query[:RAG_QUERY_MAX_CHARS]
     parts = []
 
     # AEM Guides docs (increased k and snippet size for better retrieval)
     try:
         docs = retrieve_relevant_docs(
-            query[:500],
+            capped_query,
             k=RAG_AEM_K,
             max_snippet_chars=RAG_SNIPPET_CHARS,
         )
@@ -3611,7 +3613,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
                         total_tokens=sum(max(1, len(c.content) // 3) for c in primary_chunks),
                         root_docs=[],
                         relationships_used=[],
-                        query=query[:500],
+                        query=capped_query,
                     )
                     formatted = format_bundle_for_prompt(bundle, max_chars=RAG_CONTEXT_MAX_CHARS)
                     if formatted:
@@ -3637,7 +3639,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
 
     # DITA spec
     try:
-        dita_chunks = retrieve_dita_knowledge(query[:500], k=RAG_DITA_K)
+        dita_chunks = retrieve_dita_knowledge(capped_query, k=RAG_DITA_K)
         if dita_chunks:
             dita_parts = []
             for i, c in enumerate(dita_chunks[:RAG_DITA_K], 1):
@@ -3648,7 +3650,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
         logger.debug_structured("RAG DITA failed", extra_fields={"error": str(e)})
 
     try:
-        tenant_chunks = retrieve_tenant_context(query[:500], tenant_id=tenant_id, k=4)
+        tenant_chunks = retrieve_tenant_context(capped_query, tenant_id=tenant_id, k=4)
         if tenant_chunks:
             tenant_parts = []
             for i, chunk in enumerate(tenant_chunks[:4], 1):
@@ -3663,7 +3665,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
         logger.debug_structured("RAG tenant context failed", extra_fields={"error": str(e), "tenant_id": tenant_id})
 
     try:
-        example_chunks = retrieve_tenant_examples(query[:500], tenant_id=tenant_id, k=2)
+        example_chunks = retrieve_tenant_examples(capped_query, tenant_id=tenant_id, k=2)
         if example_chunks:
             example_parts = []
             for i, example in enumerate(example_chunks[:2], 1):
@@ -3678,7 +3680,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
 
     # Claude Code / Adobe AI setup (when user asks about Claude, Bedrock, Adobe setup, etc.)
     try:
-        claude_ctx = retrieve_claude_code_context(query[:500])
+        claude_ctx = retrieve_claude_code_context(capped_query)
         if claude_ctx:
             parts.append("CLAUDE CODE / ADOBE AI SETUP:\n" + claude_ctx)
     except Exception as e:
@@ -3687,7 +3689,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     # DITA OT GitHub issues (publishing, transtype, plugin, XSLT queries)
     try:
         from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
-        ot_issues = retrieve_dita_ot_github_for_query(query[:500], k=3)
+        ot_issues = retrieve_dita_ot_github_for_query(capped_query, k=3)
         if ot_issues:
             ot_parts = []
             for issue in ot_issues:
@@ -3704,7 +3706,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
         from app.services.embedding_service import embed_query as _embed_query, is_embedding_available
         from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, query_collection as _qc
         if is_embedding_available():
-            _jira_emb = _embed_query(query[:500])
+            _jira_emb = _embed_query(capped_query)
             if _jira_emb:
                 _jira_rows = _qc(CHROMA_COLLECTION_JIRA_QA, _jira_emb, k=3)
                 if _jira_rows:
