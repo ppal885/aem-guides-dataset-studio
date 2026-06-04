@@ -865,8 +865,8 @@ def _looks_like_retrieval_summary(answer_text: str) -> bool:
     lowered = (answer_text or "").strip().lower()
     return (
         lowered.startswith("retrieved ")
-        or lowered.startswith("## at a glance")
         or "retrieved dita specification guidance" in lowered
+        or bool(re.search(r"##\s*at a glance\s*\n\s*retrieved\s+", lowered))
     )
 
 
@@ -1033,6 +1033,19 @@ async def verify_grounded_answer(
                 evidence_pack=evidence_pack,
                 verified_examples=verified_examples,
             )
+            if _looks_like_retrieval_summary(answer_text):
+                answer_text = _build_thin_evidence_answer(
+                    question=question,
+                    evidence_pack=evidence_pack,
+                    unsupported=unsupported,
+                )
+                if citation_objects and "## Sources" not in answer_text:
+                    sources_lines = ["\n\n## Sources"]
+                    for c in citation_objects:
+                        label = c.label or c.id
+                        uri_part = f" - {c.uri}" if c.uri else ""
+                        sources_lines.append(f"- [{c.id}] {label}{uri_part}")
+                    answer_text += "\n".join(sources_lines)
             return GroundedAnswer(
                 answer=answer_text,
                 citation_ids=citation_ids,
@@ -1058,6 +1071,12 @@ async def verify_grounded_answer(
                 thin_evidence_override=False,
             )
         answer_text = draft_answer.strip()
+        if _looks_like_retrieval_summary(answer_text):
+            answer_text = _build_thin_evidence_answer(
+                question=question,
+                evidence_pack=evidence_pack,
+                unsupported=unsupported,
+            )
         verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
         for term in _missing_query_terms(question, evidence_pack)[:3]:
             note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."

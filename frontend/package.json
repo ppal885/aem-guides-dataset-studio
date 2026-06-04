@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build || echo 'Build completed with warnings'",
-    "build:check": "tsc && vite build",
-    "preview": "vite preview",
+    "dev": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js || echo 'Build completed with warnings'",
+    "build:check": "tsc && vite build --config vite.config.js",
+    "preview": "vite preview --config vite.config.js",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run"
   },

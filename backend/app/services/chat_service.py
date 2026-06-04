@@ -5120,7 +5120,19 @@ async def _build_grounded_dita_answer_payload(
             structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
             structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
         )
-        if evidence_pack.decision.status in {"abstain", "conflict"} and _looks_like_retrieval_summary(grounded_answer.answer):
+        if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"}:
+            grounded_answer = replace(
+                grounded_answer,
+                answer=_build_thin_evidence_answer(
+                    question=question,
+                    evidence_pack=evidence_pack,
+                    unsupported=grounded_answer.unsupported_points,
+                ),
+                unsupported_points=grounded_answer.unsupported_points[:4],
+                grounding_status="partial",
+                reason="The answer was rewritten into a clearer plain-language summary because the draft still read like a retrieval recap.",
+            )
+        if evidence_pack.decision.status in {"abstain", "conflict"}:
             grounded_answer = replace(
                 grounded_answer,
                 answer=_build_thin_evidence_answer(
@@ -5795,7 +5807,19 @@ async def _stream_assistant_reply(
             structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
             structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
         )
-        if evidence_pack.decision.status in {"abstain", "conflict"} and _looks_like_retrieval_summary(grounded_answer.answer):
+        if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"}:
+            grounded_answer = replace(
+                grounded_answer,
+                answer=_build_thin_evidence_answer(
+                    question=user_content,
+                    evidence_pack=evidence_pack,
+                    unsupported=grounded_answer.unsupported_points,
+                ),
+                unsupported_points=grounded_answer.unsupported_points[:4],
+                grounding_status="partial",
+                reason="The answer was rewritten into a clearer plain-language summary because the draft still read like a retrieval recap.",
+            )
+        if evidence_pack.decision.status in {"abstain", "conflict"}:
             grounded_answer = replace(
                 grounded_answer,
                 answer=_build_thin_evidence_answer(

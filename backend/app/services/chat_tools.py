@@ -576,7 +576,7 @@ def _build_dita_element_guidance(
         content_model_summary
         or placement_summary
         or _first_sentence(text_content)
-        or (f"Retrieved DITA element guidance for `{element_name}`." if exact_chunks or graph_knowledge else "")
+        or (f"Found DITA guidance for `{element_name}`." if exact_chunks or graph_knowledge else "")
     )
 
     if not summary and not children and not parent_elements and not text_content and not graph_knowledge:
@@ -2231,7 +2231,7 @@ async def execute_lookup_dita_attribute(
             "attribute_names": names,
             "attributes": specs,
             "resolved_from_query": raw_query,
-            "summary": f"Retrieved DITA attribute guidance for {summary_names}.",
+            "summary": f"Found DITA guidance for {summary_names}.",
             "warnings": warnings,
         }
     except Exception as e:
@@ -2742,7 +2742,7 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
                 if preview:
                     suffix = ", ..." if len(elements) > 4 else ""
                     element_clause = f" It is commonly used on {preview}{suffix}."
-            return f"Retrieved DITA attribute guidance for `{attr}`.{value_clause}{element_clause}"
+            return f"Found DITA guidance for `{attr}`.{value_clause}{element_clause}"
         if str(result.get("query_type") or "").strip() in {"element_comparison", "element_family_overview"}:
             names = result.get("element_names") or []
             heading = str(result.get("comparison_heading") or "").strip()
@@ -2750,12 +2750,10 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
                 label = heading if heading else ", ".join(str(n).strip() for n in names if str(n).strip())
                 if str(result.get("query_type") or "").strip() == "element_family_overview":
                     return (
-                        f"Summarized the DITA element family ({label}). Structured grounded details are in the tool result; "
-                        "explain the main types and when to use each one."
+                        f"Found DITA guidance for the element family ({label}). Use the structured result to explain the main types and when to use each one."
                     )
                 return (
-                    f"Compared DITA elements ({label}). Structured comparison is in the tool result card; "
-                    "interpret differences and practical use in your reply without duplicating the full table."
+                    f"Found a DITA element comparison ({label}). Use the structured result to explain the differences and practical use."
                 )
         element_name = str(result.get("element_name") or "").strip()
         if element_name:
@@ -2768,12 +2766,12 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
             text_content = str(result.get("text_content") or "").strip()
             if text_content:
                 return _clean_summary_text(_first_sentence(text_content))
-            return f"Retrieved DITA element guidance for `{element_name}`."
+            return f"Found DITA guidance for `{element_name}`."
         chunks = result.get("spec_chunks") or []
         query = str(result.get("query") or "the request").strip()
         if chunks or result.get("graph_knowledge"):
-            return f"Retrieved DITA specification guidance for `{query}`."
-        return f"No DITA specification evidence was found for `{query}`."
+            return f"Found DITA guidance for `{query}`."
+        return f"No DITA guidance was found for `{query}`."
     if name == "review_dita_xml":
         issues = result.get("normalized_validation_issues") or result.get("validation_issues") or []
         score = result.get("quality_score")
@@ -2827,8 +2825,8 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
             if not top_label and isinstance(top_seed, dict):
                 top_label = str(top_seed.get("element_name") or "").strip()
             if top_label:
-                return f"Retrieved output preset guidance for `{query}` using `{top_label}` as a primary signal."
-            return f"Retrieved output preset guidance for `{query}`."
+                return f"Found output preset guidance for `{query}` using `{top_label}` as a primary signal."
+            return f"Found output preset guidance for `{query}`."
         return f"No output preset guidance was found for `{query}`."
     if name == "list_jobs":
         jobs = result.get("jobs") or []
@@ -2850,9 +2848,9 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
             preview = ", ".join(f"`{str(item).strip()}`" for item in attrs[:4] if str(item).strip())
             if preview:
                 suffix = ", ..." if len(attrs) > 4 else ""
-                return f"Retrieved DITA attribute guidance for {preview}{suffix}."
+                return f"Found DITA guidance for {preview}{suffix}."
         attr = str(result.get("attribute_name") or "the requested attribute").strip()
-        return f"Retrieved DITA attribute guidance for `{attr}`."
+        return f"Found DITA guidance for `{attr}`."
     if name == "list_indexed_pdfs":
         count = int(result.get("count") or len(result.get("documents") or []))
         return f"Found {count} indexed PDF document{'s' if count != 1 else ''}."
