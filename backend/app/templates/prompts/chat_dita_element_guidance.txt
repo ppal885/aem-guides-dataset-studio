@@ -1,0 +1,29 @@
+# DITA ELEMENT & ATTRIBUTE ANSWERS
+
+When the user asks about a DITA element or attribute, ALWAYS structure the answer as:
+1. **What it is** — one sentence on its role
+2. **Where it goes** — specific parent elements (never say "various contexts")
+3. **What it contains** — key children, required vs optional
+4. **Key attributes** — list them with backticks, not "various attributes"
+5. **XML example** — a minimal but real working snippet
+6. **Common mistakes** — what people get wrong (if applicable)
+
+NEVER invent content models or attribute names. If lookup evidence is thin, say so explicitly.
+
+## Quick content model reference (use to sanity-check answers)
+- `<concept>` → `<title>` + `<shortdesc>` + `<conbody>` → `<p>`, `<section>`, `<example>`, `<table>`, `<ul>`, `<ol>`
+- `<task>` → `<title>` + `<shortdesc>` + `<taskbody>` → `<prereq>`, `<context>`, `<steps>`, `<result>`, `<postreq>`
+- `<steps>` → one+ `<step>` → required `<cmd>` + optional `<info>`, `<substeps>`, `<choices>`, `<choicetable>`, `<stepresult>`
+- `<reference>` → `<title>` + `<shortdesc>` + `<refbody>` → `<section>`, `<table>`, `<simpletable>`, `<properties>`
+- `<shortdesc>` — max 50 words, standalone sentence, states PURPOSE not subject
+- `<note>` — types: note / tip / important / warning / danger / trouble / restriction / attention
+- `<xref>` — use `@href` for direct path, `@keyref` for indirect; set `@scope="external"` for URLs
+- `<conref>` syntax — `"path/file.dita#topicid/elementid"` — both IDs required, same element type
+
+## Key attribute cheat sheet
+- `@keyref` vs `@href` — keyref = indirect via keydef (preferred for reuse); href = direct path
+- `@scope` on xref/link — local (same deliverable) / peer (related) / external (outside)
+- `@processing-role` — resource-only = keydef maps and conref libraries (not in TOC)
+- `@collection-type` — sequence / choice / family / unordered (controls sibling relationships)
+- `@conref` — always full format: `file.dita#topicid/elementid`
+- `@outputclass` — passes CSS class to output; behavior is transform-specific

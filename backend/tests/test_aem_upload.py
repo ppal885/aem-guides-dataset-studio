@@ -93,7 +93,7 @@ class TestAemUploadService:
             with patch.object(AemUploadService, '__init__', lambda self: None):
                 service = AemUploadService()
                 service.script_path = tmp_path / "scripts" / "aem_upload.js"
-                
+                service.backend_dir = tmp_path
                 result = service.upload_dataset(
                     source_path=str(sample_dataset_dir),
                     aem_base_url="https://author-test.adobeaemcloud.com",
@@ -122,7 +122,7 @@ class TestAemUploadService:
             with patch.object(AemUploadService, '__init__', lambda self: None):
                 service = AemUploadService()
                 service.script_path = tmp_path / "scripts" / "aem_upload.js"
-                
+                service.backend_dir = tmp_path
                 result = service.upload_dataset(
                     source_path=str(sample_dataset_dir),
                     aem_base_url="https://author-test.adobeaemcloud.com",
@@ -139,7 +139,7 @@ class TestAemUploadService:
         with patch.object(AemUploadService, '__init__', lambda self: None):
             service = AemUploadService()
             service.script_path = tmp_path / "scripts" / "aem_upload.js"
-            
+            service.backend_dir = tmp_path
             with pytest.raises(FileNotFoundError):
                 service.upload_dataset(
                     source_path="/nonexistent/path",
@@ -159,7 +159,7 @@ class TestAemUploadService:
             with patch.object(AemUploadService, '__init__', lambda self: None):
                 service = AemUploadService()
                 service.script_path = tmp_path / "scripts" / "aem_upload.js"
-                
+                service.backend_dir = tmp_path
                 result = service.upload_dataset(
                     source_path=str(sample_dataset_dir),
                     aem_base_url="https://author-test.adobeaemcloud.com",
@@ -179,7 +179,7 @@ class TestAemUploadService:
             with patch.object(AemUploadService, '__init__', lambda self: None):
                 service = AemUploadService()
                 service.script_path = tmp_path / "scripts" / "aem_upload.js"
-                
+                service.backend_dir = tmp_path
                 result = service.upload_dataset(
                     source_path=str(sample_dataset_dir),
                     aem_base_url="https://author-test.adobeaemcloud.com",
@@ -203,7 +203,7 @@ class TestAemUploadService:
             with patch.object(AemUploadService, '__init__', lambda self: None):
                 service = AemUploadService()
                 service.script_path = tmp_path / "scripts" / "aem_upload.js"
-                
+                service.backend_dir = tmp_path
                 result = service.upload_dataset(
                     source_path=str(sample_dataset_dir),
                     aem_base_url="https://author-test.adobeaemcloud.com",

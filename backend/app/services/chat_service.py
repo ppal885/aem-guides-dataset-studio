@@ -463,6 +463,68 @@ def _should_skip_aem_rag_for_dita_query(text: str) -> bool:
     return _is_dita_structure_feedback_query(text) or _is_dita_element_definition_query(text)
 
 
+_DITA_ELEMENT_GUIDANCE: Optional[str] = None
+_DITA_OT_GUIDANCE: Optional[str] = None
+_DITA_AUTHORING_GUIDANCE: Optional[str] = None
+
+_DITA_OT_PATTERN = re.compile(
+    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish|publishing|"
+    r"output preset|native pdf|ant\s+propert|plugin|ditaval filter|xsl.fo|fop|xslt|"
+    r"dita command|dita --input|dita --format|dita --output)\b",
+    re.IGNORECASE,
+)
+_DITA_AUTHORING_PATTERN = re.compile(
+    r"\b(best practice|when (should|to) use|concept (vs?|versus) task|content reuse|"
+    r"how (do I|to) (reuse|structure|organise|organize|write|author)|shortdesc rule|"
+    r"map structure|keydef|keyscope|conref (library|map|pattern)|ditaval|condition|"
+    r"topic type|file (naming|organisation|organization))\b",
+    re.IGNORECASE,
+)
+
+
+def _load_skill_guidance(filename: str) -> str:
+    path = PROMPTS_DIR / filename
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _get_dita_element_guidance() -> str:
+    global _DITA_ELEMENT_GUIDANCE
+    if _DITA_ELEMENT_GUIDANCE is None:
+        _DITA_ELEMENT_GUIDANCE = _load_skill_guidance("chat_dita_element_guidance.txt")
+    return _DITA_ELEMENT_GUIDANCE
+
+
+def _get_dita_ot_guidance() -> str:
+    global _DITA_OT_GUIDANCE
+    if _DITA_OT_GUIDANCE is None:
+        _DITA_OT_GUIDANCE = _load_skill_guidance("chat_dita_ot_guidance.txt")
+    return _DITA_OT_GUIDANCE
+
+
+def _get_dita_authoring_guidance() -> str:
+    global _DITA_AUTHORING_GUIDANCE
+    if _DITA_AUTHORING_GUIDANCE is None:
+        _DITA_AUTHORING_GUIDANCE = _load_skill_guidance("chat_dita_authoring_guidance.txt")
+    return _DITA_AUTHORING_GUIDANCE
+
+
+def _select_skill_guidance(user_content: str) -> str:
+    """Return the appropriate skill guidance block for the user's question."""
+    text = (user_content or "").strip()
+    if not text:
+        return ""
+    if _DITA_OT_PATTERN.search(text):
+        return _get_dita_ot_guidance()
+    if _DITA_AUTHORING_PATTERN.search(text):
+        return _get_dita_authoring_guidance()
+    if _DITA_ELEMENT_TAG_PATTERN.search(text) or _DITA_STRUCTURAL_QUERY_PATTERN.search(text):
+        return _get_dita_element_guidance()
+    return ""
+
+
 def _get_human_precision_addon() -> str:
     global _HUMAN_PRECISION_ADDON
     if _HUMAN_PRECISION_ADDON is not None:
@@ -3336,6 +3398,7 @@ def _build_compact_chat_system_prompt(
     rag_context: str = "",
     *,
     human_prompts: bool = False,
+    skill_guidance: str = "",
 ) -> str:
     """Compact system prompt for grounded chat — fits within Groq 12K TPM limit.
 
@@ -3380,6 +3443,8 @@ def _build_compact_chat_system_prompt(
         "normal chat replies. (Long-form **agent research** answers use a separate prescribed outline from the "
         "synthesis step.)\n"
     )
+    if skill_guidance:
+        base += f"\n\n# ANSWERING GUIDANCE\n{skill_guidance}"
     if rag_context:
         base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
     if human_prompts:
@@ -5132,7 +5197,7 @@ async def _build_grounded_dita_answer_payload(
             )
             try:
                 llm_draft = await generate_text(
-                    system_prompt=_build_compact_chat_system_prompt(rag_context=_build_rag_context(question, tenant_id=tenant_id)),
+                    system_prompt=_build_compact_chat_system_prompt(rag_context=_build_rag_context(question, tenant_id=tenant_id), skill_guidance=_select_skill_guidance(question)),
                     user_prompt=_build_grounded_answer_user_prompt(
                         question=question,
                         evidence_context=evidence_ctx_for_prompt,
@@ -5803,6 +5868,7 @@ async def _stream_assistant_reply(
             system_prompt = _build_compact_chat_system_prompt(
                 rag_context=rag_context,
                 human_prompts=human_prompts,
+                skill_guidance=_select_skill_guidance(user_content),
             )
             answer_shape_hint = _grounded_answer_shape_hint(user_content, normalized_grounded_facts)
             if evidence_pack.decision.status in {"abstain", "conflict"}:
@@ -6243,7 +6309,7 @@ async def _stream_tool_mode_reply(
         rag_context = rag_context[:2000] + "\n[truncated for model limit]"
 
     # Use compact prompt to stay within Groq 12K TPM limit
-    system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context, human_prompts=human_prompts)
+    system_prompt = _build_compact_chat_system_prompt(rag_context=rag_context, human_prompts=human_prompts, skill_guidance=_select_skill_guidance(user_content))
     # Inject session context (previous generation download URL, refinement hints)
     context_block = _build_context_block(context, user_content, session_id=session_id)
     if context_block:

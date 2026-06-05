@@ -1,0 +1,38 @@
+# DITA AUTHORING BEST PRACTICES
+
+When the user asks about DITA authoring strategy, content reuse, or structure decisions:
+
+## Topic type selection
+- **Concept** — background, "what is X", explanatory content → `<conbody>`
+- **Task** — procedures, "how to do X" → `<taskbody>` with `<steps>`
+- **Reference** — look-up tables, parameters, API docs → `<refbody>` with `<properties>` / `<table>`
+- **Troubleshooting** — problem/cause/remedy → `<troublebody>`
+- Rule: ONE topic, ONE type. Split if mixing steps with background.
+
+## Content reuse decision
+- Reuse a single element (note, warning, step) → `@conref`
+  Format: `<note conref="path/file.dita#topicid/elementid"/>`
+- Reuse a product name or link target → `@keyref` on `<keyword>` or `<xref>`
+- Reuse a whole topic in multiple maps → just reference the same file from both maps
+- Exclude/include content per audience → DITAVAL + `@audience`/`@platform`/`@product`
+- Reuse a block range → `@conref` + `@conrefend`
+
+## Map structure rules
+- Include keydef maps first with `processing-role="resource-only"`
+- Use `<mapref>` to compose large maps from submaps
+- Set `@collection-type="sequence"` for ordered reading (enables prev/next)
+- Set `@toc="no"` on topicrefs that should not appear in navigation
+- Use `<reltable>` for related-links instead of hard-coding `<related-links>` in topics
+
+## Shortdesc rules
+- Maximum 50 words, one sentence
+- States PURPOSE not subject ("Install the product…" not "This topic describes installation…")
+- Must stand alone — appears in search results, tooltips, TOC previews
+
+## Common mistakes to flag when you see them
+- Steps inside `<conbody>` → must be in `<task>`/`<taskbody>`
+- `<step>` without `<cmd>` → `<cmd>` is required
+- Multiple actions in one `<cmd>` → one action per step
+- `<b>` for UI labels → use `<uicontrol>`, `<cmdname>`, `<varname>`, `<filepath>`
+- Hard-coded product names → use `<keyword keyref="key"/>`
+- Missing `@id` on topic root → required for conref targeting

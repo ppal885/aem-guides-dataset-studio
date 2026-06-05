@@ -1,0 +1,28 @@
+{
+  "base_url": "https://docs.docker.com",
+  "urls": [
+    "https://docs.docker.com/get-started/",
+    "https://docs.docker.com/get-started/introduction/",
+    "https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/",
+    "https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/",
+    "https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-registry/",
+    "https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-docker-compose/",
+    "https://docs.docker.com/get-started/docker-concepts/building-images/",
+    "https://docs.docker.com/get-started/docker-concepts/building-images/understanding-image-layers/",
+    "https://docs.docker.com/get-started/docker-concepts/building-images/writing-a-dockerfile/",
+    "https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/",
+    "https://docs.docker.com/get-started/docker-concepts/running-containers/",
+    "https://docs.docker.com/get-started/docker-concepts/running-containers/publishing-ports/",
+    "https://docs.docker.com/get-started/docker-concepts/running-containers/overriding-container-defaults/",
+    "https://docs.docker.com/get-started/docker-concepts/running-containers/persisting-container-data/",
+    "https://docs.docker.com/get-started/docker-concepts/running-containers/multi-container-applications/",
+    "https://docs.docker.com/get-started/workshop/",
+    "https://docs.docker.com/get-started/workshop/02_our_app/",
+    "https://docs.docker.com/get-started/workshop/03_updating_app/",
+    "https://docs.docker.com/get-started/workshop/04_sharing_app/",
+    "https://docs.docker.com/get-started/workshop/05_persisting_data/",
+    "https://docs.docker.com/get-started/workshop/06_bind_mounts/",
+    "https://docs.docker.com/get-started/workshop/07_multi_container/",
+    "https://docs.docker.com/get-started/workshop/08_using_compose/"
+  ]
+}

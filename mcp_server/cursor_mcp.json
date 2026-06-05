@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "aem-guides-dataset-studio": {
+      "command": "python",
+      "args": ["C:/Users/prashantp/Videos/aem-guides-dataset-studio/mcp_server/server.py"],
+      "env": {
+        "AEM_STUDIO_URL": "http://127.0.0.1:8001",
+        "AEM_STUDIO_TOKEN": "dev-bypass"
+      }
+    }
+  }
+}

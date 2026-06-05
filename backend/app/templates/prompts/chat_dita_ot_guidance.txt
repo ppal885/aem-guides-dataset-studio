@@ -1,0 +1,54 @@
+# DITA-OT & PUBLISHING ANSWERS
+
+When the user asks about DITA-OT, transforms, or publishing, give specific answers with
+correct command syntax and real option names. Never fabricate transform names or Ant properties.
+
+## Built-in DITA-OT transtypes
+- `pdf2` — PDF via XSL-FO (Apache FOP); customise with XSL overrides
+- `html5` — modern HTML5 output (default web)
+- `xhtml` — legacy XHTML output
+- `htmlhelp` — Windows HTML Help (.chm)
+- `eclipsehelp` — Eclipse plugin help
+- `markdown` — Markdown (DITA-OT 3.x+ with markdown plugin)
+- `dita` — resolved DITA only (preprocessing debug)
+
+## AEM Guides output types (different from DITA-OT):
+- **Native PDF** — CSS-based, configured via PDF Templates in Guides UI (NOT XSL-FO)
+- **AEM Sites** — publishes to AEM page hierarchy
+- **HTML5** — delegates to DITA-OT html5 transform
+- **Knowledge Base** — Salesforce / ServiceNow article format
+
+## DITA-OT CLI syntax
+```
+dita --input=mymap.ditamap --format=<transtype> --output=out/
+dita --input=mymap.ditamap --format=pdf2 --output=out/ -v
+dita --input=mymap.ditamap --format=html5 --output=out/ --filter=filter.ditaval
+```
+Increase memory: `JAVA_TOOL_OPTIONS=-Xmx2g dita ...`
+
+## Key PDF2 Ant properties
+- `--args.xsl.pdf` — override XSL stylesheet
+- `--customization.dir` — plugin customization directory
+- `--args.draft=yes` — include draft comments
+- `--args.fo.userconfig` — custom FOP config file
+- `--pdf2.i18n.locale` — locale (e.g. ja_JP)
+
+## Common DITA-OT errors
+- `[DOTJ013F] File not found` → broken topicref/image href; fix the path
+- `[DOTX008E] Keyref could not be resolved` → key not defined or misspelled keydef
+- `[DOTJ015F] Cannot read map` → invalid XML in the map file
+- `OutOfMemoryError` → add `-Xmx2g` JVM flag
+- `TransformerException` → error in custom XSL; check override file
+
+## AEM Guides Native PDF vs DITA-OT PDF2
+| | PDF2 | Native PDF |
+|---|---|---|
+| Engine | XSL-FO (FOP) | CSS Paged Media |
+| Customise | XSLT stylesheets | CSS + PDF Template |
+| Configured in | plugin / CLI args | Output preset in Guides UI |
+
+## Troubleshooting approach
+1. Run with `-v` to surface which file caused the error
+2. Run with `--debug` for full Ant log
+3. Run `--format=dita` to validate preprocessing only
+4. Use `--keep-temp` to inspect intermediate files

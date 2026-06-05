@@ -1,0 +1,82 @@
+{
+  "skill_name": "dita-dataset-generator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need a DITA dataset for our AEM Guides training pipeline. We're covering Docker container management — topics should include creating containers, networking between containers, volumes, docker-compose, and health checks. We want a deep hierarchy structure, maybe 3-4 levels deep. Can you kick that off?",
+      "expected_output": "Claude should: (1) identify 'deep_hierarchy' as the recipe, (2) extract a specific subject like 'Docker container management: networking, volumes, docker-compose, health checks', (3) suggest depth=4 and children_per_level=3-4 in config, (4) provide a clear pre-flight explanation of what will be generated, (5) call create_job with all required fields populated",
+      "assertions": [
+        {
+          "name": "identifies_deep_hierarchy_recipe",
+          "description": "Claude selects deep_hierarchy as the recipe_type"
+        },
+        {
+          "name": "specific_subject_field",
+          "description": "The subject field is specific and domain-accurate, mentioning Docker concepts"
+        },
+        {
+          "name": "depth_config_set",
+          "description": "Config includes depth parameter between 3-5"
+        },
+        {
+          "name": "preflight_explanation_given",
+          "description": "Claude explains what will be generated before calling create_job"
+        },
+        {
+          "name": "create_job_called",
+          "description": "Claude calls create_job with recipe_type, subject, and config"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Hey, I've got this Jira ticket AG-2091 that's asking for better test coverage of DITA conref patterns — specifically how we handle conref on note, warning, and hazardstatement elements. Can you use that ticket to generate a dataset?",
+      "expected_output": "Claude should: (1) call search_jira_issues to look up AG-2091, (2) map the conref/note/warning content to 'conref_pack' or 'dita_conref_keyref_dataset_recipe', (3) set jira_id='AG-2091' on the create_job call, (4) set subject focused on DITA note/warning/hazardstatement conref patterns, (5) include the JIRA context in prompt_text",
+      "assertions": [
+        {
+          "name": "searches_jira_ticket",
+          "description": "Claude calls search_jira_issues with AG-2091 or equivalent lookup"
+        },
+        {
+          "name": "jira_id_set_on_job",
+          "description": "create_job includes jira_id='AG-2091'"
+        },
+        {
+          "name": "appropriate_conref_recipe",
+          "description": "Recipe chosen is conref_pack, dita_conref_keyref_dataset_recipe, or similarly conref-focused"
+        },
+        {
+          "name": "subject_mentions_note_elements",
+          "description": "The subject or prompt_text references note/warning/hazardstatement elements"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Can you create task topics for AEM Guides authoring workflows? I need topics covering: creating a DITA map, adding topic references, configuring conditional content with DITAVAL, publishing to native PDF, and managing keydefs. Make it about 15 topics.",
+      "expected_output": "Claude should: (1) select 'task_topics' as the recipe, (2) set a specific subject like 'AEM Guides authoring: DITA maps, topicrefs, DITAVAL, native PDF, keydefs', (3) set topic_count=15 in config (within the cap of 50), (4) include the workflow items in prompt_text, (5) give a pre-flight summary before calling create_job",
+      "assertions": [
+        {
+          "name": "selects_task_topics_recipe",
+          "description": "Claude selects task_topics as the recipe_type"
+        },
+        {
+          "name": "topic_count_within_caps",
+          "description": "topic_count is set to 15 (or close), not exceeding 50"
+        },
+        {
+          "name": "subject_specific_to_aem_guides",
+          "description": "Subject field mentions AEM Guides and specific workflow items (DITAVAL, native PDF, keydefs, etc.)"
+        },
+        {
+          "name": "workflow_items_in_prompt_text",
+          "description": "prompt_text captures the specific workflows listed by the user"
+        },
+        {
+          "name": "preflight_explanation_given",
+          "description": "Claude explains what 15 task topics will look like before creating the job"
+        }
+      ]
+    }
+  ]
+}
