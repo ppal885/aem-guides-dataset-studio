@@ -876,28 +876,96 @@ def _build_thin_evidence_answer(
     evidence_pack: EvidencePack,
     unsupported: list[str],
 ) -> str:
-    term_candidates = _missing_query_terms(question, evidence_pack)
-    term = term_candidates[0] if term_candidates else question.strip().rstrip("?") or "that term"
+    import re as _re
+    q_lower = question.lower()
     lowered_points = "\n".join(unsupported).lower()
-    lines = [
-        f"I couldn't verify a standard DITA attribute named `{term}` in the indexed evidence.",
-        "",
-        "What it usually means:",
-    ]
-    if "outputclass" in lowered_points:
-        lines.append("- `@outputclass` is often used as a styling hook to make content look like a callout.")
-    if "ditaval" in lowered_points:
-        lines.append("- Conditional processing is usually handled with DITA attributes plus a `.ditaval` file.")
-    if "note" in lowered_points:
-        lines.append("- A visible callout box is often implemented with the semantic `note` element and output styling.")
-    if len(lines) == 3:
-        lines.append("- It is usually a vendor-specific styling or specialization feature rather than a base DITA attribute.")
-    lines.extend(
-        [
+
+    # DITA-OT / publishing questions — the spec index doesn't have DITA-OT content
+    _OT_KEYWORDS = ("dita-ot", "dita ot", "pdf2", "transtype", "transform", "publish", "plugin", "ant prop")
+    if any(kw in q_lower for kw in _OT_KEYWORDS):
+        lines = [
+            "The indexed DITA spec doesn't cover DITA-OT runtime details directly.",
             "",
-            "If you share the exact element or snippet where you saw `callout`, I can map it to the right DITA or AEM Guides construct.",
+            "Based on DITA-OT knowledge:",
         ]
+        if "pdf2" in q_lower or "pdf" in q_lower:
+            lines.append("- `pdf2` is the built-in PDF transform that uses XSL-FO (Apache FOP or Antenna House).")
+            lines.append("- Run: `dita --input=mymap.ditamap --format=pdf2 --output=out/`")
+            lines.append("- Customise via `--args.xsl.pdf` (XSL override) or `--customization.dir`.")
+        if "html5" in q_lower:
+            lines.append("- `html5` is the modern web output transtype.")
+            lines.append("- Run: `dita --input=mymap.ditamap --format=html5 --output=out/`")
+        if "transtype" in q_lower:
+            lines.append("- Built-in transtypes: `pdf2`, `html5`, `xhtml`, `htmlhelp`, `eclipsehelp`, `markdown` (3.x+).")
+        if "plugin" in q_lower:
+            lines.append("- Install a plugin: `dita install com.example.myplugin/`")
+            lines.append("- Plugins extend transforms via extension points in `plugin.xml`.")
+        if len(lines) == 3:
+            lines.append("- Run `dita --help` to see all options; use `-v` for verbose output during transforms.")
+        lines.extend(["", "For AEM Guides publishing, use the Output Presets panel to configure and run transforms."])
+        return "\n".join(lines).strip()
+
+    # Element comparison question
+    _COMPARISON_PATTERN = _re.compile(
+        r"\b(difference|versus|vs\.?|compare)\b.*\b(and|or|vs\.?)\b", _re.IGNORECASE
     )
+    if _COMPARISON_PATTERN.search(question):
+        elements = _re.findall(r"\b([a-z][a-z0-9-]{2,})\b", q_lower)
+        dita_words = {"note", "hazardstatement", "warning", "caution", "shortdesc", "step",
+                      "task", "concept", "reference", "conref", "keyref", "topicref", "xref",
+                      "section", "example", "codeblock", "simpletable", "table", "choicetable"}
+        found = [e for e in elements if e in dita_words]
+        if found:
+            names = " and ".join(f"`<{e}>`" for e in found[:2])
+            lines = [
+                f"I don't have enough indexed evidence to fully compare {names}.",
+                "",
+                "Key distinction based on spec knowledge:",
+            ]
+            if "note" in found and "hazardstatement" in found:
+                lines.append("- `<note>` — general admonitions: note, tip, important, warning, danger, trouble, restriction.")
+                lines.append("- `<hazardstatement>` — strict safety notices (ANSI Z535): danger, warning, caution, notice.")
+                lines.append("  Children: `<typeofhazard>`, `<consequence>`, `<howtoavoid>` — structured for compliance output.")
+                lines.append("- Use `<note>` for general callouts; use `<hazardstatement>` when safety/compliance notation is required.")
+            elif "conref" in found and "keyref" in found:
+                lines.append("- `@conref` — pull a specific element from another file by ID. Content is substituted at build time.")
+                lines.append("- `@keyref` — indirect reference via a key defined in a keydef map. Key resolves to href or text.")
+                lines.append("- Use `@conref` for reusing block content; use `@keyref` for reusing links and variable text.")
+            else:
+                lines.append(f"- Both are valid DITA constructs with different content models and use cases.")
+                lines.append("- Try `lookup_dita_spec` with each element name for full content model and attribute details.")
+            return "\n".join(lines).strip()
+
+    # Generic thin evidence — don't claim it's a "DITA attribute"
+    term_candidates = _missing_query_terms(question, evidence_pack)
+    # Filter out function words that leaked through stopwords
+    _FUNCTION_WORDS = {"between", "does", "work", "works", "make", "makes", "used", "uses",
+                       "get", "set", "should", "would", "could", "will", "shall", "need", "want"}
+    term_candidates = [t for t in term_candidates if t.lower() not in _FUNCTION_WORDS]
+    term = term_candidates[0] if term_candidates else None
+
+    if term:
+        lines = [
+            f"I don't have enough indexed evidence about `{term}` to give a fully verified answer.",
+            "",
+            "What I can tell you:",
+        ]
+    else:
+        lines = [
+            "The indexed evidence doesn't fully cover this question.",
+            "",
+            "What I can tell you:",
+        ]
+
+    if "outputclass" in lowered_points:
+        lines.append("- `@outputclass` is a styling hook that passes a CSS class to the output transform.")
+    if "ditaval" in lowered_points:
+        lines.append("- Conditional processing uses DITA condition attributes (`@audience`, `@platform`, `@product`) + a `.ditaval` file.")
+    if "note" in lowered_points:
+        lines.append("- `<note>` supports types: note / tip / important / warning / danger / trouble / restriction.")
+    if len(lines) == 3:
+        lines.append("- Share the element name, attribute, or snippet you're asking about and I'll look it up directly.")
+    lines.extend(["", "Use `lookup_dita_spec` or share the XML you're working with for a precise answer."])
     return "\n".join(lines).strip()
 
 
@@ -997,6 +1065,27 @@ async def verify_grounded_answer(
                     thin_evidence_override=False,
                 )
             if draft_answer.strip():
+                # If the LLM produced a substantive answer (>120 chars, not a retrieval summary,
+                # no unsafe XML), return it directly — the system prompt carries skill guidance
+                # that covers domains not in the RAG index (DITA-OT, authoring best practices, etc.).
+                draft_clean = draft_answer.strip()
+                _unsafe_xml = any(
+                    _xml_block_looks_unsafe(block, question)
+                    for block in _extract_xml_code_blocks(draft_clean)
+                )
+                if (
+                    len(draft_clean) > 120
+                    and not _looks_like_retrieval_summary(draft_clean)
+                    and not _unsafe_xml
+                ):
+                    return GroundedAnswer(
+                        answer=_append_sources_if_missing(draft_clean, citation_objects),
+                        citation_ids=citation_ids,
+                        unsupported_points=[],
+                        grounding_status="partial",
+                        reason="LLM answer returned directly — evidence was thin but draft was substantive.",
+                        thin_evidence_override=False,
+                    )
                 verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
                 for term in _missing_query_terms(question, evidence_pack)[:3]:
                     note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."

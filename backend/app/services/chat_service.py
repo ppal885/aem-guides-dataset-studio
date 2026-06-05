@@ -277,7 +277,29 @@ _DITA_STRUCTURAL_QUERY_PATTERN = re.compile(
     r"</?[A-Za-z][A-Za-z0-9._:-]*>|"
     r"\b(dita|ditamap|xml|doctype|element|attribute|topicref|topichead|topicgroup|mapref|navref|"
     r"keydef|keyref|conref|conkeyref|href|reltable|bookmap|glossentry|subject scheme|"
-    r"related-links|related links?|relatedl|linklist|link list|linkinfo|link info|link element|"
+    # topic structure
+    r"shortdesc|abstract|prolog|taskbody|conbody|refbody|troublebody|"
+    r"prereq|context|steps|step|cmd|info|substeps|substep|choices|choice|choicetable|"
+    r"choiceoption|choicedesc|stepresult|tutorialinfo|stepxmp|result|postreq|"
+    r"condition|cause|remedy|responsibleparty|"
+    # block elements
+    r"section|example|note|warning|hazardstatement|caution|danger|attention|"
+    r"typeofhazard|consequence|howtoavoid|messagepanel|"
+    r"p\b|ul|ol|li|sl|sli|dl|dlentry|dlhead|dthd|ddhd|dt\b|dd\b|"
+    r"table|tgroup|thead|tbody|tfoot|colspec|row|entry|"
+    r"simpletable|sthead|strow|stentry|properties|prophead|proprow|proptype|propvalue|propdesc|"
+    r"fig|desc|image|alt|object|param|"
+    r"lines|pre|codeblock|codeph|lq|q|cite|"
+    r"draft-comment|required-cleanup|"
+    # inline elements
+    r"ph\b|keyword|term|b\b|i\b|u\b|sub\b|sup\b|tt\b|"
+    r"uicontrol|wintitle|menucascade|shortcut|screen|"
+    r"cmdname|filepath|varname|apiname|parmname|msgph|msgblock|"
+    r"synph|syntaxdiagram|groupseq|groupchoice|groupcomp|fragref|fragment|synnote|"
+    r"userinput|systemoutput|codeph|"
+    r"xref|link|linktext|linktitle|linkpool|related-links|related links?|relatedl|"
+    r"linklist|link list|linkinfo|link info|link element|"
+    # map / reuse
     r"foreign element|data-about|data about|boolean element|index-base|index base|itemgroup|item group|"
     r"no-topic-nesting|no topic nesting|state element|unknown element|required-cleanup|required cleanup|"
     r"ditaval elements?|ditaval val|ditaval prop|revprop|startflag|endflag|alt-text|style-conflict|"
@@ -1035,6 +1057,12 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         return "generation_request"
     if _DATASET_REQUEST_PATTERN.search(text):
         return "agent_research_plan"
+    if _DITA_OT_PATTERN.search(text):
+        # DITA-OT content is not in the spec index — let the LLM answer from skill guidance
+        return "default"
+    if _DITA_AUTHORING_PATTERN.search(text):
+        # Authoring best-practice questions — skill guidance in system prompt covers this
+        return "default"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
     if _DITA_GENERATION_PATTERN.search(text):
@@ -5932,17 +5960,20 @@ async def _stream_assistant_reply(
                 reason="The answer was rewritten into a clearer plain-language summary because the draft still read like a retrieval recap.",
             )
         if evidence_pack.decision.status in {"abstain", "conflict"}:
-            grounded_answer = replace(
-                grounded_answer,
-                answer=_build_thin_evidence_answer(
-                    question=user_content,
-                    evidence_pack=evidence_pack,
-                    unsupported=grounded_answer.unsupported_points,
-                ),
-                unsupported_points=grounded_answer.unsupported_points[:4],
-                grounding_status="partial",
-                reason="The draft answer was rewritten into a clearer plain-language summary because the evidence was too thin.",
-            )
+            # Skip replacement if verify_grounded_answer already returned a good LLM
+            # answer (thin_evidence_override=False signals it passed through the draft).
+            if grounded_answer.thin_evidence_override is not False:
+                grounded_answer = replace(
+                    grounded_answer,
+                    answer=_build_thin_evidence_answer(
+                        question=user_content,
+                        evidence_pack=evidence_pack,
+                        unsupported=grounded_answer.unsupported_points,
+                    ),
+                    unsupported_points=grounded_answer.unsupported_points[:4],
+                    grounding_status="partial",
+                    reason="The draft answer was rewritten into a clearer plain-language summary because the evidence was too thin.",
+                )
 
         llm_summary = summarize_llm_trace(
             assistant_msg_id,

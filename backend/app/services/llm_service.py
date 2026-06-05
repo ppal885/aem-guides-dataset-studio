@@ -358,6 +358,8 @@ def build_openai_chat_completion_kwargs(*, provider: str | None = None, **kwargs
         model_name = str(os.getenv("AZURE_OPENAI_MODEL", "") or os.getenv("OPENAI_MODEL", "")).lower()
         api_version = str(os.getenv("AZURE_OPENAI_API_VERSION", "")).strip()
         _is_reasoning_model = model_name.startswith(("o1", "o3", "o4"))
+        # Use max_completion_tokens for o1/o3/o4 reasoning models or Azure API >= 2024-09-01
+        # (which requires it for newer models like gpt-5).
         _supports_max_completion = _is_reasoning_model or api_version >= "2024-09-01"
         if _supports_max_completion:
             normalized["max_completion_tokens"] = normalized.pop("max_tokens")
