@@ -515,7 +515,7 @@ def _build_dita_element_family_overview_guidance(query: str, element_names: list
 
 
 _DITA_OT_BUILD_ERROR = re.compile(
-    r"\b(DOT[XJAF]\d{3,}|NullPointerException|OutOfMemoryError|"
+    r"\b(DOT[XJAF]\w+|NullPointerException|OutOfMemoryError|"
     r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
     r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map)|"
     r"broken\s+link|dita.?ot.*bug|dita.?ot.*issue)\b",

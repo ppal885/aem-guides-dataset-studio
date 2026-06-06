@@ -507,7 +507,7 @@ _DITA_OT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_OT_ERROR_PATTERN = re.compile(
-    r"\b(DOT[XJAF]\d{3,}|"                           # error codes: DOTX020, DOTJ013F, etc.
+    r"\b(DOT[XJAF]\w+|"                               # error codes: DOTX020, DOTJ013F, DOTA045W, etc.
     r"NullPointerException|OutOfMemoryError|"
     r"stack\s*trace|exception\s+in\s+thread|"
     r"build\s+fail(ed|ure)|transform\s+fail(ed|ure)|"
@@ -6052,7 +6052,6 @@ async def _stream_assistant_reply(
             and grounded_answer.answer.strip().lower().startswith("## at a glance")
         )
         if _ot_element_spec_answer:
-            from app.services.grounding_service import _build_thin_evidence_answer
             grounded_answer = replace(
                 grounded_answer,
                 answer=_build_thin_evidence_answer(

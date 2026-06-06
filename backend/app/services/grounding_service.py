@@ -1119,7 +1119,7 @@ async def verify_grounded_answer(
                 )
             import re as _re2
             _OT_ERROR_RE = _re2.compile(
-                r"\b(DOT[XJAF]\d{3,}|NullPointerException|OutOfMemoryError|"
+                r"\b(DOT[XJAF]\w+|NullPointerException|OutOfMemoryError|"
                 r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
                 r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map))\b",
                 _re2.IGNORECASE,
