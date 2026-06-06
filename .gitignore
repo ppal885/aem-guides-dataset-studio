@@ -69,6 +69,7 @@ logs/
 # Docker
 .dockerignore
 docker-compose.override.yml
+.env.docker
 
 # Testing
 .pytest_cache/
