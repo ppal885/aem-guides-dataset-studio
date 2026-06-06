@@ -1117,6 +1117,27 @@ async def verify_grounded_answer(
                     grounding_status="partial",
                     reason="The answer was rewritten into a clearer plain-language summary because the evidence was thin or conflicting.",
                 )
+            import re as _re2
+            _OT_ERROR_RE = _re2.compile(
+                r"\b(DOT[XJAF]\d{3,}|NullPointerException|OutOfMemoryError|"
+                r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
+                r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map))\b",
+                _re2.IGNORECASE,
+            )
+            if _OT_ERROR_RE.search(question):
+                answer_text = _build_thin_evidence_answer(
+                    question=question,
+                    evidence_pack=evidence_pack,
+                    unsupported=[],
+                )
+                return GroundedAnswer(
+                    answer=answer_text,
+                    citation_ids=citation_ids,
+                    unsupported_points=[],
+                    grounding_status="partial",
+                    reason="DITA-OT error query — answered from OT guidance, not spec evidence.",
+                    thin_evidence_override=False,
+                )
             answer_text = _build_evidence_only_answer(
                 question=question,
                 evidence_pack=evidence_pack,

@@ -514,10 +514,23 @@ def _build_dita_element_family_overview_guidance(query: str, element_names: list
     }
 
 
+_DITA_OT_BUILD_ERROR = re.compile(
+    r"\b(DOT[XJAF]\d{3,}|NullPointerException|OutOfMemoryError|"
+    r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
+    r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map)|"
+    r"broken\s+link|dita.?ot.*bug|dita.?ot.*issue)\b",
+    re.IGNORECASE,
+)
+
+
 def _build_dita_element_guidance(
     query: str,
     elements: list[str] | None = None,
 ) -> dict[str, Any] | None:
+    # DITA-OT error/build-failure queries must not go through spec element lookup
+    if _DITA_OT_BUILD_ERROR.search(query or ""):
+        return None
+
     from app.services.dita_graph_service import get_attributes_of, get_children_of, get_element_summary
     from app.services.dita_query_interpreter import interpret_dita_query
     from app.services.dita_knowledge_retriever import retrieve_dita_graph_knowledge

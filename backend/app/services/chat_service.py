@@ -410,6 +410,9 @@ def _should_include_structural_dita_rag(question: str) -> bool:
     text = (question or "").strip()
     if not text:
         return False
+    # DITA-OT error codes / build failures: spec RAG is noise, not signal
+    if _DITA_OT_ERROR_PATTERN.search(text):
+        return False
     if _is_dita_construct_output_query(text):
         return True
     if _DITA_RELATED_LINKS_TOC_QUERY_PATTERN.search(text):
@@ -492,9 +495,29 @@ _DITA_AUTHORING_GUIDANCE: Optional[str] = None
 _DITA_OT_PATTERN = re.compile(
     r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish|publishing|"
     r"output preset|native pdf|ant\s+propert|plugin|ditaval filter|xsl.fo|fop|xslt|"
-    r"dita command|dita --input|dita --format|dita --output)\b",
+    r"dita command|dita --input|dita --format|dita --output|"
+    # DITA-OT error/warning codes (DOTX, DOTJ, DOTA, DOTF prefixes)
+    r"DOT[XJAF]\d+|DITA.OT\s+error|build\s+fail|transform\s+fail|"
+    # Common OT symptoms
+    r"NullPointerException|OutOfMemoryError|xsl.*error|fo.*error|fop.*error|"
+    r"missing.*(image|topic|map)|broken.*link|unresolved.*(key|conref|xref)|"
+    r"dita.ot\s+\d+\.\d+|upgrade.*dita.ot|dita.ot.*version|"
+    # AEM Guides publishing
+    r"native\s+pdf|aem.*publish|publish.*aem|output.*preset|preset.*output)\b",
     re.IGNORECASE,
 )
+_DITA_OT_ERROR_PATTERN = re.compile(
+    r"\b(DOT[XJAF]\d{3,}|"                           # error codes: DOTX020, DOTJ013F, etc.
+    r"NullPointerException|OutOfMemoryError|"
+    r"stack\s*trace|exception\s+in\s+thread|"
+    r"build\s+fail(ed|ure)|transform\s+fail(ed|ure)|"
+    r"fop.*error|xsl.*error|fo.*error|"
+    r"unresolved\s+(key\w*|conref\w*|xref\w*)|"
+    r"missing\s+(image|topic|file|map)|broken\s+link|"
+    r"dita.ot.*bug|dita.ot.*issue|known\s+issue)\b",
+    re.IGNORECASE,
+)
+
 _DITA_AUTHORING_PATTERN = re.compile(
     r"\b(best practice|when (should|to) use|concept (vs?|versus) task|content reuse|"
     r"how (do I|to) (reuse|structure|organise|organize|write|author)|shortdesc rule|"
@@ -1058,8 +1081,11 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     if _DATASET_REQUEST_PATTERN.search(text):
         return "agent_research_plan"
     if _DITA_OT_PATTERN.search(text):
-        # DITA-OT content is not in the spec index — let the LLM answer from skill guidance
-        return "default"
+        # Error codes / build failures → default mode so GitHub RAG is primary evidence
+        if _DITA_OT_ERROR_PATTERN.search(text):
+            return "default"
+        # General OT/publishing questions → AEM Guides grounding
+        return "grounded_aem_answer"
     if _DITA_AUTHORING_PATTERN.search(text):
         # Authoring best-practice questions — skill guidance in system prompt covers this
         return "default"
@@ -1136,6 +1162,11 @@ def _extract_requested_dita_attribute(user_content: str) -> str:
 def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[str, dict[str, Any]]]:
     requests: list[tuple[str, dict[str, Any]]] = []
     lowered = (user_content or "").strip().lower()
+
+    # DITA-OT error codes / build failures: spec lookup returns wrong element docs.
+    # Return empty tool requests — the LLM will answer from GitHub RAG + skill guidance.
+    if _DITA_OT_ERROR_PATTERN.search(user_content) and answer_mode == "grounded_dita_answer":
+        return requests
 
     if answer_mode == "grounded_dita_answer":
         attribute_name = _extract_requested_dita_attribute(user_content)
@@ -3730,17 +3761,18 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     except Exception as e:
         logger.debug_structured("RAG AEM docs failed", extra_fields={"error": str(e)})
 
-    # DITA spec
-    try:
-        dita_chunks = retrieve_dita_knowledge(capped_query, k=RAG_DITA_K)
-        if dita_chunks:
-            dita_parts = []
-            for i, c in enumerate(dita_chunks[:RAG_DITA_K], 1):
-                dita_parts.append(_format_dita_chunk(c, i, max_text_chars=RAG_SNIPPET_CHARS))
-            if dita_parts:
-                parts.append("DITA SPEC REFERENCE:\n" + "\n\n".join(dita_parts))
-    except Exception as e:
-        logger.debug_structured("RAG DITA failed", extra_fields={"error": str(e)})
+    # DITA spec — skip for DITA-OT error/build-failure queries (spec is noise there)
+    if not _DITA_OT_ERROR_PATTERN.search(query):
+        try:
+            dita_chunks = retrieve_dita_knowledge(capped_query, k=RAG_DITA_K)
+            if dita_chunks:
+                dita_parts = []
+                for i, c in enumerate(dita_chunks[:RAG_DITA_K], 1):
+                    dita_parts.append(_format_dita_chunk(c, i, max_text_chars=RAG_SNIPPET_CHARS))
+                if dita_parts:
+                    parts.append("DITA SPEC REFERENCE:\n" + "\n\n".join(dita_parts))
+        except Exception as e:
+            logger.debug_structured("RAG DITA failed", extra_fields={"error": str(e)})
 
     try:
         tenant_chunks = retrieve_tenant_context(capped_query, tenant_id=tenant_id, k=4)
@@ -5663,6 +5695,10 @@ async def _stream_assistant_reply(
         if str(route_decision.legacy_answer_mode or "").strip() not in {"", "default"}
         else _determine_answer_mode(user_content, session_id=session_id)
     )
+    # DITA-OT error codes / build failures must use default mode — the DITA spec
+    # lookup (grounded_dita_answer) returns element docs, not error resolutions.
+    if _DITA_OT_ERROR_PATTERN.search(user_content):
+        answer_mode = "default"
 
     parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
     if parsed_tool_intent:
@@ -5890,6 +5926,15 @@ async def _stream_assistant_reply(
                     "helpful, natural voice, then add a short `## Verification notes` section.\n\n"
                     "Do not echo the evidence snippets or write a retrieval recap."
                 )
+            # DITA-OT error codes / build failures: spec evidence is irrelevant —
+            # the DITA-OT GitHub issues in rag_context are the authoritative source.
+            elif _DITA_OT_ERROR_PATTERN.search(user_content):
+                evidence_ctx_for_prompt = (
+                    "The spec evidence above is NOT relevant to this build error or publishing issue. "
+                    "Answer from the DITA-OT GitHub issues in the context below and your own knowledge. "
+                    "Be direct and empathetic — give the fix or cause first. "
+                    "If you see a relevant GitHub issue, cite it with the URL."
+                )
             # Use compact prompt to stay within Groq 12K TPM limit.
             # The full chat_system.json (~10K tokens) exceeds the limit when
             # combined with evidence + DITA RAG + user message.
@@ -5944,7 +5989,11 @@ async def _stream_assistant_reply(
             verified_examples=(
                 [item.to_dict() for item in (normalized_grounded_facts.verified_examples if normalized_grounded_facts else [])]
             ),
-            structured_tool_answer=normalized_grounded_facts is not None and not llm_enriched,
+            # For DITA-OT error queries the spec evidence is misleading — force pass-through
+            structured_tool_answer=(
+                False if _DITA_OT_ERROR_PATTERN.search(user_content)
+                else normalized_grounded_facts is not None and not llm_enriched
+            ),
             structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
         )
         if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"}:
@@ -5974,6 +6023,26 @@ async def _stream_assistant_reply(
                     grounding_status="partial",
                     reason="The draft answer was rewritten into a clearer plain-language summary because the evidence was too thin.",
                 )
+
+        # For DITA-OT error/build-failure queries, any DITA spec element answer
+        # (## at a glance / ## where it applies format) is wrong — replace it with
+        # a proper OT-guidance response using the skill guidance in the system prompt.
+        _ot_element_spec_answer = (
+            _DITA_OT_ERROR_PATTERN.search(user_content)
+            and grounded_answer.answer.strip().lower().startswith("## at a glance")
+        )
+        if _ot_element_spec_answer:
+            from app.services.grounding_service import _build_thin_evidence_answer
+            grounded_answer = replace(
+                grounded_answer,
+                answer=_build_thin_evidence_answer(
+                    question=user_content,
+                    evidence_pack=evidence_pack,
+                    unsupported=[],
+                ),
+                grounding_status="partial",
+                reason="Spec element answer replaced for DITA-OT error query — using OT guidance instead.",
+            )
 
         llm_summary = summarize_llm_trace(
             assistant_msg_id,
