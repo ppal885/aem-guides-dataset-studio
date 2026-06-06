@@ -522,7 +522,18 @@ _DITA_AUTHORING_PATTERN = re.compile(
     r"\b(best practice|when (should|to) use|concept (vs?|versus) task|content reuse|"
     r"how (do I|to) (reuse|structure|organise|organize|write|author)|shortdesc rule|"
     r"map structure|keydef|keyscope|conref (library|map|pattern)|ditaval|condition|"
-    r"topic type|file (naming|organisation|organization))\b",
+    r"topic type|file (naming|organisation|organization)|"
+    r"keyref.*(product|variable|name|text)|product.*(name|variable).*keyref|"
+    r"how.*(use|set.?up|create).*(keyref|key\s+definition|keydef))\b",
+    re.IGNORECASE,
+)
+
+_DITA_OT_COMPARISON_PATTERN = re.compile(
+    r"\b(native\s+pdf\s+(vs?|versus|compared?|difference)|"
+    r"pdf2\s+(vs?|versus|compared?|difference)|"
+    r"difference.*native\s+pdf|difference.*pdf2|"
+    r"compare.*(native\s+pdf|pdf2)|"
+    r"native\s+pdf.*vs.*pdf2|pdf2.*vs.*native)\b",
     re.IGNORECASE,
 )
 
@@ -1083,6 +1094,9 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     if _DITA_OT_PATTERN.search(text):
         # Error codes / build failures → default mode so GitHub RAG is primary evidence
         if _DITA_OT_ERROR_PATTERN.search(text):
+            return "default"
+        # Comparison questions (native PDF vs pdf2, etc.) → default so OT guidance table is used
+        if _DITA_OT_COMPARISON_PATTERN.search(text):
             return "default"
         # General OT/publishing questions → AEM Guides grounding
         return "grounded_aem_answer"
@@ -5698,6 +5712,12 @@ async def _stream_assistant_reply(
     # DITA-OT error codes / build failures must use default mode — the DITA spec
     # lookup (grounded_dita_answer) returns element docs, not error resolutions.
     if _DITA_OT_ERROR_PATTERN.search(user_content):
+        answer_mode = "default"
+    # Comparison questions need the OT guidance table, not the native PDF config tool
+    elif _DITA_OT_COMPARISON_PATTERN.search(user_content):
+        answer_mode = "default"
+    # Keyref authoring questions need authoring guidance, not the spec element lookup
+    elif _DITA_AUTHORING_PATTERN.search(user_content):
         answer_mode = "default"
 
     parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)

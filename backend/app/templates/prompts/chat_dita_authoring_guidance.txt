@@ -17,6 +17,34 @@ When the user asks about DITA authoring strategy, content reuse, or structure de
 - Exclude/include content per audience → DITAVAL + `@audience`/`@platform`/`@product`
 - Reuse a block range → `@conref` + `@conrefend`
 
+## Using keyref for product names (variable text)
+This is the most common keyref use case. The pattern is always: define in a keydef map, reference in topics.
+
+Step 1 — Create a keydef map (mark it resource-only so it's not in the TOC):
+```xml
+<map>
+  <keydef keys="product-name" processing-role="resource-only">
+    <topicmeta><keywords><keyword>AEM Guides</keyword></keywords></topicmeta>
+  </keydef>
+  <keydef keys="product-version" processing-role="resource-only">
+    <topicmeta><keywords><keyword>4.6</keyword></keywords></topicmeta>
+  </keydef>
+</map>
+```
+
+Step 2 — Include the keydef map in your root map:
+```xml
+<mapref href="keys/product-keys.ditamap" processing-role="resource-only"/>
+```
+
+Step 3 — Reference the key in topics:
+```xml
+<p>Welcome to <keyword keyref="product-name"/> version <keyword keyref="product-version"/>.</p>
+```
+
+To update the product name across the whole book, change only the keydef — all references update automatically.
+For variant docs (e.g. cloud vs on-prem), use keyscopes to define different values per branch.
+
 ## Map structure rules
 - Include keydef maps first with `processing-role="resource-only"`
 - Use `<mapref>` to compose large maps from submaps

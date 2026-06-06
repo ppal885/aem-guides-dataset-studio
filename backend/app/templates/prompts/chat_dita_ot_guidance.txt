@@ -44,6 +44,22 @@ When you see an error code, look it up in the evidence first. If not found:
 
 AEM Guides Native PDF is NOT DITA-OT pdf2 — it uses CSS Paged Media, configured via PDF Templates.
 
+## Native PDF vs PDF2 — key differences
+When someone asks to compare these two, always use this table:
+
+| | **DITA-OT pdf2** | **AEM Guides Native PDF** |
+|---|---|---|
+| **Engine** | XSL-FO → Apache FOP | CSS Paged Media (Prince/AH CSS) |
+| **Customise** | XSL stylesheets (XSLT) | CSS files + PDF Template editor |
+| **Configured in** | CLI args / Ant properties / plugin | AEM Guides UI → Output Presets → PDF Templates |
+| **Skills needed** | XSLT, XSL-FO | CSS, basic AEM Guides UI |
+| **Page size** | `--args.page.width` / `--args.page.height` | PDF Template → Page Layouts |
+| **Cover page** | Custom XSL front-matter | PDF Template → Cover Page layout |
+| **Font** | FOP config XML | Template CSS `@font-face` |
+| **When to use** | Command-line builds, CI/CD, open-source toolchains | AEM Guides publishing pipeline |
+
+**Rule of thumb**: if you're publishing from the AEM Guides UI, use Native PDF. If you're running `dita --format=pdf2` on the command line, that's DITA-OT pdf2.
+
 ## Key diagnostic steps (use these for any build failure)
 1. Add `-v` for verbose output: `dita ... -v`
 2. Add `--debug` for full Ant log
