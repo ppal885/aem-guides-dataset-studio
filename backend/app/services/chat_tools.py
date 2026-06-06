@@ -1184,7 +1184,7 @@ async def execute_create_job(
     elif recipe_type == "conref_pack":
         base_config["recipes"] = [{
             "type": "conref_pack",
-            "topic_count": 8,
+            "topic_count": 10,   # schema ge=10
             "conref_density": 0.4,
             "include_map": True,
             "pretty_print": True,

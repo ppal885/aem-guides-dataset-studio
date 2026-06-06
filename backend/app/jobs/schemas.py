@@ -613,7 +613,7 @@ class LargeScaleRecipe(BaseModel):
     - No map files (too large for practical use)
     """
     type: Literal["large_scale"] = "large_scale"
-    topic_count: int = Field(default=100000, ge=1000, le=1000000)
+    topic_count: int = Field(default=1000, ge=50, le=1000000)
     batch_size: int = Field(default=1000, ge=100, le=10000)
     include_map: bool = False
     pretty_print: bool = False
@@ -662,7 +662,7 @@ class WideBranchingRecipe(BaseModel):
     """
     type: Literal["wide_branching"] = "wide_branching"
     root_topics: int = Field(default=10, ge=1, le=100)
-    children_per_root: int = Field(default=1000, ge=10, le=10000)
+    children_per_root: int = Field(default=10, ge=5, le=10000)
     include_maps: bool = True
     pretty_print: bool = True
     content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
