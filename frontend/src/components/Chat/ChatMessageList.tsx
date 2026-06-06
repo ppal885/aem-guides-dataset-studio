@@ -142,7 +142,10 @@ export function ChatMessageList({
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Smooth-scroll the container to the bottom so the latest response is visible
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages, streamingContent]);
 
   useEffect(() => {

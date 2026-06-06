@@ -200,8 +200,10 @@ function LlmUsagePanel({
     ? llm.draft_stage?.fields?.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
   return (
-    <div className={cn('rounded-lg border border-white/70 bg-white/80 px-3 py-2', className)}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">AI usage</p>
+    <details className={cn('rounded-lg border border-white/70 bg-white/80 px-3 py-2 group', className)}>
+      <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 select-none hover:text-slate-600">
+        AI usage <span className="font-normal normal-case tracking-normal">(expand)</span>
+      </summary>
       <div className="mt-1 space-y-1 text-xs text-slate-700">
         {llm.path && (
           <p>
@@ -234,7 +236,7 @@ function LlmUsagePanel({
           <p className="text-amber-700">{String(llm.draft_stage.warning)}</p>
         )}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -2822,14 +2824,15 @@ function GroundingPanel({ grounding }: { grounding: ChatGrounding }) {
   const llm = grounding.llm;
 
   return (
-    <div className={cn('rounded-xl border p-3 shadow-sm', tone)}>
-      <div className="flex flex-wrap items-center gap-2">
+    <details className={cn('rounded-xl border px-3 py-2 shadow-sm', tone)}>
+      <summary className="cursor-pointer list-none flex flex-wrap items-center gap-2 select-none">
         <span className="rounded-full border border-current/20 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
           {badge}
         </span>
-        <span className="text-xs opacity-80">Confidence {Math.round((grounding.confidence ?? 0) * 100)}%</span>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed">{grounding.reason}</p>
+        <span className="text-xs opacity-60">Confidence {Math.round((grounding.confidence ?? 0) * 100)}% · click for details</span>
+      </summary>
+      <div className="mt-2">
+      <p className="text-sm leading-relaxed opacity-80">{grounding.reason}</p>
       <LlmUsagePanel llm={llm} className="mt-3 border-white/50 bg-white/60" />
       {grounding.correction_applied && grounding.corrected_query && (
         <p className="mt-2 text-xs opacity-80">
@@ -2861,6 +2864,7 @@ function GroundingPanel({ grounding }: { grounding: ChatGrounding }) {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </details>
   );
 }
