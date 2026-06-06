@@ -933,9 +933,10 @@ async def execute_generate_dita(
             )
         return out
     except Exception as e:
+        update_generate_progress(run_id, status="failed", stage="error", error=str(e))
         logger.warning_structured(
             "generate_dita tool failed",
-            extra_fields={"error": str(e)},
+            extra_fields={"run_id": run_id, "error": str(e)},
         )
         return {"error": str(e)}
 
