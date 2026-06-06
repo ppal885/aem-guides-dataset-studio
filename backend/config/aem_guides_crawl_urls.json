@@ -235,7 +235,6 @@
     "https://dita-lang.org/dita/langref/ditaval/style-conflict",
     "https://dita-lang.org/dita/langref/ditaval/val",
     "https://dita-lang.org/dita/archspec/base/ditamap-attributes",
-
     "https://dita-lang.org/dita/archspec/base/translation",
     "https://dita-lang.org/dita/archspec/base/xmllang",
     "https://dita-lang.org/dita/archspec/base/location-of-the-xml-lang-attribute",
@@ -250,7 +249,6 @@
     "https://dita-lang.org/dita/archspec/base/example-scoped-key-name-conflicts",
     "https://dita-lang.org/dita/archspec/base/example-subjectrefs-attribute-with-key-scopes",
     "https://dita-lang.org/dita/archspec/base/context-hooks-for-user-assistance",
-
     "https://dita-lang.org/dita/langref/base/topic",
     "https://dita-lang.org/dita/langref/base/title",
     "https://dita-lang.org/dita/langref/base/shortdesc",
@@ -323,7 +321,6 @@
     "https://dita-lang.org/dita/langref/base/indexterm",
     "https://dita-lang.org/dita/langref/base/index-see",
     "https://dita-lang.org/dita/langref/base/index-see-also",
-
     "https://dita-lang.org/dita/archspec/base/specialization",
     "https://dita-lang.org/dita/archspec/base/constraints",
     "https://dita-lang.org/dita/archspec/base/conref",
@@ -346,7 +343,6 @@
     "https://dita-lang.org/dita/langref/base/bodydiv",
     "https://dita-lang.org/dita/langref/base/dita",
     "https://dita-lang.org/dita/langref/base/titlealt",
-
     "/using/install-guide/on-prem-ig/download-install-upgrade-aemg/download-install-aem-guides-v4-6",
     "/using/install-guide/cs-ig/introduction",
     "/using/install-guide/cs-ig/download-install-dxml-first-time",
@@ -401,12 +397,29 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/assets-view-introduction",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/my-workspace-assets-view",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/supported-file-formats-assets-view",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/navigate-assets-view"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/navigate-assets-view",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/search",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/search#saved-searches",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/introduction",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/editor-side-panel",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/edit-content",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/publishing",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/templates",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/annotations",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/rich-text-editor",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/responsive-layout",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/components",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/accessible-content",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/keyboard-shortcuts",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts"
   ],
   "recursive": {
     "enabled": false,
     "max_depth": 2,
-    "exclude_dirs": ["/communities/", "/t5/"]
+    "exclude_dirs": [
+      "/communities/",
+      "/t5/"
+    ]
   },
   "dita_pdf": {
     "urls": [

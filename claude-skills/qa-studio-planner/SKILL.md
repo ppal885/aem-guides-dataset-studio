@@ -62,7 +62,7 @@ The endpoint returns one of two shapes:
 
 **Blocked** (missing critical info):
 ```json
-{ "blocked": true, "blocking_questions": ["What UI panel is involved?", ...] }
+{ "blocked": true, "blocking_questions": ["What UI panel is involved?", "..."] }
 ```
 → Show the questions to the user and ask them to answer before proceeding.
 
@@ -73,10 +73,10 @@ The endpoint returns one of two shapes:
   "plan_draft": {
     "feature": "...",
     "scenarios": [
-      { "title": "...", "given": [...], "when": [...], "then": [...] }
+      { "title": "...", "given": ["..."], "when": ["..."], "then": ["..."] }
     ],
-    "page_objects": ["DitaEditorPage", ...],
-    "assertions": [...]
+    "page_objects": ["DitaEditorPage", "..."],
+    "assertions": ["..."]
   }
 }
 ```
