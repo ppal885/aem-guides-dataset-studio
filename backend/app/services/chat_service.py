@@ -524,7 +524,11 @@ _DITA_AUTHORING_PATTERN = re.compile(
     r"map structure|keydef|keyscope|conref (library|map|pattern)|ditaval|condition|"
     r"topic type|file (naming|organisation|organization)|"
     r"keyref.*(product|variable|name|text)|product.*(name|variable).*keyref|"
-    r"how.*(use|set.?up|create).*(keyref|key\s+definition|keydef))\b",
+    r"how.*(use|set.?up|create).*(keyref|key\s+definition|keydef)|"
+    r"keyscopes?|"
+    # Multi-product / content sharing architecture questions
+    r"products?\s+shar|shar.*\s+content|reuse\s+strat|avoid\s+duplic|"
+    r"architecture.*dita|dita.*architecture)\b",
     re.IGNORECASE,
 )
 
@@ -5807,7 +5811,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"}:
+    if route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
         contract = route_decision.candidate_contract or {}
         fresh_generate_dita_plan = _build_generate_dita_preview_plan(
             user_request=user_content,
