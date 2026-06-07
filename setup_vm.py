@@ -40,7 +40,7 @@ def write_file(path, content, sudo=False):
 print("\n[1/5] Writing nginx config...")
 
 NGINX_CONF = r"""server {
-    listen 80;
+    listen 4502;
     server_name _;
     root /var/www/aem-studio;
     index index.html;
