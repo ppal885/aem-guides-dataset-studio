@@ -5959,6 +5959,15 @@ async def _stream_assistant_reply(
                     "Be direct and empathetic — give the fix or cause first. "
                     "If you see a relevant GitHub issue, cite it with the URL."
                 )
+            # Authoring strategy / keyscopes / content reuse: the indexed spec evidence may not
+            # cover the question. Answer fully from the DITA AUTHORING GUIDANCE in the system prompt.
+            elif _DITA_AUTHORING_PATTERN.search(user_content):
+                evidence_ctx_for_prompt = (
+                    "The indexed spec evidence may not directly cover this authoring question. "
+                    "Answer fully and helpfully from the DITA AUTHORING GUIDANCE and ANSWERING GUIDANCE "
+                    "sections in the system prompt above. Give a complete answer with examples — "
+                    "do not say you lack evidence; use your knowledge."
+                )
             # Use compact prompt to stay within Groq 12K TPM limit.
             # The full chat_system.json (~10K tokens) exceeds the limit when
             # combined with evidence + DITA RAG + user message.
