@@ -143,7 +143,7 @@ if not os.path.exists(UVICORN):
     pip = os.path.join(VENV, "bin", "pip")
     os.environ["TMPDIR"] = "/var/tmp"
     run(f"{pip} install --upgrade pip")
-    run(f"TMPDIR=/var/tmp {pip} install --timeout 300 -r {BACKEND_DIR}/requirements.txt")
+    run(f"TMPDIR=/var/tmp {pip} install --no-cache-dir --timeout 300 -r {BACKEND_DIR}/requirements.txt")
 else:
     print("  venv already exists, skipping install")
 
