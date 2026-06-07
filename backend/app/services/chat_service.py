@@ -507,7 +507,12 @@ _DITA_OT_PATTERN = re.compile(
     r"missing.*(image|topic|map)|broken.*link|unresolved.*(key|conref|xref)|"
     r"dita.ot\s+\d+\.\d+|upgrade.*dita.ot|dita.ot.*version|"
     # AEM Guides publishing
-    r"native\s+pdf|aem.*publish|publish.*aem|output.*preset|preset.*output)\b",
+    r"native\s+pdf|aem.*publish|publish.*aem|output.*preset|preset.*output|"
+    # Output quality symptoms (not errors but publishing problems)
+    r"missing.*toc|toc.*missing|table.*of.*contents.*missing|missing.*table.*of.*contents|"
+    r"output.*wrong|wrong.*output|output.*missing|broken.*output|"
+    r"html5.*slow|slow.*html5|large.*map.*slow|performance.*output|"
+    r"toc.*not.*appear|toc.*empty|headings.*missing.*output)\b",
     re.IGNORECASE,
 )
 _DITA_OT_ERROR_PATTERN = re.compile(
@@ -3131,17 +3136,54 @@ def _grounded_answer_shape_hint(
     question: str,
     facts: NormalizedGroundedFactSet | None,
 ) -> str:
+    q = (question or "").strip()
     if facts is None:
-        return ""
+        # Even without tool facts, inject shape guidance based on question form
+        return _question_shape_hint(q)
+
     if facts.answer_kind == "dita_element_family_overview":
         return (
             "Answer as an overview of the main DITA table types and when to use each one. "
             "Do not force a comparison table unless the user explicitly asked to compare."
         )
-    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and not _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(question or ""):
+    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and not _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
         return (
             "The user did not explicitly ask for a comparison table. Prefer a natural overview that explains each item "
             "and when to use it, using a comparison table only if it genuinely improves clarity."
+        )
+    return _question_shape_hint(q)
+
+
+def _question_shape_hint(question: str) -> str:
+    """Return a shape/format hint for the LLM based on question type."""
+    q = (question or "").strip()
+    if not q:
+        return ""
+    q_lower = q.lower()
+    if _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
+        return (
+            "Use a markdown comparison table (columns: feature/dimension; rows: each option). "
+            "After the table, add a 1-paragraph 'When to choose X over Y' recommendation."
+        )
+    if q_lower.startswith(("what is ", "what are ", "what does ")):
+        return (
+            "Open with a direct one-sentence definition. "
+            "Then cover: where it appears, what it can contain, key attributes, a minimal XML example, common mistakes."
+        )
+    if re.search(r"\bhow\s+do\s+I\b|\bhow\s+to\b|\bhow\s+can\s+I\b", q, re.IGNORECASE):
+        return (
+            "Use numbered steps. Include a code block (XML or command) if the answer involves markup or CLI. "
+            "End with a 'Common mistakes' note if applicable."
+        )
+    if re.search(r"\bwhy\b|\bwhat.*wrong\b|\bproblem\b|\bfail(ed|ing)?\b|\berror\b", q, re.IGNORECASE):
+        return (
+            "Lead with the most likely cause (1-2 sentences). "
+            "Then: how to diagnose, the fix, and how to prevent it next time."
+        )
+    if re.search(r"\blist\b|\ball\s+(the\s+)?(type|value|option|attr|element)\b", q, re.IGNORECASE):
+        return (
+            "Use a markdown table or bullet list. Be exhaustive — list ALL values/options, not just common ones. "
+            "Add a brief description for each."
         )
     return ""
 
@@ -3542,7 +3584,7 @@ def _build_grounded_answer_system_prompt(*, human_prompts: bool = False) -> str:
     return _build_compact_chat_system_prompt(human_prompts=human_prompts)
 
 
-def _recent_chat_transcript(session_id: str, *, limit: int = 6) -> str:
+def _recent_chat_transcript(session_id: str, *, limit: int = 15) -> str:
     rows = get_messages(session_id, limit=limit)
     if not rows:
         return ""
@@ -3552,8 +3594,39 @@ def _recent_chat_transcript(session_id: str, *, limit: int = 6) -> str:
         content = str(row.get("content") or "").strip()
         if role not in {"user", "assistant"} or not content:
             continue
-        lines.append(f"{role.title()}: {content[:500]}")
+        # Increased from 500 → 1500 chars so multi-turn context is preserved
+        lines.append(f"{role.title()}: {content[:1500]}")
     return "\n".join(lines[-limit:])
+
+
+_FOLLOW_UP_ANAPHORA = re.compile(
+    r"\b(this|that|it|those|these|the same|also|as well|too|instead|above|previous)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_follow_up_question(text: str) -> bool:
+    """Return True if the question is likely a follow-up referencing prior context."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    word_count = len(t.split())
+    if word_count <= 5:
+        return True   # "what about conref?" "give me an example"
+    return bool(_FOLLOW_UP_ANAPHORA.search(t))
+
+
+def _expand_query_with_context(query: str, transcript: str) -> str:
+    """Prepend the prior assistant topic to follow-up queries for better RAG retrieval."""
+    if not transcript or not _is_follow_up_question(query):
+        return query
+    for line in reversed(transcript.splitlines()):
+        if line.startswith("Assistant:"):
+            # Take first 80 chars of the assistant's last turn as context hint
+            topic = line[10:].strip()[:80].split(".")[0].strip()
+            if topic and len(topic) > 10:
+                return f"{topic} — {query}"
+    return query
 
 
 def _build_grounded_answer_user_prompt(
@@ -3611,8 +3684,15 @@ def _stream_text_chunks(text: str) -> list[str]:
     return chunks or [cleaned]
 
 
-async def _build_chat_evidence_pack(user_content: str, tenant_id: str) -> tuple[object, dict]:
-    rag_result = await run_chat_corrective_rag(user_content, tenant_id=tenant_id)
+async def _build_chat_evidence_pack(
+    user_content: str,
+    tenant_id: str,
+    *,
+    transcript: str = "",
+) -> tuple[object, dict]:
+    # Expand follow-up queries with prior conversation context for better retrieval
+    retrieval_query = _expand_query_with_context(user_content, transcript)
+    rag_result = await run_chat_corrective_rag(retrieval_query, tenant_id=tenant_id)
     pack = build_evidence_pack(
         query=rag_result.corrected_query or user_content,
         tenant_id=tenant_id,
@@ -5907,7 +5987,11 @@ async def _stream_assistant_reply(
                 session_id=session_id,
             )
         if evidence_pack is None:
-            evidence_pack, retrieval_meta = await _build_chat_evidence_pack(user_content, tenant_id)
+            # Pass transcript so follow-up queries get expanded with prior context
+            _pre_transcript = _recent_chat_transcript(session_id)
+            evidence_pack, retrieval_meta = await _build_chat_evidence_pack(
+                user_content, tenant_id, transcript=_pre_transcript
+            )
         if evidence_pack is None:
             raise ValueError("No evidence pack could be built for the chat question")
 

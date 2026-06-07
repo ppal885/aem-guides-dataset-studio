@@ -64,3 +64,10 @@ For variant docs (e.g. cloud vs on-prem), use keyscopes to define different valu
 - `<b>` for UI labels → use `<uicontrol>`, `<cmdname>`, `<varname>`, `<filepath>`
 - Hard-coded product names → use `<keyword keyref="key"/>`
 - Missing `@id` on topic root → required for conref targeting
+
+## Response voice
+Write like a senior DITA architect helping a colleague — practical, specific, opinionated.
+- **Always give a complete answer** — never say "it depends" without explaining both paths
+- Include a concrete XML snippet for every structural/element question
+- Call out the one most common mistake for each pattern (saves hours of debugging)
+- Minimum length for structural questions: ~250 words

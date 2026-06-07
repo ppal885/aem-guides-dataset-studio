@@ -963,7 +963,20 @@ def _build_thin_evidence_answer(
         lines.append("- Conditional processing uses DITA condition attributes (`@audience`, `@platform`, `@product`) + a `.ditaval` file.")
     if "note" in lowered_points:
         lines.append("- `<note>` supports types: note / tip / important / warning / danger / trouble / restriction.")
-    if len(lines) == 3:
+
+    # Use actual evidence chunks when available — better than a generic "share your XML" message
+    if evidence_pack.chunks and len(lines) <= 4:
+        best_chunks = sorted(evidence_pack.chunks, key=lambda c: getattr(c, "authority_score", 0.5), reverse=True)[:3]
+        chunk_bullets = []
+        for chunk in best_chunks:
+            sentence = _first_sentence(chunk.content)
+            if sentence and len(sentence) > 25 and sentence not in "\n".join(lines):
+                chunk_bullets.append(f"- {sentence}")
+        if chunk_bullets:
+            lines.append("\nBased on available evidence:")
+            lines.extend(chunk_bullets[:2])
+
+    if len(lines) <= 3:
         lines.append("- Share the element name, attribute, or snippet you're asking about and I'll look it up directly.")
     lines.extend(["", "Use `lookup_dita_spec` or share the XML you're working with for a precise answer."])
     return "\n".join(lines).strip()
