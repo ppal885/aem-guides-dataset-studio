@@ -310,7 +310,11 @@ _DITA_STRUCTURAL_QUERY_PATTERN = re.compile(
     r"translate attribute|dir attribute|colsep|rowsep|rowheader|valign|expanse|frame attribute|"
     r"scale attribute|expiry|golive|role attribute|otherrole|base attribute|status attribute|"
     r"keycol|relcolwidth|refcols|indexterm|"
-    r"task topic|concept topic|reference topic|specialization|constraint|keyscope)\b",
+    r"task topic|concept topic|reference topic|specialization|constraint|keyscope|"
+    # Conditional profiling attributes (audience, platform, product for DITAVAL)
+    r"@audience|@platform|@product|@props|audience\s+attribute|platform.specific|audience.specific|"
+    # Code elements context
+    r"shell\s+command|code\s+block|command\s+line|wrap.*command|element.*command)\b",
     re.IGNORECASE,
 )
 _DITA_ANSWER_INTENT_PATTERN = re.compile(
@@ -1104,8 +1108,10 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
             return "default"
         # General OT/publishing questions → AEM Guides grounding
         return "grounded_aem_answer"
-    if _DITA_AUTHORING_PATTERN.search(text):
-        # Authoring best-practice questions — skill guidance in system prompt covers this
+    if _DITA_AUTHORING_PATTERN.search(text) and not _is_dita_answer_request(text):
+        # Authoring strategy / keyscope / reuse questions — skill guidance covers this.
+        # Skip override when the query is specifically asking about a DITA element/attribute
+        # (structural + intent) — the spec lookup answers those better.
         return "default"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
@@ -5720,8 +5726,10 @@ async def _stream_assistant_reply(
     # Comparison questions need the OT guidance table, not the native PDF config tool
     elif _DITA_OT_COMPARISON_PATTERN.search(user_content):
         answer_mode = "default"
-    # Keyref authoring questions need authoring guidance, not the spec element lookup
-    elif _DITA_AUTHORING_PATTERN.search(user_content):
+    # Authoring strategy questions need authoring guidance (default mode).
+    # BUT if the query is specifically a DITA element/attribute lookup (structural+intent),
+    # keep grounded_dita_answer so the spec lookup returns the right info.
+    elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
     parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
