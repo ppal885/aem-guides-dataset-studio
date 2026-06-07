@@ -118,7 +118,7 @@ def _extract_requested_tenant_id(request) -> str:
     host = request.headers.get("host", "")
     if "." in host:
         subdomain = host.split(".")[0].strip().lower()
-        if subdomain and subdomain not in {"www", "api", "app", "localhost", "127"}:
+        if subdomain and subdomain not in {"www", "api", "app", "localhost", "127"} and not subdomain.isdigit():
             return _normalize_tenant_id(subdomain) or DEFAULT_TENANT
     return DEFAULT_TENANT
 
