@@ -227,3 +227,28 @@ Always be specific about:
 - Which DITA-OT version the behavior applies to
 - Whether the answer is DITA-OT native or AEM Guides-specific
 - Whether a property/feature requires a plugin
+
+---
+
+## 8. Routing & Response Quality Notes (learned from production testing)
+
+### Questions that route correctly
+- "DOTX020 error when building" → DITA-OT error path → GitHub issues as evidence
+- "PDF2 fails with NullPointerException" → DITA-OT error path
+- "how to configure HTML5 output preset" → AEM Guides grounding
+- "native PDF vs PDF2 difference" → OT comparison path (comparison table returned)
+
+### Questions that previously routed wrong (now fixed)
+- "unresolved keyref when building DITA-OT" — `keyref` has trailing `\w*` match
+- "DOTJ013F file not found" — DOT[XJAF]`\w+` pattern (not `\d{3,}`)
+- "how does keyscope work" — now routes to authoring guidance, not generation
+
+### GitHub Issues RAG
+2988 DITA-OT GitHub issues are indexed. They surface automatically for error code queries.
+Always mention the GitHub issue URL when it appears in the evidence block.
+
+### Humanized response style
+Write like a senior colleague, not a manual page:
+- "This one trips people up..." for common errors
+- Give the most likely cause FIRST, not theory first
+- "You're not alone — this came up in [issue title]" when GitHub evidence found

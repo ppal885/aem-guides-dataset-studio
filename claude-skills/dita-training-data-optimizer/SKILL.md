@@ -157,3 +157,24 @@ create_job(
 )
 ```
 → Produces: "Configure a NetworkPolicy to Restrict Ingress Traffic", "Create a Secret from a Literal Value", "Bind a ClusterRole to a ServiceAccount", etc.
+
+---
+
+## 8. Recipe Schema Validation Constraints (MUST respect these)
+
+These minimums are enforced by the schema — violating them silently fails job creation:
+
+| Recipe | Parameter | Min | Recommended chat default |
+|---|---|---|---|
+| `task_topics` | `topic_count` | 10 | 10–50 |
+| `concept_topics` | `topic_count` | 10 | 10–50 |
+| `reference_topics` | `topic_count` | 10 | 10–50 |
+| `conref_pack` | `topic_count` | **10** | 10 (was 8 — fixed) |
+| `glossary_pack` | `entry_count` | 10 | 20 |
+| `wide_branching` | `children_per_root` | **5** | 8 (was 2 — fixed) |
+| `large_scale` | `topic_count` | **50** | 100 (was 1000 min — fixed) |
+| `deep_hierarchy` | `depth` | 1 | 3–5 |
+
+**Known bugs fixed:** `conref_pack` was defaulting to 8 (< min 10), `wide_branching` defaulting to children_per_root=2 (< min 5), `large_scale` had min=1000 (too high for chat use).
+
+Always verify: `topic_count` ≤ 50 (PARAM_CAPS enforced by AI executor).
