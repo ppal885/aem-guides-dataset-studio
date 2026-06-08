@@ -38,8 +38,8 @@ _NON_DITA_OUTPUT_PATTERN = re.compile(
 )
 _MAP_PATTERN = re.compile(r"\b(bookmap|ditamap|map)\b", re.IGNORECASE)
 _GLOSSARY_PATTERN = re.compile(r"\b(glossary|glossaries|glossentry|glossentries)\b", re.IGNORECASE)
-_TASK_PATTERN = re.compile(r"\btask(?:\s+topic)?s?\b", re.IGNORECASE)
-_CONCEPT_PATTERN = re.compile(r"\bconcept(?:\s+topic)?s?\b", re.IGNORECASE)
+_TASK_PATTERN = re.compile(r"\btask(?:_|\s+)?topic[s]?\b|\btask[s]?\b", re.IGNORECASE)
+_CONCEPT_PATTERN = re.compile(r"\bconcept(?:_|\s+)?topic[s]?\b|\bconcept[s]?\b", re.IGNORECASE)
 _REFERENCE_PATTERN = re.compile(r"\breference(?:\s+topic)?s?\b", re.IGNORECASE)
 _TOPIC_PATTERN = re.compile(r"\btopic(?:s)?\b", re.IGNORECASE)
 _SUBJECT_PATTERN = re.compile(
@@ -1152,7 +1152,10 @@ def build_dita_generation_contract(
             raw_summary = re.sub(r"^\[[A-Z0-9_/]+\]\s*", "", raw_summary).strip()
             if raw_summary and len(raw_summary) > 10:
                 subject = raw_summary[:120]
-    metadata_constraints = _extract_metadata_constraints(combined)
+    # Extract metadata constraints from the structural (generation request) text only,
+    # NOT from the full combined text which may include Jira issue descriptions that
+    # mention prolog/author/audience as DITA element names — not as user requirements.
+    metadata_constraints = _extract_metadata_constraints(structure_text)
     missing_metadata_fields = _missing_metadata_fields(metadata_constraints)
     glossary_count = _extract_count(structure_text, "glossentry") or (1 if wants_glossary else 0)
     topic_count = (
