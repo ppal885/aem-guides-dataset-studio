@@ -12,6 +12,40 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 logger = get_structured_logger(__name__)
 
 
+@router.post("/env-check")
+def check_env(user: UserIdentity = AdminUser):
+    """Check which env vars are set (values redacted for secrets)."""
+    keys = ["JIRA_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "LLM_PROVIDER",
+            "AZURE_OPENAI_ENDPOINT", "ALLOW_DEV_AUTH_BYPASS", "ENVIRONMENT"]
+    return {k: ("SET" if os.environ.get(k) else "NOT SET") for k in keys}
+
+
+class SetEnvRequest(BaseModel):
+    key: str
+    value: str
+
+
+@router.post("/set-env")
+def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
+    """Append a key=value line to .env.docker and trigger uvicorn reload.
+
+    Use this to set JIRA_URL, JIRA_USERNAME, JIRA_PASSWORD etc. without SSH.
+    Values are written to .env.docker (gitignored) only — never to the repo.
+    """
+    repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
+    env_file = os.path.join(repo_dir, "backend", ".env.docker")
+    try:
+        existing = open(env_file).read() if os.path.exists(env_file) else ""
+        if f"{request.key}=" in existing:
+            return {"success": True, "action": "already_set", "key": request.key}
+        with open(env_file, "a") as f:
+            f.write(f"\n{request.key}={request.value}\n")
+        os.utime(__file__, None)  # trigger uvicorn reload
+        return {"success": True, "action": "added", "key": request.key}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/deploy")
 def trigger_deploy(user: UserIdentity = AdminUser):
     """Pull latest code from git and restart the backend service (Linux VM only).
