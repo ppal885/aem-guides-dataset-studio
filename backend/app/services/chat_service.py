@@ -4985,24 +4985,34 @@ def _build_generate_dita_preview_plan(
     from app.services.jira_generate_resolve import (
         enrich_jira_text_with_analysis,
     )
+    import re as _re_kd2
+    _JIRA_KEYREF_DIRECT_RE = _re_kd2.compile(
+        r"\b(keydef|keyref|keyscope|keys?\s+map|keymap|insert.*keyword|keyword.*insert"
+        r"|key\s+def|key\s+reference|keys\s+def)\b",
+        _re_kd2.IGNORECASE,
+    )
     _jira_key = extract_issue_key_from_generation_request(text or "")
+    _jira_is_keyref = False
     if _jira_key:
         _issue_text, _jira_err = fetch_issue_text_for_generate(_jira_key)
         if _issue_text:
+            # Check DIRECTLY if the Jira issue is about keyref/keymap — no LLM needed
+            _jira_is_keyref = bool(_JIRA_KEYREF_DIRECT_RE.search(_issue_text[:2000]))
             # Run LLM analysis to extract DITA concepts & topic recommendations
             _enriched = enrich_jira_text_with_analysis(_issue_text, issue_key=_jira_key)
             text = f"{_enriched}\n\n## Generation Request\n{text}"
 
-    # Freeform check: use original request OR the "DITA keyref scenario" marker from
-    # Jira analysis. Jira analysis adds "Dataset requirements (DITA keyref scenario)"
-    # when the issue is about keydef/keyref — route that to the freeform keydef generator.
+    # Freeform check: use original request, "DITA keyref scenario" marker, OR direct Jira text match
     _original_request = text or ""
     _gen_req_idx = _original_request.rfind("\n## Generation Request\n")
     _gen_req_section = _original_request
     if _gen_req_idx >= 0:
         _gen_req_section = _original_request[_gen_req_idx + len("\n## Generation Request\n"):]
     _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(_gen_req_section))
-    # Also trigger freeform when Jira analysis identified a keyref scenario
+    # Primary: direct Jira text match (most reliable — no LLM needed)
+    if not _is_freeform and _jira_is_keyref:
+        _is_freeform = True
+    # Fallback: LLM analysis marker
     if not _is_freeform and "DITA keyref scenario" in (_original_request or ""):
         _is_freeform = True
     if _is_freeform:
