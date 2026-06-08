@@ -46,6 +46,26 @@ def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/test-jira/{issue_key}")
+def test_jira(issue_key: str, user: UserIdentity = AdminUser):
+    """Test direct Jira REST API connectivity and key resolution."""
+    from app.services.jira_generate_resolve import fetch_issue_text_for_generate, _jira_client_ready
+    from app.services.jira_client import JiraClient
+    client = JiraClient()
+    ready = _jira_client_ready(client)
+    if not ready:
+        return {"ready": False, "url": client.base_url, "user": client.username}
+    text, err = fetch_issue_text_for_generate(issue_key)
+    return {
+        "ready": True,
+        "url": client.base_url,
+        "issue_key": issue_key,
+        "fetched": bool(text),
+        "preview": (text or "")[:300],
+        "error": err,
+    }
+
+
 @router.post("/deploy")
 def trigger_deploy(user: UserIdentity = AdminUser):
     """Pull latest code from git and restart the backend service (Linux VM only).
