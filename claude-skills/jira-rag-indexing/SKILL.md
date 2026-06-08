@@ -110,3 +110,31 @@ When a user asks about a Jira issue in chat, the system:
 Topic recommendations become **more specific** as more issues are indexed because
 the system can say: "Issue GUIDES-44087 is similar to GUIDES-43210 which generated
 these 5 concept topics about AEM Sites output mapping — reuse that structure."
+
+---
+
+## 8. All RAG Collections
+
+The system has 4 knowledge collections that power chat answers:
+
+| Collection | Chunks | Content |
+|---|---|---|
+| `aem_guides` | 3,566 | AEM Guides Experience League docs (410 pages) |
+| `dita_spec` | 5,352 | DITA 1.3 specification |
+| `dita_ot_github` | 2,989 | DITA-OT GitHub issues |
+| `jira_qa` | 1,088+ | GUIDES Jira issues (auto-growing) |
+
+Check current counts: `GET /api/v1/admin/rag-collections`
+
+Re-crawl AEM Guides docs: `POST /api/v1/ai/crawl-aem-guides`
+
+---
+
+## 9. Things to Add to RAG (Next Steps)
+
+| Source | How to add | Command |
+|---|---|---|
+| More Jira issues | Bulk JQL index | `POST /admin/index-jira-bulk` with `jql: "project=GUIDES AND updated > -90d"` |
+| AEM Guides PDF docs | Index PDF | `POST /api/v1/ai/index-dita-pdf` |
+| Generated bundles | Index after generation | `POST /admin/index-dataset-bundle/{bundle_id}` |
+| Customer tenant docs | Upload in Upload tab | Auto-indexed on upload |
