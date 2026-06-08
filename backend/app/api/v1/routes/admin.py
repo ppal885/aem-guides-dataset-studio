@@ -77,6 +77,16 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             else:
                 results["restart"] = "no process found on port 8001"
 
+        # If process not restarted via systemctl/SIGTERM, trigger uvicorn --reload
+        # by touching a .py file (uvicorn watches for changes on Linux)
+        if not restarted or "scheduled" in results.get("restart", ""):
+            try:
+                trigger_file = os.path.join(repo_dir, "backend", "app", "api", "v1", "routes", "admin.py")
+                os.utime(trigger_file, None)
+                results["uvicorn_reload"] = "touched admin.py — uvicorn will reload"
+            except Exception as ute:
+                results["uvicorn_reload"] = f"touch failed: {ute}"
+
         return {"success": True, "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
