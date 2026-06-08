@@ -16,8 +16,10 @@ logger = get_structured_logger(__name__)
 def trigger_deploy(user: UserIdentity = AdminUser):
     """Pull latest code from git and restart the backend service (Linux VM only).
 
-    This endpoint is only available when ALLOW_DEV_AUTH_BYPASS=true.
+    Tries systemctl first, falls back to killing the uvicorn/python process
+    so systemd can auto-restart it.
     """
+    import signal
     try:
         repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
         results: dict = {}
@@ -30,22 +32,45 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             text=True,
             timeout=60,
         )
-        results["git_pull"] = pull.stdout.strip()[-500:] if pull.stdout else pull.stderr.strip()[-500:]
+        results["git_pull"] = (pull.stdout.strip() or pull.stderr.strip())[-500:]
 
-        # clear pyc
+        # clear pyc cache so new code takes effect
         subprocess.run(
-            ["find", f"{repo_dir}/backend/app", "-name", "*.pyc", "-delete"],
-            timeout=10,
-        )
-
-        # systemctl restart (only works if running as root/with sudo)
-        restart = subprocess.run(
-            ["systemctl", "restart", "aem-backend"],
-            capture_output=True,
-            text=True,
+            ["bash", "-c", f"find {repo_dir}/backend/app -name '*.pyc' -delete"],
             timeout=15,
         )
-        results["restart"] = "ok" if restart.returncode == 0 else restart.stderr.strip()
+        results["pyc_cleared"] = "ok"
+
+        # Try systemctl with both known service names
+        restarted = False
+        for svc in ("aem-backend", "aem-studio-backend", "aem-guides-backend"):
+            r = subprocess.run(
+                ["systemctl", "restart", svc],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode == 0:
+                results["restart"] = f"systemctl {svc}: ok"
+                restarted = True
+                break
+
+        # Fallback: find the uvicorn/run_local.py process on port 8001 and SIGTERM it
+        # systemd will auto-restart it
+        if not restarted:
+            lsof = subprocess.run(
+                ["bash", "-c", "lsof -ti:8001 2>/dev/null || fuser 8001/tcp 2>/dev/null || true"],
+                capture_output=True, text=True, timeout=10,
+            )
+            pids = [p.strip() for p in lsof.stdout.strip().split() if p.strip().isdigit()]
+            if pids:
+                for pid in pids[:3]:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                    except Exception:
+                        pass
+                results["restart"] = f"SIGTERM sent to pids: {pids}"
+                restarted = True
+            else:
+                results["restart"] = "no process found on port 8001"
 
         return {"success": True, "results": results}
     except Exception as e:
