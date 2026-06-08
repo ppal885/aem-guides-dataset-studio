@@ -621,6 +621,13 @@ def format_llm_error_for_user(
     if "circuit open" in lowered:
         return "The assistant is temporarily paused after repeated provider failures. Please wait a moment and retry."
 
+    if "image_parse_error" in lowered or "unsupported image" in lowered or "image" in lowered and "invalid" in lowered:
+        return (
+            "The image could not be read by the vision API. "
+            "Please make sure you upload a valid PNG, JPEG, or WebP screenshot (minimum 10×10 px, under 20 MB). "
+            "Screenshots from AEM Guides, Oxygen, or any standard screen-capture work best."
+        )
+
     return "The assistant is temporarily unavailable. Please try again in a moment."
 
 

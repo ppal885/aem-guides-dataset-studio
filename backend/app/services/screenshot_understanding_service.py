@@ -3668,7 +3668,17 @@ class ScreenshotUnderstandingService:
                 warning=warning,
             )
 
-        trace = await self.inspect(image=image, image_bytes=image_bytes, user_prompt=user_prompt)
+        try:
+            trace = await self.inspect(image=image, image_bytes=image_bytes, user_prompt=user_prompt)
+        except Exception as _vision_exc:
+            _exc_str = str(_vision_exc).lower()
+            if "image_parse_error" in _exc_str or "unsupported image" in _exc_str or ("image" in _exc_str and "invalid" in _exc_str):
+                raise RuntimeError(
+                    "The image could not be analysed by the vision API. "
+                    "Please upload a valid PNG, JPEG, or WebP screenshot (at least 50×50 px, under 20 MB). "
+                    "Screenshots from AEM Guides, Oxygen, or any standard screen-capture work best."
+                ) from _vision_exc
+            raise
         parsed = _parsed_from_multi_pass(
             layout_regions=trace.layout_regions,
             text_blocks=trace.text_blocks,

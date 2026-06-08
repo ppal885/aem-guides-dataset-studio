@@ -112,6 +112,12 @@ HIERARCHICAL_RETRIEVAL_ENABLED = os.getenv("HIERARCHICAL_RETRIEVAL_ENABLED", "fa
 
 # D7: Tool result caching — avoids re-executing identical read-only tool calls
 CHAT_TOOL_CACHE_ENABLED = os.getenv("CHAT_TOOL_CACHE_ENABLED", "false").lower() == "true"
+CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES = os.getenv("CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES", "false").lower() in ("1", "true", "yes", "on")
+_STALE_NO_VERIFIED_SNIPPET_WARNING = "No verified snippet was available for this construct, so the answer omits example XML."
+_EXAMPLE_INTENT_RE = re.compile(
+    r"\b(example|snippet|show|sample|illustrat|demonstrate|give.*xml|xml.*example|code.*example)\b",
+    re.IGNORECASE,
+)
 _tool_cache = None
 def _get_tool_cache():
     global _tool_cache
@@ -3316,6 +3322,94 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
         ])
 
     return "\n".join(sections).strip()
+
+
+async def _maybe_enrich_illustrative_dita_examples(
+    *,
+    question: str,
+    facts: "NormalizedGroundedFactSet",
+    tool_results_by_name: dict[str, Any],
+    trace_id: str = "",
+) -> "NormalizedGroundedFactSet":
+    """Optionally call the LLM to generate illustrative DITA XML snippets when no verified examples exist.
+
+    Only runs when:
+    - CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES feature flag is on
+    - LLM is available
+    - The question has clear example intent ("show me an example", "give a snippet", etc.)
+    - facts.verified_examples is empty (no verified example already present)
+    """
+    import xml.etree.ElementTree as _ET
+    from dataclasses import replace as _replace
+
+    if not CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES:
+        return facts
+    if not is_llm_available():
+        return facts
+    if not _EXAMPLE_INTENT_RE.search(question or ""):
+        return facts
+    if facts.verified_examples:
+        return facts
+
+    # Build context for snippet generation
+    attr_name = ""
+    attr_result = tool_results_by_name.get("lookup_dita_attribute") or {}
+    if isinstance(attr_result, dict):
+        attr_name = str(attr_result.get("attribute_name") or "").strip()
+
+    element_hint = str(facts.canonical_definition or "").strip()[:200]
+    element_names = ", ".join(f"`<{e}>`" for e in (facts.supported_elements or [])[:3])
+    prompt = (
+        f"Generate 1-2 short, well-formed DITA 1.3 XML snippets illustrating "
+        f"{'`@' + attr_name + '`' if attr_name else 'this DITA construct'}.\n"
+        f"Context: {element_hint}\n"
+        f"{'Relevant elements: ' + element_names if element_names else ''}\n"
+        "Return JSON: {\"snippets\": [\"<snippet1/>\", \"<snippet2/>\"]}. "
+        "Snippets must be valid XML. Keep them minimal (3-5 lines max)."
+    )
+
+    try:
+        raw = await generate_text(
+            system_prompt="You generate minimal, correct DITA XML examples. Return only the JSON object.",
+            user_prompt=prompt,
+            max_tokens=400,
+            step_name="chat_illustrative_dita_examples",
+            trace_id=trace_id,
+        )
+        import json as _json
+        raw_clean = str(raw or "").strip()
+        # Find JSON object in the response
+        _start = raw_clean.find("{")
+        _end = raw_clean.rfind("}") + 1
+        if _start < 0 or _end <= _start:
+            return facts
+        parsed = _json.loads(raw_clean[_start:_end])
+        snippets = [str(s).strip() for s in (parsed.get("snippets") or []) if str(s).strip()]
+    except Exception:
+        return facts
+
+    # Validate each snippet is well-formed XML
+    valid_examples = []
+    for snip in snippets[:2]:
+        try:
+            _ET.fromstring(snip)
+            valid_examples.append(VerifiedExampleSnippet(label="Illustrative example", snippet=snip, source="llm_suggested"))
+        except Exception:
+            pass
+
+    if not valid_examples:
+        return facts
+
+    # Remove the stale "no snippet" warning since we now have one
+    updated_warnings = [w for w in (facts.semantic_warnings or []) if w != _STALE_NO_VERIFIED_SNIPPET_WARNING]
+    return _replace(
+        facts,
+        verified_examples=valid_examples,
+        example_verified=False,
+        example_source="illustrative_llm",
+        generation_strategy="llm_illustrative_gap_fill",
+        semantic_warnings=updated_warnings,
+    )
 
 
 def _build_grounded_tool_draft_answer(
