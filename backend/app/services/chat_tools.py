@@ -905,10 +905,12 @@ async def execute_generate_dita(
         _scenario = (_scenario_m.group(1).strip()[:600] if _scenario_m else "")
         _summary = (_summary_m.group(1).strip()[:200] if _summary_m else "")
         _compact_prompt = (
-            f"AEM Guides DITA keyref/keymap dataset — {_subject or _summary}\n\n"
-            f"Scenario: {_scenario or _summary}\n\n"
-            "Requirements: keydef map + root map referencing it via mapref + topics using "
-            "<keyword keyref='keyname'/> in their body content."
+            f"AEM Guides keydef dataset: {_subject or _summary}\n\n"
+            "Generate a keydef DITA map with 6-8 <keydef keys='...'> entries for "
+            "AEM Guides authoring terms. "
+            "Then generate 4-5 topics that use <keyword keyref='keyname'/> in their body text. "
+            "The topics should demonstrate keyword insertion using key references — "
+            "each topic body must contain at least 2 <keyword keyref='...'/> elements inline."
         )
         source_text = _compact_prompt  # use compact prompt for freeform generator
 
