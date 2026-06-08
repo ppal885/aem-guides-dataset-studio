@@ -11,6 +11,13 @@ if (_project_root / ".env").exists() or (_backend_dir / ".env").exists():
     for _env_path in (_project_root / ".env", _backend_dir / ".env"):
         if _env_path.exists():
             load_dotenv(_env_path, override=True, encoding="utf-8-sig")
+
+# Load .env.docker if present — applies whether started via run_local.py OR uvicorn directly.
+# On Linux VM the service runs uvicorn directly so run_local.py never executes.
+_env_docker = _backend_dir / ".env.docker"
+if _env_docker.exists():
+    from dotenv import load_dotenv as _load_env_docker
+    _load_env_docker(_env_docker, override=True, encoding="utf-8-sig")
 import logging
 import hashlib
 import time
