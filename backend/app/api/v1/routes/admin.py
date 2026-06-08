@@ -55,10 +55,12 @@ def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
             with open(env_file, "a") as f:
                 f.write(f"\n{request.key}={request.value}\n")
             action = "added"
-        # Apply to running process immediately (survives until restart)
+        # Apply to running process immediately via os.environ (lives until next SIGTERM restart)
+        # DO NOT touch admin.py here — uvicorn reload would lose the os.environ change.
+        # The value is already written to .env.docker so it survives the next systemd restart.
         os.environ[request.key] = request.value
-        os.utime(__file__, None)  # also trigger uvicorn reload so restarts pick it up
-        return {"success": True, "action": action, "key": request.key, "live": True}
+        return {"success": True, "action": action, "key": request.key, "live": True,
+                "note": "Value set in .env.docker (persistent) and os.environ (live). Survives restarts."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -87,13 +89,37 @@ def test_jira(issue_key: str, user: UserIdentity = AdminUser):
 def trigger_deploy(user: UserIdentity = AdminUser):
     """Pull latest code from git and restart the backend service (Linux VM only).
 
-    Tries systemctl first, falls back to killing the uvicorn/python process
-    so systemd can auto-restart it.
+    On every deploy, ensures required env vars (Jira, Azure) are written to
+    .env.docker so they survive systemd restarts without manual re-entry.
+    Tries systemctl first, falls back to SIGTERM. Does NOT do uvicorn reload
+    when SIGTERM is used — systemd restart re-reads .env.docker automatically.
     """
-    import signal
+    import signal, re as _re
     try:
         repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
         results: dict = {}
+
+        # Persist env vars that are currently live but might not be in .env.docker yet
+        env_file = os.path.join(repo_dir, "backend", ".env.docker")
+        try:
+            existing = open(env_file).read() if os.path.exists(env_file) else ""
+            for key in ("JIRA_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "JIRA_API_VERSION",
+                        "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT",
+                        "AZURE_OPENAI_API_VERSION", "AZURE_OPENAI_MODEL",
+                        "LLM_PROVIDER", "ALLOW_DEV_AUTH_BYPASS"):
+                val = os.environ.get(key, "")
+                if not val:
+                    continue
+                if f"{key}=" in existing:
+                    # Update
+                    existing = _re.sub(rf"^{_re.escape(key)}=.*$", f"{key}={val}", existing, flags=_re.MULTILINE)
+                else:
+                    existing += f"\n{key}={val}\n"
+            with open(env_file, "w") as f:
+                f.write(existing)
+            results["env_persisted"] = "ok"
+        except Exception as ep:
+            results["env_persist_error"] = str(ep)
 
         # git pull
         pull = subprocess.run(
@@ -148,15 +174,20 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             else:
                 results["restart"] = "no process found on port 8001"
 
-        # If process not restarted via systemctl/SIGTERM, trigger uvicorn --reload
-        # by touching a .py file (uvicorn watches for changes on Linux)
-        if not restarted or "scheduled" in results.get("restart", ""):
+        # Only touch admin.py for uvicorn reload when SIGTERM/systemctl didn't happen.
+        # When SIGTERM IS scheduled, DO NOT also touch admin.py — the new process
+        # started by systemd reads .env.docker via run_local.py, so env vars
+        # persist. An extra uvicorn reload would create workers WITHOUT re-reading
+        # .env.docker, losing credentials.
+        if not restarted:
             try:
                 trigger_file = os.path.join(repo_dir, "backend", "app", "api", "v1", "routes", "admin.py")
                 os.utime(trigger_file, None)
-                results["uvicorn_reload"] = "touched admin.py — uvicorn will reload"
+                results["uvicorn_reload"] = "touched admin.py — uvicorn will reload (no SIGTERM available)"
             except Exception as ute:
                 results["uvicorn_reload"] = f"touch failed: {ute}"
+        else:
+            results["note"] = "SIGTERM restart scheduled — systemd will re-read .env.docker automatically"
 
         return {"success": True, "results": results}
     except Exception as e:
