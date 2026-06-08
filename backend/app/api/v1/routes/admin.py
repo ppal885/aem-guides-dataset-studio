@@ -1,4 +1,6 @@
 """Admin and maintenance endpoints."""
+import os
+import subprocess
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from app.core.auth import AdminUser, UserIdentity
@@ -8,6 +10,46 @@ from app.core.structured_logging import get_structured_logger
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 logger = get_structured_logger(__name__)
+
+
+@router.post("/deploy")
+def trigger_deploy(user: UserIdentity = AdminUser):
+    """Pull latest code from git and restart the backend service (Linux VM only).
+
+    This endpoint is only available when ALLOW_DEV_AUTH_BYPASS=true.
+    """
+    try:
+        repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
+        results: dict = {}
+
+        # git pull
+        pull = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        results["git_pull"] = pull.stdout.strip()[-500:] if pull.stdout else pull.stderr.strip()[-500:]
+
+        # clear pyc
+        subprocess.run(
+            ["find", f"{repo_dir}/backend/app", "-name", "*.pyc", "-delete"],
+            timeout=10,
+        )
+
+        # systemctl restart (only works if running as root/with sudo)
+        restart = subprocess.run(
+            ["systemctl", "restart", "aem-backend"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        results["restart"] = "ok" if restart.returncode == 0 else restart.stderr.strip()
+
+        return {"success": True, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class CleanupRequest(BaseModel):
