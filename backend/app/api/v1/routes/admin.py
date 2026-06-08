@@ -55,8 +55,10 @@ def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
             with open(env_file, "a") as f:
                 f.write(f"\n{request.key}={request.value}\n")
             action = "added"
-        os.utime(__file__, None)  # trigger uvicorn reload
-        return {"success": True, "action": action, "key": request.key}
+        # Apply to running process immediately (survives until restart)
+        os.environ[request.key] = request.value
+        os.utime(__file__, None)  # also trigger uvicorn reload so restarts pick it up
+        return {"success": True, "action": action, "key": request.key, "live": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
