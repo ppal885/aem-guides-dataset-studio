@@ -553,3 +553,27 @@ def env_docker_keys(user: UserIdentity = AdminUser):
         file_val_len = len(m.group(1)) if m else 0
         result[key] = {"in_file": True, "file_val_len": file_val_len, "in_env": bool(val), "env_val_len": len(val)}
     return {"exists": True, "path": env_file, "keys": result}
+
+
+@router.get("/test-jira-raw")
+def test_jira_raw(user: UserIdentity = AdminUser):
+    """Raw Jira connectivity test — shows exact HTTP status and error."""
+    import requests as _req
+    url = os.environ.get("JIRA_BASE_URL") or os.environ.get("JIRA_URL", "")
+    username = os.environ.get("JIRA_USERNAME", "")
+    password = os.environ.get("JIRA_PASSWORD", "")
+    if not url:
+        return {"error": "JIRA_URL not set", "url": "", "user": username}
+    test_url = f"{url}/rest/api/2/issue/GUIDES-48304?fields=summary"
+    try:
+        r = _req.get(test_url, auth=(username, password), verify=False, timeout=10)
+        return {
+            "status": r.status_code,
+            "ok": r.ok,
+            "url_used": test_url[:60],
+            "user": username,
+            "pass_len": len(password),
+            "response": r.text[:200] if not r.ok else r.json().get("fields", {}).get("summary", "")[:80],
+        }
+    except Exception as e:
+        return {"error": str(e), "url_used": test_url[:60]}
