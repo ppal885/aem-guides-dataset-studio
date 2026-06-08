@@ -147,13 +147,60 @@ def _extract_section(text: str, heading_pattern: str, max_chars: int = 3000) -> 
     return text[start:end].strip()[:max_chars]
 
 
+_TEXT_ATTACHMENT_EXTENSIONS = frozenset(
+    ".txt .log .xml .dita .ditamap .json .yaml .yml .md .csv .html .htm .xhtml .snippet .sample .cfg .properties".split()
+)
+_IMAGE_ATTACHMENT_EXTENSIONS = frozenset(".png .jpg .jpeg .gif .webp .svg .bmp .tiff .tif".split())
+_MAX_ATTACHMENT_BYTES = 80_000  # read up to ~80 KB per text attachment
+_MAX_ATTACHMENTS = 5            # read up to 5 attachments per issue
+
+
+def _read_attachment_text(client: JiraClient, att: dict) -> str:
+    """Download a Jira attachment and return its text content (empty if binary/too large)."""
+    content_url = att.get("content") or att.get("url") or ""
+    filename = (att.get("filename") or "").lower()
+    mime = (att.get("mimeType") or att.get("mime_type") or "").lower()
+    size = int(att.get("size") or 0)
+
+    # Only read text-readable files; skip huge files
+    ext = "." + filename.rsplit(".", 1)[-1] if "." in filename else ""
+    is_text = (
+        ext in _TEXT_ATTACHMENT_EXTENSIONS
+        or mime.startswith("text/")
+        or mime in ("application/json", "application/xml", "application/yaml", "application/x-yaml")
+    )
+    if not is_text:
+        return ""
+    if size > _MAX_ATTACHMENT_BYTES * 2:
+        return f"[File too large to inline: {att.get('filename')} ({size // 1024} KB)]"
+
+    if not content_url:
+        return ""
+    try:
+        raw = client._download(content_url)
+        return raw[:_MAX_ATTACHMENT_BYTES].decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.debug_structured(
+            "Attachment download failed",
+            extra_fields={"filename": att.get("filename"), "error": str(e)},
+        )
+        return ""
+
+
 def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Fetch issue from configured Jira and format for _build_evidence_pack_from_text.
+    Fetch a Jira issue with full context for DITA dataset generation.
+
+    Reads:
+    - Issue metadata (key, type, status, priority, labels, components, fix versions)
+    - Full description with all structured sections (steps to reproduce, expected/actual, environment)
+    - All comments (up to 20, full text up to 2000 chars each)
+    - Text/DITA/log attachments (up to 5 files, up to 80 KB each)
+    - Attachment list with names/types for non-text files
 
     Returns:
         (formatted_text, None) on success
-        (None, safe_error_message) on failure (for optional UI; no stack traces)
+        (None, safe_error_message) on failure
     """
     key = _normalize_issue_key(issue_key)
     if not _issue_key_safe_for_api(key):
@@ -167,8 +214,10 @@ def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Option
         )
         return None, None
 
+    # Fetch with attachment field included
     try:
-        issue = client.get_issue(key)
+        path = f"/rest/api/{client._api}/issue/{key}?fields=summary,description,labels,priority,status,issuetype,components,fixVersions,attachment,comment"
+        issue = client._request("GET", path)
     except Exception as e:
         logger.warning_structured(
             "Jira fetch failed for generate-from-text",
@@ -193,60 +242,112 @@ def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Option
     issuetype = fields.get("issuetype")
     type_name = str(issuetype.get("name", "")) if isinstance(issuetype, dict) else ""
 
-    # Extract components and fix versions
-    components = []
-    for comp in (fields.get("components") or []):
-        if isinstance(comp, dict) and comp.get("name"):
-            components.append(str(comp["name"]))
-    fix_versions = []
-    for ver in (fields.get("fixVersions") or []):
-        if isinstance(ver, dict) and ver.get("name"):
-            fix_versions.append(str(ver["name"]))
+    components = [str(c["name"]) for c in (fields.get("components") or []) if isinstance(c, dict) and c.get("name")]
+    fix_versions = [str(v["name"]) for v in (fields.get("fixVersions") or []) if isinstance(v, dict) and v.get("name")]
 
+    # --- Comments: fetch up to 20, full body up to 2000 chars ---
     comment_lines: list[str] = []
     try:
-        raw_comments = client.get_issue_comments(key)
-        for c in (raw_comments or [])[:8]:
-            author = (c.get("author") or "").strip()
-            body = (c.get("body_text") or "").strip()
+        # Try embedded comment field first (avoids a second API call)
+        embedded = fields.get("comment") or {}
+        raw_comments = embedded.get("comments") or []
+        if not raw_comments:
+            raw_comments = client.get_issue_comments(key)
+        from app.services.jira_client import _adf_to_plain_text as _adf
+        for c in (raw_comments or [])[:20]:
+            author = ""
+            a = c.get("author") or c.get("updateAuthor") or {}
+            if isinstance(a, dict):
+                author = a.get("displayName") or a.get("name") or ""
+            body_raw = c.get("body") or c.get("body_text") or ""
+            if isinstance(body_raw, dict):
+                body = _adf(body_raw)
+            else:
+                body = str(body_raw)
+            body = body.strip()[:2000]
             if not body:
                 continue
-            body = body[:1200]
-            comment_lines.append(f"[{author}]: {body}")
+            created = str(c.get("created") or "")[:10]
+            comment_lines.append(f"[{author or 'Unknown'} | {created}]: {body}")
     except Exception as e:
         logger.debug_structured(
-            "Comments fetch skipped for generate-from-text",
+            "Comments fetch skipped",
             extra_fields={"issue_key": key, "error": str(e)},
         )
 
-    # Extract structured sections from description
-    acceptance_criteria = _extract_section(description, r"(?:acceptance\s+criteria|ac)\s*[:\n]")
-    steps_to_reproduce = _extract_section(description, r"(?:steps?\s+to\s+reproduce|reproduction\s+steps?|repro\s+steps?)\s*[:\n]")
-    expected_behavior = _extract_section(description, r"(?:expected\s+(?:behavior|result|outcome))\s*[:\n]")
-    actual_behavior = _extract_section(description, r"(?:actual\s+(?:behavior|result|outcome)|current\s+behavior)\s*[:\n]")
-    environment = _extract_section(description, r"(?:environment|setup|config(?:uration)?)\s*[:\n]")
+    # --- Attachments: read text files, list others ---
+    attachment_text_parts: list[str] = []
+    attachment_list_parts: list[str] = []
+    raw_attachments = fields.get("attachment") or []
+    if isinstance(raw_attachments, list):
+        # Sort: text/DITA first, then images, then others — read text ones first
+        def _att_sort_key(a: dict) -> int:
+            ext = "." + (a.get("filename") or "").lower().rsplit(".", 1)[-1]
+            if ext in _TEXT_ATTACHMENT_EXTENSIONS:
+                return 0
+            if ext in _IMAGE_ATTACHMENT_EXTENSIONS:
+                return 1
+            return 2
 
+        sorted_atts = sorted(raw_attachments, key=_att_sort_key)
+        text_read = 0
+        for att in sorted_atts[:20]:
+            fname = att.get("filename") or "unknown"
+            mime = att.get("mimeType") or ""
+            size = int(att.get("size") or 0)
+            ext = "." + fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
+
+            is_text_file = ext in _TEXT_ATTACHMENT_EXTENSIONS or mime.startswith("text/") or "xml" in mime
+            is_image = ext in _IMAGE_ATTACHMENT_EXTENSIONS or mime.startswith("image/")
+
+            if is_text_file and text_read < _MAX_ATTACHMENTS:
+                content = _read_attachment_text(client, att)
+                if content:
+                    attachment_text_parts.append(
+                        f"### Attachment: {fname} ({size // 1024 or 1} KB)\n{content}"
+                    )
+                    text_read += 1
+                else:
+                    attachment_list_parts.append(f"- {fname} ({mime}, {size // 1024 or 1} KB)")
+            elif is_image:
+                attachment_list_parts.append(f"- [Image] {fname} ({mime}, {size // 1024 or 1} KB)")
+            else:
+                attachment_list_parts.append(f"- {fname} ({mime}, {size // 1024 or 1} KB)")
+
+    # --- Extract structured sections from description ---
+    acceptance_criteria = _extract_section(description, r"(?:acceptance\s+criteria|ac)\s*[:\n]")
+    steps_to_reproduce = _extract_section(description, r"(?:steps?\s+to\s+reproduce|reproduction\s+steps?|repro\s+steps?|how\s+to\s+reproduce)\s*[:\n]")
+    expected_behavior = _extract_section(description, r"(?:expected\s+(?:behavior|result|outcome|output))\s*[:\n]")
+    actual_behavior = _extract_section(description, r"(?:actual\s+(?:behavior|result|outcome|output)|current\s+behavior|actual\s+output)\s*[:\n]")
+    environment = _extract_section(description, r"(?:environment|setup|config(?:uration)?|version|build)\s*[:\n]")
+    notes = _extract_section(description, r"(?:additional\s+(?:notes?|info(?:rmation)?)|notes?|remarks?)\s*[:\n]")
+
+    # --- Assemble the full context block ---
     parts = [
         f"Issue Key: {key}",
         f"Issue Type: {type_name}",
         f"Status: {status}",
         f"Priority: {priority}",
-        f"Labels: {', '.join(str(x) for x in labels[:30])}",
+        f"Labels: {', '.join(str(x) for x in labels[:30]) or '(none)'}",
     ]
     if components:
         parts.append(f"Components: {', '.join(components[:10])}")
     if fix_versions:
         parts.append(f"Fix Versions: {', '.join(fix_versions[:10])}")
-    parts.extend([
-        "",
-        "## Issue Summary",
-        summary or "(no summary)",
-        "",
-        "## Issue Description",
-        description or "(no description)",
-    ])
-    if acceptance_criteria:
-        parts.extend(["", "## Acceptance Criteria", acceptance_criteria])
+
+    parts.extend(["", "## Issue Summary", summary or "(no summary)", "", "## Issue Description"])
+    # If we extracted structured sections, show the description without them to avoid duplication
+    clean_description = description
+    for pattern in [
+        r"(?:steps?\s+to\s+reproduce|reproduction\s+steps?|repro\s+steps?).*",
+        r"(?:expected\s+(?:behavior|result|outcome)).*",
+        r"(?:actual\s+(?:behavior|result|outcome)|current\s+behavior).*",
+        r"(?:environment|setup|config(?:uration)?).*",
+        r"(?:acceptance\s+criteria|ac)\s*:.*",
+    ]:
+        pass  # keep full description — sections are also shown separately for emphasis
+    parts.append(clean_description or "(no description)")
+
     if steps_to_reproduce:
         parts.extend(["", "## Steps to Reproduce", steps_to_reproduce])
     if expected_behavior:
@@ -255,8 +356,21 @@ def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Option
         parts.extend(["", "## Actual Behavior", actual_behavior])
     if environment:
         parts.extend(["", "## Environment", environment])
+    if acceptance_criteria:
+        parts.extend(["", "## Acceptance Criteria", acceptance_criteria])
+    if notes:
+        parts.extend(["", "## Additional Notes", notes])
+
+    if attachment_list_parts or attachment_text_parts:
+        parts.extend(["", "## Attachments"])
+        if attachment_list_parts:
+            parts.extend(attachment_list_parts)
+        if attachment_text_parts:
+            parts.extend(["", "### Attachment Contents"])
+            parts.extend(attachment_text_parts)
+
     if comment_lines:
-        parts.extend(["", "## Comments"])
+        parts.extend(["", f"## Comments ({len(comment_lines)})"])
         parts.extend(comment_lines)
 
     return "\n".join(parts), None
