@@ -69,11 +69,15 @@ _GLOSSARY_USAGE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _COUNT_PATTERNS = {
-    "glossentry": re.compile(r"\b(\d+)\s+(?:glossary|glossaries|glossentry|glossentries)\b", re.IGNORECASE),
-    "task": re.compile(r"\b(\d+)\s+tasks?\b", re.IGNORECASE),
-    "concept": re.compile(r"\b(\d+)\s+concepts?\b", re.IGNORECASE),
-    "reference": re.compile(r"\b(\d+)\s+references?\b", re.IGNORECASE),
-    "topic": re.compile(r"\b(\d+)\s+topics?\b", re.IGNORECASE),
+    # (?<![0-9A-Za-z_-]) blocks matches that are in the middle of a Jira-style key
+    # like GUIDES-48304: after the hyphen, the regex would otherwise match "48304"
+    # by starting mid-number at "8304". Adding 0-9 to the lookbehind prevents any
+    # digit from immediately preceding the count digits, ruling out embedded numbers.
+    "glossentry": re.compile(r"(?<![0-9A-Za-z_-])(\d+)\s+(?:glossary|glossaries|glossentry|glossentries)\b", re.IGNORECASE),
+    "task": re.compile(r"(?<![0-9A-Za-z_-])(\d+)\s+tasks?\b", re.IGNORECASE),
+    "concept": re.compile(r"(?<![0-9A-Za-z_-])(\d+)\s+concepts?\b", re.IGNORECASE),
+    "reference": re.compile(r"(?<![0-9A-Za-z_-])(\d+)\s+references?\b", re.IGNORECASE),
+    "topic": re.compile(r"(?<![0-9A-Za-z_-])(\d+)\s+topics?\b", re.IGNORECASE),
 }
 _ATTRIBUTE_VALUE_TEMPLATE = r"(?:@?{name}\b\s*=\s*[\"'](?P<quoted>[^\"']+)[\"']|@?{name}\b\s*=\s*(?P<bare>[A-Za-z0-9_.:-]+))"
 _XML_TAG_PATTERN = re.compile(r"<\s*/?\s*([A-Za-z][A-Za-z0-9_.:-]*)\b")
@@ -265,12 +269,19 @@ _METADATA_XML_MARKERS: dict[str, tuple[str, ...]] = {
 }
 
 
+_MAX_REASONABLE_TOPIC_COUNT = 10_000  # Guard against Jira-key numbers like 48304
+
+
 def _extract_count(text: str, key: str) -> int | None:
     matcher = _COUNT_PATTERNS[key].search(text)
     if not matcher:
         return None
     try:
-        return max(1, int(matcher.group(1)))
+        count = int(matcher.group(1))
+        # Reject counts that look like Jira issue numbers (> 10K) — no single generation can have that many
+        if count > _MAX_REASONABLE_TOPIC_COUNT:
+            return None
+        return max(1, count)
     except (TypeError, ValueError):
         return None
 

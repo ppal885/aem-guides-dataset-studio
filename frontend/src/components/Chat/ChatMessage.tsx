@@ -2448,8 +2448,13 @@ function AgentPlanPanel({ plan }: { plan: ChatAgentPlan }) {
     <div className="rounded-xl border border-teal-200/80 bg-gradient-to-br from-teal-50 to-teal-50/80 p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full border border-teal-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-teal-800">
-          Preview
+          {plan.mode === 'generate_dita_preview' ? 'Generate DITA bundle' : 'Preview'}
         </span>
+        {plan.mode === 'generate_dita_preview' && (
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-700">
+            Beta
+          </span>
+        )}
         <span className="text-xs text-teal-800/80">
           {plan.status === 'clarification_required'
             ? 'waiting for one reply'
