@@ -15,7 +15,7 @@ logger = get_structured_logger(__name__)
 @router.post("/env-check")
 def check_env(user: UserIdentity = AdminUser):
     """Check which env vars are set (values redacted for secrets)."""
-    keys = ["JIRA_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "LLM_PROVIDER",
+    keys = ["JIRA_URL", "JIRA_BASE_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "LLM_PROVIDER",
             "AZURE_OPENAI_ENDPOINT", "ALLOW_DEV_AUTH_BYPASS", "ENVIRONMENT"]
     return {k: ("SET" if os.environ.get(k) else "NOT SET") for k in keys}
 
@@ -103,7 +103,7 @@ def trigger_deploy(user: UserIdentity = AdminUser):
         env_file = os.path.join(repo_dir, "backend", ".env.docker")
         try:
             existing = open(env_file).read() if os.path.exists(env_file) else ""
-            for key in ("JIRA_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "JIRA_API_VERSION",
+            for key in ("JIRA_URL", "JIRA_BASE_URL", "JIRA_USERNAME", "JIRA_PASSWORD", "JIRA_API_VERSION",
                         "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT",
                         "AZURE_OPENAI_API_VERSION", "AZURE_OPENAI_MODEL",
                         "LLM_PROVIDER", "ALLOW_DEV_AUTH_BYPASS"):
