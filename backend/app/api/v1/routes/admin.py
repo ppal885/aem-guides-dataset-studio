@@ -34,17 +34,17 @@ def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
     Values written only to gitignored .env.docker — never to the repo.
     """
     import re as _re
+    _esc = _re.escape(request.key)
     repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
     env_file = os.path.join(repo_dir, "backend", ".env.docker")
     try:
         existing = open(env_file).read() if os.path.exists(env_file) else ""
-        key_exists = bool(_re.search(rf"^{re.escape(request.key)}=", existing, _re.MULTILINE))
+        key_exists = bool(_re.search(rf"^{_esc}=", existing, _re.MULTILINE))
         if key_exists and not request.force:
             return {"success": True, "action": "already_set", "key": request.key}
         if key_exists and request.force:
-            # Replace existing line
             new_content = _re.sub(
-                rf"^{re.escape(request.key)}=.*$",
+                rf"^{_esc}=.*$",
                 f"{request.key}={request.value}",
                 existing, flags=_re.MULTILINE
             )
