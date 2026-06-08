@@ -5,10 +5,14 @@ import sys
 from pathlib import Path
 
 # Load .env from backend directory before any app imports
+# Also load .env.docker if present (used on Linux VM — overrides .env for production values)
+from dotenv import load_dotenv
 _env_path = Path(__file__).resolve().parent / ".env"
 if _env_path.exists():
-    from dotenv import load_dotenv
     load_dotenv(_env_path)
+_env_docker = Path(__file__).resolve().parent / ".env.docker"
+if _env_docker.exists():
+    load_dotenv(_env_docker, override=True)  # .env.docker overrides .env
 
 # `app` package lives under this directory; uvicorn loads `app.main:app`.
 # Always put backend first — avoids `ModuleNotFoundError: app.core` when another `app`
