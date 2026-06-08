@@ -4993,7 +4993,14 @@ def _build_generate_dita_preview_plan(
             _enriched = enrich_jira_text_with_analysis(_issue_text, issue_key=_jira_key)
             text = f"{_enriched}\n\n## Generation Request\n{text}"
 
-    _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(text or ""))
+    # Check freeform ONLY on the original user request — the Jira enrichment text
+    # contains DITA element names (keydef, keyref, mapref) that would falsely trigger
+    # the freeform path. Isolate the "## Generation Request" section if present.
+    _original_request = text or ""
+    _gen_req_idx = _original_request.rfind("\n## Generation Request\n")
+    if _gen_req_idx >= 0:
+        _original_request = _original_request[_gen_req_idx + len("\n## Generation Request\n"):]
+    _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(_original_request))
     if _is_freeform:
         # Freeform advanced-construct request: skip the contract service entirely.
         # execute_generate_dita will detect the same keywords and redirect to

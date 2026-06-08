@@ -882,9 +882,15 @@ async def execute_generate_dita(
         return {"error": "Text is required for DITA generation"}
     extracted_jira_id = extract_issue_key_from_generation_request(source_text)
 
-    # Detect freeform-mode keywords and redirect to create_job(freeform) to avoid
-    # the contract-service clarification loop for advanced DITA constructs.
-    _freeform_match = _FREEFORM_REDIRECT_PATTERN.search(source_text)
+    # Detect freeform-mode keywords in the ORIGINAL user request only.
+    # The Jira enrichment text contains DITA element names (keydef, keyref, mapref)
+    # that must not trigger the freeform path — isolate the Generation Request section.
+    _freeform_check_text = source_text
+    _gen_req_marker = "\n## Generation Request\n"
+    _gr_idx = source_text.rfind(_gen_req_marker)
+    if _gr_idx >= 0:
+        _freeform_check_text = source_text[_gr_idx + len(_gen_req_marker):]
+    _freeform_match = _FREEFORM_REDIRECT_PATTERN.search(_freeform_check_text)
     if _freeform_match:
         logger.info_structured(
             "generate_dita redirected to freeform",

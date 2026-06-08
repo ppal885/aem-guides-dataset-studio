@@ -237,21 +237,39 @@ async def generate_subject_content(
         "## Issue Summary", "Issue Key:", "## Steps to Reproduce",
         "PRIMARY JIRA [", "RELATED JIRA ISSUES", "FULL TICKET SUMMARY", "CUSTOMER PROBLEM",
     )))
+    _has_dita_analysis = bool(user_prompt and "## DITA Dataset Analysis" in user_prompt)
+
+    # Extract the DITA scenario analysis section if present — it has exact element names,
+    # XML patterns, and topic recommendations from the Jira deep analysis.
+    _dita_analysis_section = ""
+    if _has_dita_analysis and user_prompt:
+        import re as _re
+        _m = _re.search(r"(##\s+DITA Dataset Analysis.*?)(?=\n##\s+Generation Request|\Z)", user_prompt, _re.DOTALL)
+        if _m:
+            _dita_analysis_section = _m.group(1).strip()[:3000]
+
     system_prompt = (
-        "You author concrete, domain-specific DITA topic titles and one-paragraph bodies "
-        "for a structural test dataset. You return strict JSON only. "
-        "Titles must be unique and informative — no 'Topic 1' style placeholders. "
-        "Each body is one to three sentences and stays focused on the subject."
+        "You author concrete, domain-specific DITA XML topic titles and one-paragraph bodies "
+        "for a DITA training dataset. You return strict JSON only. "
+        "Titles must be unique and directly describe a specific DITA XML authoring task or concept — "
+        "no generic 'Topic 1' style placeholders. "
+        "Each body is one to three sentences describing what DITA elements/attributes/structures the topic covers."
         + (
-            " When jira_issue_content is present, derive every title and body DIRECTLY from "
-            "the Jira issue steps, description, and acceptance criteria. "
-            "Use RELATED JIRA ISSUES (if present) to add breadth — cover scenarios and edge cases "
-            "those related issues describe. Do not use generic knowledge about the subject."
-            if _has_jira else ""
+            " IMPORTANT: A DITA scenario analysis is provided. "
+            "Use the 'Exact DITA Scenario', 'DITA Elements', 'DITA Attributes', and 'Planned Topic Titles' sections "
+            "to derive EVERY title and body. Each title must reference specific DITA elements or attributes "
+            "(e.g. <keydef>, <mapref>, <keyword keyref>, @processing-role, @keyscope). "
+            "Each body must describe the specific DITA XML pattern involved — mention the actual elements by name. "
+            "Do NOT use generic descriptions. The titles in 'Planned Topic Titles' are strong hints — use or adapt them."
+            if _has_dita_analysis else
+            (" When jira_issue_content is present, derive every title and body DIRECTLY from "
+             "the Jira issue steps, description, and acceptance criteria. "
+             "Use RELATED JIRA ISSUES (if present) to add breadth. Do not use generic knowledge."
+             if _has_jira else "")
         )
     )
     user_payload = {
-        "task": "Author leading hierarchy nodes for a structural DITA dataset.",
+        "task": "Author DITA topic titles and bodies for a training dataset.",
         "subject": resolved_subject,
         "recipe_type": rt,
         "structure": structure_hint,
@@ -259,16 +277,27 @@ async def generate_subject_content(
         "ordering_rule": _ordering_rule(rt),
         "rules": [
             f"Return arrays exactly sized for node_count={node_count}.",
-            "Titles ≤ 100 chars, no leading 'Topic'/'Section' tokens.",
-            "Bodies are one paragraph; do NOT use bullet lists or markdown.",
-            "Stay strictly on subject. No marketing fluff.",
-            "If subject is technical (e.g. Kubernetes), use real concept names "
-            "(Pods, Deployments, Services, Ingress, ConfigMaps, ReplicaSets, etc.) — never invent fake APIs.",
+            "Titles ≤ 100 chars. Reference specific DITA elements by name (<keydef>, <mapref>, etc.).",
+            "Bodies are one paragraph. Name the DITA elements and XML patterns involved.",
+            "Stay strictly on the DITA scenario. No marketing fluff.",
         ],
         "expected_fields": ["titles", "bodies"],
     }
     if user_prompt:
-        if _has_jira:
+        if _has_dita_analysis and _dita_analysis_section:
+            # Primary source: the LLM-generated DITA scenario analysis
+            user_payload["dita_scenario_analysis"] = _dita_analysis_section
+            user_payload["rules"].append(
+                "CRITICAL: Use the dita_scenario_analysis planned_topic_titles as the basis for your titles. "
+                "Each title must name specific DITA elements/attributes from the scenario."
+            )
+            # Also include the Jira summary for context
+            if _has_jira:
+                import re as _re2
+                _summary_m = _re2.search(r"##\s+Issue\s+Summary\s*\n([^\n]+)", user_prompt)
+                if _summary_m:
+                    user_payload["jira_summary"] = _summary_m.group(1).strip()[:200]
+        elif _has_jira:
             user_payload["jira_issue_content"] = user_prompt.strip()[:2500]
             user_payload["rules"].append(
                 "Derive titles/bodies from the PRIMARY JIRA steps and description. "
@@ -527,21 +556,39 @@ async def generate_flat_content(
         "## Issue Summary", "Issue Key:", "## Steps to Reproduce",
         "PRIMARY JIRA [", "RELATED JIRA ISSUES", "FULL TICKET SUMMARY", "CUSTOMER PROBLEM",
     )))
+    _has_dita_analysis_flat = bool(user_prompt and "## DITA Dataset Analysis" in user_prompt)
+
+    _dita_analysis_section_flat = ""
+    if _has_dita_analysis_flat and user_prompt:
+        import re as _re_flat
+        _m_flat = _re_flat.search(r"(##\s+DITA Dataset Analysis.*?)(?=\n##\s+Generation Request|\Z)", user_prompt, _re_flat.DOTALL)
+        if _m_flat:
+            _dita_analysis_section_flat = _m_flat.group(1).strip()[:3000]
+
     system_prompt = (
-        "You author concrete, domain-specific DITA content for a deterministic generator. "
-        "You return strict JSON only. Titles must be unique, informative, and specific to the subject — "
+        "You author concrete, domain-specific DITA content for a training dataset. "
+        "You return strict JSON only. Titles must be unique, informative, and specific — "
         "no 'Topic 1' style placeholders. Each shortdesc is one sentence. "
         "Stay strictly on subject and never invent fake APIs."
         + (
-            " When jira_issue_content is present, derive every title and shortdesc DIRECTLY from "
-            "the Jira issue steps, description, and acceptance criteria. "
-            "Use RELATED JIRA ISSUES (if present) to add breadth — cover scenarios and edge cases "
-            "those related issues describe. Do not use generic knowledge about the subject."
-            if _has_jira else ""
+            " IMPORTANT: A DITA scenario analysis is provided. "
+            "Use the 'Exact DITA Scenario', 'DITA Elements', 'DITA Attributes', and 'Planned Topic Titles' sections "
+            "to derive EVERY title, shortdesc, and steps. "
+            "Titles must reference specific DITA elements by name (<keydef>, <mapref>, <keyword keyref>, etc.). "
+            "Steps must reference the actual XML structure described in the scenario "
+            "(e.g. 'Create a keymap file with <keydef keys=\"...\"> elements', "
+            "'Reference the keymap from the root map via <mapref href=\"keymap.ditamap\" processing-role=\"resource-only\">'). "
+            "The planned_topic_titles in the analysis are strong hints — use or adapt them directly."
+            if _has_dita_analysis_flat else
+            (" When jira_issue_content is present, derive every title and shortdesc DIRECTLY from "
+             "the Jira issue steps, description, and acceptance criteria. "
+             "Use RELATED JIRA ISSUES (if present) for additional breadth. "
+             "Do not use generic knowledge about the subject."
+             if _has_jira else "")
         )
     )
     user_payload: dict[str, Any] = {
-        "task": "Author leading items for a flat DITA dataset.",
+        "task": "Author DITA topics for a training dataset based on a specific DITA scenario.",
         "subject": resolved_subject,
         "recipe_type": rt,
         "family_hint": family_hint,
@@ -549,15 +596,16 @@ async def generate_flat_content(
         "expected_fields": expected_fields,
         "rules": [
             f"Return arrays exactly sized for item_count={item_count} when possible.",
-            "Titles ≤ 100 chars, no leading 'Topic'/'Section' tokens.",
-            "Shortdescs are one sentence each.",
-            "If subject is technical (e.g. Terraform, Kubernetes), use real concept names "
-            "(resources, providers, modules, variables, etc.) — never invent fake APIs.",
+            "Titles ≤ 100 chars. Name specific DITA elements/attributes involved.",
+            "Shortdescs are one sentence. Mention the DITA XML pattern being demonstrated.",
+            "Never invent fake APIs or elements — use real DITA 1.3 element names only.",
         ],
     }
     if rt == "task_topics":
         user_payload["rules"].append(
-            "steps_by_topic[i] is the ordered list of <cmd> texts for task i (3-7 imperative steps each)."
+            "steps_by_topic[i]: 4-7 imperative <cmd> steps that reference specific DITA XML "
+            "(e.g. 'Add <keydef keys=\"product-name\" href=\"topic.dita\"> to the keys map'). "
+            "Steps must walk through the actual XML structure from the DITA scenario."
         )
     if rt == "reference_topics":
         user_payload["rules"].append(
@@ -568,7 +616,18 @@ async def generate_flat_content(
             "terms[i] is the glossary term, definitions[i] its definition, acronyms[i] the expansion (or empty string)."
         )
     if user_prompt:
-        if _has_jira:
+        if _has_dita_analysis_flat and _dita_analysis_section_flat:
+            user_payload["dita_scenario_analysis"] = _dita_analysis_section_flat
+            user_payload["rules"].append(
+                "CRITICAL: Use dita_scenario_analysis.planned_topic_titles as basis for titles. "
+                "Steps must reference the DITA elements from dita_scenario_analysis.dita_elements."
+            )
+            if _has_jira:
+                import re as _re2_flat
+                _sm = _re2_flat.search(r"##\s+Issue\s+Summary\s*\n([^\n]+)", user_prompt)
+                if _sm:
+                    user_payload["jira_summary"] = _sm.group(1).strip()[:200]
+        elif _has_jira:
             user_payload["jira_issue_content"] = user_prompt.strip()[:2500]
             user_payload["rules"].append(
                 "Derive titles/shortdescs from the PRIMARY JIRA steps and description. "
