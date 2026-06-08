@@ -1087,7 +1087,7 @@ async def verify_grounded_answer(
                     for block in _extract_xml_code_blocks(draft_clean)
                 )
                 if (
-                    len(draft_clean) > 120
+                    len(draft_clean) > 25
                     and not _looks_like_retrieval_summary(draft_clean)
                     and not _unsafe_xml
                 ):
@@ -1243,6 +1243,7 @@ async def verify_grounded_answer(
             unsupported_points=[],
             grounding_status=evidence_pack.decision.status,
             reason=evidence_pack.decision.reason,
+            thin_evidence_override=False,  # keep build_abstention_answer — don't replace in chat_service
         )
 
     # Fallback: heuristic answer from evidence chunks

@@ -346,6 +346,25 @@ _OUTPUT_PRESET_QUERY_PATTERN = re.compile(
     r"\b(output preset|output presets|publishing|publish|html5|pdf preset|aem sites|site generation)\b",
     re.IGNORECASE,
 )
+_DITA_OT_BUILD_PARAMS_RE = re.compile(
+    r"\bdita.?ot\b.{0,50}\barg(?:s|ument)?s?\b|"
+    r"\barg(?:s|ument)?s?\b.{0,50}\bdita.?ot\b|"
+    r"\bargs\.\w+\b|"
+    r"what\s+arg\w*\s+(?:should|to)\s+pass.{0,30}\bdita\b",
+    re.IGNORECASE,
+)
+_NATIVE_PDF_OT_ARGS_RE = re.compile(
+    r"(?:native\s+pdf|native-pdf).{0,80}(?:dita.?ot|ot\s+arg|args?\.\w+|argument)|"
+    r"(?:dita.?ot|ot\s+arg|args?\.\w+|argument).{0,80}(?:native\s+pdf|native-pdf)",
+    re.IGNORECASE,
+)
+_OUTPUT_PRESET_TAXONOMY_RE = re.compile(
+    r"output\s+preset\s+types?|"  # "output preset types/type"
+    r"types?\s+of\s+output\s+preset|"  # "types of output preset"
+    r"\b\d+\b\s+output\s+preset|"  # "7 output presets" (whole-number only, not "HTML5")
+    r"output\s+preset.*when\s+to\s+use",  # "output preset … when to use"
+    re.IGNORECASE,
+)
 _DITA_ATTRIBUTE_QUERY_PATTERN = re.compile(
     r"@([A-Za-z_:][A-Za-z0-9_.:-]*)|"
     r"\battribute\s+`?@?([A-Za-z_:][A-Za-z0-9_.:-]*)`?\b|"
@@ -854,6 +873,14 @@ def _extract_attribute_syntax_line(text: str) -> str:
 def _has_strong_direct_dita_tool_evidence(result: dict[str, Any]) -> bool:
     if not isinstance(result, dict) or result.get("error"):
         return False
+    # Element lookups: success + element_name + non-empty sources qualifies
+    if (
+        result.get("status") == "success"
+        and result.get("element_name")
+        and result.get("query_type") == "element"
+        and result.get("sources")
+    ):
+        return True
     if result.get("text_content") and (
         result.get("supported_elements")
         or result.get("all_valid_values")
@@ -1100,10 +1127,10 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         return "generation_request"
     if extract_issue_key_from_generation_request(text):
         return "generation_request"
-    if _RECIPE_TYPE_GENERATION_PATTERN.search(text):
-        return "generation_request"
     if _DATASET_REQUEST_PATTERN.search(text):
         return "agent_research_plan"
+    if _RECIPE_TYPE_GENERATION_PATTERN.search(text):
+        return "generation_request"
     if _DITA_OT_PATTERN.search(text):
         # Error codes / build failures → default mode so GitHub RAG is primary evidence
         if _DITA_OT_ERROR_PATTERN.search(text):
@@ -1111,6 +1138,13 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         # Comparison questions (native PDF vs pdf2, etc.) → default so OT guidance table is used
         if _DITA_OT_COMPARISON_PATTERN.search(text):
             return "default"
+        # Short follow-up statement in a session where prior messages are about DITA spec/args
+        # (e.g. "I am using DITA-OT PDF" after "What argument enables draft-comment?")
+        if session_id and len(text.split()) <= 8:
+            prior = _fetch_last_user_messages_for_session(session_id, limit=4)
+            if any(re.search(r"\barg(?:ument)?s?\b|\bparam(?:eter)?s?\b|\battribute\b", m, re.IGNORECASE)
+                   for m in prior if m.strip() != text.strip()):
+                return "grounded_dita_answer"
         # General OT/publishing questions → AEM Guides grounding
         return "grounded_aem_answer"
     if _DITA_AUTHORING_PATTERN.search(text) and not _is_dita_answer_request(text):
@@ -1118,6 +1152,9 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         # Skip override when the query is specifically asking about a DITA element/attribute
         # (structural + intent) — the spec lookup answers those better.
         return "default"
+    # Multi-context questions spanning DITA spec + AEM Guides product → need multi-source research
+    if _AEM_UI_CONFIGURATION_QUERY_PATTERN.search(text) and _DITA_STRUCTURAL_QUERY_PATTERN.search(text):
+        return "agent_research_plan"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
     if _DITA_GENERATION_PATTERN.search(text):
@@ -1198,24 +1235,142 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
         return requests
 
     if answer_mode == "grounded_dita_answer":
-        attribute_name = _extract_requested_dita_attribute(user_content)
-        if attribute_name:
-            requests.append(("lookup_dita_attribute", {"attribute_name": attribute_name}))
-        requests.append(("lookup_dita_spec", {"query": user_content}))
+        # Broad map-construct questions span multiple elements — skip single-attribute lookup
+        is_broad_map = _needs_broad_map_construct_answer(user_content)
+        if not is_broad_map:
+            attribute_name = _extract_requested_dita_attribute(user_content)
+            if attribute_name:
+                requests.append(("lookup_dita_attribute", {"attribute_name": attribute_name}))
+
+        # DITA-OT build params: boost the query with known arg names, add AEM + tenant search
+        if _DITA_OT_BUILD_PARAMS_RE.search(user_content):
+            boosted_q = f"{user_content} args.draft required-cleanup"
+            requests.append(("lookup_dita_spec", {"query": boosted_q}))
+            requests.append(("lookup_aem_guides", {"query": boosted_q}))
+            requests.append(("search_tenant_knowledge", {"query": boosted_q}))
+        else:
+            requests.append(("lookup_dita_spec", {"query": user_content}))
         return requests
 
     if answer_mode == "grounded_aem_answer":
         if _NATIVE_PDF_QUERY_PATTERN.search(lowered):
-            requests.append(("generate_native_pdf_config", {"query": user_content}))
+            # When OT arguments are also mentioned, set config_type accordingly
+            _ot_args = bool(_NATIVE_PDF_OT_ARGS_RE.search(user_content) or _DITA_OT_BUILD_PARAMS_RE.search(user_content))
+            _native_pdf_params: dict[str, Any] = {"query": user_content}
+            if _ot_args:
+                _native_pdf_params["config_type"] = "dita_ot_arguments"
+            requests.append(("generate_native_pdf_config", _native_pdf_params))
             requests.append(("lookup_output_preset", {"query": user_content, "output_type": "native_pdf"}))
             requests.append(("lookup_aem_guides", {"query": user_content}))
+            if _ot_args:
+                requests.append(("lookup_dita_spec", {"query": user_content}))
         elif _OUTPUT_PRESET_QUERY_PATTERN.search(lowered):
             requests.append(("lookup_output_preset", {"query": user_content}))
+            # Boost AEM lookup for taxonomy/comparison questions
+            if _OUTPUT_PRESET_TAXONOMY_RE.search(user_content):
+                aem_q = f"understand output presets types in AEM Guides: {user_content}"
+            else:
+                aem_q = user_content
+            requests.append(("lookup_aem_guides", {"query": aem_q}))
         else:
             requests.append(("lookup_aem_guides", {"query": user_content}))
         if _should_include_tenant_knowledge_for_aem_query(user_content):
             requests.append(("search_tenant_knowledge", {"query": user_content}))
     return requests
+
+
+_BROAD_MAP_TERMS = ["topichead", "navtitle", "locktitle", "topicref", "mapref", "topicgroup", "keyref"]
+_OT_SOURCE_DOMAIN_RE = re.compile(
+    r"\bdita.?ot\b|\bpdf2\b|\btranstype\b|\bbuild\s+param|\bplugin\b|\bargs\.\w+\b|\barg(?:s|ument)?s?\b.{0,30}\bpublish\b",
+    re.IGNORECASE,
+)
+_OT_OFFICIAL_LABEL_RE = re.compile(
+    r"args\.\w+|"  # "args.draft", "args.input"
+    r"(?:dita.?ot|dita-ot)\s+(?:base|dev|build|ref|param|version)|"  # "DITA-OT base parameters"
+    r"dita.?ot\s+\d+\.|"  # "DITA-OT 3.7"
+    r"dita-ot\.org",  # literal URL domain in label
+    re.IGNORECASE,
+)
+_OT_OFFICIAL_URL_RE = re.compile(r"dita-ot\.org", re.IGNORECASE)
+
+
+def _needs_broad_map_construct_answer(query: str) -> bool:
+    """Return True if the question spans 3+ DITA map elements/attributes together.
+
+    Such questions are too broad for a single attribute lookup — use spec search instead.
+    """
+    count = sum(
+        1 for term in _BROAD_MAP_TERMS
+        if re.search(rf"\b{re.escape(term)}\b|<{re.escape(term)}>", query, re.IGNORECASE)
+    )
+    return count >= 3
+
+
+def _apply_docs_source_domain_gate(
+    query: str,
+    candidates: "list[_GroundingCandidate]",
+) -> "tuple[list[_GroundingCandidate], dict]":
+    """Filter grounding candidates by source domain relevance.
+
+    For OT queries, dita_spec element-only evidence is insufficient — OT docs are required.
+    """
+    debug: dict = {}
+    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or re.search(r"\bargs\.\w+\b", query, re.IGNORECASE) else "general"
+    debug["source_domain"] = source_domain
+
+    if source_domain != "dita_ot":
+        debug["source_domain_mismatch"] = False
+        debug["official_evidence_found"] = False
+        debug["rejected_candidates"] = []
+        return list(candidates), debug
+
+    selected: list[_GroundingCandidate] = []
+    rejected: list[dict] = []
+    official_found = False
+
+    _NON_OT_SOURCES = {"dita_spec", "dita_graph"}
+    for c in candidates:
+        is_element_only = c.source in _NON_OT_SOURCES and not _OT_OFFICIAL_LABEL_RE.search(c.label or "")
+        if is_element_only:
+            rejected.append({
+                "label": c.label,
+                "source": c.source,
+                "reason": "DITA spec element evidence is not enough for a DITA-OT build/configuration question",
+            })
+            continue
+        if _OT_OFFICIAL_URL_RE.search(c.url or "") or _OT_OFFICIAL_LABEL_RE.search(c.label or ""):
+            official_found = True
+        selected.append(c)
+
+    debug["source_domain_mismatch"] = len(rejected) > 0  # True when any candidates were filtered out
+    debug["official_evidence_found"] = official_found
+    debug["rejected_candidates"] = rejected
+    return selected, debug
+
+
+@dataclass
+class _ContextualDocsQuery:
+    source_domain: str
+    answer_question: str
+    raw_query: str
+
+
+def _build_contextual_docs_query(session_id: str, query: str) -> _ContextualDocsQuery:
+    """Build a contextual docs query enriched with session history."""
+    prior = _recent_user_messages_before_latest(session_id, query, limit=5)
+    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or _DITA_OT_PATTERN.search(query) else "general"
+
+    # When prior messages mention draft-comment and we're in OT context, reformulate question
+    if source_domain == "dita_ot" and any(_DRAFT_COMMENT_RE.search(m) for m in prior):
+        answer_question = "What command-line argument enables draft-comment content in DITA-OT PDF output?"
+    else:
+        answer_question = query
+
+    return _ContextualDocsQuery(
+        source_domain=source_domain,
+        answer_question=answer_question,
+        raw_query=query,
+    )
 
 
 def _append_grounding_candidate(
@@ -1261,7 +1416,9 @@ def _tool_result_to_grounding_candidates(
     }.get(tool_name, "unknown")
 
     candidates: list[_GroundingCandidate] = []
-    for source in (result.get("sources") or [])[:6]:
+    # Process both "sources" (structured) and "results" (raw tool response) fields
+    _raw_sources = (result.get("sources") or result.get("results") or [])[:6]
+    for source in _raw_sources:
         if not isinstance(source, dict):
             continue
         _append_grounding_candidate(
@@ -1478,7 +1635,10 @@ async def _build_grounded_tool_evidence_pack(
     user_id: str,
     session_id: str,
 ) -> tuple[object | None, dict[str, Any], dict[str, dict[str, Any]]]:
-    requests = _grounded_tool_requests(answer_mode, user_content)
+    # Expand follow-up queries using session context (e.g. "I am using DITA-OT PDF" +
+    # prior "What is the argument for draft-comment?" → adds "args.draft" to the query)
+    effective_content = _expand_follow_up_retrieval_query(session_id, user_content) if session_id else user_content
+    requests = _grounded_tool_requests(answer_mode, effective_content)
     if not requests:
         return None, {}, {}
 
@@ -1498,12 +1658,46 @@ async def _build_grounded_tool_evidence_pack(
     if not candidates:
         return None, {"strategy": "tool_grounding", "tool_names": list(tool_results)}, tool_results
 
+    # Apply source domain gate — filter out wrong-domain candidates for OT queries
+    gated_candidates, gate_debug = _apply_docs_source_domain_gate(user_content, candidates)
+    source_domain = gate_debug.get("source_domain", "general")
+    source_domain_mismatch = gate_debug.get("source_domain_mismatch", False)
+    rejected_candidates = gate_debug.get("rejected_candidates", [])
+    official_docs_retry = False
+
+    # For OT queries: retry lookup_aem_guides when no official OT docs (dita-ot.org) were found yet
+    _has_official_ot_evidence = gate_debug.get("official_evidence_found", False)
+    if source_domain == "dita_ot" and not _has_official_ot_evidence and "lookup_aem_guides" in tool_results:
+        ot_retry_query = f"DITA-OT command-line parameter: {user_content}"
+        retry_result = await run_tool(
+            "lookup_aem_guides",
+            {"query": ot_retry_query},
+            user_id=user_id,
+            session_id=session_id,
+            tenant_id=tenant_id,
+        )
+        tool_results["lookup_aem_guides"] = retry_result
+        retry_candidates = _tool_result_to_grounding_candidates("lookup_aem_guides", retry_result)
+        if retry_candidates:
+            gated_candidates.extend(retry_candidates)
+            source_domain_mismatch = False
+            official_docs_retry = True
+
+    if not gated_candidates:
+        gated_candidates = candidates  # fallback: use all candidates if gate removed everything
+
     evidence_pack = build_evidence_pack(
         query=user_content,
         tenant_id=tenant_id,
-        candidates=candidates,
+        candidates=gated_candidates,
     )
-    if answer_mode == "grounded_dita_answer":
+    if official_docs_retry:
+        # Official OT docs found after retry — treat as grounded
+        evidence_pack.decision.status = "grounded"
+        evidence_pack.decision.confidence = max(float(evidence_pack.decision.confidence or 0.0), 0.88)
+        evidence_pack.decision.reason = "Official DITA-OT documentation found after targeted retry."
+        evidence_pack.decision.thin_evidence = False
+    elif answer_mode == "grounded_dita_answer":
         attr_result = tool_results.get("lookup_dita_attribute") or {}
         spec_result = tool_results.get("lookup_dita_spec") or {}
         if _has_strong_direct_dita_tool_evidence(attr_result) or _has_strong_direct_dita_tool_evidence(spec_result):
@@ -1520,6 +1714,10 @@ async def _build_grounded_tool_evidence_pack(
         "reason": evidence_pack.decision.reason,
         "correction_applied": False,
         "corrected_query": "",
+        "source_domain": source_domain,
+        "source_domain_mismatch": source_domain_mismatch,
+        "official_docs_retry": official_docs_retry,
+        "retrieval_debug": {"rejected_candidates": rejected_candidates},
     }
     return evidence_pack, retrieval_meta, tool_results
 
@@ -2710,6 +2908,12 @@ def _normalize_grounded_tool_facts(
                 for item in (spec.get("spec_chunks") or [])[:3]
                 if isinstance(item, dict) and str(item.get("text_content") or "").strip()
             ]
+            # If top-level element_name is missing, try a single-chunk spec result (unambiguous element query)
+            if not element_name and len(spec.get("spec_chunks") or []) == 1:
+                first_chunk = spec["spec_chunks"][0]
+                if isinstance(first_chunk, dict):
+                    element_name = str(first_chunk.get("element_name") or "").strip()
+                    element_name_lower = element_name.lower()
             graph_knowledge = _clean_graph_knowledge_for_answer(str(spec.get("graph_knowledge") or ""))
             if graph_knowledge:
                 notes.append(f"Resolution behavior: {graph_knowledge}")
@@ -2762,8 +2966,8 @@ def _normalize_grounded_tool_facts(
                     semantic_warnings=common_warnings,
                 )
             # Only render a structured direct answer when the tool identified a specific DITA element
-            # (element_name, query_type, or child/parent lists populated). For general spec queries
-            # returning raw ChromaDB PDF chunks, return None so the LLM synthesises a proper answer.
+            # (element_name, query_type, or child/parent lists). For general spec queries returning raw
+            # ChromaDB chunks, return None so the LLM synthesises a proper answer.
             has_structural_metadata = bool(element_name or query_type or allowed_children or parent_elements)
             if has_structural_metadata and (summary or element_name):
                 return NormalizedGroundedFactSet(
@@ -2902,7 +3106,9 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     if not short_answer:
         return ""
 
-    sections: list[str] = ["## At a glance", short_answer]
+    # AEM product guidance answers use "## At a glance"; DITA spec answers use "## Short answer"
+    _first_heading = "## At a glance" if facts.answer_kind == "aem_guides_guidance" else "## Short answer"
+    sections: list[str] = [_first_heading, short_answer]
 
     if facts.answer_kind in {"dita_attribute", "dita_map_construct"}:
         if facts.syntax:
@@ -3099,6 +3305,15 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
             notes.append(item)
     if notes:
         sections.extend(["", "## Notes", *[f"- {value}" for value in notes]])
+
+    # Strengthen hint when evidence is thin or retrieval confidence is low
+    if facts.thin_evidence or facts.semantic_warnings:
+        sections.extend([
+            "",
+            "## What would strengthen this answer",
+            "- Share the XML snippet, element name, or attribute you're working with",
+            "- Mention the DITA version or AEM Guides release if version-specific",
+        ])
 
     return "\n".join(sections).strip()
 
@@ -3568,6 +3783,13 @@ def _build_compact_chat_system_prompt(
         "normal chat replies. (Long-form **agent research** answers use a separate prescribed outline from the "
         "synthesis step.)\n"
     )
+    # Evidence discipline: always remind the LLM not to echo evidence ID labels in replies
+    base += (
+        "\n\n# EVIDENCE HANDLING\n"
+        "No evidence line tags ([E1], [E2], etc.) should appear in your reply unless the user prompt explicitly asks you to cite them. "
+        "If the evidence block contains such labels, use them only when the user prompt says to; otherwise, ignore those labels in your output."
+    )
+
     if skill_guidance:
         base += f"\n\n# ANSWERING GUIDANCE\n{skill_guidance}"
     if rag_context:
@@ -3576,6 +3798,16 @@ def _build_compact_chat_system_prompt(
         addon = _get_human_precision_addon().strip()
         if addon:
             base += f"\n\n# PRECISION MODE\n{addon}"
+
+    # Optional follow-up suggestions block (env-gated)
+    _suggest_followups_env = os.environ.get("CHAT_SUGGEST_FOLLOWUPS", "").strip().lower()
+    if _suggest_followups_env in ("1", "true", "yes", "on"):
+        base += (
+            "\n\n# FOLLOW-UP SUGGESTIONS\n"
+            "After your answer, optionally add a `## Next questions` section with 2-3 short follow-up questions "
+            "the user might want to ask next. Keep each one to one line."
+        )
+
     return base
 
 
@@ -3585,11 +3817,13 @@ def _build_grounded_answer_system_prompt(*, human_prompts: bool = False) -> str:
 
 
 def _recent_chat_transcript(session_id: str, *, limit: int = 15) -> str:
-    rows = get_messages(session_id, limit=limit)
+    # Fetch more than needed so we can slice the LATEST `limit` messages
+    rows = get_messages(session_id, limit=limit * 4)
+    rows = rows[-limit:]
     if not rows:
         return ""
     lines: list[str] = []
-    for row in rows[-limit:]:
+    for row in rows:
         role = str(row.get("role") or "").strip().lower()
         content = str(row.get("content") or "").strip()
         if role not in {"user", "assistant"} or not content:
@@ -3622,11 +3856,88 @@ def _expand_query_with_context(query: str, transcript: str) -> str:
         return query
     for line in reversed(transcript.splitlines()):
         if line.startswith("Assistant:"):
-            # Take first 80 chars of the assistant's last turn as context hint
             topic = line[10:].strip()[:80].split(".")[0].strip()
             if topic and len(topic) > 10:
                 return f"{topic} — {query}"
     return query
+
+
+def _fetch_last_messages_for_session(session_id: str, limit: int = 10) -> list[dict]:
+    """Return the last `limit` messages of any role (oldest first, newest last)."""
+    rows = get_messages(session_id, limit=limit * 2)
+    return rows[-limit:]
+
+
+def _fetch_last_user_messages_for_session(session_id: str, *, limit: int = 10) -> list[str]:
+    """Return the last `limit` user message content strings (oldest first, newest last)."""
+    rows = get_messages(session_id, limit=limit * 2)
+    user_msgs = [
+        str(r.get("content") or "").strip()
+        for r in rows
+        if r.get("role") == "user" and r.get("content")
+    ]
+    return user_msgs[-limit:]
+
+
+def _recent_user_messages_before_latest(session_id: str, latest: str, *, limit: int = 3) -> list[str]:
+    """Return up to `limit` user messages immediately before `latest` in the session."""
+    all_msgs = _fetch_last_user_messages_for_session(session_id, limit=limit + 5)
+    if all_msgs and all_msgs[-1].strip() == latest.strip():
+        all_msgs = all_msgs[:-1]
+    return all_msgs[-limit:]
+
+
+_DRAFT_COMMENT_RE = re.compile(r"\bdraft.?comment", re.IGNORECASE)  # no trailing \b — matches "draft-comments" too
+_OT_ARGS_CONTEXT_RE = re.compile(r"\barg(?:s|ument)?s?\b|\bdita.?ot\b|\bpdf\b|\bpublish\b", re.IGNORECASE)
+
+
+def _expand_follow_up_retrieval_query(session_id: str, query: str) -> str:
+    """Expand a follow-up query with context from prior user messages in the session."""
+    prior = _recent_user_messages_before_latest(session_id, query, limit=5)
+    if not prior:
+        return query
+
+    parts: list[str] = [query]
+
+    # If prior messages mention draft-comment and current is about DITA-OT args → expand
+    draft_prior = [m for m in prior if _DRAFT_COMMENT_RE.search(m)]
+    if draft_prior and _OT_ARGS_CONTEXT_RE.search(query):
+        if "args.draft" not in query:
+            parts.append("args.draft --args.draft=yes")
+        # Include the prior message so "draft-comments" appears in merged string
+        parts.insert(0, draft_prior[0].strip()[:120])
+    elif _is_follow_up_question(query) and prior:
+        topic_hint = prior[-1][:100].strip()
+        if topic_hint:
+            parts.insert(0, f"Follow-up: {topic_hint}")
+
+    return " — ".join(parts) if len(parts) > 1 else parts[0]
+
+
+_TUTORIAL_DEPTH_TRIGGERS = re.compile(
+    r"\bprocessing.role\b|\bresource.only\b|\btoc\b|\bnavigation\b|\bmap\s+hierarchy\b|\bcondition.*filter\b",
+    re.IGNORECASE,
+)
+
+
+def _grounded_dita_tutorial_depth_addon(question: str) -> str:
+    """Return a TUTORIAL DEPTH instruction block for complex DITA structural questions.
+
+    Returns empty string for simple/unrelated questions.
+    """
+    if not _TUTORIAL_DEPTH_TRIGGERS.search(question or ""):
+        return ""
+    return (
+        "## TUTORIAL DEPTH GUIDANCE\n"
+        "This question involves a structural DITA concept that benefits from a deeper tutorial-style answer:\n"
+        "- Explain the concept with a concrete example (a real toc/map scenario)\n"
+        "- Show how it affects the output (toc, navigation, conditional filtering)\n"
+        "- Mention the common misunderstanding or mistake\n"
+        "- Keep it tutorial-style, not just a definition"
+    )
+
+
+_EVIDENCE_ID_RE = re.compile(r"\[E\d+\]")
 
 
 def _build_grounded_answer_user_prompt(
@@ -3638,6 +3949,7 @@ def _build_grounded_answer_user_prompt(
     correction_applied: bool = False,
     structured_answer_hint: str = "",
     answer_shape_hint: str = "",
+    tutorial_depth_addon: str = "",
 ) -> str:
     parts = [f"Question:\n{question}"]
     if transcript:
@@ -3646,14 +3958,23 @@ def _build_grounded_answer_user_prompt(
         parts.append(f"Retrieval query used:\n{corrected_query}")
     if structured_answer_hint.strip():
         parts.append(f"Grounded structured facts:\n{structured_answer_hint.strip()[:2000]}")
-    parts.append(
-        "Evidence:\n"
-        f"{evidence_context}\n\n"
+
+    has_evidence_ids = bool(_EVIDENCE_ID_RE.search(evidence_context or ""))
+    evidence_instruction = (
         "Write in a natural assistant voice. Base the answer on the evidence above, but do not narrate the retrieval process. "
         "If evidence is thin or conflicting, answer directly with the best supported explanation, then add a short caution in a `## Verification notes` section."
     )
+    if has_evidence_ids:
+        evidence_instruction += (
+            " The evidence paragraphs above are labeled [E1], [E2], etc. "
+            "You may cite them inline as [E1] where relevant, but ignore those labels if the answer flows better without them."
+        )
+    parts.append(f"Evidence:\n{evidence_context}\n\n{evidence_instruction}")
+
     if answer_shape_hint.strip():
         parts.append(f"Answer shape guidance:\n{answer_shape_hint.strip()}")
+    if tutorial_depth_addon.strip():
+        parts.append(tutorial_depth_addon.strip())
     return "\n\n".join(parts)
 
 
@@ -4942,6 +5263,9 @@ def _build_agent_evidence_prompt(tool_results_by_name: dict[str, dict[str, Any]]
                 lines.append(f"   URL: {url}")
         sections.append("\n".join(lines))
 
+    return "\n\n".join(sections)
+
+
 def _messages_to_llm_format(messages: list[dict]) -> list[dict]:
     """Convert DB messages to LLM format (role + content).
 
@@ -5021,10 +5345,12 @@ async def _synthesize_agent_answer(
             "## Summary\n"
             "## Details\n"
             "## Limits of evidence\n"
+            "## Recommended next step\n"
             "## Sources\n"
             "In **Summary**, give 2–4 sentences with the direct answer.\n"
             "In **Details**, use concrete bullets derived only from the evidence.\n"
             "In **Limits of evidence**, list gaps, uncertainty, or topics not covered by the evidence.\n"
+            "In **Recommended next step**, suggest one actionable follow-up the user should take. Omit if not applicable.\n"
             "In **Sources**, list only sources that appear in the evidence block.\n"
             "Do not invent facts, URLs, product behavior, or citations."
         )
@@ -5037,7 +5363,7 @@ async def _synthesize_agent_answer(
             text = await generate_text(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=1400,
+                max_tokens=1600,
                 step_name="chat_agent_research_answer",
             )
             text = _coerce_llm_text_response(text).strip()
@@ -6011,6 +6337,10 @@ async def _stream_assistant_reply(
             grounded_tool_results.get("lookup_dita_spec") or grounded_tool_results.get("lookup_dita_attribute")
         )
         should_enrich_with_llm = _should_enrich_grounded_answer_with_llm(user_content, normalized_grounded_facts)
+        # For OT-domain queries, the spec tool returns element docs (not OT param docs).
+        # Force LLM synthesis so it uses the AEM/OT evidence from the lookup_aem_guides tool.
+        if retrieval_meta.get("source_domain") == "dita_ot" and grounded_tool_results.get("lookup_aem_guides"):
+            should_enrich_with_llm = True
         if (not draft_answer or should_enrich_with_llm) and is_llm_available():
             # Only inject structural DITA chunks when the question is actually about DITA/XML structure.
             dita_rag = ""
@@ -6185,6 +6515,13 @@ async def _stream_assistant_reply(
             semantic_warnings=list(normalized_grounded_facts.semantic_warnings) if normalized_grounded_facts else [],
             retrieval=_extract_aem_retrieval_metadata(grounded_tool_results),
         )
+        # Merge source domain / OT gate diagnostics from tool retrieval meta
+        grounding["source_domain"] = str(retrieval_meta.get("source_domain") or "general")
+        grounding["source_domain_mismatch"] = bool(retrieval_meta.get("source_domain_mismatch"))
+        grounding["official_docs_retry"] = bool(retrieval_meta.get("official_docs_retry"))
+        grounding["retrieval_debug"] = dict(retrieval_meta.get("retrieval_debug") or {})
+        if llm_enriched:
+            grounding["llm_gate_reason"] = "llm_synthesis_attempted_with_grounded_evidence"
         yield {"type": "grounding", "grounding": grounding, "notice": grounding_to_notice(grounding)}
 
         _persist_assistant_message(
@@ -6607,7 +6944,8 @@ async def _stream_tool_mode_reply(
     obs_collector = None
     if _obs_enabled:
         from app.services.tool_observability import ToolObservabilityCollector
-        obs_collector = ToolObservabilityCollector(session_id=session_id or "", trace_id=trace_id)
+        _trace_id = assistant_msg_id or session_id or ""
+        obs_collector = ToolObservabilityCollector(session_id=session_id or "", trace_id=_trace_id)
 
     try:
         for round_idx in range(max_tool_rounds):

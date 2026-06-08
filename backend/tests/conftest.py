@@ -2,6 +2,22 @@
 import pytest
 from fastapi.testclient import TestClient
 
+
+async def mock_llm_echo_grounding_evidence(*, user_prompt: str = "", system_prompt: str = "", **_kwargs) -> str:
+    """Test helper: synthesize a grounded-style answer by echoing evidence from the user_prompt.
+
+    Used as a monkeypatch replacement for `generate_text` in integration tests so that
+    assertions on the final reply content can verify what grounding evidence was assembled.
+    """
+    # Pull meaningful lines from the user prompt (grounding evidence block)
+    evidence_lines = [
+        line.strip()
+        for line in user_prompt.splitlines()
+        if len(line.strip()) > 40 and not line.strip().startswith("#")
+    ]
+    body = "\n".join(evidence_lines[:8]) if evidence_lines else user_prompt[:300]
+    return f"## At a glance\n{body}\n"
+
 from app.core.auth import UserIdentity
 from app.db.base import Base
 from app.db.migrations import run_migrations
