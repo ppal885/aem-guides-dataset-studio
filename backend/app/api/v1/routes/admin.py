@@ -308,6 +308,32 @@ def search_jira_rag(request: JiraRagSearchRequest, user: UserIdentity = AdminUse
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/rag-collections")
+def rag_collections_status(user: UserIdentity = AdminUser):
+    """Report chunk counts for all RAG collections."""
+    try:
+        from app.services.vector_store_service import (
+            CHROMA_COLLECTION_AEM_GUIDES, CHROMA_COLLECTION_DITA_SPEC,
+            CHROMA_COLLECTION_JIRA_QA, CHROMA_COLLECTION_DITA_OT_GITHUB,
+            get_collection_count,
+        )
+        collections = {
+            "jira_qa": CHROMA_COLLECTION_JIRA_QA,
+            "aem_guides": CHROMA_COLLECTION_AEM_GUIDES,
+            "dita_spec": CHROMA_COLLECTION_DITA_SPEC,
+            "dita_ot_github": CHROMA_COLLECTION_DITA_OT_GITHUB,
+        }
+        result = {}
+        for label, name in collections.items():
+            try:
+                result[label] = {"collection": name, "chunks": get_collection_count(name)}
+            except Exception as e:
+                result[label] = {"collection": name, "error": str(e)}
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/jira-rag-status")
 def jira_rag_status(user: UserIdentity = AdminUser):
     """Report how many Jira issues are indexed in ChromaDB."""
