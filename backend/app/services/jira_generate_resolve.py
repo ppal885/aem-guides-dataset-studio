@@ -462,7 +462,9 @@ def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
         return {}
 
     try:
-        import asyncio, json as _json
+        import asyncio
+        import concurrent.futures
+        import json as _json
         from app.services.llm_service import generate_text
 
         async def _run():
@@ -473,9 +475,18 @@ def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
                 step_name="jira_dita_analysis",
             )
 
-        raw = asyncio.run(_run())
+        # _build_generate_dita_preview_plan is sync but runs inside FastAPI's event loop.
+        # asyncio.run() fails if a loop is already running — use a dedicated thread instead.
+        try:
+            asyncio.get_running_loop()
+            # Inside a running loop: delegate to a thread with its own loop
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                raw = pool.submit(asyncio.run, _run()).result(timeout=45)
+        except RuntimeError:
+            # No running loop (e.g. standalone test / CLI)
+            raw = asyncio.run(_run())
+
         raw = (raw or "").strip()
-        # Find JSON object in response
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start >= 0 and end > start:
@@ -516,7 +527,20 @@ def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
             parts.append(f"- [{ttype.upper()}] {title} — {rationale}")
 
     subject = analysis.get("subject", "")
+    topic_family = analysis.get("topic_family", "")
+    recs = analysis.get("topic_recommendations") or []
+
     if subject:
         parts.extend(["", f"### Dataset Subject: {subject}"])
+
+    # Append a natural-language generation hint so the contract builder
+    # picks up the right family and count from the analysis
+    if recs and topic_family:
+        count = len(recs)
+        parts.extend([
+            "",
+            "## Suggested Generation",
+            f"Generate {count} {topic_family} topics about {subject or 'this issue'}.",
+        ])
 
     return "\n".join(parts)
