@@ -53,8 +53,8 @@ def trigger_deploy(user: UserIdentity = AdminUser):
                 restarted = True
                 break
 
-        # Fallback: find the uvicorn/run_local.py process on port 8001 and SIGTERM it
-        # systemd will auto-restart it
+        # Fallback: find the process on port 8001 and SIGTERM it after a delay
+        # so the HTTP response is fully sent before the process exits.
         if not restarted:
             lsof = subprocess.run(
                 ["bash", "-c", "lsof -ti:8001 2>/dev/null || fuser 8001/tcp 2>/dev/null || true"],
@@ -62,12 +62,17 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             )
             pids = [p.strip() for p in lsof.stdout.strip().split() if p.strip().isdigit()]
             if pids:
-                for pid in pids[:3]:
-                    try:
-                        os.kill(int(pid), signal.SIGTERM)
-                    except Exception:
-                        pass
-                results["restart"] = f"SIGTERM sent to pids: {pids}"
+                import threading
+                def _delayed_kill(pids, delay=3):
+                    import time, os, signal as _sig
+                    time.sleep(delay)
+                    for pid in pids[:3]:
+                        try:
+                            os.kill(int(pid), _sig.SIGTERM)
+                        except Exception:
+                            pass
+                threading.Thread(target=_delayed_kill, args=(pids,), daemon=True).start()
+                results["restart"] = f"SIGTERM scheduled for pids {pids} in 3s"
                 restarted = True
             else:
                 results["restart"] = "no process found on port 8001"
