@@ -421,3 +421,30 @@ def index_all_rag(user: UserIdentity = AdminUser):
         results["jira"] = {"error": str(e)}
 
     return {"success": True, "results": results}
+
+
+@router.post("/pip-install")
+def pip_install(user: UserIdentity = AdminUser):
+    """Install/upgrade key Python dependencies needed for RAG indexing."""
+    import sys
+    results = {}
+    packages = [
+        "sentence-transformers>=2.2.0",
+        "torch>=2.0.0",
+        "transformers>=4.30.0",
+        "langchain-community>=0.0.1",
+        "langchain-text-splitters>=0.0.1",
+    ]
+    for pkg in packages:
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg, "--quiet"],
+            capture_output=True, text=True, timeout=120,
+        )
+        results[pkg.split(">=")[0]] = "ok" if r.returncode == 0 else r.stderr.strip()[-200:]
+    # Reset embedding state so it retries after install
+    try:
+        from app.services.embedding_service import reset_embedding_runtime_state
+        reset_embedding_runtime_state()
+    except Exception:
+        pass
+    return {"success": True, "results": results}
