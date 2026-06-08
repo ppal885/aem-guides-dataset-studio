@@ -23,25 +23,40 @@ def check_env(user: UserIdentity = AdminUser):
 class SetEnvRequest(BaseModel):
     key: str
     value: str
+    force: bool = False  # overwrite existing value
 
 
 @router.post("/set-env")
 def set_env_var(request: SetEnvRequest, user: UserIdentity = AdminUser):
-    """Append a key=value line to .env.docker and trigger uvicorn reload.
+    """Append/overwrite a key=value in .env.docker and trigger uvicorn reload.
 
-    Use this to set JIRA_URL, JIRA_USERNAME, JIRA_PASSWORD etc. without SSH.
-    Values are written to .env.docker (gitignored) only — never to the repo.
+    Use force=true to replace an existing value.
+    Values written only to gitignored .env.docker — never to the repo.
     """
+    import re as _re
     repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
     env_file = os.path.join(repo_dir, "backend", ".env.docker")
     try:
         existing = open(env_file).read() if os.path.exists(env_file) else ""
-        if f"{request.key}=" in existing:
+        key_exists = bool(_re.search(rf"^{re.escape(request.key)}=", existing, _re.MULTILINE))
+        if key_exists and not request.force:
             return {"success": True, "action": "already_set", "key": request.key}
-        with open(env_file, "a") as f:
-            f.write(f"\n{request.key}={request.value}\n")
+        if key_exists and request.force:
+            # Replace existing line
+            new_content = _re.sub(
+                rf"^{re.escape(request.key)}=.*$",
+                f"{request.key}={request.value}",
+                existing, flags=_re.MULTILINE
+            )
+            with open(env_file, "w") as f:
+                f.write(new_content)
+            action = "updated"
+        else:
+            with open(env_file, "a") as f:
+                f.write(f"\n{request.key}={request.value}\n")
+            action = "added"
         os.utime(__file__, None)  # trigger uvicorn reload
-        return {"success": True, "action": "added", "key": request.key}
+        return {"success": True, "action": action, "key": request.key}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
