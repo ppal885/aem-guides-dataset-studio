@@ -4980,13 +4980,18 @@ def _build_generate_dita_preview_plan(
         fetch_issue_text_for_generate,
     )
 
-    # Enrich the preview text with Jira issue content so the contract builder
-    # sees description, steps, subject — not just the bare "GUIDES-48304" key.
+    # Enrich the preview text with full Jira issue content + LLM deep analysis
+    # so the contract builder sees description, steps, subject, recommended topics.
+    from app.services.jira_generate_resolve import (
+        enrich_jira_text_with_analysis,
+    )
     _jira_key = extract_issue_key_from_generation_request(text or "")
     if _jira_key:
         _issue_text, _jira_err = fetch_issue_text_for_generate(_jira_key)
         if _issue_text:
-            text = f"{_issue_text}\n\n## Generation Request\n{text}"
+            # Run LLM analysis to extract DITA concepts & topic recommendations
+            _enriched = enrich_jira_text_with_analysis(_issue_text, issue_key=_jira_key)
+            text = f"{_enriched}\n\n## Generation Request\n{text}"
 
     _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(text or ""))
     if _is_freeform:

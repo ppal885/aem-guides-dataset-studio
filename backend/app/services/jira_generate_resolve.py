@@ -419,3 +419,104 @@ def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[s
 
     # Not configured: keep original shortcut as text (LLM still sees key/URL)
     return body_text, None, None
+
+
+# ---------------------------------------------------------------------------
+# Deep DITA analysis for dataset generation
+# ---------------------------------------------------------------------------
+
+_DITA_ANALYSIS_PROMPT = """You are a senior DITA architect analysing a Jira issue to plan the best DITA training dataset.
+
+Read the issue carefully and reason step by step:
+
+1. **DITA concepts involved** – which DITA elements, attributes, mechanisms are at the core of this issue?
+2. **Authoring scenario** – what is the user trying to do in AEM Guides? What workflow is broken?
+3. **Root cause domain** – is this about key resolution, map hierarchy, content reuse, output processing, or something else?
+4. **Dataset recommendation** – what 4–8 DITA topic titles would best cover this issue as training data?
+   - Include: concept (what is the mechanism), task (how to configure/work around it), reference (element/attribute spec)
+   - Make titles concrete and specific to the scenario (not generic)
+
+Respond in this exact JSON format:
+{
+  "dita_concepts": ["concept1", "concept2", ...],
+  "authoring_scenario": "one paragraph describing what the user is doing",
+  "root_cause_domain": "key_resolution | map_hierarchy | content_reuse | output_processing | authoring_ui | other",
+  "topic_recommendations": [
+    {"title": "...", "type": "concept|task|reference", "rationale": "one sentence why this topic helps"},
+    ...
+  ],
+  "subject": "concise 5-10 word subject for the dataset",
+  "topic_family": "task | concept | topic"
+}"""
+
+
+def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
+    """Use LLM to reason deeply about a Jira issue and recommend DITA dataset topics.
+
+    Returns a dict with keys: dita_concepts, authoring_scenario, root_cause_domain,
+    topic_recommendations, subject, topic_family.
+    Returns empty dict if LLM is unavailable or analysis fails.
+    """
+    from app.services.llm_service import is_llm_available
+    if not is_llm_available() or not issue_text:
+        return {}
+
+    try:
+        import asyncio, json as _json
+        from app.services.llm_service import generate_text
+
+        async def _run():
+            return await generate_text(
+                system_prompt=_DITA_ANALYSIS_PROMPT,
+                user_prompt=f"Jira Issue {issue_key}:\n\n{issue_text[:6000]}",
+                max_tokens=1200,
+                step_name="jira_dita_analysis",
+            )
+
+        raw = asyncio.run(_run())
+        raw = (raw or "").strip()
+        # Find JSON object in response
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            return _json.loads(raw[start:end])
+    except Exception as e:
+        logger.debug_structured("Jira DITA analysis skipped", extra_fields={"error": str(e)})
+    return {}
+
+
+def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
+    """Append LLM-generated DITA analysis section to the Jira issue text."""
+    analysis = analyze_jira_for_dita_dataset(issue_text, issue_key)
+    if not analysis:
+        return issue_text
+
+    parts = [issue_text, "", "## DITA Dataset Analysis"]
+
+    scenario = analysis.get("authoring_scenario", "")
+    if scenario:
+        parts.extend(["", "### Authoring Scenario", scenario])
+
+    concepts = analysis.get("dita_concepts") or []
+    if concepts:
+        parts.extend(["", "### DITA Concepts Involved"])
+        parts.extend([f"- {c}" for c in concepts[:8]])
+
+    domain = analysis.get("root_cause_domain", "")
+    if domain:
+        parts.extend(["", f"### Root Cause Domain: {domain.replace('_', ' ').title()}"])
+
+    recs = analysis.get("topic_recommendations") or []
+    if recs:
+        parts.extend(["", "### Recommended Topic Titles"])
+        for r in recs[:8]:
+            title = r.get("title", "")
+            ttype = r.get("type", "topic")
+            rationale = r.get("rationale", "")
+            parts.append(f"- [{ttype.upper()}] {title} — {rationale}")
+
+    subject = analysis.get("subject", "")
+    if subject:
+        parts.extend(["", f"### Dataset Subject: {subject}"])
+
+    return "\n".join(parts)
