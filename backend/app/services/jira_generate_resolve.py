@@ -559,12 +559,19 @@ def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
     if subject:
         parts.extend(["", f"### Dataset Subject: {subject}"])
 
-    # When the scenario involves keyref/keydef/keyword — the ideal dataset uses the
-    # freeform keydef generator which produces a real keys map + topics with
-    # <keyword keyref="..."/> elements. Route to this by using the keydef/keyref
-    # terms in the generation request so _FREEFORM_REDIRECT_PATTERN can match.
+    # Detect keyref/keymap scenario — check BOTH the LLM analysis AND the raw issue text.
+    # Direct text check is more reliable than LLM analysis (which can time out).
+    _raw_issue_text = "\n".join(parts[:30])  # first part of the issue before our additions
+    _KEYREF_TEXT_RE = re.compile(
+        r"\b(keydef|keyref|keyscope|key\s+def(?:inition)?|keyword.*keyref|keyref.*keyword"
+        r"|keys?\s+map|keymap|insert.*keyword|keyword.*insert|key\s+reference"
+        r"|\bkeys\b.*\bmap\b|\broot\s+map\b.*\bkeys\b)\b",
+        re.IGNORECASE,
+    )
+    _direct_keyref = bool(_KEYREF_TEXT_RE.search(_raw_issue_text) or _KEYREF_TEXT_RE.search(issue_key or ""))
     _keyref_scenario = (
-        root_cause == "key_resolution"
+        _direct_keyref  # direct text match (most reliable)
+        or root_cause == "key_resolution"
         or any(e.lower() in ("keyword", "keydef", "keyref", "keyscope", "mapref") for e in elements)
         or "keyref" in (gen_prompt or "").lower()
         or "keydef" in (gen_prompt or "").lower()
