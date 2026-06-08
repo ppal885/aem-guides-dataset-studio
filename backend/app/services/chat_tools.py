@@ -891,10 +891,34 @@ async def execute_generate_dita(
     if _gr_idx >= 0:
         _freeform_check_text = source_text[_gr_idx + len(_gen_req_marker):]
     _freeform_match = _FREEFORM_REDIRECT_PATTERN.search(_freeform_check_text)
+    # Route to freeform keydef generator when Jira analysis identified a keyref scenario.
+    # Pass a compact focused prompt (not the full 4K enriched text) to avoid LLM timeout.
+    _is_jira_keyref_scenario = not _freeform_match and "DITA keyref scenario" in source_text
+    if _is_jira_keyref_scenario:
+        _freeform_match = True
+        # Build a compact domain prompt from the analysis sections
+        import re as _re_kd
+        _subject_m = _re_kd.search(r"###\s+Dataset\s+Subject:\s*(.+)", source_text)
+        _scenario_m = _re_kd.search(r"###\s+Exact\s+DITA\s+Scenario\s*\n(.+?)(?=\n###|\Z)", source_text, _re_kd.DOTALL)
+        _summary_m = _re_kd.search(r"##\s+Issue\s+Summary\s*\n([^\n]+)", source_text)
+        _subject = (_subject_m.group(1).strip() if _subject_m else "")
+        _scenario = (_scenario_m.group(1).strip()[:600] if _scenario_m else "")
+        _summary = (_summary_m.group(1).strip()[:200] if _summary_m else "")
+        _compact_prompt = (
+            f"AEM Guides DITA keyref/keymap dataset — {_subject or _summary}\n\n"
+            f"Scenario: {_scenario or _summary}\n\n"
+            "Requirements: keydef map + root map referencing it via mapref + topics using "
+            "<keyword keyref='keyname'/> in their body content."
+        )
+        source_text = _compact_prompt  # use compact prompt for freeform generator
+
     if _freeform_match:
         logger.info_structured(
             "generate_dita redirected to freeform",
-            extra_fields={"trigger": _freeform_match.group(0), "jira_id": extracted_jira_id},
+            extra_fields={
+                "trigger": _freeform_match.group(0) if hasattr(_freeform_match, 'group') else "keyref_scenario",
+                "jira_id": extracted_jira_id,
+            },
         )
         return await execute_create_job(
             recipe_type="freeform",

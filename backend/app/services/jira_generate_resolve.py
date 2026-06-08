@@ -546,6 +546,8 @@ def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
     subject = analysis.get("subject", "")
     gen_prompt = analysis.get("generation_prompt", "")
     count = len(titles) or 5
+    elements = analysis.get("dita_elements") or []
+    root_cause = analysis.get("root_cause_domain", "")
 
     # Derive family from most common type in titles; prefer task > concept > reference
     _type_counts: dict = {}
@@ -557,8 +559,38 @@ def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
     if subject:
         parts.extend(["", f"### Dataset Subject: {subject}"])
 
-    # This section drives the contract builder — keep it clear and family-specific
-    if subject or gen_prompt:
+    # When the scenario involves keyref/keydef/keyword — the ideal dataset uses the
+    # freeform keydef generator which produces a real keys map + topics with
+    # <keyword keyref="..."/> elements. Route to this by using the keydef/keyref
+    # terms in the generation request so _FREEFORM_REDIRECT_PATTERN can match.
+    _keyref_scenario = (
+        root_cause == "key_resolution"
+        or any(e.lower() in ("keyword", "keydef", "keyref", "keyscope", "mapref") for e in elements)
+        or "keyref" in (gen_prompt or "").lower()
+        or "keydef" in (gen_prompt or "").lower()
+    )
+
+    if _keyref_scenario:
+        # Build a targeted keydef dataset request: keys map + topics using <keyword keyref>
+        parts.extend([
+            "",
+            "## Suggested Generation",
+            f"Generate a keydef dataset for: {subject}.",
+            "",
+            "Dataset requirements (DITA keyref scenario):",
+            "- Create a DITA keys map (keys.ditamap) with 6-8 <keydef> entries representing",
+            "  real AEM Guides terms: product-name, feature-keyword-insert, root-map-path,",
+            "  keymap-filename, web-editor-name, insert-keyword-action, key-resolution-context.",
+            "- Create a root DITA map that references the keys map via",
+            "  <mapref href='keys.ditamap' processing-role='resource-only'/>",
+            "- Create 4-5 topics that USE those keys — each topic body must contain",
+            "  <keyword keyref='keyname'/> elements inline in <p>, <cmd>, or <title> elements.",
+            "- This is a keydef training dataset: the topics must DEMONSTRATE keyword insertion",
+            "  with keyref, not just describe it.",
+            (gen_prompt or "")[:500],
+        ])
+    else:
+        # Standard: contract builder reads this to determine family + count
         parts.extend([
             "",
             "## Suggested Generation",
