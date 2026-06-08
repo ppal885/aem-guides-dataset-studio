@@ -207,3 +207,121 @@ def trigger_cleanup(
             status_code=500,
             detail=f"Cleanup failed: {str(e)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Jira RAG Indexing Endpoints
+# ---------------------------------------------------------------------------
+
+class JiraBulkIndexRequest(BaseModel):
+    jql: str = "project = GUIDES AND updated > -30d"
+    limit: int = Field(default=100, ge=1, le=500)
+    force_reindex: bool = False
+
+
+class JiraRagSearchRequest(BaseModel):
+    query: str
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+@router.post("/index-jira/{issue_key}")
+def index_single_jira(issue_key: str, force_reindex: bool = False, user: UserIdentity = AdminUser):
+    """Index a single Jira issue into ChromaDB for RAG retrieval."""
+    from app.services.jira_qa_index_service import (
+        index_jql_to_chroma, _jira_configured, is_chroma_available, is_embedding_available,
+    )
+    from app.services.jira_client import JiraClient
+    client = JiraClient()
+    if not _jira_configured(client):
+        raise HTTPException(status_code=400, detail="Jira not configured.")
+    if not is_chroma_available():
+        raise HTTPException(status_code=400, detail="ChromaDB not available.")
+    if not is_embedding_available():
+        raise HTTPException(status_code=400, detail="Embedding model not available.")
+    try:
+        result = index_jql_to_chroma(
+            f'issue = "{issue_key}"',
+            limit=1,
+            force_reindex=force_reindex,
+            jira_client=client,
+        )
+        return {
+            "success": not result.get("error"),
+            "issue_key": issue_key,
+            "chunks_indexed": result.get("chunks_upserted", 0),
+            "error": result.get("error"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/index-jira-bulk")
+def bulk_index_jira(request: JiraBulkIndexRequest, user: UserIdentity = AdminUser):
+    """Bulk-index Jira issues matching a JQL query into ChromaDB."""
+    from app.services.jira_qa_index_service import (
+        index_jql_to_chroma, _jira_configured, is_chroma_available, is_embedding_available,
+    )
+    from app.services.jira_client import JiraClient
+    client = JiraClient()
+    if not _jira_configured(client):
+        raise HTTPException(status_code=400, detail="Jira not configured.")
+    if not is_chroma_available():
+        raise HTTPException(status_code=400, detail="ChromaDB not available.")
+    if not is_embedding_available():
+        raise HTTPException(status_code=400, detail="Embedding model not available.")
+    try:
+        result = index_jql_to_chroma(
+            request.jql,
+            limit=request.limit,
+            force_reindex=request.force_reindex,
+            jira_client=client,
+        )
+        return {
+            "success": not result.get("error"),
+            "issues_indexed": result.get("issues_indexed", 0),
+            "chunks_upserted": result.get("chunks_upserted", 0),
+            "error": result.get("error"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/search-jira-rag")
+def search_jira_rag(request: JiraRagSearchRequest, user: UserIdentity = AdminUser):
+    """Semantic search over indexed Jira issues in ChromaDB."""
+    from app.services.jira_qa_retrieval_service import semantic_search_jira_qa
+    try:
+        hits = semantic_search_jira_qa(request.query, top_k=request.limit)
+        return {
+            "query": request.query,
+            "hits": [
+                {
+                    "jira_key": h.get("jira_key", ""),
+                    "summary": h.get("summary", "")[:200],
+                    "score": round(float(h.get("score", 0)), 3),
+                    "component": h.get("component", ""),
+                }
+                for h in (hits or [])
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/jira-rag-status")
+def jira_rag_status(user: UserIdentity = AdminUser):
+    """Report how many Jira issues are indexed in ChromaDB."""
+    from app.services.jira_qa_index_service import is_chroma_available, is_embedding_available, CHROMA_COLLECTION_JIRA_QA
+    from app.services.vector_store_service import get_collection_count
+    if not is_chroma_available():
+        return {"available": False, "reason": "ChromaDB not available"}
+    try:
+        count = get_collection_count(CHROMA_COLLECTION_JIRA_QA)
+        return {
+            "available": True,
+            "embedding_available": is_embedding_available(),
+            "collection": CHROMA_COLLECTION_JIRA_QA,
+            "chunk_count": count,
+        }
+    except Exception as e:
+        return {"available": True, "error": str(e)}

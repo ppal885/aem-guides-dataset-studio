@@ -373,7 +373,12 @@ def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Option
         parts.extend(["", f"## Comments ({len(comment_lines)})"])
         parts.extend(comment_lines)
 
-    return "\n".join(parts), None
+    issue_text = "\n".join(parts)
+
+    # Auto-index into ChromaDB in background so future similar issues benefit
+    _auto_index_jira_background(key)
+
+    return issue_text, None
 
 
 def sanitize_error_for_generate(exc: Exception) -> str:
@@ -384,6 +389,51 @@ def sanitize_error_for_generate(exc: Exception) -> str:
     if "401" in msg or "403" in msg:
         return "Jira authentication failed. Check JIRA_BASE_URL and credentials in server .env."
     return "Could not fetch this issue from Jira. Paste the full issue text, or verify Jira configuration."
+
+
+def _auto_index_jira_background(issue_key: str) -> None:
+    """Index a single Jira issue into ChromaDB in a daemon thread — fire and forget."""
+    import threading
+
+    def _do_index():
+        try:
+            from app.services.jira_qa_index_service import (
+                index_jql_to_chroma, _jira_configured, is_chroma_available, is_embedding_available,
+            )
+            from app.services.jira_client import JiraClient
+            client = JiraClient()
+            if not (_jira_configured(client) and is_chroma_available() and is_embedding_available()):
+                return
+            result = index_jql_to_chroma(
+                f'issue = "{issue_key}"',
+                limit=1,
+                force_reindex=False,
+                jira_client=client,
+            )
+            if result.get("chunks_upserted", 0) > 0:
+                logger.info_structured(
+                    "jira_auto_indexed",
+                    extra_fields={"issue_key": issue_key, "chunks": result["chunks_upserted"]},
+                )
+        except Exception as exc:
+            logger.debug_structured("jira_auto_index_skipped", extra_fields={"issue_key": issue_key, "error": str(exc)})
+
+    threading.Thread(target=_do_index, daemon=True, name=f"jira-rag-{issue_key}").start()
+
+
+def _get_similar_jiras(issue_key: str, issue_text: str, limit: int = 3) -> list[dict]:
+    """Return top similar indexed Jira issues from ChromaDB (excluding the current issue)."""
+    try:
+        from app.services.jira_qa_retrieval_service import semantic_search_jira_qa, related_tickets_for_issue
+        # Try direct related-tickets lookup first (uses pre-indexed metadata)
+        related, _ = related_tickets_for_issue(issue_key, top_k=limit)
+        if related:
+            return related[:limit]
+        # Fallback: semantic search on the issue text
+        hits = semantic_search_jira_qa(issue_text[:500], top_k=limit + 1)
+        return [h for h in (hits or []) if h.get("jira_key", "") != issue_key][:limit]
+    except Exception:
+        return []
 
 
 def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[str], Optional[str]]:
@@ -518,10 +568,30 @@ def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
     prompt that drives the content generator to produce on-topic training data.
     """
     analysis = analyze_jira_for_dita_dataset(issue_text, issue_key)
-    if not analysis:
+
+    # Append similar indexed Jiras as prior-art context
+    similar = _get_similar_jiras(issue_key or "", issue_text[:400])
+
+    if not analysis and not similar:
         return issue_text
 
     parts = [issue_text, "", "## DITA Dataset Analysis (AI Reasoned)"]
+
+    # Prior-art: similar already-indexed Jira issues (from RAG)
+    if similar:
+        parts.extend(["", "### Similar Indexed Issues (Prior Art from RAG)"])
+        for s in similar[:3]:
+            jkey = s.get("jira_key", "")
+            summary = (s.get("summary") or "")[:120]
+            score = round(float(s.get("score") or 0), 2)
+            parts.append(f"- [{jkey}] (similarity {score}) {summary}")
+        parts.append(
+            "Reference these similar issues when deciding topic structure — "
+            "reuse validated dataset patterns from them where applicable."
+        )
+
+    if not analysis:
+        return "\n".join(parts)
 
     scenario = analysis.get("dita_scenario", "")
     if scenario:
