@@ -4975,6 +4975,19 @@ def _build_generate_dita_preview_plan(
     instructions: str | None = None,
 ) -> dict[str, Any]:
     from app.services.chat_tools import _FREEFORM_REDIRECT_PATTERN
+    from app.services.jira_generate_resolve import (
+        extract_issue_key_from_generation_request,
+        fetch_issue_text_for_generate,
+    )
+
+    # Enrich the preview text with Jira issue content so the contract builder
+    # sees description, steps, subject — not just the bare "GUIDES-48304" key.
+    _jira_key = extract_issue_key_from_generation_request(text or "")
+    if _jira_key:
+        _issue_text, _jira_err = fetch_issue_text_for_generate(_jira_key)
+        if _issue_text:
+            text = f"{_issue_text}\n\n## Generation Request\n{text}"
+
     _is_freeform = bool(_FREEFORM_REDIRECT_PATTERN.search(text or ""))
     if _is_freeform:
         # Freeform advanced-construct request: skip the contract service entirely.
