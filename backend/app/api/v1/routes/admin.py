@@ -525,3 +525,31 @@ def reset_embedding_cache(user: UserIdentity = AdminUser):
         pass
 
     return {"success": True, "results": results, "note": "Restart backend, then call /admin/init-embedding"}
+
+
+@router.get("/env-docker-keys")
+def env_docker_keys(user: UserIdentity = AdminUser):
+    """Show which keys exist in .env.docker (without values) to debug persistence."""
+    import re as _re
+    repo_dir = os.environ.get("REPO_DIR", "/root/aem-guides-dataset-studio")
+    env_file = os.path.join(repo_dir, "backend", ".env.docker")
+    if not os.path.exists(env_file):
+        return {"exists": False, "path": env_file}
+    keys_found = []
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key = line.split("=", 1)[0].strip()
+                if key:
+                    keys_found.append(key)
+    # Show only key names (no values) + first char hint of value
+    result = {}
+    text = open(env_file).read()
+    for key in set(keys_found):
+        val = os.environ.get(key, "")
+        # Just show length of value (not the actual value)
+        m = _re.search(rf"^{_re.escape(key)}=(.*)$", text, _re.MULTILINE)
+        file_val_len = len(m.group(1)) if m else 0
+        result[key] = {"in_file": True, "file_val_len": file_val_len, "in_env": bool(val), "env_val_len": len(val)}
+    return {"exists": True, "path": env_file, "keys": result}
