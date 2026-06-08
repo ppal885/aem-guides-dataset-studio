@@ -577,3 +577,18 @@ def test_jira_raw(user: UserIdentity = AdminUser):
         }
     except Exception as e:
         return {"error": str(e), "url_used": test_url[:60]}
+
+
+@router.get("/process-info")
+def process_info(user: UserIdentity = AdminUser):
+    """Show how the backend process was started (cmdline, env file loading)."""
+    import sys
+    from pathlib import Path
+    return {
+        "python": sys.executable,
+        "argv": sys.argv[:5],
+        "run_local_py_loaded": any("run_local" in str(a) for a in sys.argv),
+        "jira_username_in_env": os.environ.get("JIRA_USERNAME", "")[:20],
+        "dotenv_loaded": os.environ.get("_DOTENV_LOADED", ""),
+        "env_docker_path": str(Path(sys.executable).parent.parent / "backend" / ".env.docker"),
+    }
