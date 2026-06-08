@@ -388,11 +388,12 @@ def sanitize_error_for_generate(exc: Exception) -> str:
 
 def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[str], Optional[str]]:
     """
-    If input is a Jira shortcut and Jira is configured, replace with fetched issue text.
+    If input contains a Jira issue key and Jira is configured, fetch the full issue
+    (description, comments, attachments) and enrich with LLM DITA scenario analysis
+    so the generation pipeline produces on-topic training data.
 
     Returns:
         (text_for_pipeline, jira_id_for_bundle_or_none, optional_warning)
-        jira_id_for_bundle is real PROJECT-123 when fetch succeeded; else None (caller uses TEXT-...).
     """
     raw = (body_text or "").strip()
     if not is_jira_shortcut_input(raw):
@@ -401,7 +402,8 @@ def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[s
             return body_text, None, None
         formatted, err = fetch_issue_text_for_generate(key)
         if formatted:
-            return f"{formatted}\n\n## Generation Request\n{raw}", key, None
+            enriched = enrich_jira_text_with_analysis(formatted, issue_key=key)
+            return f"{enriched}\n\n## Generation Request\n{raw}", key, None
         if err:
             return body_text, None, err
         return body_text, None, None
@@ -412,12 +414,12 @@ def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[s
 
     formatted, err = fetch_issue_text_for_generate(key)
     if formatted:
-        return formatted, key, None
+        enriched = enrich_jira_text_with_analysis(formatted, issue_key=key)
+        return enriched, key, None
 
     if err:
         return body_text, None, err
 
-    # Not configured: keep original shortcut as text (LLM still sees key/URL)
     return body_text, None, None
 
 
@@ -425,28 +427,40 @@ def resolve_text_for_generate_from_text(body_text: str) -> Tuple[str, Optional[s
 # Deep DITA analysis for dataset generation
 # ---------------------------------------------------------------------------
 
-_DITA_ANALYSIS_PROMPT = """You are a senior DITA architect analysing a Jira issue to plan the best DITA training dataset.
+_DITA_ANALYSIS_PROMPT = """You are a senior DITA architect whose job is to analyse a Jira bug/feature report and design a DITA XML training dataset for that specific scenario.
 
-Read the issue carefully and reason step by step:
+IMPORTANT: The goal is NOT to turn the Jira ticket into documentation.
+The goal is to produce DITA XML training examples that cover the EXACT technical DITA scenario the ticket is about.
 
-1. **DITA concepts involved** – which DITA elements, attributes, mechanisms are at the core of this issue?
-2. **Authoring scenario** – what is the user trying to do in AEM Guides? What workflow is broken?
-3. **Root cause domain** – is this about key resolution, map hierarchy, content reuse, output processing, or something else?
-4. **Dataset recommendation** – what 4–8 DITA topic titles would best cover this issue as training data?
-   - Include: concept (what is the mechanism), task (how to configure/work around it), reference (element/attribute spec)
-   - Make titles concrete and specific to the scenario (not generic)
+Read the Jira issue carefully, then:
+
+1. **Identify the core DITA technical scenario** — What specific DITA elements, attributes, and mechanisms are broken or being tested? Be precise about the XML structure involved (e.g. "keydef in a keymap referenced via mapref processing-role=resource-only from a root map").
+
+2. **Extract the specific DITA markup patterns** — What exact DITA XML does this scenario require?
+   - Which elements: keydef, keyword, mapref, keyscope, topicref, etc.
+   - Which attributes: keyref, keys, keyscope, processing-role, etc.
+   - What map/topic structure is needed
+
+3. **Design 5-8 specific DITA topic titles** that would form a training dataset for this exact scenario.
+   Each title must:
+   - Be directly about the DITA XML scenario from the Jira (not generic DITA concepts)
+   - Reference the specific elements/attributes involved
+   - Be useful as a training example for an AI learning DITA authoring
+
+4. **Write a generation prompt** — a single paragraph that will be passed to a DITA content generator as "subject + context" to generate these specific topics.
 
 Respond in this exact JSON format:
 {
-  "dita_concepts": ["concept1", "concept2", ...],
-  "authoring_scenario": "one paragraph describing what the user is doing",
-  "root_cause_domain": "key_resolution | map_hierarchy | content_reuse | output_processing | authoring_ui | other",
-  "topic_recommendations": [
-    {"title": "...", "type": "concept|task|reference", "rationale": "one sentence why this topic helps"},
+  "dita_scenario": "one precise paragraph describing the exact DITA XML scenario (elements, attributes, structure)",
+  "dita_elements": ["keydef", "keyword", "mapref", ...],
+  "dita_attributes": ["keyref", "keys", "keyscope", "processing-role", ...],
+  "topic_titles": [
+    {"title": "...", "type": "concept|task|reference", "dita_elements_used": ["keydef", "topicref"]},
     ...
   ],
-  "subject": "concise 5-10 word subject for the dataset",
-  "topic_family": "task | concept | topic"
+  "subject": "specific 5-10 word DITA subject for dataset generation",
+  "topic_family": "task|concept|topic",
+  "generation_prompt": "paragraph describing what content to generate — mentions specific DITA elements, the scenario, what the topics should teach"
 }"""
 
 
@@ -497,50 +511,59 @@ def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
 
 
 def enrich_jira_text_with_analysis(issue_text: str, issue_key: str = "") -> str:
-    """Append LLM-generated DITA analysis section to the Jira issue text."""
+    """Append LLM-generated DITA scenario analysis to the Jira issue text.
+
+    The analysis identifies the exact DITA elements/attributes involved,
+    designs specific topic titles for the scenario, and appends a generation
+    prompt that drives the content generator to produce on-topic training data.
+    """
     analysis = analyze_jira_for_dita_dataset(issue_text, issue_key)
     if not analysis:
         return issue_text
 
-    parts = [issue_text, "", "## DITA Dataset Analysis"]
+    parts = [issue_text, "", "## DITA Dataset Analysis (AI Reasoned)"]
 
-    scenario = analysis.get("authoring_scenario", "")
+    scenario = analysis.get("dita_scenario", "")
     if scenario:
-        parts.extend(["", "### Authoring Scenario", scenario])
+        parts.extend(["", "### Exact DITA Scenario", scenario])
 
-    concepts = analysis.get("dita_concepts") or []
-    if concepts:
-        parts.extend(["", "### DITA Concepts Involved"])
-        parts.extend([f"- {c}" for c in concepts[:8]])
+    elements = analysis.get("dita_elements") or []
+    attributes = analysis.get("dita_attributes") or []
+    if elements:
+        parts.extend(["", f"### DITA Elements: {', '.join(f'<{e}>' for e in elements[:10])}"])
+    if attributes:
+        parts.extend([f"### DITA Attributes: {', '.join(f'@{a}' for a in attributes[:10])}"])
 
-    domain = analysis.get("root_cause_domain", "")
-    if domain:
-        parts.extend(["", f"### Root Cause Domain: {domain.replace('_', ' ').title()}"])
-
-    recs = analysis.get("topic_recommendations") or []
-    if recs:
-        parts.extend(["", "### Recommended Topic Titles"])
-        for r in recs[:8]:
-            title = r.get("title", "")
-            ttype = r.get("type", "topic")
-            rationale = r.get("rationale", "")
-            parts.append(f"- [{ttype.upper()}] {title} — {rationale}")
+    titles = analysis.get("topic_titles") or []
+    if titles:
+        parts.extend(["", "### Planned Topic Titles"])
+        for t in titles[:8]:
+            title = t.get("title", "")
+            ttype = t.get("type", "topic")
+            elems = ", ".join(f"<{e}>" for e in (t.get("dita_elements_used") or [])[:4])
+            parts.append(f"- [{ttype.upper()}] {title}" + (f" (uses {elems})" if elems else ""))
 
     subject = analysis.get("subject", "")
-    topic_family = analysis.get("topic_family", "")
-    recs = analysis.get("topic_recommendations") or []
+    gen_prompt = analysis.get("generation_prompt", "")
+    count = len(titles) or 5
+
+    # Derive family from most common type in titles; prefer task > concept > reference
+    _type_counts: dict = {}
+    for t in titles:
+        _type_counts[t.get("type", "topic")] = _type_counts.get(t.get("type", "topic"), 0) + 1
+    _primary = max(_type_counts, key=_type_counts.get) if _type_counts else "task"
+    topic_family = "task" if _primary in ("task", "topic") else _primary
 
     if subject:
         parts.extend(["", f"### Dataset Subject: {subject}"])
 
-    # Append a natural-language generation hint so the contract builder
-    # picks up the right family and count from the analysis
-    if recs and topic_family:
-        count = len(recs)
+    # This section drives the contract builder — keep it clear and family-specific
+    if subject or gen_prompt:
         parts.extend([
             "",
             "## Suggested Generation",
-            f"Generate {count} {topic_family} topics about {subject or 'this issue'}.",
+            f"Generate {count} {topic_family} topics about: {subject}.",
+            (gen_prompt or "")[:1000],
         ])
 
     return "\n".join(parts)
