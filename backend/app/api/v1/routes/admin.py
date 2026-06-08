@@ -448,3 +448,49 @@ def pip_install(user: UserIdentity = AdminUser):
     except Exception:
         pass
     return {"success": True, "results": results}
+
+
+@router.post("/reset-embedding-cache")
+def reset_embedding_cache(user: UserIdentity = AdminUser):
+    """Clear HuggingFace model cache and force fresh model download + load."""
+    import shutil, sys
+    from pathlib import Path
+    results = {}
+
+    # Clear HuggingFace cache
+    hf_cache = Path.home() / ".cache" / "huggingface"
+    if hf_cache.exists():
+        try:
+            shutil.rmtree(hf_cache)
+            results["hf_cache_cleared"] = str(hf_cache)
+        except Exception as e:
+            results["hf_cache_error"] = str(e)
+    else:
+        results["hf_cache"] = "not found"
+
+    # Also clear sentence_transformers cache
+    st_cache = Path.home() / ".cache" / "torch" / "sentence_transformers"
+    if st_cache.exists():
+        try:
+            shutil.rmtree(st_cache)
+            results["st_cache_cleared"] = str(st_cache)
+        except Exception as e:
+            results["st_cache_error"] = str(e)
+
+    # Reinstall sentence-transformers cleanly
+    r = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--force-reinstall",
+         "sentence-transformers>=2.2.0", "torch>=2.0.0", "transformers>=4.30.0",
+         "--quiet"],
+        capture_output=True, text=True, timeout=300,
+    )
+    results["reinstall"] = "ok" if r.returncode == 0 else r.stderr[-300:]
+
+    # Reset embedding state
+    try:
+        from app.services.embedding_service import reset_embedding_runtime_state
+        reset_embedding_runtime_state()
+    except Exception:
+        pass
+
+    return {"success": True, "results": results, "note": "Restart backend, then call /admin/init-embedding"}
