@@ -14,10 +14,22 @@ if (_project_root / ".env").exists() or (_backend_dir / ".env").exists():
 
 # Load .env.docker if present — applies whether started via run_local.py OR uvicorn directly.
 # On Linux VM the service runs uvicorn directly so run_local.py never executes.
+# Use direct os.environ assignment (not dotenv) to guarantee override of systemd EnvironmentFile values.
 _env_docker = _backend_dir / ".env.docker"
 if _env_docker.exists():
-    from dotenv import load_dotenv as _load_env_docker
-    _load_env_docker(_env_docker, override=True, encoding="utf-8-sig")
+    import re as _re_env
+    try:
+        _docker_text = _env_docker.read_text(encoding="utf-8-sig", errors="replace")
+        for _line in _docker_text.splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                _k = _k.strip()
+                _v = _v.strip()
+                if _k:
+                    os.environ[_k] = _v  # direct assignment always wins over systemd EnvironmentFile
+    except Exception:
+        pass
 import logging
 import hashlib
 import time
