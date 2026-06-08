@@ -351,3 +351,73 @@ def jira_rag_status(user: UserIdentity = AdminUser):
         }
     except Exception as e:
         return {"available": True, "error": str(e)}
+
+
+@router.post("/init-embedding")
+def init_embedding_model(user: UserIdentity = AdminUser):
+    """Force-initialize the embedding model (downloads from HuggingFace if needed).
+
+    Call this once on a fresh VM to download all-MiniLM-L6-v2 before indexing.
+    """
+    try:
+        from app.services.embedding_service import (
+            _load_model, is_embedding_available, get_embedding_diagnostics,
+            reset_embedding_runtime_state,
+        )
+        # Reset state to force a fresh load attempt
+        reset_embedding_runtime_state()
+        model = _load_model()
+        diag = get_embedding_diagnostics()
+        if model is not None:
+            return {"success": True, "available": True, "model": diag.get("active_model_identifier"), "mode": diag.get("load_mode")}
+        return {"success": False, "available": False, "error": diag.get("error"), "reason": diag.get("load_mode")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/index-all-rag")
+def index_all_rag(user: UserIdentity = AdminUser):
+    """Trigger all RAG indexing: AEM Guides crawl + Jira bulk index.
+
+    Use this once on a fresh VM to populate all RAG collections.
+    Returns immediately — crawl runs synchronously (takes several minutes).
+    """
+    import asyncio
+    results: dict = {}
+
+    # 1. Init embedding model first
+    try:
+        from app.services.embedding_service import _load_model, is_embedding_available, reset_embedding_runtime_state
+        reset_embedding_runtime_state()
+        _load_model()
+        results["embedding"] = "ok" if is_embedding_available() else "failed"
+    except Exception as e:
+        results["embedding"] = f"error: {e}"
+        return {"success": False, "results": results, "error": "Embedding model failed to load"}
+
+    if results["embedding"] != "ok":
+        return {"success": False, "results": results, "error": "Embedding not available — install sentence-transformers"}
+
+    # 2. Crawl AEM Guides (first 50 priority pages synchronously)
+    try:
+        from app.services.crawl_service import crawl_and_index, _load_crawl_urls
+        urls = _load_crawl_urls()[:50]
+        stats = crawl_and_index(urls=urls)
+        results["aem_guides"] = {"pages": stats.get("pages_crawled", 0), "chunks": stats.get("chunks_stored", 0)}
+    except Exception as e:
+        results["aem_guides"] = {"error": str(e)}
+
+    # 3. Index recent Jira issues
+    try:
+        from app.services.jira_qa_index_service import index_jql_to_chroma, _jira_configured
+        from app.services.jira_client import JiraClient
+        client = JiraClient()
+        if _jira_configured(client):
+            r = index_jql_to_chroma("project = GUIDES AND updated > -30d ORDER BY updated DESC", limit=50, jira_client=client)
+            results["jira"] = {"indexed": r.get("issues_indexed", 0), "chunks": r.get("chunks_upserted", 0)}
+        else:
+            results["jira"] = {"error": "Jira not configured"}
+    except Exception as e:
+        results["jira"] = {"error": str(e)}
+
+    return {"success": True, "results": results}
