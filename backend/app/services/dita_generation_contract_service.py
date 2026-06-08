@@ -1113,13 +1113,45 @@ def build_dita_generation_contract(
             topic_family="auto",
         )
 
-    structure_text = source_text or combined
+    # When source_text includes a Jira issue block (Issue Key / ## Issue Summary /
+    # ## Generation Request sections), use ONLY the Generation Request part for
+    # structural analysis (family, element constraints, count). The Jira description
+    # body contains "Step 1/2/3", "map", "reference" etc. as bug-report prose —
+    # these should not be parsed as DITA element requirements.
+    _jira_block_re = re.compile(
+        r"^Issue\s+Key:\s+[A-Za-z][A-Za-z0-9_]*-\d+",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    _gen_request_split = re.split(r"\n##\s+Generation\s+Request\b", source_text, maxsplit=1, flags=re.IGNORECASE)
+    if _jira_block_re.search(source_text) and len(_gen_request_split) > 1:
+        # Structural analysis only on the explicit generation request
+        structure_text = _gen_request_split[1].strip() or source_text
+        # Subject extraction uses the Jira summary (before the generation request)
+        jira_part = _gen_request_split[0].strip()
+    else:
+        structure_text = source_text or combined
+        jira_part = source_text
+
     wants_map = bool(_MAP_PATTERN.search(structure_text))
     wants_glossary = bool(_GLOSSARY_PATTERN.search(structure_text))
     explicit_family = _normalize_topic_family(structure_text)
-    user_subject_source = re.split(r"\n---\s*\nJira / ticket context:\s*", source_text, maxsplit=1)[0].strip()
+    user_subject_source = re.split(r"\n---\s*\nJira / ticket context:\s*", jira_part, maxsplit=1)[0].strip()
     subject = _extract_subject(user_subject_source) or _extract_subject(source_text) or _extract_subject(clean_instructions or "")
     subject = _refine_subject_after_jira_followup(subject, full_source_text=source_text)
+
+    # Jira-sourced text: extract subject from "## Issue Summary" when normal extraction
+    # fails or returns a generic/unhelpful word (like "example" from "For example:" in
+    # the description body).
+    _GENERIC_SUBJECTS = {"example", "this", "here", "following", "below", "note", "please"}
+    _subject_is_weak = not subject or subject.strip().lower() in _GENERIC_SUBJECTS or len(subject.strip()) < 4
+    if _subject_is_weak and _jira_block_re.search(source_text):
+        _summary_match = re.search(r"##\s+Issue\s+Summary\s*\n([^\n]+)", source_text, re.IGNORECASE)
+        if _summary_match:
+            raw_summary = _summary_match.group(1).strip()
+            # Strip Jira prefixes like [EPV], [CLOUD], etc.
+            raw_summary = re.sub(r"^\[[A-Z0-9_/]+\]\s*", "", raw_summary).strip()
+            if raw_summary and len(raw_summary) > 10:
+                subject = raw_summary[:120]
     metadata_constraints = _extract_metadata_constraints(combined)
     missing_metadata_fields = _missing_metadata_fields(metadata_constraints)
     glossary_count = _extract_count(structure_text, "glossentry") or (1 if wants_glossary else 0)
@@ -1149,20 +1181,24 @@ def build_dita_generation_contract(
             explicit_family = "topic"
     wants_glossary_consuming_topics = _needs_glossary_consuming_topics(combined, wants_glossary, topic_count)
 
-    element_names = extract_element_names(combined)
-    attribute_names = extract_attribute_names(combined)
-    preferred_structures = _extract_preferred_structures(combined, element_names)
-    unknown_tags = _collect_unknown_xml_tags(combined, element_names)
+    # For Jira-sourced text, extract element/attribute names from the structural
+    # (generation request) part only — Jira descriptions contain "step", "map",
+    # "reference" etc. as prose that must not be treated as DITA constraints.
+    element_extract_text = structure_text if structure_text != source_text else combined
+    element_names = extract_element_names(element_extract_text)
+    attribute_names = extract_attribute_names(element_extract_text)
+    preferred_structures = _extract_preferred_structures(element_extract_text, element_names)
+    unknown_tags = _collect_unknown_xml_tags(element_extract_text, element_names)
     construct_semantics = infer_construct_semantics(
-        text=combined,
+        text=element_extract_text,
         element_names=element_names,
         attribute_names=attribute_names,
         preferred_structures=preferred_structures,
         explicit_family=explicit_family,
     )
     primary_construct = primary_construct_semantic(construct_semantics)
-    keyed_link_requirements = _extract_external_keyed_link_requirements(combined)
-    filename_requirements, filename_clarification_required = _extract_filename_requirements(combined)
+    keyed_link_requirements = _extract_external_keyed_link_requirements(element_extract_text)
+    filename_requirements, filename_clarification_required = _extract_filename_requirements(element_extract_text)
 
     required_elements: list[ElementConstraint] = []
     warnings: list[str] = []
