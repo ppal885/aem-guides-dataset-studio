@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<topic id="keyscope_example"><title>Key Scope Example</title><shortdesc>Example of key scope</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-04-16" /></metadata></prolog><body><example><p>This is an example of key scope.</p><keyscope keyscope="scope-1"><keydef keys="key-1"><topicmeta><linktext>Key 1</linktext></topicmeta></keydef><topicref keyref="key-1" /></keyscope></example></body></topic>

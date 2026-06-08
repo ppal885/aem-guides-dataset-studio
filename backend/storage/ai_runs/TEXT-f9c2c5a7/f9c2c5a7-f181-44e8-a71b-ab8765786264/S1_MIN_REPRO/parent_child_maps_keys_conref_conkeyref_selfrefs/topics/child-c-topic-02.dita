@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="child-c-faq" xml:lang="en">
+  <title>Child C FAQ</title>
+  <shortdesc>FAQ topic for branch C with direct conref and child-level conkeyref examples.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p conref="shared-content.dita#shared-content/shared-result">Shared result placeholder.</p>
+    <p conkeyref="child-c-overview/child-c-overview-summary">Overview summary placeholder.</p>
+    <p>Use <xref keyref="child-c-overview" /> to return to the overview and <xref keyref="parent-shared-content" /> for the shared reuse library.</p>
+  </body>
+</topic>

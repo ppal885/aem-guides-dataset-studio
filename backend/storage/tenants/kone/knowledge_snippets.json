@@ -1,0 +1,27 @@
+[
+  {
+    "id": "copyfile-syntaxdiagram",
+    "title": "CopyFile syntaxdiagram example",
+    "description": "DITA syntaxdiagram XML showing groupseq, groupcomp, and groupchoice for a CopyFile command example.",
+    "snippet_type": "xml_snippet",
+    "aliases": [
+      "syntaxdiagram",
+      "copyfile",
+      "groupseq",
+      "groupcomp",
+      "groupchoice"
+    ],
+    "tags": [
+      "dita",
+      "xml",
+      "syntaxdiagram",
+      "command syntax",
+      "groupseq",
+      "groupcomp",
+      "groupchoice",
+      "kwd",
+      "var"
+    ],
+    "content": "<syntaxdiagram>\n <title>CopyFile</title>\n <groupseq><kwd>COPYF</kwd></groupseq>\n <groupcomp><var>input-filename</var><kwd>*INFILE</kwd></groupcomp>\n <groupseq><var>output-filename</var><kwd>*OUTFILE</kwd></groupseq>\n <groupchoice> <var>input-filename</var> <kwd>*INFILE</kwd></groupchoice>\n <groupchoice> <var>output-filename</var> <kwd>*OUTFILE</kwd></groupchoice>\n</syntaxdiagram>"
+  }
+]

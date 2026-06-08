@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="main_map"><title>Main Map</title><topicref href="llm_generated_dita/topics/topic1.dita" processing-role="resource-only"/><topicref href="llm_generated_dita/topics/topic2.dita" processing-role="resource-only"/><topicref href="llm_generated_dita/topics/topic3.dita" processing-role="resource-only"/><topicref href="llm_generated_dita/topics/topic4.dita" processing-role="resource-only"/><topicref href="llm_generated_dita/topics/topic5.dita" processing-role="resource-only"/></map>

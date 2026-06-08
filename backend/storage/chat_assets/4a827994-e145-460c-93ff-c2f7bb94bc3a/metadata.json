@@ -1,0 +1,12 @@
+{
+  "asset_id": "4a827994-e145-460c-93ff-c2f7bb94bc3a",
+  "session_id": "7ca65f8a-621a-4fd4-b860-b9153986c79f",
+  "user_id": "dev-user",
+  "kind": "generated_dita",
+  "filename": "generated-topic.dita",
+  "mime_type": "application/xml",
+  "size_bytes": 1810,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\4a827994-e145-460c-93ff-c2f7bb94bc3a\\generated-topic.dita",
+  "created_at": "2026-05-02T18:11:11.450302+00:00",
+  "content_preview": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE task PUBLIC \"-//OASIS//DTD DITA Task//EN\" \"technicalContent/dtd/task.dtd\">\n<task id=\"recovered-reference-information\" xml:lang=\"en-US\">\n  <title>Recovered reference information</title>\n  <shortdesc>Reference-style settings and field information recovered from the screenshot.</shortdesc>\n  <taskbody>\n    <context>\n      <p>body</p>\n      <p>ul</p>\n      <p>First bullet item</p>\n      <p>Second bullet item</p>\n      <p>Nested bullet level 1</p>\n      <p>Nested bullet level 2</p>\n      <p>li</p>\n      <p>li</p>\n      <p>li</p>\n      <p>li</p>\n    </context>\n    <steps>\n      <step id=\"recovered-reference-information-step-1\">\n        <cmd>Reference-style settings and field information recovered from the screenshot.</cmd>\n      </step>\n    </steps>\n    <section id=\"form-and-settings\">\n      <title>Form And Settings</title>\n      <p>First bullet item: Second bullet item</p>\n      <p>Nested bullet level 1: Nested bullet level 2</p>\n    </section>\n    <section id=\"field-details\">\n      <title>Field Details</title>\n      <p>First bullet item: Second bullet item</p>\n      <p>Nested bullet level 1: Nested bullet level 2</p>\n    </section>\n    <section id=\"dom-hierarchy-labels\">\n      <title>Dom Hierarchy Labels</title>\n      <p>body</p>\n      <p>ul</p>\n      <p>First bullet item: Second bullet item</p>\n      <p>Nested bullet level 1: Nested bullet level 2</p>\n      <p>li</p>\n      <p>li</p>\n      <p>li</p>\n      <p>li</p>\n      <p>li</p>\n"
+}

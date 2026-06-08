@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="diagram_hierarchy_sample" xml:lang="en-US">
+  <title>Sample map matching hierarchy diagram</title>
+  <topicref href="concepts/c_first.dita" type="concept"/>
+  <topicref href="tasks/t_leaf.dita" type="task"/>
+  <topicref href="tasks/t_with_nested_refs.dita" type="task">
+    <topicref href="references/r_first.dita" type="reference"/>
+    <topicref href="references/r_second.dita" type="reference"/>
+  </topicref>
+  <topicref href="concepts/c_second.dita" type="concept"/>
+</map>

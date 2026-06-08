@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="glossary-map_516db3cb" xmlns="http://www.oasis-open.org/committees/entity/release/1.1/catalog" xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/">
+  <title>Glossary</title>
+  <topicref href="glossentry_00001.dita" />
+  <topicref href="glossentry_00002.dita" />
+  <topicref href="glossentry_00003.dita" />
+  <topicref href="glossentry_00004.dita" />
+  <topicref href="glossentry_00005.dita" />
+  <topicref href="glossentry_00006.dita" />
+  <topicref href="glossentry_00007.dita" />
+  <topicref href="glossentry_00008.dita" />
+  <topicref href="glossentry_00009.dita" />
+  <topicref href="glossentry_00010.dita" />
+</map>

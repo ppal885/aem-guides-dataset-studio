@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="map_b">
+  <title>Static Key Map</title>
+  <keydef keys="productName">
+    <topicmeta>
+      <keyword>IBM Security Guardium</keyword>
+    </topicmeta>
+  </keydef>
+  <keydef keys="keywordFile" href="../topics/topic_c_keywords.dita" format="dita"/>
+</map>

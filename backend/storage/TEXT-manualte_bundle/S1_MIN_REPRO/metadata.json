@@ -1,0 +1,9 @@
+{
+  "jira_id": "TEXT-manualte",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "reference_topics"
+  ],
+  "created_at": "2026-04-16T16:34:10.838205Z",
+  "evidence": []
+}

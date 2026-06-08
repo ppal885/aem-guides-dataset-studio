@@ -1,0 +1,12 @@
+{
+  "asset_id": "4705d681-ff0d-4ffd-8477-41998462d981",
+  "session_id": "test-sess2",
+  "user_id": "test-user",
+  "kind": "generated_dita",
+  "filename": "aem-guides---insert-keyword.dita",
+  "mime_type": "application/xml",
+  "size_bytes": 2743,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\4705d681-ff0d-4ffd-8477-41998462d981\\aem-guides---insert-keyword.dita",
+  "created_at": "2026-06-08T07:17:55.262471+00:00",
+  "content_preview": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE task PUBLIC \"-//OASIS//DTD DITA Task//EN\" \"technicalContent/dtd/task.dtd\">\n<task id=\"aem-guides---insert-keyword\" xml:lang=\"en-US\">\n  <title conref=\"reuse/reusable-titles.dita#reusable_titles/aem-guides-insert-keyword\"><ph keyref=\"aem-guides\">AEM Guides</ph> - Insert Keyword</title>\n  <shortdesc>Mixed procedural, reference, and structural evidence recovered from the attached image.</shortdesc>\n  <prolog>\n    <metadata>\n      <keywords>\n        <keyword>AEM Guides</keyword>\n        <keyword>Insert</keyword>\n        <keyword>Keyword</keyword>\n      </keywords>\n    </metadata>\n  </prolog>\n  <taskbody>\n    <context>\n      <p>Topic: GUIDES-48304</p>\n    </context>\n    <steps>\n      <step id=\"aem-guides---insert-keyword-step-1\">\n        <cmd>{'number': '1', 'text': 'Click Insert menu'}</cmd>\n      </step>\n      <step id=\"aem-guides---insert-keyword-step-2\">\n        <cmd>{'number': '2', 'text': 'Select Keyword'}</cmd>\n      </step>\n    </steps>\n    <example id=\"procedure-evidence\">\n      <title>Procedure Evidence</title>\n      <p>{'number': '1', 'text': 'Click Insert menu'}</p>\n      <p>{'number': '2', 'text': 'Select Keyword'}</p>\n    </example>\n    <example id=\"reference-evidence\">\n      <title>Reference Evidence</title>\n      <p>Form and settings</p>\n      <p>Topic: GUIDES-48304</p>\n      <p>Step 1: Click Insert menu</p>\n      <p>Step 2: Select Keyword</p>\n    </example>\n    <example id=\"visible-content\">\n      <title>Visible Conte"
+}

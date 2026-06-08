@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "technicalContent/dtd/concept.dtd">
+<concept id="t004">
+  <title>Authoring pattern: use keyword keyrefs for UI labels and product names</title>
+  <shortdesc>Concept: Authoring pattern: use keyword keyrefs for UI labels and pro...</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><conbody>
+    <p>When documenting UI text in <keyword keyref="aem-guides" />, prefer inserting labels as a <keyword keyref="keyword-element" /> with a shared key rather than typing the label directly.</p>
+    <p>This pattern relies on a stable set of terms defined as a root-map <keyword keyref="keydef" /> and reused via inline <keyword keyref="keyref" /> across many topics.</p>
+    <p>Authors can quickly insert approved terms using the editor’s <keyword keyref="insertion-popup" /> from within the <keyword keyref="xml-editor" />.</p>
+  </conbody>
+</concept>

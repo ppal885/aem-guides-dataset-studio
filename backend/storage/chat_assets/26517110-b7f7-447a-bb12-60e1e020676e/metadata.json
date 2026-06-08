@@ -1,0 +1,12 @@
+{
+  "asset_id": "26517110-b7f7-447a-bb12-60e1e020676e",
+  "session_id": "4894aba1-856f-4837-b77b-7696015b92a7",
+  "user_id": "dev-user",
+  "kind": "generated_dita",
+  "filename": "file1.dita",
+  "mime_type": "application/xml",
+  "size_bytes": 3172,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\26517110-b7f7-447a-bb12-60e1e020676e\\file1.dita",
+  "created_at": "2026-05-19T10:49:39.847574+00:00",
+  "content_preview": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE reference PUBLIC \"-//OASIS//DTD DITA Reference//EN\" \"technicalContent/dtd/reference.dtd\">\n<reference id=\"nehra-classes\" xml:lang=\"en_US\" outputclass=\"no_summary_steps\">\n  <title conref=\"reuse/reusable-titles.dita#reusable_titles/nehra-classes\">Nehra Classes</title>\n  <shortdesc>Reference-style settings and field information recovered from the screenshot.</shortdesc>\n  <prolog>\n    <metadata>\n      <keywords>\n        <keyword></keyword>\n      </keywords>\n    </metadata>\n  </prolog>\n  <refbody>\n    <refsyn>\n      <p>Reference-style settings and field information recovered from the screenshot.</p>\n    </refsyn>\n    <section id=\"nehra-classes-cfg-1\">\n      <title>Form and settings</title>\n      <p>videos, you can also join our channel membership to avail additional benefits like, study mate</p>\n      <properties>\n        <property id=\"nehra-classes-cfg-1-p-1\">\n          <proptype>Nehra Classes</proptype>\n          <propvalue>Igniting The Minds</propvalue>\n          <propdesc>\n            <p>Control type: text</p>\n          </propdesc>\n        </property>\n        <property id=\"nehra-classes-cfg-1-p-2\">\n          <proptype>Pod A</proptype>\n          <propvalue>veth pair</propvalue>\n          <propdesc>\n            <p>Control type: text</p>\n          </propdesc>\n        </property>\n        <property id=\"nehra-classes-cfg-1-p-3\">\n          <proptype>Node Network Stack</proptype>\n          <propvalue>CNI routing</propvalue>\n          <p"
+}

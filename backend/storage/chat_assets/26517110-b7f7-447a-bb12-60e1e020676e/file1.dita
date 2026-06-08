@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">
+<reference id="nehra-classes" xml:lang="en_US" outputclass="no_summary_steps">
+  <title conref="reuse/reusable-titles.dita#reusable_titles/nehra-classes">Nehra Classes</title>
+  <shortdesc>Reference-style settings and field information recovered from the screenshot.</shortdesc>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword></keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <refbody>
+    <refsyn>
+      <p>Reference-style settings and field information recovered from the screenshot.</p>
+    </refsyn>
+    <section id="nehra-classes-cfg-1">
+      <title>Form and settings</title>
+      <p>videos, you can also join our channel membership to avail additional benefits like, study mate</p>
+      <properties>
+        <property id="nehra-classes-cfg-1-p-1">
+          <proptype>Nehra Classes</proptype>
+          <propvalue>Igniting The Minds</propvalue>
+          <propdesc>
+            <p>Control type: text</p>
+          </propdesc>
+        </property>
+        <property id="nehra-classes-cfg-1-p-2">
+          <proptype>Pod A</proptype>
+          <propvalue>veth pair</propvalue>
+          <propdesc>
+            <p>Control type: text</p>
+          </propdesc>
+        </property>
+        <property id="nehra-classes-cfg-1-p-3">
+          <proptype>Node Network Stack</proptype>
+          <propvalue>CNI routing</propvalue>
+          <propdesc>
+            <p>Control type: text</p>
+          </propdesc>
+        </property>
+        <property id="nehra-classes-cfg-1-p-4">
+          <proptype>Nehra Classes</proptype>
+          <propvalue>Igniting The Minds</propvalue>
+          <propdesc>
+            <p>Control type: text</p>
+          </propdesc>
+        </property>
+        <property id="nehra-classes-cfg-1-p-5">
+          <proptype>6</proptype>
+          <propvalue>02 / 40:17</propvalue>
+          <propdesc>
+            <p>Control type: text</p>
+          </propdesc>
+        </property>
+      </properties>
+    </section>
+    <section id="nehra-classes-plan-51">
+      <title>Context</title>
+      <p>Pod A</p>
+      <p>veth pair</p>
+      <p>Node Network Stack</p>
+      <p>CNI routing</p>
+      <p>Pod B</p>
+      <p>videos, you can also join our channel membership to avail additional benefits like, study mate</p>
+    </section>
+    <section id="nehra-classes-plan-52">
+      <title>Editor/File Header</title>
+      <p>ChatGPT Image Mar 6, 2026, 07_13_57 PM.png</p>
+      <p>Nehra Classes: Igniting The Minds</p>
+      <p>Pod A: veth pair</p>
+      <p>Node Network Stack: CNI routing</p>
+      <p>Nehra Classes: Igniting The Minds</p>
+      <p>6: 02 / 40:17</p>
+      <p>videos, you can also join our channel membership to avail additional benefits like, study mate</p>
+    </section>
+    <section id="nehra-classes-plan-53">
+      <title>Nehra Classes</title>
+    </section>
+    <section id="nehra-classes-plan-54">
+      <title>Nehra Classes Igniting The Minds</title>
+    </section>
+  </refbody>
+</reference>

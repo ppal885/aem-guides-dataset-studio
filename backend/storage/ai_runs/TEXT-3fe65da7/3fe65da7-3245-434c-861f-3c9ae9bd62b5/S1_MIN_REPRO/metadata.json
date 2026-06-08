@@ -1,0 +1,9 @@
+{
+  "jira_id": "TEXT-3fe65da7",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "keyref_nested_keydef_chain_map_to_map_to_topic"
+  ],
+  "created_at": "2026-05-05T13:55:12.966577Z",
+  "evidence": []
+}

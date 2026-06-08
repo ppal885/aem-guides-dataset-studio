@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">
+<reference id="hiki-reference">
+  <title>Hiki Reference</title>
+  <shortdesc>This reference topic provides information about Hiki.</shortdesc>
+  <prolog>
+    <audience>General users</audience>
+    <purpose>To provide a comprehensive reference for Hiki.</purpose>
+  </prolog>
+  <refbody>
+    <section id="introduction">
+      <title>Introduction</title>
+      <p>To introduce the Hiki reference topic.</p>
+      <ul>
+        <li>T</li>
+        <li>h</li>
+        <li>i</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>c</li>
+        <li>t</li>
+      </ul>
+    </section>
+    <section id="syntax">
+      <title>Syntax</title>
+      <p>To describe the syntax of Hiki.</p>
+      <ul>
+        <li>T</li>
+        <li>h</li>
+        <li>i</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>c</li>
+        <li>t</li>
+      </ul>
+    </section>
+    <section id="examples">
+      <title>Examples</title>
+      <p>To provide examples of Hiki usage.</p>
+      <ul>
+        <li>T</li>
+        <li>h</li>
+        <li>i</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>c</li>
+        <li>t</li>
+      </ul>
+    </section>
+  </refbody>
+</reference>

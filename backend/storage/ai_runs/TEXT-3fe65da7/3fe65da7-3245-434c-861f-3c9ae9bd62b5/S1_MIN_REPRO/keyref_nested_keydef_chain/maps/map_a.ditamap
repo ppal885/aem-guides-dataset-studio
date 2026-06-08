@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="map_a">
+  <title>Outer Context Map</title>
+  <keydef keys="rootVisibleKey">
+    <topicmeta>
+      <keyword>Outer Root Value</keyword>
+    </topicmeta>
+  </keydef>
+  <keydef keys="staticKeyMap" href="map_b.ditamap" format="ditamap"/>
+  <topicref href="../topics/topic_d_consumer.dita" navtitle="Consumer Topic" type="topic"/>
+</map>

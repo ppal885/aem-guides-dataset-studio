@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="t005">
+  <title>Troubleshoot missing keydefs in the root map during publishing</title>
+  <shortdesc>Task: Troubleshoot missing keydefs in the root map during publishi...</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><taskbody>
+    <context>
+      <p>If a published output shows unresolved text where a <keyword keyref="keyref" /> should resolve, verify that the required keys exist as a <keyword keyref="keydef" /> in the active build map.</p>
+    </context>
+    <steps>
+      <step>
+        <cmd>Confirm the correct <keyword keyref="root-map" /> is selected as the publishing input (not an intermediate or partial <keyword keyref="dita-map" />).</cmd>
+      </step>
+      <step>
+        <cmd>Check that the missing term’s key name matches exactly between the topic’s inline reference and the root-map definition (for example, ensure you used the same spelling for <keyword keyref="insertion-popup" />).</cmd>
+      </step>
+      <step>
+        <cmd>Reinsert the term from the editor using the <keyword keyref="insertion-popup" /> to ensure a valid inline structure is created (a proper <keyword keyref="keyword-element" /> with a key reference).</cmd>
+      </step>
+    </steps>
+    <result>
+      <p>After correcting the root-map definitions and references, all affected topics should resolve their inline keywords consistently in output from <keyword keyref="aem-guides" />.</p>
+    </result>
+  </taskbody>
+</task>

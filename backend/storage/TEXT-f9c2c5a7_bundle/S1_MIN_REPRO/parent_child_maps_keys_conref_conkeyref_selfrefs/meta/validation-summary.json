@@ -1,0 +1,39 @@
+{
+  "recipe_name": "parent_child_maps_keys_conref_conkeyref_selfrefs",
+  "parent_level_keys_created": [
+    "parent-common",
+    "parent-shared-content"
+  ],
+  "child_level_keys_created": {
+    "child-a": [
+      "child-a-overview",
+      "child-a-details"
+    ],
+    "child-b": [
+      "child-b-overview",
+      "child-b-details"
+    ],
+    "child-c": [
+      "child-c-overview",
+      "child-c-faq"
+    ]
+  },
+  "conref_targets": [
+    "shared-content/shared-intro-copy",
+    "shared-content/shared-checklist-item-1",
+    "shared-content/shared-result"
+  ],
+  "conkeyref_targets": [
+    "parent-shared-content/shared-warning",
+    "child-a-overview/child-a-overview-summary",
+    "child-b-overview/child-b-overview-summary",
+    "child-c-overview/child-c-overview-summary"
+  ],
+  "self_reference_targets": [
+    "child-a-overview/child-a-overview-checklist",
+    "child-b-overview/child-b-overview-self-check",
+    "child-c-overview/child-c-overview-highlights"
+  ],
+  "all_references_resolved": true,
+  "validation_errors": []
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="t002">
+  <title>Insert key-referenced keywords from the XML Editor</title>
+  <shortdesc>Task: Insert key-referenced keywords from the XML Editor</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><taskbody>
+    <context>
+      <p>Use the <keyword keyref="xml-editor" /> to insert a reusable term as a <keyword keyref="keyword-element" /> that points to a shared <keyword keyref="keydef" />.</p>
+    </context>
+    <steps>
+      <step>
+        <cmd>Open the topic in the <keyword keyref="xml-editor" /> and place the cursor where you want the term to appear.</cmd>
+      </step>
+      <step>
+        <cmd>Open the <keyword keyref="insertion-popup" /> and choose the desired key (for example, <keyword keyref="aem-guides" /> or <keyword keyref="root-map" />).</cmd>
+      </step>
+      <step>
+        <cmd>Confirm insertion so the editor adds a <keyword keyref="keyref" />-based inline keyword instead of hard-coded text.</cmd>
+      </step>
+    </steps>
+    <result>
+      <p>The topic now contains a resolved term driven by the root-map <keyword keyref="keydef" />, making updates centralized and consistent.</p>
+    </result>
+  </taskbody>
+</task>

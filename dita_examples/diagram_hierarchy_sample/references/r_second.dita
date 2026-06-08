@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">
+<reference id="r_second" xml:lang="en-US">
+  <title>Second reference</title>
+  <shortdesc>Second brown/red reference under the parent task in the map.</shortdesc>
+  <refbody>
+    <section>
+      <title>Details</title>
+      <p>Replace with reference content.</p>
+    </section>
+  </refbody>
+</reference>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="recovered-reference-information" xml:lang="en-US">
+  <title>Recovered reference information</title>
+  <shortdesc>Reference-style settings and field information recovered from the screenshot.</shortdesc>
+  <taskbody>
+    <context>
+      <p>body</p>
+      <p>ul</p>
+      <p>First bullet item</p>
+      <p>Second bullet item</p>
+      <p>Nested bullet level 1</p>
+      <p>Nested bullet level 2</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+    </context>
+    <steps>
+      <step id="recovered-reference-information-step-1">
+        <cmd>Reference-style settings and field information recovered from the screenshot.</cmd>
+      </step>
+    </steps>
+    <section id="form-and-settings">
+      <title>Form And Settings</title>
+      <p>First bullet item: Second bullet item</p>
+      <p>Nested bullet level 1: Nested bullet level 2</p>
+    </section>
+    <section id="field-details">
+      <title>Field Details</title>
+      <p>First bullet item: Second bullet item</p>
+      <p>Nested bullet level 1: Nested bullet level 2</p>
+    </section>
+    <section id="dom-hierarchy-labels">
+      <title>Dom Hierarchy Labels</title>
+      <p>body</p>
+      <p>ul</p>
+      <p>First bullet item: Second bullet item</p>
+      <p>Nested bullet level 1: Nested bullet level 2</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+      <p>li</p>
+    </section>
+    <section id="details">
+      <title>Details</title>
+      <p>First bullet item</p>
+      <p>Second bullet item</p>
+      <p>Nested bullet level 1</p>
+      <p>Nested bullet level 2</p>
+    </section>
+  </taskbody>
+</task>

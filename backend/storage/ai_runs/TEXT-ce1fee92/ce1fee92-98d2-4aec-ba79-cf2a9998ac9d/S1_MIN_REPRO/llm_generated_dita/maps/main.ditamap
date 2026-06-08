@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="main_map">
+  <title>Publish a map to PDF in AEM Guides</title>
+  <topicref href="../topics/publish_map_to_pdf_task.dita"/>
+  <topicref href="../topics/pdf_preset_notes_topic.dita"/>
+</map>

@@ -1,0 +1,27 @@
+{
+  "recipe_name": "heavy_conditional_topic_6000_lines",
+  "files": [
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/topics/heavy-conditional-topic-6000-lines.dita",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/filters/heavy-conditional-topic.ditaval",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/meta/heavy-conditional-topic-manifest.json"
+  ],
+  "stats": {
+    "line_count": 6085,
+    "section_count": 27,
+    "paragraph_count": 829,
+    "table_count": 54,
+    "codeblock_count": 54,
+    "note_count": 36,
+    "example_count": 36,
+    "conditional_attribute_count": 9369,
+    "generated_files": [
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/topics/heavy-conditional-topic-6000-lines.dita",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/filters/heavy-conditional-topic.ditaval",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-65ab49ed\\65ab49ed-09f0-4008-8dcf-e69342190b28\\S1_MIN_REPRO/heavy_conditional_topic_6000_lines/meta/heavy-conditional-topic-manifest.json"
+    ],
+    "target_lines": 6000,
+    "target_met": true
+  },
+  "assumptions": [],
+  "warnings": []
+}

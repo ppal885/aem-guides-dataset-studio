@@ -1,0 +1,13 @@
+{
+  "asset_id": "5646b70b-6419-4cfe-ad57-979a7d301076",
+  "session_id": "b999fab0-757d-4725-bbee-14e2326267af",
+  "user_id": "dev-user",
+  "kind": "reference_dita",
+  "filename": "t_Configure_Radware_vDP_Cluster.xml",
+  "mime_type": "text/xml",
+  "size_bytes": 20186,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\5646b70b-6419-4cfe-ad57-979a7d301076\\t_Configure_Radware_vDP_Cluster.xml",
+  "created_at": "2026-04-13T20:11:27.884086+00:00",
+  "content_preview": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE task PUBLIC \"-//CISCO//DTD DITA 1.3 Task v1.0//EN\" \"../dtd/apps/cdc/dita/DITA-1.3/dtd/Cisco_Task/cisco-task.dtd\" [\n]>\n<task feature-id=\"sec-fxos-114\" xml:lang=\"en_US\" outputclass=\"no_summary_steps\" id=\"task_5B8ADCD95B2B4706AEC8CF7779BA5190\"><title> Configure Radware DefensePro on an Intra-Chassis Cluster</title><prolog><data name=\"TopicAlias\" value=\"fpwrchassismgr_logicaldevices_configuration_vdp_cluster\"/></prolog><taskbody><prereq id=\"prereq_1278A901CB1248C49ECB7CA21E2C4B98\"> \n\t\t<ul><li id=\"li_BCD602A828884FB9BB315C8A3918E479\"> \n\t\t\t <p>Download the vDP\n\t\t\t\timage from Cisco.com (see \n\t\t\t\t<xref href=\"t_DownloadingImages.xml\"></xref>)\n\t\t\t\tand then \n\t\t\t\t<ph ui-type=\"gui\">upload</ph><ph ui-type=\"cli\">download</ph> that image to the \n\t\t\t\t<ph conref=\"r_Firepower_Reuseable_Names_and_Phrases.xml#reference_1C10DF4CC456418CB04D848413A0FBDF/ph_FpwrFXOSPlatformName\"></ph>\n\t\t\t\t(see \n\t\t\t\t<xref ui-type=\"gui\" href=\"t_UploadingImages.xml\"></xref><xref ui-type=\"cli\" href=\"t_CLI_DownloadingaLogicalDeviceImagetoFirepowerChassis.xml\"></xref>).\n\t\t\t\t\n\t\t\t </p> \n\t\t  </li></ul> \n\t </prereq><context id=\"context_318F7B913B754B5AA26F2500A8E1449E\">\n\t\t\t<p ui-type=\"gui\">The following procedure shows how to install the Radware DefensePro image, and configure it in a Service Chain in front of an ASA<ph feature-id=\"sec-fxos-211\"> or Firepower Threat Defense</ph> intra-chassis cluster.</p>\n\t\t\t<note>\n\t\t\t\t<p>Service Chaining is not supported in an inter-chassis cl",
+  "content_sha256": "6d34e11cc6d285ffd7f6517dff28d7bde40b2716101a3ce312d8628f7a9e31cf"
+}

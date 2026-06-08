@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "technicalContent/dtd/concept.dtd">
+<concept id="t001">
+  <title>Create root-map keydefs for consistent terminology in AEM Guides</title>
+  <shortdesc>Concept: Create root-map keydefs for consistent terminology in AEM Gu...</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><conbody>
+    <p>In <keyword keyref="aem-guides" />, define shared terminology once in the <keyword keyref="root-map" /> so every topic can reuse the same approved labels.</p>
+    <p>Add each <keyword keyref="keydef" /> to the root-level <keyword keyref="dita-map" /> and then reference it inline using a <keyword keyref="keyref" />.</p>
+    <p>When authors insert a term as a <keyword keyref="keyword-element" />, the displayed text stays consistent even if you later update the underlying key definition.</p>
+  </conbody>
+</concept>

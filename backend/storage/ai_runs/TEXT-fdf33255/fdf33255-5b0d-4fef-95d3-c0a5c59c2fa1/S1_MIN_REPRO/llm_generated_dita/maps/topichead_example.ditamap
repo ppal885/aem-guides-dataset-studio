@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="topichead_example_map">
+  <title>Example: topichead in a DITA map</title>
+  <topicref href="../topics/overview.dita" type="topic"/>
+  <topichead navtitle="Getting started">
+    <topicref href="../topics/install.dita" type="topic"/>
+    <topicref href="../topics/configure.dita" type="topic"/>
+  </topichead>
+</map>

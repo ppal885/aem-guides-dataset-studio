@@ -1,0 +1,264 @@
+[
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/containers/svg-elements",
+    "title": "svg-elements",
+    "content": "svg-elements\n\nThe svg-elements container groups SVG-related elements in the DITA technical content vocabulary. It provides the structural entry point for SVG markup used inside DITA content and is intended for safe inclusion of SVG content in technical documentation. Use this reference when authoring or validating SVG constructs in DITA 1.3 and later technical communication content.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/svg-container",
+    "title": "<svg-container>",
+    "content": "<svg-container>\n\nThe <svg-container> element is a DITA container that can hold SVG content inside technical content topics. It is part of the svg-d domain and is used when authors need to embed SVG graphics as managed content instead of treating them as external binary images. This reference is relevant when explaining where SVG content is allowed, how it is wrapped, and how it differs from linking to standalone image files.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/svgref",
+    "title": "<svgref>",
+    "content": "<svgref>\n\nThe <svgref> element references SVG graphics in DITA technical content. It is used when an author needs to point to SVG-based graphic content through a dedicated DITA element rather than using generic prose or unrelated image markup. This page is part of the DITA technical content language reference and is useful for questions about valid SVG-related elements, SVG references, and conservative DITA authoring patterns around vector graphics.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/containers/syntaxdiagram-d",
+    "title": "syntaxdiagram-d",
+    "content": "syntaxdiagram-d\n\nThe syntaxdiagram-d container page describes the DITA syntax diagram domain used for command and language syntax notation in technical content. It groups the syntax-diagram-specific elements such as <groupseq>, <groupchoice>, <groupcomp>, <kwd>, <oper>, <delim>, <fragment>, <fragref>, and <repsep>. Use this reference when a question is about the syntax diagram domain as a whole rather than a single element.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/delim",
+    "title": "<delim>",
+    "content": "<delim>\n\nThe <delim> element represents delimiter characters that appear in syntax notation. It belongs to the syntax diagram domain and is used to mark punctuation or separator characters as part of a command or language syntax expression.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/fragment",
+    "title": "<fragment>",
+    "content": "<fragment>\n\nThe <fragment> element contains a named fragment of syntax that can be defined once and then referenced elsewhere in a syntax diagram. It is part of the syntax diagram domain and helps authors model reusable subexpressions inside command or grammar notation.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/fragref",
+    "title": "<fragref>",
+    "content": "<fragref>\n\nThe <fragref> element references a syntax fragment defined elsewhere with <fragment>. It is used inside syntax diagrams when a reusable fragment needs to be included by reference instead of rewritten inline.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/groupchoice",
+    "title": "<groupchoice>",
+    "content": "<groupchoice>\n\nThe <groupchoice> element groups syntax items that represent a choice among alternatives. It is part of the syntax diagram domain and is useful when documenting commands or notations where one of several branches may be selected.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/groupcomp",
+    "title": "<groupcomp>",
+    "content": "<groupcomp>\n\nThe <groupcomp> element groups syntax items that form a composite or grouped expression within syntax notation. It is used in the syntax diagram domain when multiple items belong together as a single grouped unit.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/groupseq",
+    "title": "<groupseq>",
+    "content": "<groupseq>\n\nThe <groupseq> element groups syntax items that occur in sequence. It is part of the syntax diagram domain and is used when the order of syntax tokens matters in the represented command or grammar.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/kwd",
+    "title": "<kwd>",
+    "content": "<kwd>\n\nThe <kwd> element marks a keyword or literal token in syntax notation. It is a core syntax diagram domain element used when documenting command names, literal options, or reserved words in a formal syntax pattern.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/oper",
+    "title": "<oper>",
+    "content": "<oper>\n\nThe <oper> element marks an operator token in a syntax diagram. It belongs to the syntax diagram domain and is used when a syntax expression includes operators as meaningful parts of the notation.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/repsep",
+    "title": "<repsep>",
+    "content": "<repsep>\n\nThe <repsep> element marks the separator used between repeated syntax items. It is part of the syntax diagram domain and is useful when documenting lists or repeated arguments that use a visible separator in the syntax.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/synph",
+    "title": "<synph>",
+    "content": "<synph>\n\nThe <synph> element represents a syntax phrase inside the DITA syntax diagram domain. It is used for inline syntax fragments and reusable syntax wording where phrase-level syntax markup is needed rather than a full block-level syntax diagram.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://dita-lang.org/dita-techcomm/langref/technicalcontent/synblk",
+    "title": "<synblk>",
+    "content": "<synblk>\n\nThe <synblk> element represents a block-level syntax container in the DITA syntax diagram domain. It is used when authors need block syntax markup rather than an inline syntax phrase, and it helps model larger syntax expressions in a conservative, structured way.\n\nSource: dita-lang technical content language reference.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/error-messages",
+    "title": "DITA-OT error messages",
+    "content": "DITA-OT error messages\n\nThis DITA Open Toolkit troubleshooting reference explains how build diagnostics are organized and interpreted. DITA-OT messages use stable IDs that combine a toolkit prefix, numeric code, and severity marker so QA and support teams can distinguish informational, warning, error, and fatal conditions during publishing. Use this chunk for questions about DOTJ, DOTA, DOTX, DITA-OT command failures, build logs, missing input files, missing images, invalid conref or conkeyref syntax, unresolved references, invalid DITAVAL, missing @class metadata, filtered output, and map/topic reference failures.\n\nHigh-signal examples covered by this reference include missing or wrong input parameters, missing DITAVAL files, output fully filtered by conditions, references to missing images, invalid DITA content, invalid @conref syntax, unresolved @conkeyref values, key lookup fallbacks, map targets referenced without the correct DITA map format, and missing conref targets.\n\nSource: DITA Open Toolkit development documentation.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Use for DITA-OT build log interpretation and severity lookup.",
+      "Use for DOTJ, DOTA, and DOTX publishing diagnostics.",
+      "Use for conref, conkeyref, key, DITAVAL, image, and input-file publishing errors."
+    ],
+    "codeph": [
+      "DOTJ",
+      "DOTA",
+      "DOTX",
+      "conref",
+      "conkeyref",
+      "DITAVAL"
+    ],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/parameters/parameters-base",
+    "title": "DITA-OT base parameters: args.draft",
+    "content": "DITA-OT base parameters: args.draft\n\nThe DITA Open Toolkit base parameter `args.draft` controls whether draft and cleanup content is included in generated output. For DITA-OT PDF / PDF2 builds where <draft-comment> must appear in the PDF, pass the parameter with a yes value. In the `dita` command-line syntax, parameters are supplied as command arguments in the form `--parameter=value`, so the practical argument is `--args.draft=yes`.\n\nUse this source when the user asks which DITA-OT argument enables draft comments, draft output, or required-cleanup content in PDF output. In AEM Guides DITA-OT PDF output presets, this value belongs in the Additional DITA-OT Command Line Arguments field, not in a Native PDF template setting.\n\nSource: DITA Open Toolkit development documentation.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "`args.draft` includes draft and cleanup content in DITA-OT output.",
+      "Use `--args.draft=yes` with the `dita` command-line parameter syntax.",
+      "For AEM Guides DITA-OT PDF presets, place the argument in Additional DITA-OT Command Line Arguments."
+    ],
+    "codeph": [
+      "args.draft",
+      "--args.draft=yes",
+      "draft-comment",
+      "required-cleanup",
+      "Additional DITA-OT Command Line Arguments"
+    ],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/parameters/dita-command-arguments",
+    "title": "Arguments and options for the dita command",
+    "content": "Arguments and options for the dita command\n\nThe DITA Open Toolkit `dita` command requires the main file and output format for a normal transform, or a project file for multi-deliverable publishing. Core invocation forms: `dita --input=<file> --format=<transtype> [options]` and `dita --project=<file> [options]`. The short forms `-i file` and `-f name` correspond to the common parameters `args.input` and `transtype`. Input is usually a DITA map but may be a single topic; paths can be absolute, relative to `args.input.dir`, or relative to the current directory when `args.input.dir` is unset.\n\n`--output=dir` / `-o dir` sets the output directory (`output.dir`); default is typically an `out` subdirectory. Pass arbitrary build parameters with GNU-style `--parameter=value` or Ant-style `-Dparameter=value`. Use `--propertyfile=file` for a `.properties` file; CLI values override the file. `--resource=file` / `-r file` supplies additional resource files (e.g. key map with a lone topic, or reltables map with a chapter map) and maps to `args.resources`.\n\n`--filter=` accepts DITAVAL file paths; on Windows separate multiple paths with `;` inside quotes, on macOS/Linux use `:`, or pass `--filter=` multiple times (order matters; first wins on conflicts). `--temp=dir` / `-t dir` sets `dita.temp.dir`. For PDF, `--theme=file` applies a PDF theme configuration.\n\nSubcommands (no transform): `dita plugins`, `dita transtypes`, `dita install`, `dita uninstall <id>`, `dita validate --input=...`, `dita version`, `dita deliverables <project>`, `dita init`, and help via `dita --help` or `dita <subcommand> --help`.\n\nLogging and diagnostics: `--verbose` / `-v`, `--debug` / `-d`, `--logfile=file` / `-l`, optional `--logger=json`, `--stacktrace` (with verbose/debug), `--no-color` or `NO_COLOR` / `TERM=dumb`. Use `--repeat=N` to benchmark repeated runs.\n\nUse this chunk for questions about `dita` CLI syntax, `-i`/`-f`, output directory, property files, resources, filters, temp dir, transtype list, and how AEM Guides DITA-OT presets relate to these same parameters when passed as additional command-line arguments.\n\nSource: DITA Open Toolkit development documentation — Configuring — DITA command arguments.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Transform: `dita --input=map.ditamap --format=html5` (or `-i` / `-f`).",
+      "Output: `--output=dir` / `-o` maps to `output.dir`.",
+      "Parameters: `--name=value` or `-Dname=value`; `--propertyfile` for bulk settings.",
+      "Resources: `--resource` / `-r` for partial sets with extra maps or topics.",
+      "DITAVAL: `--filter=` with OS-specific multi-path rules or repeated `--filter`.",
+      "Discover formats: `dita transtypes`; help: `dita --help`."
+    ],
+    "codeph": [
+      "dita --input",
+      "dita -i",
+      "dita --format",
+      "dita -f",
+      "dita --project",
+      "dita --output",
+      "dita -o",
+      "--propertyfile",
+      "--resource",
+      "-r",
+      "--filter",
+      "args.input",
+      "transtype",
+      "output.dir",
+      "args.resources",
+      "dita.temp.dir"
+    ],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/dita-command-help",
+    "title": "Accessing help for the dita command",
+    "content": "Accessing help for the dita command\n\nThis DITA Open Toolkit troubleshooting page explains how to discover command-line help for the `dita` executable. Use `dita --help` to list available commands and global options. Use command-specific help in the form `dita <subcommand> --help` when the question is about a particular subcommand, such as install, uninstall, plugins, or version. This chunk is relevant for questions about DITA-OT command syntax, CLI help, command discovery, supported options, troubleshooting unknown arguments, and explaining how a user can inspect available parameters without guessing.\n\nSource: DITA Open Toolkit development documentation.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Use for DITA-OT CLI help and command discovery.",
+      "Use for questions about `dita --help` and subcommand-specific help.",
+      "Use when users ask how to inspect supported DITA-OT arguments or options."
+    ],
+    "codeph": [
+      "dita --help",
+      "dita <subcommand> --help",
+      "dita install --help"
+    ],
+    "codeblocks": [],
+    "tables": []
+  }
+]

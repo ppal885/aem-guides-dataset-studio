@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="parent-root-map">
+  <title>Parent Root Map</title>
+  <keydef keys="parent-common" href="../topics/common-intro.dita" format="dita"/>
+  <keydef keys="parent-shared-content" href="../topics/shared-content.dita" format="dita"/>
+  <topicref keyref="parent-common"/>
+  <topicref keyref="parent-shared-content"/>
+  <mapref href="child-a.ditamap" format="ditamap"/>
+  <mapref href="child-b.ditamap" format="ditamap"/>
+  <mapref href="child-c.ditamap" format="ditamap"/>
+</map>

@@ -1,0 +1,6 @@
+@<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
+<map id="map_table_alignment_sample" xml:lang="en-US">
+  <title>Sample map: table cell text alignment task</title>
+  <topicref href="tasks/t_verify_table_cell_text_alignment.dita" type="task"/>
+</map>

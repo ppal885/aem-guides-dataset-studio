@@ -1,0 +1,42 @@
+{
+  "recipe_name": "keyref_nested_keydef_chain_map_to_map_to_topic",
+  "files": [
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/topics/topic_c_keywords.dita",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/topics/topic_d_consumer.dita",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/maps/map_b.ditamap",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/maps/map_a.ditamap",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/README.txt",
+    "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/meta/manifest.json"
+  ],
+  "stats": {
+    "map_count": 2,
+    "topic_count": 2,
+    "keydef_count": 4,
+    "keyref_count": 2,
+    "keyword_count": 1,
+    "direct_key_count": 2,
+    "nested_key_count": 1,
+    "variant_count": 1,
+    "generated_files": [
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/topics/topic_c_keywords.dita",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/topics/topic_d_consumer.dita",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/maps/map_b.ditamap",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/maps/map_a.ditamap",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/README.txt",
+      "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\ai_runs\\TEXT-3fe65da7\\3fe65da7-3245-434c-861f-3c9ae9bd62b5\\S1_MIN_REPRO/keyref_nested_keydef_chain/meta/manifest.json"
+    ],
+    "chain_validation": {
+      "valid": true,
+      "errors": [],
+      "checks": {
+        "map_a_keydef_to_map_b": true,
+        "map_a_topicref_to_topic_d": true,
+        "map_b_keydef_to_topic_c": true,
+        "topic_d_has_keyrefs": true,
+        "topic_c_has_keyword_id": true
+      }
+    }
+  },
+  "assumptions": [],
+  "warnings": []
+}

@@ -1,0 +1,9 @@
+{
+  "jira_id": "TEXT-f9c2c5a7",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "parent_child_maps_keys_conref_conkeyref_selfrefs"
+  ],
+  "created_at": "2026-06-08T11:27:33.268352Z",
+  "evidence": []
+}

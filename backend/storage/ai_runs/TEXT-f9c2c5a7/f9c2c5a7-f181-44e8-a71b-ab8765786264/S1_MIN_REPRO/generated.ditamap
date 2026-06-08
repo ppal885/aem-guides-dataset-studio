@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="aem-guides-keydef-root-map">
+  <title>AEM Guides keydefs for keyword keyref insertion</title>
+
+  <keydef keys="aem-guides">
+    <topicmeta>
+      <keywords>
+        <keyword>Adobe Experience Manager Guides</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="dita-map">
+    <topicmeta>
+      <keywords>
+        <keyword>DITA map</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="keydef">
+    <topicmeta>
+      <keywords>
+        <keyword>key definition</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="keyref">
+    <topicmeta>
+      <keywords>
+        <keyword>key reference</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="root-map">
+    <topicmeta>
+      <keywords>
+        <keyword>root map</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="xml-editor">
+    <topicmeta>
+      <keywords>
+        <keyword>XML Editor</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="keyword-element">
+    <topicmeta>
+      <keywords>
+        <keyword>&lt;keyword&gt;</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <keydef keys="insertion-popup">
+    <topicmeta>
+      <keywords>
+        <keyword>Keyword insertion popup</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+
+  <topicref href="topics/topic-001.dita" format="dita"/>
+  <topicref href="topics/topic-002.dita" format="dita"/>
+  <topicref href="topics/topic-003.dita" format="dita"/>
+  <topicref href="topics/topic-004.dita" format="dita"/>
+  <topicref href="topics/topic-005.dita" format="dita"/>
+</map>

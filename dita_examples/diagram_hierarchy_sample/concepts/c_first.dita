@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "technicalContent/dtd/concept.dtd">
+<concept id="c_first" xml:lang="en-US">
+  <title>First concept</title>
+  <shortdesc>First green concept node from the diagram.</shortdesc>
+  <conbody>
+    <p>Replace with real content.</p>
+  </conbody>
+</concept>

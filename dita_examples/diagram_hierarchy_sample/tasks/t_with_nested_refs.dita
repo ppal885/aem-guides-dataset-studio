@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="t_with_nested_refs" xml:lang="en-US">
+  <title>Task with nested references in the map</title>
+  <shortdesc>
+    In the map, two reference topics are nested under this task. The task file itself only contains taskbody;
+    nesting is expressed with topicref children in the ditamap.
+  </shortdesc>
+  <taskbody>
+    <context>
+      <p>Context before steps.</p>
+    </context>
+    <steps>
+      <step>
+        <cmd>Replace with real procedure.</cmd>
+      </step>
+    </steps>
+  </taskbody>
+</task>

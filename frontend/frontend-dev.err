@@ -1,0 +1,1114 @@
+[2m8:04:31 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:04:32 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m8:04:33 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?
+[2m8:04:33 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "./toolResultUtils" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "./toolResultUtils" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "./toolResultUtils" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:24:64
+[33m  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+     |                                                                   ^
+  30 |  function verifiedBundleUrlFromTools(toolResults) {
+  31 |    if (!toolResults) return "";[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 12)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:04:34 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:05:31 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m8:05:31 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:05:31 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "./toolResultUtils" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:24:64
+[33m  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+     |                                                                   ^
+  30 |  function verifiedBundleUrlFromTools(toolResults) {
+  31 |    if (!toolResults) return "";[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 12)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:05:32 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:07:12 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m8:07:13 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?
+[2m8:07:14 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:07:14 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:07:39 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:07:39 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:07:39 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:08:39 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:08:39 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:08:39 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:09:11 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:09:12 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:09:12 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:10:47 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:10:48 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:10:49 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:10:49 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:10:49 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:48:26 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:48:27 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m8:48:28 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m8:48:28 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?
+[2m8:49:03 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:49:04 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:49:04 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:49:16 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:49:16 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Authoring/AuthoringGenerationSplitReview" from "src/components/Chat/ChatMessage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx[39m:23:7
+[33m  26 |  import {
+  27 |    AuthoringGenerationSplitReview
+  28 |  } from "@/components/Authoring/AuthoringGenerationSplitReview";
+     |          ^
+  29 |  import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from "./toolResultUtils";
+  30 |  function verifiedBundleUrlFromTools(toolResults) {[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m8:49:16 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:51:04 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m8:51:04 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:51:05 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m8:51:05 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?
+[2m8:51:05 pm[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m8:52:32 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@/components/Chat/authoringMentionUtils" from "src/components/Chat/ChatInput.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatInput.tsx[39m:23:7
+[33m  36 |    getActiveAuthoringMention,
+  37 |    replaceAuthoringMentionInValue
+  38 |  } from "@/components/Chat/authoringMentionUtils";
+     |          ^
+  39 |  import {
+  40 |    resolvedAuthoringDefaults,[39m
+      at TransformPluginContext._formatError (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 6)
+      at async TransformPluginContext.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+[2m9:00:09 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m10:57:53 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m10:57:56 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m10:58:42 pm[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m12:24:25 am[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m12:24:25 am[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m12:24:25 am[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m12:24:25 am[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m12:24:25 am[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m12:24:26 am[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[31m
+ [90m 212 |[31m [90m/** Syntax-highlighted code block with a hover copy button. */[31m
+[31m[1m>[22m[31m[90m 213 |[31m [36mfunction[31m [33mCodeBlock[31m({ language[33m,[31m children }[33m:[31m { language[33m:[31m string[33m;[31m children[33m:[31m string }) {
+ [90m     |[31m          [31m[1m^[22m[31m
+ [90m 214 |[31m   [36mconst[31m [copied[33m,[31m setCopied] [33m=[31m useState([36mfalse[31m)[33m;[31m
+ [90m 215 |[31m
+ [90m 216 |[31m   [36mconst[31m handleCopy [33m=[31m useCallback(() [33m=>[31m {[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMarkdown.tsx[39m:213:9
+[33m  216|    const handleCopy = useCallback(() => {
+  217|      navigator.clipboard.writeText(children);
+  218|      setCopied(true);
+     |    ^
+  219|      setTimeout(() => setCopied(false), 2000);
+  220|    }, [children]);[39m
+      at constructor (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptScopeHandler.checkRedeclarationInScope (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1619:19)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:1585:12)
+      at TypeScriptScopeHandler.declareName (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:4880:11)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13456:16)
+      at TypeScriptParserMixin.registerFunctionStatementId (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9178:13)
+      at TypeScriptParserMixin.parseFunction (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13440:12)
+      at TypeScriptParserMixin.parseFunctionStatement (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13115:17)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12781:21)
+      at TypeScriptParserMixin.parseStatementContent (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12757:17)
+      at TypeScriptParserMixin.parseModuleItem (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12734:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13306:36)
+      at TypeScriptParserMixin.parseBlockBody (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:13299:10)
+      at TypeScriptParserMixin.parseProgram (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12612:10)
+      at TypeScriptParserMixin.parseTopLevel (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:12602:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14478:25)
+      at TypeScriptParserMixin.parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:10116:18)
+      at parse (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\parser\lib\index.js:14512:38)
+      at parser (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:261:32)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:189:28
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:113:33
+      at step (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:287:14)
+      at C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\node_modules\gensync\index.js:223:11)
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Authoring/AuthoringGenerationSplitReview.tsx (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Authoring/AuthoringGenerationSplitReview.tsx) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx. Does the file exist?
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/toolResultUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/toolResultUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/ChatMessage.tsx. Does the file exist?
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/pendingWorkflowUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/pendingWorkflowUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/pages/ChatPage.tsx. Does the file exist?
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to load url /src/components/Chat/authoringMentionUtils.ts (resolved id: C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/Chat/authoringMentionUtils.ts) in C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/index.css. Does the file exist?
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m
+[2m12:30:07 am[22m [31m[1m[vite][22m[39m Pre-transform error: C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend\src\components\Chat\ChatMarkdown.tsx: Identifier 'CodeBlock' has already been declared. (213:9)
+
+[0m [90m 211 |[39m
+ [90m 212 |[39m [90m/** Syntax-highlighted code block with a hover copy button. */[39m
+[31m[1m>[22m[39m[90m 213 |[39m [36mfunction[39m [33mCodeBlock[39m({ language[33m,[39m children }[33m:[39m { language[33m:[39m string[33m;[39m children[33m:[39m string }) {
+ [90m     |[39m          [31m[1m^[22m[39m
+ [90m 214 |[39m   [36mconst[39m [copied[33m,[39m setCopied] [33m=[39m useState([36mfalse[39m)[33m;[39m
+ [90m 215 |[39m
+ [90m 216 |[39m   [36mconst[39m handleCopy [33m=[39m useCallback(() [33m=>[39m {[0m

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="child-b-overview" xml:lang="en">
+  <title>Child B Overview</title>
+  <shortdesc>Overview topic for branch B with safe conref list reuse and self references.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p id="child-b-overview-summary">Child B demonstrates list-based conref reuse while still resolving parent-level keys from the root map.</p>
+    <p>Start with <xref keyref="parent-common" /> and continue to <xref keyref="child-b-details" /> for branch B details.</p>
+    <section id="child-b-overview-self-check">
+      <title>Self Check</title>
+      <ul>
+        <li conref="shared-content.dita#shared-content/shared-checklist-item-1">Shared checklist placeholder.</li>
+        <li id="child-b-overview-local-step">Confirm that the child map contributes keys for its own branch topics.</li>
+      </ul>
+    </section>
+    <p>Open the <xref href="#child-b-overview/child-b-overview-self-check">self-check section</xref> for a same-topic validation jump.</p>
+    <p>Branch-level direct linking also works through <xref href="child-b-topic-02.dita#child-b-details">the Child B details topic</xref>.</p>
+  </body>
+</topic>

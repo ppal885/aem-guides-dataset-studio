@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="publish_map_to_pdf_task" xml:lang="en">
+  <title>Publish a DITA map to PDF in AEM Guides</title>
+  <shortdesc>Use a PDF output preset to generate a PDF for an entire DITA map.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-05-04" /></metadata></prolog><taskbody>
+    <prereq>
+      <p>You have access to an AEM Guides instance and a DITA map to publish.</p>
+    </prereq>
+    <context>
+      <p>In AEM Guides, you publish a map by selecting a PDF output preset and running the publish job from the map dashboard.</p>
+    </context>
+    <steps>
+      <step>
+        <cmd>Open the DITA map in AEM Guides and go to the map dashboard.</cmd>
+      </step>
+      <step>
+        <cmd>Select the PDF output preset you want to use for publishing.</cmd>
+      </step>
+      <step>
+        <cmd>Choose how you want PDFs generated for the map.</cmd>
+        <choicetable>
+          <chrow>
+            <choption>Generate one PDF for the map</choption>
+            <chdesc>Creates a single PDF that contains the content of the entire DITA map.</chdesc>
+          </chrow>
+          <chrow>
+            <choption>Generate separate PDF for each topic</choption>
+            <chdesc>If enabled in the preset, AEM Guides also creates a PDF per topic and lets you specify a split output path.</chdesc>
+          </chrow>
+        </choicetable>
+      </step>
+      <step>
+        <cmd>Run the publish action for PDF and wait for the job to complete.</cmd>
+      </step>
+    </steps>
+    <result>
+      <p>The generated PDF output is available from the publish results for the map.</p>
+    </result>
+  </taskbody>
+</task>

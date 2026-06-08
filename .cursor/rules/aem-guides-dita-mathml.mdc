@@ -1,0 +1,114 @@
+---
+description: USE WHEN authoring or validating MathML in DITA for AEM Guides, equation-block, mathml, DTD errors for math, or XML samples for equations.
+alwaysApply: false
+---
+
+# AEM Guides DITA MathML authoring and validation
+
+**Domain:** AEM Guides, DITA, MathML, `equation-block`, `mathml`, XML/DTD validation, publishing, authoring.
+
+## Correct structure for AEM Guides
+
+MathML should live inside the DITA equation wrapper:
+
+```xml
+<equation-block>
+  <mathml>
+    <m:math xmlns:m="http://www.w3.org/1998/Math/MathML" display="block">
+      ...
+    </m:math>
+  </mathml>
+</equation-block>
+```
+
+- Use the **`m:`** prefix on MathML elements: `m:math`, `m:semantics`, `m:mrow`, `m:mi`, `m:mo`, `m:mn`, `m:msup`, `m:msub`, `m:mfrac`, `m:msqrt`, `m:mtable`, `m:mtr`, `m:mtd`, etc.
+- Declare the namespace: **`xmlns:m="http://www.w3.org/1998/Math/MathML"`** on `m:math` or a binding ancestor.
+
+## Do not default to unprefixed MathML
+
+Avoid raw unprefixed MathML such as:
+
+```xml
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mrow>...</mrow>
+</math>
+```
+
+for AEM Guides **unless** the user explicitly states their DTD/schema supports unprefixed `math`.
+
+**Why:** DTD validation may report `Element type "math" must be declared.` That usually means the active DITA shell does not declare unprefixed `math`; many Guides setups expect prefixed **`m:math`**.
+
+## Valid minimal example
+
+```xml
+<equation-block>
+  <mathml>
+    <m:math xmlns:m="http://www.w3.org/1998/Math/MathML" display="block">
+      <m:mrow>
+        <m:mi>a</m:mi>
+        <m:mo>+</m:mo>
+        <m:mi>b</m:mi>
+        <m:mo>=</m:mo>
+        <m:mi>c</m:mi>
+      </m:mrow>
+    </m:math>
+  </mathml>
+</equation-block>
+```
+
+## Valid sqrt / superscript example
+
+```xml
+<equation-block>
+  <mathml>
+    <m:math xmlns:m="http://www.w3.org/1998/Math/MathML" display="block">
+      <m:semantics>
+        <m:mrow>
+          <m:msqrt>
+            <m:mrow>
+              <m:msup>
+                <m:mi>a</m:mi>
+                <m:mn>2</m:mn>
+              </m:msup>
+              <m:mo>+</m:mo>
+              <m:msup>
+                <m:mi>b</m:mi>
+                <m:mn>2</m:mn>
+              </m:msup>
+            </m:mrow>
+          </m:msqrt>
+        </m:mrow>
+      </m:semantics>
+    </m:math>
+  </mathml>
+</equation-block>
+```
+
+## Common errors and diagnosis
+
+1. **`Element type "math" must be declared.`**  
+   Likely unprefixed `<math>`. Fix: use `<m:math xmlns:m="http://www.w3.org/1998/Math/MathML">` and `m:` children.
+
+2. **`The prefix "m" for element "m:math" is not bound.`**  
+   Missing namespace. Fix: add `xmlns:m="http://www.w3.org/1998/Math/MathML"` on `m:math` or an ancestor.
+
+3. **`Element type "equation-block" must be declared.`**  
+   Shell may lack equation domain. Fix: use a DITA shell / specialization that includes `equation-block` / `mathml`, or adjust the active doctype.
+
+4. **Validates but renders wrong**  
+   Often CSS/editor (ProseMirror) layout, not XML validity. Check `display`, overflow, white-space, line-height, max-height, and custom classes around equation widgets.
+
+## Authoring rules for generated samples
+
+- Prefer **`equation-block` → `mathml` → `m:math`** for AEM Guides unless the user specifies otherwise.
+- Always **`m:`** prefix and **`xmlns:m`** on samples you give for Guides.
+- Do not place **`equation-block` inside `<p>`**; prefer block placement under `body` / `section` / `taskbody` / `conbody` (or equivalent valid parents per shell).
+- Use **`display="block"`** on `m:math` for display equations when appropriate; for inline, use **`equation-inline`** only when the user’s shell supports it.
+
+## Response style for “math must be declared”
+
+Do not dismiss the equation as “invalid MathML syntax” when the error is DTD-level. Explain that **namespace alone is not enough for DTD validation** in many shells: use **prefixed `m:math` with `xmlns:m`**, or ensure the **DITA shell declares** the MathML integration the project uses.
+
+## Testing / coverage ideas (when generating datasets or examples)
+
+Simple identifiers and operators; superscript/subscript; square root; fraction; nested fraction; summation; integral; matrix (`m:mtable`, `m:mtr`, `m:mtd`); piecewise; long/wide equations; outputs in authoring vs publishing.

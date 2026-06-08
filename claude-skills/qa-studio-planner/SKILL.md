@@ -24,7 +24,7 @@ then generates feature files, step definitions, and Page Object stubs.
 
 You need at least ONE of these to start:
 
-| Input | How user provides it | Required? |
+ | Input | How user provides it | Required? |
 |---|---|---|
 | **JIRA key** | e.g. `AG-1234` | Preferred — enables full enrichment |
 | **Summary** | Title of the feature/bug | Required if no JIRA key |

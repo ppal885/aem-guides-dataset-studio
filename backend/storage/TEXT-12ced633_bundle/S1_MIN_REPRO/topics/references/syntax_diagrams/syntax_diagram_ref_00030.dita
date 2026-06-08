@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">
+<reference id="syntax_diagram_ref_e35e2d1c" xml:lang="en"><title>Syntax diagram reference 00030</title><shortdesc>Command and keyword syntax patterns for validation and publishing QA.</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-05-19" /></metadata></prolog><refbody><refsyn><p>Structured syntax fragment 00030 for DITA syntaxdiagram rendering tests.</p><syntaxdiagram><title>Pattern variant 1</title><groupseq><kwd>SELECT</kwd><sep>,</sep><kwd>FROM</kwd><repsep>,</repsep><kwd>WHERE</kwd></groupseq></syntaxdiagram></refsyn></refbody></reference>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="child-a-overview" xml:lang="en">
+  <title>Child A Overview</title>
+  <shortdesc>Overview topic for branch A with parent-level key references and safe self links.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p id="child-a-overview-summary">Child A uses the parent-level common topic to anchor shared context before linking to branch-specific details.</p>
+    <p>See <xref keyref="parent-common" /> for shared context and <xref keyref="child-a-details" /> for the detail topic in this branch.</p>
+    <section id="child-a-overview-checklist">
+      <title>Checklist</title>
+      <p>This checklist section is the local target for same-topic self references.</p>
+    </section>
+    <p>Jump to the <xref href="#child-a-overview/child-a-overview-checklist">checklist section</xref> to verify the local branch steps.</p>
+    <p conkeyref="parent-shared-content/shared-warning">Shared warning placeholder.</p>
+    <p>Direct topic linking also works through <xref href="child-a-topic-02.dita#child-a-details">the Child A details topic</xref>.</p>
+  </body>
+</topic>

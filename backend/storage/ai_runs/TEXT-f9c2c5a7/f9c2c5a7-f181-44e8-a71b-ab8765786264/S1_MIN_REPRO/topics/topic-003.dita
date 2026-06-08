@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "technicalContent/dtd/reference.dtd">
+<reference id="t003">
+  <title>Validate keyref resolution across topics and maps</title>
+  <shortdesc>Reference: Validate keyref resolution across topics and maps</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><refbody>
+    <section>
+      <title>What to validate</title>
+      <p>Ensure every inline <keyword keyref="keyref" /> points to a key that is defined by a corresponding <keyword keyref="keydef" /> in the active publishing context.</p>
+      <p>For consistent resolution, keep shared keys in the project’s <keyword keyref="root-map" /> and make sure that map is used as the primary build input.</p>
+    </section>
+    <section>
+      <title>Common resolution scope</title>
+      <p>Keys defined in a parent <keyword keyref="dita-map" /> are available to child topicrefs, so placing core terms (like <keyword keyref="aem-guides" />) in the root map reduces duplication.</p>
+    </section>
+  </refbody>
+</reference>

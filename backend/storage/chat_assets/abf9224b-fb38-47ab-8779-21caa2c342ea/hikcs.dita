@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="heavy-topic-40">
+  <title>Heavy Topic 40</title>
+  <shortdesc>Heavy content topic: Heavy Topic 40</shortdesc>
+  <prolog>
+    <audience>AEM Guides authors</audience>
+    <purpose>Generate the dita</purpose>
+  </prolog>
+  <body>
+    <section>
+      <title>Introduction</title>
+      <p>Provide an overview of the topic</p>
+    </section>
+    <section>
+      <title>Body</title>
+      <p>Present detailed information about the topic</p>
+    </section>
+    <section>
+      <title>Conclusion</title>
+      <p>Summarize the key points of the topic</p>
+    </section>
+  </body>
+</topic>

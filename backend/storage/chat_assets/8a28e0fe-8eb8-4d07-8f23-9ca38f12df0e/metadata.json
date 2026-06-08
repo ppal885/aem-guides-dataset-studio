@@ -1,0 +1,12 @@
+{
+  "asset_id": "8a28e0fe-8eb8-4d07-8f23-9ca38f12df0e",
+  "session_id": "cd793b3f-bb73-48cc-88b2-db6c8bacd9df",
+  "user_id": "dev-user",
+  "kind": "generated_dita",
+  "filename": "file1.dita",
+  "mime_type": "application/xml",
+  "size_bytes": 1146,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\8a28e0fe-8eb8-4d07-8f23-9ca38f12df0e\\file1.dita",
+  "created_at": "2026-04-12T08:33:12.599921+00:00",
+  "content_preview": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE task PUBLIC \"-//OASIS//DTD DITA Task//EN\" \"technicalContent/dtd/task.dtd\">\n<task id=\"configuring-radware-vdp-cluster\">\n  <title>Configuring Radware vDP Cluster Based on Screenshot and XML Configuration</title>\n  <shortdesc>Configure Radware vDP cluster using the provided screenshot and XML configuration file.</shortdesc>\n  <taskbody>\n    <section>\n      <title>Introduction</title>\n      <p>Briefly introduce the task of configuring Radware vDP cluster based on the provided screenshot and XML configuration file.</p>\n    </section>\n    <section>\n      <title>Prerequisites</title>\n      <p>List the required prerequisites for configuring Radware vDP cluster.</p>\n    </section>\n    <section>\n      <title>Configuration Steps</title>\n      <ol>\n        <li>\n          <cmd>Outline the configuration steps for Radware vDP cluster.</cmd>\n        </li>\n      </ol>\n    </section>\n    <section>\n      <title>Verification and Troubleshooting</title>\n      <p>Provide steps to verify the configuration and troubleshoot common issues.</p>\n    </section>\n  </taskbody>\n</task>"
+}

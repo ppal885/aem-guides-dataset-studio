@@ -1,0 +1,32 @@
+{
+  "jira_id": "TEXT-87380fba",
+  "run_id": "87380fba-1611-4638-802a-d0bfee1b0d20",
+  "scenarios": [
+    {
+      "scenario_id": "S1_MIN_REPRO",
+      "scenario_dir": "S1_MIN_REPRO",
+      "metadata_path": "S1_MIN_REPRO/metadata.json",
+      "recipes_executed": [
+        "reference_topics"
+      ],
+      "validation_passed": true,
+      "warnings": []
+    }
+  ],
+  "created_at": "2026-04-16T20:57:22.480724",
+  "stats": {
+    "evidence_primary": "TEXT-87380fba"
+  },
+  "prompt_versions": {
+    "chat_system": "v13",
+    "domain_classifier": "v1",
+    "scenario_expander": "v1",
+    "generator_invocation_planner": "v1",
+    "planner": "v1",
+    "mechanism_classifier": "v1",
+    "keyref_pattern_classifier": "v1",
+    "topology_extractor": "v1",
+    "dataset_text_filler": "v1",
+    "validation_reviewer": "v1"
+  }
+}

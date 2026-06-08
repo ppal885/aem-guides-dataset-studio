@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="topic_c_keywords" xml:lang="en">
+  <title>Keyword Source Topic</title>
+  <shortdesc>Topic: Keyword Source Topic</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-05-05" /></metadata></prolog><body>
+    <keywords>
+      <keyword id="versionString">v6.1</keyword>
+    </keywords>
+    <p>Static content with version and product metadata.</p>
+  </body>
+</topic>

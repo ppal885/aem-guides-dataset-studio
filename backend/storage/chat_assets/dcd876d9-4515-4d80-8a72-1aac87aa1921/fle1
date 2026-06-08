@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="documenting-task-type">
+  <title>Documenting Task Type as Shown in Image</title>
+  <shortdesc>A step-by-step guide to documenting task type based on the provided image.</shortdesc>
+  <taskbody>
+    <section>
+      <title>Introduction</title>
+      <p>This section provides an overview of the task type documentation process.</p>
+      <p>These are the details: Thissect</p>
+    </section>
+    <section>
+      <title>Step-by-Step Instructions</title>
+      <p>This section outlines the steps required to document the task type.</p>
+      <p>These are the details: Thissect</p>
+      <steps>
+        <step>
+          <cmd>Step 1</cmd>
+        </step>
+        <step>
+          <cmd>Step 2</cmd>
+        </step>
+      </steps>
+    </section>
+    <section>
+      <title>Example and Screenshot</title>
+      <p>This section provides a visual example of the task type documentation.</p>
+      <p>These are the details: Thissect</p>
+    </section>
+    <section>
+      <title>Conclusion</title>
+      <p>This section summarizes the key points of the task type documentation process.</p>
+      <p>These are the details: Thissect</p>
+    </section>
+  </taskbody>
+</task>

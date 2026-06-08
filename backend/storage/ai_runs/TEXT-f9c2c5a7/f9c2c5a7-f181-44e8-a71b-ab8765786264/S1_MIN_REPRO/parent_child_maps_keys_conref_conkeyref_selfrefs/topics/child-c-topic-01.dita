@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="child-c-overview" xml:lang="en">
+  <title>Child C Overview</title>
+  <shortdesc>Overview topic for branch C with internal section links and parent-level key reuse.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p id="child-c-overview-summary">Child C is designed as a lightweight FAQ branch that still participates in conservative parent-child key resolution.</p>
+    <p>Open <xref keyref="parent-common" /> for shared context and <xref keyref="child-c-faq" /> for the branch FAQ topic.</p>
+    <section id="child-c-overview-highlights">
+      <title>Highlights</title>
+      <p>This section is the local target for the same-file link in the branch overview.</p>
+    </section>
+    <p>Review the <xref href="#child-c-overview/child-c-overview-highlights">highlights section</xref> for the branch summary.</p>
+    <p>Direct topic linking also works through <xref href="child-c-topic-02.dita#child-c-faq">the Child C FAQ topic</xref>.</p>
+  </body>
+</topic>

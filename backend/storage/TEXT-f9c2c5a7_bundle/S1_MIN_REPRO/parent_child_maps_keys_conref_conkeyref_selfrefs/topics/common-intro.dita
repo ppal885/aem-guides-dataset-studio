@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="parent-common" xml:lang="en">
+  <title>Common Introduction</title>
+  <shortdesc>Shared introductory context for all branches in the parent-child map dataset.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p id="common-intro-summary">This common introduction is referenced through parent-level keys so every branch can resolve the same baseline context.</p>
+    <section id="common-intro-key-behavior">
+      <title>Key resolution behavior</title>
+      <p>Parent-level keys provide stable targets for branch topics that need a common landing topic or shared reusable guidance.</p>
+    </section>
+  </body>
+</topic>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="configuring-radware-vdp-cluster">
+  <title>Configuring Radware vDP Cluster Based on Screenshot</title>
+  <shortdesc>Configure Radware vDP cluster as per the provided screenshot and reference XML file.</shortdesc>
+  <taskbody>
+    <section>
+      <title>Introduction</title>
+      <p>Briefly, this task provides an overview of configuring Radware vDP cluster.</p>
+    </section>
+    <section>
+      <title>Prerequisites</title>
+      <p>Listen to the requirements before starting the task.</p>
+    </section>
+    <section>
+      <title>Configuration Steps</title>
+      <ol>
+        <li>
+          <cmd>Provides</cmd> the configuration steps for Radware vDP cluster.
+        </li>
+      </ol>
+    </section>
+    <section>
+      <title>Verification and Troubleshooting</title>
+      <p>Provides the verification and troubleshooting steps for Radware vDP cluster.</p>
+    </section>
+  </taskbody>
+</task>

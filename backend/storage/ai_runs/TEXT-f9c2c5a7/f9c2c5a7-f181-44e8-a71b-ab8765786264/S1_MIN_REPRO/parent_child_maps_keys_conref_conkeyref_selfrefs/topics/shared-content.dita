@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="shared-content" xml:lang="en">
+  <title>Shared Content Library</title>
+  <shortdesc>Reusable paragraphs and list items that are safe conref and conkeyref targets.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p id="shared-intro-copy">Use this shared introduction paragraph when a topic needs a conservative reusable opening statement.</p>
+    <p id="shared-warning">Review key resolution in the active root map before validating links, conrefs, and conkeyrefs.</p>
+    <section id="shared-checklist">
+      <title>Shared Checklist</title>
+      <ul>
+        <li id="shared-checklist-item-1">Confirm that the root map includes the expected parent-level keydefs.</li>
+        <li id="shared-checklist-item-2">Confirm that every child map exposes its branch keys through keydefs and topicrefs.</li>
+      </ul>
+    </section>
+    <p id="shared-result">When all reusable targets exist, both authoring and publishing tools can resolve the dataset without broken references.</p>
+  </body>
+</topic>

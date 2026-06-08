@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="child-a-details" xml:lang="en">
+  <title>Child A Details</title>
+  <shortdesc>Detail topic for branch A with direct conref and child-level conkeyref reuse.</shortdesc>
+  <prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-06-08" /></metadata></prolog><body>
+    <p>This topic reuses conservative shared content and links back to the overview through branch keys.</p>
+    <p conref="shared-content.dita#shared-content/shared-intro-copy">Shared introduction placeholder.</p>
+    <p conkeyref="child-a-overview/child-a-overview-summary">Overview summary placeholder.</p>
+    <p>Return to <xref keyref="child-a-overview" /> or open <xref keyref="parent-shared-content" /> for shared reusable guidance.</p>
+  </body>
+</topic>

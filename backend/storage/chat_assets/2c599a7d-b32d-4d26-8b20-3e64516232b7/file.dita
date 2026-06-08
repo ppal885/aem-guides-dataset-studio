@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="configure-radware-defensepro">
+  <title>Configure Radware DefensePro on an Intra-Chassis Cluster</title>
+  <shortdesc>Configure Radware DefensePro for an intra-chassis cluster setup</shortdesc>
+  <taskbody>
+    <section>
+      <title>Introduction</title>
+      <p>Briefly introduce the configuration process</p>
+    </section>
+    <section>
+      <title>Prerequisites</title>
+      <p>Outline the requirements before starting the configuration</p>
+    </section>
+    <section>
+      <title>Configuration Steps</title>
+      <ol>
+        <li>
+          <cmd>Provide the configuration steps</cmd>
+        </li>
+      </ol>
+    </section>
+    <section>
+      <title>Verification and Troubleshooting</title>
+      <p>Offer tips for verifying the configuration and troubleshooting common issues</p>
+    </section>
+  </taskbody>
+</task>

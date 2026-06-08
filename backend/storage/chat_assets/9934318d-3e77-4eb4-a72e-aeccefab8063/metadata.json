@@ -1,0 +1,13 @@
+{
+  "asset_id": "9934318d-3e77-4eb4-a72e-aeccefab8063",
+  "session_id": "test-sess2",
+  "user_id": "test-user",
+  "kind": "image",
+  "filename": "test_aem.png",
+  "mime_type": "image/png",
+  "size_bytes": 6447,
+  "payload_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\storage\\chat_assets\\9934318d-3e77-4eb4-a72e-aeccefab8063\\test_aem.png",
+  "created_at": "2026-06-08T07:17:24.296561+00:00",
+  "content_preview": "",
+  "content_sha256": "cd3777e7b688da524b2538b85c51635af5a607c9984a7c9d56b400ca02984d56"
+}

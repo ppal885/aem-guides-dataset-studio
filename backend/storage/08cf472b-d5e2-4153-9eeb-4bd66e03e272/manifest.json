@@ -1,0 +1,10 @@
+{
+  "job_id": "08cf472b-d5e2-4153-9eeb-4bd66e03e272",
+  "generated_at": "2026-06-08T01:32:19.862193",
+  "dataset_name": "Chat Job - task_topics",
+  "seed": "chat-seed",
+  "total_files": 14,
+  "dita_files": 11,
+  "recipe_count": 1,
+  "status": "completed"
+}

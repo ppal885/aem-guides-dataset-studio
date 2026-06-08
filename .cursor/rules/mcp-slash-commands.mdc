@@ -1,0 +1,66 @@
+---
+description: Maps /slash commands to AEM Guides Studio MCP tools
+alwaysApply: true
+---
+
+# AEM Guides MCP Slash Commands
+
+When the user's message starts with one of the `/` commands below, immediately invoke the corresponding MCP tool from the `aem-guides-dataset-studio` server. Do not explain first — call the tool directly and show the result.
+
+---
+
+## Available slash commands
+
+### `/find_recipes <query>`
+Calls `find_recipes` with `query = <everything after /find_recipes>`.
+Example: `/find_recipes task topics with steps` → calls find_recipes(query="task topics with steps")
+
+### `/lookup_dita <query>`
+Calls `lookup_dita_spec` with `query = <everything after /lookup_dita>`.
+Example: `/lookup_dita <step> element` → calls lookup_dita_spec(query="<step> element")
+
+### `/lookup_attr <attribute_name>`
+Calls `lookup_dita_attribute` with `attribute_name = <word after /lookup_attr>`.
+Example: `/lookup_attr conref` → calls lookup_dita_attribute(attribute_name="conref")
+
+### `/lookup_aem <query>`
+Calls `lookup_aem_guides` with `query = <everything after /lookup_aem>`.
+Example: `/lookup_aem how to create a baseline` → calls lookup_aem_guides(query="how to create a baseline")
+
+### `/review_dita <xml>`
+Calls `review_dita_xml` with `xml = <content after /review_dita>`.
+Example: `/review_dita <task id="t1">...</task>` → calls review_dita_xml(xml="...")
+
+### `/fix_dita <xml>`
+Calls `fix_dita_xml` with `xml = <content after /fix_dita>`.
+Example: `/fix_dita <task id="t1">...</task>` → calls fix_dita_xml(xml="...")
+
+### `/generate_dita <description>`
+Calls `generate_dita` with `text = <everything after /generate_dita>`.
+Example: `/generate_dita Install steps for AEM Guides on Windows` → calls generate_dita(text="...")
+
+### `/jira <query_or_key>`
+Calls `search_jira_issues` with `query = <everything after /jira>`.
+Example: `/jira GUIDES-1234` → calls search_jira_issues(query="GUIDES-1234")
+Example: `/jira keyref resolution bug` → calls search_jira_issues(query="keyref resolution bug")
+
+### `/list_jobs`
+Calls `list_jobs` with default limit of 10.
+
+### `/job_status <job_id>`
+Calls `get_job_status` with `job_id = <word after /job_status>`.
+Example: `/job_status abc-123-def` → calls get_job_status(job_id="abc-123-def")
+
+### `/screenshot_dita <image_path>`
+Calls `generate_dita_from_screenshot` with `image_path = <path after /screenshot_dita>`.
+Example: `/screenshot_dita C:/Users/prashantp/Desktop/ui.png` → calls generate_dita_from_screenshot(image_path="C:/Users/prashantp/Desktop/ui.png")
+
+---
+
+## Dispatch rules
+
+- Match is **prefix-based**: check if the message starts with the slash command token (case-insensitive).
+- Extract the argument as everything after the command token, trimmed.
+- If the argument is empty and required, ask the user for it.
+- After the tool returns, present the result clearly — do not just echo raw JSON. Summarize and format it.
+- If the MCP server is unreachable, tell the user to start the backend: `cd backend && python run_local.py`

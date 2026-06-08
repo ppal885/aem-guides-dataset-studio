@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//CISCO//DTD DITA 1.3 Task v1.0//EN" "../dtd/apps/cdc/dita/DITA-1.3/dtd/Cisco_Task/cisco-task.dtd" [
+]>
+<task feature-id="sec-fxos-114" xml:lang="en_US" outputclass="no_summary_steps" id="task_5B8ADCD95B2B4706AEC8CF7779BA5190"><title> Configure Radware DefensePro on an Intra-Chassis Cluster</title><prolog><data name="TopicAlias" value="fpwrchassismgr_logicaldevices_configuration_vdp_cluster"/></prolog><taskbody><prereq id="prereq_1278A901CB1248C49ECB7CA21E2C4B98"> 
+		<ul><li id="li_BCD602A828884FB9BB315C8A3918E479"> 
+			 <p>Download the vDP
+				image from Cisco.com (see 
+				<xref href="t_DownloadingImages.xml"></xref>)
+				and then 
+				<ph ui-type="gui">upload</ph><ph ui-type="cli">download</ph> that image to the 
+				<ph conref="r_Firepower_Reuseable_Names_and_Phrases.xml#reference_1C10DF4CC456418CB04D848413A0FBDF/ph_FpwrFXOSPlatformName"></ph>
+				(see 
+				<xref ui-type="gui" href="t_UploadingImages.xml"></xref><xref ui-type="cli" href="t_CLI_DownloadingaLogicalDeviceImagetoFirepowerChassis.xml"></xref>).
+				
+			 </p> 
+		  </li></ul> 
+	 </prereq><context id="context_318F7B913B754B5AA26F2500A8E1449E">
+			<p ui-type="gui">The following procedure shows how to install the Radware DefensePro image, and configure it in a Service Chain in front of an ASA<ph feature-id="sec-fxos-211"> or Firepower Threat Defense</ph> intra-chassis cluster.</p>
+			<note>
+				<p>Service Chaining is not supported in an inter-chassis cluster configuration. However, the Radware DefensePro  application can be deployed in a standalone configuration in an inter-chassis cluster scenario.</p>
+			</note>
+		</context><steps outputclass="notable"><step ui-type="gui" id="step_E8A90AE4AF8046FF9E9A9D5F4E204405"><cmd>If you want to use a separate management interface for vDP, enable the interface and set it to be the mgmt type according to <xref scope="local" format="dita" href="t_ConfiguringInterfaces.xml#task_06578AF798574CEEA9CB7CD6D2373E6B" type="task"></xref>. Otherwise, you can share the application management interface.</cmd></step><step suppress-feature-id="" ui-type="gui" id="step_9481A71DB34F4548BAC2445896654E1C"><cmd>Configure an ASA <ph feature-id="sec-fxos-211"> or Firepower Threat Defense</ph> intra-chassis cluster (see <xref scope="local" format="dita" href="t_ConfigureASAClustering.xml#task_4842F30E0F374DBFB2D021DF3198D5DA"></xref>
+					<ph feature-id="sec-fxos-211"> or <xref scope="local" format="dita" href="t_ConfigureFTDClustering.xml#task_FBFDEA492BC647F7A4AE09C6E8732C6C" type="task"></xref></ph> ). </cmd><info>
+					<p>Note that before you click <uicontrol>Save</uicontrol> at the end of the procedure to configure the intra-chassis cluster, you must first follow the following steps to add a vDP decorator to the cluster. </p>
+				</info></step><step ui-type="gui" id="step_707A6F27C31742C6A3E91E140C9B2D14"><cmd>In the 
+			 <uicontrol>Decorators</uicontrol> area, select vDP. The 
+			 <uicontrol>Radware: Virtual DefensePro - Configuration</uicontrol>
+			 dialog box appears. Configure the following fields under the 
+			 <uicontrol>General Information</uicontrol> tab.
+		  </cmd></step><step ui-type="gui" id="step_AF93BADFB2A14E17A1533B8A4D2D9B3E"><cmd>If you have more than one vDP version uploaded to the 
+			 <ph conref="r_Firepower_Reuseable_Names_and_Phrases.xml#reference_1C10DF4CC456418CB04D848413A0FBDF/ph_FpwrFXOSPlatformName"></ph>,
+			 select the vDP version you want to use in the 
+			 <uicontrol>Version</uicontrol> drop-down.
+		  </cmd></step><step feature-id="sec-fxos-debden" ui-type="gui"><cmd>If you have a resource configurable Radware DefensePro application, a list of supported resource profiles appears under the Resource Profile drop-down. Select the resource profile you want to assign to the device. If you do not select a resource profile, the default setting is used.  </cmd></step><step ui-type="gui" id="step_E946454AE343427F94093010402DC0F2"><cmd>Under the 
+			 <uicontrol>Management Interface</uicontrol> drop-down, choose a management
+			 interface. 
+		  </cmd></step><step ui-type="gui" id="step_889CD3FEF4FC458DBE4511B7B1403916"><cmd>Click the checkbox next to each data port that you want to assign
+			 to the vDP decorator.
+		  </cmd></step><step ui-type="gui" id="step_DF94AD47C1B24E4BAF95684EA7171042"><cmd>Click the 
+			 <uicontrol>Interface Information</uicontrol> tab.
+		  </cmd></step><step ui-type="gui" id="step_DCE96AA9CAD64BB88BBC5853E33BA230"><cmd>Select the 
+			 <uicontrol>Address Type</uicontrol> to be used, IPv4 only, IPv6 only,
+			 or IPv4 and IPv6.
+		  </cmd></step><step ui-type="gui" id="step_5ACEE2A42FD245EAB1E505B22C0F6F8B"><cmd>Configure the
+			 following fields for each Security Module. Note that the fields that display
+			 depend on your 
+			 <uicontrol>Address Type</uicontrol> selection from the previous step.
+		  </cmd><substeps><substep id="substep_9ACCD466556445D3B1D559908D3CCAB4"><cmd>In the 
+				  <uicontrol>Management IP</uicontrol> field, configure a local IP
+				  address. 
+				</cmd></substep><substep id="substep_8077EDFA25FD4A528ECB8B9E84E91F8D"><cmd>IPv4 only: Enter a 
+				  <uicontrol>Network Mask</uicontrol>. 
+				</cmd><info> 
+				  <p>IPv6 only: Enter a 
+					 <uicontrol>Prefix Length</uicontrol>. 
+				  </p> 
+				</info></substep><substep id="substep_8947983B270441198A56422518FC3537"><cmd>Enter a 
+				  <uicontrol>Network Gateway</uicontrol> address. 
+				</cmd></substep></substeps></step><step ui-type="gui" id="step_227DA746CE6C45169CEB9CE31C518EE2"><cmd>Click 
+			 <uicontrol>OK</uicontrol>. 
+		  </cmd></step><step ui-type="gui" id="step_31305DECEC374A9A94F7FECA5184CCFC"><cmd>Click 
+			 <uicontrol>Save</uicontrol>. 
+		  </cmd><info> 
+			 <p>The 
+				<ph conref="r_Firepower_Reuseable_Names_and_Phrases.xml#reference_1C10DF4CC456418CB04D848413A0FBDF/ph_FXOSFullName"></ph>
+				deploys the logical device by downloading the specified software version and
+				pushing the bootstrap configuration and management interface settings to the
+				specified security module. 
+			 </p> 
+		  </info></step><step ui-type="gui" id="step_47C67F086F4E4B12BED34D6BC029E418"><cmd>Choose 
+			 <uicontrol>Logical Devices</uicontrol> to open the Logical Devices page. 
+		  </cmd></step><step ui-type="gui" id="step_5E3C0B7FBBBD4A5FBCCF0ECC24DD3451"><cmd>Scroll through
+			 the list of configured logical devices to the entries for vDP. Verify their
+			 Attributes listed in the 
+			 <uicontrol>Management IP</uicontrol> column. 
+		  </cmd><choices><choice id="choice_1B8C098442BE40FA88FD658757707271">If the 
+				<uicontrol>CLUSTER-ROLE</uicontrol> element displays as 
+				<synph><var>unknown</var></synph> for
+				the DefensePro instances, you must enter the DefensePro application and
+				configure the master IP address to complete the creation of the vDP cluster. 
+			 </choice></choices><choices><choice id="choice_569D2BCD52804C90A95DEE4B607C1DE1">If the 
+				<uicontrol>CLUSTER-ROLE</uicontrol> element displays as 
+				<synph><var>primary</var> 
+				</synph> or 
+				<synph><var>secondary</var> 
+				</synph> for the DefensePro instances, the applications are online
+				and formed in a cluster. 
+			 </choice></choices></step><step ui-type="cli"><cmd>If you want to use a separate management interface for vDP, enable the interface and set it to be the mgmt type according to <xref scope="local" format="dita" href="t_ConfiguringInterfaces.xml#task_06578AF798574CEEA9CB7CD6D2373E6B" type="task"></xref>. Otherwise, you can share the application management interface.</cmd></step><step ui-type="cli" id="step_47CC05597BE14FFCA058C04328C925EA"><cmd>Configure an ASA intra-chassis cluster (see <xref scope="local" format="dita" href="t_ConfigureASAClustering.xml#task_4842F30E0F374DBFB2D021DF3198D5DA"></xref>)<ph feature-id="sec-fxos-211"> or a Firepower Threat Defense intra-chassis cluster (see <xref scope="local" format="dita" href="t_ConfigureFTDClustering.xml#task_FBFDEA492BC647F7A4AE09C6E8732C6C" type="task"></xref>). </ph></cmd></step><step ui-type="cli" id="step_3DF94A6901424291BB574CF411288651"><cmd>Decorate the external (client-facing) port with Radware DefensePro: </cmd><info>
+					<p>
+						<synph><kwd>enter external-port-link</kwd>
+							<var>name interface_name</var> { <kwd>asa</kwd>
+							<synph feature-id="sec-fxos-211">| <kwd>ftd</kwd>
+							</synph>}</synph>
+					</p>
+				</info><info>
+					<p>set <synph><kwd>decorator</kwd>
+							<kwd>vdp</kwd></synph>
+					</p>
+				</info><info>
+					<p>set <synph><kwd>description</kwd>
+							<kwd>''''</kwd></synph>
+					</p>
+				</info><info>
+					<p><synph><kwd>exit</kwd>
+						</synph>
+					</p>
+				</info></step><step ui-type="cli" id="step_752CA16B59D7478AAB4BC705AE7FEA9A"><cmd>Assign the external management port for the logical device: </cmd><info>
+					<p>enter <synph><kwd>external-port-link</kwd>
+							<var>{ mgmt_asa | mgmt_ftd }</var>
+							<var>interface_id</var>
+							<var>{ asa | ftd }</var></synph>
+					</p>
+				</info><info>
+					<p>set <synph><kwd>decorator</kwd>
+							<kwd>''''</kwd></synph>
+					</p>
+				</info><info>
+					<p>set <synph><kwd>description</kwd>
+							<kwd>''''</kwd></synph>
+					</p>
+				</info><info>
+					<p><synph><kwd>exit</kwd>
+						</synph>
+					</p>
+				</info></step><step ui-type="cli" id="step_5DC77CEFB1604569A7742A80795DCC9E"><cmd>Assign the
+			 external management port for DefensePro: 
+		  </cmd><info> 
+			 <p>enter <synph><kwd>external-port-link</kwd>
+							<kwd>mgmt_vdp</kwd>
+							<var>interface_name</var>
+							<var>{ asa | ftd }</var></synph>
+					</p> 
+		  </info><info> 
+			 <p>set 
+				<synph><kwd>decorator</kwd> 
+				  <kwd>''''</kwd></synph> 
+			 </p> 
+		  </info><info> 
+			 <p>set 
+				<synph><kwd>description</kwd> 
+				  <kwd>''''</kwd></synph> 
+			 </p> 
+		  </info></step><step feature-id="sec-fxos-debden" ui-type="cli"><cmd>(Optional) Show the available supported resource profiles:</cmd><info>
+					<p><synph>Firepower /ssa/app # <kwd>show</kwd>
+							<kwd>app-resource-profile</kwd></synph>
+					</p>
+				</info><stepxmp>
+					<codeblock>Firepower /ssa/app # show app-resource-profile 
+Profile Name Security Model Number of Cores RAM Size (MB) Default Profile
+------------------------- --------------- --------------- --------------- ---------------
+DEFAULT-4110-RESOURCE FPR4K-SM-12 4 16384 Yes
+DEFAULT-RESOURCE FPR9K-SM-56, FPR9K-SM-44, FPR9K-SM-36, FPR9K-SM-24, FPR4K-SM-44, FPR4K-SM-36, FPR4K-SM-24
+6 24576 Yes
+VDP-10-CORES FPR9K-SM-56, FPR9K-SM-44, FPR9K-SM-36, FPR9K-SM-24, FPR4K-SM-44, FPR4K-SM-36, FPR4K-SM-24
+10 40960 No
+VDP-2-CORES all 2 8192 No
+VDP-4-CORES all 4 16384 No
+VDP-8-CORES FPR9K-SM-56, FPR9K-SM-44, FPR9K-SM-36, FPR9K-SM-24, FPR4K-SM-44, FPR4K-SM-36, FPR4K-SM-24
+8 32768 No</codeblock>
+				</stepxmp></step><step feature-id="sec-fxos-debden" ui-type="cli"><cmd>(Optional) Set the resource profile using one of the available profiles from the previous step: </cmd><info>
+					<note>
+						<p>After committing this change, the FXOS chassis reboots.</p>
+					</note>
+				</info><substeps><substep><cmd>Scope to slot 1: </cmd><info>
+							<p><synph>Firepower /ssa*# <kwd>scope slot 1</kwd></synph>
+							</p>
+						</info></substep><substep><cmd>Enter the DefensePro application instance:</cmd><info>
+							<p><synph>Firepower /ssa/slot* # <kwd>enter app-instance vdp</kwd></synph>
+							</p>
+						</info></substep><substep><cmd>Enable the application instance: </cmd><info>
+							<p><synph>Firepower /ssa/slot/app-instance* # <kwd>enable</kwd></synph>
+							</p>
+						</info></substep><substep><cmd>Set the resource profile: </cmd><info>
+							<p><synph>Firepower /ssa/slot/app-instance* # <kwd>set resource-profile-name </kwd><var>resource_profile_name</var></synph>
+							</p>
+						</info></substep><substep><cmd>Commit the configuration:</cmd><info>
+							<p><synph>Firepower /ssa/slot/app-instance* # <kwd>commit-buffer</kwd></synph>
+							</p>
+						</info></substep></substeps></step><step ui-type="cli" id="step_97CE90A65B0641FA8C3C6659EE3760E6"><cmd>Configure
+			 cluster port channel: 
+		  </cmd><info> 
+			 <p>enter <synph><kwd>external-port-link</kwd> port-channel48 Port-channel48 <var>{ asa | ftd }</var></synph>
+					</p> 
+		  </info><info> 
+			 <p>set 
+				<synph><kwd>decorator</kwd> 
+				  <kwd>''''</kwd></synph> 
+			 </p> 
+		  </info><info> 
+			 <p>set 
+				<synph><kwd>description</kwd> 
+				  <kwd>''''</kwd></synph> 
+			 </p> 
+		  </info><info> 
+			 <p><synph><kwd>exit</kwd> 
+				</synph> 
+			 </p> 
+		  </info></step><step ui-type="cli" id="step_A2F4AB540FEE43BEBC32F5ADDCC55A17"><cmd>Configure
+			 management bootstrap for all three DefensePro instances: 
+		  </cmd><info> 
+			 <p>enter 
+				<synph><kwd>mgmt-bootstrap</kwd> 
+				  <kwd>vdp</kwd></synph> 
+			 </p> 
+		  </info><info> 
+			 <p>enter 
+				<synph><kwd>ipv4</kwd> 
+				  <var>slot_id</var> 
+				  <kwd>default</kwd></synph> 
+			 </p> 
+		  </info><info> 
+			 <p><synph><kwd>set</kwd> 
+				  <kwd>gateway</kwd> 
+				  <var>gateway_address</var></synph> 
+			 </p> 
+		  </info><info> 
+			 <p><synph><kwd>set</kwd> 
+				  <kwd>ip</kwd>
+				  
+				  <var>ip_address</var> 
+				  <kwd>mask</kwd> 
+				  <var>network_mask</var></synph> 
+			 </p> 
+		  </info><info> 
+			 <p><synph><kwd>exit</kwd> 
+				</synph> 
+			 </p> 
+		  </info><stepxmp> 
+			 <codeblock>
+     enter mgmt-bootstrap vdp
+         enter ipv4 1 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.219 mask 255.255.0.0
+         exit
+         
+         enter ipv4 2 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.220 mask 255.255.0.0
+         exit
+ 
+         enter ipv4 3 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.221 mask 255.255.0.0
+         exit</codeblock> 
+		  </stepxmp></step><step ui-type="cli" id="step_4725234B19B048CCA90D676B122AFB3E"><cmd>Exit
+			 management bootstrap configuration scope: 
+		  </cmd><info> 
+			 <p><synph><kwd>exit</kwd> 
+				</synph> 
+			 </p> 
+		  </info></step><step ui-type="cli"><cmd>Enter the DefensePro application instance on the master blade:</cmd><info>
+					<p><synph><kwd>connect</kwd>
+							<kwd>module</kwd>
+							<var>slot</var>
+							<kwd>console</kwd></synph>
+					</p>
+				</info><info>
+					<p><synph><kwd>connect</kwd>
+							<kwd>vdp</kwd></synph>
+					</p>
+				</info></step><step ui-type="cli"><cmd>On the master blade, set the management IP:</cmd><info>
+					<p><synph><kwd>device</kwd>
+							<kwd>clustering</kwd>
+							<kwd>management-channel</kwd>
+							<kwd>ip</kwd></synph>
+					</p>
+				</info></step><step ui-type="cli"><cmd>Using the IP found in the previous step, set the master IP:</cmd><info>
+					<p><synph><kwd>device</kwd>
+							<kwd>clustering</kwd>
+							<kwd>master</kwd>
+							<kwd>set</kwd>
+							<var>management-channel</var>
+							<var>ip</var></synph>
+					</p>
+				</info></step><step ui-type="cli"><cmd>Enable the cluster:</cmd><info>
+					<p><synph><kwd>device</kwd>
+							<kwd>clustering</kwd>
+							<kwd>state</kwd>
+							<kwd>set</kwd>
+							<kwd>enable</kwd></synph>
+					</p>
+				</info></step><step ui-type="cli"><cmd>Exit the application console and return to the FXOS module CLI:</cmd><info>
+					<p><synph><kwd>Ctrl</kwd>
+							<kwd>]</kwd>
+						</synph>
+					</p>
+				</info></step><step ui-type="cli"><cmd>Repeat steps 10, 12, 13, and 14 to set the master IP found in step 11 and enable the cluster for each blade application instance.</cmd></step><step ui-type="cli" id="step_6CCD3B99EB894251AB2295285BC8B44B"><cmd>Commit the configuration: </cmd><info>
+					<p><synph><kwd>commit-buffer</kwd></synph>
+					</p>
+				</info><info>
+					<note> After completing this procedure, you must verify whether the DefensePro instances are configured in a cluster. </note>
+				</info></step><step ui-type="cli"><cmd>Validate that all DefensePro applications have joined the cluster:</cmd><info>
+					<p><synph><kwd>device</kwd>
+							<kwd>cluster</kwd>
+							<kwd>show</kwd></synph>
+					</p>
+				</info></step><step ui-type="cli" id="step_8E2C1A034B9F473C834C19B262A105B7"><cmd>Use either of
+			 the following methods to verify which DefensePro instance is primary, and which
+			 one is secondary. 
+		  </cmd><substeps><substep id="substep_ADD2048EE7A74155BDD176214B94425C"><cmd>Scope the
+				  DefensePro instance and show appplication attributes for DefensePro only: 
+				</cmd><info> 
+				  <p><synph><kwd>scope</kwd> 
+						<kwd>ssa</kwd></synph> 
+				  </p> 
+				</info><info> 
+				  <p><synph><kwd>scope</kwd>
+									<kwd>slot</kwd>
+									<var>slot_number</var></synph>
+							</p> 
+				</info><info> 
+				  <p><synph><kwd>scope</kwd> 
+						<kwd>app-instance</kwd> 
+						<kwd>vdp</kwd></synph> 
+				  </p> 
+				</info><info> 
+				  <p><synph><kwd>show</kwd> 
+						<kwd>app-attri</kwd> 
+					 </synph> 
+				  </p> 
+				</info></substep><substep id="substep_1E946212C6694654802181C466FD758C"><cmd>Scope the slot and show the DefensePro instance in expanded detail. This approach displays information for both logical device and vDP application instances on the slot. </cmd><info>
+							<p><synph><kwd>scope</kwd>
+									<kwd>ssa</kwd></synph>
+							</p>
+						</info><info>
+							<p><synph><kwd>scope</kwd>
+									<var>slot_number</var></synph>
+							</p>
+						</info><info>
+							<p><synph><kwd>show</kwd>
+									<kwd>app-instance</kwd> expand detail</synph>
+							</p>
+						</info></substep></substeps></step></steps><result ui-type="cli" id="result_BC6E126C9A7944238890453C63D5A6D7">
+			<p>If the DefensePro application is online but not yet formed in a cluster, the CLI displays: <codeblock>    App Attribute:
+        App Attribute Key: cluster-role
+        Value: unknown
+</codeblock></p>
+			<p>If the system displays this "unknown" value, you must enter the DefensePro application and configure the master IP address to create the vDP cluster.</p>
+			<p>If the DefensePro application is online and formed in a cluster, the CLI displays: <codeblock>    App Attribute:
+        App Attribute Key: cluster-role
+        Value: primary/secondary
+</codeblock></p>
+		</result><example ui-type="cli" id="example_D18B7327232E49EAB8084C0266051564"> 
+		<title>Example</title> 
+		<codeblock>
+scope ssa
+  enter logical-device ld asa "1,2,3" clustered
+     enter cluster-bootstrap
+         set chassis-id 1
+         set ipv4 gateway 172.16.0.1
+         set ipv4 pool 172.16.4.216 172.16.4.218
+         set ipv6 gateway 2010::2
+         set ipv6 pool 2010::21 2010::26
+         set key secret
+         set mode spanned-etherchannel
+         set name cisco
+         set virtual ipv4 172.16.4.222 mask 255.255.0.0
+         set virtual ipv6 2010::134 prefix-length 64
+     exit
+     enter external-port-link Ethernet1-2 Ethernet1/2 asa
+         set decorator vdp
+         set description ""
+     exit
+     enter external-port-link Ethernet1-3_asa Ethernet1/3 asa
+         set decorator ""
+         set description ""
+     exit
+     enter external-port-link mgmt_asa Ethernet1/1 asa
+         set decorator ""
+         set description ""
+     exit
+     enter external-port-link mgmt_vdp Ethernet1/1 vdp
+         set decorator ""
+         set description ""
+     exit
+     enter external-port-link port-channel48 Port-channel48 asa
+         set decorator ""
+         set description ""
+     exit
+     enter mgmt-bootstrap vdp
+         enter ipv4 1 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.219 mask 255.255.0.0
+         exit
+         
+         enter ipv4 2 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.220 mask 255.255.0.0
+         exit
+ 
+         enter ipv4 3 default
+             set gateway 172.16.0.1
+             set ip 172.16.4.221 mask 255.255.0.0
+         exit
+ exit
+commit-buffer
+scope ssa
+   scope slot 1
+   scope app-instance vdp
+   show app-attri
+    App Attribute:
+        App Attribute Key: cluster-role
+        Value: unknown
+
+</codeblock> 
+	 </example><postreq>Set a password for the DefensePro application.  Note that the application does not come online until you set a password.  For more information, see the Radware DefensePro DDoS Mitigation User Guide on cisco.com.</postreq></taskbody></task>

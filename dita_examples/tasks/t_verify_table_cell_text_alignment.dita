@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="task_verify_table_cell_text_alignment" xml:lang="en-US">
+  <title>Verify table cell text alignment in the Web Editor</title>
+  <shortdesc>Use this task to validate acceptance criteria for applying text alignment to table cells from the context menu, including published output and cross-browser behavior.</shortdesc>
+  <prolog>
+    <metadata>
+      <data name="TopicAlias" value="web_editor_table_cell_text_alignment"/>
+    </metadata>
+  </prolog>
+  <taskbody>
+    <prereq id="prereq_table_align_verify">
+      <ul>
+        <li id="li_prereq_editor">
+          <p>You can open and edit a DITA topic in Experience Manager Guides Web Editor.</p>
+        </li>
+        <li id="li_prereq_table">
+          <p>A topic is available that contains at least one table with one or more cells you can select.</p>
+        </li>
+        <li id="li_prereq_browsers">
+          <p>For cross-browser verification, install or have access to current versions of Chrome, Firefox, Safari, and Edge.</p>
+        </li>
+      </ul>
+    </prereq>
+    <context id="context_table_align_verify">
+      <p>This procedure confirms that authors can align text inside a table cell using the context menu, that alignment is reflected in output (HTML and DITA), and that existing table configuration workflows still work.</p>
+      <note id="note_ac_scope">
+        <p>These steps map to acceptance criteria for the table cell text alignment feature: context menu options, immediate application without opening the table properties dialog for the alignment action, output consistency, browser coverage, and regression on the table properties dialog.</p>
+      </note>
+    </context>
+    <steps>
+      <step id="step_context_menu_alignment">
+        <cmd>Right-click inside a table cell and confirm that the context menu includes a <uicontrol>Text Alignment</uicontrol> submenu.</cmd>
+        <info>
+          <p>Open the submenu and verify the following options are available: <uicontrol>Left</uicontrol>, <uicontrol>Center</uicontrol>, <uicontrol>Right</uicontrol>, and <uicontrol>Justify</uicontrol>.</p>
+        </info>
+      </step>
+      <step id="step_immediate_apply">
+        <cmd>Select each alignment option in turn and confirm the active cell updates immediately.</cmd>
+        <info>
+          <p>You should not need to open the table properties dialog solely to apply the alignment chosen from the context menu.</p>
+        </info>
+      </step>
+      <step id="step_output_consistency">
+        <cmd>Verify that the chosen alignment is preserved in output and in source as specified for your pipeline.</cmd>
+        <info>
+          <p>For HTML-oriented output, inspect that alignment is reflected appropriately (for example via a <codeph>style</codeph> attribute on the relevant element).</p>
+        </info>
+        <info>
+          <p>For DITA source, inspect that alignment is represented with an <codeph>align</codeph> attribute (or equivalent supported markup) on the appropriate table cell element.</p>
+        </info>
+        <stepxmp>
+          <p>Example patterns to look for when inspecting markup (exact syntax may vary by template):</p>
+          <codeblock>&lt;entry align="center"&gt;...&lt;/entry&gt;</codeblock>
+          <codeblock>style="text-align: right;"</codeblock>
+        </stepxmp>
+      </step>
+      <step id="step_cross_browser">
+        <cmd>Repeat the context menu alignment checks in Chrome, Firefox, Safari, and Edge.</cmd>
+        <info>
+          <p>Behavior should be consistent: the submenu appears, options apply, and the cell reflects the selected alignment in each browser.</p>
+        </info>
+      </step>
+      <step id="step_regression_table_properties">
+        <cmd>Open the existing table properties dialog for the same table and confirm it still opens, saves, and applies settings as before.</cmd>
+        <info>
+          <p>This confirms no regression for authors who continue to use the table properties workflow for other table options.</p>
+        </info>
+      </step>
+    </steps>
+    <result id="result_table_align_verify">
+      <p>All checks pass when:</p>
+      <ul>
+        <li>
+          <p>The <uicontrol>Text Alignment</uicontrol> submenu and four alignment options appear from the cell context menu.</p>
+        </li>
+        <li>
+          <p>Alignment applies immediately without requiring the table properties dialog for that action.</p>
+        </li>
+        <li>
+          <p>Published or previewed HTML reflects alignment (for example via <codeph>style</codeph>), and DITA source uses <codeph>align</codeph> (or your supported equivalent).</p>
+        </li>
+        <li>
+          <p>The same behavior works in Chrome, Firefox, Safari, and Edge.</p>
+        </li>
+        <li>
+          <p>The table properties dialog continues to function for table configuration.</p>
+        </li>
+      </ul>
+    </result>
+    <example id="example_alignment_snippets">
+      <title>Example markup snippets</title>
+      <p>The following fragments illustrate the kind of output reviewers often look for; adjust to match your publishing template and DITA constraints.</p>
+      <codeblock outputclass="language-xml">&lt;!-- DITA: cell-level alignment --&gt;
+&lt;entry align="left"&gt;Sample&lt;/entry&gt;</codeblock>
+      <codeblock outputclass="language-html">&lt;!-- HTML: inline style --&gt;
+&lt;td style="text-align: center;"&gt;Sample&lt;/td&gt;</codeblock>
+    </example>
+  </taskbody>
+</task>

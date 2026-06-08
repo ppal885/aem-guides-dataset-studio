@@ -1,0 +1,502 @@
+2026-06-07 01:02:22 - app - INFO - Logging configured. Log level: INFO, Structured: False
+2026-06-07 01:02:22 - app - INFO - Log files: C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\logs\app.log, C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\logs\error.log
+2026-06-07 01:02:22 - app - INFO - ============================================================
+2026-06-07 01:02:22 - app - INFO - Starting AEM Guides Dataset Studio Backend
+2026-06-07 01:02:22 - app - INFO - ============================================================
+2026-06-07 01:02:22 - app - INFO - Server will be available at http://0.0.0.0:8001
+2026-06-07 01:02:22 - app - INFO - API docs available at http://0.0.0.0:8001/docs
+2026-06-07 01:02:22 - app - INFO - Health check: http://0.0.0.0:8001/health
+2026-06-07 01:02:22 - app - INFO - Log level: INFO
+2026-06-07 01:02:22 - app - INFO - Structured logging: False
+2026-06-07 01:02:22 - app - INFO - LLM provider: azure_openai
+2026-06-07 01:02:22 - app - INFO - Screenshot vision provider: azure_openai
+2026-06-07 01:02:22 - app - INFO - ============================================================
+2026-06-07 01:02:23 - app.db.session - INFO - Database URL: sqlite:///storage/app.db
+2026-06-07 01:02:23 - app.db.session - INFO - SQLite database path: C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\storage\app.db
+2026-06-07 01:02:25 - app.app.main - INFO - Registering API routes
+2026-06-07 01:02:25 - app.app.main - INFO - API routes registered successfully
+2026-06-07 01:02:25 - app.app.main - INFO - Application starting up
+2026-06-07 01:02:25 - app.app.main - WARNING - Runtime safety warning
+2026-06-07 01:02:25 - app.app.main - INFO - API route inventory snapshot
+2026-06-07 01:02:25 - app.app.main - INFO - Initializing SQLite database tables
+2026-06-07 01:02:26 - app.db.migrations - INFO - Migration: created chat_sessions table
+2026-06-07 01:02:26 - app.db.migrations - INFO - Migration: created chat_messages table
+2026-06-07 01:02:26 - app.db.migrations - INFO - Migration: created chat_message_feedback table
+2026-06-07 01:02:26 - app.app.main - INFO - Database tables initialized
+2026-06-07 01:02:26 - app.app.main - INFO - Jira config
+2026-06-07 01:02:26 - app.app.main - INFO - AEM Guides docs crawl schedule added
+2026-06-07 01:02:26 - app.app.main - INFO - DITA PDF index schedule added
+2026-06-07 01:02:26 - app.app.main - INFO - Scheduled data cleaning job added
+2026-06-07 01:02:26 - app.app.main - INFO - Scheduler started
+2026-06-07 01:02:26 - app.app.main - INFO - Application startup complete
+2026-06-07 01:02:32 - app.app.main - INFO - Incoming request
+2026-06-07 01:02:34 - app.app.main - INFO - Request completed
+2026-06-07 01:03:18 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:18 - app.app.main - INFO - Request completed
+2026-06-07 01:03:18 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:18 - app.app.main - INFO - Request completed
+2026-06-07 01:03:19 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:19 - app.app.main - INFO - Request completed
+2026-06-07 01:03:19 - app.app.main - INFO - Incoming request
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 4062.22it/s]
+2026-06-07 01:03:33 - app.app.services.embedding_service - INFO - Loaded fine-tuned DITA embedding model
+2026-06-07 01:03:33 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:33 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:33 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:33 - app.app.main - INFO - Request completed
+2026-06-07 01:03:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:33 - app.app.main - INFO - Request completed
+2026-06-07 01:03:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:34 - app.app.main - INFO - Request completed
+2026-06-07 01:03:34 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:34 - app.app.main - INFO - Request completed
+2026-06-07 01:03:34 - app.app.main - INFO - Incoming request
+2026-06-07 01:03:34 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:34 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:34 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:34 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:34 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:03:35 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:03:35 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:04:01 - app.app.services.llm_service - INFO - LLM text run completed
+2026-06-07 01:04:01 - app.app.main - INFO - Request completed
+2026-06-07 01:04:02 - app.app.main - INFO - Incoming request
+2026-06-07 01:04:02 - app.app.main - INFO - Request completed
+2026-06-07 01:04:02 - app.app.main - INFO - Incoming request
+2026-06-07 01:04:02 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:04:02 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:04:02 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-07 01:04:02 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:04:06 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-07 01:04:06 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:07:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:07:47 - app.app.main - INFO - Request completed
+2026-06-07 01:08:28 - app.app.main - INFO - Incoming request
+2026-06-07 01:08:28 - app.app.main - INFO - Request completed
+2026-06-07 01:20:00 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:00 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:08 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:08 - app.app.main - INFO - Request completed
+2026-06-07 01:20:29 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:29 - app.app.main - INFO - Request completed
+2026-06-07 01:20:29 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:29 - app.app.main - INFO - Request completed
+2026-06-07 01:20:29 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:29 - app.app.main - INFO - Request completed
+2026-06-07 01:20:29 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:29 - app.app.main - INFO - Request completed
+2026-06-07 01:20:30 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:30 - app.app.main - INFO - Request completed
+2026-06-07 01:20:30 - app.app.main - INFO - Incoming request
+2026-06-07 01:20:30 - app.app.main - INFO - Request completed
+2026-06-07 01:21:04 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:04 - app.app.main - INFO - Request completed
+2026-06-07 01:21:15 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:15 - app.app.main - INFO - Request completed
+2026-06-07 01:21:27 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:27 - app.app.main - INFO - Request completed
+2026-06-07 01:21:31 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:31 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:31 - app.app.main - INFO - Request completed
+2026-06-07 01:21:31 - app.app.main - INFO - Request completed
+2026-06-07 01:21:31 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:31 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:31 - app.app.main - INFO - Request completed
+2026-06-07 01:21:31 - app.app.main - INFO - Request completed
+2026-06-07 01:21:31 - app.app.main - INFO - Incoming request
+2026-06-07 01:21:31 - app.app.main - INFO - Request completed
+2026-06-07 01:26:52 - app.app.main - INFO - Incoming request
+2026-06-07 01:26:52 - app.app.main - INFO - Request completed
+2026-06-07 01:27:42 - app.app.main - INFO - Incoming request
+2026-06-07 01:27:42 - app.app.main - INFO - Request completed
+2026-06-07 01:30:15 - app.app.main - INFO - Incoming request
+2026-06-07 01:30:15 - app.app.main - INFO - Request completed
+2026-06-07 01:36:44 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:44 - app.app.main - INFO - Request completed
+2026-06-07 01:36:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:47 - app.app.main - INFO - Request completed
+2026-06-07 01:36:47 - app.app.main - INFO - Request completed
+2026-06-07 01:36:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:47 - app.app.main - INFO - Request completed
+2026-06-07 01:36:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:47 - app.app.main - INFO - Request completed
+2026-06-07 01:36:47 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:47 - app.app.main - INFO - Request completed
+2026-06-07 01:36:54 - app.app.main - INFO - Incoming request
+2026-06-07 01:36:54 - app.app.main - INFO - Request completed
+2026-06-07 01:44:36 - app.app.main - INFO - Incoming request
+2026-06-07 01:44:36 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:45:41 - app.app.main - INFO - Incoming request
+2026-06-07 01:45:41 - app.app.main - INFO - Request completed
+2026-06-07 01:47:28 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:28 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:47:33 - app.app.main - INFO - Incoming request
+2026-06-07 01:47:33 - app.app.main - INFO - Request completed
+2026-06-07 01:51:38 - app.app.main - INFO - Incoming request
+2026-06-07 01:51:38 - app.app.main - INFO - Request completed
+2026-06-07 02:00:00 - app.app.main - INFO - Starting scheduled data cleaning job
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Found old jobs to clean
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Deleted old jobs from database
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Found old saved recipes to clean
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Deleted old saved recipes from database
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Found old chat sessions to clean
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Deleted old chat sessions from database
+2026-06-07 02:00:00 - app.app.services.cleaning_service - INFO - Data cleaning completed
+2026-06-07 02:00:00 - app.app.main - INFO - Scheduled data cleaning job completed
+2026-06-07 02:01:25 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:25 - app.app.main - INFO - Request completed
+2026-06-07 02:01:25 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:25 - app.app.main - INFO - Request completed
+2026-06-07 02:01:25 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:25 - app.app.main - INFO - Request completed
+2026-06-07 02:01:25 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:25 - app.app.main - INFO - Request completed
+2026-06-07 02:01:25 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:25 - app.app.main - INFO - Request completed
+2026-06-07 02:01:26 - app.app.main - INFO - Incoming request
+2026-06-07 02:01:26 - app.app.main - INFO - Request completed
+2026-06-07 02:02:08 - app.app.main - INFO - Incoming request
+2026-06-07 02:02:08 - app.app.main - INFO - Request completed
+2026-06-07 02:12:53 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:53 - app.app.main - INFO - Request completed
+2026-06-07 02:12:57 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:57 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:57 - app.app.main - INFO - Request completed
+2026-06-07 02:12:57 - app.app.main - INFO - Request completed
+2026-06-07 02:12:57 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:57 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:57 - app.app.main - INFO - Request completed
+2026-06-07 02:12:57 - app.app.main - INFO - Request completed
+2026-06-07 02:12:57 - app.app.main - INFO - Incoming request
+2026-06-07 02:12:57 - app.app.main - INFO - Request completed
+2026-06-07 02:13:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:13:20 - app.app.main - INFO - Request completed
+2026-06-07 02:13:20 - app.app.main - INFO - Incoming request
+{"run_id": "4214490b-9fda-4f19-9891-dcbb6ea067cb", "session_id": "4214490b-9fda-4f19-9891-dcbb6ea067cb", "trace_id": "e0eeeec4-9235-4948-b7dd-1b4a13ad6caa", "topic_count": 1, "scenarios_total": 1, "event": "dita_generation_started", "level": "info", "timestamp": "2026-06-06T20:43:20.994164Z"}
+2026-06-07 02:13:26 - app.app.main - INFO - Incoming request
+2026-06-07 02:13:26 - app.app.main - INFO - Request completed
+2026-06-07 02:13:55 - app.app.services.llm_service - WARNING - LLM run invalid JSON
+2026-06-07 02:14:35 - app.app.services.llm_service - WARNING - LLM run invalid JSON
+2026-06-07 02:15:10 - app.app.services.llm_service - WARNING - LLM run invalid JSON
+2026-06-07 02:15:10 - app.app.services.generate_from_text_service - WARNING - Deterministic DITA draft stage fell back to seeded content
+2026-06-07 02:15:11 - app.app.services.ai_executor_service - INFO - Executing recipe
+2026-06-07 02:15:11 - app.generator.specialized - INFO - Reference topics map generated: 10 topicrefs, 11 total files (including map)
+2026-06-07 02:15:11 - app.app.services.ai_executor_service - INFO - Recipe completed
+2026-06-07 02:15:11 - app.app.services.dita_enrichment_service - INFO - DITA enrichment completed
+{"run_id": "4214490b-9fda-4f19-9891-dcbb6ea067cb", "session_id": "4214490b-9fda-4f19-9891-dcbb6ea067cb", "trace_id": "e0eeeec4-9235-4948-b7dd-1b4a13ad6caa", "topic_count": 10, "duration_ms": 111540, "jira_id": "TEXT-4214490b", "event": "dita_generation_completed", "level": "info", "timestamp": "2026-06-06T20:45:12.533892Z"}
+2026-06-07 02:15:12 - app.app.services.chat_service - WARNING - Skipping assistant message persistence because session was not found
+2026-06-07 02:15:12 - app.app.main - INFO - Request completed
+2026-06-07 02:15:13 - app.app.main - INFO - Incoming request
+2026-06-07 02:15:13 - app.app.main - INFO - Request completed
+2026-06-07 02:15:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:15:20 - app.app.main - INFO - Request completed
+2026-06-07 02:15:46 - app.app.main - INFO - Incoming request
+2026-06-07 02:15:46 - app.app.main - INFO - Request completed
+2026-06-07 02:17:11 - app.app.main - INFO - Incoming request
+2026-06-07 02:17:11 - app.app.main - INFO - Request completed
+2026-06-07 02:17:15 - app.app.main - INFO - Incoming request
+2026-06-07 02:17:15 - app.app.main - INFO - Request completed
+2026-06-07 02:17:16 - app.app.main - INFO - Incoming request
+2026-06-07 02:17:16 - app.app.main - INFO - Request completed
+2026-06-07 02:17:17 - app.app.main - INFO - Incoming request
+2026-06-07 02:17:17 - app.app.main - INFO - Request completed
+2026-06-07 02:17:17 - app.app.main - INFO - Incoming request
+2026-06-07 02:17:17 - app.app.main - INFO - Request completed
+2026-06-07 02:27:05 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:05 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:05 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:05 - app.app.main - INFO - Request completed
+2026-06-07 02:27:05 - app.app.main - INFO - Request completed
+2026-06-07 02:27:05 - app.app.main - INFO - Request completed
+2026-06-07 02:27:05 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:05 - app.app.main - INFO - Request completed
+2026-06-07 02:27:11 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:11 - app.app.main - INFO - Request completed
+2026-06-07 02:27:13 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:13 - app.app.main - INFO - Request completed
+2026-06-07 02:27:13 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:13 - app.app.main - INFO - Request completed
+2026-06-07 02:27:15 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:15 - app.app.main - INFO - Request completed
+2026-06-07 02:27:16 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:16 - app.app.main - INFO - Request completed
+2026-06-07 02:27:16 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:16 - app.app.main - INFO - Request completed
+2026-06-07 02:27:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:20 - app.app.main - INFO - Request completed
+2026-06-07 02:27:20 - app.app.main - INFO - Request completed
+2026-06-07 02:27:20 - app.app.main - INFO - Request completed
+2026-06-07 02:27:20 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:20 - app.app.main - INFO - Request completed
+2026-06-07 02:27:23 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:23 - app.app.main - INFO - Request completed
+2026-06-07 02:27:23 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:23 - app.app.main - INFO - Request completed
+2026-06-07 02:27:23 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:23 - app.app.main - INFO - Request completed
+2026-06-07 02:27:23 - app.app.main - INFO - Incoming request
+2026-06-07 02:27:23 - app.app.main - INFO - Request completed
+2026-06-07 02:29:18 - app.app.main - INFO - Incoming request
+2026-06-07 02:29:18 - app.app.main - INFO - Incoming request
+2026-06-07 02:29:18 - app.app.main - INFO - Incoming request
+2026-06-07 02:29:18 - app.app.main - INFO - Request completed
+2026-06-07 02:29:18 - app.app.main - INFO - Request completed
+2026-06-07 02:29:18 - app.app.main - INFO - Request completed
+2026-06-07 02:29:18 - app.app.main - INFO - Incoming request
+2026-06-07 02:29:18 - app.app.main - INFO - Request completed
+2026-06-07 02:29:18 - app.app.main - INFO - Incoming request
+2026-06-07 02:29:18 - app.app.main - INFO - Request completed
+2026-06-07 02:31:17 - app.app.main - INFO - Incoming request
+2026-06-07 02:31:17 - app.app.main - INFO - Request completed
+2026-06-07 12:35:06 - app.app.main - INFO - Incoming request
+2026-06-07 12:35:06 - app.app.main - INFO - Request completed
+Run time of job "Data Cleaning Job (trigger: cron[month='*', day='*', day_of_week='*', hour='2', minute='0'], next run at: 2026-06-09 02:00:00 IST)" was missed by 0:00:02.352606
+Run time of job "AEM Guides Docs Crawl Job (trigger: cron[month='*', day='*', day_of_week='0', hour='3', minute='0'], next run at: 2026-06-15 03:00:00 IST)" was missed by 2:44:57.685402
+Run time of job "DITA 1.2 PDF Index Job (trigger: cron[month='*', day='*', day_of_week='0', hour='4', minute='0'], next run at: 2026-06-08 04:00:00 IST)" was missed by 1:44:57.686418
+2026-06-08 12:15:22 - app.app.main - INFO - Incoming request
+2026-06-08 12:15:22 - app.app.main - INFO - Incoming request
+2026-06-08 12:15:22 - app.app.main - INFO - Incoming request
+2026-06-08 12:15:23 - app.app.main - INFO - Request completed
+2026-06-08 12:15:23 - app.app.main - INFO - Request completed
+2026-06-08 12:15:23 - app.app.main - INFO - Request completed
+2026-06-08 12:15:23 - app.app.main - INFO - Incoming request
+2026-06-08 12:15:23 - app.app.main - INFO - Request completed
+2026-06-08 12:16:10 - app.app.main - INFO - Incoming request
+2026-06-08 12:16:10 - app.app.main - INFO - Request completed
+2026-06-08 12:36:41 - app.app.main - INFO - Incoming request
+2026-06-08 12:36:41 - app.app.main - INFO - Incoming request
+2026-06-08 12:36:41 - app.app.main - INFO - Request completed
+2026-06-08 12:36:41 - app.app.main - INFO - Incoming request
+2026-06-08 12:36:41 - app.app.main - INFO - Request completed
+2026-06-08 12:36:41 - app.app.main - INFO - Request completed
+2026-06-08 12:36:41 - app.app.main - INFO - Incoming request
+2026-06-08 12:36:41 - app.app.main - INFO - Request completed
+2026-06-08 12:37:33 - app.app.main - INFO - Incoming request
+2026-06-08 12:37:33 - app.app.main - INFO - Request completed
+2026-06-08 12:37:35 - app.app.main - INFO - Incoming request
+2026-06-08 12:37:35 - app.app.main - INFO - Incoming request
+2026-06-08 12:37:35 - app.app.main - INFO - Request completed
+2026-06-08 12:37:35 - app.app.main - INFO - Request completed
+2026-06-08 12:37:35 - app.app.main - INFO - Incoming request
+2026-06-08 12:37:35 - app.app.main - INFO - Request completed
+2026-06-08 12:38:40 - app.app.main - INFO - Incoming request
+2026-06-08 12:38:40 - app.app.main - INFO - Request completed
+2026-06-08 12:38:46 - app.app.main - INFO - Incoming request
+2026-06-08 12:38:46 - app.app.main - INFO - Request completed
+2026-06-08 12:38:56 - app.app.main - INFO - Incoming request
+2026-06-08 12:38:56 - app.app.main - INFO - Request completed
+2026-06-08 12:39:09 - app.app.main - INFO - Incoming request
+2026-06-08 12:39:09 - app.app.main - INFO - Request completed
+2026-06-08 12:40:57 - app.app.main - INFO - Incoming request
+2026-06-08 12:40:57 - app.app.main - INFO - Incoming request
+2026-06-08 12:40:57 - app.app.main - INFO - Incoming request
+2026-06-08 12:40:57 - app.app.main - INFO - Request completed
+2026-06-08 12:40:57 - app.app.main - INFO - Request completed
+2026-06-08 12:40:57 - app.app.main - INFO - Request completed
+2026-06-08 12:40:57 - app.app.main - INFO - Incoming request
+2026-06-08 12:40:57 - app.app.main - INFO - Request completed
+2026-06-08 12:42:53 - app.app.main - INFO - Incoming request
+2026-06-08 12:42:53 - app.app.main - INFO - Request completed
+2026-06-08 12:42:58 - app.app.main - INFO - Incoming request
+2026-06-08 12:42:58 - app.app.main - INFO - Request completed
+2026-06-08 12:43:07 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:07 - app.app.main - INFO - Request completed
+2026-06-08 12:43:08 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:08 - app.app.services.chat_asset_service - INFO - Saved chat upload asset
+2026-06-08 12:43:08 - app.app.services.chat_authoring_governance - INFO - chat_authoring_trace_started
+2026-06-08 12:43:08 - app.app.services.chat_dita_authoring_service - INFO - chat_topic_gen_started
+2026-06-08 12:43:09 - app.app.services.topic_generation.screenshot_understanding_service - ERROR - screenshot_understanding_failed
+Traceback (most recent call last):
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\topic_generation\screenshot_understanding_service.py", line 28, in understand
+    ctx = await extract_screenshot_context(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3925, in extract_screenshot_context
+    return await get_screenshot_understanding_service().understand(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3671, in understand
+    trace = await self.inspect(image=image, image_bytes=image_bytes, user_prompt=user_prompt)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3454, in inspect
+    layout_parsed, raw_model = await self._run_layout_pass(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3737, in _run_layout_pass
+    return await self._run_vision_pass(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3796, in _run_vision_pass
+    return await self._vision_azure_openai(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3854, in _vision_azure_openai
+    completion = await client.chat.completions.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2814, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\_base_client.py", line 1931, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\_base_client.py", line 1716, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': 'You uploaded an unsupported image. Please make sure your image is valid.', 'type': 'invalid_request_error', 'param': None, 'code': 'image_parse_error'}}
+2026-06-08 12:43:09 - app.app.services.dita_authoring_pipeline - INFO - authoring_pipeline_stage
+2026-06-08 12:43:09 - app.app.services.chat_service - ERROR - Attachment authoring flow failed
+Traceback (most recent call last):
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\chat_service.py", line 5612, in _stream_attachment_authoring_reply
+    plan=working_plan,
+       ^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\chat_dita_authoring_service.py", line 423, in generate_topic_from_request
+    s1, s2, _s3, _s4, s5, _s6, s7, val, s9, trace = await run_screenshot_guided_pipeline(
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\dita_authoring_pipeline.py", line 233, in run_screenshot_guided_pipeline
+    return await TopicGenerationOrchestrator().run_screenshot_guided_pipeline(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\topic_generation\topic_generation_orchestrator.py", line 93, in run_screenshot_guided_pipeline
+    image_context = await self._screenshot.understand(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\topic_generation\screenshot_understanding_service.py", line 28, in understand
+    ctx = await extract_screenshot_context(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3925, in extract_screenshot_context
+    return await get_screenshot_understanding_service().understand(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3671, in understand
+    trace = await self.inspect(image=image, image_bytes=image_bytes, user_prompt=user_prompt)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3454, in inspect
+    layout_parsed, raw_model = await self._run_layout_pass(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3737, in _run_layout_pass
+    return await self._run_vision_pass(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3796, in _run_vision_pass
+    return await self._vision_azure_openai(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\app\services\screenshot_understanding_service.py", line 3854, in _vision_azure_openai
+    completion = await client.chat.completions.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2814, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\_base_client.py", line 1931, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ui_framework\guides-ui-tests\.venv\Lib\site-packages\openai\_base_client.py", line 1716, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': 'You uploaded an unsupported image. Please make sure your image is valid.', 'type': 'invalid_request_error', 'param': None, 'code': 'image_parse_error'}}
+2026-06-08 12:43:09 - app.app.services.chat_authoring_governance - WARNING - chat_authoring_trace_failed
+2026-06-08 12:43:09 - app.app.main - INFO - Request completed
+2026-06-08 12:43:15 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:15 - app.app.main - INFO - Request completed
+2026-06-08 12:43:17 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:17 - app.app.main - INFO - Request completed
+2026-06-08 12:43:24 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:24 - app.app.main - INFO - Request completed
+2026-06-08 12:43:30 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:30 - app.app.main - INFO - Request completed
+2026-06-08 12:43:31 - app.app.main - INFO - Incoming request
+2026-06-08 12:43:31 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-08 12:43:31 - app.app.services.doc_retriever_service - INFO - AEM Guides docs from ChromaDB (Experience League)
+2026-06-08 12:43:31 - app.app.services.dita_knowledge_retriever - INFO - DITA knowledge from ChromaDB (DITA 1.2 PDF)
+2026-06-08 12:43:54 - app.app.services.llm_service - INFO - LLM text run completed
+2026-06-08 12:43:54 - app.app.main - INFO - Request completed
+2026-06-08 12:46:58 - app.app.main - INFO - Incoming request
+2026-06-08 12:46:58 - app.app.main - INFO - Request completed
+2026-06-08 12:46:59 - app.app.main - INFO - Incoming request
+2026-06-08 12:46:59 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:14 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:14 - app.app.main - INFO - Request completed
+2026-06-08 14:04:32 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:32 - app.app.main - INFO - Request completed
+2026-06-08 14:04:32 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:32 - app.app.main - INFO - Request completed
+2026-06-08 14:04:32 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:32 - app.app.main - INFO - Request completed
+2026-06-08 14:04:37 - app.app.main - INFO - Incoming request
+{"run_id": "699b27fb-d81a-4309-a5a0-9b36ea3c250d", "session_id": "699b27fb-d81a-4309-a5a0-9b36ea3c250d", "trace_id": "7e4ae0b2-f527-461e-96c1-6dd08eca324e", "topic_count": 1, "scenarios_total": 1, "event": "dita_generation_started", "level": "info", "timestamp": "2026-06-08T08:34:40.426200Z"}
+2026-06-08 14:04:40 - app.app.services.jira_retrieval_service - INFO - jira_retrieval_rerank_complete
+2026-06-08 14:04:41 - app.app.services.jira_retrieval_service - INFO - jira_retrieval_rerank_complete
+2026-06-08 14:04:51 - app.app.services.llm_service - INFO - LLM run completed
+2026-06-08 14:04:51 - app.app.services.ai_executor_service - INFO - Executing recipe
+2026-06-08 14:04:52 - app.app.services.ai_executor_service - INFO - Recipe completed
+2026-06-08 14:04:52 - app.app.services.dita_enrichment_service - INFO - DITA enrichment completed
+2026-06-08 14:04:52 - app.app.services.generate_from_text_service - WARNING - Generate-from-text rejected weak or invalid DITA output
+2026-06-08 14:04:52 - app.app.services.chat_tools - WARNING - generate_dita tool failed
+2026-06-08 14:04:52 - app.app.main - INFO - Request completed
+2026-06-08 14:04:52 - app.app.main - INFO - Incoming request
+2026-06-08 14:04:52 - app.app.main - INFO - Request completed
+2026-06-08 14:06:24 - app.app.main - INFO - Incoming request
+2026-06-08 14:06:24 - app.app.main - INFO - Request completed
+2026-06-08 14:06:43 - app.app.main - INFO - Incoming request
+2026-06-08 14:06:43 - app.app.main - INFO - Request completed
+2026-06-08 14:42:58 - app.app.main - INFO - Incoming request
+2026-06-08 14:42:58 - app.app.main - INFO - Request completed
+2026-06-08 14:42:59 - app.app.main - INFO - Incoming request
+2026-06-08 14:42:59 - app.app.main - INFO - Request completed
+2026-06-08 14:43:30 - app.app.main - INFO - Incoming request
+2026-06-08 14:43:30 - app.app.main - INFO - Request completed
+2026-06-08 14:47:08 - app.app.main - INFO - Incoming request
+2026-06-08 14:47:08 - app.app.main - INFO - Request completed
+2026-06-08 14:47:15 - app.app.main - INFO - Incoming request
+2026-06-08 14:47:15 - app.app.main - INFO - Request completed

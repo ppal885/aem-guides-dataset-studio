@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "technicalContent/dtd/task.dtd">
+<task id="aem-guides---insert-keyword" xml:lang="en-US">
+  <title conref="reuse/reusable-titles.dita#reusable_titles/aem-guides-insert-keyword"><ph keyref="aem-guides">AEM Guides</ph> - Insert Keyword</title>
+  <shortdesc>Mixed procedural, reference, and structural evidence recovered from the attached image.</shortdesc>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword>AEM Guides</keyword>
+        <keyword>Insert</keyword>
+        <keyword>Keyword</keyword>
+      </keywords>
+    </metadata>
+  </prolog>
+  <taskbody>
+    <context>
+      <p>Topic: GUIDES-48304</p>
+    </context>
+    <steps>
+      <step id="aem-guides---insert-keyword-step-1">
+        <cmd>{'number': '1', 'text': 'Click Insert menu'}</cmd>
+      </step>
+      <step id="aem-guides---insert-keyword-step-2">
+        <cmd>{'number': '2', 'text': 'Select Keyword'}</cmd>
+      </step>
+    </steps>
+    <example id="procedure-evidence">
+      <title>Procedure Evidence</title>
+      <p>{'number': '1', 'text': 'Click Insert menu'}</p>
+      <p>{'number': '2', 'text': 'Select Keyword'}</p>
+    </example>
+    <example id="reference-evidence">
+      <title>Reference Evidence</title>
+      <p>Form and settings</p>
+      <p>Topic: GUIDES-48304</p>
+      <p>Step 1: Click Insert menu</p>
+      <p>Step 2: Select Keyword</p>
+    </example>
+    <example id="visible-content">
+      <title>Visible Content</title>
+      <p>AEM Guides - Insert Keyword</p>
+      <p>Topic: GUIDES-48304</p>
+      <p>Step 1: Click Insert menu</p>
+      <p>Step 2: Select Keyword</p>
+    </example>
+    <example id="uncertain-content">
+      <title>Uncertain Content</title>
+      <p>Step 1: Click Insert menu Step 2: Select Keyword (Appears as two separate lines prefixed with 'Step 1' and 'Step 2'; could be interpreted as paragraphs rather than a formal list.)</p>
+      <p>Empty/unused region (Dialog container/background has no readable text in the provided screenshot.)</p>
+    </example>
+    <example id="topic-identifier">
+      <title>Topic Identifier</title>
+      <p>Topic: GUIDES-48304</p>
+      <p>Step 1: Click Insert menu</p>
+      <p>Step 2: Select Keyword</p>
+    </example>
+    <example id="aem-guides---insert-keyword">
+      <title>Aem Guides   Insert Keyword</title>
+    </example>
+    <example id="form-and-settings">
+      <title>Form And Settings</title>
+      <p>Topic: GUIDES-48304</p>
+      <p>Step 1: Click Insert menu</p>
+      <p>Step 2: Select Keyword</p>
+    </example>
+  
+
+    <result>
+      <p>The task completes successfully.</p>
+    </result></taskbody>
+</task>
