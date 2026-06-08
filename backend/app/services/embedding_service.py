@@ -21,6 +21,37 @@ _embedding_active_model_identifier = ""
 DITA_EMBEDDING_MODEL = os.getenv("DITA_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 DITA_EMBEDDING_MODEL_PATH = os.getenv("DITA_EMBEDDING_MODEL_PATH", "").strip()
 
+# Azure OpenAI embedding fallback — used when sentence_transformers fails
+_AZURE_EMBED_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+_AZURE_EMBED_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+_AZURE_EMBED_MODEL = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-ada-002")
+_AZURE_EMBED_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
+_USE_AZURE_EMBEDDING = os.getenv("USE_AZURE_EMBEDDING", "false").lower() in ("1", "true", "yes", "on")
+
+EMBED_DIM = 384  # all-MiniLM-L6-v2 output dimension; Azure ada-002 is 1536
+
+
+def _try_azure_embedding(texts: list) -> Optional[list]:
+    """Embed texts using Azure OpenAI when sentence_transformers is unavailable."""
+    if not (_AZURE_EMBED_ENDPOINT and _AZURE_EMBED_KEY):
+        return None
+    try:
+        import requests
+        url = f"{_AZURE_EMBED_ENDPOINT}/openai/deployments/{_AZURE_EMBED_MODEL}/embeddings?api-version={_AZURE_EMBED_VERSION}"
+        results = []
+        for i in range(0, len(texts), 16):
+            batch = texts[i:i + 16]
+            r = requests.post(url, headers={"api-key": _AZURE_EMBED_KEY, "Content-Type": "application/json"},
+                              json={"input": batch}, timeout=30)
+            if not r.ok:
+                return None
+            data = r.json().get("data", [])
+            results.extend([d["embedding"] for d in sorted(data, key=lambda x: x["index"])])
+        return results
+    except Exception as e:
+        logger.debug_structured("azure_embedding_failed", extra_fields={"error": str(e)})
+        return None
+
 
 def _load_model():
     """Load embedding model lazily (singleton)."""
@@ -65,9 +96,12 @@ def _load_model():
 
 
 def is_embedding_available() -> bool:
-    """Return True if embedding model is loaded and usable."""
+    """Return True if embedding model is loaded OR Azure OpenAI embedding is configured."""
     model = _load_model()
-    return model is not None
+    if model is not None:
+        return True
+    # Azure OpenAI fallback counts as available
+    return bool(_AZURE_EMBED_ENDPOINT and _AZURE_EMBED_KEY)
 
 
 def get_embedding_diagnostics() -> dict[str, Any]:
@@ -105,26 +139,62 @@ EMBED_BATCH_SIZE = 64
 def embed_texts(texts: list[str]):
     """
     Embed a batch of texts. Returns numpy array of shape (n, dim).
-    Returns None if model unavailable.
+    Falls back to Azure OpenAI if local model unavailable.
+    Returns None if both unavailable.
     """
     model = _load_model()
-    if model is None or not texts:
+    if not texts:
         return None
-    try:
-        return model.encode(texts, convert_to_numpy=True)
-    except Exception as e:
-        logger.warning_structured(
-            "Embedding batch failed",
-            extra_fields={"error": str(e), "count": len(texts)},
-        )
-        return None
+    if model is not None:
+        try:
+            return model.encode(texts, convert_to_numpy=True)
+        except Exception as e:
+            logger.warning_structured("Embedding batch failed, trying Azure", extra_fields={"error": str(e)})
+    # Azure OpenAI fallback
+    import numpy as np
+    azure_embs = _try_azure_embedding(texts)
+    if azure_embs:
+        return np.array(azure_embs)
+    return None
 
 
 def embed_texts_batched(texts: list[str], batch_size: int = EMBED_BATCH_SIZE):
     """
-    Embed texts in batches to avoid OOM for large corpora (e.g. DITA PDF ~1000+ chunks).
-    Returns numpy array of shape (n, dim). Returns None if model unavailable.
+    Embed texts in batches. Returns numpy array of shape (n, dim).
+    Falls back to Azure OpenAI if local model unavailable.
+    Returns None if both unavailable.
     """
+    model = _load_model()
+    if not texts:
+        return None
+    if model is not None:
+        try:
+            import numpy as np
+            results = []
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+                emb = model.encode(batch, convert_to_numpy=True)
+                results.append(emb)
+            if not results:
+                return None
+            return np.vstack(results)
+        except Exception as e:
+            logger.warning_structured("Embedding batched failed, trying Azure", extra_fields={"error": str(e)})
+    # Azure OpenAI fallback (batch in groups of 16)
+    import numpy as np
+    all_embs = []
+    for i in range(0, len(texts), 16):
+        batch = texts[i:i + 16]
+        azure_embs = _try_azure_embedding(batch)
+        if azure_embs:
+            all_embs.extend(azure_embs)
+        else:
+            return None
+    return np.array(all_embs) if all_embs else None
+
+
+def embed_texts_batched_ORIGINAL(texts: list[str], batch_size: int = EMBED_BATCH_SIZE):
+    """[Kept for reference] Original batched embedding without Azure fallback."""
     model = _load_model()
     if model is None or not texts:
         return None
