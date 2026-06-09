@@ -917,7 +917,11 @@ TOPIC USING ROOT + LOCAL + CROSS-SCOPE KEYS:
     </conbody>
   </concept>
 
-CRITICAL:
+DTD STRUCTURE RULES:
+- In topic body: <keyword keyref="name"/> is INLINE in <p>, <cmd>, <title> — NEVER wrap in <keywords> in body
+- <keywords><keyword>...</keyword></keywords> belongs ONLY in keydef <topicmeta> or topic <prolog><metadata>
+- WRONG (DTD violation): <body><keywords><keyword>v1</keyword></keywords></body>
+- CORRECT (inline): <body><p>Version <keyword keyref="version-num"/>.</p></body>
 - Root map MUST use <mapref href="submaps/filename.ditamap" keyscope="scope-name"/>.
 - Submap topics use RELATIVE href: ../topics/filename.dita (submap is one level deeper).
 - Root-level topics use: topics/filename.dita (relative to root map).
