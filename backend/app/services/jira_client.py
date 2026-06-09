@@ -85,10 +85,11 @@ class JiraClient:
             response.raise_for_status()
             return response.content
 
-    def get_issue(self, issue_key: str) -> dict:
-        """Fetch a single issue by key."""
+    def get_issue(self, issue_key: str, fields: str | None = None) -> dict:
+        """Fetch a single issue by key. Optionally restrict to specific fields."""
         path = f"/rest/api/{self._api}/issue/{issue_key}"
-        return self._request("GET", path)
+        params = {"fields": fields} if fields else None
+        return self._request("GET", path, params=params)
 
     def search_issues(self, jql: str, max_results: int = 500) -> list[dict]:
         """Search issues by JQL. Uses minimal fields for faster response."""
