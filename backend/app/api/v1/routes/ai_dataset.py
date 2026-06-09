@@ -890,14 +890,19 @@ async def get_generate_stream(run_id: str, request: Request, user: UserIdentity 
     _authorize_generate_progress_access(run_id, user=user, tenant_id=tenant_id)
 
     async def event_generator():
-        last_sent = None
+        import copy
+        last_sent_json = None
         poll_interval = 1.0
         while True:
             data = _authorize_generate_progress_access(run_id, user=user, tenant_id=tenant_id)
             status = data.get("status", "unknown")
-            if data != last_sent:
-                last_sent = dict(data)
-                yield f"data: {json.dumps(last_sent)}\n\n"
+            # Use JSON serialisation for deep equality — dict() is a shallow copy and
+            # nested mutations cause false de-duplication.
+            current_json = json.dumps(data, sort_keys=True)
+            if current_json != last_sent_json:
+                last_sent_json = current_json
+                yield f"data: {current_json}\n\n"
+            # Emit final state BEFORE breaking so clients always see completed/failed
             if status in ("completed", "failed"):
                 break
             await asyncio.sleep(poll_interval)

@@ -116,6 +116,7 @@ class SpecializedContentGenerator:
     def __init__(self, config, rand):
         self.config = config
         self.rand = rand
+        self._xml_lang = getattr(config, "xml_lang", None) or "en"
     
     def generate_task_topic(
         self,
@@ -131,7 +132,7 @@ class SpecializedContentGenerator:
         prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a Task topic with steps; optionally include choicetable inside a step. Use steps_list for Jira-derived content."""
-        task = ET.Element("task", {"id": topic_id, "xml:lang": "en"})
+        task = ET.Element("task", {"id": topic_id, "xml:lang": self._xml_lang})
 
         # Title
         title_elem = ET.SubElement(task, "title")
@@ -249,7 +250,7 @@ class SpecializedContentGenerator:
         prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a generic DITA topic with subject-aware body text."""
-        topic = ET.Element("topic", {"id": topic_id, "xml:lang": "en"})
+        topic = ET.Element("topic", {"id": topic_id, "xml:lang": self._xml_lang})
 
         title_elem = ET.SubElement(topic, "title")
         title_elem.text = xml_escape_text(title)
@@ -303,7 +304,7 @@ class SpecializedContentGenerator:
         prolog_metadata: Optional[dict] = None,
     ) -> bytes:
         """Generate a Concept topic. Use content_sections for LLM-authored structured sections."""
-        concept = ET.Element("concept", {"id": topic_id, "xml:lang": "en"})
+        concept = ET.Element("concept", {"id": topic_id, "xml:lang": self._xml_lang})
 
         # Title
         title_elem = ET.SubElement(concept, "title")
@@ -405,7 +406,7 @@ class SpecializedContentGenerator:
         Properties use DITA-style proptype / propvalue / propdesc (three-column semantics).
         When include_prophead is True, adds prophead with column labels.
         """
-        reference = ET.Element("reference", {"id": topic_id, "xml:lang": "en"})
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": self._xml_lang})
         
         # Title
         title_elem = ET.SubElement(reference, "title")
@@ -497,7 +498,7 @@ class SpecializedContentGenerator:
         acronym: Optional[str] = None,
     ) -> bytes:
         """Generate a Glossary entry."""
-        glossentry = ET.Element("glossentry", {"id": entry_id, "xml:lang": "en"})
+        glossentry = ET.Element("glossentry", {"id": entry_id, "xml:lang": self._xml_lang})
         
         # Glossterm
         glossterm = ET.SubElement(glossentry, "glossterm")
@@ -538,7 +539,7 @@ class SpecializedContentGenerator:
         """Generate a Bookmap structure."""
         from app.generator.generate import _rel_href
         
-        bookmap = ET.Element("bookmap", {"id": map_id, "xml:lang": "en"})
+        bookmap = ET.Element("bookmap", {"id": map_id, "xml:lang": self._xml_lang})
         
         # Title
         title_elem = ET.SubElement(bookmap, "title")
@@ -1148,7 +1149,7 @@ def generate_syntax_diagram_reference_dataset(
         path = safe_join(topic_dir, filename)
         topic_id = stable_id(config.seed, "syntax_diagram_ref", str(i), used_ids)
 
-        reference = ET.Element("reference", {"id": topic_id, "xml:lang": "en"})
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": self._xml_lang})
         title_elem = ET.SubElement(reference, "title")
         title_elem.text = xml_escape_text(f"Syntax diagram reference {i:05d}")
 
@@ -1296,7 +1297,7 @@ def generate_glossary_dataset(
     map_id = stable_id(config.seed, "glossary-map", "", used_ids)
     
     refs = []
-    for i in range(1, min(n_entries + 1, 50)):  # Limit map size
+    for i in range(1, n_entries + 1):
         filename = sanitize_filename(f"glossentry_{i:05d}.dita", config.windows_safe_filenames)
         ref_path = safe_join(glossary_dir, filename)
         refs.append(ref_path)
@@ -1595,7 +1596,7 @@ def generate_choicetable_task_topics_dataset(
         topic_id = stable_id(config.seed, "ct_task", str(i), used_ids)
 
         # Build the task topic with an explicit rich choicetable
-        task = ET.Element("task", {"id": topic_id, "xml:lang": "en"})
+        task = ET.Element("task", {"id": topic_id, "xml:lang": self._xml_lang})
         title_elem = ET.SubElement(task, "title")
         title_elem.text = xml_escape_text(f"{domain['title']} - Task {i:05d}")
 
@@ -1695,7 +1696,7 @@ def generate_choicetable_reference_dataset(
         topic_id = stable_id(config.seed, "ct_ref", str(i), used_ids)
 
         # Build a reference topic with a simpletable in refbody
-        reference = ET.Element("reference", {"id": topic_id, "xml:lang": "en"})
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": self._xml_lang})
         title_elem = ET.SubElement(reference, "title")
         title_elem.text = xml_escape_text(f"{domain['title']} - Reference {i:05d}")
 

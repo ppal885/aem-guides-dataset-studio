@@ -19,6 +19,10 @@ DEFAULT_CONCURRENT_JOB_LIMIT = 20
 _MISSING = object()
 
 
+# Re-export so callers (and tests) can patch via dataset_job_service module
+from app.services.artifact_registry_service import is_artifact_reuse_enabled  # noqa: E402
+
+
 class ConcurrentJobLimitError(RuntimeError):
     """Raised when a user exceeds the allowed concurrent running jobs."""
 

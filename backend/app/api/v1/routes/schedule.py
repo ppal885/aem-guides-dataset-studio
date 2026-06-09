@@ -15,6 +15,7 @@ from app.services.dataset_job_service import (
     create_dataset_job_record,
     enforce_concurrent_job_limit,
     get_dataset_job_summary,
+    is_artifact_reuse_enabled,
     run_dataset_job,
     validate_dataset_job_config,
 )
@@ -393,6 +394,48 @@ async def create_job(
         )
 
         enforce_concurrent_job_limit(user.id)
+
+        # ── Artifact reuse: return cached ZIP if same config was run before ──
+        if is_artifact_reuse_enabled():
+            from app.services.artifact_fingerprint_service import fingerprint_dataset_config_dict
+            from app.services.artifact_registry_service import (
+                lookup_completed_artifact,
+                record_artifact_hit,
+                register_completed_dataset_artifact,
+            )
+            from app.services.tenant_service import get_authorized_tenant_id
+            tenant_id = get_authorized_tenant_id(request, user)
+            artifact_key = fingerprint_dataset_config_dict(config_dict)
+            cached = lookup_completed_artifact(tenant_id, artifact_key)
+            if cached:
+                record_artifact_hit(tenant_id, artifact_key)
+                cached_summary = get_dataset_job_summary(cached.source_job_id) or {}
+                # Create a lightweight "alias" job record so the caller gets a unique id
+                alias_record = create_dataset_job_record(config_dict, user_id=user.id, name=job_name)
+                alias_id = str(alias_record["id"])
+                from app.db.session import SessionLocal as _SessionLocal
+                from app.jobs import crud as _crud
+                _s = _SessionLocal()
+                try:
+                    _j = _crud.get_job(_s, alias_id)
+                    if _j:
+                        _j.status = "completed"
+                        _s.commit()
+                finally:
+                    _s.close()
+                return JSONResponse(content={
+                    **cached_summary,
+                    "id": alias_id,
+                    "cache_hit": True,
+                    "reused_from_job_id": cached.source_job_id,
+                    "status": "completed",
+                    "name": job_name,
+                })
+        else:
+            tenant_id = "default"
+            artifact_key = None
+            cached = None
+
         job_record = create_dataset_job_record(config_dict, user_id=user.id, name=job_name)
         run_dataset_job(str(job_record["id"]), job_record["config"])
         response_data = get_dataset_job_summary(str(job_record["id"])) or {
@@ -401,7 +444,20 @@ async def create_job(
             "status": str(job_record["status"]),
             "created_at": job_record.get("created_at"),
         }
-        return JSONResponse(content=response_data)
+        # Register completed artifact for future reuse
+        if artifact_key and response_data.get("status") == "completed":
+            try:
+                from app.services.artifact_registry_service import register_completed_dataset_artifact
+                register_completed_dataset_artifact(
+                    tenant_id=tenant_id,
+                    artifact_key=artifact_key,
+                    source_job_id=str(job_record["id"]),
+                    user_id=user.id,
+                    normalized_config=config_dict,
+                )
+            except Exception:
+                pass  # reuse registry failure must never break job creation
+        return JSONResponse(content={**response_data, "cache_hit": False})
     except ConcurrentJobLimitError as exc:
         logger.warning_structured(
             "Concurrent job limit reached",

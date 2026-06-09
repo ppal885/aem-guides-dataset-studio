@@ -7,11 +7,21 @@ from app.utils.xml_escape import xml_escape_text, xml_escape_attr, xml_escape_hr
 
 
 def safe_join(*parts: str) -> str:
-    """Join path parts safely, handling None and empty strings."""
+    """Join path parts safely, strip None/empty, and block path-traversal.
+
+    Raises ValueError if any part resolves above the first (base) part — this
+    prevents attackers from escaping the bundle directory via '..' sequences.
+    """
     filtered = [p for p in parts if p]
-    joined = os.path.join(*filtered) if filtered else ""
-    # Normalize to forward slashes for cross-platform compatibility and AEM Guides
-    return joined.replace("\\", "/")
+    if not filtered:
+        return ""
+    joined = os.path.join(*filtered)
+    # Block path traversal: normalised path must stay under the base
+    norm = os.path.normpath(joined)
+    base = os.path.normpath(filtered[0])
+    if not (norm == base or norm.startswith(base + os.sep)):
+        raise ValueError(f"Path traversal detected: {joined!r} escapes base {filtered[0]!r}")
+    return norm.replace("\\", "/")
 
 
 _WINDOWS_RESERVED = frozenset(
@@ -152,8 +162,13 @@ def _map_xml(
 
 
 def _rel_href(from_path: str, to_path: str) -> str:
-    """Calculate relative href between two paths."""
+    """Calculate relative href between two paths, always using forward slashes."""
     from_path_dir = os.path.dirname(from_path) or "."
-    rel_path = os.path.relpath(to_path, from_path_dir)
-    # Normalize path separators
-    return rel_path.replace("\\", "/")
+    # Use PurePosixPath logic: normalise both to forward slashes first so
+    # os.path.relpath on Windows doesn't produce back-slash paths that then
+    # get a double-replace (a\\..\b → a/../b instead of b).
+    from_norm = from_path_dir.replace("\\", "/")
+    to_norm = to_path.replace("\\", "/")
+    # Fall back to os.path.relpath for cross-drive scenarios, then normalise
+    rel = os.path.relpath(to_norm, from_norm)
+    return rel.replace("\\", "/")

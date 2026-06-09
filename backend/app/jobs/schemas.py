@@ -1350,6 +1350,7 @@ class DatasetConfig(BaseModel):
     use_ai_content: bool = False
     ai_domain: Optional[str] = None
     ai_content_style: str = "professional"
+    xml_lang: str = "en"  # BCP-47 language tag applied to all generated root elements
 
 class JobCreateRequest(BaseModel):
     """Request to create a dataset generation job."""

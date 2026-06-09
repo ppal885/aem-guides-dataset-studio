@@ -1,0 +1,10 @@
+{
+  "job_id": "d1d48016-cc05-4f39-ac7e-b7cd02b43085",
+  "generated_at": "2026-06-09T23:28:35.174125",
+  "dataset_name": "Artifact reuse dataset feb23f06a4",
+  "seed": "artifact-reuse-seed-feb23f06a4",
+  "total_files": 5,
+  "dita_files": 2,
+  "recipe_count": 1,
+  "status": "completed"
+}

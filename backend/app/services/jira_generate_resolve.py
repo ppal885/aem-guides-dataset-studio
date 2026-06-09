@@ -5,6 +5,7 @@ Only uses configured JIRA_BASE_URL + auth — never fetches arbitrary user URLs 
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Optional, Tuple
 
@@ -534,7 +535,7 @@ def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
         async def _run():
             return await generate_text(
                 system_prompt=_DITA_ANALYSIS_PROMPT,
-                user_prompt=f"Jira Issue {issue_key}:\n\n{issue_text[:6000]}",
+                user_prompt=f"Jira Issue {issue_key}:\n\n{issue_text[:int(os.getenv('JIRA_ANALYSIS_MAX_CHARS', '12000'))]}",
                 max_tokens=1200,
                 step_name="jira_dita_analysis",
             )
@@ -556,7 +557,12 @@ def analyze_jira_for_dita_dataset(issue_text: str, issue_key: str = "") -> dict:
         if start >= 0 and end > start:
             return _json.loads(raw[start:end])
     except Exception as e:
-        logger.debug_structured("Jira DITA analysis skipped", extra_fields={"error": str(e)})
+        # Warn so operators know the analysis was skipped — this silently degrades
+        # dataset quality when the LLM times out or is unavailable.
+        logger.warning_structured(
+            "Jira DITA analysis failed — dataset generated without scenario analysis",
+            extra_fields={"issue_key": issue_key, "error": str(e)},
+        )
     return {}
 
 
