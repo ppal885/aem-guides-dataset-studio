@@ -1797,8 +1797,10 @@ async def run_generate_from_text(
         if freeform_mode:
             from app.services.freeform_dita_generation_service import run_freeform_generation
             update_generate_progress(pid, stage="freeform_generation", message="LLM is reasoning about the domain and generating DITA...")
+            # Use resolved_text (full Jira content) not raw text (e.g. "GUIDES-24782")
+            freeform_prompt = resolved_text if resolved_text and len(resolved_text) > len(text) else text
             exec_result = await run_freeform_generation(
-                prompt=text,
+                prompt=freeform_prompt,
                 jira_id=jira_id,
                 run_id=run_id,
                 scenario_dir=scenario_dir,
