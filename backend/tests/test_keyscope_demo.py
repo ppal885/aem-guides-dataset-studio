@@ -64,10 +64,13 @@ class TestKeyscopeDemoGeneration:
                         if 'href' in elem.attrib:
                             href = elem.attrib['href']
                             if href.startswith('../'):
+                                import os.path as _osp
                                 relative_path = file_path.rsplit('/', 1)[0] + '/' + href
-                                normalized = relative_path.replace('//', '/')
-                                assert normalized in file_paths or any(normalized.endswith(f) for f in file_paths), \
-                                    f"Broken href in {file_path}: {href}"
+                                # Normalise .. so "maps/../topics/x.dita" → "topics/x.dita"
+                                normalized = _osp.normpath(relative_path).replace('\\', '/')
+                                assert normalized in file_paths or any(
+                                    f.endswith(href.lstrip('../')) for f in file_paths
+                                ), f"Broken href in {file_path}: {href}"
                 except ET.ParseError:
                     pass
     

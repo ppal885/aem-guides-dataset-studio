@@ -2706,7 +2706,7 @@ def research_jira_issue_and_index(issue_key: str) -> str:
 
         # Content-based query
         if desc:
-            queries.append(f"AEM Guides {desc[:100]}")
+            queries.append("AEM Guides {desc[:100]}")
 
         client = TavilyClient(api_key=TAVILY_API_KEY)
         all_documents = []
