@@ -36,6 +36,63 @@ from app.services.llm_service import generate_json
 
 logger = get_structured_logger(__name__)
 
+
+def _sanitize_keywords_in_body(xml: str) -> str:
+    """Move <keywords>...</keywords> from <body> to <prolog><metadata> (DTD fix).
+
+    The DITA DTD forbids <keywords> inside <body>. This sanitizer detects the
+    violation and relocates the block to the correct place. If no <body> violation
+    is found the string is returned unchanged.
+    """
+    if "<keywords>" not in xml or "<body>" not in xml:
+        return xml
+
+    # Extract the <keywords> block(s) from inside <body>
+    keywords_blocks: list[str] = re.findall(r"<keywords>.*?</keywords>", xml, re.DOTALL)
+    if not keywords_blocks:
+        return xml
+
+    # Check that at least one is inside <body>
+    body_match = re.search(r"<body>(.*?)</body>", xml, re.DOTALL)
+    if not body_match or "<keywords>" not in body_match.group(1):
+        return xml
+
+    # Remove <keywords>...</keywords> from <body>
+    def _strip_keywords_from_body(m: re.Match) -> str:
+        cleaned = re.sub(r"\s*<keywords>.*?</keywords>", "", m.group(0), flags=re.DOTALL)
+        return cleaned
+
+    xml = re.sub(r"<body>.*?</body>", _strip_keywords_from_body, xml, flags=re.DOTALL)
+
+    # Merge the collected keyword blocks into a single <keywords> element
+    all_kw_children: list[str] = []
+    for block in keywords_blocks:
+        inner = re.sub(r"^<keywords>|</keywords>$", "", block.strip())
+        all_kw_children.append(inner.strip())
+    merged_kw = "<keywords>\n      " + "\n      ".join(all_kw_children) + "\n    </keywords>"
+
+    # Insert into <prolog><metadata> if already present
+    if "<prolog>" in xml and "<metadata>" in xml:
+        xml = re.sub(
+            r"(<metadata>)",
+            lambda m: m.group(1) + "\n      " + merged_kw,
+            xml,
+            count=1,
+        )
+    elif "<prolog>" in xml:
+        xml = re.sub(
+            r"(<prolog>)",
+            lambda m: m.group(1) + "\n    <metadata>" + merged_kw + "</metadata>",
+            xml,
+            count=1,
+        )
+    else:
+        # Insert a prolog before <body>
+        xml = xml.replace("<body>", f"<prolog><metadata>{merged_kw}</metadata></prolog>\n  <body>", 1)
+
+    return xml
+
+
 _DITA_MODE_CONREF = re.compile(
     r"\b(?:conref|content[\s-]?reuse|reusable[\s-]?content|content[\s-]?reference)\b",
     re.IGNORECASE,
@@ -1632,7 +1689,8 @@ async def _run_freeform_keydef(
         if not isinstance(item, dict) or not item.get("id") or not item.get("xml"):
             continue
         fname = str(item.get("filename") or f"{item['id']}.dita")
-        (topics_dir / fname).write_text(item["xml"], encoding="utf-8")
+        xml_out = _sanitize_keywords_in_body(item["xml"])
+        (topics_dir / fname).write_text(xml_out, encoding="utf-8")
         written.append((item["id"], fname, "topic"))
 
     if not written:
@@ -2404,7 +2462,7 @@ async def _run_freeform_nested_keydef(
         if not fname.endswith(".dita"):
             fname = f"{fname}.dita"
         fpath = topics_dir / fname
-        fpath.write_text(tf["xml"], encoding="utf-8")
+        fpath.write_text(_sanitize_keywords_in_body(tf["xml"]), encoding="utf-8")
         written.append((tid, fname, "topic"))
         filled_ids.add(tid)
 
