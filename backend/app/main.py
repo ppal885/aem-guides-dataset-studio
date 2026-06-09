@@ -101,32 +101,27 @@ async def request_context_middleware(request: Request, call_next):
 # so FastAPI Body() and downstream handlers can read it.
 @app.middleware("http")
 async def deduplicate_requests(request: Request, call_next):
-    """Deduplicate identical requests within a time window to prevent race conditions."""
-    body = b""
-    if request.method in ["POST", "PUT", "PATCH"]:
-        body = await request.body()
-        # Create new Request with receive that returns cached body (body restoration for FastAPI Body())
-        async def cached_receive():
-            return {"type": "http.request", "body": body}
-        request = Request(request.scope, receive=cached_receive)
+    """Deduplicate identical GET/HEAD requests within a short time window.
 
-    # Build request hash (include body for POST/PUT/PATCH; large bodies get unique hash to skip deduplication)
-    hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}"
-    if body:
-        if len(body) <= MAX_CACHE_BODY_SIZE:
-            hash_input += f":{body!r}"
-        else:
-            hash_input += f":{uuid4()}"  # Unique per request - no deduplication for large bodies
-    request_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+    POST/PUT/PATCH/DELETE are mutations and are always passed through — caching them
+    caused stale run_ids, wrong upload results, and broken test isolation.
+    Body restoration for mutation methods is done so FastAPI can still parse the body.
+    """
+    # Only cache GET and HEAD — mutations must never be served from cache.
+    skip_dedup = request.method not in ("GET", "HEAD")
 
-    # Never deduplicate or cache DELETE — avoids any chance of reusing a prior response for
-    # session mutations (e.g. clear-all vs delete-one) if path normalization ever collides.
-    # Skip all /api/v1/chat traffic: POST streams and PATCH edits must always hit handlers; caching
-    # identical prompts or edits within the TTL caused wrong or 404-like behavior for clients.
-    chat_path = str(request.url.path).startswith("/api/v1/chat")
-    # generate-from-text creates a new run_id on every call — dedup would return a stale run_id
-    generate_path = str(request.url.path).endswith("/generate-from-text")
-    skip_dedup = request.method == "DELETE" or chat_path or generate_path
+    if not skip_dedup:
+        # For cacheable methods, build the hash from method + path + query
+        hash_input = f"{request.method}:{request.url.path}:{str(request.query_params)}"
+        request_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+    else:
+        request_hash = ""
+        # Restore body for POST/PUT/PATCH so downstream FastAPI route can parse it
+        if request.method in ("POST", "PUT", "PATCH"):
+            body = await request.body()
+            async def cached_receive():
+                return {"type": "http.request", "body": body}
+            request = Request(request.scope, receive=cached_receive)
 
     current_time = time.time()
     if not skip_dedup and request_hash in _request_cache:

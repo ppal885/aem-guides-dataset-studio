@@ -16,10 +16,12 @@ def _parse_dita_files(folder: Path) -> list[tuple[Path, ET.Element]]:
     parsed = []
     for p in folder.rglob("*"):
         if p.suffix.lower() in (".dita", ".ditamap"):
+            # resolve() expands Windows 8.3 short names so relative_to() works correctly
+            p = p.resolve()
             try:
                 tree = ET.parse(p)
                 parsed.append((p, tree.getroot()))
-            except ET.ParseError as e:
+            except ET.ParseError:
                 parsed.append((p, None))
     return parsed
 
@@ -83,7 +85,9 @@ def validate_dita_folder(folder: Path) -> dict:
     Validates: duplicate ids, href, conref, conrefend (same-file and cross-file).
     Fails on: missing target, conrefend end before start, self-loop conref, duplicate ids.
     """
-    folder = Path(folder)
+    # resolve() expands Windows 8.3 short names (PRASHA~1) to their full form so
+    # that relative_to() doesn't fail when mkdtemp and the caller use different forms.
+    folder = Path(folder).resolve()
     if not folder.exists() or not folder.is_dir():
         return {"errors": ["Folder does not exist"], "warnings": []}
 

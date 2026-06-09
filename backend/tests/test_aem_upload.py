@@ -383,18 +383,18 @@ class TestAemUploadAPI:
         auth_headers: dict,
         sample_job_id: str
     ):
-        """Test upload with missing required fields."""
+        """Test upload with missing required fields (aem_base_url and target_path are required)."""
+        # Omit the required `aem_base_url` field — Pydantic must reject with 422
         incomplete_data = {
-            "aem_base_url": "https://author-test.adobeaemcloud.com",
             "target_path": "content/dam/test/"
         }
-        
+
         response = client.post(
             f"/api/v1/datasets/{sample_job_id}/upload-to-aem",
             json=incomplete_data,
             headers=auth_headers
         )
-        
+
         assert response.status_code == 422
     
     def test_upload_endpoint_service_not_available(

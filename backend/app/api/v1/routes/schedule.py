@@ -139,6 +139,60 @@ def list_jobs(
         return JSONResponse(status_code=500, content={"detail": f"Failed to list jobs: {str(exc)}"})
 
 
+@router.post("/preview")
+async def preview_job_config(
+    request: Request,
+    user: UserIdentity = CurrentUser,
+):
+    """
+    Dry-run preview of a dataset config: validates the config and returns an estimate of
+    what would be generated (topic/map counts) plus the structure (recipe list).
+    Request body: same as POST /jobs — `{ "config": { ... } }`.
+    """
+    _ = user
+    try:
+        body = await request.json()
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"detail": f"Invalid JSON: {exc}"})
+
+    config_dict = body.get("config") if isinstance(body, dict) else None
+    if not config_dict or not isinstance(config_dict, dict):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "'config' field is required and must be a dictionary", "errors": []},
+        )
+    try:
+        from app.generator.estimate import estimate_counts
+        parsed = validate_dataset_job_config(config_dict)
+        if not parsed.recipes:
+            return JSONResponse(status_code=400, content={"detail": "config.recipes must not be empty"})
+        counts = estimate_counts(parsed)
+        recipes_summary = [
+            {"type": r.type, "index": i}
+            for i, r in enumerate(parsed.recipes)
+        ]
+        return JSONResponse(content={
+            "estimate": {
+                "topics": counts.topics,
+                "maps": counts.maps,
+                "xrefs": counts.xrefs,
+                "topicrefs": counts.topicrefs,
+                "keydefs": counts.keydefs,
+            },
+            "structure": {
+                "recipes": recipes_summary,
+                "recipe_count": len(recipes_summary),
+            },
+        })
+    except ValidationError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Invalid configuration", "errors": _pydantic_validation_error_payload(exc)["errors"]},
+        )
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 @router.post("/validate-config")
 async def validate_job_config(
     request: Request,
@@ -396,10 +450,20 @@ def schedule_job(
         if isinstance(scheduled_at, str):
             scheduled_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
 
-        scheduled_dt = scheduled_at.replace(tzinfo=tz) if scheduled_at.tzinfo is None else scheduled_at.astimezone(tz)
-        now = datetime.now(tz)
-        if scheduled_dt <= now:
+        # If the input is naive (no tzinfo), compare against local time as-is.
+        # If it has timezone info, normalize both to UTC for an accurate comparison.
+        from datetime import timezone as _tz
+        if scheduled_at.tzinfo is None:
+            scheduled_dt = scheduled_at
+            now_cmp = datetime.now()
+        else:
+            scheduled_dt = scheduled_at.astimezone(_tz.utc)
+            now_cmp = datetime.now(_tz.utc)
+        if scheduled_dt <= now_cmp:
             return JSONResponse(status_code=400, content={"detail": "Scheduled time must be in the future"})
+        # Use tz-aware scheduled_dt for storage
+        scheduled_dt = (scheduled_at.replace(tzinfo=tz) if scheduled_at.tzinfo is None
+                        else scheduled_at.astimezone(tz))
 
         config_dict = request.config if isinstance(request.config, dict) else {}
         job_name = config_dict.get("name", "Scheduled Dataset") if isinstance(config_dict, dict) else "Scheduled Dataset"
