@@ -124,7 +124,9 @@ async def deduplicate_requests(request: Request, call_next):
     # Skip all /api/v1/chat traffic: POST streams and PATCH edits must always hit handlers; caching
     # identical prompts or edits within the TTL caused wrong or 404-like behavior for clients.
     chat_path = str(request.url.path).startswith("/api/v1/chat")
-    skip_dedup = request.method == "DELETE" or chat_path
+    # generate-from-text creates a new run_id on every call — dedup would return a stale run_id
+    generate_path = str(request.url.path).endswith("/generate-from-text")
+    skip_dedup = request.method == "DELETE" or chat_path or generate_path
 
     current_time = time.time()
     if not skip_dedup and request_hash in _request_cache:
