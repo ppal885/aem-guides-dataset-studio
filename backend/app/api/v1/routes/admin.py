@@ -410,6 +410,27 @@ def init_embedding_model(user: UserIdentity = AdminUser):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/test-azure-embedding")
+def test_azure_embedding(user: UserIdentity = AdminUser):
+    """Directly test the Azure OpenAI embedding API call and return raw response or error."""
+    import requests as _req
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+    model = os.environ.get("AZURE_EMBEDDING_MODEL", "text-embedding-ada-002")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01")
+    if not endpoint or not api_key:
+        return {"error": "AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY not set", "endpoint_len": len(endpoint), "key_len": len(api_key)}
+    url = f"{endpoint}/openai/deployments/{model}/embeddings?api-version={api_version}"
+    try:
+        r = _req.post(url, headers={"api-key": api_key, "Content-Type": "application/json"},
+                      json={"input": ["test embedding"], "model": model}, timeout=15, verify=False)
+        return {"status": r.status_code, "ok": r.ok, "url": url[:80], "model": model,
+                "response_preview": r.text[:300] if not r.ok else "OK",
+                "dimensions": len(r.json()["data"][0]["embedding"]) if r.ok else None}
+    except Exception as e:
+        return {"error": str(e), "url": url[:80], "model": model}
+
+
 @router.post("/index-all-rag")
 def index_all_rag(user: UserIdentity = AdminUser):
     """Trigger all RAG indexing: AEM Guides crawl + Jira bulk index.
