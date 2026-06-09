@@ -1447,6 +1447,12 @@ async def execute_lookup_dita_spec(
         explicit_elements = _extract_dita_elements_from_query(raw_query, explicit_elements=elements)
         attribute_names = _extract_dita_attributes_from_query(raw_query)
 
+        if len(attribute_names) == 1:
+            # Single attribute query — delegate to the attribute catalog directly
+            attr_result = await execute_lookup_dita_attribute(attribute_names[0])
+            if not attr_result.get("error"):
+                return attr_result
+
         if len(attribute_names) >= 2:
             structured_attribute_comparison = _build_dita_attribute_comparison_guidance(raw_query, attribute_names)
             if structured_attribute_comparison:
@@ -1981,10 +1987,18 @@ async def execute_lookup_aem_guides(query: str, k: int = 5) -> dict[str, Any]:
                     live_search["answer"] = live_answer[:1000]
             live_search["result_count"] = len(live_results)
 
+        # For DITA-OT parameter/build queries also allow dita-ot.org docs
+        import re as _re_aem
+        _OT_QUERY_RE = _re_aem.compile(
+            r"\b(dita.?ot|args\.\w+|transtype|transform|plugin|fop|xsl.fo|dita\s+--input|dita\s+--format)\b",
+            _re_aem.IGNORECASE,
+        )
+        _ot_query = bool(_OT_QUERY_RE.search(query))
+        _allowed_hosts = ("experienceleague.adobe.com", "dita-ot.org") if _ot_query else ("experienceleague.adobe.com",)
         retrieval = retrieve_relevant_docs_with_diagnostics(
             query,
             k=k,
-            allowed_host_suffixes=("experienceleague.adobe.com",),
+            allowed_host_suffixes=_allowed_hosts,
         )
         local_results = [
             {
@@ -2020,6 +2034,8 @@ async def execute_lookup_aem_guides(query: str, k: int = 5) -> dict[str, Any]:
             "count": len(results),
             "retrieval_mode": str(retrieval.get("retrieval_mode") or "none"),
             "semantic_required": bool(retrieval.get("semantic_required")),
+            "allowed_host_suffixes": list(_allowed_hosts),
+            "source_domain": "dita_ot" if _ot_query else "aem_guides",
             "embedding": retrieval.get("embedding") or {},
             "live_search": live_search,
             "warnings": list(retrieval.get("warnings") or []),
@@ -2256,6 +2272,8 @@ async def execute_lookup_dita_attribute(
 
         if len(specs) == 1:
             result = dict(specs[0])
+            result["matched_via"] = "attribute_catalog"
+            result.setdefault("spec_chunks", [])  # not a chunk-based result
             if raw_query.lower() != result["attribute_name"]:
                 result["resolved_from_query"] = raw_query
             if missing_attrs:
@@ -3662,110 +3680,58 @@ async def run_tool(
             style=params.get("style"),
             count=params.get("count", 1),
         )
-    elif name == "lookup_dita_spec":
-        result = await execute_lookup_dita_spec(
-            query=params.get("query", ""),
-            elements=params.get("elements"),
-        )
-    elif name == "review_dita_xml":
-        result = await execute_review_dita_xml(
-            xml=params.get("xml", ""),
-            context=params.get("context"),
-            tenant_id=tenant_id,
-        )
-    elif name == "find_recipes":
-        result = await execute_find_recipes(
-            query=params.get("query", ""),
-            k=int(params.get("k", 5)),
-        )
-    elif name == "get_job_status":
-        result = await execute_get_job_status(
-            job_id=params.get("job_id", ""),
-        )
-    elif name == "lookup_aem_guides":
-        result = await execute_lookup_aem_guides(
-            query=params.get("query", ""),
-            k=int(params.get("k", 5)),
-        )
-    elif name == "search_tenant_knowledge":
-        result = await execute_search_tenant_knowledge(
-            query=params.get("query", ""),
-            tenant_id=tenant_id,
-            k=int(params.get("k", 5)),
-        )
-    elif name == "lookup_output_preset":
-        result = await execute_lookup_output_preset(
-            query=params.get("query", ""),
-            output_type=params.get("output_type"),
-            k=int(params.get("k", 5)),
-        )
-    elif name == "list_jobs":
-        result = await execute_list_jobs(
-            status=params.get("status"),
-            limit=int(params.get("limit", 10)),
-            user_id=user_id,
-        )
-    elif name == "fix_dita_xml":
-        result = await execute_fix_dita_xml(
-            xml=params.get("xml", ""),
-            fix_rule_id=params.get("fix_rule_id"),
-            context=params.get("context"),
-            tenant_id=tenant_id,
-        )
-    elif name == "lookup_dita_attribute":
-        result = await execute_lookup_dita_attribute(
-            attribute_name=params.get("attribute_name", ""),
-        )
-    elif name == "list_indexed_pdfs":
-        result = await execute_list_indexed_pdfs(
-            tenant_id=tenant_id,
-        )
-    elif name == "generate_native_pdf_config":
-        result = await execute_generate_native_pdf_config(
-            query=params.get("query", ""),
-            config_type=params.get("config_type", "template"),
-        )
-    elif name == "browse_dataset":
-        result = await execute_browse_dataset(
-            job_id=params.get("job_id", ""),
-            file_path=params.get("file_path"),
-        )
     # ── Phase F: Content Intelligence Tools ──
     elif name == "generate_shortdesc":
-        from app.services.shortdesc_generator_service import generate_shortdesc
-        result = await generate_shortdesc(
-            xml_string=params.get("xml", ""),
-            use_llm=True,
-        )
+        try:
+            from app.services.shortdesc_generator_service import generate_shortdesc
+            result = await generate_shortdesc(
+                xml_string=params.get("xml", ""),
+                use_llm=True,
+            )
+        except Exception as _e:
+            result = {"error": f"generate_shortdesc failed: {_e}", "shortdesc": ""}
     elif name == "advise_topic_type":
-        from app.services.topic_type_advisor_service import analyze_topic_type
-        result = analyze_topic_type(
-            xml_content=params.get("xml", ""),
-        )
+        try:
+            from app.services.topic_type_advisor_service import analyze_topic_type
+            _raw = analyze_topic_type(xml_content=params.get("xml", ""))
+            result = _raw if isinstance(_raw, dict) else {"topic_type": str(_raw)}
+        except Exception as _e:
+            result = {"error": f"advise_topic_type failed: {_e}", "topic_type": "unknown"}
     elif name == "check_style_guide":
-        from app.services.style_guide_enforcer_service import enforce
-        result = enforce(
-            dita_xml=params.get("xml", ""),
-        )
+        try:
+            from app.services.style_guide_enforcer_service import enforce
+            _raw = enforce(dita_xml=params.get("xml", ""))
+            result = _raw if isinstance(_raw, dict) else {"issues": [], "raw": str(_raw)}
+        except Exception as _e:
+            result = {"error": f"check_style_guide failed: {_e}", "issues": []}
     # ── Phase G: Agentic Workflow Tools ──
     elif name == "migrate_content":
-        from app.services.content_migration_service import migrate_content
-        result = migrate_content(
-            content=params.get("content", ""),
-            source_format=params.get("source_format", "auto"),
-        )
+        try:
+            from app.services.content_migration_service import migrate_content
+            _raw = migrate_content(
+                content=params.get("content", ""),
+                source_format=params.get("source_format", "auto"),
+            )
+            result = _raw if isinstance(_raw, dict) else {"migrated": str(_raw)}
+        except Exception as _e:
+            result = {"error": f"migrate_content failed: {_e}", "migrated": ""}
     # ── Phase I: Visual & Interactive Tools ──
     elif name == "visualize_map":
-        from app.services.map_visualizer_service import parse_map_to_graph
-        result = parse_map_to_graph(
-            xml=params.get("xml", ""),
-        )
+        try:
+            from app.services.map_visualizer_service import parse_map_to_graph
+            _raw = parse_map_to_graph(xml=params.get("xml", ""))
+            result = _raw if isinstance(_raw, dict) else {"graph": str(_raw)}
+        except Exception as _e:
+            result = {"error": f"visualize_map failed: {_e}", "graph": {}}
     elif name == "generate_diagram":
-        from app.services.diagram_generation_service import generate_diagram
-        result = await generate_diagram(
-            xml=params.get("xml", ""),
-            diagram_type=params.get("diagram_type", "auto"),
-        )
+        try:
+            from app.services.diagram_generation_service import generate_diagram
+            result = await generate_diagram(
+                xml=params.get("xml", ""),
+                diagram_type=params.get("diagram_type", "auto"),
+            )
+        except Exception as _e:
+            result = {"error": f"generate_diagram failed: {_e}", "diagram": ""}
     else:
         result = {"error": f"Unknown tool: {name}"}
     return _sanitize_tool_result(_normalize_tool_result(name, result))
