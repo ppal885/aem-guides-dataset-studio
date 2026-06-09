@@ -26,8 +26,10 @@ Advanced modes (auto-detected from prompt keywords):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import xml.etree.ElementTree as _ET
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,83 @@ from app.core.structured_logging import get_structured_logger
 from app.services.llm_service import generate_json
 
 logger = get_structured_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Enterprise reliability helpers
+# ---------------------------------------------------------------------------
+
+_MAX_FILL_RETRIES = 2  # per batch; configurable via FREEFORM_FILL_RETRIES env
+_FILL_RETRY_BACKOFF = 3.0  # seconds between retries
+
+
+async def _generate_json_with_retry(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    step_name: str,
+    trace_id: str,
+    jira_id: str,
+    max_retries: int = _MAX_FILL_RETRIES,
+) -> dict | list | None:
+    """Call generate_json with exponential backoff on transient failures.
+
+    Returns the parsed JSON result, or None if all retries are exhausted.
+    Distinguishes transient errors (timeout, 429, 503) from permanent ones.
+    """
+    import os
+    retries = int(os.getenv("FREEFORM_FILL_RETRIES", str(max_retries)))
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return await generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                step_name=step_name,
+                trace_id=trace_id,
+                jira_id=jira_id,
+            )
+        except Exception as exc:
+            last_exc = exc
+            err_str = str(exc).lower()
+            is_transient = any(kw in err_str for kw in (
+                "timeout", "rate limit", "429", "503", "overloaded", "connection",
+                "temporarily", "try again",
+            ))
+            if not is_transient or attempt >= retries:
+                logger.warning_structured(
+                    "freeform_fill_permanent_failure",
+                    extra_fields={"step": step_name, "attempt": attempt + 1, "error": str(exc)},
+                )
+                return None
+            wait = _FILL_RETRY_BACKOFF * (2 ** attempt)
+            logger.warning_structured(
+                "freeform_fill_transient_retry",
+                extra_fields={"step": step_name, "attempt": attempt + 1, "wait_sec": wait, "error": str(exc)},
+            )
+            await asyncio.sleep(wait)
+    return None
+
+
+def _validate_dita_xml(xml_str: str) -> tuple[bool, str]:
+    """Return (is_valid, error_message). Checks well-formedness only (no DTD)."""
+    if not xml_str or not xml_str.strip():
+        return False, "empty XML"
+    try:
+        # Strip XML declaration — ET's parser handles it but let's be safe
+        body = xml_str.strip()
+        if body.startswith("<?xml"):
+            body = body[body.find("?>") + 2:].strip()
+        # Strip DOCTYPE — ET can't parse DTD declarations
+        if body.upper().startswith("<!DOCTYPE"):
+            end = body.find(">")
+            if end >= 0:
+                body = body[end + 1:].strip()
+        _ET.fromstring(body)
+        return True, ""
+    except _ET.ParseError as exc:
+        return False, str(exc)
 
 
 def _sanitize_keywords_in_body(xml: str) -> str:
@@ -1298,31 +1377,32 @@ CRITICAL:
 _OUTLINE_SYSTEM = """\
 You are a DITA information architect. Given a user's content request, produce a structured topic outline.
 
-Output ONLY a valid JSON object — no markdown fences, no explanation:
+Output ONLY a valid JSON object — no markdown fences, no explanation. Example:
 {{
-  "map_title": "string",
+  "map_title": "AWS S3 Administration Guide",
   "topics": [
-    {{
-      "id": "t001",
-      "title": "string",
-      "type": "reference|concept|task",
-      "subtopics": []
-    }}
+    {{"id": "t001", "title": "S3 Bucket Overview", "type": "concept", "subtopics": []}},
+    {{"id": "t002", "title": "Create an S3 Bucket", "type": "task", "subtopics": []}},
+    {{"id": "t003", "title": "aws_s3_bucket Resource", "type": "reference", "subtopics": [
+      {{"id": "t003a", "title": "Bucket Versioning", "type": "reference", "subtopics": []}}
+    ]}}
   ]
 }}
 
 Rules:
-- Use real, domain-specific titles. NEVER use placeholders like "Topic 1", "Setting 1", "Option A".
-- reference: one topic per resource/API attribute/element (e.g. aws_s3_bucket, kubectl apply)
+- Use real, domain-specific titles drawn from the user's domain. NEVER use "Topic 1", "Setting 1", "Option A".
+- reference: one topic per resource/API/element (e.g. aws_s3_bucket, kubectl-apply, <topicref>)
 - task: one topic per procedure or workflow (e.g. "Create an S3 Bucket", "Configure IAM Role")
 - concept: one topic per principle or architecture concept (e.g. "IAM Permission Model")
 - Nest subtopics where meaningful (max 2 levels deep)
-- Total topics including all subtopics must not exceed {limit}
-- Produce at least 5 topics
+- Total topics including all subtopics must be between 5 and {limit}
+- ALWAYS produce at least 5 topics — even for narrow requests
+- id values must be unique, short, snake_case (e.g. t001, create_bucket, iam_model)
 """
 
 _FILL_SYSTEM = """\
-You are a DITA 1.3 XML author. Generate production-quality DITA XML for each topic.
+You are a DITA 1.3 XML author producing training data for AEM Guides.
+Generate production-quality DITA XML for each topic in the batch.
 
 Output ONLY a valid JSON array — no markdown fences, no explanation:
 [
@@ -1330,57 +1410,76 @@ Output ONLY a valid JSON array — no markdown fences, no explanation:
   ...
 ]
 
-Templates per topic type:
+=== TEMPLATES ===
 
-REFERENCE — real field/attribute documentation:
-  DOCTYPE: <!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
-  <reference id="{{id}}">
-    <title>Real title</title>
-    <shortdesc>One sentence.</shortdesc>
-    <refbody>
-      <properties>
-        <prophead><proptypehd>Type</proptypehd><propvaluehd>Value/Default</propvaluehd><propdeschd>Description</propdeschd></prophead>
-        <property><proptype>string</proptype><propvalue>actual_field_name</propvalue><propdesc><p>Real description.</p></propdesc></property>
-        <!-- at least 3 properties with real field names and descriptions -->
-      </properties>
-      <simpletable relcolwidth="1* 3*">
-        <sthead><stentry>Attribute</stentry><stentry>Notes</stentry></sthead>
-        <strow><stentry>real_attr</stentry><stentry>Real notes.</stentry></strow>
-      </simpletable>
-    </refbody>
-  </reference>
+REFERENCE (field/API/element documentation):
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+<reference id="aws_s3_bucket">
+  <title>aws_s3_bucket</title>
+  <shortdesc>Manages an Amazon S3 bucket resource.</shortdesc>
+  <refbody>
+    <properties>
+      <prophead><proptypehd>Type</proptypehd><propvaluehd>Default</propvaluehd><propdeschd>Description</propdeschd></prophead>
+      <property><proptype>string</proptype><propvalue>Required</propvalue><propdesc><p>The globally unique name for the bucket.</p></propdesc></property>
+      <property><proptype>string</proptype><propvalue>"private"</propvalue><propdesc><p>Canned ACL to apply. Valid values: private, public-read, public-read-write.</p></propdesc></property>
+      <property><proptype>bool</proptype><propvalue>false</propvalue><propdesc><p>Enable versioning on the bucket.</p></propdesc></property>
+    </properties>
+    <section><title>Example</title>
+      <codeblock outputclass="language-hcl">resource "aws_s3_bucket" "logs" {{
+  bucket = "my-org-access-logs"
+  acl    = "private"
+}}</codeblock>
+    </section>
+  </refbody>
+</reference>
 
-TASK — real step-by-step procedure:
-  DOCTYPE: <!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
-  <task id="{{id}}">
-    <title>Real procedure title</title>
-    <shortdesc>What this accomplishes.</shortdesc>
-    <taskbody>
-      <prereq><p>Any prerequisites.</p></prereq>
-      <steps>
-        <step><cmd>Real command or action.</cmd><info><p>Context.</p></info></step>
-        <!-- at least 3 real steps -->
-      </steps>
-      <result><p>What the user achieves.</p></result>
-    </taskbody>
-  </task>
+TASK (procedure/workflow):
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="create_s3_bucket">
+  <title>Create an S3 Bucket</title>
+  <shortdesc>Create a versioning-enabled Amazon S3 bucket using the AWS CLI.</shortdesc>
+  <taskbody>
+    <prereq><p>AWS CLI 2.x installed and configured with credentials that have <codeph>s3:CreateBucket</codeph> permission.</p></prereq>
+    <steps>
+      <step><cmd>Run <codeph>aws s3api create-bucket --bucket my-bucket --region us-east-1</codeph>.</cmd>
+        <info><p>For regions other than us-east-1, add <codeph>--create-bucket-configuration LocationConstraint=&lt;region&gt;</codeph>.</p></info>
+      </step>
+      <step><cmd>Enable versioning: <codeph>aws s3api put-bucket-versioning --bucket my-bucket --versioning-configuration Status=Enabled</codeph>.</cmd></step>
+      <step><cmd>Verify the bucket exists: <codeph>aws s3 ls | grep my-bucket</codeph>.</cmd></step>
+    </steps>
+    <result><p>The bucket is created with versioning enabled and appears in <codeph>aws s3 ls</codeph>.</p></result>
+  </taskbody>
+</task>
 
-CONCEPT — real explanatory content:
-  DOCTYPE: <!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
-  <concept id="{{id}}">
-    <title>Real concept title</title>
-    <shortdesc>One sentence definition.</shortdesc>
-    <conbody>
-      <p>Real explanation paragraph.</p>
-      <ul><li>Real point 1</li><li>Real point 2</li></ul>
-    </conbody>
-  </concept>
+CONCEPT (principle/architecture):
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="iam_permission_model">
+  <title>IAM Permission Model</title>
+  <shortdesc>AWS Identity and Access Management (IAM) uses a deny-by-default model where permissions must be explicitly granted.</shortdesc>
+  <conbody>
+    <p>Every IAM request is evaluated against all applicable policies. Unless an explicit Allow exists, the request is denied. Explicit Deny always overrides Allow.</p>
+    <ul>
+      <li><b>Identity-based policies</b> attach to users, groups, or roles and define what actions they can perform.</li>
+      <li><b>Resource-based policies</b> attach to resources (such as S3 buckets) and control cross-account access.</li>
+      <li><b>Permission boundaries</b> cap the maximum permissions an identity can be granted.</li>
+    </ul>
+    <p>Use least-privilege: grant only the minimum permissions required for a task.</p>
+  </conbody>
+</concept>
 
-CRITICAL:
-- Use REAL content — actual field names, real CLI commands, accurate descriptions
-- NEVER use placeholders: "Option 1", "Description for option 1", "setting.1", "Value1"
-- The id attribute must exactly match the id in the input
-- XML must be well-formed
+=== QUALITY RULES ===
+1. Use domain-specific content drawn from the user's domain context — real API names,
+   real command syntax, real field names. NEVER invent generic placeholders.
+2. FORBIDDEN placeholder patterns: "Option 1", "Description 1", "Value1", "setting.1",
+   "Real title", "Topic title", "Sample text", "Lorem ipsum".
+3. Each id attribute MUST exactly match the id given in the input batch JSON.
+4. All XML must be well-formed: every opened tag must be closed, & must be &amp;,
+   < in text must be &lt;.
+5. Minimum content: concept ≥ 2 paragraphs, task ≥ 3 steps, reference ≥ 3 properties.
+6. For task topics, use realistic command-line syntax or UI step descriptions.
 """
 
 
@@ -1452,65 +1551,93 @@ async def run_freeform_generation(
 
     logger.info_structured("freeform_outline_done", extra_fields={"count": len(flat_topics), "title": map_title})
 
-    # ── Phase 2: Fill topics in batches of 10 ─────────────────────────────
+    # ── Phase 2: Fill topics in batches of 10 (with retry + XML validation) ──
     BATCH_SIZE = 10
     filled: dict[str, str] = {}  # id → xml
+    batch_errors: list[str] = []
 
     for batch_start in range(0, len(flat_topics), BATCH_SIZE):
         batch = flat_topics[batch_start : batch_start + BATCH_SIZE]
         batch_num = batch_start // BATCH_SIZE + 1
         logger.info_structured("freeform_fill_batch", extra_fields={"batch": batch_num, "size": len(batch)})
-        try:
-            raw = await generate_json(
-                system_prompt=_FILL_SYSTEM,
-                user_prompt=(
-                    f"Domain context: {prompt}\n\n"
-                    f"Generate DITA XML for these {len(batch)} topics:\n"
-                    + json.dumps(batch, indent=2)
-                ),
-                max_tokens=12000,
-                step_name=f"freeform_fill_{batch_num}",
-                trace_id=trace_id,
-                jira_id=jira_id,
-            )
-        except Exception as exc:
-            logger.warning_structured("freeform_fill_failed", extra_fields={"batch": batch_num, "error": str(exc)})
+
+        raw = await _generate_json_with_retry(
+            system_prompt=_FILL_SYSTEM,
+            user_prompt=(
+                f"Domain context: {prompt}\n\n"
+                f"Generate DITA XML for these {len(batch)} topics:\n"
+                + json.dumps(batch, indent=2)
+            ),
+            max_tokens=12000,
+            step_name=f"freeform_fill_{batch_num}",
+            trace_id=trace_id,
+            jira_id=jira_id,
+        )
+        if raw is None:
+            msg = f"Batch {batch_num} failed after retries"
+            batch_errors.append(msg)
+            logger.warning_structured("freeform_fill_batch_dropped", extra_fields={"batch": batch_num})
             continue
 
         items = raw if isinstance(raw, list) else (raw.get("topics") or [])
         for item in items:
-            if isinstance(item, dict) and item.get("id") and item.get("xml"):
-                filled[item["id"]] = item["xml"]
+            if not isinstance(item, dict) or not item.get("id") or not item.get("xml"):
+                continue
+            tid = item["id"]
+            xml_str = item["xml"]
+            valid, xml_err = _validate_dita_xml(xml_str)
+            if not valid:
+                logger.warning_structured(
+                    "freeform_topic_invalid_xml",
+                    extra_fields={"id": tid, "error": xml_err, "batch": batch_num},
+                )
+                batch_errors.append(f"Topic {tid}: malformed XML — {xml_err}")
+                continue
+            filled[tid] = xml_str
 
     # ── Phase 3: Write files ──────────────────────────────────────────────
     topics_dir = scenario_dir / "topics"
     topics_dir.mkdir(parents=True, exist_ok=True)
 
     written: list[tuple[str, str, str]] = []  # (id, filename, type)
+    missing_ids: list[str] = []
     for topic in flat_topics:
         tid = topic["id"]
         xml = filled.get(tid, "")
         if not xml:
+            missing_ids.append(tid)
             logger.warning_structured("freeform_topic_missing", extra_fields={"id": tid})
             continue
         fname = f"{tid}_{_slugify(topic['title'])}.dita"
         (topics_dir / fname).write_text(xml, encoding="utf-8")
         written.append((tid, fname, topic.get("type", "reference")))
 
+    all_warnings = batch_errors[:]
+    if missing_ids:
+        all_warnings.append(f"{len(missing_ids)} topics not produced: {', '.join(missing_ids[:5])}")
+
     if not written:
-        return {"error": "No topics were produced by LLM", "recipes_executed": [], "warnings": ["All fill batches failed"]}
+        return {
+            "error": "No topics were produced by LLM",
+            "recipes_executed": [],
+            "warnings": all_warnings or ["All fill batches failed"],
+        }
 
     # ── Phase 4: DITA map ─────────────────────────────────────────────────
     (scenario_dir / "generated.ditamap").write_text(_build_ditamap(map_title, written), encoding="utf-8")
 
-    logger.info_structured("freeform_done", extra_fields={"written": len(written), "title": map_title})
+    logger.info_structured(
+        "freeform_done",
+        extra_fields={"written": len(written), "total": len(flat_topics), "title": map_title},
+    )
 
     return {
         "recipes_executed": ["freeform_llm"],
         "generate_mode": "freeform",
         "topic_count": len(written),
+        "topics_requested": len(flat_topics),
         "map_title": map_title,
-        "warnings": [],
+        "warnings": all_warnings,
     }
 
 
