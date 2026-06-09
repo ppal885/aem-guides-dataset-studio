@@ -143,6 +143,25 @@ class JiraClient:
 
         return all_issues[:max_results]
 
+    def search_issues_key_page(
+        self,
+        jql: str,
+        start_at: int = 0,
+        page_size: int = 50,
+        fields: str = "summary,description,labels,priority,status,created,updated,issuetype,comment,attachment",
+    ) -> tuple[list[dict], int]:
+        """Single-page JQL search returning (issues, total). Used by the RAG indexer."""
+        params = {
+            "jql": jql,
+            "maxResults": min(page_size, 100),
+            "startAt": start_at,
+            "fields": fields,
+        }
+        data = self._request("GET", f"/rest/api/{self._api}/search", params=params)
+        issues = data.get("issues", [])
+        total = data.get("total", 0)
+        return issues, total
+
     def get_issue_attachments(self, issue_key: str) -> list[dict]:
         """Get attachment metadata for an issue (from get_issue response)."""
         issue = self.get_issue(issue_key)

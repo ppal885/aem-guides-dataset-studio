@@ -276,11 +276,15 @@ def index_single_jira(issue_key: str, force_reindex: bool = False, user: UserIde
             force_reindex=force_reindex,
             jira_client=client,
         )
+        chunks = result.get("chunks_upserted") or result.get("chunks", 0)
+        errors = result.get("errors") or ([] if not result.get("error") else [result["error"]])
         return {
-            "success": not result.get("error"),
+            "success": not result.get("error") and not errors,
             "issue_key": issue_key,
-            "chunks_indexed": result.get("chunks_upserted", 0),
+            "chunks_indexed": chunks,
             "error": result.get("error"),
+            "errors": errors[:5] if errors else [],
+            "message": result.get("message"),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
