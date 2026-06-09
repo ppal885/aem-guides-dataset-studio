@@ -1598,15 +1598,15 @@ async def _run_freeform_keydef(
     except Exception as exc:
         return {"error": f"Keydef outline failed: {exc}", "recipes_executed": [], "warnings": [str(exc)]}
 
-    flat_topics = _flatten_topics(outline.get("topics") or [])[:topic_limit]
-    keydefs = outline.get("keydefs") or []
+    flat_topics = _flatten_topics(outline.get("topics") or [])[:min(topic_limit, 5)]  # cap at 5 for fill budget
+    keydefs = (outline.get("keydefs") or [])[:10]  # cap keydefs too
     map_title = str(outline.get("map_title") or "Keydef Dataset").strip()
 
     try:
         raw = await generate_json(
             system_prompt=_FILL_SYSTEM_KEYDEF,
             user_prompt=(
-                f"Domain: {prompt}\n\nKeydefs: {json.dumps(keydefs)}\n\n"
+                f"Domain: {prompt[:400]}\n\nKeydefs: {json.dumps(keydefs)}\n\n"
                 f"Topics to generate:\n" + json.dumps(flat_topics, indent=2)
             ),
             max_tokens=6000,
