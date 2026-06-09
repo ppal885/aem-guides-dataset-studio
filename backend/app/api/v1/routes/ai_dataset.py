@@ -921,6 +921,12 @@ async def _generate_from_text_background_task(
     skip_rag_check: bool = False,
 ) -> None:
     """Run generate-from-text in background; updates _generate_progress."""
+    # Yield the event loop so the HTTP response reaches the client BEFORE any
+    # blocking I/O (e.g. synchronous requests.get to Jira) starts. Without this,
+    # the Jira fetch blocks the asyncio event loop mid-body-iterator, preventing
+    # the response from being sent and causing the client to time out.
+    import asyncio as _asyncio
+    await _asyncio.sleep(0)
     try:
         await _run_generate_from_text(
             body,

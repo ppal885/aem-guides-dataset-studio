@@ -1720,7 +1720,13 @@ async def run_generate_from_text(
     from app.services.dita_pipeline_orchestrator import run_intent_pipeline_with_execution
 
     pid = progress_run_id or run_id
-    resolved_text, real_jira_id, resolution_warning = resolve_text_for_generate_from_text(text)
+    # Run blocking Jira resolution in a thread pool to avoid blocking the asyncio event loop.
+    # resolve_text_for_generate_from_text uses synchronous requests.get internally.
+    import asyncio as _asyncio
+    import functools as _functools
+    resolved_text, real_jira_id, resolution_warning = await _asyncio.get_event_loop().run_in_executor(
+        None, _functools.partial(resolve_text_for_generate_from_text, text)
+    )
     real_jira_id = real_jira_id or forced_jira_id
     jira_id = real_jira_id or f"TEXT-{run_id[:8]}"
     update_generate_progress(
