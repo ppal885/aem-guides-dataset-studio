@@ -1643,16 +1643,50 @@ async def run_freeform_generation(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _safe_topic_filename(name: str) -> str:
+    """Sanitise LLM-returned filenames: strip path separators and block traversal."""
+    import posixpath as _pp
+    # Strip any directory component the LLM might have injected
+    base = _pp.basename(name.replace("\\", "/"))
+    # Remove leading dots that could form hidden/traversal filenames
+    base = base.lstrip(".")
+    # Ensure .dita extension
+    if not base:
+        base = "topic.dita"
+    if not base.lower().endswith((".dita", ".ditamap", ".xml")):
+        base += ".dita"
+    return base
+
+
 def _flatten_topics(topics: list, depth: int = 0) -> list[dict]:
+    """Flatten nested topic outline. Deduplicates IDs to prevent silent overwrite."""
     result: list[dict] = []
+    seen_ids: set[str] = set()
     for t in (topics or []):
+        raw_id = str(t.get("id") or f"t{len(result)+1:03d}").strip()
+        # Make ID unique if LLM returned duplicates
+        uid = raw_id
+        suffix = 2
+        while uid in seen_ids:
+            uid = f"{raw_id}_{suffix}"
+            suffix += 1
+        seen_ids.add(uid)
         result.append({
-            "id": str(t.get("id") or f"t{len(result)+1:03d}").strip(),
+            "id": uid,
             "title": str(t.get("title") or "Untitled").strip(),
             "type": str(t.get("type") or "reference").strip().lower(),
         })
         if depth < 1 and t.get("subtopics"):
-            result.extend(_flatten_topics(t["subtopics"], depth=depth + 1))
+            sub = _flatten_topics(t["subtopics"], depth=depth + 1)
+            for s in sub:
+                uid2 = s["id"]
+                suf2 = 2
+                while uid2 in seen_ids:
+                    uid2 = f"{s['id']}_{suf2}"
+                    suf2 += 1
+                seen_ids.add(uid2)
+                s["id"] = uid2
+                result.append(s)
     return result
 
 
@@ -1717,34 +1751,42 @@ async def _run_freeform_conref(
 
     BATCH_SIZE = 8
     filled: dict[str, dict] = {}  # id → {filename, xml}
+    conref_warnings: list[str] = []
+
+    # Create topics dir early so no crash if we return before writing
+    topics_dir = scenario_dir / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
 
     for batch_start in range(0, len(all_topics), BATCH_SIZE):
         batch = all_topics[batch_start:batch_start + BATCH_SIZE]
         batch_num = batch_start // BATCH_SIZE + 1
-        try:
-            raw = await generate_json(
-                system_prompt=_FILL_SYSTEM_CONREF,
-                user_prompt=(
-                    f"Domain: {prompt}\n\n"
-                    f"Source topic filenames: {json.dumps(src_filenames)}\n\n"
-                    f"Generate DITA XML for these {len(batch)} topics:\n"
-                    + json.dumps(batch, indent=2)
-                ),
-                max_tokens=12000,
-                step_name=f"freeform_conref_fill_{batch_num}",
-                trace_id=trace_id,
-                jira_id=jira_id,
-            )
-        except Exception as exc:
-            logger.warning_structured("freeform_conref_fill_failed", extra_fields={"batch": batch_num, "error": str(exc)})
+        raw = await _generate_json_with_retry(
+            system_prompt=_FILL_SYSTEM_CONREF,
+            user_prompt=(
+                f"Domain: {prompt}\n\n"
+                f"Source topic filenames: {json.dumps(src_filenames)}\n\n"
+                f"Generate DITA XML for these {len(batch)} topics:\n"
+                + json.dumps(batch, indent=2)
+            ),
+            max_tokens=12000,
+            step_name=f"freeform_conref_fill_{batch_num}",
+            trace_id=trace_id,
+            jira_id=jira_id,
+        )
+        if raw is None:
+            conref_warnings.append(f"Conref batch {batch_num} failed after retries")
             continue
         items = raw if isinstance(raw, list) else (raw.get("topics") or [])
         for item in items:
             if isinstance(item, dict) and item.get("id") and item.get("xml"):
-                filled[item["id"]] = {"filename": str(item.get("filename") or f"{item['id']}.dita"), "xml": item["xml"]}
-
-    topics_dir = scenario_dir / "topics"
-    topics_dir.mkdir(parents=True, exist_ok=True)
+                valid, xml_err = _validate_dita_xml(item["xml"])
+                if not valid:
+                    conref_warnings.append(f"Topic {item['id']}: malformed XML — {xml_err}")
+                    continue
+                filled[item["id"]] = {
+                    "filename": _safe_topic_filename(str(item.get("filename") or f"{item['id']}.dita")),
+                    "xml": item["xml"],
+                }
 
     written: list[tuple[str, str, str]] = []
     for t in all_topics:
@@ -1757,7 +1799,7 @@ async def _run_freeform_conref(
         written.append((tid, fname, t.get("type", "topic")))
 
     if not written:
-        return {"error": "No conref topics produced", "recipes_executed": [], "warnings": ["All fill batches failed"]}
+        return {"error": "No conref topics produced", "recipes_executed": [], "warnings": conref_warnings or ["All fill batches failed"]}
 
     (scenario_dir / "generated.ditamap").write_text(_build_ditamap(map_title, written), encoding="utf-8")
     logger.info_structured("freeform_conref_done", extra_fields={"written": len(written)})
@@ -1786,7 +1828,14 @@ async def _run_freeform_keydef(
     except Exception as exc:
         return {"error": f"Keydef outline failed: {exc}", "recipes_executed": [], "warnings": [str(exc)]}
 
-    flat_topics = _flatten_topics(outline.get("topics") or [])[:min(topic_limit, 5)]  # cap at 5 for fill budget
+    _keydef_cap = 5  # keydef fill is expensive; cap topics but warn
+    flat_topics_all = _flatten_topics(outline.get("topics") or [])
+    if len(flat_topics_all) > _keydef_cap:
+        logger.info_structured(
+            "freeform_keydef_capped",
+            extra_fields={"requested": len(flat_topics_all), "capped_to": _keydef_cap},
+        )
+    flat_topics = flat_topics_all[:_keydef_cap]
     keydefs = (outline.get("keydefs") or [])[:10]  # cap keydefs too
     map_title = str(outline.get("map_title") or "Keydef Dataset").strip()
 
@@ -1816,14 +1865,24 @@ async def _run_freeform_keydef(
         if not isinstance(item, dict) or not item.get("id") or not item.get("xml"):
             continue
         fname = str(item.get("filename") or f"{item['id']}.dita")
+        # Block path traversal in LLM-supplied filenames
+        fname = _safe_topic_filename(fname)
         xml_out = _sanitize_keywords_in_body(item["xml"])
+        valid, xml_err = _validate_dita_xml(xml_out)
+        if not valid:
+            logger.warning_structured(
+                "freeform_keydef_invalid_xml",
+                extra_fields={"id": item["id"], "error": xml_err},
+            )
+            continue
         (topics_dir / fname).write_text(xml_out, encoding="utf-8")
         written.append((item["id"], fname, "topic"))
 
     if not written:
         return {"error": "No keydef topics produced", "recipes_executed": [], "warnings": ["fill failed"]}
 
-    if keydef_map_xml:
+    # Only write keydef_map if non-empty and appears valid
+    if keydef_map_xml and keydef_map_xml.strip() and "<" in keydef_map_xml:
         (scenario_dir / "generated.ditamap").write_text(keydef_map_xml, encoding="utf-8")
     else:
         (scenario_dir / "generated.ditamap").write_text(_build_ditamap(map_title, written), encoding="utf-8")
@@ -1842,7 +1901,7 @@ async def _run_freeform_glossary(
 ) -> dict[str, Any]:
     """Generate a glossary dataset: glossentry topics + consuming topics with <term> references."""
     logger.info_structured("freeform_glossary_start", extra_fields={"jira_id": jira_id})
-    entry_limit = max(5, min(topic_limit, 30))
+    entry_limit = max(5, topic_limit)  # no artificial 30-entry cap
     try:
         outline = await generate_json(
             system_prompt=_OUTLINE_SYSTEM_GLOSSARY.format(limit=entry_limit),
@@ -1858,31 +1917,50 @@ async def _run_freeform_glossary(
     entries = (outline.get("glossary_entries") or [])[:entry_limit]
     consumer_topics = outline.get("consumer_topics") or []
     map_title = str(outline.get("map_title") or "Glossary Dataset").strip()
+
+    # Track which glossentry IDs were successfully generated to filter broken <term> refs
+    glossentry_ids: set[str] = {str(e.get("id") or "") for e in entries if e.get("id")}
     all_items = [{"id": e.get("id"), "title": e.get("term"), "type": "glossentry",
                   "term": e.get("term"), "definition": e.get("definition"), "acronym": e.get("acronym")}
                  for e in entries] + list(_flatten_topics(consumer_topics))
 
     BATCH_SIZE = 10
     filled: dict[str, dict] = {}
+    fill_warnings: list[str] = []
     for batch_start in range(0, len(all_items), BATCH_SIZE):
         batch = all_items[batch_start:batch_start + BATCH_SIZE]
         batch_num = batch_start // BATCH_SIZE + 1
-        try:
-            raw = await generate_json(
-                system_prompt=_FILL_SYSTEM_GLOSSARY,
-                user_prompt=(f"Domain: {prompt}\n\nGenerate DITA XML:\n" + json.dumps(batch, indent=2)),
-                max_tokens=12000,
-                step_name=f"freeform_glossary_fill_{batch_num}",
-                trace_id=trace_id,
-                jira_id=jira_id,
-            )
-        except Exception as exc:
-            logger.warning_structured("freeform_glossary_fill_failed", extra_fields={"error": str(exc)})
+        raw = await _generate_json_with_retry(
+            system_prompt=_FILL_SYSTEM_GLOSSARY,
+            user_prompt=(f"Domain: {prompt}\n\nGenerate DITA XML:\n" + json.dumps(batch, indent=2)),
+            max_tokens=12000,
+            step_name=f"freeform_glossary_fill_{batch_num}",
+            trace_id=trace_id,
+            jira_id=jira_id,
+        )
+        if raw is None:
+            fill_warnings.append(f"Glossary batch {batch_num} failed after retries")
             continue
         items = raw if isinstance(raw, list) else (raw.get("topics") or [])
         for item in items:
             if isinstance(item, dict) and item.get("id") and item.get("xml"):
-                filled[item["id"]] = {"filename": str(item.get("filename") or f"{item['id']}.dita"), "xml": item["xml"]}
+                valid, xml_err = _validate_dita_xml(item["xml"])
+                if not valid:
+                    fill_warnings.append(f"Topic {item['id']}: malformed XML — {xml_err}")
+                    continue
+                filled[item["id"]] = {
+                    "filename": _safe_topic_filename(str(item.get("filename") or f"{item['id']}.dita")),
+                    "xml": item["xml"],
+                }
+
+    # Only include consumer topics whose <term> refs resolve to generated glossentries
+    filled_ids = set(filled.keys())
+    missing_entries = glossentry_ids - filled_ids
+    if missing_entries:
+        fill_warnings.append(
+            f"{len(missing_entries)} glossentry entries not generated: "
+            + ", ".join(sorted(missing_entries)[:5])
+        )
 
     topics_dir = scenario_dir / "topics"
     topics_dir.mkdir(parents=True, exist_ok=True)
@@ -1897,12 +1975,12 @@ async def _run_freeform_glossary(
         written.append((tid, fname, t.get("type", "glossentry")))
 
     if not written:
-        return {"error": "No glossary topics produced", "recipes_executed": [], "warnings": ["fill failed"]}
+        return {"error": "No glossary topics produced", "recipes_executed": [], "warnings": fill_warnings or ["fill failed"]}
 
     (scenario_dir / "generated.ditamap").write_text(_build_ditamap(map_title, written), encoding="utf-8")
     logger.info_structured("freeform_glossary_done", extra_fields={"written": len(written)})
     return {"recipes_executed": ["freeform_glossary"], "generate_mode": "freeform_glossary",
-            "topic_count": len(written), "map_title": map_title, "warnings": []}
+            "topic_count": len(written), "map_title": map_title, "warnings": fill_warnings}
 
 
 async def _run_freeform_mathml(
@@ -2100,9 +2178,12 @@ async def _run_freeform_bookmap(
     for tf in ((raw.get("topic_files") or []) if isinstance(raw, dict) else []):
         if not isinstance(tf, dict) or not tf.get("id") or not tf.get("xml"):
             continue
-        fname = str(tf.get("filename") or f"{tf['id']}.dita").replace("topics/", "")
-        if not fname.endswith(".dita"):
-            fname = f"{fname}.dita"
+        # Sanitise filename to block path traversal from LLM output
+        fname = _safe_topic_filename(str(tf.get("filename") or f"{tf['id']}.dita").replace("topics/", ""))
+        valid, xml_err = _validate_dita_xml(tf["xml"])
+        if not valid:
+            warnings.append(f"Topic {tf['id']}: malformed XML — {xml_err}")
+            continue
         (topics_dir / fname).write_text(tf["xml"], encoding="utf-8")
         written.append((tf["id"], fname, "topic"))
 
@@ -2208,11 +2289,17 @@ async def _run_freeform_profiling(
 
     # Fallback: write placeholder ditaval from plan if LLM omitted
     if not written_filters and ditaval_plan:
+        import html as _html_mod
         for dv_plan in ditaval_plan:
-            fname = str(dv_plan.get("filename") or "default.ditaval").replace("filters/", "")
+            fname = _safe_topic_filename(
+                str(dv_plan.get("filename") or "default.ditaval").replace("filters/", "")
+            ).replace(".dita", ".ditaval")
             conditions = dv_plan.get("conditions") or []
+            # Escape attribute values to prevent XML injection from LLM-supplied content
             props = "\n  ".join(
-                f'<prop att="{c["att"]}" val="{c["val"]}" action="{c["action"]}"/>'
+                f'<prop att="{_html_mod.escape(str(c["att"]))}" '
+                f'val="{_html_mod.escape(str(c["val"]))}" '
+                f'action="{_html_mod.escape(str(c["action"]))}"/>'
                 for c in conditions if c.get("att") and c.get("val") and c.get("action")
             )
             xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<val>\n  {props}\n</val>\n'

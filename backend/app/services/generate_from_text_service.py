@@ -1807,7 +1807,13 @@ async def run_generate_from_text(
                 trace_id=trace_id,
             )
             if exec_result.get("error"):
-                raise ValueError(f"FREEFORM_GENERATION_FAILED: {exec_result['error']}")
+                # Fallback to recipe pipeline instead of hard-failing
+                logger.warning_structured(
+                    "freeform_generation_failed_falling_back_to_recipe",
+                    extra_fields={"error": exec_result["error"], "jira_id": jira_id},
+                )
+                exec_result = None  # clear so recipe pipeline runs below
+                freeform_mode = False  # allow recipe plan to be built
             generation_llm_stage = {
                 "llm_draft_used": True,
                 "path": "freeform_llm_generation",

@@ -152,8 +152,9 @@ _TEXT_ATTACHMENT_EXTENSIONS = frozenset(
     ".txt .log .xml .dita .ditamap .json .yaml .yml .md .csv .html .htm .xhtml .snippet .sample .cfg .properties".split()
 )
 _IMAGE_ATTACHMENT_EXTENSIONS = frozenset(".png .jpg .jpeg .gif .webp .svg .bmp .tiff .tif".split())
-_MAX_ATTACHMENT_BYTES = 80_000  # read up to ~80 KB per text attachment
-_MAX_ATTACHMENTS = 5            # read up to 5 attachments per issue
+_MAX_ATTACHMENT_BYTES = int(os.getenv("JIRA_MAX_ATTACHMENT_BYTES", "80000"))
+_MAX_ATTACHMENTS = int(os.getenv("JIRA_MAX_ATTACHMENTS", "5"))
+_MAX_COMMENTS = int(os.getenv("JIRA_MAX_COMMENTS", "30"))  # was hardcoded 20
 
 
 def _read_attachment_text(client: JiraClient, att: dict) -> str:
@@ -173,7 +174,12 @@ def _read_attachment_text(client: JiraClient, att: dict) -> str:
     if not is_text:
         return ""
     if size > _MAX_ATTACHMENT_BYTES * 2:
-        return f"[File too large to inline: {att.get('filename')} ({size // 1024} KB)]"
+        # Warn so operators know context was truncated — set JIRA_MAX_ATTACHMENT_BYTES to include it
+        logger.warning_structured(
+            "jira_attachment_skipped_too_large",
+            extra_fields={"filename": att.get("filename"), "size_kb": size // 1024, "limit_kb": _MAX_ATTACHMENT_BYTES // 1024},
+        )
+        return f"[File too large to inline: {att.get('filename')} ({size // 1024} KB) — set JIRA_MAX_ATTACHMENT_BYTES to increase limit]"
 
     if not content_url:
         return ""
@@ -255,7 +261,7 @@ def fetch_issue_text_for_generate(issue_key: str) -> Tuple[Optional[str], Option
         if not raw_comments:
             raw_comments = client.get_issue_comments(key)
         from app.services.jira_client import _adf_to_plain_text as _adf
-        for c in (raw_comments or [])[:20]:
+        for c in (raw_comments or [])[:_MAX_COMMENTS]:
             author = ""
             a = c.get("author") or c.get("updateAuthor") or {}
             if isinstance(a, dict):
