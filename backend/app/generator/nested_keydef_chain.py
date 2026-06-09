@@ -35,12 +35,16 @@ def _topic_xml(
     topic = ET.Element("topic", {"id": topic_id, "xml:lang": "en"})
     ET.SubElement(topic, "title").text = title
 
-    body = ET.SubElement(topic, "body")
+    # <keywords> belongs in <prolog><metadata>, NOT in <body> (DITA 1.3 DTD)
     if keywords_with_id:
-        keywords_elem = ET.SubElement(body, "keywords")
+        prolog = ET.SubElement(topic, "prolog")
+        metadata = ET.SubElement(prolog, "metadata")
+        keywords_elem = ET.SubElement(metadata, "keywords")
         for kw in keywords_with_id:
             kw_elem = ET.SubElement(keywords_elem, "keyword", {"id": kw["id"]})
             kw_elem.text = kw.get("text", kw["id"])
+
+    body = ET.SubElement(topic, "body")
     if body_content:
         try:
             body_elem = ET.fromstring(f"<body>{body_content}</body>")
