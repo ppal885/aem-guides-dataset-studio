@@ -94,9 +94,10 @@ def authoring_llm_execution_enabled() -> bool:
         return True
     if (os.getenv("GQS_LLM_API_KEY") or "").strip():
         return True
-    from app.services.llm_service import is_llm_available
-
-    return is_llm_available()
+    # QA Studio LLM authoring requires explicit opt-in via QA_STUDIO_LLM_AUTHORING=true.
+    # Do NOT auto-enable just because the app LLM is available — that silently activates
+    # paid LLM calls for QA Studio without explicit user intent.
+    return False
 
 
 def llm_configured_for_authoring() -> bool:

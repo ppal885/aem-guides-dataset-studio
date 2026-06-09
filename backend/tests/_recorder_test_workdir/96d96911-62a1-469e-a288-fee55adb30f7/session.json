@@ -37,13 +37,12 @@
         "redaction_applied": false,
         "confidence": 0.9
       }
-    ],
-    "jira_key": "GUIDES-999"
+    ]
   },
   "meta": {
-    "id": "3f78a38a-3a24-4205-9477-838a417c718f",
-    "created_at_utc": "2026-06-09T18:10:37.919445+00:00",
-    "updated_at_utc": "2026-06-09T18:10:37.929260+00:00",
+    "id": "96d96911-62a1-469e-a288-fee55adb30f7",
+    "created_at_utc": "2026-06-09T18:39:28.672096+00:00",
+    "updated_at_utc": "2026-06-09T18:39:28.673097+00:00",
     "attached_jira_key": null,
     "authoring_job_id": null,
     "user_notes_overlay": ""

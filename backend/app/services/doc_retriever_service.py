@@ -157,6 +157,14 @@ def _classify_aem_query_intent(query: str) -> str:
     lowered = str(query or "").lower()
     if re.search(r"\bbaselines?\b", lowered):
         return "baseline"
+    # DITA-OT parameter/argument questions — prioritise dita-ot.org docs
+    if re.search(r"\b(dita.?ot|dita open toolkit)\b", lowered) and re.search(
+        r"\b(arg[a-z]*|param(?:eter)?s?|flag[s]?|option[s]?|command.?line|draft.comment|args?\.\w+|"
+        r"transtype|input|format|output|filter|propertyfile|resource|subcommand)\b"
+        r"|--\w+",  # CLI flags like --input, --format, --output
+        lowered,
+    ):
+        return "dita_ot_params"
     if re.search(r"\b(create|new|author|edit|open|work with)\b", lowered) and re.search(
         r"\b(topic|map|editor|repository|explorer)\b",
         lowered,
@@ -177,6 +185,18 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     lowered_content = str(content or "").lower()
     intent = _classify_aem_query_intent(query)
     bonus = 0.0
+
+    if intent == "dita_ot_params":
+        # Boost dita-ot.org parameter/argument documentation pages
+        if "dita-ot.org" in lowered_url:
+            bonus += 0.60
+        if re.search(r"/parameters/parameters-base|/parameters/dita-command", lowered_url):
+            bonus += 0.45
+        if re.search(r"\bargs?\.\w+|--args\.|draft.comment\b", lowered_content):
+            bonus += 0.35
+        if "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.50  # de-prioritise AEM docs for pure DITA-OT param questions
+        return bonus
 
     if intent == "authoring_create":
         if "/author-content/" in lowered_url:

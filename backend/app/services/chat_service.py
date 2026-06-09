@@ -285,7 +285,7 @@ _DITA_STRUCTURAL_QUERY_PATTERN = re.compile(
     r"keydef|keyref|conref|conkeyref|href|reltable|bookmap|glossentry|subject scheme|"
     # topic structure
     r"shortdesc|abstract|prolog|taskbody|conbody|refbody|troublebody|"
-    r"prereq|context|steps|step|cmd|info|substeps|substep|choices|choice|choicetable|"
+    r"prereq|context|steps|step|cmd|info|substeps|substep|choices?|choicetables?|"
     r"choiceoption|choicedesc|stepresult|tutorialinfo|stepxmp|result|postreq|"
     r"condition|cause|remedy|responsibleparty|"
     # block elements
@@ -441,6 +441,14 @@ def _should_include_structural_dita_rag(question: str) -> bool:
         return False
     # DITA-OT error codes / build failures: spec RAG is noise, not signal
     if _DITA_OT_ERROR_PATTERN.search(text):
+        return False
+    # AEM-product publishing questions (Native PDF, output preset, AEM Guides UI):
+    # the structural DITA spec is not the relevant evidence source here
+    _aem_product_ctx = re.search(
+        r"\b(native\s+pdf|output\s+preset|folder\s+profile|aem\s+guides|web\s+editor)\b",
+        text, re.IGNORECASE,
+    )
+    if _aem_product_ctx:
         return False
     if _is_dita_construct_output_query(text):
         return True
@@ -1144,6 +1152,19 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         # Comparison questions (native PDF vs pdf2, etc.) → default so OT guidance table is used
         if _DITA_OT_COMPARISON_PATTERN.search(text):
             return "default"
+        # Pure DITA-OT parameter/argument questions without AEM-specific product context
+        # (e.g. "What arguments should be given in dita ot?") → spec RAG is primary evidence
+        # Broad pattern tolerates typos like "argumernts" (real test prompt)
+        _is_pure_ot_param = re.search(
+            r"\b(arg[a-z]*|param(?:eter)?s?|flag[s]?|option[s]?|switch(?:es)?|command.?line)\b",
+            text, re.IGNORECASE,
+        )
+        _has_aem_product_context = re.search(
+            r"\b(native\s+pdf|aem\s+guides|folder\s+profile|web\s+editor|output\s+preset)\b",
+            text, re.IGNORECASE,
+        )
+        if _is_pure_ot_param and not _has_aem_product_context:
+            return "grounded_dita_answer"
         # Short follow-up statement in a session where prior messages are about DITA spec/args
         # (e.g. "I am using DITA-OT PDF" after "What argument enables draft-comment?")
         if session_id and len(text.split()) <= 8:
@@ -1158,8 +1179,11 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         # Skip override when the query is specifically asking about a DITA element/attribute
         # (structural + intent) — the spec lookup answers those better.
         return "default"
-    # Multi-context questions spanning DITA spec + AEM Guides product → need multi-source research
+    # Multi-context questions spanning DITA spec + AEM Guides product → need multi-source research,
+    # UNLESS the question is specifically asking about a DITA element/attribute (grounded spec answer)
     if _AEM_UI_CONFIGURATION_QUERY_PATTERN.search(text) and _DITA_STRUCTURAL_QUERY_PATTERN.search(text):
+        if _is_dita_answer_request(text):
+            return "grounded_dita_answer"
         return "agent_research_plan"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"

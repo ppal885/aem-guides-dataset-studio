@@ -493,9 +493,11 @@ def _is_stream_unpack_bug(e: Exception) -> bool:
     """Detect the Anthropic/Bedrock streaming unpack bug so we can retry non-streaming."""
     lowered = _flatten_exception_messages(e).lower()
     return (
-        "not enough values to unpack" in lowered
-        and "expected 2" in lowered
-        and "got 1" in lowered
+        "too few values to unpack" in lowered
+        or (
+            "not enough values to unpack" in lowered
+            and ("expected 2" in lowered or "got 1" in lowered)
+        )
     )
 
 
@@ -1005,21 +1007,44 @@ async def _stream_with_tools_anthropic(
         "timeout": timeout_sec,
     }
     emitted_any = False
+    msg = None
     try:
         async with client.messages.stream(**request_kwargs) as stream:
-            async for text in stream.text_stream:
-                if text:
-                    emitted_any = True
-                    yield ("chunk", text)
-            msg = await stream.get_final_message()
+            try:
+                async for text in stream.text_stream:
+                    if text:
+                        emitted_any = True
+                        yield ("chunk", text)
+            except Exception as stream_exc:
+                # Once we've started emitting chunks, any stream error (rate-limit,
+                # network drop, unpack bug) must NOT propagate — the HTTP response
+                # headers are already sent and we can't switch to an error code.
+                if emitted_any:
+                    logger.warning_structured(
+                        "Anthropic stream error after partial emit — closing gracefully",
+                        extra_fields={"error": _flatten_exception_messages(stream_exc)},
+                    )
+                    yield ("done", None)
+                    return
+                if not _is_stream_unpack_bug(stream_exc):
+                    raise
+            else:
+                msg = await stream.get_final_message()
     except Exception as exc:
-        if emitted_any or not _is_stream_unpack_bug(exc):
+        if emitted_any:
+            yield ("done", None)
+            return
+        if not _is_stream_unpack_bug(exc):
             raise
         logger.warning_structured(
             "Anthropic stream hit unpack bug; retrying non-streaming request",
             extra_fields={"error": _flatten_exception_messages(exc)},
         )
         msg = await client.messages.create(**request_kwargs)
+
+    if msg is None:
+        yield ("done", None)
+        return
 
     usage = _anthropic_usage_to_dict(getattr(msg, "usage", None))
     text_parts, tool_blocks = _anthropic_message_parts(msg)
@@ -1279,6 +1304,61 @@ def _build_openai_messages(system_prompt: str, messages: list[dict]) -> list[dic
         if role in ("user", "assistant") and content:
             openai_messages.append({"role": role, "content": content})
     return openai_messages
+
+
+# ---------------------------------------------------------------------------
+# Public-alias helpers that tests and external callers depend on
+# ---------------------------------------------------------------------------
+
+async def _iter_text_stream_safe(stream):
+    """Async generator that wraps a text stream and swallows unpack SDK bugs.
+
+    Yields each chunk from *stream*. If the stream raises a ValueError that
+    matches the Anthropic/Bedrock SDK unpack bug pattern AND at least one chunk
+    was already emitted, the error is silently swallowed (the stream is treated
+    as done). Non-matching ValueErrors are re-raised so rate-limit and auth
+    errors still surface.
+    """
+    emitted_any = False
+    try:
+        async for chunk in stream:
+            emitted_any = True
+            yield chunk
+    except ValueError as exc:
+        if emitted_any and _is_stream_unpack_bug(exc):
+            return  # swallow — treat as normal stream end
+        raise
+
+
+def _anthropic_tool_defs_to_openai(tool_defs: list[dict]) -> list[dict]:
+    """Convert Anthropic tool definition format to OpenAI function-calling format."""
+    out = []
+    for td in (tool_defs or []):
+        out.append({
+            "type": "function",
+            "function": {
+                "name": td.get("name", ""),
+                "description": td.get("description", ""),
+                "parameters": td.get("input_schema") or td.get("parameters") or {},
+            },
+        })
+    return out
+
+
+def _chat_messages_anthropic_style_to_openai(system_prompt: str, messages: list[dict]) -> list[dict]:
+    """Convert Anthropic-style chat messages + system prompt to OpenAI format.
+
+    Alias of _build_openai_messages for callers that use the longer name.
+    """
+    return _build_openai_messages(system_prompt, messages)
+
+
+def _flatten_anthropic_content_blocks_to_string(content_blocks: list[dict]) -> str:
+    """Flatten a list of Anthropic content blocks (type=text) to a newline-joined string.
+
+    Alias of _flatten_anthropic_content with a more descriptive name.
+    """
+    return _flatten_anthropic_content(content_blocks)
 
 
 async def _stream_with_tools_groq(

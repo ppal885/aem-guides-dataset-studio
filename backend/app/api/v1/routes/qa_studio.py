@@ -328,7 +328,8 @@ async def qa_plan(body: PlanRequest) -> dict[str, Any]:
             "recorder_evidence": rec_sidecar,
         }
 
-    use_llm = llm_authoring_enabled()
+    # Demo plans take precedence — skip LLM entirely when QA_STUDIO_DEMO_PLANS is set
+    use_llm = llm_authoring_enabled() and not demo_plans_enabled()
     llm_meta: dict[str, Any] = {
         "llm_mode": None,
         "senior_qa_reasoning": None,

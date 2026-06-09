@@ -536,7 +536,14 @@ async def run_uac_analyze(
 
     similar: list[RetrievedJira] = []
     retrieval_sink: dict[str, Any] = {}
-    can_retrieve_similar = include_similar and max_similar > 0
+    # Skip vector retrieval when there are no anchors to search on:
+    # unknown domain + empty entity list + empty output list → query would be noise
+    _has_anchors = (
+        (enriched.domain or "").strip().lower() not in {"", "unknown"}
+        or (enriched.dita_entities or [])
+        or (enriched.affected_outputs or [])
+    )
+    can_retrieve_similar = include_similar and max_similar > 0 and _has_anchors
     if can_retrieve_similar:
         qtext = _retrieval_query_text(enriched)
         eff_domain = enriched.domain if enriched.domain != "unknown" else None
@@ -574,7 +581,7 @@ async def run_uac_analyze(
             },
             "note": (
                 "Similar-ticket retrieval was not run because current Jira lacks domain/entity/output anchors."
-                if include_similar and max_similar > 0
+                if include_similar and max_similar > 0 and not _has_anchors
                 else "Similar-ticket retrieval was not run (include_similar=false or max_similar=0)."
             ),
             "classification_snapshot": _classification_payload(enriched),
