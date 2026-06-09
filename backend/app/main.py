@@ -165,13 +165,32 @@ async def deduplicate_requests(request: Request, call_next):
         response = await call_next(request)
         process_time = (time.time() - start_time) * 1000
 
+        # Pass through responses that should not be buffered.
+        # Buffering (async for chunk in body_iterator) yields the event loop, allowing
+        # any pending asyncio.create_task background tasks to start. If those tasks do
+        # synchronous I/O (e.g. blocking Jira HTTP calls via requests), they deadlock the
+        # event loop before the response headers are sent to the client.
+        if skip_dedup:
+            try:
+                logger.info_structured(
+                    "Request completed",
+                    extra_fields={
+                        "method": request.method,
+                        "path": str(request.url.path),
+                        "status_code": response.status_code,
+                        "duration_ms": round(process_time, 2)
+                    }
+                )
+            except Exception:
+                pass
+            return response
+
         body = b""
         async for chunk in response.body_iterator:
             body += chunk
 
         if (
-            not skip_dedup
-            and response.status_code < 400
+            response.status_code < 400
             and len(body) <= MAX_CACHE_BODY_SIZE
         ):
             headers = dict(response.headers)
