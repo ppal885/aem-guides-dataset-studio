@@ -14,12 +14,30 @@ def safe_join(*parts: str) -> str:
     return joined.replace("\\", "/")
 
 
+_WINDOWS_RESERVED = frozenset(
+    "CON PRN AUX NUL "
+    "COM0 COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9 "
+    "LPT0 LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9".split()
+)
+
+
 def sanitize_filename(filename: str, windows_safe: bool = False) -> str:
     """Sanitize filename for filesystem compatibility."""
-    # Remove or replace invalid characters
     if windows_safe:
         # Windows doesn't allow: < > : " / \ | ? *
         filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        # Strip trailing dots and spaces (Windows rejects them)
+        stem, sep, ext = filename.rpartition(".")
+        if sep:
+            clean_stem = stem.rstrip(". ")
+            clean_ext = ext.rstrip(". ")
+            filename = (clean_stem + sep + clean_ext) if clean_ext else clean_stem
+        else:
+            filename = filename.rstrip(". ")
+        # Rename Windows reserved device names (e.g. CON.dita → CON_file.dita)
+        stem2, _, ext2 = filename.rpartition(".")
+        if stem2 and stem2.upper() in _WINDOWS_RESERVED:
+            filename = f"{stem2}_file.{ext2}" if ext2 else f"{stem2}_file"
     else:
         # Unix: only / and null are problematic
         filename = filename.replace('/', '_').replace('\x00', '_')
@@ -76,12 +94,14 @@ def _map_xml(
     for entry in normalized_topicrefs:
         href = str(entry.get("href") or "").strip()
         if href:
-            attrs = {"href": xml_escape_href(href)}
+            # Pass raw values — ET.SubElement escapes attribute values automatically.
+            # Pre-escaping with xml_escape_href/xml_escape_attr causes double-encoding.
+            attrs = {"href": href}
             for attr_name, attr_value in (entry.get("attrs") or {}).items():
                 clean_name = str(attr_name or "").strip()
                 clean_value = str(attr_value or "").strip()
                 if clean_name and clean_value:
-                    attrs[clean_name] = xml_escape_attr(clean_value)
+                    attrs[clean_name] = clean_value
             ET.SubElement(root, "topicref", attrs)
             topicref_count += 1
     

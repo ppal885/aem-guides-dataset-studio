@@ -2325,6 +2325,14 @@ async def apply_fix(
         finalized = await _deterministic_refine(updated, apply_instruction=False)
         return finalized if finalized.strip() else updated
 
+    # Rule returned unchanged — check if the condition is already satisfied so we
+    # don't invoke the LLM for a no-op (e.g. xml:lang already present).
+    rule_id = suggestion.get("rule_id", "")
+    if rule_id == "validation_xml_lang":
+        dita_type_check = _get_dita_type(xml)
+        if _root_has_xml_lang(xml, dita_type_check):
+            return xml  # already satisfied — nothing to do
+
     deterministic = await _deterministic_refine(xml)
     deterministic = _clean_candidate(deterministic)
     if deterministic != xml:

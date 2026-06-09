@@ -860,6 +860,7 @@ def generate_topic_topics_dataset(
     content_sections_by_topic: Optional[List[List[dict]]] = None,
     content_prolog_metadata: Optional[dict] = None,
     map_topicref_attribute_distributions: Optional[List[dict]] = None,
+    content_filenames: Optional[List[str]] = None,
 ) -> Dict[str, bytes]:
     """Generate a dataset with plain DITA topics using subject-aware content overrides."""
     if rand is None:
@@ -879,7 +880,10 @@ def generate_topic_topics_dataset(
     topic_paths = []
 
     for i in range(1, n_topics + 1):
-        filename = sanitize_filename(f"topic_{i:05d}.dita", config.windows_safe_filenames)
+        if content_filenames and i <= len(content_filenames):
+            filename = content_filenames[i - 1]
+        else:
+            filename = sanitize_filename(f"topic_{i:05d}.dita", config.windows_safe_filenames)
         path = safe_join(topic_dir, filename)
         topic_id = stable_id(config.seed, "topic", str(i), used_ids)
 
@@ -917,12 +921,54 @@ def generate_topic_topics_dataset(
             config,
             map_id=map_id,
             title="Generic Topics Map",
-            hrefs=hrefs,
+            topicref_hrefs=hrefs,
             topicref_entries=topicref_entries,
         )
         files[map_path] = map_xml
 
     return files
+
+
+def _build_structure_xml(title: str, structure_req: dict) -> str:
+    """Return an XML snippet (section body) for a structure_requirement dict."""
+    name = structure_req.get("structure_name", "")
+    if name == "codeblock":
+        lang = structure_req.get("language", "")
+        oc = f' outputclass="language-{lang}"' if lang else ""
+        return f'<codeblock{oc}>// {title} example</codeblock>'
+    if name == "table":
+        cols = int(structure_req.get("columns", 2))
+        rows = int(structure_req.get("rows", 3))
+        colspecs = "".join(f'<colspec colname="c{c}" colnum="{c}"/>' for c in range(1, cols + 1))
+        header_cells = "".join(f"<entry>Col {c}</entry>" for c in range(1, cols + 1))
+        header_row = f"<row>{header_cells}</row>"
+        body_rows = ""
+        for r in range(1, rows + 1):
+            cells = "".join(
+                f"<entry>{title} R{r}C{c}</entry>" for c in range(1, cols + 1)
+            )
+            body_rows += f"<row>{cells}</row>"
+        return (
+            f'<table><tgroup cols="{cols}">{colspecs}'
+            f"<thead>{header_row}</thead>"
+            f"<tbody>{body_rows}</tbody></tgroup></table>"
+        )
+    return ""
+
+
+def _inject_structures_into_topic(xml_bytes: bytes, title: str, structure_requirements: list) -> bytes:
+    """Append structure elements into the <refbody> or <body> of a topic XML."""
+    if not structure_requirements:
+        return xml_bytes
+    snippets = [_build_structure_xml(title, req) for req in structure_requirements if req]
+    if not snippets:
+        return xml_bytes
+    extra = "".join(snippets)
+    # Inject before closing </refbody> or </body>
+    for close_tag in ("</refbody>", "</body>"):
+        if close_tag.encode() in xml_bytes:
+            return xml_bytes.replace(close_tag.encode(), (extra + close_tag).encode(), 1)
+    return xml_bytes
 
 
 def generate_reference_topics_dataset(
@@ -939,6 +985,7 @@ def generate_reference_topics_dataset(
     content_detail_snippets: Optional[List[str]] = None,
     content_prolog_metadata: Optional[dict] = None,
     map_topicref_attribute_distributions: Optional[List[dict]] = None,
+    structure_requirements: Optional[List[dict]] = None,
 ) -> Dict[str, bytes]:
     """Generate a dataset with Reference topics (refbody, refsyn, section, properties; optionally choicetable)."""
     if rand is None:
@@ -976,10 +1023,11 @@ def generate_reference_topics_dataset(
             detail_snippet=detail_snippet,
             prolog_metadata=content_prolog_metadata,
         )
-        
+        if structure_requirements:
+            topic_xml = _inject_structures_into_topic(topic_xml, title, structure_requirements)
         files[path] = topic_xml
         topic_paths.append(path)
-    
+
     # Validate that all topics were created before generating map
     import logging
     logger = logging.getLogger(__name__)

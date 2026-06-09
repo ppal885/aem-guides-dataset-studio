@@ -130,7 +130,9 @@ def compute_signal_priors(evidence_text: str) -> dict[str, float]:
     Applies routing override boosts when evidence matches feedback-learned keywords.
     """
     if not evidence_text:
-        return {m: 0.0 for m in ALL_MECHANISMS}
+        fallback = {m: 0.0 for m in ALL_MECHANISMS}
+        fallback["keyref"] = 0.1
+        return fallback
 
     text = evidence_text.lower()
     scores: dict[str, float] = {m: 0.0 for m in ALL_MECHANISMS}

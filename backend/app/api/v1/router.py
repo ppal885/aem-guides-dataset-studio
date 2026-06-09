@@ -15,7 +15,9 @@ from app.api.v1.routes import (
     limits,
     performance,
     presets,
+    qa_studio,
     recipes,
+    recorder,
     schedule,
     scale_testing,
     smart_suggestions,
@@ -100,4 +102,7 @@ api_router.include_router(smart_suggestions.router, prefix="/smart", tags=["smar
 api_router.include_router(doc_pdf.router, prefix="/docs", tags=["docs"])
 api_router.include_router(jira_rag.router, prefix="/jira-rag", tags=["jira-rag"])
 api_router.include_router(kb_search.router, prefix="/jira-kb", tags=["jira-kb"])
-api_router.include_router(uac_copilot.router, prefix="/uac-copilot", tags=["uac-copilot"])
+# uac_copilot.router has its own prefix "/ai/uac" — include without extra prefix
+api_router.include_router(uac_copilot.router)
+api_router.include_router(qa_studio.router, prefix="/qa-studio", tags=["qa-studio"])
+api_router.include_router(recorder.router, prefix="/recorder", tags=["recorder"])
