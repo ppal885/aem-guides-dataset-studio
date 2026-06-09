@@ -1013,14 +1013,16 @@ Output ONLY a valid JSON object:
 
 Rules:
 - keydefs: 5–15 real domain keys (e.g. "product-name", "version-num", "support-url"). Use real values.
-- topics: {limit} topics that reference those keys via @keyref or <keyword keyref="...">.
+- topics: {limit} topics that reference those keys via <keyword keyref="key-name"/> inline in body text.
 - Titles must be domain-specific, never "Topic 1" style.
+- IMPORTANT: <keyword keyref="..."/> goes INLINE inside <p> or <cmd> — NOT wrapped in <keywords> in body.
+  The <keywords> wrapper belongs only in <prolog><metadata> or keydef <topicmeta>.
 - Produce at least 5 topics.
 """
 
 _FILL_SYSTEM_KEYDEF = """\
 You are a DITA 1.3 XML author generating a keydef dataset.
-The DITA map defines keys; topics use @keyref or <keyword keyref="...">.
+The DITA map defines keys; topics use <keyword keyref="..."/> INLINE in body text.
 
 Output ONLY a valid JSON object:
 {{
@@ -1030,28 +1032,21 @@ Output ONLY a valid JSON object:
   ]
 }}
 
-KEYDEF MAP example:
-  <?xml version="1.0" encoding="UTF-8"?>
-  <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
-  <map>
-    <title>Real Map Title</title>
-    <keydef keys="product-name"><topicmeta><keywords><keyword>Real Product Name</keyword></keywords></topicmeta></keydef>
-    <keydef keys="version-num" href="topics/release-notes.dita" format="dita"/>
-    <topicref href="topics/topic-001.dita"/>
-  </map>
+KEYDEF MAP — keyword value inside <topicmeta><keywords><keyword>:
+  <keydef keys="product-name"><topicmeta><keywords><keyword>Real Product Name</keyword></keywords></topicmeta></keydef>
+  <keydef keys="version-num"><topicmeta><keywords><keyword>4.6</keyword></keywords></topicmeta></keydef>
 
-TOPIC using keyref:
-  <concept id="{{id}}">
-    <title>Real title</title>
-    <conbody>
-      <p>This applies to <keyword keyref="product-name"/> version <keyword keyref="version-num"/>.</p>
-    </conbody>
+TOPIC — <keyword keyref="..."/> INLINE in <p> (NOT wrapped in <keywords> in body):
+  <concept id="t001"><title>Using <keyword keyref="product-name"/></title>
+    <conbody><p>Install <keyword keyref="product-name"/> version <keyword keyref="version-num"/>.</p></conbody>
   </concept>
 
-CRITICAL:
-- Use REAL domain keys and values, never "key1" or "value1" placeholders.
-- keyref targets must match keys defined in the keydef map exactly.
-- XML must be well-formed.
+DTD RULES (strictly follow):
+1. <keyword keyref="name"/> is INLINE — valid inside <p>, <title>, <cmd>, <li>
+2. <keywords><keyword>...</keyword></keywords> belongs ONLY in <keydef><topicmeta> OR <prolog><metadata>
+3. NEVER place <keywords> inside <body> — DTD violation
+4. Use real domain values, never placeholders like "key1" or "Real Product Name"
+5. keyref values must exactly match the @keys attributes in keydef
 """
 
 _OUTLINE_SYSTEM_GLOSSARY = """\
@@ -1614,7 +1609,7 @@ async def _run_freeform_keydef(
                 f"Domain: {prompt}\n\nKeydefs: {json.dumps(keydefs)}\n\n"
                 f"Topics to generate:\n" + json.dumps(flat_topics, indent=2)
             ),
-            max_tokens=14000,
+            max_tokens=6000,
             step_name="freeform_keydef_fill",
             trace_id=trace_id,
             jira_id=jira_id,
