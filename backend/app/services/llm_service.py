@@ -348,21 +348,21 @@ def build_openai_chat_completion_kwargs(*, provider: str | None = None, **kwargs
     """
     Return OpenAI/Azure chat.completions.create kwargs, dropping None values.
 
-    `max_completion_tokens` is only supported on OpenAI API >= 2024-09-01 (o1 reasoning
-    models). Standard Azure deployments on API version 2024-02-01 use `max_tokens`.
-    Keep `max_tokens` as-is; only upgrade to `max_completion_tokens` for o1/o3 models.
+    Azure OpenAI deployments with API version 2024-09-01+ (including all newer models
+    like gpt-4.1) require `max_completion_tokens` and reject `max_tokens`. We always
+    convert for azure_openai to avoid hard errors on model upgrades.
+    For openai provider only upgrade for o1/o3/o4 reasoning models.
     """
     normalized = {k: v for k, v in kwargs.items() if v is not None}
     active_provider = provider or _effective_provider()
     if active_provider in {"openai", "azure_openai"} and "max_tokens" in normalized:
-        model_name = str(os.getenv("AZURE_OPENAI_MODEL", "") or os.getenv("OPENAI_MODEL", "")).lower()
-        api_version = str(os.getenv("AZURE_OPENAI_API_VERSION", "")).strip()
-        _is_reasoning_model = model_name.startswith(("o1", "o3", "o4"))
-        # Use max_completion_tokens for o1/o3/o4 reasoning models or Azure API >= 2024-09-01
-        # (which requires it for newer models like gpt-5).
-        _supports_max_completion = _is_reasoning_model or api_version >= "2024-09-01"
-        if _supports_max_completion:
+        if active_provider == "azure_openai":
+            # Azure always needs max_completion_tokens (gpt-4.1+ reject max_tokens)
             normalized["max_completion_tokens"] = normalized.pop("max_tokens")
+        else:
+            model_name = str(os.getenv("OPENAI_MODEL", "")).lower()
+            if model_name.startswith(("o1", "o3", "o4")):
+                normalized["max_completion_tokens"] = normalized.pop("max_tokens")
     return normalized
 
 
