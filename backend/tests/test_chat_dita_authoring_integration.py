@@ -756,12 +756,22 @@ async def test_generate_topic_blocks_placeholder_output_when_screenshot_signal_i
     def fake_read(_asset_id: str):
         return b"\x89PNG\r\n\x1a\n" + b"\x00" * 20, {}
 
-    def fail_if_saved(**kwargs):
-        raise AssertionError("Weak screenshot generations should not persist placeholder XML artifacts")
+    saved_assets: list[dict] = []
+
+    def capture_save(**kwargs):
+        saved_assets.append(kwargs)
+        return ChatAttachmentRef(
+            asset_id="draft-1",
+            kind="generated_dita",
+            filename=kwargs.get("filename") or "topic.dita",
+            mime_type="application/xml",
+            size_bytes=len(kwargs.get("content") or ""),
+            url="/api/v1/chat/assets/draft-1",
+        )
 
     monkeypatch.setattr(mod, "run_screenshot_guided_pipeline", fake_pipeline)
     monkeypatch.setattr(mod, "read_asset_bytes", fake_read)
-    monkeypatch.setattr(mod, "save_text_asset", fail_if_saved)
+    monkeypatch.setattr(mod, "save_text_asset", capture_save)
 
     payload = ChatAuthoringRequestPayload(
         content="Generate a DITA task topic from this screenshot",
@@ -790,9 +800,11 @@ async def test_generate_topic_blocks_placeholder_output_when_screenshot_signal_i
     )
 
     assert result.status == "invalid"
-    assert result.xml_preview == ""
+    assert result.xml_preview
+    assert "task" in result.xml_preview.lower()
     assert result.validation_result.valid is False
     assert any("vision analysis is unavailable" in issue.lower() for issue in result.validation_result.structural_issues)
     assert any("placeholder scaffolding" in issue.lower() for issue in result.validation_result.structural_issues)
     assert "Screenshot review required" in (result.message or "")
-    assert all(action.key != "open_in_editor" for action in (result.actions or []))
+    assert any(action.key == "open_in_editor" for action in (result.actions or []))
+    assert len(saved_assets) == 1

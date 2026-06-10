@@ -309,7 +309,7 @@ class TopicGenerationOrchestrator:
                 _record(
                     trace,
                     order,
-                    f"repair_pass_{repair_pass + 1}",
+                    "repair_optional" if repair_pass == 0 else f"repair_pass_{repair_pass + 1}",
                     t0,
                     True,
                     repaired=rep.repaired,

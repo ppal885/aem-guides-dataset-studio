@@ -3912,6 +3912,13 @@ def _build_compact_chat_system_prompt(
         base += f"\n\n# ANSWERING GUIDANCE\n{skill_guidance}"
     if rag_context:
         base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
+        if "DITA OPEN TOOLKIT GITHUB ISSUES" in rag_context:
+            base += (
+                "\n\n# DITA-OT GITHUB CONTEXT\n"
+                "When DITA Open Toolkit GitHub issues appear above, the reader may be new to hierarchical "
+                "conditional processing or subject schemes. Explain expected vs reported toolkit behavior plainly; "
+                "cite issue URLs from context; treat open issues as community reports — verify on the user's OT version."
+            )
     if human_prompts:
         addon = _get_human_precision_addon().strip()
         if addon:
@@ -4363,7 +4370,9 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
             for issue in ot_issues:
                 title = issue.get("title", "")
                 url = issue.get("url", "")
-                snippet = (issue.get("snippet") or "")[:600]
+                is_ref = issue.get("source") == "dita_ot_github_reference"
+                cap = 3500 if is_ref else 600
+                snippet = (issue.get("snippet") or "")[:cap]
                 ot_parts.append(f"Issue: {title}\nURL: {url}\n{snippet}")
             parts.append("DITA OPEN TOOLKIT GITHUB ISSUES:\n" + "\n\n".join(ot_parts))
     except Exception as e:

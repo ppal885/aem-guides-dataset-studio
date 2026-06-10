@@ -71,6 +71,54 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _CC_MENTION_LINE_RE = re.compile(r"^\s*(cc|ping|ref|/cc)\s+@\S.*$", re.MULTILINE | re.IGNORECASE)
 _FIXES_LINE_RE = re.compile(r"^\s*(fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+#\d+\s*$", re.MULTILINE | re.IGNORECASE)
 _EXCESS_BLANK_RE = re.compile(r"\n{3,}")
+_SECTION_HEADING_RE = re.compile(
+    r"^\s*#{1,3}\s*(expected|actual|steps?\s+to\s+reproduce|reproduction|root\s+cause|summary|environment)\b",
+    re.MULTILINE | re.IGNORECASE,
+)
+_NOISE_LINE_RE = re.compile(
+    r"^\s*(\+1|same\s+here|bump|me\s+too|any\s+updates\??|following|subscribe[d]?)\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def classify_chunk_quality(*, title: str, body: str) -> tuple[bool, str, str]:
+    """Score GitHub issue text for RAG indexing.
+
+    Returns ``(keep, reason, cleaned_body)``. ``cleaned_body`` may extract high-signal
+    sections (Expected / Actual / Steps to reproduce) when present.
+    """
+    cleaned = _clean_body(body)
+    if len(cleaned) < _MIN_BODY_CHARS:
+        return False, "body_too_short", cleaned
+
+    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+    substantive = [
+        ln
+        for ln in lines
+        if len(ln) > 24 and not _NOISE_LINE_RE.match(ln) and not ln.startswith("> ")
+    ]
+    if len(substantive) < 2 and len(cleaned) < 400:
+        return False, "low_substance", cleaned
+
+    sections: list[str] = []
+    matches = list(_SECTION_HEADING_RE.finditer(cleaned))
+    if matches:
+        for idx, match in enumerate(matches):
+            start = match.start()
+            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(cleaned)
+            chunk = cleaned[start:end].strip()
+            if len(chunk) > 80:
+                sections.append(chunk)
+    if sections:
+        extracted = "\n\n".join(sections[:6])
+        if len(extracted) >= _MIN_BODY_CHARS:
+            return True, "ok_sections", extracted
+
+    title_l = (title or "").strip().lower()
+    if title_l.startswith(("question:", "discussion:", "rfc:")) and len(cleaned) < 500:
+        return False, "discussion_style", cleaned
+
+    return True, "ok", cleaned
 
 
 def _clean_body(body: str) -> str:
@@ -99,7 +147,10 @@ def _should_index_issue(issue: dict[str, Any]) -> bool:
         if issue_labels & _SKIP_LABELS:
             return False
     body = _clean_body(str(issue.get("body") or ""))
-    return len(body) >= _MIN_BODY_CHARS
+    keep, _reason, signal_body = classify_chunk_quality(title=str(issue.get("title") or ""), body=body)
+    if not keep:
+        return False
+    return len(signal_body) >= _MIN_BODY_CHARS
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -235,7 +286,8 @@ def _issue_document(issue: dict[str, Any]) -> tuple[str, str, str, dict[str, Any
     if num <= 0:
         raise ValueError("invalid issue number")
     title = str(issue.get("title") or "").strip()
-    body = _clean_body(str(issue.get("body") or ""))
+    raw_body = str(issue.get("body") or "")
+    _keep, _reason, body = classify_chunk_quality(title=title, body=raw_body)
     state = str(issue.get("state") or "").strip()
     labels_raw = issue.get("labels") or []
     label_names: list[str] = []
@@ -632,6 +684,7 @@ def retrieve_dita_ot_github_for_query(query: str, k: int = 4) -> list[dict[str, 
 
 __all__ = [
     "CHROMA_COLLECTION_DITA_OT_GITHUB",
+    "classify_chunk_quality",
     "get_dita_ot_github_reference_issues",
     "GITHUB_REPO_ISSUES_URL",
     "index_dita_ot_github_issues",

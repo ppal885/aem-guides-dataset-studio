@@ -229,6 +229,19 @@ def _shorten(value: str, limit: int = 1800) -> str:
     return text[:limit].rstrip() + "\n...[truncated]"
 
 
+def _resolve_pipeline_xml(
+    ser: SerializationResult,
+    val: ValidationStageResult,
+    repair: RepairStageResult | None,
+) -> str:
+    """Best available XML from pipeline stages (repair → normalized validate → serialize)."""
+    if repair is not None and (repair.xml or "").strip():
+        return repair.xml
+    if (val.normalized_xml or "").strip():
+        return val.normalized_xml
+    return ser.xml or ""
+
+
 def _default_file_name(title: str, dita_type: str) -> str:
     base = re.sub(r"[^A-Za-z0-9._-]+", "-", (title or dita_type or "generated-topic").strip().lower()).strip(".-")
     return f"{base or 'generated-topic'}.dita"
@@ -470,13 +483,31 @@ class ChatDitaAuthoringService:
             semantic_plan=merged_plan,
         )
         if block_reasons:
+            pipeline_xml = _resolve_pipeline_xml(s7, val, s9)
+            merged_structural = list(
+                dict.fromkeys(
+                    block_reasons
+                    + list(val.validation_result.structural_issues or [])[:8]
+                    + list(val.validation_result.validator_errors or [])[:8]
+                )
+            )
             topic_validation = TopicGenerationValidation.from_chat_dita_validation(
                 ChatDitaValidationResult(
                     valid=False,
-                    structural_issues=block_reasons,
+                    structural_issues=merged_structural,
+                    validator_warnings=list(val.validation_result.validator_warnings or [])[:12],
                     review_issues=image_context.warnings[:8] + image_context.structured.uncertainty_warnings[:8],
                 )
             )
+            artifact_ref: ChatAttachmentRef | None = None
+            if pipeline_xml.strip():
+                artifact_ref = save_text_asset(
+                    session_id=session_id,
+                    user_id=user_id,
+                    kind="generated_dita",
+                    filename=opts.file_name or _default_file_name(merged_plan.title, merged_plan.dita_type),
+                    content=pipeline_xml,
+                )
             for reason in block_reasons:
                 assumption_objs.append(
                     GenerationAssumption(
@@ -529,7 +560,7 @@ class ChatDitaAuthoringService:
                 authoring_trace_id=authoring_trace_id,
                 session_id=session_id,
                 user_id=user_id,
-            tenant_id=tenant_id,
+                tenant_id=tenant_id,
                 pipeline_run_id=trace.run_id,
                 pipeline_version=trace.pipeline_version,
                 status="invalid",
@@ -545,7 +576,7 @@ class ChatDitaAuthoringService:
                 vision_provider=image_context.vision_provider,
                 serialization_mode=s7.mode,
                 duration_ms=run_timer.elapsed_ms(),
-                generated_asset_id=None,
+                generated_asset_id=artifact_ref.asset_id if artifact_ref else None,
             )
             logger.warning_structured(
                 "chat_topic_gen_blocked_for_low_signal_screenshot",
@@ -561,29 +592,42 @@ class ChatDitaAuthoringService:
                     "block_reason_count": len(block_reasons),
                 },
             )
+            blocked_actions = [
+                ChatAction(
+                    key="regenerate",
+                    label="Regenerate",
+                    description="Retry with a clearer screenshot or configure a vision-capable model before regenerating.",
+                ),
+            ]
+            if artifact_ref:
+                blocked_actions.insert(
+                    0,
+                    ChatAction(
+                        key="open_in_editor",
+                        label="Open XML",
+                        url=artifact_ref.url,
+                        description="Review or edit the draft XML — treat screenshot-derived content as unverified.",
+                    ),
+                )
             return ChatDitaAuthoringResult(
                 status="invalid",
                 title=merged_plan.title,
                 dita_type=merged_plan.dita_type,
-                xml_preview="",
+                xml_preview=_shorten(pipeline_xml, limit=3200) if pipeline_xml.strip() else "",
                 validation=topic_validation,
                 saved_asset_path=None,
-                artifact_url=None,
-                actions=[
-                    ChatAction(
-                        key="regenerate",
-                        label="Regenerate",
-                        description="Retry with a clearer screenshot or configure a vision-capable model before regenerating.",
-                    )
-                ],
+                artifact_url=artifact_ref.url if artifact_ref else None,
+                actions=blocked_actions,
                 message=message,
-                semantic_plan=None,
+                semantic_plan=merged_plan if pipeline_xml.strip() else None,
                 image_context=image_context,
                 reference_summaries=[reference_summary],
                 assumptions=assumption_objs[:16],
                 style_profile_diff_summary=None,
                 screenshot_confidence=image_context.structured.confidence,
-                explanation="The screenshot evidence was too weak to generate reliable DITA XML safely.",
+                explanation=(
+                    "Screenshot signal was weak; any XML preview is draft-only — verify against the UI before publishing."
+                ),
                 link_recommendations=[],
                 debug=debug,
                 reference_adoption_decision=reference_adoption,
@@ -2282,7 +2326,9 @@ class ChatDitaAuthoringService:
         reasons: list[str] = []
         actionable = self._has_actionable_screenshot_evidence(structured)
 
-        if image_context.vision_provider == "fallback" or "vision provider unavailable" in warnings_blob:
+        if (
+            image_context.vision_provider == "fallback" or "vision provider unavailable" in warnings_blob
+        ) and not actionable:
             reasons.append(
                 "Screenshot vision analysis is unavailable, so the image could not be interpreted from visual evidence."
             )

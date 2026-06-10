@@ -84,6 +84,19 @@ def _quality_gate_issues(xml: str) -> list[str]:
     return list(dict.fromkeys(issue for issue in issues if issue))
 
 
+def _split_quality_gate_issues(issues: list[str]) -> tuple[list[str], list[str]]:
+    """Hard structural issues vs soft quality warnings (placeholder/filler prose)."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    for issue in issues:
+        lower = issue.lower()
+        if any(token in lower for token in ("placeholder", "filler", "generic section")):
+            warnings.append(issue)
+        else:
+            errors.append(issue)
+    return errors, warnings
+
+
 def _reference_adoption_issues(xml: str, semantic_plan: ChatSemanticPlan) -> list[str]:
     decision = getattr(semantic_plan, "reference_adoption", None)
     policy = decision.serializer_policy if decision else None
@@ -165,11 +178,13 @@ class DitaValidationService:
         validator_warnings.extend(structural_warnings)
         quality_gate_issues = _quality_gate_issues(normalized)
         quality_gate_issues.extend(_reference_adoption_issues(normalized, semantic_plan))
+        hard_quality, soft_quality = _split_quality_gate_issues(quality_gate_issues)
+        validator_warnings.extend(soft_quality)
         valid = (
             not validator["errors"]
             and not (review.get("aem_guides_validation_errors") or [])
             and not structural_errors
-            and not quality_gate_issues
+            and not hard_quality
         )
         result = ChatDitaValidationResult(
             valid=valid,
@@ -177,7 +192,7 @@ class DitaValidationService:
             quality_score=int(review.get("quality_score") or 0) if review.get("quality_score") is not None else None,
             validator_errors=[str(item) for item in (validator.get("errors") or [])],
             validator_warnings=validator_warnings,
-            structural_issues=structural_errors + quality_gate_issues,
+            structural_issues=structural_errors + hard_quality,
             review_issues=list(review.get("validation") or []),
             aem_guides_validation_errors=[str(item) for item in (review.get("aem_guides_validation_errors") or [])],
             applied_repairs=[],
