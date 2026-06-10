@@ -324,3 +324,42 @@ def test_jira_index_search_error_403_message():
     msg = _format_jira_index_search_error(exc)
     assert "403" in msg
     assert "JIRA_PROJECT_KEY" in msg
+
+
+def test_resolve_jira_qa_project_key_prefers_rag_override(monkeypatch):
+    from app.services.jira_qa_index_service import resolve_jira_qa_project_key
+
+    monkeypatch.setenv("JIRA_PROJECT_KEY", "DXML")
+    monkeypatch.setenv("JIRA_QA_RAG_PROJECT_KEY", "GUIDES")
+    assert resolve_jira_qa_project_key() == "GUIDES"
+
+
+def test_default_jira_qa_backfill_limit(monkeypatch):
+    from app.services.jira_qa_index_service import default_jira_qa_backfill_limit
+
+    monkeypatch.delenv("JIRA_QA_RAG_BACKFILL_LIMIT", raising=False)
+    monkeypatch.delenv("JIRA_QA_RAG_DEFAULT_LIMIT", raising=False)
+    assert default_jira_qa_backfill_limit() == 1000
+    monkeypatch.setenv("JIRA_QA_RAG_BACKFILL_LIMIT", "2500")
+    assert default_jira_qa_backfill_limit() == 2500
+
+
+def test_incremental_without_state_falls_back_to_backfill(monkeypatch):
+    from app.services.jira_qa_index_service import index_jira_project_incremental
+
+    calls: list[dict] = []
+
+    def fake_backfill(project_key, **kwargs):
+        calls.append({"project_key": project_key, **kwargs})
+        return {"issues_indexed": 3, "chunks": 12, "message": "ok"}
+
+    monkeypatch.setattr(
+        "app.services.jira_qa_index_service.load_jira_qa_sync_state",
+        lambda _sid: type("S", (), {"last_successful_sync_time": None})(),
+    )
+    monkeypatch.setattr("app.services.jira_qa_index_service.index_jira_project_backfill", fake_backfill)
+
+    out = index_jira_project_incremental("GUIDES", limit=1000)
+    assert out.get("fallback") == "backfill"
+    assert calls and calls[0]["project_key"] == "GUIDES"
+    assert calls[0]["limit"] == 1000

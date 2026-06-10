@@ -6153,7 +6153,9 @@ async def _stream_attachment_authoring_reply(
             fallback = (
                 "I received the attachment(s), but the request does not clearly ask me to generate a new DITA topic from them.\n\n"
                 f"Reason: {decision.reason or 'The authoring intent was too ambiguous.'}\n\n"
-                "Ask something like `generate a DITA task topic from this screenshot` and I’ll run the staged authoring pipeline."
+                "Ask something like `generate a DITA task topic from this screenshot` or "
+                "`create a dataset from this attached image` (with screenshot authoring options enabled) "
+                "and I’ll run the staged authoring pipeline."
             )
             _persist_assistant_message(
                 session_id,

@@ -92,6 +92,30 @@ def _with_retry(operation: str, fn, *, jira_key: str | None = None):  # noqa: AN
     raise last_exc
 
 
+def resolve_jira_qa_project_key() -> str:
+    """Project key for Jira QA RAG backfill/incremental (``JIRA_QA_RAG_PROJECT_KEY`` → ``JIRA_PROJECT_KEY`` → ``GUIDES``)."""
+    for env_name in ("JIRA_QA_RAG_PROJECT_KEY", "JIRA_PROJECT_KEY"):
+        raw = (os.getenv(env_name) or "").strip()
+        if raw:
+            return raw.upper()
+    return "GUIDES"
+
+
+def default_jira_qa_backfill_limit() -> int:
+    """Default issue cap for Settings/backfill runs (``JIRA_QA_RAG_BACKFILL_LIMIT`` or ``JIRA_QA_RAG_DEFAULT_LIMIT``)."""
+    for env_name in ("JIRA_QA_RAG_BACKFILL_LIMIT", "JIRA_QA_RAG_DEFAULT_LIMIT"):
+        raw = (os.getenv(env_name) or "").strip().lower()
+        if not raw or raw in ("all", "none", "unlimited", "0"):
+            continue
+        try:
+            v = int(raw)
+            if v > 0:
+                return v
+        except ValueError:
+            pass
+    return 1000
+
+
 def _resolve_index_limit(limit: int | None) -> int | None:
     """
     Maximum issues to process this run. ``None`` = use ``JIRA_QA_RAG_DEFAULT_LIMIT`` env, or unlimited
@@ -99,14 +123,14 @@ def _resolve_index_limit(limit: int | None) -> int | None:
     """
     if limit is not None:
         return max(int(limit), 1)
-    raw = (os.getenv("JIRA_QA_RAG_DEFAULT_LIMIT") or "").strip().lower()
-    if not raw or raw in ("all", "none", "unlimited", "0"):
+    raw = (os.getenv("JIRA_QA_RAG_DEFAULT_LIMIT") or "1000").strip().lower()
+    if raw in ("all", "none", "unlimited", "0"):
         return None
     try:
         v = int(raw)
         return None if v <= 0 else v
     except ValueError:
-        return 1000
+        return default_jira_qa_backfill_limit()
 
 
 def _max_issues_per_run() -> int | None:
@@ -618,23 +642,32 @@ def index_jira_project_incremental(
     jira_client: JiraClient | None = None,
     sync_state_id: str | None = None,
 ) -> dict[str, Any]:
-    """Incremental index using last sync time from state; run backfill first if no state."""
+    """Incremental index using last sync time from state; auto backfill when no prior sync exists."""
     sid = sync_state_id or f"project:{project_key.strip()}"
     st = load_jira_qa_sync_state(sid)
     if not st.last_successful_sync_time:
-        return {
-            "error": "No prior sync for this sync_state_id; run backfill first.",
-            **_index_run_stats(
-                lim=_resolve_index_limit(limit),
-                jira_total=0,
-                keys_fetched_from_search=0,
-                issues_indexed=0,
-                issues_failed=0,
-                errors=[],
-                chunks=0,
-            ),
-            "sync_state_id": sid,
-        }
+        backfill_limit = limit if limit is not None else default_jira_qa_backfill_limit()
+        logger.info_structured(
+            "jira_qa_incremental_no_state_falling_back_to_backfill",
+            extra_fields={
+                "sync_state_id": sid,
+                "project_key": project_key.strip(),
+                "backfill_limit": backfill_limit,
+            },
+        )
+        out = index_jira_project_backfill(
+            project_key,
+            limit=backfill_limit,
+            force_reindex=force_reindex,
+            jira_client=jira_client,
+            sync_state_id=sid,
+        )
+        out["fallback"] = "backfill"
+        out["message"] = (
+            out.get("message")
+            or f"No prior sync state; ran backfill for up to {backfill_limit} issues instead of incremental."
+        )
+        return out
     jql = build_incremental_jql(project_key, st.last_successful_sync_time)
     return index_jql_to_chroma(
         jql,
@@ -717,3 +750,22 @@ def delete_jira_key_chunks(jira_key: str, chunk_defs: list[dict] | None = None) 
         for idx in range(1, 6):
             ids.append(f"{jira_key}::{ct}::{idx}")
     return delete_documents(CHROMA_COLLECTION_JIRA_QA, ids)
+
+
+def run_jira_qa_rag_backfill(
+    *,
+    project_key: str | None = None,
+    limit: int | None = None,
+    force_reindex: bool = False,
+    jira_client: JiraClient | None = None,
+) -> dict[str, Any]:
+    """Index up to ``limit`` issues from ``project_key`` into Chroma ``jira_qa`` (persisted sync state)."""
+    pk = (project_key or resolve_jira_qa_project_key()).strip()
+    lim = limit if limit is not None else default_jira_qa_backfill_limit()
+    return index_jira_project_backfill(
+        pk,
+        limit=lim,
+        force_reindex=force_reindex,
+        jira_client=jira_client,
+        sync_state_id=f"project:{pk}",
+    )

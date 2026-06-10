@@ -245,8 +245,8 @@ def trigger_cleanup(
 # ---------------------------------------------------------------------------
 
 class JiraBulkIndexRequest(BaseModel):
-    jql: str = "project = GUIDES AND updated > -30d"
-    limit: int = Field(default=100, ge=1, le=500)
+    jql: str = "project = GUIDES ORDER BY updated DESC"
+    limit: int = Field(default=1000, ge=1, le=10000)
     force_reindex: bool = False
 
 
@@ -463,14 +463,27 @@ def index_all_rag(user: UserIdentity = AdminUser):
     except Exception as e:
         results["aem_guides"] = {"error": str(e)}
 
-    # 3. Index recent Jira issues
+    # 3. Index Jira issues into Chroma jira_qa RAG
     try:
-        from app.services.jira_qa_index_service import index_jql_to_chroma, _jira_configured
+        from app.services.jira_qa_index_service import (
+            _jira_configured,
+            default_jira_qa_backfill_limit,
+            resolve_jira_qa_project_key,
+            run_jira_qa_rag_backfill,
+        )
         from app.services.jira_client import JiraClient
         client = JiraClient()
         if _jira_configured(client):
-            r = index_jql_to_chroma("project = GUIDES AND updated > -30d ORDER BY updated DESC", limit=50, jira_client=client)
-            results["jira"] = {"indexed": r.get("issues_indexed", 0), "chunks": r.get("chunks_upserted", 0)}
+            pk = resolve_jira_qa_project_key()
+            lim = default_jira_qa_backfill_limit()
+            r = run_jira_qa_rag_backfill(project_key=pk, limit=lim, jira_client=client)
+            results["jira"] = {
+                "project_key": pk,
+                "limit": lim,
+                "indexed": r.get("issues_indexed", 0),
+                "chunks": r.get("chunks", 0),
+                "error": r.get("error"),
+            }
         else:
             results["jira"] = {"error": "Jira not configured"}
     except Exception as e:

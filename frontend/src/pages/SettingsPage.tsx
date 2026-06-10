@@ -31,6 +31,8 @@ interface RagStatus {
     chunk_count: number;
     count_scope?: string;
     populate_via: string;
+    project_key?: string;
+    backfill_limit?: number;
   };
   tavily?: {
     configured: boolean;
@@ -150,20 +152,45 @@ export function SettingsPage() {
     setIndexingJiraQa(true);
     setLastAction(null);
     setError(null);
+    const projectKey = ragStatus?.jira_qa?.project_key || 'GUIDES';
+    const backfillLimit = ragStatus?.jira_qa?.backfill_limit ?? 1000;
     try {
-      const result = await fetchJson<{ indexed?: number; chunks_stored?: number; errors?: string[] }>(
+      const result = await fetchJson<{
+        issues_indexed?: number;
+        indexed_issues?: number;
+        chunks?: number;
+        fallback?: string;
+        message?: string;
+        error?: string;
+        errors?: string[];
+      }>(
         apiUrl('/api/v1/jira-rag/index'),
         {
           method: 'POST',
-          body: JSON.stringify({ sync_mode: 'incremental', project_key: 'GUIDES', force_reindex: false }),
+          body: JSON.stringify({
+            sync_mode: 'backfill',
+            project_key: projectKey,
+            limit: backfillLimit,
+            force_reindex: false,
+          }),
         }
       );
-      const indexed = result.indexed ?? result.chunks_stored ?? 0;
+      if (result.error) {
+        setError(result.error);
+      }
+      const indexed = result.issues_indexed ?? result.indexed_issues ?? 0;
+      const chunks = result.chunks ?? 0;
       const errs = result.errors ?? [];
+      const modeNote = result.fallback === 'backfill' ? ' (first-run backfill)' : '';
       if (errs.length > 0) {
-        setLastAction(`Indexed ${indexed} Jira QA issues with errors: ${errs.join('; ')}`);
+        setLastAction(
+          `Indexed ${indexed} ${projectKey} issues (${chunks} chunks)${modeNote} with errors: ${errs.join('; ')}`
+        );
       } else {
-        setLastAction(`Indexed ${indexed} Jira QA issues successfully`);
+        setLastAction(
+          result.message ||
+            `Indexed ${indexed} ${projectKey} issues into ${chunks} RAG chunks${modeNote}`
+        );
       }
       await loadRagStatus();
     } catch (e) {
@@ -171,7 +198,7 @@ export function SettingsPage() {
     } finally {
       setIndexingJiraQa(false);
     }
-  }, [loadRagStatus]);
+  }, [loadRagStatus, ragStatus?.jira_qa?.backfill_limit, ragStatus?.jira_qa?.project_key]);
 
   const handleIndexCustomUrls = useCallback(async () => {
     const urls = customUrlsText
@@ -454,7 +481,11 @@ export function SettingsPage() {
                 <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong>
               </p>
               <p className="text-xs text-slate-500 mb-3">
-                Uses <code className="text-xs">sync_mode=incremental</code> with <code className="text-xs">project_key=GUIDES</code>.
+                Backfills up to{' '}
+                <strong>{ragStatus.jira_qa?.backfill_limit ?? 1000}</strong> issues from project{' '}
+                <code className="text-xs">{ragStatus.jira_qa?.project_key ?? 'GUIDES'}</code> into Chroma (
+                <code className="text-xs">sync_mode=backfill</code>). Run again to pick up newer issues
+                incrementally.
               </p>
               <button
                 onClick={handleIndexJiraQa}

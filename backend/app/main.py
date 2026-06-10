@@ -535,6 +535,45 @@ async def startup_event():
                     extra_fields={"cron": cron_expr},
                 )
 
+        jira_qa_rag_bootstrap = os.getenv("JIRA_QA_RAG_BOOTSTRAP_ON_STARTUP", "false").lower() == "true"
+        if jira_qa_rag_bootstrap:
+            try:
+                from app.services.jira_qa_index_service import (
+                    _jira_configured,
+                    default_jira_qa_backfill_limit,
+                    resolve_jira_qa_project_key,
+                    run_jira_qa_rag_backfill,
+                )
+                from app.services.jira_client import JiraClient
+
+                jira_client = JiraClient()
+                if _jira_configured(jira_client):
+                    pk = resolve_jira_qa_project_key()
+                    lim = default_jira_qa_backfill_limit()
+                    result = run_jira_qa_rag_backfill(
+                        project_key=pk,
+                        limit=lim,
+                        jira_client=jira_client,
+                    )
+                    logger.info_structured(
+                        "Jira QA RAG bootstrap completed",
+                        extra_fields={
+                            "project_key": pk,
+                            "limit": lim,
+                            "issues_indexed": result.get("issues_indexed", 0),
+                            "chunks": result.get("chunks", 0),
+                            "error": result.get("error"),
+                        },
+                    )
+                else:
+                    logger.info_structured("Jira QA RAG bootstrap skipped — Jira not configured")
+            except Exception as e:
+                logger.warning_structured(
+                    "Jira QA RAG bootstrap failed (non-fatal)",
+                    extra_fields={"error": str(e)},
+                    exc_info=True,
+                )
+
         dita_index_enabled = os.getenv("DITA_SPEC_INDEX_ENABLED", "false").lower() == "true"
         dita_index_on_startup = os.getenv("DITA_SPEC_INDEX_ON_STARTUP", "false").lower() == "true"
         if dita_index_enabled and dita_index_on_startup:

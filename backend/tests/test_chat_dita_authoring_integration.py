@@ -808,3 +808,52 @@ async def test_generate_topic_blocks_placeholder_output_when_screenshot_signal_i
     assert "Screenshot review required" in (result.message or "")
     assert any(action.key == "open_in_editor" for action in (result.actions or []))
     assert len(saved_assets) == 1
+
+
+@pytest.mark.anyio
+async def test_should_handle_dataset_from_attached_image_with_authoring_options(service: ChatDitaAuthoringService):
+    decision = await service.should_handle_request(
+        user_prompt="Please create a dataset from the attached image",
+        attachments=[
+            ChatAttachmentRef(
+                asset_id="img-1",
+                kind="image",
+                filename="Screenshot (3).png",
+                mime_type="image/png",
+                size_bytes=100,
+                url="/api/v1/chat/assets/img-1",
+            )
+        ],
+        generation_options=ChatDitaGenerationOptions(
+            dita_type="reference",
+            file_name="snippet.dita",
+            output_mode="xml_validation",
+        ),
+    )
+    assert decision.is_authoring_request is True
+    assert decision.dita_type_hint == "reference"
+    assert decision.confidence >= 0.9
+
+
+@pytest.mark.anyio
+async def test_should_handle_dataset_from_screenshot_without_llm(monkeypatch, service: ChatDitaAuthoringService):
+    monkeypatch.setattr(
+        "app.services.chat_dita_authoring_service.is_llm_available",
+        lambda: False,
+    )
+    decision = await service.should_handle_request(
+        user_prompt="Create a dataset from this screenshot",
+        attachments=[
+            ChatAttachmentRef(
+                asset_id="img-1",
+                kind="image",
+                filename="screen.png",
+                mime_type="image/png",
+                size_bytes=100,
+                url="/api/v1/chat/assets/img-1",
+            )
+        ],
+        generation_options=ChatDitaGenerationOptions(dita_type="task"),
+    )
+    assert decision.is_authoring_request is True
+    assert decision.dita_type_hint == "task"

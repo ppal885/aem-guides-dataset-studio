@@ -493,6 +493,10 @@ def get_rag_status(
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
 
     def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, jira_qa_count: int = 0, err: str | None = None) -> dict:
+        from app.services.jira_qa_index_service import (
+            default_jira_qa_backfill_limit,
+            resolve_jira_qa_project_key,
+        )
         try:
             tavily = get_tavily_rag_status()
         except Exception as ex:
@@ -555,7 +559,9 @@ def get_rag_status(
                 "chunk_count": jira_qa_count,
                 "count_scope": "Embeddings in Chroma `jira_qa` only.",
                 "used_in": ["chat_rag (Jira QA knowledge base)", "UAC Copilot similar Jiras"],
-                "populate_via": "POST /api/v1/jira-rag/index (index Jira issues into RAG)",
+                "populate_via": "POST /api/v1/jira-rag/index (sync_mode=backfill, project_key, limit>=1000)",
+                "project_key": resolve_jira_qa_project_key(),
+                "backfill_limit": default_jira_qa_backfill_limit(),
             },
             "github_dita": github_dita,
         }

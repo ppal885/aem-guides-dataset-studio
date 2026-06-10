@@ -203,6 +203,27 @@ _AUTHORING_INTENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SCREENSHOT_PATTERN = re.compile(r"\b(screenshot|screen|image|mockup|ui|page|dialog|panel|view)\b", re.IGNORECASE)
+_ATTACHMENT_REFERENCE_PATTERN = re.compile(
+    r"\b(attached|uploaded|this|the)\b.{0,24}\b(screenshot|image|screen|mockup|photo|picture|png|jpg|jpeg|attachment|file)\b|"
+    r"\b(screenshot|image|screen|mockup|photo|picture|attachment)\b.{0,16}\b(attached|uploaded|provided|included)\b",
+    re.IGNORECASE,
+)
+_SCREENSHOT_DATASET_INTENT_PATTERN = re.compile(
+    r"\b(create|generate|build|make|produce|convert|turn|author|write|draft)\b.{0,48}\b("
+    r"dataset|content|dita|topic|xml|snippet|documentation|docs)\b.{0,48}\b("
+    r"from|using|based on|with|for|out of)\b.{0,32}\b("
+    r"this|the|attached|uploaded|provided|included)?\s*"
+    r"(screenshot|image|screen|mockup|photo|picture|attachment|ui)\b|"
+    r"\b(dataset|content|snippet|documentation)\b.{0,32}\b("
+    r"from|using|based on|with|for|out of)\b.{0,32}\b("
+    r"this|the|attached|uploaded|provided|included)?\s*"
+    r"(screenshot|image|screen|mockup|photo|picture|attachment|ui)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_FROM_ATTACHMENT_PATTERN = re.compile(
+    r"\b(create|generate|build|make|produce|convert|turn|author|write|draft)\b",
+    re.IGNORECASE,
+)
 _AEM_BASE_URL = (os.getenv("CHAT_AUTHORING_AEM_BASE_URL") or "").strip()
 _AEM_USERNAME = (os.getenv("CHAT_AUTHORING_AEM_USERNAME") or "").strip()
 _AEM_PASSWORD = (os.getenv("CHAT_AUTHORING_AEM_PASSWORD") or "").strip()
@@ -289,6 +310,70 @@ def _title_contains_any_token(title: str, *tokens: str) -> bool:
     return any(token.lower() in words for token in tokens if token)
 
 
+def _prompt_references_attached_image(prompt: str) -> bool:
+    text = (prompt or "").strip()
+    if not text:
+        return False
+    return bool(_SCREENSHOT_PATTERN.search(text) or _ATTACHMENT_REFERENCE_PATTERN.search(text))
+
+
+def _generation_options_signal_screenshot_authoring(options: ChatDitaGenerationOptions) -> bool:
+    """True when the client sent screenshot-authoring UI options (not a generic chat message)."""
+    if getattr(options, "screenshot_deliverable", "single_topic") != "single_topic":
+        return False
+    if options.dita_type and str(options.dita_type).strip().lower() not in {"", "auto", "map"}:
+        return True
+    if (options.file_name or "").strip():
+        return True
+    if options.output_mode == "xml_validation":
+        return True
+    if options.authoring_pattern and options.authoring_pattern != "default":
+        return True
+    if options.preserve_prolog or options.preserve_reference_doctype or options.xref_placeholders:
+        return True
+    return False
+
+
+def classify_screenshot_dataset_authoring_intent(
+    prompt: str,
+    generation_options: ChatDitaGenerationOptions,
+    *,
+    dita_type_hint_from_prompt: str | None = None,
+) -> ChatAuthoringIntentDecision | None:
+    """
+    Accept screenshot-guided authoring when the user asks to create a dataset/content from an image.
+
+    Studio chat often says "create a dataset from this screenshot" while the authoring UI supplies
+    ``ChatDitaGenerationOptions`` for a single DITA topic — not a bulk recipe ``create_job`` run.
+    """
+    if getattr(generation_options, "screenshot_deliverable", "single_topic") != "single_topic":
+        return None
+    if not _prompt_references_attached_image(prompt):
+        return None
+    if not _CREATE_FROM_ATTACHMENT_PATTERN.search(prompt or ""):
+        return None
+
+    ui_authoring = _generation_options_signal_screenshot_authoring(generation_options)
+    dataset_from_image = bool(_SCREENSHOT_DATASET_INTENT_PATTERN.search(prompt or ""))
+    if not dataset_from_image and not ui_authoring:
+        return None
+
+    hint = generation_options.dita_type or dita_type_hint_from_prompt
+    confidence = 0.96 if ui_authoring else 0.9
+    reason = (
+        "The prompt asks to create content from an attached image and generation options target "
+        "screenshot-guided DITA topic authoring."
+        if ui_authoring
+        else "The prompt asks to create a dataset or content from an attached screenshot or image."
+    )
+    return ChatAuthoringIntentDecision(
+        is_authoring_request=True,
+        confidence=confidence,
+        reason=reason,
+        dita_type_hint=hint,
+    )
+
+
 class ChatDitaAuthoringService:
     async def should_handle_request(
         self,
@@ -323,6 +408,14 @@ class ChatDitaAuthoringService:
                 dita_type_hint=dita_hint,
             )
 
+        dataset_decision = classify_screenshot_dataset_authoring_intent(
+            prompt,
+            generation_options,
+            dita_type_hint_from_prompt=self._dita_type_hint_from_prompt(prompt),
+        )
+        if dataset_decision is not None:
+            return dataset_decision
+
         if not _SCREENSHOT_PATTERN.search(prompt):
             return ChatAuthoringIntentDecision(
                 is_authoring_request=False,
@@ -331,6 +424,13 @@ class ChatDitaAuthoringService:
             )
 
         if not is_llm_available():
+            dataset_decision = classify_screenshot_dataset_authoring_intent(
+                prompt,
+                generation_options,
+                dita_type_hint_from_prompt=self._dita_type_hint_from_prompt(prompt),
+            )
+            if dataset_decision is not None:
+                return dataset_decision
             return ChatAuthoringIntentDecision(
                 is_authoring_request=False,
                 confidence=0.35,
@@ -343,7 +443,13 @@ class ChatDitaAuthoringService:
                     "You classify whether a chat request is asking to author a NEW DITA topic from an attached image "
                     "and optional reference DITA file.\n"
                     "Return JSON only with keys: is_authoring_request, confidence, reason, dita_type_hint.\n"
-                    "Use dita_type_hint only if the user explicitly or implicitly points to topic, task, concept, or reference."
+                    "Use dita_type_hint only if the user explicitly or implicitly points to topic, task, concept, or reference.\n"
+                    "Treat these as authoring requests when an image is attached:\n"
+                    "- generate/create/write a DITA topic/task/concept/reference from a screenshot or image\n"
+                    "- create a dataset or content from an attached screenshot/image when generation_options indicate "
+                    "single-topic DITA output (dita_type, file_name, xml_validation mode)\n"
+                    "Do NOT treat bulk multi-topic dataset jobs (recipe bundles, job history) as authoring unless the "
+                    "user clearly wants one DITA topic from the screenshot."
                 ),
                 user_prompt=json.dumps(
                     {
@@ -357,6 +463,14 @@ class ChatDitaAuthoringService:
                 max_tokens=320,
                 step_name="chat_dita_authoring_classify",
             )
+            if not bool(raw.get("is_authoring_request")):
+                override = classify_screenshot_dataset_authoring_intent(
+                    prompt,
+                    generation_options,
+                    dita_type_hint_from_prompt=self._dita_type_hint_from_prompt(prompt),
+                )
+                if override is not None:
+                    return override
             return ChatAuthoringIntentDecision(
                 is_authoring_request=bool(raw.get("is_authoring_request")),
                 confidence=float(raw.get("confidence") or 0.0),
@@ -368,6 +482,13 @@ class ChatDitaAuthoringService:
                 "Attachment authoring classification fell back to deterministic logic",
                 extra_fields={"error": str(exc)},
             )
+            override = classify_screenshot_dataset_authoring_intent(
+                prompt,
+                generation_options,
+                dita_type_hint_from_prompt=self._dita_type_hint_from_prompt(prompt),
+            )
+            if override is not None:
+                return override
             return ChatAuthoringIntentDecision(
                 is_authoring_request=False,
                 confidence=0.3,
