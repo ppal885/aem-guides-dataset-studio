@@ -14,7 +14,9 @@ _STOPWORDS = {
     "a", "an", "and", "or", "the", "to", "for", "from", "with", "without", "this", "that", "these", "those",
     "issue", "ticket", "topic", "task", "story", "feature", "bug", "page", "document", "article", "guide",
     "guides", "user", "users", "when", "where", "what", "how", "using", "used", "into", "onto",
-    "you", "your", "mean", "means", "meant",
+    "you", "your", "do", "does", "did", "mean", "means", "meant",
+    "attribute", "attributes", "element", "elements", "table", "tables",
+    "explain", "tell", "understand", "work", "works",
     "different", "various", "type", "types", "kind", "kinds", "compare", "comparison", "difference",
     "about", "dita", "xml",
 }
@@ -251,12 +253,21 @@ def _normalize_space(text: str) -> str:
 def _tokenize(text: str) -> list[str]:
     seen: set[str] = set()
     tokens: list[str] = []
-    for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9._/-]{2,}", text or ""):
-        lowered = token.lower()
-        if lowered in _STOPWORDS or lowered in seen:
-            continue
-        seen.add(lowered)
-        tokens.append(token)
+    for raw_token in re.findall(r"[A-Za-z0-9][A-Za-z0-9._/-]{2,}", text or ""):
+        candidate_tokens = [raw_token]
+        if "/" in raw_token:
+            split_parts = [part for part in raw_token.split("/") if len(part) >= 3]
+            if split_parts:
+                candidate_tokens = split_parts
+        for token in candidate_tokens:
+            token = token.strip(".,:;!?")
+            if len(token) < 3:
+                continue
+            lowered = token.lower()
+            if lowered in _STOPWORDS or lowered in seen:
+                continue
+            seen.add(lowered)
+            tokens.append(token)
     return tokens[:16]
 
 
@@ -870,6 +881,17 @@ def _looks_like_retrieval_summary(answer_text: str) -> bool:
     )
 
 
+def _is_retrieval_summary_fragment(answer_text: str) -> bool:
+    lowered = _normalize_space(answer_text).lower()
+    return (
+        lowered.startswith("retrieved ")
+        or "retrieved dita specification guidance" in lowered
+        or lowered.startswith("at a glance retrieved ")
+        or lowered.startswith("details retrieved ")
+        or lowered.startswith("details - retrieved ")
+    )
+
+
 def _build_thin_evidence_answer(
     *,
     question: str,
@@ -879,6 +901,22 @@ def _build_thin_evidence_answer(
     import re as _re
     q_lower = question.lower()
     lowered_points = "\n".join(unsupported).lower()
+
+    _CALLOUT_ATTRIBUTE_PATTERN = _re.compile(
+        r"\bcall[\s-]?out\b.*\battribute\b|\battribute\b.*\bcall[\s-]?out\b",
+        _re.IGNORECASE,
+    )
+    if _CALLOUT_ATTRIBUTE_PATTERN.search(question):
+        lines = [
+            "I couldn't verify a standard DITA attribute named `call out`.",
+            "",
+            "What it usually means:",
+            "- You might mean `@callout`, which is used on `<fn>` to control the rendered footnote marker.",
+            "- If you mean a visual callout or admonition, DITA usually uses `<note>`; use `<hazardstatement>` for formal safety notices.",
+            "",
+            "Use `lookup_dita_spec` with `callout` or share the exact XML snippet for a precise answer.",
+        ]
+        return "\n".join(lines).strip()
 
     # DITA-OT / publishing questions — the spec index doesn't have DITA-OT content
     _OT_KEYWORDS = ("dita-ot", "dita ot", "pdf2", "transtype", "transform", "publish", "plugin", "ant prop")
@@ -946,15 +984,15 @@ def _build_thin_evidence_answer(
 
     if term:
         lines = [
-            f"I don't have enough indexed evidence about `{term}` to give a fully verified answer.",
+            f"I couldn't verify `{term}` directly in the indexed evidence.",
             "",
-            "What I can tell you:",
+            "What it usually means:",
         ]
     else:
         lines = [
-            "The indexed evidence doesn't fully cover this question.",
+            "I couldn't verify this directly from the indexed evidence.",
             "",
-            "What I can tell you:",
+            "What it usually means:",
         ]
 
     if "outputclass" in lowered_points:
@@ -1039,6 +1077,9 @@ async def verify_grounded_answer(
     # that was reformatting / destroying the answer.
     if draft_answer.strip():
         supported, unsupported = _heuristic_supported_sentences(draft_answer, evidence_pack)
+        unsupported = [point for point in unsupported if not _is_retrieval_summary_fragment(point)]
+        if structured_tool_answer:
+            unsupported = []
         citation_objects = evidence_pack.citations(limit=5)
         citation_ids = [c.id for c in citation_objects]
 
@@ -1087,6 +1128,8 @@ async def verify_grounded_answer(
                     for block in _extract_xml_code_blocks(draft_clean)
                 )
                 if (
+                    evidence_pack.decision.status != "conflict"
+                    and
                     len(draft_clean) > 25
                     and not _looks_like_retrieval_summary(draft_clean)
                     and not _unsafe_xml

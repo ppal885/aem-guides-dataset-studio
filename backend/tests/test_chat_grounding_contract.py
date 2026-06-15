@@ -1,6 +1,7 @@
 import pytest
 
 from app.services import chat_service
+from app.services.chat_tools import execute_lookup_dita_attribute, execute_lookup_dita_spec
 from app.services.grounding_service import build_evidence_pack
 
 
@@ -457,6 +458,61 @@ async def test_chat_turn_grounded_scalefit_question_uses_real_attribute_catalog(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "What did morerows attribute do in table?",
+        "What does morerows do in a DITA/CALS table?",
+        "Explain morerows attribute in a DITA table.",
+        "Tell me about morerows in CALS tables.",
+        "How does morerows work in a CALS table?",
+    ],
+)
+async def test_chat_turn_morerows_prompt_variants_render_detailed_answer(monkeypatch, prompt: str):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA attribute questions")
+
+    async def fail_generate_text(*_args, **_kwargs):
+        raise AssertionError("LLM generation should not run when structured attribute evidence is available")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "generate_text", fail_generate_text)
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            prompt,
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        assert "## Short answer" in text
+        assert "@morerows attribute makes a CALS table <entry> span additional rows downward" in text
+        assert "## Syntax" in text
+        assert "non-negative integer row-span count" in text
+        assert "## Supported elements" in text
+        assert "`entry`" in text
+        assert "## Typical usage" in text
+        assert "not <simpletable>" in text
+        assert "## Default behavior" in text
+        assert "current row plus one more row" in text
+        assert "## Verified example" in text
+        assert 'morerows="1"' in text
+        assert "## Common mistakes" in text
+        assert "## Sources" in text
+        assert "not verified" not in text.lower()
+        grounding_event = next(event for event in events if event.get("type") == "grounding")
+        assert grounding_event["grounding"]["answer_kind"] == "dita_attribute"
+        assert grounding_event["grounding"]["example_verified"] is True
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
 async def test_chat_turn_grounded_topicref_question_renders_map_construct_sections(monkeypatch):
     async def fail_build_pack(*_args, **_kwargs):
         raise AssertionError("Corrective RAG pack should not run for direct grounded DITA map construct questions")
@@ -510,6 +566,157 @@ async def test_chat_turn_grounded_topicref_question_renders_map_construct_sectio
         assert "## Common mistakes" in text
         grounding_event = next(event for event in events if event.get("type") == "grounding")
         assert grounding_event["grounding"]["answer_kind"] == "dita_map_construct"
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Explain topicref in a DITA map.",
+        "Tell me about topicref in maps.",
+        "Help me understand the topicref element in maps.",
+        "How does topicref work in a DITA map?",
+    ],
+)
+async def test_chat_turn_topicref_prompt_variants_render_map_construct_answers(monkeypatch, prompt: str):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA map-construct questions")
+
+    async def real_run_tool(name: str, params: dict, **_kwargs):
+        if name == "lookup_dita_spec":
+            return await execute_lookup_dita_spec(params.get("query", ""))
+        if name == "lookup_dita_attribute":
+            return await execute_lookup_dita_attribute(params.get("attribute_name", ""))
+        raise AssertionError(f"Unexpected tool {name}")
+
+    async def fail_generate_text(*_args, **_kwargs):
+        raise AssertionError("LLM generation should not run when structured DITA tool evidence is available")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "run_tool", real_run_tool)
+    monkeypatch.setattr(chat_service, "generate_text", fail_generate_text)
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(session_id, prompt, tenant_id="kone"):
+            events.append(event)
+
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        lowered = text.lower()
+        assert "## short answer" in lowered
+        assert "topicref" in lowered
+        assert "## where it applies" in lowered
+        assert "`map`" in text
+        assert "## what it can contain" in lowered
+        assert "`topicmeta`" in text
+        assert "## common attributes" in lowered
+        assert "`href`" in text
+        assert "## sources" in lowered
+        assert "## comparison" not in lowered
+        grounding_event = next(event for event in events if event.get("type") == "grounding")
+        assert grounding_event["grounding"]["answer_kind"] == "dita_map_construct"
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "What can go inside taskbody in DITA?",
+        "What elements are allowed inside taskbody?",
+        "What can taskbody contain in a DITA task?",
+        "Help me understand the taskbody content model.",
+    ],
+)
+async def test_chat_turn_taskbody_prompt_variants_render_content_model_answers(monkeypatch, prompt: str):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA content-model questions")
+
+    async def real_run_tool(name: str, params: dict, **_kwargs):
+        if name == "lookup_dita_spec":
+            return await execute_lookup_dita_spec(params.get("query", ""))
+        if name == "lookup_dita_attribute":
+            return await execute_lookup_dita_attribute(params.get("attribute_name", ""))
+        raise AssertionError(f"Unexpected tool {name}")
+
+    async def fail_generate_text(*_args, **_kwargs):
+        raise AssertionError("LLM generation should not run when structured DITA tool evidence is available")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "run_tool", real_run_tool)
+    monkeypatch.setattr(chat_service, "generate_text", fail_generate_text)
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(session_id, prompt, tenant_id="kone"):
+            events.append(event)
+
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        lowered = text.lower()
+        assert "## short answer" in lowered
+        assert "taskbody" in lowered
+        assert "## allowed children" in lowered
+        assert "`steps`" in text
+        assert "## placement notes" in lowered
+        assert "`task`" in text
+        assert "## sources" in lowered
+        assert "## comparison" not in lowered
+        grounding_event = next(event for event in events if event.get("type") == "grounding")
+        assert grounding_event["grounding"]["answer_kind"] == "dita_content_model"
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("prompt", "tokens"),
+    [
+        ("Compare note and hazardstatement in DITA.", ("`<note>`", "`<hazardstatement>`")),
+        ("What is the difference between simpletable and table in DITA?", ("`<simpletable>`", "`<table>`")),
+    ],
+)
+async def test_chat_turn_element_comparison_prompts_render_comparison_answers(monkeypatch, prompt: str, tokens: tuple[str, str]):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA comparison questions")
+
+    async def real_run_tool(name: str, params: dict, **_kwargs):
+        if name == "lookup_dita_spec":
+            return await execute_lookup_dita_spec(params.get("query", ""))
+        if name == "lookup_dita_attribute":
+            return await execute_lookup_dita_attribute(params.get("attribute_name", ""))
+        raise AssertionError(f"Unexpected tool {name}")
+
+    async def fail_generate_text(*_args, **_kwargs):
+        raise AssertionError("LLM generation should not run when structured DITA tool evidence is available")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "run_tool", real_run_tool)
+    monkeypatch.setattr(chat_service, "generate_text", fail_generate_text)
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(session_id, prompt, tenant_id="kone"):
+            events.append(event)
+
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        lowered = text.lower()
+        assert "## short answer" in lowered
+        assert "## comparison" in lowered
+        assert "| element | what it does | valid parents | common attributes | typical use |" in lowered
+        assert tokens[0] in text
+        assert tokens[1] in text
+        assert "## sources" in lowered
+        grounding_event = next(event for event in events if event.get("type") == "grounding")
+        assert grounding_event["grounding"]["answer_kind"] == "dita_element_comparison"
     finally:
         chat_service.delete_session(session_id)
 
@@ -1024,6 +1231,53 @@ def test_dita_element_answer_uses_structured_sections_not_generic_verified_detai
     assert "## Typical usage" in rendered
     assert "## Common mistakes" in rendered
     assert "## Verified details" not in rendered
+
+
+def test_dita_attribute_renderer_uses_usage_context_when_definition_is_generic():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="What did morerows attribute do in table?",
+        tool_results_by_name={
+            "lookup_dita_attribute": {
+                "attribute_name": "morerows",
+                "text_content": "The @morerows attribute is a DITA attribute used in construct-specific contexts.",
+                "attribute_syntax": "non-negative integer row-span count",
+                "supported_elements": ["entry"],
+                "usage_contexts": [
+                    "Use @morerows on a CALS table <entry> to make that cell span additional rows downward.",
+                    "It applies to CALS table <entry> cells, not <simpletable> cells.",
+                ],
+                "default_scenarios": [
+                    'A value of "1" means the cell spans the current row plus one more row.',
+                    'For example, @morerows="2" spans three rows total.',
+                ],
+                "common_mistakes": ["Using @morerows without checking that the resulting table grid remains valid."],
+                "correct_examples": [
+                    "<row>\n"
+                    "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
+                    "  <entry>Row 1, Col 2</entry>\n"
+                    "</row>\n"
+                    "<row>\n"
+                    "  <entry>Row 2, Col 2</entry>\n"
+                    "</row>"
+                ],
+                "status": "success",
+            },
+            "lookup_dita_spec": {"error": "No spec requested"},
+        },
+    )
+
+    assert facts is not None
+    assert facts.answer_kind == "dita_attribute"
+    assert facts.example_verified is True
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "construct-specific contexts" not in rendered
+    assert "Use @morerows on a CALS table <entry> to make that cell span additional rows downward." in rendered
+    assert "It applies to CALS table <entry> cells, not <simpletable> cells." in rendered
+    assert 'A value of "1" means the cell spans the current row plus one more row.' in rendered
+    assert "## Default behavior" in rendered
+    assert "## Verified example" in rendered
+    assert "## Common mistakes" in rendered
 
 
 def test_dita_element_comparison_renders_deterministic_comparison_sections():

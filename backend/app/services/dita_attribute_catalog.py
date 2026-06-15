@@ -56,6 +56,7 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
         elements: list[str] | None = None,
         combinations: list[str] | None = None,
         contexts: list[str] | None = None,
+        default_scenarios: list[str] | None = None,
         mistakes: list[str] | None = None,
         example: str = "",
         text: str = "",
@@ -68,7 +69,7 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
             all_valid_values=list(values or []),
             supported_elements=list(elements or []),
             combination_attributes=list(combinations or []),
-            default_scenarios=list(contexts or []),
+            default_scenarios=list(default_scenarios if default_scenarios is not None else (contexts or [])),
             usage_contexts=list(contexts or []),
             common_mistakes=list(mistakes or []),
             correct_examples=[example] if example else [],
@@ -665,8 +666,30 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
             "morerows": _spec(
                 "morerows",
                 elements=["entry"],
-                contexts=["Use @morerows on a CALS table entry to span additional rows."],
+                contexts=[
+                    "Use @morerows on a CALS table <entry> to make that cell span additional rows downward.",
+                    "It applies to CALS table <entry> cells, not <simpletable> cells.",
+                ],
+                default_scenarios=[
+                    'A value of "1" means the cell spans the current row plus one more row.',
+                    'For example, @morerows="2" spans three rows total.',
+                ],
                 mistakes=["Using @morerows without checking that the resulting table grid remains valid."],
+                example=(
+                    "<row>\n"
+                    "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
+                    "  <entry>Row 1, Col 2</entry>\n"
+                    "</row>\n"
+                    "<row>\n"
+                    "  <entry>Row 2, Col 2</entry>\n"
+                    "</row>"
+                ),
+                text=(
+                    "The @morerows attribute makes a CALS table <entry> span additional rows downward.\n\n"
+                    "Syntax: non-negative integer.\n\n"
+                    "A value of \"1\" means the cell spans this row plus one more row. "
+                    "For example, @morerows=\"2\" spans three rows total."
+                ),
                 source_url=CALS_TABLE_ATTRIBUTES_SOURCE_URL,
                 semantic_class="open_token",
                 syntax="non-negative integer row-span count",

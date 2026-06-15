@@ -330,6 +330,44 @@ def _issue_document(issue: dict[str, Any]) -> tuple[str, str, str, dict[str, Any
     return embed_text, doc_text, f"dita_ot_gh_{num}", meta
 
 
+def _reference_document(ref: dict[str, Any]) -> tuple[str, str, str, dict[str, Any]]:
+    """Return Chroma-ready document tuple for a curated reference issue."""
+    num = int(ref.get("issue_number") or 0)
+    if num <= 0:
+        raise ValueError("invalid curated reference issue number")
+    title = str(ref.get("title") or "").strip()
+    snippet = _clean_body(str(ref.get("snippet") or "").strip())
+    if not title or not snippet:
+        raise ValueError("curated reference issue missing title or snippet")
+    url = str(ref.get("url") or "").strip() or f"{ISSUE_HTML_BASE}/{num}"
+
+    embed_text = (
+        f"Title: {title}\n"
+        "State: curated-reference | Labels: curated-reference\n\n"
+        f"{_trunc(snippet, 600)}"
+    )
+    doc_text = "\n".join(
+        [
+            f"Title: {title}",
+            f"State: curated-reference | Issue: #{num}",
+            "Labels: curated-reference",
+            f"URL: {url}",
+            "",
+            "Snippet:",
+            _trunc(snippet, 3000),
+        ]
+    )
+    meta: dict[str, Any] = {
+        "url": url,
+        "title": _trunc(title, 500),
+        "issue_number": num,
+        "state": "curated-reference",
+        "labels": "curated-reference",
+        "source": "dita_ot_github_reference",
+    }
+    return embed_text, doc_text, f"dita_ot_gh_{num}", meta
+
+
 def fetch_dita_ot_issues(
     *,
     max_issues: int,
@@ -429,6 +467,8 @@ def index_dita_ot_github_issues(
         "collection": CHROMA_COLLECTION_DITA_OT_GITHUB,
         "requested_max": cap,
         "indexed": 0,
+        "indexed_live": 0,
+        "indexed_curated_reference": 0,
         "skipped": 0,
         "errors": [],
         "chroma": is_chroma_available(),
@@ -446,8 +486,10 @@ def index_dita_ot_github_issues(
 
     issues, fetch_errors = fetch_dita_ot_issues(max_issues=cap, state=state, since=since)
     out["errors"].extend(fetch_errors)
+    out["fetched_live_issues"] = len(issues)
 
     rows: list[tuple[str, str, str, dict[str, Any]]] = []
+    seen_issue_numbers: set[int] = set()
     for issue in issues:
         if not _should_index_issue(issue):
             out["skipped"] += 1
@@ -455,8 +497,24 @@ def index_dita_ot_github_issues(
         try:
             embed_text, doc_text, doc_id, meta = _issue_document(issue)
             rows.append((embed_text, doc_text, doc_id, meta))
+            seen_issue_numbers.add(int(meta.get("issue_number") or 0))
+            out["indexed_live"] += 1
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(f"skip issue parse: {exc}")
+
+    curated_refs = get_dita_ot_github_reference_issues()
+    out["reference_candidates"] = len(curated_refs)
+    for ref in curated_refs:
+        try:
+            num = int(ref.get("issue_number") or 0)
+            if num > 0 and num in seen_issue_numbers:
+                continue
+            embed_text, doc_text, doc_id, meta = _reference_document(ref)
+            rows.append((embed_text, doc_text, doc_id, meta))
+            seen_issue_numbers.add(int(meta.get("issue_number") or 0))
+            out["indexed_curated_reference"] += 1
+        except Exception as exc:  # noqa: BLE001
+            out["errors"].append(f"skip curated reference parse: {exc}")
 
     if not rows:
         out["errors"].append("No issues fetched or parsed — check network, token, or repo access.")
@@ -485,10 +543,24 @@ def index_dita_ot_github_issues(
         return out
 
     out["indexed"] = len(ids)
+    if out["indexed_live"] == 0 and out["indexed_curated_reference"] > 0:
+        out["message"] = (
+            f"Indexed {out['indexed_curated_reference']} curated DITA-OT reference issues; "
+            "live GitHub fetch returned no usable issues."
+        )
+    elif out["indexed_curated_reference"] > 0:
+        out["message"] = (
+            f"Indexed {out['indexed_live']} live DITA-OT GitHub issues and "
+            f"{out['indexed_curated_reference']} curated reference issues."
+        )
+    else:
+        out["message"] = f"Indexed {out['indexed_live']} live DITA-OT GitHub issues."
     logger.info_structured(
         "dita_ot_github_index_done",
         extra_fields={
             "indexed": len(ids),
+            "indexed_live": out["indexed_live"],
+            "indexed_curated_reference": out["indexed_curated_reference"],
             "skipped": out["skipped"],
             "force_reindex": force_reindex,
             "since": since,

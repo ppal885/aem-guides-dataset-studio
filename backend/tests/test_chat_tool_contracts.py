@@ -250,6 +250,45 @@ async def test_lookup_dita_spec_returns_structured_content_model_for_ditavalref(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Explain topicref in a DITA map.",
+        "Tell me about topicref in maps.",
+        "Help me understand the topicref element in maps.",
+        "How does topicref work in a DITA map?",
+    ],
+)
+async def test_lookup_dita_spec_resolves_topicref_prompt_variants_as_map_construct(query: str):
+    result = await execute_lookup_dita_spec(query)
+
+    assert result["element_name"] == "topicref"
+    assert result["query_type"] != "element_comparison"
+    assert "map" in result["parent_elements"]
+    assert "topicmeta" in result["allowed_children"]
+    assert "topicref" in str(result["summary"]).lower()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What can go inside taskbody in DITA?",
+        "What elements are allowed inside taskbody?",
+        "What can taskbody contain in a DITA task?",
+        "Help me understand the taskbody content model.",
+    ],
+)
+async def test_lookup_dita_spec_resolves_taskbody_content_model_prompt_variants(query: str):
+    result = await execute_lookup_dita_spec(query)
+
+    assert result["element_name"] == "taskbody"
+    assert result["query_type"] == "content_model"
+    assert "steps" in result["allowed_children"]
+    assert "<taskbody>" in result["content_model_summary"]
+
+
+@pytest.mark.anyio
 async def test_lookup_dita_spec_returns_structured_attribute_comparison():
     result = await execute_lookup_dita_spec("conref vs conkeyref")
 
@@ -258,6 +297,23 @@ async def test_lookup_dita_spec_returns_structured_attribute_comparison():
     assert result["attribute_names"] == ["conref", "conkeyref"]
     assert len(result["comparisons"]) == 2
     assert "Compared DITA attributes" in str(result["summary"])
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Compare note and hazardstatement in DITA.", ["note", "hazardstatement"]),
+        ("What is the difference between simpletable and table in DITA?", ["simpletable", "table"]),
+    ],
+)
+async def test_lookup_dita_spec_resolves_element_comparison_prompt_variants(query: str, expected: list[str]):
+    result = await execute_lookup_dita_spec(query)
+
+    assert result["query_type"] == "element_comparison"
+    assert result["comparison_type"] == "element"
+    assert result["element_names"][:2] == expected
+    assert len(result["comparisons"]) == 2
 
 
 @pytest.mark.anyio
@@ -389,6 +445,39 @@ async def test_lookup_dita_attribute_returns_structured_scalefit_guidance():
     assert "height" in result["combination_attributes"]
     assert "scaled up or down to fit within available space" in str(result["text_content"]).lower()
     assert result["source_url"] == "https://dita-lang.org/dita/langref/base/image"
+
+
+@pytest.mark.anyio
+async def test_lookup_dita_attribute_returns_detailed_morerows_guidance():
+    result = await execute_lookup_dita_attribute("What did morerows attribute do in table?")
+
+    assert result["attribute_name"] == "morerows"
+    assert result["attribute_syntax"] == "non-negative integer row-span count"
+    assert result["supported_elements"] == ["entry"]
+    assert any("not <simpletable>" in item for item in result["usage_contexts"])
+    assert any('current row plus one more row' in item for item in result["default_scenarios"])
+    assert result["correct_examples"]
+    assert 'morerows="1"' in result["correct_examples"][0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What did morerows attribute do in table?",
+        "What does morerows do in a DITA/CALS table?",
+        "Explain morerows attribute in a DITA table.",
+        "Tell me about morerows in CALS tables.",
+        "How does morerows work in a CALS table?",
+    ],
+)
+async def test_lookup_dita_attribute_resolves_morerows_prompt_variants(query: str):
+    result = await execute_lookup_dita_attribute(query)
+
+    assert result["attribute_name"] == "morerows"
+    assert result["attribute_syntax"] == "non-negative integer row-span count"
+    assert any("not <simpletable>" in item for item in result["usage_contexts"])
+    assert result["correct_examples"]
 
 
 @pytest.mark.anyio

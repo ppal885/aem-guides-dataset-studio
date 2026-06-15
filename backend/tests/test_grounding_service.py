@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.services import grounding_service
 from app.services.grounding_service import (
     build_evidence_pack,
     build_section_evidence_map,
@@ -217,6 +218,53 @@ async def test_verify_grounded_answer_marks_unknown_term_as_not_verified():
     assert grounded.answer.startswith("href points to the represented resource")
     assert "not verified" in grounded.answer.lower()
     assert "hasinstance" in grounded.answer.lower()
+
+
+def test_missing_query_terms_ignores_auxiliary_verbs_like_did():
+    pack = build_evidence_pack(
+        query="What did morerows attribute do in table grid?",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="CALS morerows",
+                text="The morerows attribute lets an entry span additional rows in a CALS table.",
+                metadata={"title": "CALS morerows"},
+            ),
+        ],
+    )
+
+    missing = grounding_service._missing_query_terms(
+        "What did morerows attribute do in table grid?",
+        pack,
+    )
+
+    assert "did" not in missing
+    assert "grid" in missing
+
+
+def test_missing_query_terms_normalizes_prompt_fillers_and_slash_terms():
+    pack = build_evidence_pack(
+        query="Explain morerows in a DITA/CALS table.",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="CALS morerows",
+                text="The morerows attribute lets an entry span additional rows in a CALS table.",
+                metadata={"title": "CALS morerows"},
+            ),
+        ],
+    )
+
+    missing = grounding_service._missing_query_terms(
+        "Explain morerows in a DITA/CALS table.",
+        pack,
+    )
+
+    assert "explain" not in missing
+    assert "table" not in missing
+    assert "cals" not in missing
 
 
 @pytest.mark.anyio

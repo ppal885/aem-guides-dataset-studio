@@ -324,7 +324,7 @@ _DITA_STRUCTURAL_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_ANSWER_INTENT_PATTERN = re.compile(
-    r"^\s*(what|how|where|when|why|which|should|must|will|would|do|does|can|could|explain|define)\b|"
+    r"^\s*(what|how|where|when|why|which|should|must|will|would|do|does|can|could|explain|define|tell\s+me\s+about|help\s+me\s+understand)\b|"
     r"\b(?:and\s+then|then|and|also)\s+(?:explain|define)\b|"
     r"\b(compare|difference\s+between|versus|vs\.?)\b",
     re.IGNORECASE,
@@ -1137,6 +1137,7 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     text = (user_content or "").strip()
     if not text:
         return "default"
+    requested_attribute = _extract_requested_dita_attribute(text)
     if _detect_jira_style_text(text):
         return "generation_request"
     if extract_issue_key_from_generation_request(text):
@@ -1185,6 +1186,8 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         if _is_dita_answer_request(text):
             return "grounded_dita_answer"
         return "agent_research_plan"
+    if requested_attribute and (_is_definition_style_question(text) or _DITA_ANSWER_INTENT_PATTERN.search(text)):
+        return "grounded_dita_answer"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
     if _DITA_GENERATION_PATTERN.search(text):
@@ -1880,6 +1883,29 @@ def _extract_example_shape_request(question: str) -> bool:
             re.IGNORECASE,
         )
     )
+
+
+_DEFINITION_STYLE_QUESTION_RE = re.compile(
+    r"^\s*(?:"
+    r"what\s+(?:is|are|does|did)\b|"
+    r"explain\b|"
+    r"tell\s+me\s+about\b|"
+    r"help\s+me\s+understand\b|"
+    r"how\s+does\b|"
+    r"meaning\s+of\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_definition_style_question(question: str) -> bool:
+    return bool(_DEFINITION_STYLE_QUESTION_RE.search(question or ""))
+
+
+def _should_auto_include_verified_example(question: str, answer_kind: GroundedAnswerKind) -> bool:
+    if answer_kind not in {"dita_attribute", "dita_map_construct"}:
+        return False
+    return _is_definition_style_question(question)
 
 
 def _fact_source_policy(
@@ -2653,7 +2679,8 @@ def _safe_verified_examples(
     raw_examples: list[str],
     attr_name: str = "",
 ) -> tuple[list[VerifiedExampleSnippet], list[str]]:
-    if not _extract_example_shape_request(question):
+    wants_examples = _extract_example_shape_request(question) or _should_auto_include_verified_example(question, answer_kind)
+    if not wants_examples:
         return [], []
     warnings: list[str] = []
     examples: list[VerifiedExampleSnippet] = []
@@ -2679,7 +2706,7 @@ def _safe_verified_examples(
                 deterministic=False,
             )
         )
-    if _extract_example_shape_request(question) and not examples:
+    if wants_examples and not examples:
         warnings.append("No verified snippet was available for this construct, so the answer omits example XML.")
     return examples, warnings
 
@@ -3131,10 +3158,49 @@ def _markdown_table_cell(value: Any) -> str:
     return text or "-"
 
 
-def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
+def _normalized_fact_text(value: Any) -> str:
+    text = " ".join(str(value or "").split()).strip().lower()
+    return text.rstrip(".")
+
+
+def _unique_fact_points(values: list[str], *, exclude: set[str] | None = None) -> list[str]:
+    excluded = set(exclude or set())
+    results: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        rendered = " ".join(str(value or "").split()).strip()
+        if not rendered:
+            continue
+        normalized = _normalized_fact_text(rendered)
+        if not normalized or normalized in seen or normalized in excluded:
+            continue
+        seen.add(normalized)
+        results.append(rendered)
+    return results
+
+
+def _preferred_grounded_short_answer(facts: NormalizedGroundedFactSet) -> str:
     short_answer = " ".join(str(facts.canonical_definition or "").split()).strip()
+    generic_fallback = "dita attribute used in construct-specific contexts"
+    if short_answer and generic_fallback not in short_answer.lower():
+        return short_answer
+    for candidate in [*facts.usage_patterns, *facts.default_behavior, *facts.placement_notes]:
+        rendered = " ".join(str(candidate or "").split()).strip()
+        if rendered:
+            return rendered
+    return short_answer
+
+
+def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
+    short_answer = _preferred_grounded_short_answer(facts)
     if not short_answer:
         return ""
+    normalized_short_answer = _normalized_fact_text(short_answer)
+    usage_patterns = _unique_fact_points(facts.usage_patterns, exclude={normalized_short_answer})
+    default_behavior = _unique_fact_points(
+        facts.default_behavior,
+        exclude={normalized_short_answer, *[_normalized_fact_text(value) for value in usage_patterns]},
+    )
 
     # AEM product guidance answers use "## At a glance"; DITA spec answers use "## Short answer"
     _first_heading = "## At a glance" if facts.answer_kind == "aem_guides_guidance" else "## Short answer"
@@ -3153,17 +3219,17 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
         if facts.companion_attributes:
             title = "## Common attributes" if facts.answer_kind == "dita_map_construct" else "## Companion attributes"
             sections.extend(["", title, *[f"- `{value}`" for value in facts.companion_attributes[:8]]])
-        if facts.default_behavior:
-            sections.extend(["", "## Default behavior", *[f"- {value}" for value in facts.default_behavior[:4]]])
+        if default_behavior:
+            sections.extend(["", "## Default behavior", *[f"- {value}" for value in default_behavior[:4]]])
         if facts.answer_kind == "dita_map_construct":
             resolution_points = []
-            for value in [*facts.placement_notes[:4], *facts.usage_patterns[:4]]:
+            for value in [*facts.placement_notes[:4], *usage_patterns[:4]]:
                 if value and value not in resolution_points:
                     resolution_points.append(value)
             if resolution_points:
                 sections.extend(["", "## Resolution behavior", *[f"- {value}" for value in resolution_points[:5]]])
-        elif facts.usage_patterns:
-            sections.extend(["", "## Typical usage", *[f"- {value}" for value in facts.usage_patterns[:4]]])
+        elif usage_patterns:
+            sections.extend(["", "## Typical usage", *[f"- {value}" for value in usage_patterns[:4]]])
         if facts.common_mistakes:
             sections.extend(["", "## Common mistakes", *[f"- {value}" for value in facts.common_mistakes[:3]]])
     elif facts.answer_kind == "dita_content_model":
@@ -3498,7 +3564,7 @@ def _question_shape_hint(question: str) -> str:
             "Use a markdown comparison table (columns: feature/dimension; rows: each option). "
             "After the table, add a 1-paragraph 'When to choose X over Y' recommendation."
         )
-    if q_lower.startswith(("what is ", "what are ", "what does ")):
+    if _is_definition_style_question(q):
         return (
             "Open with a direct one-sentence definition. "
             "Then cover: where it appears, what it can contain, key attributes, a minimal XML example, common mistakes."

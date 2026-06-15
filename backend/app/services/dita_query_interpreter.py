@@ -40,8 +40,12 @@ _CONTENT_MODEL_PATTERN = re.compile(
     r"\b("
     r"what\s+can\s+go\s+inside|"
     r"what\s+can\s+go\s+in|"
+    r"what\s+can\s+[A-Za-z_:][A-Za-z0-9_.:-]*\s+contain|"
     r"what\s+is\s+allowed\s+in|"
+    r"what\s+elements?\s+are\s+allowed\s+inside|"
+    r"what\s+elements?\s+are\s+allowed\s+in|"
     r"what\s+may\s+appear\s+in|"
+    r"what\s+does\s+[A-Za-z_:][A-Za-z0-9_.:-]*\s+contain|"
     r"content\s+model(?:\s+of|\s+for)?|"
     r"children\s+of"
     r")\b",
@@ -196,8 +200,6 @@ def interpret_dita_query(query: str, explicit_elements: list[str] | None = None)
     elif element_names:
         if table_family_overview:
             mode = "element_family_overview"
-        elif len(element_names) >= 2:
-            mode = "element_comparison"
         elif _CONTENT_MODEL_PATTERN.search(lowered):
             mode = "content_model_query"
         elif _PLACEMENT_PATTERN.search(lowered):

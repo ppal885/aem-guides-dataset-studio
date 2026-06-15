@@ -493,10 +493,31 @@ def get_rag_status(
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
 
     def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, jira_qa_count: int = 0, err: str | None = None) -> dict:
+        from app.services.dita_ot_github_rag_service import get_dita_ot_github_reference_issues
+        from app.services.jira_index_dashboard_service import build_jira_index_status
         from app.services.jira_qa_index_service import (
             default_jira_qa_backfill_limit,
             resolve_jira_qa_project_key,
         )
+        jira_status = {
+            "total_indexed_jira": 0,
+            "last_sync_time": None,
+            "recent_failure_count": 0,
+        }
+        session = None
+        try:
+            session = SessionLocal()
+            jira_status = build_jira_index_status(session)
+        except Exception as ex:
+            err = f"{err}; jira status: {ex}" if err else str(ex)
+        finally:
+            if session is not None:
+                session.close()
+        try:
+            dita_ot_reference_count = len(get_dita_ot_github_reference_issues())
+        except Exception as ex:
+            dita_ot_reference_count = 0
+            err = f"{err}; dita_ot references: {ex}" if err else str(ex)
         try:
             tavily = get_tavily_rag_status()
         except Exception as ex:
@@ -549,7 +570,11 @@ def get_rag_status(
                 "source": "dita-ot/dita-ot GitHub issues (REST API, no auth required)",
                 "collection": CHROMA_COLLECTION_DITA_OT_GITHUB,
                 "chunk_count": dita_ot_count,
-                "count_scope": "Embeddings in Chroma `dita_ot_github` only.",
+                "reference_issue_count": dita_ot_reference_count,
+                "count_scope": (
+                    "Embeddings in Chroma `dita_ot_github` only. "
+                    "Curated reference issues may still be available for chat fallback even when this chunk count is 0."
+                ),
                 "used_in": ["chat_rag (DITA OT / publishing queries)"],
                 "populate_via": "POST /api/v1/ai/index-dita-ot-github",
             },
@@ -557,9 +582,15 @@ def get_rag_status(
                 "source": "Indexed Jira QA issues (bug reports, QA patterns, past resolutions)",
                 "collection": CHROMA_COLLECTION_JIRA_QA,
                 "chunk_count": jira_qa_count,
-                "count_scope": "Embeddings in Chroma `jira_qa` only.",
+                "issue_count": int(jira_status.get("total_indexed_jira") or 0),
+                "last_sync_time": jira_status.get("last_sync_time"),
+                "recent_failure_count": int(jira_status.get("recent_failure_count") or 0),
+                "count_scope": (
+                    "Embeddings in Chroma `jira_qa` only. "
+                    "One Jira can produce multiple RAG chunks, so chunk count is usually higher than distinct issue count."
+                ),
                 "used_in": ["chat_rag (Jira QA knowledge base)", "UAC Copilot similar Jiras"],
-                "populate_via": "POST /api/v1/jira-rag/index (sync_mode=backfill, project_key, limit>=1000)",
+                "populate_via": "POST /api/v1/jira-rag/index (sync_mode=incremental; first run auto-falls back to backfill)",
                 "project_key": resolve_jira_qa_project_key(),
                 "backfill_limit": default_jira_qa_backfill_limit(),
             },
