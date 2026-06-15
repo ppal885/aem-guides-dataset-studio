@@ -38,7 +38,7 @@ _XML_REVIEW_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_QUESTION_PATTERN = re.compile(
-    r"\b(what|how|where|when|why|can|could|should|must|will|would|do|does|is|are|compare|difference|explain)\b.*\b"
+    r"\b(what|how|where|when|why|can|could|should|must|will|would|do|does|is|are|compare|difference|explain|tell\s+me\s+about|help\s+me\s+understand)\b.*\b"
     r"(dita|taskbody|conref|conkeyref|keyref|scope|format|chunk|chunking|type|topicref|topichead|topicgroup|mapref|navref|xref|"
     r"choicetables?|reltable|concept|task|reference|glossentry|ditamap|bookmap|related-links|"
     r"related links?|relatedl|linklist|link\s+list|linkinfo|link\s+info|link\s+element|"
@@ -74,7 +74,7 @@ _DITA_TERM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_ANSWER_INTENT_PATTERN = re.compile(
-    r"^\s*(what|how|where|when|why|which|should|must|will|would|do|does|can|could|explain|define)\b|"
+    r"^\s*(what|how|where|when|why|which|should|must|will|would|do|does|can|could|explain|define|tell\s+me\s+about|help\s+me\s+understand)\b|"
     r"\b(?:and\s+then|then|and|also)\s+(?:explain|define)\b|"
     r"\b(compare|difference\s+between|versus|vs\.?)\b",
     re.IGNORECASE,

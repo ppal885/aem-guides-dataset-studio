@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from app.services import dita_ot_github_rag_service as svc
@@ -159,6 +160,41 @@ def test_fetch_skips_pull_requests():
     assert errs == []
     assert len(issues) == 1
     assert issues[0]["number"] == 100
+
+
+@patch.object(svc, "add_documents", return_value=True)
+@patch.object(svc, "embed_texts_batched")
+@patch.object(svc, "get_dita_ot_github_reference_issues")
+@patch.object(svc, "fetch_dita_ot_issues")
+@patch.object(svc, "is_embedding_available", return_value=True)
+@patch.object(svc, "is_chroma_available", return_value=True)
+def test_index_dita_ot_github_issues_indexes_curated_refs_when_live_fetch_empty(
+    mock_chroma,
+    mock_embed_avail,
+    mock_fetch,
+    mock_refs,
+    mock_embed,
+    mock_add,
+):
+    ref = {
+        "issue_number": 4769,
+        "title": "Hierarchical filtering issue",
+        "snippet": "Filtering state does not propagate to child include elements.",
+        "url": "https://github.com/dita-ot/dita-ot/issues/4769",
+    }
+    mock_fetch.return_value = ([], ["fetch page 1: timeout"])
+    mock_refs.return_value = (ref,)
+    mock_embed.return_value = np.ones((1, 4), dtype=np.float32)
+
+    out = svc.index_dita_ot_github_issues(max_issues=10)
+
+    assert out["indexed"] == 1
+    assert out["indexed_live"] == 0
+    assert out["indexed_curated_reference"] == 1
+    assert out["reference_candidates"] == 1
+    assert "curated DITA-OT reference issues" in out["message"]
+    assert any("fetch page 1: timeout" in err for err in out["errors"])
+    mock_add.assert_called_once()
 
 
 @pytest.mark.parametrize("state", ["bad", "pending"])

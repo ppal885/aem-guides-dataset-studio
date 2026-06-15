@@ -22,6 +22,7 @@ interface RagStatus {
     source: string;
     collection?: string;
     chunk_count: number;
+    reference_issue_count?: number;
     count_scope?: string;
     populate_via: string;
   };
@@ -29,6 +30,9 @@ interface RagStatus {
     source: string;
     collection?: string;
     chunk_count: number;
+    issue_count?: number;
+    last_sync_time?: string | null;
+    recent_failure_count?: number;
     count_scope?: string;
     populate_via: string;
     project_key?: string;
@@ -40,6 +44,13 @@ interface RagStatus {
     hint?: string | null;
   };
   error?: string;
+}
+
+function formatTimestamp(value?: string | null): string {
+  if (!value) return 'Not synced yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 export function SettingsPage() {
@@ -104,16 +115,22 @@ export function SettingsPage() {
     setLastAction(null);
     setError(null);
     try {
-      const result = await fetchJson<{ indexed?: number; errors?: string[] }>(
+      const result = await fetchJson<{
+        indexed?: number;
+        indexed_live?: number;
+        indexed_curated_reference?: number;
+        message?: string;
+        errors?: string[];
+      }>(
         apiUrl('/api/v1/ai/index-dita-ot-github'),
         { method: 'POST' }
       );
       const indexed = result.indexed ?? 0;
       const errs = result.errors ?? [];
       if (errs.length > 0) {
-        setLastAction(`Indexed ${indexed} DITA OT issues with errors: ${errs.join('; ')}`);
+        setLastAction(`${result.message || `Indexed ${indexed} DITA OT issues`} with errors: ${errs.join('; ')}`);
       } else {
-        setLastAction(`Indexed ${indexed} DITA OT GitHub issues successfully`);
+        setLastAction(result.message || `Indexed ${indexed} DITA OT GitHub issues successfully`);
       }
       await loadRagStatus();
     } catch (e) {
@@ -168,7 +185,7 @@ export function SettingsPage() {
         {
           method: 'POST',
           body: JSON.stringify({
-            sync_mode: 'backfill',
+            sync_mode: 'incremental',
             project_key: projectKey,
             limit: backfillLimit,
             force_reindex: false,
@@ -451,6 +468,17 @@ export function SettingsPage() {
                 Chunks in <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code>:{' '}
                 <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong>
               </p>
+              <p className="text-xs text-slate-500 mb-3">
+                Curated fallback references available:{' '}
+                <strong>{ragStatus.dita_ot_github?.reference_issue_count ?? 0}</strong>
+              </p>
+              {((ragStatus.dita_ot_github?.chunk_count ?? 0) === 0 &&
+                (ragStatus.dita_ot_github?.reference_issue_count ?? 0) > 0) && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+                  Live GitHub issue chunks are still empty, but curated DITA-OT reference issues are already
+                  available for chat fallback.
+                </p>
+              )}
               <button
                 onClick={handleIndexDitaOt}
                 disabled={indexingDitaOt}
@@ -480,12 +508,21 @@ export function SettingsPage() {
                 Chunks in <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code>:{' '}
                 <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong>
               </p>
+              <p className="text-xs text-slate-500 mb-2">
+                Distinct indexed Jira issues: <strong>{ragStatus.jira_qa?.issue_count ?? 0}</strong>
+              </p>
+              <p className="text-xs text-slate-500 mb-2">
+                Last sync: <strong>{formatTimestamp(ragStatus.jira_qa?.last_sync_time)}</strong>
+              </p>
               <p className="text-xs text-slate-500 mb-3">
-                Backfills up to{' '}
-                <strong>{ragStatus.jira_qa?.backfill_limit ?? 1000}</strong> issues from project{' '}
-                <code className="text-xs">{ragStatus.jira_qa?.project_key ?? 'GUIDES'}</code> into Chroma (
-                <code className="text-xs">sync_mode=backfill</code>). Run again to pick up newer issues
-                incrementally.
+                Recent index failures logged: <strong>{ragStatus.jira_qa?.recent_failure_count ?? 0}</strong>
+              </p>
+              <p className="text-xs text-slate-500 mb-3">
+                Runs incremental sync for project{' '}
+                <code className="text-xs">{ragStatus.jira_qa?.project_key ?? 'GUIDES'}</code> with a window of up to{' '}
+                <strong>{ragStatus.jira_qa?.backfill_limit ?? 1000}</strong> issues into Chroma (
+                <code className="text-xs">sync_mode=incremental</code>). On the first run, the backend automatically
+                falls back to <code className="text-xs">backfill</code> if no prior sync state exists.
               </p>
               <button
                 onClick={handleIndexJiraQa}

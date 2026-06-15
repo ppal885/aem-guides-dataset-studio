@@ -61,6 +61,20 @@ def test_interpret_dita_query_detects_table_family_overview_question():
     assert intent.element_names[:3] == ["table", "simpletable", "choicetable"]
 
 
+def test_interpret_dita_query_keeps_map_context_prompts_as_element_definition():
+    intent = interpret_dita_query("Explain topicref in a DITA map.")
+
+    assert intent.mode == "element_definition"
+    assert intent.element_names[0] == "topicref"
+
+
+def test_interpret_dita_query_recognizes_more_content_model_phrasings():
+    intent = interpret_dita_query("What elements are allowed inside taskbody?")
+
+    assert intent.mode == "content_model_query"
+    assert intent.element_names == ["taskbody"]
+
+
 def test_fig_merges_fig_element_rows_including_figgroup_children():
     spec = get_element_spec("fig")
 
