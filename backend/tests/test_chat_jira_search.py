@@ -63,11 +63,73 @@ async def test_chat_turn_routes_jira_search_requests_without_calling_llm(monkeyp
         assert "## Top Jira matches" in text
         assert "Open" in text
         assert "Bug" in text
+        assert "â" not in text
 
         messages = chat_service.get_messages(session_id)
         assistant = next(message for message in messages if message["role"] == "assistant")
         assert "search_jira_issues" in (assistant.get("tool_results") or {})
         assert "GUIDES-42533" in str(assistant.get("content") or "")
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_chat_turn_routes_glossstatus_native_pdf_jira_prompt_without_calling_llm(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("LLM tool chat should not run for direct Jira search requests")
+
+    async def fake_run_tool(
+        name: str,
+        params: dict,
+        user_id: str = "chat-user",
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tenant_id: str = "kone",
+    ):
+        captured["name"] = name
+        captured["params"] = params
+        return {
+            "query": "glossStatus native pdf",
+            "source": "jira_index",
+            "issues": [
+                {
+                    "issue_key": "GUIDES-881",
+                    "summary": "Native PDF drops glossStatus in glossary bookmaps",
+                    "status": "Open",
+                    "issue_type": "Bug",
+                    "url": "https://jira.example.com/browse/GUIDES-881",
+                    "source": "jira_index",
+                }
+            ],
+            "message": "Found 1 matching Jira issue.",
+        }
+
+    monkeypatch.setattr(chat_service, "generate_chat_stream_with_tools", fail_if_called)
+    monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        prompt = "Show me related Jira issues for glossStatus in Native PDF."
+        async for event in chat_service.chat_turn(
+            session_id,
+            prompt,
+            user_id="real-user-8",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        assert captured["name"] == "search_jira_issues"
+        assert captured["params"] == {"query": prompt}
+        text = "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+        assert "GUIDES-881" in text
+        assert "glossStatus" in text
+        assert "Native PDF" in text
+        assert "Open" in text
+        assert "Bug" in text
+        assert "â" not in text
     finally:
         chat_service.delete_session(session_id)
 

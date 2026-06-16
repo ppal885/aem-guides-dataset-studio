@@ -872,6 +872,29 @@ def _first_summary_sentence(text: str, *, max_chars: int = 280) -> str:
     return sentence[: max_chars - 3].rstrip() + "..."
 
 
+_TEXT_ENCODING_REPAIRS: tuple[tuple[str, str], ...] = (
+    ("âš ï¸", "⚠️"),
+    ("âœ…", "✅"),
+    ("â€¦", "…"),
+    ("â€”", "—"),
+    ("â€“", "–"),
+    ("â€™", "’"),
+    ("â€œ", "“"),
+    ("â€\x9d", "”"),
+    ("â†’", "→"),
+    ("â–²", "▲"),
+    ("â–¼", "▼"),
+    ("Â·", "·"),
+)
+
+
+def _repair_text_encoding_artifacts(text: str) -> str:
+    cleaned = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    for broken, fixed in _TEXT_ENCODING_REPAIRS:
+        cleaned = cleaned.replace(broken, fixed)
+    return cleaned
+
+
 def _extract_attribute_syntax_line(text: str) -> str:
     cleaned = str(text or "").strip()
     if not cleaned:
@@ -1026,7 +1049,7 @@ def _build_post_tool_assistant_text(tool_results_by_name: dict[str, dict]) -> st
         seen.add(key)
         deduped.append(clean)
 
-    return "\n\n".join(deduped).strip()
+    return _repair_text_encoding_artifacts("\n\n".join(deduped).strip())
 
 
 def _build_authoring_assistant_text(result: dict[str, Any]) -> str:
@@ -1039,7 +1062,7 @@ def _build_authoring_assistant_text(result: dict[str, Any]) -> str:
     saved_asset_path = str(result.get("saved_asset_path") or "").strip()
     debug = result.get("debug") or {}
     if isinstance(debug, dict) and debug.get("output_mode") == "xml_only":
-        return (
+        return _repair_text_encoding_artifacts(
             f"Generated **{dita_type}** topic: **{title}**. "
             f"Validation: {'passed' if valid else 'needs attention'}."
         )
@@ -1073,7 +1096,7 @@ def _build_authoring_assistant_text(result: dict[str, Any]) -> str:
             if act:
                 bullet += f" — {act}"
             lines.append(bullet)
-    return "\n".join(lines)
+    return _repair_text_encoding_artifacts("\n".join(lines))
 
 
 def _should_use_tool_mode(user_content: str, session_id: str | None = None) -> bool:
@@ -4052,7 +4075,7 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
             "- Mention the DITA version or AEM Guides release if version-specific",
         ])
 
-    return "\n".join(sections).strip()
+    return _repair_text_encoding_artifacts("\n".join(sections).strip())
 
 
 async def _maybe_enrich_illustrative_dita_examples(
@@ -4544,9 +4567,12 @@ async def _build_local_fallback_response(
     session_id: str = "",
     user_id: str = "chat-user",
 ) -> str:
+    def _finalize(text: str) -> str:
+        return _repair_text_encoding_artifacts(text).strip()
+
     trimmed = (user_content or "").strip()
     if _is_capability_prompt(trimmed):
-        return _builtin_capability_response(tenant_id)
+        return _finalize(_builtin_capability_response(tenant_id))
 
     issue_key = _extract_issue_key(trimmed, context)
     issue = _fallback_issue_stub(issue_key, context)
@@ -4565,11 +4591,11 @@ async def _build_local_fallback_response(
             issue["dita_type"] = "glossentry"
         else:
             issue["dita_type"] = "topic"
-        return await _build_xml_review_fallback_response(trimmed, issue, tenant_id, rag_context=rag_context or "")
+        return _finalize(await _build_xml_review_fallback_response(trimmed, issue, tenant_id, rag_context=rag_context or ""))
 
     lowered = trimmed.lower()
     if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
-        return _build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id)
+        return _finalize(_build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id))
 
     resolved_answer_mode = str(answer_mode or _determine_answer_mode(trimmed, session_id=session_id)).strip().lower()
     if resolved_answer_mode in {"grounded_dita_answer", "grounded_aem_answer"}:
@@ -4594,7 +4620,7 @@ async def _build_local_fallback_response(
                         unsupported=[],
                     ).strip()
                     if thin_answer:
-                        return thin_answer
+                        return _finalize(thin_answer)
                 if draft_answer.strip():
                     grounded_answer = await verify_grounded_answer(
                         question=trimmed,
@@ -4618,7 +4644,7 @@ async def _build_local_fallback_response(
                             reason="The offline fallback rewrote a retrieval-style answer into plain guidance.",
                         )
                     if grounded_answer.answer.strip():
-                        return grounded_answer.answer.strip()
+                        return _finalize(grounded_answer.answer)
         except Exception as exc:
             logger.warning_structured(
                 "Local grounded fallback skipped",
@@ -4627,9 +4653,9 @@ async def _build_local_fallback_response(
             )
 
     if rag_context:
-        return _build_rag_grounded_fallback_response(trimmed, rag_context, tenant_id, issue_key=issue_key)
+        return _finalize(_build_rag_grounded_fallback_response(trimmed, rag_context, tenant_id, issue_key=issue_key))
 
-    return _builtin_unavailable_response(trimmed, tenant_id)
+    return _finalize(_builtin_unavailable_response(trimmed, tenant_id))
 
 
 def _build_compact_chat_system_prompt(
@@ -4884,7 +4910,7 @@ def _build_grounded_answer_user_prompt(
 
 
 def _stream_text_chunks(text: str) -> list[str]:
-    cleaned = _coerce_llm_text_response(text).strip()
+    cleaned = _repair_text_encoding_artifacts(_coerce_llm_text_response(text)).strip()
     if not cleaned:
         return []
     paragraphs = [part.strip() for part in cleaned.split("\n\n") if part.strip()]
@@ -4958,7 +4984,7 @@ def _persist_assistant_message(
                 id=assistant_msg_id,
                 session_id=session_id,
                 role="assistant",
-                content=content,
+                content=_repair_text_encoding_artifacts(content),
                 tool_calls=json.dumps(tool_calls) if tool_calls else None,
                 tool_results=json.dumps(tool_results) if tool_results else None,
                 created_at=datetime.utcnow(),

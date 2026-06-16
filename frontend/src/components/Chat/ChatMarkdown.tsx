@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { cn } from '@/lib/utils';
+import { normalizeCodeBlockText, repairTextEncodingArtifacts } from './chatMarkdownUtils';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -147,7 +148,7 @@ function stripLeadingPattern(children: React.ReactNode, pattern: RegExp): React.
 function CodeBlock({ className, children }: { className?: string; children: string }) {
   const [copied, setCopied] = useState(false);
   const lang = className?.replace('language-', '') || 'text';
-  const code = String(children).replace(/\n$/, '');
+  const code = normalizeCodeBlockText(children, className);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -211,6 +212,8 @@ function CalloutCard({
 
 
 export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownProps) {
+  const normalizedContent = repairTextEncodingArtifacts(content || '\u00A0');
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -293,7 +296,7 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
         ul: ({ children }) => <ul className="chat-bullet-list">{children}</ul>,
       }}
     >
-      {content || '\u00A0'}
+      {normalizedContent}
     </ReactMarkdown>
   );
 }
