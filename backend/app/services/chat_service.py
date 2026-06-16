@@ -77,6 +77,7 @@ from app.services.grounding_service import (
     grounding_metadata_from_pack,
     grounding_to_notice,
     _build_thin_evidence_answer,
+    _looks_like_publish_filtering_question,
     _looks_like_retrieval_summary,
     verify_grounded_answer,
 )
@@ -1281,6 +1282,12 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
             requests.append(("lookup_dita_spec", {"query": boosted_q}))
             requests.append(("lookup_aem_guides", {"query": boosted_q}))
             requests.append(("search_tenant_knowledge", {"query": boosted_q}))
+        elif _looks_like_publish_filtering_question(user_content):
+            boosted_q = (
+                f"{user_content} ditaval conditional processing audience props otherprops "
+                "draft-comment required-cleanup output preset"
+            )
+            requests.append(("lookup_dita_spec", {"query": boosted_q}))
         else:
             requests.append(("lookup_dita_spec", {"query": user_content}))
         return requests
@@ -1843,6 +1850,115 @@ def _clean_grounded_strings(items: Any, *, limit: int | None = None) -> list[str
         return values
     for item in items:
         text = " ".join(str(item or "").split()).strip()
+        if not text or text in values:
+            continue
+        values.append(text)
+        if limit is not None and len(values) >= limit:
+            break
+    return values
+
+
+_XML_PRETTY_ROOT_TAGS = {
+    "map",
+    "bookmap",
+    "topic",
+    "concept",
+    "task",
+    "reference",
+    "body",
+    "conbody",
+    "taskbody",
+    "refbody",
+    "section",
+    "table",
+    "tgroup",
+    "thead",
+    "tbody",
+    "row",
+    "entry",
+    "simpletable",
+    "sthead",
+    "strow",
+    "choicetable",
+    "chhead",
+    "chrow",
+    "properties",
+    "property",
+    "topicref",
+    "topichead",
+    "topicgroup",
+    "reltable",
+    "relrow",
+    "relcell",
+    "steps",
+    "step",
+    "ul",
+    "ol",
+    "li",
+    "note",
+}
+
+
+def _pretty_print_xml_fragment(fragment: str) -> str:
+    text = str(fragment or "").strip()
+    if not text.startswith("<") or ">" not in text:
+        return ""
+    try:
+        from xml.dom import minidom
+
+        doc = minidom.parseString(f"<_chat_root_>{text}</_chat_root_>")
+        nodes = [
+            node
+            for node in doc.documentElement.childNodes
+            if node.nodeType != node.TEXT_NODE or str(node.data or "").strip()
+        ]
+        if not nodes:
+            return ""
+
+        element_nodes = [node for node in nodes if node.nodeType == node.ELEMENT_NODE]
+        root_tags = [str(getattr(node, "tagName", "") or "").lower() for node in element_nodes]
+        should_pretty = len(element_nodes) > 1 or any(tag in _XML_PRETTY_ROOT_TAGS for tag in root_tags)
+        if not should_pretty:
+            return ""
+
+        rendered: list[str] = []
+        for node in nodes:
+            if node.nodeType == node.TEXT_NODE:
+                stripped = str(node.data or "").strip()
+                if stripped:
+                    rendered.append(stripped)
+                continue
+            pretty = str(node.toprettyxml(indent="  ") or "").strip()
+            if pretty:
+                rendered.append(pretty)
+        return "\n".join(rendered).strip()
+    except Exception:
+        return ""
+
+
+def _normalize_verified_xml_snippet(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+    if "\n" in text:
+        lines = [line.rstrip() for line in text.splitlines()]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        return "\n".join(lines).strip()
+
+    compact = " ".join(text.split()).strip()
+    pretty = _pretty_print_xml_fragment(compact)
+    return pretty or compact
+
+
+def _clean_grounded_xml_examples(items: Any, *, limit: int | None = None) -> list[str]:
+    values: list[str] = []
+    if not isinstance(items, list):
+        return values
+    for item in items:
+        text = _normalize_verified_xml_snippet(item)
         if not text or text in values:
             continue
         values.append(text)
@@ -2686,7 +2802,7 @@ def _safe_verified_examples(
     examples: list[VerifiedExampleSnippet] = []
     attr_name = str(attr_name or "").strip().lower()
     for item in raw_examples[:4]:
-        snippet = str(item or "").strip()
+        snippet = _normalize_verified_xml_snippet(item)
         lowered = snippet.lower()
         if not snippet:
             continue
@@ -2878,7 +2994,7 @@ def _normalize_grounded_tool_facts(
             for item in (spec.get("comparisons") or [])[:4]:
                 if not isinstance(item, dict):
                     continue
-                raw_examples.extend(_clean_grounded_strings(item.get("correct_examples") or [], limit=2))
+                raw_examples.extend(_clean_grounded_xml_examples(item.get("correct_examples") or [], limit=2))
                 rows.append(
                     ComparisonRow(
                         label=str(item.get("attribute_name") or "").strip(),
@@ -2925,7 +3041,7 @@ def _normalize_grounded_tool_facts(
             examples, example_warnings = _safe_verified_examples(
                 question=question,
                 answer_kind=answer_kind,
-                raw_examples=_clean_grounded_strings(attr.get("correct_examples") or [], limit=3),
+                raw_examples=_clean_grounded_xml_examples(attr.get("correct_examples") or [], limit=3),
                 attr_name=attr_name,
             )
             semantic_warnings = common_warnings + example_warnings
@@ -3059,7 +3175,7 @@ def _normalize_grounded_tool_facts(
     if isinstance(native_pdf, dict) and native_pdf and not native_pdf.get("error") and native_pdf_has_doc_evidence:
         examples = [
             VerifiedExampleSnippet(label="Verified config snippet", snippet=str(item).strip(), source="native_pdf_tool")
-            for item in _clean_grounded_strings(native_pdf.get("xml_or_css_snippets") or [], limit=2)
+            for item in _clean_grounded_xml_examples(native_pdf.get("xml_or_css_snippets") or [], limit=2)
         ]
         warnings = list(common_warnings)
         if cross_source_mixed:
@@ -3191,6 +3307,63 @@ def _preferred_grounded_short_answer(facts: NormalizedGroundedFactSet) -> str:
     return short_answer
 
 
+def _render_grounded_quick_reference_table(facts: NormalizedGroundedFactSet) -> list[str]:
+    rows: list[tuple[str, str]] = []
+    if facts.syntax:
+        rows.append(("Syntax", f"`{facts.syntax}`"))
+    if facts.valid_values:
+        rows.append(("Valid values", ", ".join(f"`{value}`" for value in facts.valid_values[:8])))
+    if facts.supported_elements:
+        label = "Where it applies" if facts.answer_kind == "dita_map_construct" else "Supported elements"
+        rows.append((label, ", ".join(f"`<{value}>`" for value in facts.supported_elements[:8])))
+    if facts.parent_elements and facts.answer_kind in {"dita_element", "dita_content_model", "dita_placement"}:
+        rows.append(("Valid parents", ", ".join(f"`<{value}>`" for value in facts.parent_elements[:8])))
+    if facts.allowed_children and facts.answer_kind in {"dita_element", "dita_content_model"}:
+        rows.append(("Common children", ", ".join(f"`<{value}>`" for value in facts.allowed_children[:8])))
+    if facts.default_behavior:
+        rows.append(("Key behavior", _markdown_table_cell(facts.default_behavior[:2])))
+    if facts.companion_attributes:
+        companion_values = [
+            f"`@{value.lstrip('@')}`" if not str(value).startswith("<") else f"`{value}`"
+            for value in facts.companion_attributes[:6]
+        ]
+        rows.append(("Companion attributes", ", ".join(companion_values)))
+    if not rows:
+        return []
+    lines = ["", "## Quick reference", "| Field | Details |", "|---|---|"]
+    for label, detail in rows:
+        lines.append(f"| {label} | {_markdown_table_cell(detail)} |")
+    return lines
+
+
+def _grounded_example_explanation_points(
+    facts: NormalizedGroundedFactSet,
+    *,
+    snippet: str,
+    limit: int = 3,
+) -> list[str]:
+    candidates: list[str] = []
+    snippet_lower = str(snippet or "").lower()
+    if facts.default_behavior:
+        candidates.extend(facts.default_behavior[:2])
+    if "morerows=" in snippet_lower and snippet_lower.count("<row") >= 2:
+        candidates.append(
+            "Rows below a `@morerows` entry do not repeat that occupied cell position; the spanning cell above already covers it."
+        )
+    if "namest=" in snippet_lower and "nameend=" in snippet_lower:
+        candidates.append(
+            "`@namest` and `@nameend` mark the start and end columns for a horizontal cell span."
+        )
+    if facts.usage_patterns:
+        candidates.extend(facts.usage_patterns[:2])
+    if facts.answer_kind == "dita_attribute" and facts.supported_elements:
+        supported = ", ".join(f"`<{value}>`" for value in facts.supported_elements[:4])
+        candidates.append(f"This attribute is supported on {supported}.")
+    elif facts.placement_notes:
+        candidates.extend(facts.placement_notes[:2])
+    return _unique_fact_points(candidates)[:limit]
+
+
 def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
     short_answer = _preferred_grounded_short_answer(facts)
     if not short_answer:
@@ -3205,6 +3378,9 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     # AEM product guidance answers use "## At a glance"; DITA spec answers use "## Short answer"
     _first_heading = "## At a glance" if facts.answer_kind == "aem_guides_guidance" else "## Short answer"
     sections: list[str] = [_first_heading, short_answer]
+    quick_reference = _render_grounded_quick_reference_table(facts)
+    if quick_reference:
+        sections.extend(quick_reference)
 
     if facts.answer_kind in {"dita_attribute", "dita_map_construct"}:
         if facts.syntax:
@@ -3391,6 +3567,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
         sections.extend(["", heading])
         for item in facts.verified_examples[:example_limit]:
             sections.append(f"```xml\n{item.snippet}\n```")
+        if example_limit == 1:
+            example_notes = _grounded_example_explanation_points(
+                facts,
+                snippet=facts.verified_examples[0].snippet,
+            )
+            if example_notes:
+                sections.extend(["", "## Example explained", *[f"- {value}" for value in example_notes]])
 
     notes = []
     for item in facts.unsupported_points[:3]:
@@ -3483,7 +3666,13 @@ async def _maybe_enrich_illustrative_dita_examples(
     for snip in snippets[:2]:
         try:
             _ET.fromstring(snip)
-            valid_examples.append(VerifiedExampleSnippet(label="Illustrative example", snippet=snip, source="llm_suggested"))
+            valid_examples.append(
+                VerifiedExampleSnippet(
+                    label="Illustrative example",
+                    snippet=_normalize_verified_xml_snippet(snip),
+                    source="llm_suggested",
+                )
+            )
         except Exception:
             pass
 

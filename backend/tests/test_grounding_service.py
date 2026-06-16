@@ -123,6 +123,34 @@ def test_build_section_evidence_map_prefers_examples_for_steps():
     assert evidence_map["steps"]["citation_ids"][0].startswith("E")
 
 
+def test_thin_evidence_answer_prefers_conditional_processing_for_publish_filtering_question():
+    pack = build_evidence_pack(
+        query="exclude draft-only content at publish time",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="DITAVAL",
+                text="DITAVAL Conditional Processing filters content based on profiling attributes.",
+                metadata={"title": "DITAVAL"},
+            ),
+        ],
+    )
+
+    answer = grounding_service._build_thin_evidence_answer(
+        question="How do I exclude draft-only content at publish time?",
+        evidence_pack=pack,
+        unsupported=[],
+    )
+
+    lowered = answer.lower()
+    assert "conditional processing" in lowered
+    assert ".ditaval" in lowered
+    assert "@otherprops" in answer
+    assert "<draft-comment>" in answer
+    assert "dita-ot runtime details" not in lowered
+
+
 @pytest.mark.anyio
 async def test_verify_grounded_answer_abstains_on_conflict():
     pack = build_evidence_pack(

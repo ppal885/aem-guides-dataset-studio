@@ -379,6 +379,18 @@ def test_grounded_dita_requests_dita_ot_build_params_boost_query_and_tenant_sear
     assert ("search_tenant_knowledge", {"query": spec["query"]}) in requests
 
 
+def test_grounded_dita_requests_boost_publish_filtering_query():
+    q = "How do I exclude draft-only content at publish time?"
+    requests = chat_service._grounded_tool_requests("grounded_dita_answer", q)
+
+    spec = next(r for r in requests if r[0] == "lookup_dita_spec")[1]
+    merged_q = spec["query"].lower()
+    assert "ditaval" in merged_q
+    assert "conditional processing" in merged_q
+    assert "otherprops" in merged_q
+    assert "output preset" in merged_q
+
+
 def test_expand_follow_up_keeps_dita_ot_pdf_draft_argument_context(monkeypatch):
     current = "I am using DITA-OT PDF"
 

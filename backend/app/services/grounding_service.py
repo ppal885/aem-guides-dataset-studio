@@ -91,6 +91,48 @@ _PLACEHOLDER_PHRASES = (
     "replace this",
     "placeholder",
 )
+_PUBLISH_FILTER_VERB_RE = re.compile(
+    r"\b(exclude|include|hide|omit|filter(?:\s+out)?|remove|suppress|flag)\b",
+    re.IGNORECASE,
+)
+_PUBLISH_FILTER_CONTEXT_RE = re.compile(
+    r"\b(publish|publishing|publish-time|publish time|output|build|generate|preset)\b",
+    re.IGNORECASE,
+)
+_PUBLISH_FILTER_TARGET_RE = re.compile(
+    r"\b(draft(?:-only)?|review(?:-only)?|internal(?:-only)?|customer(?:-facing)?|public|"
+    r"audience|platform|product|otherprops|props|profiling|condition(?:al)?s?)\b",
+    re.IGNORECASE,
+)
+_PUBLISH_FILTER_DITAVAL_RE = re.compile(
+    r"\b(ditaval|conditional processing|condition preset)\b",
+    re.IGNORECASE,
+)
+_DRAFT_ELEMENT_HINT_RE = re.compile(r"\b(draft[-\s]?comment|required[-\s]?cleanup)\b", re.IGNORECASE)
+_DITA_OT_RUNTIME_RE = re.compile(
+    r"\b(dita[-\s]?ot|pdf2|html5|transtype|plugin(?:\.xml)?|customization\.dir|"
+    r"args\.\w+|ant\s+prop|dita\s+install)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_publish_filtering_question(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    has_filter_verb = bool(_PUBLISH_FILTER_VERB_RE.search(lowered))
+    has_publish_context = bool(_PUBLISH_FILTER_CONTEXT_RE.search(lowered))
+    has_target = bool(_PUBLISH_FILTER_TARGET_RE.search(lowered))
+    mentions_ditaval = bool(_PUBLISH_FILTER_DITAVAL_RE.search(lowered))
+    mentions_draft_elements = bool(_DRAFT_ELEMENT_HINT_RE.search(lowered))
+    return (
+        (mentions_ditaval and (has_filter_verb or has_publish_context or has_target))
+        or ((has_filter_verb or has_publish_context) and (has_target or mentions_draft_elements))
+    )
+
+
+def _looks_like_dita_ot_runtime_question(text: str) -> bool:
+    return bool(_DITA_OT_RUNTIME_RE.search(text or ""))
 
 
 @dataclass
@@ -918,9 +960,31 @@ def _build_thin_evidence_answer(
         ]
         return "\n".join(lines).strip()
 
+    if _looks_like_publish_filtering_question(question):
+        lines = [
+            "Use conditional processing to exclude draft-only content at publish time.",
+            "",
+            "What that usually means:",
+            "- Mark draft-only content with profiling attributes such as `@audience`, `@props`, or `@otherprops`.",
+            "- Apply a `.ditaval` filter, condition preset, or AEM Guides Output Preset setting that excludes that value during publishing.",
+            "- If you mean the standard draft elements, `<draft-comment>` and `<required-cleanup>` are excluded from final output by default unless draft mode is enabled.",
+            "",
+            "Example content:",
+            "```xml",
+            "<p otherprops=\"draft-only\">Internal review note.</p>",
+            "```",
+            "",
+            "Example `.ditaval`:",
+            "```xml",
+            "<val><prop action=\"exclude\" att=\"otherprops\" val=\"draft-only\"/></val>",
+            "```",
+            "",
+            "Use `lookup_dita_spec` with `ditaval`, `draft-comment`, or `required-cleanup` if you want the exact construct details.",
+        ]
+        return "\n".join(lines).strip()
+
     # DITA-OT / publishing questions — the spec index doesn't have DITA-OT content
-    _OT_KEYWORDS = ("dita-ot", "dita ot", "pdf2", "transtype", "transform", "publish", "plugin", "ant prop")
-    if any(kw in q_lower for kw in _OT_KEYWORDS):
+    if _looks_like_dita_ot_runtime_question(question):
         lines = [
             "The indexed DITA spec doesn't cover DITA-OT runtime details directly.",
             "",

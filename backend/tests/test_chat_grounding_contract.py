@@ -1272,12 +1272,63 @@ def test_dita_attribute_renderer_uses_usage_context_when_definition_is_generic()
     assert facts.example_verified is True
     rendered = chat_service._render_normalized_grounded_fact_set(facts)
     assert "construct-specific contexts" not in rendered
+    assert "## Quick reference" in rendered
+    assert "| Field | Details |" in rendered
+    assert "| Syntax | `non-negative integer row-span count` |" in rendered
     assert "Use @morerows on a CALS table <entry> to make that cell span additional rows downward." in rendered
     assert "It applies to CALS table <entry> cells, not <simpletable> cells." in rendered
     assert 'A value of "1" means the cell spans the current row plus one more row.' in rendered
     assert "## Default behavior" in rendered
     assert "## Verified example" in rendered
+    assert "## Example explained" in rendered
+    assert "Rows below a `@morerows` entry do not repeat that occupied cell position" in rendered
     assert "## Common mistakes" in rendered
+    assert (
+        "```xml\n"
+        "<row>\n"
+        "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
+        "  <entry>Row 1, Col 2</entry>\n"
+        "</row>\n"
+        "<row>\n"
+        "  <entry>Row 2, Col 2</entry>\n"
+        "</row>\n"
+        "```"
+    ) in rendered
+
+
+def test_dita_attribute_renderer_pretty_prints_single_line_verified_xml_examples():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="Show me an XML example for morerows",
+        tool_results_by_name={
+            "lookup_dita_attribute": {
+                "attribute_name": "morerows",
+                "text_content": "Use @morerows on a CALS table <entry> to make that cell span additional rows downward.",
+                "attribute_syntax": "non-negative integer row-span count",
+                "supported_elements": ["entry"],
+                "correct_examples": [
+                    "<row><entry morerows=\"1\">Spans 2 rows</entry><entry>Row 1, Col 2</entry></row><row><entry>Row 2, Col 2</entry></row>"
+                ],
+                "status": "success",
+            },
+            "lookup_dita_spec": {"error": "No spec requested"},
+        },
+    )
+
+    assert facts is not None
+    assert facts.verified_examples
+    assert (
+        facts.verified_examples[0].snippet
+        == "<row>\n"
+        "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
+        "  <entry>Row 1, Col 2</entry>\n"
+        "</row>\n"
+        "<row>\n"
+        "  <entry>Row 2, Col 2</entry>\n"
+        "</row>"
+    )
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "## Example explained" in rendered
 
 
 def test_dita_element_comparison_renders_deterministic_comparison_sections():
