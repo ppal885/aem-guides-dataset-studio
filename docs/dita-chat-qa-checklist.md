@@ -179,6 +179,26 @@ Expected answer must mention:
 - `<enumerationDef>` binds those values to an attribute
 - a subject-scheme example, not only abstract prose
 
+### Prompt 16
+`How does glossentry behave in Native PDF output?`
+
+Expected answer must mention:
+
+- `<glossentry>` defines glossary topic structure
+- Native PDF behavior depends on the publish pipeline, not only on the element name
+- glossary hover / tooltip behavior is not assumed to carry over automatically from web/editor behavior
+- output-preset / bookmark / TOC or similar PDF-pipeline checks
+
+### Prompt 17
+`Show me related Jira issues for glossStatus in Native PDF.`
+
+Expected answer must mention:
+
+- verified Jira issue IDs
+- the issue summary in plain language
+- useful metadata such as status or issue type
+- that the results come from verified Jira or indexed Jira evidence, not guessed examples
+
 ## Automated coverage
 
 Relevant regression tests:

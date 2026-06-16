@@ -969,6 +969,20 @@ def _build_post_tool_assistant_text(tool_results_by_name: dict[str, dict]) -> st
             )
             if issue_line not in lines:
                 lines.append(issue_line)
+            lines.append("## Top Jira matches")
+            for item in issues[:3]:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("issue_key") or "").strip()
+                summary_text = str(item.get("summary") or "").strip()
+                status = str(item.get("status") or "").strip()
+                issue_type = str(item.get("issue_type") or "").strip()
+                source = str(item.get("source") or "").strip()
+                detail_parts = [part for part in [status, issue_type, source] if part]
+                detail = f" ({', '.join(detail_parts)})" if detail_parts else ""
+                bullet = f"- `{key}` — {summary_text}{detail}" if key else f"- {summary_text}{detail}"
+                if bullet not in lines:
+                    lines.append(bullet)
         elif not summary:
             query = str(jira_result.get("query") or "your search").strip()
             lines.append(f"No verified Jira issues matched `{query}`.")
@@ -1284,6 +1298,17 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
             requests.append(("lookup_dita_spec", {"query": boosted_q}))
             requests.append(("lookup_aem_guides", {"query": boosted_q}))
             requests.append(("search_tenant_knowledge", {"query": boosted_q}))
+        elif (
+            _is_dita_construct_output_query(user_content)
+            and not _DITA_FOREIGN_ELEMENT_QUERY_PATTERN.search(user_content)
+            and not _DITA_RELATED_LINKS_TOC_QUERY_PATTERN.search(user_content)
+        ):
+            requests.append(("lookup_dita_spec", {"query": user_content}))
+            if _NATIVE_PDF_QUERY_PATTERN.search(lowered):
+                requests.append(("generate_native_pdf_config", {"query": user_content}))
+                requests.append(("lookup_output_preset", {"query": user_content, "output_type": "native_pdf"}))
+            requests.append(("lookup_aem_guides", {"query": user_content}))
+            requests.append(("search_tenant_knowledge", {"query": user_content}))
         elif _looks_like_publish_filtering_question(user_content):
             boosted_q = (
                 f"{user_content} ditaval conditional processing audience props otherprops "
@@ -2225,6 +2250,13 @@ def _fact_source_policy(
     tool_results_by_name: dict[str, dict[str, Any]],
 ) -> SourcePolicyDecision:
     if answer_mode == "grounded_dita_answer":
+        if isinstance(tool_results_by_name.get("generate_native_pdf_config"), dict) and tool_results_by_name.get("generate_native_pdf_config"):
+            return "dita_spec_first_then_processor_docs"
+        if isinstance(tool_results_by_name.get("lookup_aem_guides"), dict) and tool_results_by_name.get("lookup_aem_guides"):
+            return "dita_spec_first_then_aem_guides"
+        tenant_result = tool_results_by_name.get("search_tenant_knowledge") or {}
+        if isinstance(tenant_result, dict) and ((tenant_result.get("results") or []) or int(tenant_result.get("count") or 0) > 0):
+            return "mixed_explicit"
         return "dita_spec_first"
     if isinstance(tool_results_by_name.get("generate_native_pdf_config"), dict) and tool_results_by_name.get("generate_native_pdf_config"):
         return "native_pdf_first"
@@ -2930,6 +2962,25 @@ def _build_aem_guidance_actions(
     return deduped
 
 
+def _tenant_output_guidance_points(tenant: dict[str, Any], *, limit: int = 2) -> list[str]:
+    results = tenant.get("results") or []
+    points: list[str] = []
+    for item in results[:limit]:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or item.get("title") or item.get("doc_type") or "").strip()
+        content = _first_summary_sentence(
+            str(item.get("content") or item.get("summary") or item.get("snippet") or "").strip()
+        )
+        if label and content:
+            point = f"Indexed workspace/Jira evidence: {label} — {content}"
+        else:
+            point = content or label
+        if point and point not in points:
+            points.append(point)
+    return points[:limit]
+
+
 def _select_aem_guidance_summary(
     question: str,
     aem: dict[str, Any],
@@ -3127,6 +3178,148 @@ def _normalize_grounded_tool_facts(
                 thin_evidence=False,
                 cross_source_mixed=False,
             )
+
+        if _is_dita_construct_output_query(question):
+            native_pdf = tool_results_by_name.get("generate_native_pdf_config") or {}
+            output_preset = tool_results_by_name.get("lookup_output_preset") or {}
+            aem = tool_results_by_name.get("lookup_aem_guides") or {}
+            tenant = tool_results_by_name.get("search_tenant_knowledge") or {}
+            aem_payload = {**aem, "_question": question} if isinstance(aem, dict) and question else {}
+
+            attr_name = str(attr.get("attribute_name") or "").strip()
+            semantic_class = str(attr.get("attribute_semantic_class") or "").strip().lower()
+            raw_valid_values = _clean_grounded_strings(attr.get("all_valid_values") or [], limit=12)
+            valid_values = (
+                raw_valid_values
+                if _should_render_attribute_valid_values(attr_name, semantic_class, raw_valid_values)
+                else []
+            )
+            element_name = str(spec.get("element_name") or "").strip()
+            element_name_lower = element_name.lower()
+            construct_label = (
+                f"`@{attr_name}`"
+                if attr_name
+                else (f"`<{element_name}>`" if element_name else "this DITA construct")
+            )
+            construct_definition = _first_summary_sentence(
+                str(attr.get("text_content") or spec.get("text_content") or spec.get("summary") or "").strip()
+            )
+            raw_examples = _clean_grounded_xml_examples(
+                (attr.get("correct_examples") or spec.get("correct_examples") or []),
+                limit=3,
+            )
+            native_pdf_has_doc_evidence = bool(
+                isinstance(native_pdf, dict) and native_pdf.get("evidence") and not native_pdf.get("error")
+            )
+            aem_summary = _select_aem_guidance_summary(question, aem_payload, output_preset) if aem_payload else ""
+            aem_actions = _build_aem_guidance_actions(question, aem_payload, output_preset) if aem_payload else []
+            aem_settings = _build_aem_guidance_settings(question, aem_payload, output_preset) if aem_payload else []
+            aem_cautions = _build_aem_guidance_cautions(question, aem_payload, output_preset) if aem_payload else []
+            tenant_points = _tenant_output_guidance_points(tenant)
+            native_pdf_summary = str(native_pdf.get("short_answer") or native_pdf.get("summary") or "").strip()
+
+            if attr_name or element_name or native_pdf_has_doc_evidence or aem_summary or tenant_points:
+                if element_name_lower == "glossentry" and _NATIVE_PDF_QUERY_PATTERN.search(question or ""):
+                    short_answer = (
+                        "`<glossentry>` defines glossary topic structure, but its Native PDF behavior depends on "
+                        "how the glossary topic is included in the map and how the PDF pipeline renders it, not "
+                        "on the element name alone."
+                    )
+                elif attr_name or element_name:
+                    short_answer = (
+                        f"{construct_label} defines the DITA structure, but its exact published-output behavior "
+                        "is processor-specific, so verify the output pipeline instead of relying on the DITA "
+                        "name alone."
+                    )
+                else:
+                    short_answer = (
+                        "This is an output-behavior question, so the DITA construct alone is not enough — "
+                        "you need product or pipeline evidence to verify the actual publish result."
+                    )
+
+                default_behavior: list[str] = []
+                if construct_definition:
+                    default_behavior.append(f"DITA role: {construct_definition}")
+                if element_name_lower == "glossentry":
+                    default_behavior.append(
+                        "Glossary hover, tooltip, or editor-preview behavior is typically a web/editor feature; "
+                        "Native PDF normally renders the glossary topic content itself, not those interactive behaviors."
+                    )
+                if native_pdf_summary and native_pdf_summary not in default_behavior:
+                    default_behavior.append(native_pdf_summary)
+                if aem_summary and aem_summary not in default_behavior:
+                    default_behavior.append(aem_summary)
+
+                placement_notes: list[str] = []
+                for value in _clean_grounded_strings(native_pdf.get("relevant_settings") or [], limit=4):
+                    if value not in placement_notes:
+                        placement_notes.append(value)
+                for value in aem_settings[:4]:
+                    if value not in placement_notes:
+                        placement_notes.append(value)
+                for value in tenant_points:
+                    if value not in placement_notes:
+                        placement_notes.append(value)
+
+                usage_patterns: list[str] = []
+                for value in _clean_grounded_strings(native_pdf.get("recommended_actions") or [], limit=4):
+                    if value not in usage_patterns:
+                        usage_patterns.append(value)
+                for value in aem_actions[:4]:
+                    if value not in usage_patterns:
+                        usage_patterns.append(value)
+                if element_name_lower == "glossentry":
+                    for value in [
+                        "Keep the glossary entry structurally valid and referenced from the root map, then verify the Native PDF output from the intended preset/template.",
+                        "If you expect glossary navigation or bookmark behavior, validate the map hierarchy and PDF preset rather than the glossentry markup alone.",
+                    ]:
+                        if value not in usage_patterns:
+                            usage_patterns.append(value)
+
+                common_mistakes: list[str] = []
+                for value in _clean_grounded_strings(native_pdf.get("common_mistakes") or [], limit=3):
+                    if value not in common_mistakes:
+                        common_mistakes.append(value)
+                for value in aem_cautions[:3]:
+                    if value not in common_mistakes:
+                        common_mistakes.append(value)
+                if element_name_lower == "glossentry":
+                    for value in [
+                        "Assuming Web Editor glossary hover or popup behavior will automatically appear in Native PDF output.",
+                        "Troubleshooting template styling before confirming that the glossary topic is actually included in the map and output flow.",
+                    ]:
+                        if value not in common_mistakes:
+                            common_mistakes.append(value)
+
+                examples, example_warnings = _safe_verified_examples(
+                    question=question,
+                    answer_kind="dita_output_behavior",
+                    raw_examples=raw_examples,
+                    attr_name=attr_name,
+                )
+                thin_evidence = not (native_pdf_has_doc_evidence or aem_summary or tenant_points)
+                semantic_warnings = list(common_warnings)
+                semantic_warnings.extend(example_warnings)
+                if thin_evidence:
+                    semantic_warnings.append(
+                        "The current evidence verifies the DITA construct, but product-specific output behavior was not directly retrieved."
+                    )
+                return NormalizedGroundedFactSet(
+                    answer_kind="dita_output_behavior",
+                    source_policy=source_policy,
+                    canonical_definition=short_answer,
+                    syntax=str(attr.get("attribute_syntax") or "").strip(),
+                    valid_values=valid_values,
+                    default_behavior=default_behavior[:5],
+                    placement_notes=placement_notes[:5],
+                    usage_patterns=usage_patterns[:5],
+                    common_mistakes=common_mistakes[:4],
+                    verified_examples=examples,
+                    example_verified=bool(examples),
+                    semantic_warnings=semantic_warnings,
+                    thin_evidence=thin_evidence,
+                    cross_source_mixed=bool(tenant_points and (native_pdf_has_doc_evidence or aem_summary)),
+                )
 
         if isinstance(spec, dict) and not spec.get("error") and spec.get("query_type") == "element_comparison":
             rows: list[ComparisonRow] = []

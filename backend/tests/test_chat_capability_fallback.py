@@ -261,6 +261,107 @@ async def test_chat_turn_offline_prefers_args_draft_guidance_for_dita_ot_pdf_que
 
 
 @pytest.mark.anyio
+async def test_chat_turn_offline_prefers_output_behavior_answer_for_glossentry_native_pdf_question(monkeypatch):
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    pack = build_evidence_pack(
+        query="How does glossentry behave in Native PDF output?",
+        tenant_id="kone",
+        candidates=[
+            type(
+                "Candidate",
+                (),
+                {
+                    "source": "dita_spec",
+                    "label": "glossentry",
+                    "text": "<glossentry> is a topic specialization for glossary definitions.",
+                    "url": "",
+                    "metadata": {"title": "glossentry"},
+                    "score": 0.0,
+                },
+            )(),
+            type(
+                "Candidate",
+                (),
+                {
+                    "source": "tenant_knowledge",
+                    "label": "GUIDES-881",
+                    "text": "glossStatus in Native PDF can differ from expected glossary navigation when the map or publish settings omit the glossary branch.",
+                    "url": "",
+                    "metadata": {"title": "GUIDES-881"},
+                    "score": 0.0,
+                },
+            )(),
+        ],
+    )
+
+    async def fake_grounded_pack(**_kwargs):
+        return (
+            pack,
+            {"strength": "grounded", "reason": pack.decision.reason},
+            {
+                "lookup_dita_spec": {
+                    "query_type": "element_definition",
+                    "element_name": "glossentry",
+                    "summary": "<glossentry> is a topic specialization for glossary definitions.",
+                    "text_content": "<glossentry> is a topic specialization for glossary definitions.",
+                    "correct_examples": [
+                        "<glossentry id=\"gl_api\"><glossterm>API</glossterm><glossdef><p>Application programming interface.</p></glossdef></glossentry>"
+                    ],
+                },
+                "generate_native_pdf_config": {
+                    "short_answer": "Treat Native PDF behavior as a publishing-pipeline question: verify the output preset, template, and bookmark/TOC handling instead of assuming glossary markup alone controls the PDF result.",
+                    "recommended_actions": [
+                        "Confirm the glossary topic is included from the root map in the intended publish flow.",
+                        "Verify the Native PDF preset and bookmark/TOC behavior for glossary branches.",
+                    ],
+                    "relevant_settings": [
+                        "Native PDF output preset",
+                        "Bookmark and TOC generation",
+                    ],
+                    "common_mistakes": [
+                        "Changing template styling before confirming the glossary topic is actually in the output."
+                    ],
+                    "evidence": [{"title": "Native PDF guidance", "url": "https://example.invalid/native-pdf", "snippet": "Verify preset and bookmark handling."}],
+                },
+                "search_tenant_knowledge": {
+                    "results": [
+                        {
+                            "label": "GUIDES-881",
+                            "doc_type": "jira_qa",
+                            "content": "glossStatus in Native PDF can differ from expected glossary navigation when the map or publish settings omit the glossary branch.",
+                        }
+                    ]
+                },
+            },
+        )
+
+    monkeypatch.setattr(chat_service, "_build_grounded_tool_evidence_pack", fake_grounded_pack)
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "How does glossentry behave in Native PDF output?",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        lowered = text.lower()
+        assert "## short answer" in lowered
+        assert "## output behavior" in lowered
+        assert "glossentry" in lowered
+        assert "native pdf" in lowered
+        assert "bookmark" in lowered or "toc" in lowered
+        assert "indexed workspace/jira evidence" in lowered
+        assert "not configured" in lowered or "disabled" in lowered
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
 async def test_chat_turn_falls_back_to_local_answer_on_provider_failure(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(

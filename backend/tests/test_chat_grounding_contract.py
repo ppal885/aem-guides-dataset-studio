@@ -1236,6 +1236,61 @@ async def test_chat_turn_foreign_output_question_uses_dita_output_behavior_not_n
         chat_service.delete_session(session_id)
 
 
+def test_native_pdf_construct_question_prefers_output_behavior_over_plain_element_definition():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="How does glossentry behave in Native PDF output?",
+        tool_results_by_name={
+            "lookup_dita_attribute": {"error": "No attribute requested"},
+            "lookup_dita_spec": {
+                "query_type": "element_definition",
+                "element_name": "glossentry",
+                "summary": "<glossentry> is a topic specialization for glossary definitions.",
+                "text_content": "<glossentry> is a topic specialization for glossary definitions.",
+                "correct_examples": [
+                    "<glossentry id=\"gl_api\"><glossterm>API</glossterm><glossdef><p>Application programming interface.</p></glossdef></glossentry>"
+                ],
+            },
+            "generate_native_pdf_config": {
+                "short_answer": "Treat Native PDF behavior as a publishing-pipeline question: verify the output preset, template, and bookmark/TOC handling instead of assuming glossary markup alone controls the PDF result.",
+                "recommended_actions": [
+                    "Confirm the glossary topic is included from the root map in the intended publish flow.",
+                    "Verify the Native PDF preset and bookmark/TOC behavior for glossary branches."
+                ],
+                "relevant_settings": [
+                    "Native PDF output preset",
+                    "Bookmark and TOC generation"
+                ],
+                "common_mistakes": [
+                    "Changing template styling before confirming the glossary topic is actually in the output."
+                ],
+                "evidence": [{"title": "Native PDF guidance", "url": "https://example.invalid/native-pdf", "snippet": "Verify preset and bookmark handling."}],
+            },
+            "search_tenant_knowledge": {
+                "results": [
+                    {
+                        "label": "GUIDES-881",
+                        "doc_type": "jira_qa",
+                        "content": "glossStatus in Native PDF can differ from expected glossary navigation when the map or publish settings omit the glossary branch.",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert facts is not None
+    assert facts.answer_kind == "dita_output_behavior"
+    assert facts.source_policy == "dita_spec_first_then_processor_docs"
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    lowered = rendered.lower()
+    assert "## output behavior" in lowered
+    assert "glossentry" in lowered
+    assert "native pdf" in lowered
+    assert "bookmark" in lowered or "toc" in lowered
+    assert "indexed workspace/jira evidence" in lowered
+    assert "## where it appears" not in lowered
+
+
 def test_dita_element_answer_uses_structured_sections_not_generic_verified_details():
     facts = chat_service._normalize_grounded_tool_facts(
         answer_mode="grounded_dita_answer",

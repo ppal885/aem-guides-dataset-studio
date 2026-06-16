@@ -346,6 +346,17 @@ def test_grounded_tool_requests_native_pdf_dita_ot_args_preserve_product_anchors
     assert "prophead" not in query
 
 
+def test_grounded_dita_output_behavior_requests_collect_product_tools():
+    q = "How does glossentry behave in Native PDF output?"
+    requests = chat_service._grounded_tool_requests("grounded_dita_answer", q)
+
+    assert ("lookup_dita_spec", {"query": q}) in requests
+    assert ("generate_native_pdf_config", {"query": q}) in requests
+    assert ("lookup_output_preset", {"query": q, "output_type": "native_pdf"}) in requests
+    assert ("lookup_aem_guides", {"query": q}) in requests
+    assert ("search_tenant_knowledge", {"query": q}) in requests
+
+
 def test_needs_broad_map_construct_answer_topichead_and_navtitle():
     q = "What is <topichead> and how does navtitle interact with locktitle on topicref?"
     assert chat_service._needs_broad_map_construct_answer(q) is True

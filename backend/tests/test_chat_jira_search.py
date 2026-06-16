@@ -58,7 +58,11 @@ async def test_chat_turn_routes_jira_search_requests_without_calling_llm(monkeyp
         assert captured["user_id"] == "real-user-7"
         assert captured["tenant_id"] == "kone"
         assert any(event.get("type") == "tool" and event.get("name") == "search_jira_issues" for event in events)
-        assert any("GUIDES-42533" in str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+        text = "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+        assert "GUIDES-42533" in text
+        assert "## Top Jira matches" in text
+        assert "Open" in text
+        assert "Bug" in text
 
         messages = chat_service.get_messages(session_id)
         assistant = next(message for message in messages if message["role"] == "assistant")
