@@ -391,6 +391,11 @@ def test_grounded_dita_requests_boost_publish_filtering_query():
     assert "output preset" in merged_q
 
 
+def test_determine_answer_mode_prefers_grounded_dita_for_full_xml_example_prompt():
+    q = "Show me a full XML example for morerows in a table."
+    assert chat_service._determine_answer_mode(q) == "grounded_dita_answer"
+
+
 def test_expand_follow_up_keeps_dita_ot_pdf_draft_argument_context(monkeypatch):
     current = "I am using DITA-OT PDF"
 

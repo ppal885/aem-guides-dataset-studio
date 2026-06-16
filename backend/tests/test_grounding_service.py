@@ -148,6 +148,8 @@ def test_thin_evidence_answer_prefers_conditional_processing_for_publish_filteri
     assert ".ditaval" in lowered
     assert "@otherprops" in answer
     assert "<draft-comment>" in answer
+    assert "<topic id=\"publish-filtering-example\">" in answer
+    assert "<body>" in answer
     assert "dita-ot runtime details" not in lowered
 
 

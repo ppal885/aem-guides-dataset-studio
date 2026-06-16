@@ -513,6 +513,45 @@ async def test_chat_turn_morerows_prompt_variants_render_detailed_answer(monkeyp
 
 
 @pytest.mark.anyio
+async def test_chat_turn_full_xml_example_prompt_stays_grounded_instead_of_generation_preview(monkeypatch):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA example questions")
+
+    async def real_run_tool(name: str, params: dict, **_kwargs):
+        if name == "lookup_dita_attribute":
+            return await execute_lookup_dita_attribute(params.get("attribute_name", ""))
+        if name == "lookup_dita_spec":
+            return await execute_lookup_dita_spec(params.get("query", ""))
+        raise AssertionError(f"Unexpected tool {name}")
+
+    async def fail_generate_text(*_args, **_kwargs):
+        raise AssertionError("LLM generation should not run when structured attribute evidence is available")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "run_tool", real_run_tool)
+    monkeypatch.setattr(chat_service, "generate_text", fail_generate_text)
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "Show me a full XML example for morerows in a table.",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        assert "## Plan" not in text
+        assert "## Verified example" in text
+        assert "<table>" in text
+        assert "<tgroup cols=\"2\">" in text
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
 async def test_chat_turn_grounded_topicref_question_renders_map_construct_sections(monkeypatch):
     async def fail_build_pack(*_args, **_kwargs):
         raise AssertionError("Corrective RAG pack should not run for direct grounded DITA map construct questions")
@@ -680,6 +719,7 @@ async def test_chat_turn_taskbody_prompt_variants_render_content_model_answers(m
     [
         ("Compare note and hazardstatement in DITA.", ("`<note>`", "`<hazardstatement>`")),
         ("What is the difference between simpletable and table in DITA?", ("`<simpletable>`", "`<table>`")),
+        ("When should I use topicgroup instead of topichead?", ("`<topicgroup>`", "`<topichead>`")),
     ],
 )
 async def test_chat_turn_element_comparison_prompts_render_comparison_answers(monkeypatch, prompt: str, tokens: tuple[str, str]):
@@ -1253,13 +1293,20 @@ def test_dita_attribute_renderer_uses_usage_context_when_definition_is_generic()
                 ],
                 "common_mistakes": ["Using @morerows without checking that the resulting table grid remains valid."],
                 "correct_examples": [
-                    "<row>\n"
-                    "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
-                    "  <entry>Row 1, Col 2</entry>\n"
-                    "</row>\n"
-                    "<row>\n"
-                    "  <entry>Row 2, Col 2</entry>\n"
-                    "</row>"
+                    "<table>\n"
+                    "  <title>Example table</title>\n"
+                    "  <tgroup cols=\"2\">\n"
+                    "    <tbody>\n"
+                    "      <row>\n"
+                    "        <entry morerows=\"1\">Spans 2 rows</entry>\n"
+                    "        <entry>Row 1, Col 2</entry>\n"
+                    "      </row>\n"
+                    "      <row>\n"
+                    "        <entry>Row 2, Col 2</entry>\n"
+                    "      </row>\n"
+                    "    </tbody>\n"
+                    "  </tgroup>\n"
+                    "</table>"
                 ],
                 "status": "success",
             },
@@ -1285,13 +1332,20 @@ def test_dita_attribute_renderer_uses_usage_context_when_definition_is_generic()
     assert "## Common mistakes" in rendered
     assert (
         "```xml\n"
-        "<row>\n"
-        "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
-        "  <entry>Row 1, Col 2</entry>\n"
-        "</row>\n"
-        "<row>\n"
-        "  <entry>Row 2, Col 2</entry>\n"
-        "</row>\n"
+        "<table>\n"
+        "  <title>Example table</title>\n"
+        "  <tgroup cols=\"2\">\n"
+        "    <tbody>\n"
+        "      <row>\n"
+        "        <entry morerows=\"1\">Spans 2 rows</entry>\n"
+        "        <entry>Row 1, Col 2</entry>\n"
+        "      </row>\n"
+        "      <row>\n"
+        "        <entry>Row 2, Col 2</entry>\n"
+        "      </row>\n"
+        "    </tbody>\n"
+        "  </tgroup>\n"
+        "</table>\n"
         "```"
     ) in rendered
 
@@ -1319,16 +1373,50 @@ def test_dita_attribute_renderer_pretty_prints_single_line_verified_xml_examples
     assert facts.verified_examples
     assert (
         facts.verified_examples[0].snippet
-        == "<row>\n"
-        "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
-        "  <entry>Row 1, Col 2</entry>\n"
-        "</row>\n"
-        "<row>\n"
-        "  <entry>Row 2, Col 2</entry>\n"
-        "</row>"
+        == "<table>\n"
+        "  <title>Example table</title>\n"
+        "  <tgroup cols=\"2\">\n"
+        "    <tbody>\n"
+        "      <row>\n"
+        "        <entry morerows=\"1\">Spans 2 rows</entry>\n"
+        "        <entry>Row 1, Col 2</entry>\n"
+        "      </row>\n"
+        "      <row>\n"
+        "        <entry>Row 2, Col 2</entry>\n"
+        "      </row>\n"
+        "    </tbody>\n"
+        "  </tgroup>\n"
+        "</table>"
     )
     rendered = chat_service._render_normalized_grounded_fact_set(facts)
     assert "## Example explained" in rendered
+
+
+def test_dita_attribute_renderer_expands_full_example_requests_to_full_table_context():
+    facts = chat_service._normalize_grounded_tool_facts(
+        answer_mode="grounded_dita_answer",
+        question="Show me a full XML example for morerows in a table.",
+        tool_results_by_name={
+            "lookup_dita_attribute": {
+                "attribute_name": "morerows",
+                "text_content": "Use @morerows on a CALS table <entry> to make that cell span additional rows downward.",
+                "attribute_syntax": "non-negative integer row-span count",
+                "supported_elements": ["entry"],
+                "correct_examples": [
+                    "<row><entry morerows=\"1\">Spans 2 rows</entry><entry>Row 1, Col 2</entry></row><row><entry>Row 2, Col 2</entry></row>"
+                ],
+                "status": "success",
+            },
+            "lookup_dita_spec": {"error": "No spec requested"},
+        },
+    )
+
+    assert facts is not None
+    assert facts.verified_examples
+    assert facts.verified_examples[0].snippet.startswith("<table>")
+    rendered = chat_service._render_normalized_grounded_fact_set(facts)
+    assert "<tgroup cols=\"2\">" in rendered
+    assert "<tbody>" in rendered
 
 
 def test_dita_element_comparison_renders_deterministic_comparison_sections():
@@ -1528,7 +1616,7 @@ async def test_chat_turn_keyscope_example_request_omits_unverified_xml_example(m
                 "supported_elements": ["map", "topicref", "mapref", "keydef"],
                 "combination_attributes": ["keys", "scope", "format"],
                 "default_scenarios": ["The root map defines an implicit unnamed scope."],
-                "correct_examples": ["Use @keyscope on a topicref branch to create a named key scope."],
+                "correct_examples": [],
                 "text_content": (
                     "The @keyscope attribute creates a named scope for key definitions.\n\n"
                     "Syntax: One or more space-separated scope names (same naming rules as keys)."
@@ -1561,7 +1649,7 @@ async def test_chat_turn_keyscope_example_request_omits_unverified_xml_example(m
         async for event in chat_service.chat_turn(session_id, "What is keyscope in dita? Show an example.", tenant_id="kone"):
             events.append(event)
         text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
-        assert "No verified snippet was available" in text
+        assert "## Verified example" not in text
         assert "<topic id=" not in text.lower()
         grounding_event = next(event for event in events if event.get("type") == "grounding")
         assert grounding_event["grounding"]["example_verified"] is False

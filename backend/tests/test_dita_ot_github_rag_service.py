@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import httpx
 
 from app.services import dita_ot_github_rag_service as svc
 
@@ -160,6 +161,77 @@ def test_fetch_skips_pull_requests():
     assert errs == []
     assert len(issues) == 1
     assert issues[0]["number"] == 100
+
+
+def test_fetch_stops_when_link_header_has_no_next_even_if_page_is_full():
+    batch = [
+        {"number": 100, "title": "Bug bar", "state": "open", "body": "text"},
+        {"number": 101, "title": "Bug baz", "state": "open", "body": "text"},
+    ]
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {
+        "Link": '<https://api.github.com/repos/dita-ot/dita-ot/issues?page=1>; rel="first", '
+                '<https://api.github.com/repos/dita-ot/dita-ot/issues?page=1>; rel="last"'
+    }
+    mock_resp.json.return_value = batch
+    mock_resp.raise_for_status = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.get.return_value = mock_resp
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = mock_client
+    mock_ctx.__exit__.return_value = None
+
+    with patch.object(svc.httpx, "Client", return_value=mock_ctx):
+        issues, errs = svc.fetch_dita_ot_issues(max_issues=2, state="all")
+
+    assert errs == []
+    assert [issue["number"] for issue in issues] == [100, 101]
+    assert mock_client.get.call_count == 1
+
+
+def test_fetch_treats_late_422_page_boundary_as_end_of_results():
+    first_page = MagicMock()
+    first_page.status_code = 200
+    first_page.headers = {
+        "Link": '<https://api.github.com/repos/dita-ot/dita-ot/issues?page=1>; rel="first", '
+                '<https://api.github.com/repos/dita-ot/dita-ot/issues?page=2>; rel="next", '
+                '<https://api.github.com/repos/dita-ot/dita-ot/issues?page=9>; rel="last"'
+    }
+    first_page.json.return_value = [
+        {
+            "number": 99,
+            "title": "Fix foo",
+            "state": "open",
+            "pull_request": {"url": "https://api.github.com/repos/dita-ot/dita-ot/pulls/99"},
+        },
+        {"number": 100, "title": "Bug bar", "state": "open", "body": "text"},
+    ]
+    first_page.raise_for_status = MagicMock()
+
+    second_page = MagicMock()
+    second_page.status_code = 422
+    second_page.headers = {}
+    second_page.json.return_value = {"message": "Validation Failed", "errors": ["page must be less than or equal to 10"]}
+    second_page.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "422 Unprocessable Entity",
+        request=MagicMock(),
+        response=second_page,
+    )
+
+    mock_client = MagicMock()
+    mock_client.get.side_effect = [first_page, second_page]
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = mock_client
+    mock_ctx.__exit__.return_value = None
+
+    with patch.object(svc.httpx, "Client", return_value=mock_ctx):
+        issues, errs = svc.fetch_dita_ot_issues(max_issues=2, state="all")
+
+    assert errs == []
+    assert [issue["number"] for issue in issues] == [100]
+    assert mock_client.get.call_count == 2
 
 
 @patch.object(svc, "add_documents", return_value=True)

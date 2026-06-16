@@ -79,6 +79,12 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
     r"\b(compare|difference\s+between|versus|vs\.?)\b",
     re.IGNORECASE,
 )
+_DITA_CONSTRUCT_HINT_PATTERN = re.compile(
+    r"\b(morerows|namest|nameend|colspec|tgroup|tbody|thead|tfoot|entry|simpletable|strow|stentry|"
+    r"processing-role|collection-type|locktitle|navtitle|keyscope|keyref|conref|conkeyref|"
+    r"topicref|topichead|topicgroup|ditavalref|keycol|relcolwidth)\b",
+    re.IGNORECASE,
+)
 _DITA_EXAMPLE_ANSWER_PATTERN = re.compile(
     r"\b(give|show|share|provide|can\s+you\s+show|could\s+you\s+show)\b"
     r".*\b(examples?|samples?|snippets?|xml\s+examples?)\b|"
@@ -174,6 +180,13 @@ def _clean_intent_segment(text: str) -> str:
     return segment
 
 
+def _has_dita_construct_signal(text: str) -> bool:
+    trimmed = (text or "").strip()
+    if not trimmed:
+        return False
+    return bool(_DITA_TERM_PATTERN.search(trimmed) or _DITA_CONSTRUCT_HINT_PATTERN.search(trimmed))
+
+
 def _wants_downloadable_dita_bundle(text: str) -> bool:
     """True when the user asks for a downloadable zip/archive, not a spec definition of 'zip'."""
     t = (text or "").strip()
@@ -209,7 +222,7 @@ def _mixed_dita_intent_parts(text: str) -> dict[str, Any] | None:
     trimmed = (text or "").strip()
     if not trimmed or trimmed.startswith("/"):
         return None
-    if not _DITA_TERM_PATTERN.search(trimmed):
+    if not _has_dita_construct_signal(trimmed):
         return None
     answer_match = _DITA_ANSWER_INTENT_PATTERN.search(trimmed)
     generation_match = _EXPLICIT_DITA_GENERATION_PATTERN.search(trimmed) or (
@@ -254,7 +267,7 @@ def _is_dita_answer_request(text: str) -> bool:
     if _wants_downloadable_dita_bundle(trimmed):
         return False
     return bool(
-        _DITA_TERM_PATTERN.search(trimmed)
+        _has_dita_construct_signal(trimmed)
         and (_DITA_QUESTION_PATTERN.search(trimmed) or _DITA_ANSWER_INTENT_PATTERN.search(trimmed))
     )
 
@@ -263,7 +276,7 @@ def _is_dita_example_answer_request(text: str) -> bool:
     trimmed = (text or "").strip()
     if not trimmed or trimmed.startswith("/"):
         return False
-    if not _DITA_TERM_PATTERN.search(trimmed) or not _DITA_EXAMPLE_ANSWER_PATTERN.search(trimmed):
+    if not _has_dita_construct_signal(trimmed) or not _DITA_EXAMPLE_ANSWER_PATTERN.search(trimmed):
         return False
     if re.search(r"\bkeyscope\b", trimmed, re.IGNORECASE):
         # Product decision: keyscope examples require a clarified map bundle shape.

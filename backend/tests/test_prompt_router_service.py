@@ -149,6 +149,50 @@ def test_route_prompt_answers_plain_construct_example_without_generation_artifac
     assert policy.action == "answer_directly"
 
 
+def test_route_prompt_answers_full_morerows_example_without_generation_artifacts():
+    prompt = "Show me a full XML example for morerows in a table."
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dita_question"
+    assert route.legacy_answer_mode == "grounded_dita_answer"
+    assert policy.action == "answer_directly"
+    assert chat_service._determine_answer_mode(prompt) == "grounded_dita_answer"
+
+
+def test_route_prompt_answers_simpletable_vs_table_question_directly():
+    prompt = "What is the difference between simpletable and table in DITA?"
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dita_question"
+    assert route.legacy_answer_mode == "grounded_dita_answer"
+    assert policy.action == "answer_directly"
+    assert chat_service._determine_answer_mode(prompt) == "grounded_dita_answer"
+
+
+def test_route_prompt_answers_question_led_keyscope_example_directly():
+    prompt = "What is keyscope in DITA? Show an example."
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dita_question"
+    assert route.legacy_answer_mode == "grounded_dita_answer"
+    assert policy.action == "answer_directly"
+    assert chat_service._determine_answer_mode(prompt) == "grounded_dita_answer"
+
+
+def test_route_prompt_keeps_dita_ot_draft_comment_argument_question_grounded():
+    prompt = "What DITA-OT argument enables draft-comment in PDF?"
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dita_ot_build"
+    assert route.legacy_answer_mode == "grounded_dita_answer"
+    assert policy.action == "answer_directly"
+    assert chat_service._determine_answer_mode(prompt) == "grounded_dita_answer"
+
+
 def test_route_prompt_generates_when_construct_example_requests_bundle():
     route = route_prompt("Generate a topichead example bundle")
     policy = decide_execution_policy(route)

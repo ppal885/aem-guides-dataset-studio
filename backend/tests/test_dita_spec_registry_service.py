@@ -54,6 +54,13 @@ def test_interpret_dita_query_detects_attribute_and_element_comparisons():
     assert element_intent.element_names == ["task", "concept"]
 
 
+def test_interpret_dita_query_treats_instead_of_as_comparison():
+    intent = interpret_dita_query("When should I use topicgroup instead of topichead?")
+
+    assert intent.mode == "element_comparison"
+    assert intent.element_names[:2] == ["topicgroup", "topichead"]
+
+
 def test_interpret_dita_query_detects_table_family_overview_question():
     intent = interpret_dita_query("Different types of tables in dita")
 

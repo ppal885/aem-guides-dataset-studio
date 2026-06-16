@@ -305,6 +305,7 @@ async def test_lookup_dita_spec_returns_structured_attribute_comparison():
     [
         ("Compare note and hazardstatement in DITA.", ["note", "hazardstatement"]),
         ("What is the difference between simpletable and table in DITA?", ["simpletable", "table"]),
+        ("When should I use topicgroup instead of topichead?", ["topicgroup", "topichead"]),
     ],
 )
 async def test_lookup_dita_spec_resolves_element_comparison_prompt_variants(query: str, expected: list[str]):

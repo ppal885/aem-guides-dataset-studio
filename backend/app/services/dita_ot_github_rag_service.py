@@ -412,6 +412,13 @@ def fetch_dita_ot_issues(
                         )
                         time.sleep(wait)
                         continue
+                    if resp.status_code == 422 and page > 1 and collected:
+                        logger.info_structured(
+                            "dita_ot_github_fetch_stopped_at_pagination_boundary",
+                            extra_fields={"page": page, "fetched": len(collected)},
+                        )
+                        resp = None
+                        break
                     break
                 if resp is None:
                     break
@@ -439,7 +446,9 @@ def fetch_dita_ot_issues(
                     extra_fields={"fetched": len(collected), "page": page},
                 )
 
-            if len(batch) < per_page:
+            link_header = str(resp.headers.get("Link") or "")
+            has_next_page = 'rel="next"' in link_header
+            if len(batch) < per_page or not has_next_page:
                 break
             page += 1
             time.sleep(0.15)

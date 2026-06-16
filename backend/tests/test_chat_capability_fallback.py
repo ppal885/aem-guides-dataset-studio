@@ -52,6 +52,48 @@ async def test_build_local_fallback_response_reviews_xml_with_local_suggestions(
 
 
 @pytest.mark.anyio
+async def test_build_local_fallback_response_prefers_grounded_publish_filtering_answer(monkeypatch):
+    pack = build_evidence_pack(
+        query="exclude draft-only content at publish time",
+        tenant_id="kone",
+        candidates=[
+            type(
+                "Candidate",
+                (),
+                {
+                    "source": "dita_spec",
+                    "label": "DITAVAL",
+                    "text": "DITAVAL Conditional Processing filters content based on profiling attributes.",
+                    "url": "",
+                    "metadata": {"title": "DITAVAL"},
+                    "score": 0.0,
+                },
+            )(),
+        ],
+    )
+
+    async def fake_grounded_pack(**_kwargs):
+        return pack, {"strength": "partial", "reason": pack.decision.reason}, {}
+
+    monkeypatch.setattr(chat_service, "_build_grounded_tool_evidence_pack", fake_grounded_pack)
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA SPEC REFERENCE:\n[1] ditaval\nFiltering profile")
+
+    text = await chat_service._build_local_fallback_response(
+        "How do I exclude draft-only content at publish time?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "conditional processing" in lowered
+    assert ".ditaval" in lowered
+    assert "<draft-comment>" in text
+    assert "<topic id=\"publish-filtering-example\">" in text
+    assert "<body>" in text
+    assert "best available guidance" not in lowered
+
+
+@pytest.mark.anyio
 async def test_chat_turn_uses_local_fallback_when_llm_is_unavailable(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
     monkeypatch.setattr(
@@ -69,9 +111,151 @@ async def test_chat_turn_uses_local_fallback_when_llm_is_unavailable(monkeypatch
         assert events[-1]["type"] == "done"
         assert any(event["type"] == "chunk" for event in events)
         text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
-        assert "local indexed knowledge" in text.lower()
+        assert "## Short answer" in text
         assert "topichead" in text.lower()
+        assert "local indexed knowledge" not in text.lower()
         assert "not configured" in text.lower() or "disabled" in text.lower()
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_chat_turn_offline_prefers_grounded_structured_answer_for_dita_questions(monkeypatch):
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    pack = build_evidence_pack(
+        query="What did morerows attribute do in table?",
+        tenant_id="kone",
+        candidates=[
+            type(
+                "Candidate",
+                (),
+                {
+                    "source": "dita_spec",
+                    "label": "morerows",
+                    "text": "Use @morerows on a CALS table entry to make that cell span additional rows downward.",
+                    "url": "",
+                    "metadata": {"title": "morerows"},
+                    "score": 0.0,
+                },
+            )(),
+        ],
+    )
+
+    async def fake_grounded_pack(**_kwargs):
+        return (
+            pack,
+            {"strength": "grounded", "reason": pack.decision.reason},
+            {
+                "lookup_dita_attribute": {
+                    "attribute_name": "morerows",
+                    "attribute_syntax": "non-negative integer row-span count",
+                    "text_content": "@morerows attribute makes a CALS table <entry> span additional rows downward.",
+                    "supported_elements": ["entry"],
+                    "usage_contexts": [
+                        "Use @morerows on a CALS table <entry> to make that cell span additional rows downward.",
+                        "It applies to CALS table <entry> cells, not <simpletable> cells.",
+                    ],
+                    "default_scenarios": [
+                        "morerows=\"1\" means the cell spans the current row plus one more row."
+                    ],
+                    "correct_examples": [
+                        "<row><entry morerows=\"1\">Spans 2 rows</entry><entry>Row 1, Col 2</entry></row><row><entry>Row 2, Col 2</entry></row>"
+                    ],
+                    "common_mistakes": ["Using @morerows without checking that the resulting table grid remains valid."],
+                    "sources": [{"label": "morerows", "snippet": "Use @morerows on a CALS table <entry> to make that cell span additional rows downward."}],
+                    "status": "success",
+                    "status_tone": "success",
+                }
+            },
+        )
+
+    monkeypatch.setattr(chat_service, "_build_grounded_tool_evidence_pack", fake_grounded_pack)
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA SPEC REFERENCE:\n[1] morerows\nrow span")
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(session_id, "What did morerows attribute do in table?", tenant_id="kone"):
+            events.append(event)
+
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        assert "## Short answer" in text
+        assert "not <simpletable>" in text
+        assert 'morerows="1"' in text
+        assert "local indexed knowledge" not in text.lower()
+        assert "not configured" in text.lower() or "disabled" in text.lower()
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_chat_turn_offline_prefers_args_draft_guidance_for_dita_ot_pdf_question(monkeypatch):
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    pack = build_evidence_pack(
+        query="What DITA-OT argument enables draft-comment in PDF?",
+        tenant_id="kone",
+        candidates=[
+            type(
+                "Candidate",
+                (),
+                {
+                    "source": "aem_guides",
+                    "label": "DITA-OT base parameters: args.draft",
+                    "text": "args.draft specifies whether draft-comment and required-cleanup elements are included in output. Use --args.draft=yes for DITA-OT PDF/PDF2.",
+                    "url": "https://www.dita-ot.org/dev/parameters/parameters-base",
+                    "metadata": {"title": "DITA-OT base parameters: args.draft"},
+                    "score": 0.0,
+                },
+            )(),
+        ],
+    )
+
+    async def fake_grounded_pack(**_kwargs):
+        return (
+            pack,
+            {"strength": "grounded", "reason": pack.decision.reason, "source_domain": "dita_ot"},
+            {
+                "lookup_aem_guides": {
+                    "query": "What DITA-OT argument enables draft-comment in PDF?",
+                    "summary": "args.draft specifies whether draft-comment and required-cleanup elements are included in output.",
+                    "results": [
+                        {
+                            "url": "https://www.dita-ot.org/dev/parameters/parameters-base",
+                            "title": "DITA-OT base parameters: args.draft",
+                            "snippet": "args.draft specifies whether draft-comment and required-cleanup elements are included in output. Use --args.draft=yes for DITA-OT PDF/PDF2.",
+                        }
+                    ],
+                    "count": 1,
+                    "retrieval_mode": "lexical",
+                    "semantic_required": False,
+                    "allowed_host_suffixes": ["experienceleague.adobe.com", "dita-ot.org"],
+                    "source_domain": "dita_ot",
+                    "embedding": {"available": False},
+                    "warnings": [],
+                }
+            },
+        )
+
+    monkeypatch.setattr(chat_service, "_build_grounded_tool_evidence_pack", fake_grounded_pack)
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "What DITA-OT argument enables draft-comment in PDF?",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        lowered = text.lower()
+        assert "args.draft" in lowered
+        assert "--args.draft=yes" in lowered
+        assert "<draft-comment>" in text
+        assert "<task>" not in text
+        assert "not configured" in lowered or "disabled" in lowered
     finally:
         chat_service.delete_session(session_id)
 
@@ -135,8 +319,8 @@ async def test_chat_turn_falls_back_to_local_answer_on_provider_failure(monkeypa
         assert events[-1]["type"] == "done"
         assert not any(event["type"] == "error" for event in events)
         text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
-        assert "local indexed knowledge" in text.lower()
+        assert "## Short answer" in text
         assert "topichead" in text.lower()
-        assert "rate-limited" in text.lower() or "temporarily busy" in text.lower()
+        assert "local indexed knowledge" not in text.lower()
     finally:
         chat_service.delete_session(session_id)

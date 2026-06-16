@@ -336,7 +336,7 @@ _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _EXPLICIT_COMPARISON_REQUEST_PATTERN = re.compile(
-    r"\b(vs\.?|versus|compare|comparison|difference\s+between)\b",
+    r"\b(vs\.?|versus|compare|comparison|difference\s+between|instead\s+of)\b",
     re.IGNORECASE,
 )
 _AEM_UI_CONFIGURATION_QUERY_PATTERN = re.compile(
@@ -1189,6 +1189,8 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         return "agent_research_plan"
     if requested_attribute and (_is_definition_style_question(text) or _DITA_ANSWER_INTENT_PATTERN.search(text)):
         return "grounded_dita_answer"
+    if _DITA_STRUCTURAL_QUERY_PATTERN.search(text) and (_extract_example_shape_request(text) or _wants_full_example(text)):
+        return "grounded_dita_answer"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
     if _DITA_GENERATION_PATTERN.search(text):
@@ -1897,6 +1899,70 @@ _XML_PRETTY_ROOT_TAGS = {
     "li",
     "note",
 }
+_FULL_EXAMPLE_REQUEST_RE = re.compile(
+    r"\b(full|complete|end-to-end|whole)\s+(xml\s+)?(example|snippet)\b|"
+    r"\bshow\s+me\s+(?:a\s+)?(?:full|complete)\s+(?:xml\s+)?(?:example|snippet)\b",
+    re.IGNORECASE,
+)
+_XML_ALREADY_FULL_ROOT_TAGS = {
+    "map",
+    "bookmap",
+    "topic",
+    "concept",
+    "task",
+    "reference",
+    "glossentry",
+    "table",
+    "simpletable",
+    "choicetable",
+    "val",
+    "ditaval",
+}
+_MAP_FRAGMENT_ROOT_TAGS = {
+    "topicref",
+    "topichead",
+    "topicgroup",
+    "mapref",
+    "keydef",
+    "topicmeta",
+    "reltable",
+    "relrow",
+    "relcell",
+    "ditavalref",
+}
+_TABLE_FRAGMENT_ROOT_TAGS = {"row", "entry", "thead", "tbody", "tfoot", "tgroup", "colspec"}
+_SIMPLETABLE_FRAGMENT_ROOT_TAGS = {"sthead", "strow", "stentry"}
+_TASK_FRAGMENT_ROOT_TAGS = {"taskbody", "steps", "step", "cmd", "info", "stepresult", "prereq", "context", "result", "postreq"}
+_BODY_BLOCK_FRAGMENT_ROOT_TAGS = {
+    "body",
+    "conbody",
+    "refbody",
+    "section",
+    "example",
+    "p",
+    "note",
+    "fig",
+    "ul",
+    "ol",
+    "dl",
+    "pre",
+    "codeblock",
+    "lines",
+}
+_INLINE_FRAGMENT_ROOT_TAGS = {
+    "keyword",
+    "term",
+    "ph",
+    "xref",
+    "codeph",
+    "filepath",
+    "uicontrol",
+    "wintitle",
+    "menucascade",
+    "image",
+    "draft-comment",
+    "required-cleanup",
+}
 
 
 def _pretty_print_xml_fragment(fragment: str) -> str:
@@ -1951,6 +2017,135 @@ def _normalize_verified_xml_snippet(value: Any) -> str:
     compact = " ".join(text.split()).strip()
     pretty = _pretty_print_xml_fragment(compact)
     return pretty or compact
+
+
+def _wants_full_example(question: str) -> bool:
+    return bool(_FULL_EXAMPLE_REQUEST_RE.search(question or ""))
+
+
+def _leading_xml_tag_name(snippet: str) -> str:
+    match = re.match(r"\s*<\s*/?\s*([A-Za-z_:][A-Za-z0-9_.:-]*)", snippet or "")
+    return str(match.group(1) if match else "").strip().lower()
+
+
+def _indent_xml_block(snippet: str, spaces: int) -> str:
+    prefix = " " * max(0, int(spaces))
+    return "\n".join(f"{prefix}{line}" if line.strip() else line for line in str(snippet or "").splitlines())
+
+
+def _wrap_xml_fragment(
+    snippet: str,
+    *,
+    opening_lines: list[str],
+    closing_lines: list[str],
+    indent_spaces: int,
+) -> str:
+    inner = _indent_xml_block(snippet, indent_spaces)
+    return "\n".join([*opening_lines, inner, *closing_lines]).strip()
+
+
+def _expand_verified_xml_example(
+    snippet: str,
+    *,
+    answer_kind: GroundedAnswerKind,
+    attr_name: str = "",
+) -> str:
+    text = _normalize_verified_xml_snippet(snippet)
+    if not text:
+        return ""
+
+    root = _leading_xml_tag_name(text)
+    lowered = text.lower()
+    normalized_attr = str(attr_name or "").strip().lower()
+
+    if root in _XML_ALREADY_FULL_ROOT_TAGS:
+        return text
+
+    if (
+        normalized_attr == "morerows"
+        or root in _TABLE_FRAGMENT_ROOT_TAGS
+        or any(token in lowered for token in ('morerows=', 'namest=', 'nameend='))
+    ):
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<table>", "  <title>Example table</title>", "  <tgroup cols=\"2\">", "    <tbody>"],
+            closing_lines=["    </tbody>", "  </tgroup>", "</table>"],
+            indent_spaces=6,
+        )
+
+    if root in _SIMPLETABLE_FRAGMENT_ROOT_TAGS:
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<simpletable>"],
+            closing_lines=["</simpletable>"],
+            indent_spaces=2,
+        )
+
+    if root in _MAP_FRAGMENT_ROOT_TAGS or (
+        answer_kind in {"dita_attribute", "dita_map_construct"} and normalized_attr in _MAP_SCOPED_ATTR_NAMES
+    ):
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<map>", "  <title>Example map</title>"],
+            closing_lines=["</map>"],
+            indent_spaces=2,
+        )
+
+    if root in {"steps", "step"}:
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<task id=\"example-task\">", "  <title>Example task</title>", "  <taskbody>"],
+            closing_lines=["  </taskbody>", "</task>"],
+            indent_spaces=4,
+        )
+
+    if root == "cmd":
+        return "\n".join(
+            [
+                "<task id=\"example-task\">",
+                "  <title>Example task</title>",
+                "  <taskbody>",
+                "    <steps>",
+                "      <step>",
+                _indent_xml_block(text, 8),
+                "      </step>",
+                "    </steps>",
+                "  </taskbody>",
+                "</task>",
+            ]
+        ).strip()
+
+    if root in _TASK_FRAGMENT_ROOT_TAGS:
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<task id=\"example-task\">", "  <title>Example task</title>", "  <taskbody>"],
+            closing_lines=["  </taskbody>", "</task>"],
+            indent_spaces=4,
+        )
+
+    if root in _BODY_BLOCK_FRAGMENT_ROOT_TAGS:
+        return _wrap_xml_fragment(
+            text,
+            opening_lines=["<topic id=\"example-topic\">", "  <title>Example topic</title>", "  <body>"],
+            closing_lines=["  </body>", "</topic>"],
+            indent_spaces=4,
+        )
+
+    if root in _INLINE_FRAGMENT_ROOT_TAGS:
+        return "\n".join(
+            [
+                "<topic id=\"example-topic\">",
+                "  <title>Example topic</title>",
+                "  <body>",
+                "    <p>",
+                _indent_xml_block(text, 6),
+                "    </p>",
+                "  </body>",
+                "</topic>",
+            ]
+        ).strip()
+
+    return text
 
 
 def _clean_grounded_xml_examples(items: Any, *, limit: int | None = None) -> list[str]:
@@ -2720,6 +2915,18 @@ def _build_aem_guidance_actions(
             return (3, lowered)
 
         deduped = sorted(deduped, key=_create_priority)
+
+    if (
+        _DITA_OT_PATTERN.search(question or "")
+        and re.search(r"\bdraft.?comment|required.?cleanup\b", lowered_question)
+        and re.search(r"\bpdf|pdf2\b", lowered_question)
+    ):
+        explicit = "Use `--args.draft=yes` to include `<draft-comment>` and `<required-cleanup>` content in DITA-OT PDF/PDF2 output."
+        if not any("--args.draft=yes" in item.lower() for item in deduped):
+            deduped.insert(0, explicit)
+        elif not any("<draft-comment>" in item.lower() or "<required-cleanup>" in item.lower() for item in deduped):
+            deduped.insert(0, explicit)
+
     return deduped
 
 
@@ -2802,7 +3009,11 @@ def _safe_verified_examples(
     examples: list[VerifiedExampleSnippet] = []
     attr_name = str(attr_name or "").strip().lower()
     for item in raw_examples[:4]:
-        snippet = _normalize_verified_xml_snippet(item)
+        snippet = _expand_verified_xml_example(
+            item,
+            answer_kind=answer_kind,
+            attr_name=attr_name,
+        )
         lowered = snippet.lower()
         if not snippet:
             continue
@@ -3075,6 +3286,7 @@ def _normalize_grounded_tool_facts(
             supported_attributes = _clean_grounded_strings(spec.get("supported_attributes") or [], limit=12)
             usage_patterns = _clean_grounded_strings(spec.get("usage_contexts") or [], limit=3)
             common_mistakes = _clean_grounded_strings(spec.get("common_mistakes") or [], limit=3)
+            raw_examples = _clean_grounded_xml_examples(spec.get("correct_examples") or [], limit=3)
             notes: list[str] = []
             spec_chunk_texts = [
                 " ".join(str(item.get("text_content") or "").split()).strip()
@@ -3101,6 +3313,11 @@ def _normalize_grounded_tool_facts(
                 ).strip()
             )
             if query_type == "content_model" and (element_name or allowed_children):
+                examples, example_warnings = _safe_verified_examples(
+                    question=question,
+                    answer_kind="dita_content_model",
+                    raw_examples=raw_examples,
+                )
                 return NormalizedGroundedFactSet(
                     answer_kind="dita_content_model",
                     source_policy=source_policy,
@@ -3111,9 +3328,16 @@ def _normalize_grounded_tool_facts(
                     usage_patterns=usage_patterns,
                     common_mistakes=common_mistakes,
                     placement_notes=notes,
-                    semantic_warnings=common_warnings,
+                    verified_examples=examples,
+                    example_verified=bool(examples),
+                    semantic_warnings=common_warnings + example_warnings,
                 )
             if query_type == "placement" and (element_name or parent_elements):
+                examples, example_warnings = _safe_verified_examples(
+                    question=question,
+                    answer_kind="dita_placement",
+                    raw_examples=raw_examples,
+                )
                 return NormalizedGroundedFactSet(
                     answer_kind="dita_placement",
                     source_policy=source_policy,
@@ -3123,9 +3347,16 @@ def _normalize_grounded_tool_facts(
                     usage_patterns=usage_patterns,
                     common_mistakes=common_mistakes,
                     placement_notes=notes,
-                    semantic_warnings=common_warnings,
+                    verified_examples=examples,
+                    example_verified=bool(examples),
+                    semantic_warnings=common_warnings + example_warnings,
                 )
             if element_name_lower in _MAP_CONSTRUCT_ELEMENT_NAMES and (summary or element_name):
+                examples, example_warnings = _safe_verified_examples(
+                    question=question,
+                    answer_kind="dita_map_construct",
+                    raw_examples=raw_examples,
+                )
                 return NormalizedGroundedFactSet(
                     answer_kind="dita_map_construct",
                     source_policy=source_policy,
@@ -3136,13 +3367,20 @@ def _normalize_grounded_tool_facts(
                     usage_patterns=(usage_patterns or _summary_grounded_strings(spec_chunk_texts, limit=3)),
                     common_mistakes=common_mistakes,
                     placement_notes=notes,
-                    semantic_warnings=common_warnings,
+                    verified_examples=examples,
+                    example_verified=bool(examples),
+                    semantic_warnings=common_warnings + example_warnings,
                 )
             # Only render a structured direct answer when the tool identified a specific DITA element
             # (element_name, query_type, or child/parent lists). For general spec queries returning raw
             # ChromaDB chunks, return None so the LLM synthesises a proper answer.
             has_structural_metadata = bool(element_name or query_type or allowed_children or parent_elements)
             if has_structural_metadata and (summary or element_name):
+                examples, example_warnings = _safe_verified_examples(
+                    question=question,
+                    answer_kind="dita_element",
+                    raw_examples=raw_examples,
+                )
                 return NormalizedGroundedFactSet(
                     answer_kind="dita_element",
                     source_policy=source_policy,
@@ -3153,8 +3391,35 @@ def _normalize_grounded_tool_facts(
                     usage_patterns=(_summary_grounded_strings(spec_chunk_texts, limit=3) or usage_patterns),
                     common_mistakes=common_mistakes,
                     placement_notes=notes,
-                    semantic_warnings=common_warnings,
+                    verified_examples=examples,
+                    example_verified=bool(examples),
+                    semantic_warnings=common_warnings + example_warnings,
                 )
+            aem = tool_results_by_name.get("lookup_aem_guides") or {}
+            if (
+                isinstance(aem, dict)
+                and not aem.get("error")
+                and (aem.get("results") or aem.get("count"))
+                and (
+                    str(aem.get("source_domain") or "").strip().lower() == "dita_ot"
+                    or bool(_DITA_OT_PATTERN.search(question or ""))
+                )
+            ):
+                aem_payload = {**aem, "_question": question}
+                summary = _select_aem_guidance_summary(question, aem_payload, {})
+                recommended_actions = _build_aem_guidance_actions(question, aem_payload, {})
+                if recommended_actions or summary:
+                    return NormalizedGroundedFactSet(
+                        answer_kind="aem_guides_guidance",
+                        source_policy=source_policy,
+                        guidance_kind=_classify_aem_guidance_kind(question),
+                        canonical_definition=summary,
+                        recommended_actions=recommended_actions[:4],
+                        relevant_settings=_build_aem_guidance_settings(question, aem_payload, {}),
+                        common_mistakes=_build_aem_guidance_cautions(question, aem_payload, {}),
+                        semantic_warnings=common_warnings,
+                        cross_source_mixed=False,
+                    )
         return None
 
     native_pdf = tool_results_by_name.get("generate_native_pdf_config") or {}
@@ -3747,33 +4012,42 @@ def _question_shape_hint(question: str) -> str:
     q = (question or "").strip()
     if not q:
         return ""
+    hints: list[str] = []
     q_lower = q.lower()
     if _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
-        return (
+        hints.append(
             "Use a markdown comparison table (columns: feature/dimension; rows: each option). "
             "After the table, add a 1-paragraph 'When to choose X over Y' recommendation."
         )
-    if _is_definition_style_question(q):
-        return (
-            "Open with a direct one-sentence definition. "
-            "Then cover: where it appears, what it can contain, key attributes, a minimal XML example, common mistakes."
+    if _wants_full_example(q):
+        hints.append(
+            "If you include XML, prefer one full, self-contained example with the enclosing topic, map, or table structure instead of only a fragment."
         )
-    if re.search(r"\bhow\s+do\s+I\b|\bhow\s+to\b|\bhow\s+can\s+I\b", q, re.IGNORECASE):
-        return (
+    elif _extract_example_shape_request(q):
+        hints.append(
+            "Include a verified XML example. Prefer a complete enclosing structure when the construct normally sits inside a map, topic, or table."
+        )
+    if _is_definition_style_question(q):
+        hints.append(
+            "Open with a direct one-sentence definition. "
+            "Then cover: where it appears, what it can contain, key attributes, an example, common mistakes."
+        )
+    elif re.search(r"\bhow\s+do\s+I\b|\bhow\s+to\b|\bhow\s+can\s+I\b", q, re.IGNORECASE):
+        hints.append(
             "Use numbered steps. Include a code block (XML or command) if the answer involves markup or CLI. "
             "End with a 'Common mistakes' note if applicable."
         )
-    if re.search(r"\bwhy\b|\bwhat.*wrong\b|\bproblem\b|\bfail(ed|ing)?\b|\berror\b", q, re.IGNORECASE):
-        return (
+    elif re.search(r"\bwhy\b|\bwhat.*wrong\b|\bproblem\b|\bfail(ed|ing)?\b|\berror\b", q, re.IGNORECASE):
+        hints.append(
             "Lead with the most likely cause (1-2 sentences). "
             "Then: how to diagnose, the fix, and how to prevent it next time."
         )
-    if re.search(r"\blist\b|\ball\s+(the\s+)?(type|value|option|attr|element)\b", q, re.IGNORECASE):
-        return (
+    elif re.search(r"\blist\b|\ball\s+(the\s+)?(type|value|option|attr|element)\b", q, re.IGNORECASE):
+        hints.append(
             "Use a markdown table or bullet list. Be exhaustive — list ALL values/options, not just common ones. "
             "Add a brief description for each."
         )
-    return ""
+    return "\n\n".join(hints)
 
 
 def _is_direct_jira_search_request(user_content: str) -> bool:
@@ -4073,6 +4347,9 @@ async def _build_local_fallback_response(
     context: Optional[dict] = None,
     *,
     rag_context: str | None = None,
+    answer_mode: str | None = None,
+    session_id: str = "",
+    user_id: str = "chat-user",
 ) -> str:
     trimmed = (user_content or "").strip()
     if _is_capability_prompt(trimmed):
@@ -4100,6 +4377,61 @@ async def _build_local_fallback_response(
     lowered = trimmed.lower()
     if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
         return _build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id)
+
+    resolved_answer_mode = str(answer_mode or _determine_answer_mode(trimmed, session_id=session_id)).strip().lower()
+    if resolved_answer_mode in {"grounded_dita_answer", "grounded_aem_answer"}:
+        try:
+            evidence_pack, _retrieval_meta, grounded_tool_results = await _build_grounded_tool_evidence_pack(
+                answer_mode=resolved_answer_mode,
+                user_content=trimmed,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            if evidence_pack is not None:
+                draft_answer, normalized_grounded_facts = _build_grounded_tool_draft_answer(
+                    answer_mode=resolved_answer_mode,
+                    question=trimmed,
+                    tool_results_by_name=grounded_tool_results,
+                )
+                if not draft_answer.strip() and resolved_answer_mode == "grounded_dita_answer":
+                    thin_answer = _build_thin_evidence_answer(
+                        question=trimmed,
+                        evidence_pack=evidence_pack,
+                        unsupported=[],
+                    ).strip()
+                    if thin_answer:
+                        return thin_answer
+                if draft_answer.strip():
+                    grounded_answer = await verify_grounded_answer(
+                        question=trimmed,
+                        draft_answer=draft_answer,
+                        evidence_pack=evidence_pack,
+                        verified_examples=(
+                            [item.to_dict() for item in (normalized_grounded_facts.verified_examples if normalized_grounded_facts else [])]
+                        ),
+                        structured_tool_answer=normalized_grounded_facts is not None,
+                    )
+                    if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"}:
+                        grounded_answer = replace(
+                            grounded_answer,
+                            answer=_build_thin_evidence_answer(
+                                question=trimmed,
+                                evidence_pack=evidence_pack,
+                                unsupported=grounded_answer.unsupported_points,
+                            ),
+                            unsupported_points=grounded_answer.unsupported_points[:4],
+                            grounding_status="partial",
+                            reason="The offline fallback rewrote a retrieval-style answer into plain guidance.",
+                        )
+                    if grounded_answer.answer.strip():
+                        return grounded_answer.answer.strip()
+        except Exception as exc:
+            logger.warning_structured(
+                "Local grounded fallback skipped",
+                extra_fields={"tenant_id": tenant_id, "answer_mode": resolved_answer_mode, "error": str(exc)},
+                exc_info=True,
+            )
 
     if rag_context:
         return _build_rag_grounded_fallback_response(trimmed, rag_context, tenant_id, issue_key=issue_key)
@@ -6715,6 +7047,9 @@ async def _stream_assistant_reply(
             user_content,
             tenant_id,
             context,
+            answer_mode=answer_mode,
+            session_id=session_id,
+            user_id=user_id,
         )
         fallback_text = _append_provider_note(fallback_text, _llm_unavailable_configuration_message())
         _persist_assistant_message(session_id, assistant_msg_id, fallback_text)

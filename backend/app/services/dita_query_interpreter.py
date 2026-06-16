@@ -71,7 +71,7 @@ _VALID_VALUES_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _EXAMPLE_PATTERN = re.compile(r"\b(example|sample|snippet)\b", re.IGNORECASE)
-_COMPARISON_PATTERN = re.compile(r"\b(vs\.?|versus|compare|difference\s+between)\b", re.IGNORECASE)
+_COMPARISON_PATTERN = re.compile(r"\b(vs\.?|versus|compare|difference\s+between|instead\s+of)\b", re.IGNORECASE)
 _TABLE_FAMILY_OVERVIEW_PATTERN = re.compile(
     r"\b(?:different|various|types?|kinds?)\b.{0,40}\btables?\b|"
     r"\btables?\b.{0,40}\b(?:different|various|types?|kinds?)\b",

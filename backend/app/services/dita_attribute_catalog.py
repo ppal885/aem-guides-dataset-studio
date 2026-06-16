@@ -676,13 +676,20 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
                 ],
                 mistakes=["Using @morerows without checking that the resulting table grid remains valid."],
                 example=(
-                    "<row>\n"
-                    "  <entry morerows=\"1\">Spans 2 rows</entry>\n"
-                    "  <entry>Row 1, Col 2</entry>\n"
-                    "</row>\n"
-                    "<row>\n"
-                    "  <entry>Row 2, Col 2</entry>\n"
-                    "</row>"
+                    "<table>\n"
+                    "  <title>Example table</title>\n"
+                    "  <tgroup cols=\"2\">\n"
+                    "    <tbody>\n"
+                    "      <row>\n"
+                    "        <entry morerows=\"1\">Spans 2 rows</entry>\n"
+                    "        <entry>Row 1, Col 2</entry>\n"
+                    "      </row>\n"
+                    "      <row>\n"
+                    "        <entry>Row 2, Col 2</entry>\n"
+                    "      </row>\n"
+                    "    </tbody>\n"
+                    "  </tgroup>\n"
+                    "</table>"
                 ),
                 text=(
                     "The @morerows attribute makes a CALS table <entry> span additional rows downward.\n\n"
