@@ -250,6 +250,29 @@ async def test_lookup_dita_spec_returns_structured_content_model_for_ditavalref(
 
 
 @pytest.mark.anyio
+async def test_lookup_dita_spec_resolves_subject_scheme_phrase_query():
+    result = await execute_lookup_dita_spec("What is a subject scheme in DITA?")
+
+    assert result["element_name"] == "subjectscheme"
+    assert result["query_type"] == "element_definition"
+    summary = str(result["summary"] or result["text_content"]).lower()
+    assert "taxonomy" in summary or "controlled attribute value" in summary
+    assert result["correct_examples"]
+    assert "<subjectScheme>" in result["correct_examples"][0]
+
+
+@pytest.mark.anyio
+async def test_lookup_dita_spec_returns_mapref_example_for_example_request():
+    result = await execute_lookup_dita_spec("What does mapref do in a DITA map? Show an example.")
+
+    assert result["element_name"] == "mapref"
+    assert result["query_type"] == "element_definition"
+    assert "submap" in str(result["summary"] or result["text_content"]).lower()
+    assert result["correct_examples"]
+    assert "<mapref" in result["correct_examples"][0]
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "query",
     [

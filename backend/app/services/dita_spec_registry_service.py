@@ -16,6 +16,7 @@ from typing import Any
 from app.services.dita_attribute_catalog import list_attribute_names
 
 SEED_PATH = Path(__file__).resolve().parent.parent / "storage" / "dita_spec_seed.json"
+_FENCED_XML_BLOCK_RE = re.compile(r"```(?:xml)?\s*\r?\n(.*?)```", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,17 @@ def _dedupe_list(values: list[str]) -> list[str]:
         if text and text not in seen:
             seen.append(text)
     return seen
+
+
+def _extract_xml_examples(text: Any) -> list[str]:
+    if not isinstance(text, str) or not text.strip():
+        return []
+    examples = [
+        " ".join(match.group(1).strip().split())
+        for match in _FENCED_XML_BLOCK_RE.finditer(text)
+        if match.group(1).strip()
+    ]
+    return _dedupe_list(examples)
 
 
 def _registry_overrides() -> dict[str, dict[str, Any]]:
@@ -283,6 +295,7 @@ def _build_registry() -> dict[str, DitaElementSpec]:
         record["usage_contexts"].extend(_normalize_string_list(entry.get("usage_contexts")))
         record["common_mistakes"].extend(_normalize_string_list(entry.get("common_mistakes")))
         record["correct_examples"].extend(_normalize_string_list(entry.get("correct_examples")))
+        record["correct_examples"].extend(_extract_xml_examples(text_content))
 
     for normalized, override in _registry_overrides().items():
         record = merged.setdefault(

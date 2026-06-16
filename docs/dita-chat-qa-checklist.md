@@ -139,6 +139,46 @@ Expected answer must mention:
 - `<draft-comment>` and `<required-cleanup>`
 - that this is DITA-OT/runtime guidance, not only DITA element semantics
 
+### Prompt 12
+`What does the chunk attribute do in DITA maps?`
+
+Expected answer must mention:
+
+- `@chunk` controls split / merge / selection behavior for map references
+- valid values such as `to-content`, `by-topic`, or `select-document`
+- map-scoped usage such as `<topicref ... chunk="to-content">`
+- a real XML example, not only a glossary-style definition
+
+### Prompt 13
+`What is the difference between keydef and topicref?`
+
+Expected answer must mention:
+
+- `<keydef>` defines keys for indirect references
+- `<topicref>` includes publishable topic content in map navigation
+- `keys` versus `href` / navigation role
+- `<keydef>` is not a normal visible TOC topic entry
+
+### Prompt 14
+`What does mapref do in a DITA map? Show an example.`
+
+Expected answer must mention:
+
+- `<mapref>` pulls in another map as a submap
+- keys / reltables / navigation come from the referenced child map
+- `@keyscope` can be used to namespace imported keys
+- a full `<map>` example with `<mapref .../>`
+
+### Prompt 15
+`What is a subject scheme in DITA?`
+
+Expected answer must mention:
+
+- `<subjectScheme>` is a specialized map for controlled values / taxonomy
+- `<subjectdef>` defines values in the hierarchy
+- `<enumerationDef>` binds those values to an attribute
+- a subject-scheme example, not only abstract prose
+
 ## Automated coverage
 
 Relevant regression tests:

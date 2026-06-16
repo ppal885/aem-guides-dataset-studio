@@ -297,6 +297,130 @@ def _candidate(*, source: str, title: str, text: str):
             ["<table>", "<tgroup cols=\"2\">", "<tbody>", 'morerows="1"'],
         ),
         (
+            "What does the chunk attribute do in DITA maps?",
+            {
+                "lookup_dita_attribute": {
+                    "attribute_name": "chunk",
+                    "attribute_syntax": "space-separated chunk behavior tokens such as to-content, by-topic, by-document, select-topic, select-branch, or select-document",
+                    "attribute_semantic_class": "map_scoped",
+                    "text_content": "@chunk controls how referenced topic content is split, selected, or merged in output.",
+                    "all_valid_values": ["to-content", "by-topic", "by-document", "select-topic", "select-branch", "select-document"],
+                    "supported_elements": ["topicref", "topichead", "topicgroup", "mapref"],
+                    "usage_contexts": [
+                        "Use @chunk on map references to influence how processors split, select, or merge referenced topic content into output artifacts."
+                    ],
+                    "common_mistakes": ["Using processor-specific chunk values as if they were portable DITA values."],
+                    "correct_examples": [
+                        "<map><topicref href=\"overview.dita\" chunk=\"to-content\"><topicref href=\"section-a.dita\"/><topicref href=\"section-b.dita\"/></topicref></map>"
+                    ],
+                    "status": "success",
+                    "status_tone": "success",
+                }
+            },
+            [
+                _candidate(
+                    source="dita_spec",
+                    title="chunk",
+                    text="@chunk controls how referenced topic content is split, selected, or merged in output.",
+                ),
+            ],
+            ["## Valid values", "to-content", "by-topic", "select-document", "## Verified example", "<map>", 'chunk="to-content"'],
+        ),
+        (
+            "What is the difference between keydef and topicref?",
+            {
+                "lookup_dita_spec": {
+                    "query_type": "element_comparison",
+                    "summary": "<keydef> defines indirect keys; <topicref> includes navigable topic references in the map.",
+                    "comparisons": [
+                        {
+                            "element_name": "keydef",
+                            "text_content": "<keydef> defines a key name and optionally points that key to a resource.",
+                            "parent_elements": ["map", "topicref"],
+                            "supported_attributes": ["keys", "href", "scope", "format"],
+                            "usage_contexts": ["Use it for variables, indirect links, reusable resources, and named key targets."],
+                            "common_mistakes": ["Expecting <keydef> to create a normal TOC entry or visible topic node."],
+                        },
+                        {
+                            "element_name": "topicref",
+                            "text_content": "<topicref> includes a topic or branch in map navigation and processing.",
+                            "parent_elements": ["map", "topicref", "topicgroup", "topichead"],
+                            "supported_attributes": ["href", "navtitle", "collection-type", "chunk"],
+                            "usage_contexts": ["Use it when the map should include publishable topic content in order and hierarchy."],
+                            "common_mistakes": ["Using <topicref> when the real need is an invisible key definition or support resource."],
+                        },
+                    ],
+                    "status": "success",
+                }
+            },
+            [
+                _candidate(source="dita_spec", title="keydef", text="<keydef> defines indirect keys."),
+                _candidate(source="dita_spec", title="topicref", text="<topicref> includes topics in map navigation."),
+            ],
+            ["## Comparison", "`<keydef>`", "`<topicref>`", "`keys`", "`href`"],
+        ),
+        (
+            "What does mapref do in a DITA map? Show an example.",
+            {
+                "lookup_dita_spec": {
+                    "query_type": "element_definition",
+                    "element_name": "mapref",
+                    "summary": "<mapref> references another DITA map and pulls it into the current map as a submap.",
+                    "parent_elements": ["map", "topicref"],
+                    "allowed_children": ["topicmeta"],
+                    "supported_attributes": ["href", "keyscope", "format", "scope", "processing-role"],
+                    "usage_contexts": [
+                        "Use <mapref> when a master map should include a reusable child map as a submap.",
+                        "Use @keyscope on the mapref branch when submap keys need namespacing."
+                    ],
+                    "common_mistakes": ["Using <navref> when keys and reltables must also come in from the child map."],
+                    "correct_examples": [
+                        "<map><title>Master guide</title><mapref href=\"submaps/admin-guide.ditamap\" keyscope=\"admin\"/></map>"
+                    ],
+                    "status": "success",
+                }
+            },
+            [
+                _candidate(
+                    source="dita_spec",
+                    title="mapref",
+                    text="<mapref> references another DITA map and pulls it into the current map as a submap.",
+                ),
+            ],
+            ["## Short answer", "submap", "## Verified example", "<mapref", 'keyscope="admin"'],
+        ),
+        (
+            "What is a subject scheme in DITA?",
+            {
+                "lookup_dita_spec": {
+                    "query_type": "element_definition",
+                    "element_name": "subjectscheme",
+                    "summary": "<subjectScheme> is a specialized map for controlled values and taxonomies.",
+                    "allowed_children": ["subjectdef", "enumerationDef", "schemeref", "hasNarrower", "hasKind", "hasInstance", "hasPart"],
+                    "supported_attributes": ["id"],
+                    "usage_contexts": [
+                        "Use a subject scheme to define controlled values for profiling or metadata attributes.",
+                        "Reference the subject scheme from the root map, typically as resource-only, so it governs the publication scope."
+                    ],
+                    "common_mistakes": [
+                        "Defining a taxonomy without binding it to an attribute via <enumerationDef> when the goal is controlled authoring."
+                    ],
+                    "correct_examples": [
+                        "<subjectScheme><subjectdef keys=\"platformValues\"><subjectdef keys=\"linux\"/><subjectdef keys=\"windows\"/></subjectdef><enumerationDef><attributedef name=\"platform\"/><subjectdef keyref=\"platformValues\"/></enumerationDef></subjectScheme>"
+                    ],
+                    "status": "success",
+                }
+            },
+            [
+                _candidate(
+                    source="dita_spec",
+                    title="subjectScheme",
+                    text="<subjectScheme> is a specialized map for controlled values and taxonomies.",
+                ),
+            ],
+            ["controlled values", "subjectdef", "enumerationdef", "## Verified example", "platformvalues"],
+        ),
+        (
             "What DITA-OT argument enables draft-comment in PDF?",
             {
                 "lookup_aem_guides": {

@@ -12,6 +12,18 @@ _ATTRIBUTE_ALIASES = {
     "chunking": "chunk",
     "chunked": "chunk",
 }
+_ELEMENT_PHRASE_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bsubject\s+scheme\b", re.IGNORECASE), "subjectscheme"),
+    (re.compile(r"\btopic\s+ref\b", re.IGNORECASE), "topicref"),
+    (re.compile(r"\bmap\s+ref\b", re.IGNORECASE), "mapref"),
+    (re.compile(r"\bnav\s+ref\b", re.IGNORECASE), "navref"),
+    (re.compile(r"\bkey\s+def\b", re.IGNORECASE), "keydef"),
+    (re.compile(r"\bkey\s+scope\b", re.IGNORECASE), "keyscope"),
+    (re.compile(r"\bsimple\s+table\b", re.IGNORECASE), "simpletable"),
+    (re.compile(r"\bchoice\s+table\b", re.IGNORECASE), "choicetable"),
+    (re.compile(r"\bgloss\s+entry\b", re.IGNORECASE), "glossentry"),
+    (re.compile(r"\btask\s+body\b", re.IGNORECASE), "taskbody"),
+)
 _CONTEXTUAL_ATTRIBUTE_NAMES = frozenset(
     {
         "audience",
@@ -135,6 +147,9 @@ def extract_element_names(query: str, explicit_elements: list[str] | None = None
     matches: list[str] = []
     explicit_normalized = {_normalize_token(item) for item in explicit_elements or []}
     candidates = list(explicit_elements or [])
+    for pattern, alias in _ELEMENT_PHRASE_ALIASES:
+        if pattern.search(query or ""):
+            candidates.append(alias)
     candidates.extend(_TOKEN_PATTERN.findall(query or ""))
 
     for candidate in candidates:
