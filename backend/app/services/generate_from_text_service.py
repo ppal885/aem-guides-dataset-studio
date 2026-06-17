@@ -155,20 +155,10 @@ def build_evidence_pack_from_text(
     description = text
 
     if forced_issue_key:
-        summary_match = re.search(
-            r"##\s*Issue\s+Summary\s*\n(.*?)(?=\n\s*##\s*Issue\s+Description|\Z)",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-        description_match = re.search(
-            r"##\s*Issue\s+Description\s*\n(.*?)(?=\n\s*##\s|\Z)",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if summary_match:
-            summary = (summary_match.group(1) or "").strip()[:500]
-        if description_match:
-            description = (description_match.group(1) or "").strip()
+        summary = _extract_jira_section(text, r"(?:##\s*)?Issue\s+Summary\s*\n")[:500]
+        extracted_description = _extract_jira_section(text, r"(?:##\s*)?Issue\s+Description\s*\n")
+        if extracted_description:
+            description = extracted_description.strip()
     else:
         description_heading = re.search(r"(?:h3\.\s*)?Issue\s+Description\s*\n", text, re.IGNORECASE)
         summary_heading = re.search(r"(?:h3\.\s*)?Issue\s+Summary\s*\n", text, re.IGNORECASE)

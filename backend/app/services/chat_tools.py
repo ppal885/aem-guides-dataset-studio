@@ -5,17 +5,24 @@ import re
 from typing import Any
 from uuid import uuid4
 
+from app.jobs import crud
 from app.core.structured_logging import get_structured_logger
+from app.services.chat_bulk_preset_service import save_bulk_preset
 from app.services.chat_multimodal_service import generate_image, generate_xml_flowchart
 from app.services.dataset_job_service import (
     build_dataset_job_urls,
     create_dataset_job_record,
     enforce_concurrent_job_limit,
+    normalize_dataset_job_config,
     start_dataset_job_in_background,
 )
+from app.services.dataset_runner_script_service import render_jobs_api_python_script
 from app.services.generate_from_text_service import run_generate_from_text, update_generate_progress
 from app.services.jira_chat_search_service import search_related_jira_issues
-from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
+from app.services.jira_generate_resolve import (
+    extract_issue_key_from_generation_request,
+    extract_issue_key_from_shortcut,
+)
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -123,6 +130,12 @@ _TOOL_UI_META: dict[str, dict[str, Any]] = {
         "title": "Generate Dataset",
         "category": "Creation",
     },
+    "create_job_from_jira": {
+        "slash_alias": "create_job_from_jira",
+        "title": "Generate Dataset From Jira",
+        "category": "Creation",
+        "primary_arg": "jira_key",
+    },
     "search_jira_issues": {
         "slash_alias": "search_jira_issues",
         "title": "Search Jira Issues",
@@ -222,6 +235,7 @@ _TOOL_UI_META: dict[str, dict[str, Any]] = {
 _TOOL_KIND_BY_NAME: dict[str, str] = {
     "generate_dita": "generation",
     "create_job": "job",
+    "create_job_from_jira": "job",
     "search_jira_issues": "search",
     "lookup_dita_spec": "guidance",
     "review_dita_xml": "review",
@@ -243,6 +257,7 @@ _TOOL_KIND_BY_NAME: dict[str, str] = {
 # Tools that require explicit user approval before execution (e.g. write/job-creation tools)
 _TOOL_APPROVAL_REQUIRED: frozenset[str] = frozenset({
     "create_job",
+    "create_job_from_jira",
     "generate_dita",
     "fix_dita_xml",
 })
@@ -269,6 +284,13 @@ _TOOL_READ_ONLY: frozenset[str] = frozenset({
     "list_indexed_pdfs",
     "browse_dataset",
     "review_dita_xml",
+})
+
+_RECIPE_LEVEL_PARAMS = frozenset({
+    "topic_count", "entry_count", "depth", "children_per_level", "root_topics",
+    "children_per_root", "steps_per_task", "sections_per_concept",
+    "include_map", "include_prereq", "include_result", "include_choicetable",
+    "include_acronyms", "pretty_print", "include_readme",
 })
 
 # Tools shown in the chat input palette (slash-command picker).
@@ -986,6 +1008,130 @@ async def execute_generate_dita(
         return {"error": str(e)}
 
 
+def build_chat_job_base_config(recipe_type: str, config: dict | None = None) -> dict[str, Any]:
+    recipe_type = (recipe_type or "").strip().lower()
+    base_config: dict[str, Any] = {
+        "name": f"Chat Job - {recipe_type}",
+        "seed": "chat-seed",
+        "root_folder": "/content/dam/dataset-studio",
+        "windows_safe_filenames": True,
+        "recipes": [{"type": recipe_type}],
+    }
+    if recipe_type == "task_topics":
+        base_config["recipes"] = [{
+            "type": "task_topics",
+            "topic_count": 10,
+            "steps_per_task": 5,
+            "include_prereq": True,
+            "include_result": True,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "concept_topics":
+        base_config["recipes"] = [{
+            "type": "concept_topics",
+            "topic_count": 10,
+            "sections_per_concept": 3,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "syntax_diagram_reference":
+        base_config["recipes"] = [{
+            "type": "syntax_diagram_reference",
+            "topic_count": 10,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "glossary_pack":
+        base_config["recipes"] = [{
+            "type": "glossary_pack",
+            "entry_count": 20,
+            "include_acronyms": True,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "bulk_dita_map_topics":
+        base_config["recipes"] = [{
+            "type": "bulk_dita_map_topics",
+            "topic_count": 100,
+            "include_readme": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "reference_topics":
+        base_config["recipes"] = [{
+            "type": "reference_topics",
+            "topic_count": 10,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "conref_pack":
+        base_config["recipes"] = [{
+            "type": "conref_pack",
+            "topic_count": 10,
+            "conref_density": 0.4,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "keyscope_demo":
+        base_config["recipes"] = [{
+            "type": "keyscope_demo",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "dita_conref_keyref_dataset_recipe":
+        base_config["recipes"] = [{
+            "type": "dita_conref_keyref_dataset_recipe",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "parent_child_maps_keys_conref_conkeyref_selfrefs":
+        base_config["recipes"] = [{
+            "type": "parent_child_maps_keys_conref_conkeyref_selfrefs",
+            "pretty_print": True,
+        }]
+    elif recipe_type == "dita_glossary_abbrev_dataset_recipe":
+        base_config["recipes"] = [{
+            "type": "dita_glossary_abbrev_dataset_recipe",
+            "pretty_print": True,
+        }]
+    elif recipe_type in ("flat_hierarchical_dita", "large_scale"):
+        base_config["recipes"] = [{
+            "type": recipe_type,
+            "topic_count": 100,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "deep_hierarchy":
+        base_config["recipes"] = [{
+            "type": "deep_hierarchy",
+            "depth": 3,
+            "children_per_level": 5,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    elif recipe_type == "wide_branching":
+        base_config["recipes"] = [{
+            "type": "wide_branching",
+            "root_topics": 10,
+            "children_per_root": 8,
+            "include_map": True,
+            "pretty_print": True,
+        }]
+    else:
+        base_config["recipes"] = [{"type": recipe_type, "pretty_print": True}]
+
+    if config and isinstance(config, dict):
+        if "recipes" in config and config["recipes"]:
+            base_config["recipes"] = config["recipes"]
+        else:
+            if base_config.get("recipes"):
+                for key, value in config.items():
+                    if key in _RECIPE_LEVEL_PARAMS and value is not None:
+                        base_config["recipes"][0][key] = value
+        for key, value in config.items():
+            if key != "recipes" and value is not None:
+                base_config[key] = value
+    return base_config
+
+
 async def execute_create_job(
     recipe_type: str,
     config: dict | None = None,
@@ -1158,134 +1304,7 @@ async def execute_create_job(
             logger.warning_structured("freeform_chat_job_failed", extra_fields={"error": str(exc)})
             return {"error": str(exc)}
 
-    # Build minimal config from recipe type
-    base_config: dict = {
-        "name": f"Chat Job - {recipe_type}",
-        "seed": "chat-seed",
-        "root_folder": "/content/dam/dataset-studio",
-        "windows_safe_filenames": True,
-        "recipes": [{"type": recipe_type}],
-    }
-    if recipe_type == "task_topics":
-        base_config["recipes"] = [{
-            "type": "task_topics",
-            "topic_count": 10,
-            "steps_per_task": 5,
-            "include_prereq": True,
-            "include_result": True,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "concept_topics":
-        base_config["recipes"] = [{
-            "type": "concept_topics",
-            "topic_count": 10,
-            "sections_per_concept": 3,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "syntax_diagram_reference":
-        base_config["recipes"] = [{
-            "type": "syntax_diagram_reference",
-            "topic_count": 10,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "glossary_pack":
-        base_config["recipes"] = [{
-            "type": "glossary_pack",
-            "entry_count": 20,
-            "include_acronyms": True,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "bulk_dita_map_topics":
-        base_config["recipes"] = [{
-            "type": "bulk_dita_map_topics",
-            "topic_count": 100,
-            "include_readme": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "reference_topics":
-        base_config["recipes"] = [{
-            "type": "reference_topics",
-            "topic_count": 10,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "conref_pack":
-        base_config["recipes"] = [{
-            "type": "conref_pack",
-            "topic_count": 10,   # schema ge=10
-            "conref_density": 0.4,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "keyscope_demo":
-        base_config["recipes"] = [{
-            "type": "keyscope_demo",
-            "pretty_print": True,
-        }]
-    elif recipe_type == "dita_conref_keyref_dataset_recipe":
-        base_config["recipes"] = [{
-            "type": "dita_conref_keyref_dataset_recipe",
-            "pretty_print": True,
-        }]
-    elif recipe_type == "parent_child_maps_keys_conref_conkeyref_selfrefs":
-        base_config["recipes"] = [{
-            "type": "parent_child_maps_keys_conref_conkeyref_selfrefs",
-            "pretty_print": True,
-        }]
-    elif recipe_type == "dita_glossary_abbrev_dataset_recipe":
-        base_config["recipes"] = [{
-            "type": "dita_glossary_abbrev_dataset_recipe",
-            "pretty_print": True,
-        }]
-    elif recipe_type in ("flat_hierarchical_dita", "large_scale"):
-        # Large flat dataset — default 100 for chat; user can override via config.topic_count
-        base_config["recipes"] = [{
-            "type": recipe_type,
-            "topic_count": 100,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "deep_hierarchy":
-        base_config["recipes"] = [{
-            "type": "deep_hierarchy",
-            "depth": 3,
-            "children_per_level": 5,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    elif recipe_type == "wide_branching":
-        base_config["recipes"] = [{
-            "type": "wide_branching",
-            "root_topics": 10,
-            "children_per_root": 8,
-            "include_map": True,
-            "pretty_print": True,
-        }]
-    else:
-        base_config["recipes"] = [{"type": recipe_type, "pretty_print": True}]
-
-    _RECIPE_LEVEL_PARAMS = frozenset({
-        "topic_count", "entry_count", "depth", "children_per_level", "root_topics",
-        "children_per_root", "steps_per_task", "sections_per_concept",
-        "include_map", "include_prereq", "include_result", "include_choicetable",
-        "include_acronyms", "pretty_print", "include_readme",
-    })
-    if config and isinstance(config, dict):
-        if "recipes" in config and config["recipes"]:
-            base_config["recipes"] = config["recipes"]
-        else:
-            # Propagate recipe-level params from config into the first recipe
-            if base_config.get("recipes"):
-                for k, v in config.items():
-                    if k in _RECIPE_LEVEL_PARAMS and v is not None:
-                        base_config["recipes"][0][k] = v
-        for k, v in config.items():
-            if k != "recipes" and v is not None:
-                base_config[k] = v
+    base_config = build_chat_job_base_config(recipe_type, config)
 
     # Subject-aware enrichment. Without this:
     #   * structural/scale recipes (deep_hierarchy / wide_branching / flat_hierarchical_dita
@@ -1412,6 +1431,95 @@ async def execute_create_job(
             extra_fields={"recipe_type": recipe_type, "error": str(e)},
         )
         return {"error": str(e)}
+
+
+async def execute_create_job_from_jira(
+    jira_key: str,
+    user_id: str = "chat-user",
+    *,
+    tenant_id: str = "default",
+    preset_label: str = "",
+    force_save_runner: bool = False,
+) -> dict[str, Any]:
+    from app.services.jira_dataset_plan_service import plan_dataset_job_from_jira_issue
+
+    raw_key = (jira_key or "").strip()
+    normalized_key = extract_issue_key_from_shortcut(raw_key) or raw_key.upper()
+    if not normalized_key:
+        return {"error": "jira_key is required"}
+
+    plan = await plan_dataset_job_from_jira_issue(
+        normalized_key,
+        allowlist=RECIPE_TYPE_ALLOWLIST,
+    )
+    if not plan.get("ok"):
+        return {
+            "error": str(plan.get("error") or "Failed to plan dataset job from Jira."),
+            "jira_key": normalized_key,
+            "classification": plan.get("classification"),
+            "warnings": plan.get("warnings") or [],
+        }
+
+    result = await execute_create_job(
+        recipe_type=str(plan.get("recipe_type") or ""),
+        config=plan.get("base_config") if isinstance(plan.get("base_config"), dict) else None,
+        user_id=user_id,
+        subject=str(plan.get("subject") or ""),
+        prompt_text=str(plan.get("prompt_text") or ""),
+        jira_id=str(plan.get("jira_key") or normalized_key),
+    )
+    if result.get("error"):
+        result["jira_key"] = str(plan.get("jira_key") or normalized_key)
+        return result
+
+    effective_label = (preset_label or str(plan.get("preset_label") or "")).strip()
+    should_save_runner = bool(force_save_runner or plan.get("save_runner") or effective_label)
+    runner_script_saved_path: str | None = None
+    preset_saved: dict[str, Any] | None = None
+
+    if should_save_runner:
+        try:
+            from app.services.runner_script_persist_service import persist_cli_script_file
+
+            job_id = str(result.get("job_id") or "").strip()
+            base_config = plan.get("base_config") if isinstance(plan.get("base_config"), dict) else {}
+            normalized_config = normalize_dataset_job_config(dict(base_config))
+            script_body = render_jobs_api_python_script(config=normalized_config)
+            runner_script_saved_path = persist_cli_script_file(
+                tenant_id=(tenant_id or "default").strip() or "default",
+                label=effective_label or str(plan.get("recipe_type") or "jira_job"),
+                issue_key=str(plan.get("jira_key") or normalized_key),
+                script_body=script_body,
+            )
+            if job_id and effective_label:
+                preset_saved = save_bulk_preset(
+                    user_id=user_id,
+                    tenant_id=(tenant_id or "default").strip() or "default",
+                    label=effective_label,
+                    job_id=job_id,
+                    runner_script_relpath=runner_script_saved_path,
+                    jira_key=str(plan.get("jira_key") or normalized_key),
+                    classification=plan.get("classification") if isinstance(plan.get("classification"), dict) else None,
+                )
+        except Exception as exc:
+            logger.warning_structured(
+                "create_job_from_jira_postprocess_failed",
+                extra_fields={"jira_key": normalized_key, "error": str(exc)},
+            )
+            result.setdefault("warnings", []).append(f"Post-processing warning: {exc}")
+
+    result["jira_key"] = str(plan.get("jira_key") or normalized_key)
+    if runner_script_saved_path:
+        result["runner_script_saved_path"] = runner_script_saved_path
+    if preset_saved and not preset_saved.get("error"):
+        result["preset_saved"] = preset_saved
+    if plan.get("classification"):
+        result["classification"] = plan.get("classification")
+    if plan.get("warnings"):
+        merged_warnings = list(result.get("warnings") or [])
+        merged_warnings.extend([w for w in (plan.get("warnings") or []) if w not in merged_warnings])
+        result["warnings"] = merged_warnings
+    return result
 
 
 async def execute_search_jira_issues(
@@ -2776,12 +2884,16 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
         if bundle_summary:
             return bundle_summary
         return f"Generated a DITA bundle for {jira_id}."
-    if name == "create_job":
+    if name in {"create_job", "create_job_from_jira"}:
         recipe_type = str(result.get("recipe_type") or "").strip()
         job_id = str(result.get("job_id") or "").strip()
         label = f"Started dataset job `{job_id}`" if job_id else "Started a dataset generation job"
         if recipe_type:
             label += f" for recipe `{recipe_type}`"
+        if name == "create_job_from_jira":
+            jira_key = str(result.get("jira_key") or "").strip()
+            if jira_key:
+                label += f" from `{jira_key}`"
         return label + "."
     if name == "search_jira_issues":
         issues = result.get("issues") or []
@@ -2969,7 +3081,7 @@ def _tool_status_tone(name: str, result: dict[str, Any], warnings: list[str], so
         return "warning"
     if name in {"search_jira_issues", "lookup_aem_guides", "search_tenant_knowledge", "lookup_output_preset", "lookup_dita_spec", "find_recipes", "list_indexed_pdfs"} and not sources:
         return "warning"
-    if name in {"create_job", "get_job_status", "list_jobs"}:
+    if name in {"create_job", "create_job_from_jira", "get_job_status", "list_jobs"}:
         raw_status = str(result.get("status") or "").strip().lower()
         if raw_status in {"failed", "error", "cancelled", "canceled"}:
             return "warning"
@@ -3102,6 +3214,11 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
             except Exception:
                 pass
 
+    if tool["name"] == "create_job_from_jira" and isinstance(args.get("jira_key"), str):
+        normalized_jira_key = extract_issue_key_from_shortcut(args["jira_key"]) or str(args["jira_key"]).strip().upper()
+        if normalized_jira_key:
+            args["jira_key"] = normalized_jira_key
+
     if required and not required.issubset(args.keys()):
         return None
     return {"name": tool["name"], "args": args, "source": "slash"}
@@ -3202,6 +3319,32 @@ def get_tool_definitions() -> list[dict]:
                     },
                 },
                 "required": ["recipe_type"],
+            },
+        },
+        {
+            "name": "create_job_from_jira",
+            "description": (
+                "Create a dataset generation job from a Jira issue or Jira browse URL. "
+                "Use when the user wants dataset generation grounded in a specific Jira ticket "
+                "such as a bug, story, or repro issue."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "jira_key": {
+                        "type": "string",
+                        "description": "Jira key like GUIDES-12345 or a Jira browse URL.",
+                    },
+                    "preset_label": {
+                        "type": "string",
+                        "description": "Optional saved preset label when the generated job should be reusable.",
+                    },
+                    "force_save_runner": {
+                        "type": "boolean",
+                        "description": "Force runner script persistence even if the classifier did not request it.",
+                    },
+                },
+                "required": ["jira_key"],
             },
         },
         {
@@ -3593,6 +3736,14 @@ async def run_tool(
             user_id=user_id,
             subject=str(params.get("subject") or "").strip(),
             prompt_text=str(params.get("prompt_text") or "").strip(),
+        )
+    elif name == "create_job_from_jira":
+        result = await execute_create_job_from_jira(
+            jira_key=str(params.get("jira_key") or "").strip(),
+            user_id=user_id,
+            tenant_id=tenant_id,
+            preset_label=str(params.get("preset_label") or "").strip(),
+            force_save_runner=bool(params.get("force_save_runner")),
         )
     elif name == "search_jira_issues":
         result = await execute_search_jira_issues(
