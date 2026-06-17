@@ -1,221 +1,197 @@
-import { useState, useCallback, useEffect } from 'react';
-import { apiUrl, fetchJson } from '@/utils/api';
-import { Settings, Database, FileText, Loader2, CheckCircle, XCircle, Plus, Link } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Brain, CheckCircle, Clock3, Database, Download, Loader2, RefreshCw, Settings, XCircle } from 'lucide-react';
 
-interface RagStatus {
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { apiUrl, fetchJson } from '@/utils/api';
+
+interface ReviewCenterSource {
+  source_id: string;
+  title: string;
+  description: string;
+  collection: string;
+  chunk_count: number;
+  candidate_backlog?: number;
+  issue_count?: number | null;
+  last_successful_run?: string | null;
+  failed_item_count?: number;
+  failed_items?: string[];
+  populate_via?: string;
+  last_error?: string | null;
+  extra?: Record<string, unknown>;
+}
+
+interface ReviewCenterCandidate {
+  id: string;
+  prompt: string;
+  final_answer: string;
+  topic?: string | null;
+  tags: string[];
+  source_type?: string | null;
+  status: string;
+  support_count?: number;
+  accepted_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface ReviewCenterStatus {
+  generated_at: string;
   chroma_available: boolean;
-  aem_guides?: {
-    source: string;
-    collection?: string;
-    chunk_count: number;
-    count_scope?: string;
-    populate_via: string;
+  sources: ReviewCenterSource[];
+  candidate_counts: {
+    pending_review: number;
+    approved: number;
+    rejected: number;
+    total: number;
   };
-  dita_spec?: {
-    source: string;
-    collection?: string;
-    chunk_count: number;
-    count_scope?: string;
-    populate_via: string;
-  };
-  dita_ot_github?: {
-    source: string;
-    collection?: string;
-    chunk_count: number;
-    reference_issue_count?: number;
-    count_scope?: string;
-    populate_via: string;
-  };
-  jira_qa?: {
-    source: string;
-    collection?: string;
-    chunk_count: number;
-    issue_count?: number;
-    last_sync_time?: string | null;
-    recent_failure_count?: number;
-    count_scope?: string;
-    populate_via: string;
-    project_key?: string;
-    backfill_limit?: number;
-  };
+  recent_failures: Array<{
+    ts: string;
+    source_id: string;
+    operation: string;
+    error: string;
+    failed_items?: string[];
+  }>;
   tavily?: {
     configured: boolean;
     chat_enabled: boolean;
     hint?: string | null;
   };
-  error?: string;
+}
+
+interface CandidateResponse {
+  items: ReviewCenterCandidate[];
 }
 
 function formatTimestamp(value?: string | null): string {
-  if (!value) return 'Not synced yet';
+  if (!value) return 'Not run yet';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 export function SettingsPage() {
-  const [ragStatus, setRagStatus] = useState<RagStatus | null>(null);
+  const [status, setStatus] = useState<ReviewCenterStatus | null>(null);
+  const [candidates, setCandidates] = useState<ReviewCenterCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [indexingDita, setIndexingDita] = useState(false);
-  const [crawlingAem, setCrawlingAem] = useState(false);
-  const [indexingDitaOt, setIndexingDitaOt] = useState(false);
-  const [indexingJiraQa, setIndexingJiraQa] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
-
-  // Custom URL indexing state
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [customUrlsText, setCustomUrlsText] = useState('');
-  const [indexingCustomUrls, setIndexingCustomUrls] = useState(false);
   const [customUrlsResult, setCustomUrlsResult] = useState<{ message: string; isError: boolean } | null>(null);
 
-  const loadRagStatus = useCallback(async () => {
+  const loadReviewCenter = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchJson<RagStatus>(apiUrl('/api/v1/ai/rag-status?tenant_id=default'));
-      setRagStatus(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load RAG status');
-      setRagStatus(null);
+      const [reviewStatus, candidateData] = await Promise.all([
+        fetchJson<ReviewCenterStatus>(apiUrl('/api/v1/ai/review-center')),
+        fetchJson<CandidateResponse>(apiUrl('/api/v1/ai/review-center/candidates?status=pending_review')),
+      ]);
+      setStatus(reviewStatus);
+      setCandidates(candidateData.items || []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load review center');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadRagStatus();
-  }, [loadRagStatus]);
+    loadReviewCenter();
+  }, [loadReviewCenter]);
 
-  const handleIndexDita = useCallback(async () => {
-    setIndexingDita(true);
-    setLastAction(null);
-    setError(null);
-    try {
-      const result = await fetchJson<{ chunks_stored?: number; sources_indexed?: string[]; errors?: string[] }>(
-        apiUrl('/api/v1/ai/index-dita-pdf'),
-        { method: 'POST', body: JSON.stringify({}) }
-      );
-      const chunks = result.chunks_stored ?? 0;
-      const errs = result.errors ?? [];
-      if (errs.length > 0) {
-        setLastAction(`Indexed ${chunks} chunks with errors: ${errs.join('; ')}`);
-      } else {
-        setLastAction(`Indexed ${chunks} chunks successfully`);
+  const trustedChunkTotal = useMemo(
+    () => (status?.sources || []).reduce((sum, source) => sum + (source.chunk_count || 0), 0),
+    [status?.sources]
+  );
+
+  const setActionBusy = useCallback((key: string, busy: boolean) => {
+    setActionLoading(previous => ({ ...previous, [key]: busy }));
+  }, []);
+
+  const runSourceAction = useCallback(
+    async (sourceId: string) => {
+      const key = `reindex:${sourceId}`;
+      setActionBusy(key, true);
+      setError(null);
+      setLastAction(null);
+      try {
+        const result = await fetchJson<Record<string, unknown>>(
+          apiUrl(`/api/v1/ai/review-center/sources/${sourceId}/reindex`),
+          { method: 'POST' }
+        );
+        const indexed = Number(result.indexed ?? result.chunks_stored ?? result.issues_indexed ?? 0);
+        const errors = Array.isArray(result.errors) ? result.errors : [];
+        setLastAction(
+          errors.length > 0
+            ? `${sourceId} reindex completed with ${indexed} primary results and ${errors.length} reported issue(s).`
+            : `${sourceId} reindex completed successfully.`
+        );
+        await loadReviewCenter();
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : `Failed to reindex ${sourceId}`);
+      } finally {
+        setActionBusy(key, false);
       }
-      await loadRagStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Index DITA PDF failed');
-    } finally {
-      setIndexingDita(false);
-    }
-  }, [loadRagStatus]);
+    },
+    [loadReviewCenter, setActionBusy]
+  );
 
-  const handleIndexDitaOt = useCallback(async () => {
-    setIndexingDitaOt(true);
-    setLastAction(null);
+  const runCandidateAction = useCallback(
+    async (entryId: string, action: 'approve' | 'reject') => {
+      const key = `${action}:${entryId}`;
+      setActionBusy(key, true);
+      setError(null);
+      try {
+        await fetchJson(apiUrl(`/api/v1/ai/review-center/candidates/${entryId}/${action}`), {
+          method: 'POST',
+        });
+        setLastAction(`Candidate ${action}d successfully.`);
+        await loadReviewCenter();
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : `Failed to ${action} candidate`);
+      } finally {
+        setActionBusy(key, false);
+      }
+    },
+    [loadReviewCenter, setActionBusy]
+  );
+
+  const handleSeedLearnedQa = useCallback(async () => {
+    const key = 'seed-learned-qa';
+    setActionBusy(key, true);
     setError(null);
     try {
-      const result = await fetchJson<{
-        indexed?: number;
-        indexed_live?: number;
-        indexed_curated_reference?: number;
-        message?: string;
-        errors?: string[];
-      }>(
-        apiUrl('/api/v1/ai/index-dita-ot-github'),
+      const result = await fetchJson<{ seed?: { created?: number; updated?: number }; index?: { indexed?: number } }>(
+        apiUrl('/api/v1/ai/learned-qa/seed'),
         { method: 'POST' }
       );
-      const indexed = result.indexed ?? 0;
-      const errs = result.errors ?? [];
-      if (errs.length > 0) {
-        setLastAction(`${result.message || `Indexed ${indexed} DITA OT issues`} with errors: ${errs.join('; ')}`);
-      } else {
-        setLastAction(result.message || `Indexed ${indexed} DITA OT GitHub issues successfully`);
-      }
-      await loadRagStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Index DITA OT GitHub failed');
+      setLastAction(
+        `Seeded learned QA (${result.seed?.created ?? 0} created, ${result.seed?.updated ?? 0} updated) and indexed ${result.index?.indexed ?? 0} approved pairs.`
+      );
+      await loadReviewCenter();
+    } catch (seedError) {
+      setError(seedError instanceof Error ? seedError.message : 'Failed to seed learned QA');
     } finally {
-      setIndexingDitaOt(false);
+      setActionBusy(key, false);
     }
-  }, [loadRagStatus]);
+  }, [loadReviewCenter, setActionBusy]);
 
-  const handleCrawlAem = useCallback(async () => {
-    setCrawlingAem(true);
-    setLastAction(null);
+  const handleExportLearnedQa = useCallback(async () => {
+    const key = 'export-learned-qa';
+    setActionBusy(key, true);
     setError(null);
     try {
-      const result = await fetchJson<{ chunks_stored?: number; pages_crawled?: number; errors?: string[] }>(
-        apiUrl('/api/v1/ai/crawl-aem-guides'),
-        { method: 'POST', body: JSON.stringify({}) }
-      );
-      const chunks = result.chunks_stored ?? 0;
-      const pages = result.pages_crawled ?? 0;
-      const errs = result.errors ?? [];
-      if (errs.length > 0) {
-        setLastAction(`Crawled ${pages} pages, stored ${chunks} chunks. Errors: ${errs.join('; ')}`);
-      } else {
-        setLastAction(`Crawled ${pages} pages, stored ${chunks} chunks`);
-      }
-      await loadRagStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Crawl AEM Guides failed');
+      const result = await fetchJson<{ path: string; count: number }>(apiUrl('/api/v1/ai/learned-qa/export'), {
+        method: 'POST',
+      });
+      setLastAction(`Exported ${result.count} approved prompt-answer pairs to ${result.path}.`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Failed to export learned QA');
     } finally {
-      setCrawlingAem(false);
+      setActionBusy(key, false);
     }
-  }, [loadRagStatus]);
-
-  const handleIndexJiraQa = useCallback(async () => {
-    setIndexingJiraQa(true);
-    setLastAction(null);
-    setError(null);
-    const projectKey = ragStatus?.jira_qa?.project_key || 'GUIDES';
-    const backfillLimit = ragStatus?.jira_qa?.backfill_limit ?? 1000;
-    try {
-      const result = await fetchJson<{
-        issues_indexed?: number;
-        indexed_issues?: number;
-        chunks?: number;
-        fallback?: string;
-        message?: string;
-        error?: string;
-        errors?: string[];
-      }>(
-        apiUrl('/api/v1/jira-rag/index'),
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            sync_mode: 'incremental',
-            project_key: projectKey,
-            limit: backfillLimit,
-            force_reindex: false,
-          }),
-        }
-      );
-      if (result.error) {
-        setError(result.error);
-      }
-      const indexed = result.issues_indexed ?? result.indexed_issues ?? 0;
-      const chunks = result.chunks ?? 0;
-      const errs = result.errors ?? [];
-      const modeNote = result.fallback === 'backfill' ? ' (first-run backfill)' : '';
-      if (errs.length > 0) {
-        setLastAction(
-          `Indexed ${indexed} ${projectKey} issues (${chunks} chunks)${modeNote} with errors: ${errs.join('; ')}`
-        );
-      } else {
-        setLastAction(
-          result.message ||
-            `Indexed ${indexed} ${projectKey} issues into ${chunks} RAG chunks${modeNote}`
-        );
-      }
-      await loadRagStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Index Jira QA failed');
-    } finally {
-      setIndexingJiraQa(false);
-    }
-  }, [loadRagStatus, ragStatus?.jira_qa?.backfill_limit, ragStatus?.jira_qa?.project_key]);
+  }, [setActionBusy]);
 
   const handleIndexCustomUrls = useCallback(async () => {
     const urls = customUrlsText
@@ -224,324 +200,388 @@ export function SettingsPage() {
       .filter(line => line.startsWith('http://') || line.startsWith('https://'));
 
     if (urls.length === 0) {
-      setCustomUrlsResult({ message: 'No valid URLs found. Enter one URL per line starting with http:// or https://', isError: true });
+      setCustomUrlsResult({
+        message: 'Enter one valid URL per line starting with http:// or https://.',
+        isError: true,
+      });
       return;
     }
 
-    setIndexingCustomUrls(true);
+    const key = 'custom-aem-urls';
+    setActionBusy(key, true);
     setCustomUrlsResult(null);
     try {
       const result = await fetchJson<{ chunks_stored?: number; pages_crawled?: number; errors?: string[] }>(
         apiUrl('/api/v1/ai/crawl-aem-guides'),
-        { method: 'POST', body: JSON.stringify({ urls }) }
+        {
+          method: 'POST',
+          body: JSON.stringify({ urls }),
+        }
       );
-      const chunks = result.chunks_stored ?? 0;
-      const pages = result.pages_crawled ?? 0;
-      const errs = result.errors ?? [];
-      if (errs.length > 0) {
-        setCustomUrlsResult({
-          message: `Indexed ${pages} page(s), ${chunks} chunks. Errors: ${errs.join('; ')}`,
-          isError: true,
-        });
-      } else {
-        setCustomUrlsResult({
-          message: `${pages} page(s) indexed — ${chunks} chunks added to RAG knowledge base`,
-          isError: false,
-        });
+      const errors = result.errors || [];
+      setCustomUrlsResult({
+        message:
+          errors.length > 0
+            ? `Indexed ${result.pages_crawled ?? 0} pages with ${result.chunks_stored ?? 0} chunks and ${errors.length} issue(s).`
+            : `Indexed ${result.pages_crawled ?? 0} pages and stored ${result.chunks_stored ?? 0} chunks.`,
+        isError: errors.length > 0,
+      });
+      if (errors.length === 0) {
         setCustomUrlsText('');
       }
-      await loadRagStatus();
-    } catch (e) {
-      setCustomUrlsResult({ message: e instanceof Error ? e.message : 'Indexing failed', isError: true });
+      await loadReviewCenter();
+    } catch (crawlError) {
+      setCustomUrlsResult({
+        message: crawlError instanceof Error ? crawlError.message : 'Failed to index custom URLs',
+        isError: true,
+      });
     } finally {
-      setIndexingCustomUrls(false);
+      setActionBusy(key, false);
     }
-  }, [customUrlsText, loadRagStatus]);
-
-  const validUrlCount = customUrlsText
-    .split('\n')
-    .filter(line => line.trim().startsWith('http://') || line.trim().startsWith('https://')).length;
+  }, [customUrlsText, loadReviewCenter, setActionBusy]);
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
-          <Settings className="w-6 h-6 text-slate-600" />
+    <div className="mx-auto max-w-7xl space-y-6 pb-8">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
+          <Settings className="h-6 w-6 text-slate-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-          <p className="text-slate-600 text-sm">RAG indexing and AI configuration</p>
+          <h1 className="text-2xl font-bold text-slate-900">Review Center</h1>
+          <p className="text-sm text-slate-600">Trusted-source health, learned prompt review, and indexing actions.</p>
         </div>
       </div>
 
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-          <Database className="w-5 h-5" />
-          RAG Status
-        </h2>
+      {loading ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 py-10 text-slate-600">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading review center...
+          </CardContent>
+        </Card>
+      ) : null}
 
-        {loading && (
-          <div className="flex items-center gap-2 text-slate-600 py-4">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Loading RAG status...
-          </div>
-        )}
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
 
-        {error && (
-          <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg p-4 mb-4">
-            <XCircle className="w-5 h-5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+      {lastAction ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{lastAction}</div>
+      ) : null}
 
-        {lastAction && !error && (
-          <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg p-4 mb-4">
-            <CheckCircle className="w-5 h-5 shrink-0" />
-            <span>{lastAction}</span>
-          </div>
-        )}
-
-        {!loading && ragStatus && (
-          <div className="space-y-4">
-            {ragStatus.error && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                <strong className="font-medium">RAG status note:</strong> {ragStatus.error}
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              {ragStatus.chroma_available ? (
-                <CheckCircle className="w-5 h-5 text-green-600" />
-              ) : (
-                <XCircle className="w-5 h-5 text-amber-600" />
-              )}
-              <span className="font-medium">
-                ChromaDB: {ragStatus.chroma_available ? 'Available' : 'Not available'}
-              </span>
-            </div>
-
-            <p className="text-sm text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <span className="font-medium">Vector RAG (Chroma):</span>{' '}
-              <code className="text-xs">{ragStatus.aem_guides?.collection ?? 'aem_guides'}</code> ={' '}
-              <strong>{ragStatus.aem_guides?.chunk_count ?? 0}</strong> chunks ·{' '}
-              <code className="text-xs">{ragStatus.dita_spec?.collection ?? 'dita_spec'}</code> ={' '}
-              <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong> chunks ·{' '}
-              <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code> ={' '}
-              <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong> chunks ·{' '}
-              <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code> ={' '}
-              <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong> chunks.
-            </p>
-
-            <p className="text-sm text-slate-600">
-              Tavily web search (chat):{' '}
-              {ragStatus.tavily?.configured ? (
-                ragStatus.tavily.chat_enabled ? (
-                  <span className="font-medium text-green-700">enabled</span>
-                ) : (
-                  <span className="font-medium text-amber-700">key set, chat disabled (CHAT_TAVILY_ENABLED=false)</span>
-                )
-              ) : (
-                <span className="font-medium text-slate-500">
-                  not configured — set <code className="text-xs">TAVILY_API_KEY</code> in{' '}
-                  <code className="text-xs">backend/.env</code>, then restart
-                </span>
-              )}
-            </p>
-
-            {/* AEM Guides */}
-            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-slate-600" />
-                <span className="font-medium">AEM Guides &amp; Assets (Experience League)</span>
-              </div>
-              <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.aem_guides?.source ?? 'Experience League documentation crawl for chat RAG.'}
-              </p>
-              <p className="text-sm font-mono mb-3">
-                Chunks in <code className="text-xs">{ragStatus.aem_guides?.collection ?? 'aem_guides'}</code>:{' '}
-                <strong>{ragStatus.aem_guides?.chunk_count ?? 0}</strong>
-              </p>
-
-              {/* Custom URL indexing */}
-              <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/40 mb-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Link className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">Add URLs to Knowledge Base</span>
+      {!loading && status ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-slate-500">Trusted chunks</div>
+                <div className="mt-2 text-3xl font-bold text-slate-900">{trustedChunkTotal}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-slate-500">Learned prompts</div>
+                <div className="mt-2 text-3xl font-bold text-slate-900">{status.candidate_counts.total}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-slate-500">Pending review</div>
+                <div className="mt-2 text-3xl font-bold text-amber-600">{status.candidate_counts.pending_review}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-slate-500">Failed items logged</div>
+                <div className="mt-2 text-3xl font-bold text-rose-600">
+                  {(status.sources || []).reduce((sum, source) => sum + (source.failed_item_count || 0), 0)}
                 </div>
-                <p className="text-xs text-slate-500 mb-2">
-                  Paste one Experience League (or other) URL per line. Each page is crawled, chunked, and added to the RAG index immediately. URLs are also saved for future full re-crawls.
-                </p>
-                <textarea
-                  value={customUrlsText}
-                  onChange={e => {
-                    setCustomUrlsText(e.target.value);
-                    setCustomUrlsResult(null);
-                  }}
-                  placeholder={`https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/...\nhttps://experienceleague.adobe.com/en/docs/...`}
-                  rows={4}
-                  className="w-full text-xs font-mono border border-slate-200 rounded-md p-2 bg-white resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-                {customUrlsResult && (
-                  <div className={`flex items-start gap-2 mt-2 text-xs rounded-md p-2 ${customUrlsResult.isError ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                    {customUrlsResult.isError
-                      ? <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      : <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
-                    <span>{customUrlsResult.message}</span>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl text-slate-900">
+                <Database className="h-5 w-5" />
+                Source health
+              </CardTitle>
+              <CardDescription>
+                Review trusted-source counts, last successful runs, failure state, and source-specific quick actions.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2">
+              {status.sources.map(source => {
+                const busy = Boolean(actionLoading[`reindex:${source.source_id}`]);
+                return (
+                  <div key={source.source_id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900">{source.title}</h3>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">{source.description}</p>
+                      </div>
+                      {source.failed_item_count ? (
+                        <AlertTriangle className="h-5 w-5 text-amber-500" />
+                      ) : (
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Chunks</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{source.chunk_count}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Last successful run</div>
+                        <div className="mt-1 text-sm font-medium text-slate-900">{formatTimestamp(source.last_successful_run)}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Backlog / issues</div>
+                        <div className="mt-1 text-sm font-medium text-slate-900">
+                          {source.candidate_backlog || source.issue_count || 0}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Failed items</div>
+                        <div className="mt-1 text-sm font-medium text-slate-900">{source.failed_item_count || 0}</div>
+                      </div>
+                    </div>
+
+                    {source.last_error ? (
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <strong className="font-semibold">Last error:</strong> {source.last_error}
+                      </div>
+                    ) : null}
+
+                    {source.failed_items?.length ? (
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent failed items</div>
+                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                          {source.failed_items.slice(0, 4).map(item => (
+                            <li key={item} className="truncate">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button onClick={() => runSourceAction(source.source_id)} disabled={busy}>
+                        {busy ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Reindexing
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Reindex
+                          </>
+                        )}
+                      </Button>
+                      {source.source_id === 'learned_qa' ? (
+                        <>
+                          <Button variant="outline" onClick={handleSeedLearnedQa} disabled={Boolean(actionLoading['seed-learned-qa'])}>
+                            {actionLoading['seed-learned-qa'] ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Seeding
+                              </>
+                            ) : (
+                              <>
+                                <Brain className="mr-2 h-4 w-4" />
+                                Seed curated prompts
+                              </>
+                            )}
+                          </Button>
+                          <Button variant="outline" onClick={handleExportLearnedQa} disabled={Boolean(actionLoading['export-learned-qa'])}>
+                            {actionLoading['export-learned-qa'] ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Exporting
+                              </>
+                            ) : (
+                              <>
+                                <Download className="mr-2 h-4 w-4" />
+                                Export approved pairs
+                              </>
+                            )}
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-900">Learned prompt review queue</CardTitle>
+                <CardDescription>
+                  Only approved prompt-answer pairs enter trusted retrieval. Pending chat learnings stay here until reviewed.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {candidates.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                    No pending learned prompts right now.
+                  </div>
+                ) : (
+                  candidates.map(candidate => (
+                    <div key={candidate.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{candidate.prompt}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {candidate.topic || 'dita_general'} • {candidate.source_type || 'chat_feedback'} • support {candidate.support_count || 1}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => runCandidateAction(candidate.id, 'approve')}
+                            disabled={Boolean(actionLoading[`approve:${candidate.id}`])}
+                          >
+                            {actionLoading[`approve:${candidate.id}`] ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => runCandidateAction(candidate.id, 'reject')}
+                            disabled={Boolean(actionLoading[`reject:${candidate.id}`])}
+                          >
+                            {actionLoading[`reject:${candidate.id}`] ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Answer preview</div>
+                        <pre className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{candidate.final_answer}</pre>
+                      </div>
+                      {candidate.tags?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {candidate.tags.map(tag => (
+                            <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
                 )}
-                <button
-                  onClick={handleIndexCustomUrls}
-                  disabled={indexingCustomUrls || validUrlCount === 0}
-                  className="mt-2 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                >
-                  {indexingCustomUrls ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Indexing {validUrlCount} URL{validUrlCount !== 1 ? 's' : ''}…
-                    </>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">AEM crawl additions</CardTitle>
+                  <CardDescription>
+                    Add trusted Experience League or related URLs into the AEM Guides knowledge base and keep them for future recrawls.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <textarea
+                    value={customUrlsText}
+                    onChange={event => setCustomUrlsText(event.target.value)}
+                    placeholder="https://experienceleague.adobe.com/en/docs/...\nhttps://experienceleague.adobe.com/en/docs/..."
+                    rows={6}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                  />
+                  <Button onClick={handleIndexCustomUrls} disabled={Boolean(actionLoading['custom-aem-urls'])}>
+                    {actionLoading['custom-aem-urls'] ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Indexing URLs
+                      </>
+                    ) : (
+                      'Index URLs'
+                    )}
+                  </Button>
+                  {customUrlsResult ? (
+                    <div
+                      className={`rounded-lg px-4 py-3 text-sm ${
+                        customUrlsResult.isError ? 'border border-amber-200 bg-amber-50 text-amber-900' : 'border border-green-200 bg-green-50 text-green-700'
+                      }`}
+                    >
+                      {customUrlsResult.message}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">Recent failures</CardTitle>
+                  <CardDescription>Latest source errors and failed items captured for review.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {status.recent_failures.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                      No recent failures logged.
+                    </div>
                   ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" />
-                      {validUrlCount > 0
-                        ? `Index ${validUrlCount} URL${validUrlCount !== 1 ? 's' : ''}`
-                        : 'Index URLs'}
-                    </>
+                    status.recent_failures.slice(0, 8).map((failure, index) => (
+                      <div key={`${failure.source_id}-${failure.ts}-${index}`} className="rounded-lg border border-slate-200 p-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <Clock3 className="h-4 w-4 text-slate-500" />
+                          {failure.source_id} • {failure.operation}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{formatTimestamp(failure.ts)}</div>
+                        <p className="mt-2 text-sm text-slate-700">{failure.error}</p>
+                        {failure.failed_items?.length ? (
+                          <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
+                            {failure.failed_items.slice(0, 3).map(item => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ))
                   )}
-                </button>
-              </div>
+                </CardContent>
+              </Card>
 
-              <button
-                onClick={handleCrawlAem}
-                disabled={crawlingAem}
-                className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {crawlingAem ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Re-crawling all URLs…
-                  </>
-                ) : (
-                  'Re-crawl All AEM Guides URLs'
-                )}
-              </button>
-            </div>
-
-            {/* DITA Spec */}
-            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-slate-600" />
-                <span className="font-medium">DITA Spec PDFs</span>
-              </div>
-              <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.dita_spec?.source ?? 'DITA 1.2 + 1.3 Part 1 Base PDFs in Chroma `dita_spec`.'}
-              </p>
-              <p className="text-sm font-mono mb-3">
-                Chunks in <code className="text-xs">{ragStatus.dita_spec?.collection ?? 'dita_spec'}</code>:{' '}
-                <strong>{ragStatus.dita_spec?.chunk_count ?? 0}</strong>
-              </p>
-              <button
-                onClick={handleIndexDita}
-                disabled={indexingDita}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {indexingDita ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing…
-                  </>
-                ) : (
-                  'Index DITA PDF'
-                )}
-              </button>
-            </div>
-
-            {/* DITA OT GitHub */}
-            <div className="rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-slate-500" />
-                <span className="font-medium">DITA OT GitHub Issues</span>
-              </div>
-              <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.dita_ot_github?.source ?? 'dita-ot/dita-ot GitHub issues for DITA Open Toolkit RAG.'}
-              </p>
-              <p className="text-sm font-mono mb-3">
-                Chunks in <code className="text-xs">{ragStatus.dita_ot_github?.collection ?? 'dita_ot_github'}</code>:{' '}
-                <strong>{ragStatus.dita_ot_github?.chunk_count ?? 0}</strong>
-              </p>
-              <p className="text-xs text-slate-500 mb-3">
-                Curated fallback references available:{' '}
-                <strong>{ragStatus.dita_ot_github?.reference_issue_count ?? 0}</strong>
-              </p>
-              {((ragStatus.dita_ot_github?.chunk_count ?? 0) === 0 &&
-                (ragStatus.dita_ot_github?.reference_issue_count ?? 0) > 0) && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
-                  Live GitHub issue chunks are still empty, but curated DITA-OT reference issues are already
-                  available for chat fallback.
-                </p>
-              )}
-              <button
-                onClick={handleIndexDitaOt}
-                disabled={indexingDitaOt}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {indexingDitaOt ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing…
-                  </>
-                ) : (
-                  'Index DITA OT GitHub'
-                )}
-              </button>
-            </div>
-
-            {/* Jira QA */}
-            <div className="rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-slate-500" />
-                <span className="font-medium">Jira QA Knowledge Base</span>
-              </div>
-              <p className="text-sm text-slate-600 mb-2">
-                {ragStatus.jira_qa?.source ?? 'Indexed Jira QA issues (bug reports, QA patterns, past resolutions) for chat RAG.'}
-              </p>
-              <p className="text-sm font-mono mb-3">
-                Chunks in <code className="text-xs">{ragStatus.jira_qa?.collection ?? 'jira_qa'}</code>:{' '}
-                <strong>{ragStatus.jira_qa?.chunk_count ?? 0}</strong>
-              </p>
-              <p className="text-xs text-slate-500 mb-2">
-                Distinct indexed Jira issues: <strong>{ragStatus.jira_qa?.issue_count ?? 0}</strong>
-              </p>
-              <p className="text-xs text-slate-500 mb-2">
-                Last sync: <strong>{formatTimestamp(ragStatus.jira_qa?.last_sync_time)}</strong>
-              </p>
-              <p className="text-xs text-slate-500 mb-3">
-                Recent index failures logged: <strong>{ragStatus.jira_qa?.recent_failure_count ?? 0}</strong>
-              </p>
-              <p className="text-xs text-slate-500 mb-3">
-                Runs incremental sync for project{' '}
-                <code className="text-xs">{ragStatus.jira_qa?.project_key ?? 'GUIDES'}</code> with a window of up to{' '}
-                <strong>{ragStatus.jira_qa?.backfill_limit ?? 1000}</strong> issues into Chroma (
-                <code className="text-xs">sync_mode=incremental</code>). On the first run, the backend automatically
-                falls back to <code className="text-xs">backfill</code> if no prior sync state exists.
-              </p>
-              <button
-                onClick={handleIndexJiraQa}
-                disabled={indexingJiraQa}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {indexingJiraQa ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Indexing…
-                  </>
-                ) : (
-                  'Index Jira QA'
-                )}
-              </button>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">Runtime notes</CardTitle>
+                  <CardDescription>Quick health notes for retrieval behavior.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-700">
+                  <div className="flex items-center gap-2">
+                    {status.chroma_available ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-amber-600" />
+                    )}
+                    ChromaDB is {status.chroma_available ? 'available' : 'not available'}.
+                  </div>
+                  {status.tavily ? (
+                    <div className="flex items-start gap-2">
+                      {status.tavily.configured ? (
+                        <CheckCircle className="mt-0.5 h-4 w-4 text-green-600" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600" />
+                      )}
+                      <div>
+                        Tavily web search is {status.tavily.configured ? 'configured' : 'not configured'}.
+                        {status.tavily.hint ? <div className="mt-1 text-xs text-slate-500">{status.tavily.hint}</div> : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="text-xs text-slate-500">
+                    Last review-center refresh: {formatTimestamp(status.generated_at)}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
-        )}
-      </section>
+        </>
+      ) : null}
     </div>
   );
 }

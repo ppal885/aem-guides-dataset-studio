@@ -389,12 +389,28 @@ async def crawl_aem_guides(
     When specific URLs are provided, they are also persisted to the config for future full crawls."""
     try:
         from app.services.crawl_service import crawl_and_index, save_urls_to_config
+        from app.services.source_review_state_service import record_source_failure, record_source_success
+        from app.services.vector_store_service import CHROMA_COLLECTION_AEM_GUIDES
         urls = body.urls if body and body.urls else None
         if urls:
             save_urls_to_config(urls)
         stats = await asyncio.to_thread(crawl_and_index, urls=urls)
+        record_source_success(
+            source_id=CHROMA_COLLECTION_AEM_GUIDES,
+            operation="crawl",
+            failed_items=list(stats.get("errors") or []),
+            stats=stats,
+        )
         return stats
     except Exception as e:
+        from app.services.source_review_state_service import record_source_failure
+        from app.services.vector_store_service import CHROMA_COLLECTION_AEM_GUIDES
+        record_source_failure(
+            source_id=CHROMA_COLLECTION_AEM_GUIDES,
+            operation="crawl",
+            error=str(e),
+            failed_items=[str(e)],
+        )
         logger.error_structured(
             "AEM Guides crawl failed",
             extra_fields={"error": str(e)},
@@ -482,17 +498,27 @@ def get_rag_status(
         CHROMA_COLLECTION_DITA_SPEC,
         CHROMA_COLLECTION_DITA_OT_GITHUB,
         CHROMA_COLLECTION_JIRA_QA,
+        CHROMA_COLLECTION_LEARNED_QA,
         get_collection_count,
         is_chroma_available,
     )
     from app.services.github_dita_examples_service import get_github_dita_rag_summary
+    from app.services.learned_qa_service import get_learned_qa_summary
     from app.services.tavily_search_service import get_tavily_rag_status
     from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
 
     requested_tenant = tenant_id if str(tenant_id or "").strip() not in {"", "default"} else None
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
 
-    def _payload(chroma_ok: bool, aem_count: int, dita_count: int, dita_ot_count: int, jira_qa_count: int = 0, err: str | None = None) -> dict:
+    def _payload(
+        chroma_ok: bool,
+        aem_count: int,
+        dita_count: int,
+        dita_ot_count: int,
+        jira_qa_count: int = 0,
+        learned_qa_count: int = 0,
+        err: str | None = None,
+    ) -> dict:
         from app.services.dita_ot_github_rag_service import get_dita_ot_github_reference_issues
         from app.services.jira_index_dashboard_service import build_jira_index_status
         from app.services.jira_qa_index_service import (
@@ -504,10 +530,20 @@ def get_rag_status(
             "last_sync_time": None,
             "recent_failure_count": 0,
         }
+        learned_summary = {
+            "total_count": 0,
+            "approved_count": 0,
+            "pending_review_count": 0,
+            "rejected_count": 0,
+            "last_indexed_time": None,
+            "failed_item_count": 0,
+            "failed_items": [],
+        }
         session = None
         try:
             session = SessionLocal()
             jira_status = build_jira_index_status(session)
+            learned_summary = get_learned_qa_summary(session)
         except Exception as ex:
             err = f"{err}; jira status: {ex}" if err else str(ex)
         finally:
@@ -594,6 +630,23 @@ def get_rag_status(
                 "project_key": resolve_jira_qa_project_key(),
                 "backfill_limit": default_jira_qa_backfill_limit(),
             },
+            "learned_qa": {
+                "source": "Curated DITA prompt-answer pairs and approved chat learnings",
+                "collection": CHROMA_COLLECTION_LEARNED_QA,
+                "chunk_count": learned_qa_count,
+                "approved_count": int(learned_summary.get("approved_count") or 0),
+                "pending_review_count": int(learned_summary.get("pending_review_count") or 0),
+                "rejected_count": int(learned_summary.get("rejected_count") or 0),
+                "last_indexed_time": learned_summary.get("last_indexed_time"),
+                "failed_item_count": int(learned_summary.get("failed_item_count") or 0),
+                "failed_items": list(learned_summary.get("failed_items") or []),
+                "count_scope": (
+                    "Embeddings in Chroma `learned_qa` only. "
+                    "Only approved prompt-answer pairs enter trusted retrieval."
+                ),
+                "used_in": ["chat_rag (DITA prompt corpus)", "reinforcement/export source"],
+                "populate_via": "POST /api/v1/ai/learned-qa/seed; approve candidates in /api/v1/ai/review-center",
+            },
             "github_dita": github_dita,
         }
 
@@ -603,12 +656,13 @@ def get_rag_status(
         dita_count = get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0
         dita_ot_count = get_collection_count(CHROMA_COLLECTION_DITA_OT_GITHUB) if chroma_ok else 0
         jira_qa_count = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
-        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, jira_qa_count, None)
+        learned_qa_count = get_collection_count(CHROMA_COLLECTION_LEARNED_QA) if chroma_ok else 0
+        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, jira_qa_count, learned_qa_count, None)
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
         # Always return the same shape so Settings UI can show all sections (with zeros).
         try:
-            return _payload(False, 0, 0, 0, 0, str(e))
+            return _payload(False, 0, 0, 0, 0, 0, str(e))
         except Exception as e2:
             logger.warning_structured("RAG status fallback failed", extra_fields={"error": str(e2)})
             return {
@@ -616,6 +670,7 @@ def get_rag_status(
                 "error": f"{e}; fallback: {e2}",
                 "aem_guides": {"chunk_count": 0, "source": "", "populate_via": ""},
                 "dita_spec": {"chunk_count": 0, "source": "", "populate_via": ""},
+                "learned_qa": {"chunk_count": 0, "source": "", "populate_via": ""},
                 "github_dita": {"indexed_subtrees": 0, "merged_into_aem_guides_chunks": 0},
                 "tavily": {
                     "configured": False,
@@ -634,10 +689,26 @@ async def index_dita_pdf(
     Run this to enable DITA spec retrieval. Returns pages_loaded, chunks_stored, sources_indexed, errors."""
     try:
         from app.services.dita_pdf_index_service import index_dita_pdf as index_dita_pdf_fn
+        from app.services.source_review_state_service import record_source_failure, record_source_success
+        from app.services.vector_store_service import CHROMA_COLLECTION_DITA_SPEC
         urls = body.urls if body and body.urls else None
         stats = await asyncio.to_thread(index_dita_pdf_fn, pdf_urls=urls)
+        record_source_success(
+            source_id=CHROMA_COLLECTION_DITA_SPEC,
+            operation="reindex",
+            failed_items=list(stats.get("errors") or []),
+            stats=stats,
+        )
         return stats
     except Exception as e:
+        from app.services.source_review_state_service import record_source_failure
+        from app.services.vector_store_service import CHROMA_COLLECTION_DITA_SPEC
+        record_source_failure(
+            source_id=CHROMA_COLLECTION_DITA_SPEC,
+            operation="reindex",
+            error=str(e),
+            failed_items=[str(e)],
+        )
         logger.error_structured(
             "DITA PDF index failed",
             extra_fields={"error": str(e)},
@@ -658,6 +729,8 @@ async def index_dita_ot_github_route(
     Run this to populate or refresh the DITA Open Toolkit issues RAG. Returns indexed count and errors."""
     try:
         from app.services.dita_ot_github_rag_service import index_dita_ot_github_issues
+        from app.services.source_review_state_service import record_source_failure, record_source_success
+        from app.services.vector_store_service import CHROMA_COLLECTION_DITA_OT_GITHUB
         stats = await asyncio.to_thread(
             index_dita_ot_github_issues,
             max_issues=max_issues,
@@ -665,8 +738,22 @@ async def index_dita_ot_github_route(
             state=state,
             since=since,
         )
+        record_source_success(
+            source_id=CHROMA_COLLECTION_DITA_OT_GITHUB,
+            operation="reindex",
+            failed_items=list(stats.get("errors") or []),
+            stats=stats,
+        )
         return stats
     except Exception as e:
+        from app.services.source_review_state_service import record_source_failure
+        from app.services.vector_store_service import CHROMA_COLLECTION_DITA_OT_GITHUB
+        record_source_failure(
+            source_id=CHROMA_COLLECTION_DITA_OT_GITHUB,
+            operation="reindex",
+            error=str(e),
+            failed_items=[str(e)],
+        )
         logger.error_structured(
             "DITA OT GitHub index failed",
             extra_fields={"error": str(e)},

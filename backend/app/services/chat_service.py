@@ -68,6 +68,7 @@ from app.services.doc_retriever_service import retrieve_relevant_docs, format_do
 from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
+from app.services.learned_qa_service import format_learned_qa_for_prompt
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
@@ -328,6 +329,10 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
     r"^\s*(what|how|where|when|why|which|should|must|will|would|do|does|can|could|explain|define|tell\s+me\s+about|help\s+me\s+understand)\b|"
     r"\b(?:and\s+then|then|and|also)\s+(?:explain|define)\b|"
     r"\b(compare|difference\s+between|versus|vs\.?)\b",
+    re.IGNORECASE,
+)
+_LEARNED_QA_DOMAIN_PATTERN = re.compile(
+    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|dita-ot|chunk|subject scheme|subjectscheme|topicref|table)\b",
     re.IGNORECASE,
 )
 _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
@@ -5051,6 +5056,14 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
 
     capped_query = query[:RAG_QUERY_MAX_CHARS]
     parts = []
+
+    try:
+        if _LEARNED_QA_DOMAIN_PATTERN.search(query):
+            learned_context = format_learned_qa_for_prompt(capped_query, k=3)
+            if learned_context:
+                parts.append(learned_context[:RAG_CONTEXT_MAX_CHARS])
+    except Exception as e:
+        logger.debug_structured("RAG learned QA failed", extra_fields={"error": str(e)})
 
     # AEM Guides docs (increased k and snippet size for better retrieval)
     try:

@@ -1,0 +1,13 @@
+{
+  "source_id": "learned_qa",
+  "last_operation": "reindex",
+  "last_successful_run": "2026-06-17T07:09:09.799490+00:00",
+  "last_error": null,
+  "failed_item_count": 0,
+  "failed_items": [],
+  "last_stats": {
+    "collection": "learned_qa",
+    "indexed": 1,
+    "errors": []
+  }
+}

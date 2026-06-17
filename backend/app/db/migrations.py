@@ -107,6 +107,32 @@ def run_migrations() -> None:
                 except Exception as e:
                     logger.debug("chat_message_feedback migration skipped: %s", e)
                 try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS learned_prompt_entries (
+                            id VARCHAR(36) PRIMARY KEY,
+                            prompt TEXT NOT NULL,
+                            normalized_prompt TEXT NOT NULL,
+                            prompt_hash VARCHAR(64) NOT NULL,
+                            final_answer TEXT NOT NULL,
+                            tags_json TEXT,
+                            topic VARCHAR(120),
+                            source_type VARCHAR(50) NOT NULL DEFAULT 'chat_feedback',
+                            answer_style VARCHAR(100) NOT NULL DEFAULT 'senior_technical_docs',
+                            status VARCHAR(30) NOT NULL DEFAULT 'pending_review',
+                            accepted_at DATETIME,
+                            approved_at DATETIME,
+                            session_id VARCHAR(36),
+                            message_id VARCHAR(36),
+                            support_count INTEGER NOT NULL DEFAULT 1,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created learned_prompt_entries table")
+                except Exception as e:
+                    logger.debug("learned_prompt_entries migration skipped: %s", e)
+                try:
                     res = conn.execute(text("PRAGMA table_info(chat_sessions)"))
                     cs_cols = [row[1] for row in res.fetchall()]
                     if cs_cols and "last_generation_json" not in cs_cols:
@@ -222,6 +248,32 @@ def run_migrations() -> None:
                     logger.info("Migration: created chat_message_feedback table (PostgreSQL)")
                 except Exception as e:
                     logger.debug("chat_message_feedback migration skipped: %s", e)
+                try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS learned_prompt_entries (
+                            id VARCHAR(36) PRIMARY KEY,
+                            prompt TEXT NOT NULL,
+                            normalized_prompt TEXT NOT NULL,
+                            prompt_hash VARCHAR(64) NOT NULL,
+                            final_answer TEXT NOT NULL,
+                            tags_json TEXT,
+                            topic VARCHAR(120),
+                            source_type VARCHAR(50) NOT NULL DEFAULT 'chat_feedback',
+                            answer_style VARCHAR(100) NOT NULL DEFAULT 'senior_technical_docs',
+                            status VARCHAR(30) NOT NULL DEFAULT 'pending_review',
+                            accepted_at TIMESTAMP,
+                            approved_at TIMESTAMP,
+                            session_id VARCHAR(36),
+                            message_id VARCHAR(36),
+                            support_count INTEGER NOT NULL DEFAULT 1,
+                            created_at TIMESTAMP NOT NULL,
+                            updated_at TIMESTAMP NOT NULL
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created learned_prompt_entries table (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("learned_prompt_entries migration skipped: %s", e)
                 try:
                     if col_exists("chat_sessions", "last_generation_json") is False:
                         conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))

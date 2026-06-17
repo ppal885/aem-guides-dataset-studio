@@ -420,6 +420,7 @@ async def startup_event():
             from app.db.session import DATABASE_URL, engine
             from app.db.base import Base
             from app.db.chat_models import ChatSession, ChatMessage, ChatMessageFeedback  # noqa: F401
+            from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
             from app.db.llm_models import LLMRun  # noqa: F401
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):

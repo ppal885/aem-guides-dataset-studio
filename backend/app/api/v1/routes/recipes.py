@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -13,6 +13,7 @@ from app.jobs.crud_recipes import (
     delete_saved_recipe,
     increment_recipe_usage,
 )
+from app.services.recipe_catalog_service import get_recipe_catalog
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -28,6 +29,47 @@ class SavedRecipeUpdate(BaseModel):
     description: Optional[str] = None
     is_public: Optional[bool] = None
     tags: Optional[List[str]] = None
+
+
+@router.get("/catalog")
+def recipe_catalog(
+    search: Optional[str] = Query(None, description="Search recipe id, title, description, or tags"),
+    category: Optional[str] = Query(None, description="Filter by category id"),
+    featured_track: Optional[str] = Query(None, description="Filter by featured track id"),
+    user: UserIdentity = CurrentUser,
+):
+    del user
+    payload = get_recipe_catalog()
+    entries = list(payload.get("entries") or [])
+
+    search_text = (search or "").strip().lower()
+    if search_text:
+        entries = [
+            entry
+            for entry in entries
+            if search_text in " ".join(
+                [
+                    str(entry.get("id") or ""),
+                    str(entry.get("title") or ""),
+                    str(entry.get("description") or ""),
+                    " ".join(str(tag) for tag in entry.get("tags") or []),
+                ]
+            ).lower()
+        ]
+
+    if category:
+        entries = [entry for entry in entries if entry.get("category") == category]
+
+    if featured_track:
+        entries = [
+            entry
+            for entry in entries
+            if featured_track in (entry.get("featured_tracks") or [])
+        ]
+
+    payload["entries"] = entries
+    payload["total_count"] = len(entries)
+    return payload
 
 @router.post("/save")
 def save_recipe(

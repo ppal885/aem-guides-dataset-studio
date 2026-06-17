@@ -478,8 +478,9 @@ def post_message_feedback(
 ):
     """Submit thumbs up/down feedback on an assistant message."""
     from uuid import uuid4
-    from app.db.base import SessionLocal
+    from app.db.session import SessionLocal
     from app.db.chat_models import ChatMessageFeedback
+    from app.services.learned_qa_service import capture_learned_candidate_from_chat_feedback
 
     if body.rating not in ("up", "down"):
         raise HTTPException(status_code=400, detail="rating must be 'up' or 'down'")
@@ -501,7 +502,13 @@ def post_message_feedback(
         )
         db.add(fb)
         db.commit()
-        return {"status": "ok", "id": fb.id}
+        learned_capture = capture_learned_candidate_from_chat_feedback(
+            db,
+            session_id=session_id,
+            message_id=message_id,
+            rating=body.rating,
+        )
+        return {"status": "ok", "id": fb.id, "learned_capture": learned_capture}
     finally:
         db.close()
 

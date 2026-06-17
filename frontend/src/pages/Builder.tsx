@@ -1,47 +1,181 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { ValidationDisplay } from '@/components/ValidationDisplay';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Filter, Loader2, Search, Sparkles, Zap } from 'lucide-react';
+
 import { SchedulePicker } from '@/components/SchedulePicker';
-import { useRecipeValidation } from '@/hooks/useRecipeValidation';
+import { ValidationDisplay } from '@/components/ValidationDisplay';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { TaskTopicsConfig } from '@/components/TaskTopicsConfig';
-import { ConceptTopicsConfig } from '@/components/ConceptTopicsConfig';
-import { ReferenceTopicsConfig } from '@/components/ReferenceTopicsConfig';
-import { SyntaxDiagramReferenceConfig } from '@/components/SyntaxDiagramReferenceConfig';
-import { GlossaryPackConfig } from '@/components/GlossaryPackConfig';
-import { BookmapStructureConfig } from '@/components/BookmapStructureConfig';
-import { MediaRichConfig } from '@/components/MediaRichConfig';
-import { WorkflowConfig } from '@/components/WorkflowConfig';
-import { KeyscopeDemoConfig } from '@/components/KeyscopeDemoConfig';
-import { KeywordMetadataConfig } from '@/components/KeywordMetadataConfig';
-import { IncrementalTopicrefMapsConfig } from '@/components/IncrementalTopicrefMapsConfig';
-import { InsuranceIncrementalConfig } from '@/components/InsuranceIncrementalConfig';
-import { RelationshipTableConfig } from '@/components/RelationshipTableConfig';
-import { ConrefPackConfig } from '@/components/ConrefPackConfig';
-import { ConditionalContentConfig } from '@/components/ConditionalContentConfig';
-import { LocalizationConfig } from '@/components/LocalizationConfig';
-import { PerformanceScaleConfig } from '@/components/PerformanceScaleConfig';
-import { LegacyPatternsConfig } from '@/components/LegacyPatternsConfig';
-import { MapParseStressConfig } from '@/components/MapParseStressConfig';
-import { HeavyConditionalTopicConfig } from '@/components/HeavyConditionalTopicConfig';
-import { NestedKeydefChainConfig } from '@/components/NestedKeydefChainConfig';
-import { CustomerReusePackConfig } from '@/components/CustomerReusePackConfig';
-import { AdvancedRelationshipsConfig } from '@/components/AdvancedRelationshipsConfig';
-import { Sparkles, Zap, Download, Loader2 } from 'lucide-react';
-import { RecipeTypeSelect } from '@/components/RecipeTypeSelect';
-import { cn } from '@/lib/utils';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { useRecipeValidation } from '@/hooks/useRecipeValidation';
+import { apiUrl, fetchJson } from '@/utils/api';
+
+type PrimitiveSchemaType = 'int' | 'float' | 'bool' | 'str' | 'list' | 'dict';
+
+interface RecipeCatalogEntry {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  category_label: string;
+  tags: string[];
+  featured_tracks: string[];
+  featured_track_labels: string[];
+  params_schema: Record<string, PrimitiveSchemaType>;
+  default_params: Record<string, unknown>;
+  editor_type: string;
+  full_example_xml: string;
+  expected_result: string;
+}
+
+interface RecipeCatalogFilter {
+  id: string;
+  label: string;
+}
+
+interface QuickWorkflow {
+  id: string;
+  title: string;
+  description: string;
+  category?: string;
+  featured_track?: string;
+  search_terms?: string[];
+}
+
+interface RecipeCatalogResponse {
+  entries: RecipeCatalogEntry[];
+  categories: RecipeCatalogFilter[];
+  featured_tracks: RecipeCatalogFilter[];
+  quick_workflows: QuickWorkflow[];
+}
+
+interface Limits {
+  topicrefs_per_map_max?: number;
+  total_topicrefs_max?: number;
+  topics_max?: number;
+  maps_max?: number;
+}
+
+function prettifyRecipeName(title: string, createdAt: string): string {
+  const timestamp = new Date(createdAt);
+  const timeStr = Number.isNaN(timestamp.getTime())
+    ? createdAt
+    : timestamp.toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+  return `${title} - ${timeStr}`;
+}
+
+function schemaFieldType(value: unknown): PrimitiveSchemaType {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'int' || text === 'float' || text === 'bool' || text === 'str' || text === 'list' || text === 'dict') {
+    return text;
+  }
+  return 'str';
+}
+
+function fieldLabel(key: string): string {
+  return key
+    .split(/[_\-.]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function fieldHelpText(type: PrimitiveSchemaType): string {
+  if (type === 'list') return 'JSON array';
+  if (type === 'dict') return 'JSON object';
+  if (type === 'bool') return 'On or off';
+  if (type === 'int' || type === 'float') return 'Numeric value';
+  return 'Text value';
+}
+
+function normalizeSearchText(entry: RecipeCatalogEntry): string {
+  return [
+    entry.id,
+    entry.title,
+    entry.description,
+    ...entry.tags,
+    ...entry.featured_track_labels,
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function coercePrimitiveValue(type: PrimitiveSchemaType, raw: string): unknown {
+  if (type === 'int') {
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  if (type === 'float') {
+    const parsed = Number.parseFloat(raw);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return raw;
+}
+
+function JsonEditorField({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: unknown;
+  onCommit: (nextValue: unknown) => void;
+}) {
+  const [text, setText] = useState(() => JSON.stringify(value ?? (Array.isArray(value) ? [] : {}), null, 2));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setText(JSON.stringify(value ?? (Array.isArray(value) ? [] : {}), null, 2));
+    setError(null);
+  }, [value]);
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold text-slate-900">{label}</Label>
+      <textarea
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={() => {
+          try {
+            const parsed = JSON.parse(text);
+            setError(null);
+            onCommit(parsed);
+          } catch {
+            setError('Enter valid JSON before leaving this field.');
+          }
+        }}
+        rows={6}
+        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+      />
+      {error ? <p className="text-xs text-red-600">{error}</p> : <p className="text-xs text-slate-500">Valid JSON is applied when the field loses focus.</p>}
+    </div>
+  );
+}
 
 export function Builder() {
-  const [currentRecipe, setCurrentRecipe] = useState<any>(null);
-  const [limits, setLimits] = useState<any>(null);
+  const [catalog, setCatalog] = useState<RecipeCatalogResponse | null>(null);
+  const [limits, setLimits] = useState<Limits | null>(null);
+  const [selectedRecipeId, setSelectedRecipeId] = useState('');
+  const [recipeParams, setRecipeParams] = useState<Record<string, unknown>>({});
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [featuredTrack, setFeaturedTrack] = useState('all');
+  const [activeWorkflowId, setActiveWorkflowId] = useState('');
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [timezone, setTimezone] = useState('UTC');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null);
-  const [createdJobs, setCreatedJobs] = useState<Array<{id: string, name: string, createdAt?: string, recipeType?: string}>>([]);
+  const [createdJobs, setCreatedJobs] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
-
-  const validation = useRecipeValidation(currentRecipe, limits);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -50,864 +184,506 @@ export function Builder() {
     };
   }, []);
 
-  useEffect(() => {
-    fetch('/api/v1/limits')
-      .then(res => res.json())
-      .then(data => {
-        if (isMountedRef.current) {
-          setLimits(data);
-        }
-      })
-      .catch(err => {
-        if (isMountedRef.current) {
-          console.error('Failed to load limits:', err);
-          setLimits({
-            topicrefs_per_map_max: 5000,
-            total_topicrefs_max: 100000,
-            topics_max: 10000,
-            maps_max: 100,
-          });
-        }
-      });
-  }, []);
-
-
-  const handleScheduleChange = useCallback((scheduledAt: Date | null, timezone: string) => {
-    setScheduledAt(scheduledAt);
-    setTimezone(timezone);
-  }, []);
-
-  const handleDownload = useCallback(async (jobId: string, jobName: string) => {
-    if (downloadingJobId === jobId) {
-      return;
-    }
-
-    setDownloadingJobId(jobId);
-    
+  const loadBuilderData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      console.log(`Downloading job ${jobId}...`);
-      
-      // Use setTimeout to allow UI to update before starting download
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      const response = await fetch(`/api/v1/datasets/${jobId}/download`);
-      
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('Download failed:', response.status, errorText);
-        alert(`Failed to download: ${errorText}`);
-        return;
+      const [catalogData, limitsData] = await Promise.all([
+        fetchJson<RecipeCatalogResponse>(apiUrl('/api/v1/recipes/catalog')),
+        fetchJson<Limits>(apiUrl('/api/v1/limits')),
+      ]);
+      if (!isMountedRef.current) return;
+      setCatalog(catalogData);
+      setLimits(limitsData);
+      if (!selectedRecipeId && catalogData.entries.length > 0) {
+        const first = catalogData.entries[0];
+        setSelectedRecipeId(first.id);
+        setRecipeParams({ ...first.default_params });
       }
-      
-      // Use blob() which handles streaming internally and is non-blocking
-      // The browser will handle the download in the background
-      const blob = await response.blob();
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${jobName || jobId}.zip`;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      
-      // Cleanup after a short delay to ensure download starts
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }, 100);
-      
-      console.log(`Download completed for job ${jobId}`);
-    } catch (error) {
-      console.error('Download failed:', error);
-      alert('Failed to download dataset. Please try again.');
+    } catch (loadError) {
+      if (!isMountedRef.current) return;
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load Builder catalog');
     } finally {
-      // Delay clearing the loading state slightly to show feedback
-      setTimeout(() => {
-        setDownloadingJobId(null);
-      }, 500);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [downloadingJobId]);
+  }, [selectedRecipeId]);
+
+  useEffect(() => {
+    loadBuilderData();
+  }, [loadBuilderData]);
+
+  const selectedRecipe = useMemo(
+    () => catalog?.entries.find(entry => entry.id === selectedRecipeId) || null,
+    [catalog, selectedRecipeId]
+  );
+
+  useEffect(() => {
+    if (selectedRecipe) {
+      setRecipeParams({ ...selectedRecipe.default_params });
+    }
+  }, [selectedRecipe?.id]);
+
+  const activeWorkflow = useMemo(
+    () => catalog?.quick_workflows.find(item => item.id === activeWorkflowId) || null,
+    [catalog?.quick_workflows, activeWorkflowId]
+  );
+
+  const filteredRecipes = useMemo(() => {
+    const entries = catalog?.entries || [];
+    const searchText = search.trim().toLowerCase();
+    return entries.filter(entry => {
+      if (category !== 'all' && entry.category !== category) return false;
+      if (featuredTrack !== 'all' && !entry.featured_tracks.includes(featuredTrack)) return false;
+      if (searchText && !normalizeSearchText(entry).includes(searchText)) return false;
+      if (activeWorkflow?.search_terms?.length) {
+        const haystack = normalizeSearchText(entry);
+        const hasWorkflowMatch = activeWorkflow.search_terms.some(term => haystack.includes(term.toLowerCase()));
+        if (!hasWorkflowMatch) return false;
+      }
+      return true;
+    });
+  }, [activeWorkflow?.search_terms, catalog?.entries, category, featuredTrack, search]);
+
+  const currentRecipe = useMemo(
+    () => (selectedRecipe ? { type: selectedRecipe.id, ...recipeParams } : null),
+    [recipeParams, selectedRecipe]
+  );
+
+  const validation = useRecipeValidation(currentRecipe, limits || undefined);
+
+  const handleScheduleChange = useCallback((nextScheduledAt: Date | null, nextTimezone: string) => {
+    setScheduledAt(nextScheduledAt);
+    setTimezone(nextTimezone);
+  }, []);
+
+  const handleRecipeSelect = useCallback((recipeId: string) => {
+    setSelectedRecipeId(recipeId);
+    setActiveWorkflowId('');
+  }, []);
+
+  const updateRecipeParam = useCallback((key: string, value: unknown) => {
+    setRecipeParams(previous => ({ ...previous, [key]: value }));
+  }, []);
 
   const handleCreateJob = useCallback(async () => {
+    if (!selectedRecipe) {
+      setError('Select a recipe before creating a job.');
+      return;
+    }
     if (!validation.isValid) {
-      alert('Please fix validation errors before creating job');
+      setError('Fix validation errors before creating the dataset job.');
       return;
     }
 
-    if (!currentRecipe) {
-      alert('Please select or configure a recipe');
-      return;
-    }
+    setCreating(true);
+    setError(null);
 
-    setLoading(true);
-
+    const recipePayload = { type: selectedRecipe.id, ...recipeParams };
     const jobData = {
       config: {
-        name: 'My Dataset',
-        seed: 'test-seed',
+        name: selectedRecipe.title,
+        seed: 'catalog-driven',
         root_folder: '/content/dam/dataset-studio',
         windows_safe_filenames: true,
         doctype_topic: '<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">',
         doctype_map: '<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">',
-        recipes: [currentRecipe],
+        recipes: [recipePayload],
       },
     };
 
     try {
-      let response;
-      if (scheduledAt) {
-        response = await fetch('/api/v1/jobs/schedule', {
+      const response = await fetchJson<{ id: string; created_at?: string }>(
+        apiUrl(scheduledAt ? '/api/v1/jobs/schedule' : '/api/v1/jobs'),
+        {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...jobData,
-            scheduled_at: scheduledAt.toISOString(),
-            timezone,
-          }),
-        });
-      } else {
-        response = await fetch('/api/v1/jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(jobData),
-        });
-      }
-
-      if (response.ok) {
-        const job = await response.json();
-        const jobId = job.id;
-        const createdAt = job.created_at || new Date().toISOString();
-        const recipeType = currentRecipe?.type || 'unknown';
-        
-        // Generate unique name based on recipe type and timestamp
-        const words = recipeType.split('_');
-        const recipeTypeName = words
-          .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(' ');
-        const timestamp = new Date(createdAt);
-        const timeStr = timestamp.toLocaleString('en-US', {
-          month: 'short',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-        const uniqueName = `${recipeTypeName} - ${timeStr}`;
-        
-        // Add to created jobs list
-        setCreatedJobs(prev => [...prev, { 
-          id: jobId, 
-          name: uniqueName,
-          createdAt: createdAt,
-          recipeType: recipeType
-        }]);
-        
-        alert(`Job created successfully! ID: ${jobId}\n\nYou can download the dataset once generation completes.`);
-        setCurrentRecipe(null);
-        setScheduledAt(null);
-      } else {
-        let errorMessage = 'Unknown error';
-        try {
-          const errorText = await response.text();
-          if (errorText) {
-            try {
-              const error = JSON.parse(errorText);
-              errorMessage = error.detail || error.message || JSON.stringify(error);
-            } catch {
-              errorMessage = errorText;
-            }
-          } else {
-            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          }
-        } catch (e) {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          body: JSON.stringify(
+            scheduledAt
+              ? {
+                  ...jobData,
+                  scheduled_at: scheduledAt.toISOString(),
+                  timezone,
+                }
+              : jobData
+          ),
         }
-        console.error('Failed to create job:', errorMessage);
-        alert(`Failed to create job: ${errorMessage}`);
-      }
-    } catch (error) {
-      console.error('Failed to create job:', error);
-      alert(`Failed to create job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      );
+      const createdAt = response.created_at || new Date().toISOString();
+      setCreatedJobs(previous => [
+        ...previous,
+        { id: response.id, name: prettifyRecipeName(selectedRecipe.title, createdAt), createdAt },
+      ]);
+      setScheduledAt(null);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Failed to create the dataset job');
     } finally {
-      setLoading(false);
+      setCreating(false);
     }
-  }, [currentRecipe, scheduledAt, timezone, validation.isValid]);
+  }, [recipeParams, scheduledAt, selectedRecipe, timezone, validation.isValid]);
+
+  const handleDownload = useCallback(
+    async (jobId: string, jobName: string) => {
+      if (downloadingJobId === jobId) return;
+      setDownloadingJobId(jobId);
+      try {
+        const response = await fetch(apiUrl(`/api/v1/datasets/${jobId}/download`));
+        if (!response.ok) {
+          throw new Error(await response.text().catch(() => 'Download failed'));
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${jobName}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } catch (downloadError) {
+        setError(downloadError instanceof Error ? downloadError.message : 'Failed to download dataset');
+      } finally {
+        setDownloadingJobId(null);
+      }
+    },
+    [downloadingJobId]
+  );
+
+  const formKeys = useMemo(() => {
+    const keys = new Set<string>();
+    Object.keys(selectedRecipe?.params_schema || {}).forEach(key => keys.add(key));
+    Object.keys(selectedRecipe?.default_params || {}).forEach(key => keys.add(key));
+    return Array.from(keys).sort();
+  }, [selectedRecipe]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 pb-8">
       <div className="border-l-4 border-teal-500 pl-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dataset Builder</h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
-          Create and configure AEM Guides dataset generation jobs — same workflow as Job History and Dataset Explorer.
+        <p className="mt-2 max-w-3xl text-slate-600">
+          Discover the full backend recipe catalog, filter by senior workflow tracks, inspect full XML examples, and create dataset jobs without frontend-specific recipe branching.
         </p>
       </div>
 
-      <div className="space-y-6 pb-2">
-        {/* Recipe Configuration */}
-        <Card className="border border-slate-200 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/[0.04] transition-shadow duration-200 hover:shadow-md">
-              <CardHeader className="border-b border-slate-200 pb-3">
-                <CardTitle className="text-xl font-semibold text-slate-900 mb-1.5">
-                  Recipe Configuration
-                </CardTitle>
-                <CardDescription className="text-sm text-slate-600 leading-relaxed">
-                  Customize your dataset generation recipe. Select a recipe type below to configure how your content will be structured and generated.
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 py-10 text-slate-600">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading dynamic recipe catalog...
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {!loading && catalog ? (
+        <>
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-900">Dynamic catalog</CardTitle>
+                <CardDescription>
+                  Search by recipe id, title, description, or tags. Filter by category or featured senior track.
                 </CardDescription>
               </CardHeader>
-            <CardContent className="pt-5 space-y-5">
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-900">
-                  Recipe Type
-                </label>
-                <p className="text-xs text-slate-500 mb-3">
-                  Configuration template for dataset generation
-                </p>
-                <RecipeTypeSelect
-                  value={currentRecipe?.type || ''}
-                  onChange={(type) => {
-                    if (type) {
-                      if (type === 'incremental_topicref_maps') {
-                        setCurrentRecipe({
-                          type,
-                          pool_size: 10000,
-                          map_topicref_counts: [10, 100, 1000, 5000, 10000],
-                          pretty_print: true,
-                          deep_folders: false,
-                        });
-                      } else if (type === 'insurance_incremental') {
-                        setCurrentRecipe({
-                          type,
-                          max_topics: 10000,
-                          map_sizes: [10, 100, 1000, 5000, 10000],
-                          include_local_dtd_stubs: true,
-                          output_root_folder_name: 'aem_guides_insurance_incremental',
-                        });
-                      } else if (type === 'heavy_topics_tables_codeblocks') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          tables_per_topic: 5,
-                          codeblocks_per_topic: 5,
-                          table_cols: 4,
-                          table_rows: 10,
-                          code_lines_per_codeblock: 20,
-                          include_map: true,
-                          map_topicref_count: 50,
-                          pretty_print: true,
-                          windows_safe_paths: true,
-                        });
-                      } else if (type === 'task_topics') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          steps_per_task: 5,
-                          include_prereq: true,
-                          include_result: true,
-                          include_choicetable: false,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'concept_topics') {
-                        setCurrentRecipe({
-                          type: 'concept_topics',
-                          topic_count: 50,
-                          sections_per_concept: 3,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'reference_topics') {
-                        setCurrentRecipe({
-                          type: 'reference_topics',
-                          topic_count: 50,
-                          properties_per_ref: 5,
-                          include_choicetable: false,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'glossary_pack') {
-                        setCurrentRecipe({
-                          type: 'glossary_pack',
-                          entry_count: 100,
-                          include_acronyms: true,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'bookmap_structure') {
-                        setCurrentRecipe({
-                          type: 'bookmap_structure',
-                          chapter_count: 10,
-                          topics_per_chapter: 5,
-                          include_frontmatter: true,
-                          include_backmatter: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'media_rich_content') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          images_per_topic: 3,
-                          generate_images: true,
-                          image_width: 800,
-                          image_height: 600,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'workflow_enabled_content') {
-                        setCurrentRecipe({
-                          type,
-                          base_recipe: {
-                            type: 'task_topics',
-                            topic_count: 10,
-                            steps_per_task: 5,
-                            include_prereq: true,
-                            include_result: true,
-                            include_map: true,
-                            pretty_print: true,
-                          },
-                          include_review: true,
-                          include_translation: true,
-                          include_approval: true,
-                          reviewers: ['reviewer1', 'reviewer2'],
-                          target_languages: ['es', 'fr'],
-                        });
-                      } else if (type === 'keyscope_demo') {
-                        setCurrentRecipe({
-                          type,
-                          id_prefix: 't',
-                          include_qualified_keyrefs: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'maps_topicgroup_basic' || type === 'maps_topicgroup_nested' || type === 'maps_topicref_basic' || type === 'maps_nested_topicrefs' || type === 'maps_mapref_basic' || type === 'maps_topichead_basic' || type === 'maps_reltable_basic' || type === 'maps_topicset_basic' || type === 'maps_navref_basic') {
-                        setCurrentRecipe({
-                          type,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'keyword_metadata') {
-                        setCurrentRecipe({
-                          type,
-                          id_prefix: 't',
-                          num_keywords: 10,
-                          num_categories: 5,
-                          num_topics: 8,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'relationship_table') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 100,
-                          relationship_types: ['next', 'previous', 'related'],
-                          relationship_density: 0.3,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'conref_pack') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          reusable_elements_per_topic: 3,
-                          conref_density: 0.3,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'dita_conref_title_dataset_recipe') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 10,
-                          pretty_print: true,
-                          id_prefix: 't',
-                        });
-                      } else if (type === 'dita_conref_keyref_dataset_recipe') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 15,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'dita_subject_scheme_dataset_recipe') {
-                        setCurrentRecipe({
-                          type,
-                          valid_count: 10,
-                          invalid_count: 10,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'dita_glossary_abbrev_dataset_recipe') {
-                        setCurrentRecipe({
-                          type,
-                          entry_count: 15,
-                          usage_topic_count: 10,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'conditional_content') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          audiences: ['admin', 'user', 'developer'],
-                          platforms: ['windows', 'mac', 'linux'],
-                          products: ['product-a', 'product-b'],
-                          generate_ditaval: true,
-                          ditaval_profiles: ['admin-windows', 'user-all'],
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'localized_content') {
-                        setCurrentRecipe({
-                          type,
-                          base_recipe: {
-                            type: 'task_topics',
-                            topic_count: 10,
-                            steps_per_task: 5,
-                            include_prereq: true,
-                            include_result: true,
-                            include_map: true,
-                            pretty_print: true,
-                          },
-                          source_language: 'en',
-                          target_languages: ['es', 'fr', 'de'],
-                          include_translation_metadata: true,
-                        });
-                      } else if (type === 'output_optimized') {
-                        setCurrentRecipe({
-                          type,
-                          base_recipe: {
-                            type: 'task_topics',
-                            topic_count: 10,
-                            steps_per_task: 5,
-                            include_prereq: true,
-                            include_result: true,
-                            include_map: true,
-                            pretty_print: true,
-                          },
-                          output_format: 'aemsite',
-                          optimization_options: {},
-                        });
-                      } else if (type === 'large_scale') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 100000,
-                          batch_size: 1000,
-                          pretty_print: false,
-                        });
-                      } else if (type === 'deep_hierarchy') {
-                        setCurrentRecipe({
-                          type,
-                          depth: 10,
-                          children_per_level: 5,
-                          include_maps: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'wide_branching') {
-                        setCurrentRecipe({
-                          type,
-                          root_topics: 2,
-                          children_per_root: 1000,
-                          include_maps: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'hub_spoke_inbound') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 100,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'keydef_heavy') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 100,
-                          keydef_count: 50,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'map_cyclic') {
-                        setCurrentRecipe({
-                          type,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'map_parse_stress') {
-                        setCurrentRecipe({
-                          type,
-                          map_count: 10,
-                          topicrefs_per_map: 1000,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'keyref_nested_keydef_chain_map_to_map_to_topic') {
-                        setCurrentRecipe({
-                          type,
-                          root_map_name: 'map_a.ditamap',
-                          intermediate_map_name: 'map_b.ditamap',
-                          keyword_topic_name: 'topic_c_keywords.dita',
-                          consumer_topic_name: 'topic_d_consumer.dita',
-                          root_map_title: 'Outer Context Map',
-                          intermediate_map_title: 'Static Key Map',
-                          keyword_topic_title: 'Keyword Source Topic',
-                          consumer_topic_title: 'Consumer Topic',
-                          root_to_intermediate_key: 'staticKeyMap',
-                          direct_intermediate_key_name: 'productName',
-                          nested_keyword_file_key_name: 'keywordFile',
-                          nested_keyword_id: 'versionString',
-                          consumer_keyrefs: ['productName', 'versionString'],
-                          include_direct_key_in_root_map: true,
-                          include_direct_key_in_intermediate_map: true,
-                          include_nested_keyword_topic: true,
-                          include_workaround_notes: true,
-                          generation_mode: 'minimal_repro',
-                          add_negative_variant: false,
-                          add_workaround_variant: false,
-                          id_prefix: 't',
-                          pretty_print: true,
-                        });
-                      } else if (type === 'heavy_conditional_topic_6000_lines') {
-                        setCurrentRecipe({
-                          type,
-                          topic_id: 'heavy_conditional_topic_001',
-                          title: 'Enterprise Conditional Processing Heavy Topic',
-                          target_lines: 6000,
-                          section_count: 120,
-                          subsections_per_section: 4,
-                          paragraphs_per_subsection: 6,
-                          include_tables: true,
-                          include_codeblocks: true,
-                          include_notes: true,
-                          include_examples: true,
-                          include_xrefs: false,
-                          include_images: false,
-                          include_ditaval: true,
-                          condition_density: 'high',
-                          audience_values: ['beginner', 'advanced', 'admin', 'developer', 'author', 'reviewer'],
-                          platform_values: ['windows', 'linux', 'mac', 'cloud', 'web'],
-                          otherprops_values: ['cloud', 'onprem', 'hybrid', 'internal', 'external', 'beta', 'prod', 'staging'],
-                          tables_per_n_sections: 2,
-                          codeblocks_per_n_sections: 2,
-                          notes_per_n_sections: 3,
-                          examples_per_n_sections: 3,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'advanced_relationships') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 100,
-                          relationship_patterns: ['hierarchical', 'cross_map', 'conditional'],
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'customer_reuse_pack') {
-                        setCurrentRecipe({
-                          type,
-                          remove_map_count: 10,
-                          shared_topics: 500,
-                          topic_references_per_map: 100,
-                          key_definitions: 200,
-                          key_groups: 5,
-                          external_references: 10,
-                        });
-                      } else if (type === 'choicetable_tasks') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          steps_per_task: 5,
-                          choices_per_topic: 4,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      } else if (type === 'choicetable_references') {
-                        setCurrentRecipe({
-                          type,
-                          topic_count: 50,
-                          choices_per_topic: 5,
-                          include_map: true,
-                          pretty_print: true,
-                        });
-                      // Enterprise scenarios
-                      } else if (type === 'parent_child_maps_keys_conref_conkeyref_selfrefs') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'compact_parent_child_key_resolution') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'conrefend_cyclic_duplicate_id') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'large_root_map_1000_topics_100kb') {
-                        setCurrentRecipe({ type, topic_count: 1000, pretty_print: true });
-                      // Specialized additions
-                      } else if (type === 'properties_table_reference') {
-                        setCurrentRecipe({ type, topic_count: 30, properties_per_ref: 5, include_map: true, pretty_print: true });
-                      } else if (type === 'syntax_diagram_reference') {
-                        setCurrentRecipe({ type, topic_count: 30, include_map: true, pretty_print: true });
-                      } else if (type === 'bookmap_elements_reference') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'table_semantics_reference') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'topic_ph_keyword_related_links') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      // Advanced additions
-                      } else if (type === 'topic_svg_mathml_foreign') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'inline_formatting_nested') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'nested_topic_inline') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'self_conrefend_range') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      } else if (type === 'self_xref_conref_positive') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      // Performance addition
-                      } else if (type === 'bulk_dita_map_topics') {
-                        setCurrentRecipe({ type, topic_count: 20000, include_local_dtd_stubs: true, pretty_print: true });
-                      } else if (type === 'flat_hierarchical_dita') {
-                        setCurrentRecipe({ type, topic_count: 5000, topics_per_section: 50, include_xrefs: false, pretty_print: true });
-                      // Validation & Negative
-                      } else if (type === 'validation_duplicate_id_negative' || type === 'validation_invalid_child_negative' || type === 'validation_missing_body_negative') {
-                        setCurrentRecipe({ type, id_prefix: 't', pretty_print: true });
-                      }
-                    } else {
-                      setCurrentRecipe(null);
-                    }
-                  }}
-                />
-              </div>
-
-              {currentRecipe?.type === 'incremental_topicref_maps' && (
-                <IncrementalTopicrefMapsConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'insurance_incremental' && (
-                <InsuranceIncrementalConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'task_topics' && (
-                <TaskTopicsConfig 
-                  recipe={{...currentRecipe, type: 'task_topics'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'task_topics'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'concept_topics' && (
-                <ConceptTopicsConfig 
-                  recipe={{...currentRecipe, type: 'concept_topics'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'concept_topics'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'reference_topics' && (
-                <ReferenceTopicsConfig 
-                  recipe={{...currentRecipe, type: 'reference_topics'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'reference_topics'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'glossary_pack' && (
-                <GlossaryPackConfig 
-                  recipe={{...currentRecipe, type: 'glossary_pack'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'glossary_pack'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'bookmap_structure' && (
-                <BookmapStructureConfig 
-                  recipe={{...currentRecipe, type: 'bookmap_structure'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'bookmap_structure'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'media_rich_content' && (
-                <MediaRichConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'workflow_enabled_content' && (
-                <WorkflowConfig 
-                  recipe={{...currentRecipe, type: 'workflow_enabled_content'}} 
-                  onChange={(updatedRecipe) => {
-                    setCurrentRecipe({...updatedRecipe, type: 'workflow_enabled_content'});
-                  }} 
-                />
-              )}
-              {currentRecipe?.type === 'keyscope_demo' && (
-                <KeyscopeDemoConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'keyword_metadata' && (
-                <KeywordMetadataConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'relationship_table' && (
-                <RelationshipTableConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'conref_pack' && (
-                <ConrefPackConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'conditional_content' && (
-                <ConditionalContentConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'localized_content' && (
-                <LocalizationConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'large_scale' && (
-                <PerformanceScaleConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="large_scale" />
-              )}
-              {currentRecipe?.type === 'deep_hierarchy' && (
-                <PerformanceScaleConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="deep_hierarchy" />
-              )}
-              {currentRecipe?.type === 'wide_branching' && (
-                <PerformanceScaleConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="wide_branching" />
-              )}
-              {currentRecipe?.type === 'hub_spoke_inbound' && (
-                <LegacyPatternsConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="hub_spoke_inbound" />
-              )}
-              {currentRecipe?.type === 'keydef_heavy' && (
-                <LegacyPatternsConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="keydef_heavy" />
-              )}
-              {currentRecipe?.type === 'map_cyclic' && (
-                <LegacyPatternsConfig recipe={currentRecipe} onChange={setCurrentRecipe} recipeType="map_cyclic" />
-              )}
-              {currentRecipe?.type === 'map_parse_stress' && (
-                <MapParseStressConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'keyref_nested_keydef_chain_map_to_map_to_topic' && (
-                <NestedKeydefChainConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'heavy_conditional_topic_6000_lines' && (
-                <HeavyConditionalTopicConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'advanced_relationships' && (
-                <AdvancedRelationshipsConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'customer_reuse_pack' && (
-                <CustomerReusePackConfig recipe={currentRecipe} onChange={setCurrentRecipe} />
-              )}
-              {currentRecipe?.type === 'output_optimized' && (
-                <div className="rounded-lg border border-teal-200/80 bg-teal-50/60 p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 shrink-0 rounded-full bg-teal-600" />
-                    <p className="text-sm text-slate-700">
-                      Output Optimized recipe configured. Select base recipe and output format.
-                    </p>
+              <CardContent className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      value={search}
+                      onChange={event => setSearch(event.target.value)}
+                      placeholder="Search by recipe id, title, tag, or description"
+                      className="pl-9"
+                    />
                   </div>
-                </div>
-              )}
-
-              <ValidationDisplay 
-                errors={validation.errors} 
-                warnings={validation.warnings} 
-              />
-
-              {/* Schedule Picker */}
-              {currentRecipe && (
-                <div className="pt-5 border-t border-slate-200">
-                  <SchedulePicker onScheduleChange={handleScheduleChange} />
-                </div>
-              )}
-
-              {/* Create Job Button */}
-              {currentRecipe && validation.isValid && (
-                <div className="pt-3">
                   <Button
-                    onClick={handleCreateJob}
-                    disabled={loading}
-                    className="w-full py-3.5 text-base font-semibold shadow-md shadow-teal-900/15 transition-all duration-200 hover:shadow-lg disabled:shadow-none"
-                    size="lg"
+                    variant="outline"
+                    onClick={() => {
+                      setSearch('');
+                      setCategory('all');
+                      setFeaturedTrack('all');
+                      setActiveWorkflowId('');
+                    }}
                   >
-                    {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Creating...
-                      </span>
-                    ) : scheduledAt ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Zap className="w-4 h-4" /> Schedule Job
-                      </span>
-                    ) : (
-                      <span className="flex items-center justify-center gap-2">
-                        <Sparkles className="w-4 h-4" /> Create Dataset Now
-                      </span>
-                    )}
+                    Reset filters
                   </Button>
                 </div>
-              )}
 
-              {!currentRecipe && (
-                <div className="pt-5 text-center py-6 border-t border-slate-200">
-                  <p className="text-sm text-slate-500">
-                    Select a recipe type above to get started
-                  </p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Filter className="h-4 w-4 text-slate-500" />
+                    Category filters
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant={category === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setCategory('all')}>
+                      All categories
+                    </Button>
+                    {catalog.categories.map(item => (
+                      <Button key={item.id} variant={category === item.id ? 'default' : 'outline'} size="sm" onClick={() => setCategory(item.id)}>
+                        {item.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Created Jobs - Below main card */}
-          {createdJobs.length > 0 && (
-            <Card className="border border-slate-200 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/[0.04] transition-shadow duration-200 hover:shadow-md">
-              <CardHeader className="border-b border-slate-200 pb-3">
-                <CardTitle className="text-lg font-semibold text-slate-900">
-                  Created Jobs ({createdJobs.length})
-                </CardTitle>
-                <CardDescription className="text-sm text-slate-600 mt-1">
-                  Download your generated datasets
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {createdJobs.map((job) => {
-                    const createdAt = job.createdAt ? new Date(job.createdAt) : null;
-                    const formattedTime = createdAt 
-                      ? createdAt.toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true
-                        })
-                      : 'Unknown time';
-                    const shortId = job.id.substring(0, 8);
-                    
-                    return (
-                      <div
-                        key={job.id}
-                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/90 p-3 transition-colors hover:border-teal-200/80 hover:bg-teal-50/40"
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Sparkles className="h-4 w-4 text-slate-500" />
+                    Featured senior tracks
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant={featuredTrack === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedTrack('all')}>
+                      All tracks
+                    </Button>
+                    {catalog.featured_tracks.map(item => (
+                      <Button key={item.id} variant={featuredTrack === item.id ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedTrack(item.id)}>
+                        {item.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Zap className="h-4 w-4 text-slate-500" />
+                    Dataset quick cards
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {catalog.quick_workflows.map(workflow => (
+                      <button
+                        key={workflow.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveWorkflowId(current => (current === workflow.id ? '' : workflow.id));
+                          setCategory(workflow.category || 'all');
+                          setFeaturedTrack(workflow.featured_track || 'all');
+                        }}
+                        className={`rounded-lg border p-4 text-left transition ${
+                          activeWorkflowId === workflow.id
+                            ? 'border-teal-500 bg-teal-50 shadow-sm'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
                       >
-                        <div className="flex-1 min-w-0 pr-3">
-                          <p className="text-sm font-semibold text-slate-900 truncate mb-1">
-                            {job.name}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className="truncate">{formattedTime}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="font-mono truncate">{shortId}</span>
+                        <div className="text-sm font-semibold text-slate-900">{workflow.title}</div>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">{workflow.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Catalog results ({filteredRecipes.length})
+                  </div>
+                  <div className="grid max-h-[520px] gap-3 overflow-y-auto pr-1">
+                    {filteredRecipes.map(entry => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => handleRecipeSelect(entry.id)}
+                        className={`rounded-lg border p-4 text-left transition ${
+                          selectedRecipeId === entry.id
+                            ? 'border-teal-500 bg-teal-50 shadow-sm'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{entry.title}</div>
+                            <div className="mt-1 text-xs text-slate-500">{entry.id}</div>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                            {entry.category_label}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-slate-600">{entry.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {entry.featured_track_labels.slice(0, 3).map(label => (
+                            <span key={label} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200">
+                              {label}
+                            </span>
+                          ))}
+                          {entry.tags.slice(0, 4).map(tag => (
+                            <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                    {filteredRecipes.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                        No recipes match the current filters.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-6">
+              <Card className="border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">Selected recipe</CardTitle>
+                  <CardDescription>
+                    Configure the selected recipe using backend schema defaults. New recipes appear automatically when catalog metadata is valid.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {selectedRecipe ? (
+                    <>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h2 className="text-lg font-semibold text-slate-900">{selectedRecipe.title}</h2>
+                            <p className="mt-1 text-sm text-slate-600">{selectedRecipe.description}</p>
+                            <p className="mt-2 text-xs text-slate-500">{selectedRecipe.id}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedRecipe.featured_track_labels.map(label => (
+                              <span key={label} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200">
+                                {label}
+                              </span>
+                            ))}
                           </div>
                         </div>
-                        <Button
-                          onClick={() => handleDownload(job.id, job.name)}
-                          size="sm"
-                          variant="outline"
-                          disabled={downloadingJobId === job.id}
-                          className="flex items-center gap-2 ml-3 flex-shrink-0"
-                        >
+                      </div>
+
+                      <div className="space-y-4">
+                        {formKeys.length > 0 ? (
+                          formKeys.map(key => {
+                            const type = schemaFieldType(selectedRecipe.params_schema[key]);
+                            const value = recipeParams[key];
+                            if (type === 'bool') {
+                              return (
+                                <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
+                                  <div>
+                                    <Label className="text-sm font-semibold text-slate-900">{fieldLabel(key)}</Label>
+                                    <p className="text-xs text-slate-500">{fieldHelpText(type)}</p>
+                                  </div>
+                                  <Switch checked={Boolean(value)} onCheckedChange={checked => updateRecipeParam(key, checked)} />
+                                </div>
+                              );
+                            }
+                            if (type === 'list' || type === 'dict') {
+                              return (
+                                <JsonEditorField
+                                  key={key}
+                                  label={fieldLabel(key)}
+                                  value={value ?? (type === 'list' ? [] : {})}
+                                  onCommit={nextValue => updateRecipeParam(key, nextValue)}
+                                />
+                              );
+                            }
+                            return (
+                              <div key={key} className="space-y-2">
+                                <Label className="text-sm font-semibold text-slate-900">{fieldLabel(key)}</Label>
+                                <Input
+                                  type={type === 'int' || type === 'float' ? 'number' : 'text'}
+                                  step={type === 'float' ? '0.01' : undefined}
+                                  value={value === undefined || value === null ? '' : String(value)}
+                                  onChange={event => updateRecipeParam(key, coercePrimitiveValue(type, event.target.value))}
+                                />
+                                <p className="text-xs text-slate-500">{fieldHelpText(type)}</p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                            This recipe uses catalog-driven defaults and does not expose additional parameters yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <ValidationDisplay errors={validation.errors} warnings={validation.warnings} />
+
+                      <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-900">Full example</h3>
+                          <p className="mt-1 text-xs text-slate-500">Curated XML when available, otherwise a safe backend fallback.</p>
+                        </div>
+                        <pre className="overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100">
+                          <code>{selectedRecipe.full_example_xml}</code>
+                        </pre>
+                        <div className="rounded-lg border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+                          <span className="font-semibold">Expected result:</span> {selectedRecipe.expected_result}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                      Select a recipe from the catalog to configure it.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">Create job</CardTitle>
+                  <CardDescription>
+                    Keep the same select → configure → validate → create flow, now powered by catalog-driven defaults.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <SchedulePicker onScheduleChange={handleScheduleChange} />
+                  <Button onClick={handleCreateJob} disabled={creating || !selectedRecipe || !validation.isValid} className="w-full">
+                    {creating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating job...
+                      </>
+                    ) : (
+                      'Create dataset job'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-xl text-slate-900">Created jobs</CardTitle>
+                  <CardDescription>Download recent dataset outputs from this Builder session.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {createdJobs.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                      No jobs created in this session yet.
+                    </div>
+                  ) : (
+                    createdJobs.map(job => (
+                      <div key={job.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{job.name}</div>
+                          <div className="text-xs text-slate-500">{job.id}</div>
+                        </div>
+                        <Button variant="outline" onClick={() => handleDownload(job.id, job.name)} disabled={downloadingJobId === job.id}>
                           {downloadingJobId === job.id ? (
                             <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Downloading...
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Downloading
                             </>
                           ) : (
                             <>
-                              <Download className="h-4 w-4" />
+                              <Download className="mr-2 h-4 w-4" />
                               Download
                             </>
                           )}
                         </Button>
                       </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
-
-export default Builder;

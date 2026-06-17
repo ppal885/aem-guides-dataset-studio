@@ -31,6 +31,7 @@ from app.services.jira_qa_synthesis_service import (
     pack_chunk_context,
     synthesize_answer_for_intent,
 )
+from app.services.source_review_state_service import record_source_failure, record_source_success
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, get_collection_count
 from app.db.session import SessionLocal
 from app.db.jira_enrichment_repository import search_jira_kb
@@ -73,36 +74,55 @@ async def jira_rag_index(
     mode = body.sync_mode
     pk = (body.project_key or "").strip()
     lim = body.limit
-    if mode == "backfill":
-        if not pk:
-            raise HTTPException(status_code=400, detail="project_key is required when sync_mode is backfill")
-        return index_jira_project_backfill(
-            pk,
-            limit=lim,
-            force_reindex=body.force_reindex,
-            sync_state_id=body.sync_state_id,
-        )
-    if mode == "incremental":
-        if not pk:
-            raise HTTPException(status_code=400, detail="project_key is required when sync_mode is incremental")
-        return index_jira_project_incremental(
-            pk,
-            limit=lim,
-            force_reindex=body.force_reindex,
-            sync_state_id=body.sync_state_id,
-        )
+    try:
+        if mode == "backfill":
+            if not pk:
+                raise HTTPException(status_code=400, detail="project_key is required when sync_mode is backfill")
+            stats = index_jira_project_backfill(
+                pk,
+                limit=lim,
+                force_reindex=body.force_reindex,
+                sync_state_id=body.sync_state_id,
+            )
+        elif mode == "incremental":
+            if not pk:
+                raise HTTPException(status_code=400, detail="project_key is required when sync_mode is incremental")
+            stats = index_jira_project_incremental(
+                pk,
+                limit=lim,
+                force_reindex=body.force_reindex,
+                sync_state_id=body.sync_state_id,
+            )
+        else:
+            jql = body.jql.strip()
+            if not jql:
+                raise HTTPException(status_code=400, detail="jql is required when sync_mode is none")
+            sid = (body.sync_state_id or "").strip() or None
+            stats = index_jql_to_chroma(
+                jql,
+                limit=lim,
+                force_reindex=body.force_reindex,
+                persist_sync_state=body.persist_sync_state,
+                sync_state_id=sid,
+            )
 
-    jql = body.jql.strip()
-    if not jql:
-        raise HTTPException(status_code=400, detail="jql is required when sync_mode is none")
-    sid = (body.sync_state_id or "").strip() or None
-    return index_jql_to_chroma(
-        jql,
-        limit=lim,
-        force_reindex=body.force_reindex,
-        persist_sync_state=body.persist_sync_state,
-        sync_state_id=sid,
-    )
+        record_source_success(
+            source_id=CHROMA_COLLECTION_JIRA_QA,
+            operation=f"jira_index:{mode}",
+            failed_items=list(stats.get("errors") or []),
+            stats=stats,
+        )
+        return stats
+    except HTTPException:
+        raise
+    except Exception as exc:
+        record_source_failure(
+            source_id=CHROMA_COLLECTION_JIRA_QA,
+            operation=f"jira_index:{mode}",
+            error=str(exc),
+            failed_items=[str(exc)],
+        )
+        raise
 
 
 @router.get("/kb/search")

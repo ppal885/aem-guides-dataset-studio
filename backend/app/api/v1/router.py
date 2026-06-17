@@ -18,6 +18,7 @@ from app.api.v1.routes import (
     qa_studio,
     recipes,
     recorder,
+    review_center,
     schedule,
     scale_testing,
     smart_suggestions,
@@ -94,6 +95,7 @@ api_router.include_router(scale_testing.router)
 api_router.include_router(limits.router)
 api_router.include_router(admin.router)
 api_router.include_router(ai_dataset.router)
+api_router.include_router(review_center.router)
 api_router.include_router(chat.router)
 api_router.include_router(storage.router)
 api_router.include_router(ai_flow.router)

@@ -20,6 +20,7 @@ async def mock_llm_echo_grounding_evidence(*, user_prompt: str = "", system_prom
 
 from app.core.auth import UserIdentity
 from app.db.base import Base
+from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
 from app.db.migrations import run_migrations
 from app.db.session import engine
 from app.main import app

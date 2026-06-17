@@ -412,7 +412,7 @@ def fetch_dita_ot_issues(
                         )
                         time.sleep(wait)
                         continue
-                    if resp.status_code == 422 and page > 1 and collected:
+                    if resp.status_code == 422 and page > 1:
                         logger.info_structured(
                             "dita_ot_github_fetch_stopped_at_pagination_boundary",
                             extra_fields={"page": page, "fetched": len(collected)},
