@@ -3784,6 +3784,13 @@ def _unique_fact_points(values: list[str], *, exclude: set[str] | None = None) -
 def _preferred_grounded_short_answer(facts: NormalizedGroundedFactSet) -> str:
     short_answer = " ".join(str(facts.canonical_definition or "").split()).strip()
     generic_fallback = "dita attribute used in construct-specific contexts"
+    lowered = short_answer.lower()
+    if "@keyscope attribute creates a named scope for key definitions" in lowered:
+        return (
+            "The @keyscope attribute creates a named scope for key definitions in a DITA map, "
+            "so the same key names can exist in different branches and be addressed as "
+            "`scope-name.key-name`."
+        )
     if short_answer and generic_fallback not in short_answer.lower():
         return short_answer
     for candidate in [*facts.usage_patterns, *facts.default_behavior, *facts.placement_notes]:
@@ -3839,6 +3846,17 @@ def _grounded_example_explanation_points(
     if "namest=" in snippet_lower and "nameend=" in snippet_lower:
         candidates.append(
             "`@namest` and `@nameend` mark the start and end columns for a horizontal cell span."
+        )
+    if "keyscope=" in snippet_lower and "keyref=" in snippet_lower:
+        candidates.append(
+            "`@keyscope` creates the scope name for the keys defined in that map branch or referenced submap."
+        )
+        candidates.append(
+            "A qualified reference such as `keyref=\"book-b.install\"` means “resolve the key `install` inside the `book-b` scope.”"
+        )
+    if "scope=\"peer\"" in snippet_lower and "format=\"ditamap\"" in snippet_lower:
+        candidates.append(
+            "`scope=\"peer\"` with `format=\"ditamap\"` commonly marks another deliverable or submap whose keys you want to namespace."
         )
     if facts.usage_patterns:
         candidates.extend(facts.usage_patterns[:2])

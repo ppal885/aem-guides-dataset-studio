@@ -20,9 +20,28 @@ _STOPWORDS = {
     "different", "various", "type", "types", "kind", "kinds", "compare", "comparison", "difference",
     "about", "dita", "xml",
 }
+_PROMPT_SHAPE_TERMS = {
+    "show",
+    "example",
+    "examples",
+    "sample",
+    "samples",
+    "snippet",
+    "snippets",
+    "full",
+    "proper",
+    "please",
+}
 
 _NEGATION_TERMS = {"not", "never", "without", "unsupported", "disabled", "disable", "cannot", "can't"}
 _AFFIRMATION_TERMS = {"supported", "enabled", "enable", "can", "works", "allowed"}
+_INTERNAL_WORKSPACE_REF_RE = re.compile(
+    r"^(?:[a-z]:[\\/]|/|\.{1,2}[\\/]|file://)|"
+    r"(?:^|[\\/])(?:frontend|backend|src|app|components|\.claude|\.git)(?:[\\/]|$)|"
+    r"\.claude/worktrees/|"
+    r"\.(?:py|tsx?|jsx?|java|kt|cs|go|rb|php|rs|json|ya?ml)(?:$|[#?])",
+    re.IGNORECASE,
+)
 
 _SOURCE_AUTHORITY = {
     "tenant_context": ("tenant_approved", 1.0),
@@ -341,6 +360,16 @@ def _phrase_bonus(query: str, text: str) -> float:
     return min(0.2, bonus)
 
 
+def _looks_like_internal_workspace_reference(value: str) -> bool:
+    candidate = _normalize_space(value)
+    if not candidate:
+        return False
+    lowered = candidate.lower().replace("\\", "/")
+    if lowered.startswith(("http://", "https://", "mailto:", "ftp://")):
+        return False
+    return bool(_INTERNAL_WORKSPACE_REF_RE.search(candidate) or _INTERNAL_WORKSPACE_REF_RE.search(lowered))
+
+
 def _missing_query_terms(question: str, evidence_pack: "EvidencePack") -> list[str]:
     if not evidence_pack.chunks:
         return []
@@ -348,6 +377,8 @@ def _missing_query_terms(question: str, evidence_pack: "EvidencePack") -> list[s
     missing: list[str] = []
     for token in _tokenize(question):
         lowered = token.lower()
+        if lowered in _PROMPT_SHAPE_TERMS:
+            continue
         if lowered in all_text:
             continue
         if lowered in missing:
@@ -481,10 +512,10 @@ def _candidate_doc_type(source_kind: str, metadata: dict[str, Any]) -> str:
 def _candidate_title(candidate: Any, source_kind: str, metadata: dict[str, Any]) -> str:
     for key in ("title", "label", "filename", "element_name", "source"):
         value = _normalize_space(str(metadata.get(key) or ""))
-        if value:
+        if value and not _looks_like_internal_workspace_reference(value):
             return value
     label = _normalize_space(str(getattr(candidate, "label", "") or ""))
-    if label:
+    if label and not _looks_like_internal_workspace_reference(label):
         return label
     return _SOURCE_LABELS.get(source_kind, "Evidence")
 
@@ -493,14 +524,15 @@ def _candidate_uri(candidate: Any, metadata: dict[str, Any]) -> str:
     for key in ("url", "source_url", "download_url"):
         value = _normalize_space(str(metadata.get(key) or ""))
         if value:
-            return value
-    return _normalize_space(str(getattr(candidate, "url", "") or ""))
+            return "" if _looks_like_internal_workspace_reference(value) else value
+    value = _normalize_space(str(getattr(candidate, "url", "") or ""))
+    return "" if _looks_like_internal_workspace_reference(value) else value
 
 
 def _candidate_section(metadata: dict[str, Any]) -> str:
     for key in ("section", "heading", "element_name", "filename"):
         value = _normalize_space(str(metadata.get(key) or ""))
-        if value:
+        if value and not _looks_like_internal_workspace_reference(value):
             return value
     return ""
 

@@ -1,0 +1,17 @@
+{
+  "source_id": "dita_spec",
+  "last_operation": "reindex",
+  "last_successful_run": "2026-06-17T10:43:18.384283+00:00",
+  "last_error": null,
+  "failed_item_count": 0,
+  "failed_items": [],
+  "last_stats": {
+    "pages_loaded": 1691,
+    "chunks_stored": 5352,
+    "sources_indexed": [
+      "https://docs.oasis-open.org/dita/v1.2/spec/DITA1.2-spec.pdf",
+      "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/dita-v1.3-os-part1-base.pdf"
+    ],
+    "errors": []
+  }
+}

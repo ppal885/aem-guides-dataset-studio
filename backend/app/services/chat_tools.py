@@ -2705,8 +2705,38 @@ def _append_source(
     url: str = "",
     snippet: str = "",
 ) -> None:
+    def _looks_like_internal_workspace_ref(value: str) -> bool:
+        candidate = " ".join(str(value or "").split()).strip()
+        if not candidate:
+            return False
+        lowered = candidate.lower().replace("\\", "/")
+        if lowered.startswith(("http://", "https://", "mailto:", "ftp://")):
+            return False
+        return bool(
+            re.search(
+                r"^(?:[a-z]:[\\/]|/|\.{1,2}[\\/]|file://)|"
+                r"(?:^|[\\/])(?:frontend|backend|src|app|components|\.claude|\.git)(?:[\\/]|$)|"
+                r"\.claude/worktrees/|"
+                r"\.(?:py|tsx?|jsx?|java|kt|cs|go|rb|php|rs|json|ya?ml)(?:$|[#?])",
+                candidate,
+                re.IGNORECASE,
+            )
+            or re.search(
+                r"^(?:[a-z]:[\\/]|/|\.{1,2}[\\/]|file://)|"
+                r"(?:^|[\\/])(?:frontend|backend|src|app|components|\.claude|\.git)(?:[\\/]|$)|"
+                r"\.claude/worktrees/|"
+                r"\.(?:py|tsx?|jsx?|java|kt|cs|go|rb|php|rs|json|ya?ml)(?:$|[#?])",
+                lowered,
+                re.IGNORECASE,
+            )
+        )
+
     label = label.strip()
     url = url.strip()
+    if _looks_like_internal_workspace_ref(label):
+        label = ""
+    if _looks_like_internal_workspace_ref(url):
+        url = ""
     snippet = _clean_summary_text(snippet, max_len=180).strip()
     if not label and not url:
         return

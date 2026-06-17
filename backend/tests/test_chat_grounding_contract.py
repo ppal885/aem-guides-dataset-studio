@@ -1712,6 +1712,74 @@ async def test_chat_turn_keyscope_example_request_omits_unverified_xml_example(m
         chat_service.delete_session(session_id)
 
 
+@pytest.mark.anyio
+async def test_chat_turn_keyscope_example_request_renders_verified_example_and_hides_local_source(monkeypatch):
+    async def fail_build_pack(*_args, **_kwargs):
+        raise AssertionError("Corrective RAG pack should not run for direct grounded DITA attribute questions")
+
+    async def fake_run_tool(name: str, params: dict, **kwargs):
+        if name in {"lookup_dita_attribute", "lookup_dita_spec"}:
+            return {
+                "attribute_name": "keyscope",
+                "attribute_semantic_class": "map_scoped",
+                "attribute_syntax": "One or more space-separated scope names (same naming rules as keys)",
+                "summary": "Retrieved DITA attribute guidance for `keyscope`.",
+                "warnings": [],
+                "all_valid_values": [],
+                "supported_elements": ["map", "topicref", "mapref", "keydef"],
+                "combination_attributes": ["scope", "keys", "format"],
+                "default_scenarios": ["The root map defines an implicit unnamed scope."],
+                "usage_contexts": [
+                    "Use @keyscope on a topicref branch to create a named scope for keys below that branch.",
+                    "Use scope-qualified key references such as scope-name.key-name when referring across scopes.",
+                ],
+                "correct_examples": [
+                    '<map><topicref href="../book-b/book-b.ditamap" scope="peer" keyscope="book-b" format="ditamap"/><xref keyref="book-b.install">See Book B installation</xref></map>'
+                ],
+                "text_content": "The @keyscope attribute creates a named scope for key definitions.",
+                "source_url": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/KeyscopeDemoConfig.tsx",
+                "status": "success",
+                "status_tone": "success",
+            }
+        raise AssertionError(f"Unexpected tool {name}")
+
+    monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
+    monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
+    monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+    monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_dita_answer")
+    monkeypatch.setattr(
+        chat_service,
+        "route_prompt",
+        lambda *_args, **_kwargs: type("Decision", (), {"intent": "unknown", "legacy_answer_mode": "default", "candidate_contract": {}})(),
+    )
+    monkeypatch.setattr(
+        chat_service,
+        "decide_execution_policy",
+        lambda *_args, **_kwargs: type("Policy", (), {"action": "answer_directly", "clarification_question": None})(),
+    )
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(session_id, "What is keyscope in dita? Show an example.", tenant_id="kone"):
+            events.append(event)
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        assert "## Verified example" in text
+        assert "<map>" in text
+        assert 'keyscope="book-b"' in text
+        assert 'keyref="book-b.install"' in text
+        assert "## Example explained" in text
+        assert "The term `show`" not in text
+        assert "KeyscopeDemoConfig" not in text
+        assert ".tsx" not in text
+        grounding_event = next(event for event in events if event.get("type") == "grounding")
+        assert grounding_event["grounding"]["answer_kind"] == "dita_map_construct"
+        assert grounding_event["grounding"]["example_verified"] is True
+    finally:
+        chat_service.delete_session(session_id)
+
+
 def test_open_token_attribute_values_are_not_rendered_as_valid_values():
     facts = chat_service._normalize_grounded_tool_facts(
         answer_mode="grounded_dita_answer",

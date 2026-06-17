@@ -97,6 +97,30 @@ def test_build_evidence_pack_detects_conflicts():
     assert pack.decision.has_conflict is True
 
 
+def test_build_evidence_pack_hides_internal_workspace_code_references_from_citations():
+    pack = build_evidence_pack(
+        query="What is keyscope in DITA?",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="KeyscopeDemoConfig.tsx",
+                text="The @keyscope attribute creates a named scope for key definitions.",
+                url="C:/Users/prashantp/Videos/aem-guides-dataset-studio/frontend/src/components/KeyscopeDemoConfig.tsx",
+                metadata={
+                    "title": "KeyscopeDemoConfig.tsx",
+                    "filename": "frontend/src/components/KeyscopeDemoConfig.tsx",
+                },
+            ),
+        ],
+    )
+
+    citation = pack.citations(limit=1)[0]
+    assert citation.uri == ""
+    assert citation.title == "DITA Spec"
+    assert "KeyscopeDemoConfig" not in citation.label
+
+
 def test_build_section_evidence_map_prefers_examples_for_steps():
     pack = build_evidence_pack(
         query="write steps for glossary review",
@@ -295,6 +319,30 @@ def test_missing_query_terms_normalizes_prompt_fillers_and_slash_terms():
     assert "explain" not in missing
     assert "table" not in missing
     assert "cals" not in missing
+
+
+def test_missing_query_terms_ignores_example_intent_words():
+    pack = build_evidence_pack(
+        query="What is keyscope in DITA? Show a full example.",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="DITA keyscope",
+                text="The keyscope attribute creates a named scope for key definitions.",
+                metadata={"title": "DITA keyscope"},
+            ),
+        ],
+    )
+
+    missing = grounding_service._missing_query_terms(
+        "What is keyscope in DITA? Show a full example.",
+        pack,
+    )
+
+    assert "show" not in missing
+    assert "full" not in missing
+    assert "example" not in missing
 
 
 @pytest.mark.anyio
