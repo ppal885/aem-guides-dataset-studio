@@ -141,6 +141,85 @@ def _normalize_text_list(values: list[str] | None) -> list[str]:
     return out
 
 
+def _infer_schema_type_from_default(value: Any) -> str:
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, dict):
+        return "dict"
+    return "str"
+
+
+def _normalize_schema_type(raw_type: Any, default_value: Any = None) -> str:
+    text = str(raw_type or "").strip().lower()
+    if text:
+        if "dict" in text or "mapping" in text or "json" in text or "object" in text:
+            return "dict"
+        if "list" in text or "tuple" in text or "sequence" in text or text.startswith("["):
+            return "list"
+        if "bool" in text:
+            return "bool"
+        if "float" in text or "decimal" in text or "number" in text:
+            return "float"
+        if "int" in text or "integer" in text:
+            return "int"
+        if "str" in text or "string" in text or "literal" in text:
+            return "str"
+    return _infer_schema_type_from_default(default_value)
+
+
+def _normalized_params_schema(spec: RecipeSpec) -> dict[str, str]:
+    defaults = spec.default_params or {}
+    normalized: dict[str, str] = {}
+    for key, raw_type in (spec.params_schema or {}).items():
+        normalized[key] = _normalize_schema_type(raw_type, defaults.get(key))
+    for key, default_value in defaults.items():
+        normalized.setdefault(key, _infer_schema_type_from_default(default_value))
+    return normalized
+
+
+def _spec_dedupe_key(spec: RecipeSpec) -> tuple[str, str, str]:
+    return (
+        str(spec.module or "").strip().lower(),
+        str(spec.function or "").strip().lower(),
+        str(spec.title or "").strip().lower(),
+    )
+
+
+def _spec_preference_key(spec: RecipeSpec) -> tuple[int, int, str]:
+    recipe_id = str(spec.id or "").strip()
+    return (0 if "." in recipe_id else 1, len(recipe_id), recipe_id.lower())
+
+
+def _merge_spec_alias(target: RecipeSpec, alias_spec: RecipeSpec) -> None:
+    merged_tags = _normalize_text_list(list(target.tags or []) + list(alias_spec.tags or []) + [alias_spec.id])
+    target.tags = merged_tags
+    merged_keywords = _normalize_text_list(
+        list(target.retrieval_keywords or []) + list(alias_spec.retrieval_keywords or []) + [alias_spec.id]
+    )
+    target.retrieval_keywords = merged_keywords
+
+
+def _dedupe_specs(specs: list[RecipeSpec]) -> list[RecipeSpec]:
+    deduped: dict[tuple[str, str, str], RecipeSpec] = {}
+    for spec in specs:
+        key = _spec_dedupe_key(spec)
+        current = deduped.get(key)
+        if current is None:
+            deduped[key] = spec
+            continue
+        preferred = min((current, spec), key=_spec_preference_key)
+        other = spec if preferred is current else current
+        _merge_spec_alias(preferred, other)
+        deduped[key] = preferred
+    return list(deduped.values())
+
+
 def _infer_category(spec: RecipeSpec) -> str:
     corpus = " ".join(
         [
@@ -196,6 +275,18 @@ def _fallback_example_xml(spec: RecipeSpec) -> str:
     <p platform="windows">Windows-specific content.</p>
   </body>
 </topic>"""
+    if "bookmap" in spec.id:
+        return """<bookmap>
+  <booktitle>
+    <mainbooktitle>Sample publication</mainbooktitle>
+  </booktitle>
+  <chapter href="intro.dita"/>
+</bookmap>"""
+    if "map" in spec.id or "relationship" in spec.id:
+        return """<map id="sample-map">
+  <topicref href="topic-a.dita"/>
+  <topicref href="topic-b.dita"/>
+</map>"""
     if "glossary" in spec.id:
         return """<glossentry id="term-api">
   <glossterm>API</glossterm>
@@ -210,7 +301,7 @@ def _fallback_example_xml(spec: RecipeSpec) -> str:
         <proptype>Option</proptype>
         <propvalue>Enabled</propvalue>
       </property>
-    </properties>
+        </properties>
   </refbody>
 </reference>"""
     if "concept" in spec.id:
@@ -220,11 +311,6 @@ def _fallback_example_xml(spec: RecipeSpec) -> str:
     <p>Conceptual background for the generated dataset.</p>
   </conbody>
 </concept>"""
-    if "map" in spec.id or "relationship" in spec.id:
-        return """<map id="sample-map">
-  <topicref href="topic-a.dita"/>
-  <topicref href="topic-b.dita"/>
-</map>"""
     return """<topic id="sample-topic">
   <title>Sample topic</title>
   <body>
@@ -247,6 +333,7 @@ def _entry_from_spec(spec: RecipeSpec) -> dict[str, Any]:
     category = _infer_category(spec)
     tracks = _infer_tracks(spec, category)
     curated = _CURATED_EXAMPLES.get(spec.id) or {}
+    normalized_params_schema = _normalized_params_schema(spec)
     tags = _normalize_text_list(
         list(spec.tags or [])
         + list(spec.intent_tags or [])
@@ -262,9 +349,9 @@ def _entry_from_spec(spec: RecipeSpec) -> dict[str, Any]:
         "tags": tags[:20],
         "featured_tracks": tracks,
         "featured_track_labels": [_FEATURED_TRACKS[track] for track in tracks],
-        "params_schema": spec.params_schema or {},
+        "params_schema": normalized_params_schema,
         "default_params": spec.default_params or {},
-        "editor_type": _infer_editor_type(spec),
+        "editor_type": "schema_form" if normalized_params_schema else _infer_editor_type(spec),
         "full_example_xml": curated.get("full_example_xml") or _fallback_example_xml(spec),
         "expected_result": _expected_result(spec, category),
         "stability": spec.stability,
@@ -275,7 +362,7 @@ def _entry_from_spec(spec: RecipeSpec) -> dict[str, Any]:
 
 
 def get_recipe_catalog() -> dict[str, Any]:
-    specs = sorted(discover_recipe_specs(), key=lambda spec: (spec.title.lower(), spec.id.lower()))
+    specs = sorted(_dedupe_specs(discover_recipe_specs()), key=lambda spec: (spec.title.lower(), spec.id.lower()))
     entries = [_entry_from_spec(spec) for spec in specs]
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

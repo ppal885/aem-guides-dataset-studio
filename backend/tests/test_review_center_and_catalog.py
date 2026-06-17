@@ -22,6 +22,14 @@ def test_recipe_catalog_endpoint(client, auth_headers):
     assert "full_example_xml" in first
     assert "expected_result" in first
 
+    ids = {entry["id"] for entry in payload["entries"]}
+    assert "xref.external_url" in ids
+    assert "xref_external_url" not in ids
+
+    by_id = {entry["id"]: entry for entry in payload["entries"]}
+    assert by_id["bookmap_elements_reference"]["full_example_xml"].lstrip().startswith("<bookmap>")
+    assert by_id["dita_conref_title_dataset_recipe"]["params_schema"]["variables"] == "list"
+
 
 def test_seeded_learned_qa_appears_in_review_center_and_rag_status(client, auth_headers, monkeypatch):
     monkeypatch.setattr(

@@ -76,6 +76,21 @@ function schemaFieldType(value: unknown): PrimitiveSchemaType {
   if (text === 'int' || text === 'float' || text === 'bool' || text === 'str' || text === 'list' || text === 'dict') {
     return text;
   }
+  if (text.includes('dict') || text.includes('mapping') || text.includes('object') || text.includes('json')) return 'dict';
+  if (text.includes('list') || text.includes('tuple') || text.includes('sequence')) return 'list';
+  if (text.includes('bool')) return 'bool';
+  if (text.includes('float') || text.includes('number') || text.includes('decimal')) return 'float';
+  if (text.includes('int') || text.includes('integer')) return 'int';
+  return 'str';
+}
+
+function schemaFieldTypeFromSchemaOrValue(schemaValue: unknown, currentValue: unknown): PrimitiveSchemaType {
+  const schemaType = schemaFieldType(schemaValue);
+  if (schemaType !== 'str' || String(schemaValue || '').trim()) return schemaType;
+  if (Array.isArray(currentValue)) return 'list';
+  if (currentValue && typeof currentValue === 'object') return 'dict';
+  if (typeof currentValue === 'boolean') return 'bool';
+  if (typeof currentValue === 'number') return Number.isInteger(currentValue) ? 'int' : 'float';
   return 'str';
 }
 
@@ -122,19 +137,21 @@ function coercePrimitiveValue(type: PrimitiveSchemaType, raw: string): unknown {
 function JsonEditorField({
   label,
   value,
+  emptyValue,
   onCommit,
 }: {
   label: string;
   value: unknown;
+  emptyValue: unknown;
   onCommit: (nextValue: unknown) => void;
 }) {
-  const [text, setText] = useState(() => JSON.stringify(value ?? (Array.isArray(value) ? [] : {}), null, 2));
+  const [text, setText] = useState(() => JSON.stringify(value ?? emptyValue, null, 2));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setText(JSON.stringify(value ?? (Array.isArray(value) ? [] : {}), null, 2));
+    setText(JSON.stringify(value ?? emptyValue, null, 2));
     setError(null);
-  }, [value]);
+  }, [emptyValue, value]);
 
   return (
     <div className="space-y-2">
@@ -245,6 +262,17 @@ export function Builder() {
       return true;
     });
   }, [activeWorkflow?.search_terms, catalog?.entries, category, featuredTrack, search]);
+
+  useEffect(() => {
+    if (!catalog) return;
+    if (filteredRecipes.length === 0) {
+      setSelectedRecipeId('');
+      return;
+    }
+    if (!filteredRecipes.some(entry => entry.id === selectedRecipeId)) {
+      setSelectedRecipeId(filteredRecipes[0].id);
+    }
+  }, [catalog, filteredRecipes, selectedRecipeId]);
 
   const currentRecipe = useMemo(
     () => (selectedRecipe ? { type: selectedRecipe.id, ...recipeParams } : null),
@@ -424,7 +452,15 @@ export function Builder() {
                       All categories
                     </Button>
                     {catalog.categories.map(item => (
-                      <Button key={item.id} variant={category === item.id ? 'default' : 'outline'} size="sm" onClick={() => setCategory(item.id)}>
+                      <Button
+                        key={item.id}
+                        variant={category === item.id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setCategory(item.id);
+                          setActiveWorkflowId('');
+                        }}
+                      >
                         {item.label}
                       </Button>
                     ))}
@@ -441,7 +477,15 @@ export function Builder() {
                       All tracks
                     </Button>
                     {catalog.featured_tracks.map(item => (
-                      <Button key={item.id} variant={featuredTrack === item.id ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedTrack(item.id)}>
+                      <Button
+                        key={item.id}
+                        variant={featuredTrack === item.id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setFeaturedTrack(item.id);
+                          setActiveWorkflowId('');
+                        }}
+                      >
                         {item.label}
                       </Button>
                     ))}
@@ -459,9 +503,10 @@ export function Builder() {
                         key={workflow.id}
                         type="button"
                         onClick={() => {
-                          setActiveWorkflowId(current => (current === workflow.id ? '' : workflow.id));
-                          setCategory(workflow.category || 'all');
-                          setFeaturedTrack(workflow.featured_track || 'all');
+                          const isActive = activeWorkflowId === workflow.id;
+                          setActiveWorkflowId(isActive ? '' : workflow.id);
+                          setCategory(isActive ? 'all' : workflow.category || 'all');
+                          setFeaturedTrack(isActive ? 'all' : workflow.featured_track || 'all');
                         }}
                         className={`rounded-lg border p-4 text-left transition ${
                           activeWorkflowId === workflow.id
@@ -557,7 +602,7 @@ export function Builder() {
                       <div className="space-y-4">
                         {formKeys.length > 0 ? (
                           formKeys.map(key => {
-                            const type = schemaFieldType(selectedRecipe.params_schema[key]);
+                            const type = schemaFieldTypeFromSchemaOrValue(selectedRecipe.params_schema[key], recipeParams[key]);
                             const value = recipeParams[key];
                             if (type === 'bool') {
                               return (
@@ -576,6 +621,7 @@ export function Builder() {
                                   key={key}
                                   label={fieldLabel(key)}
                                   value={value ?? (type === 'list' ? [] : {})}
+                                  emptyValue={type === 'list' ? [] : {}}
                                   onCommit={nextValue => updateRecipeParam(key, nextValue)}
                                 />
                               );
