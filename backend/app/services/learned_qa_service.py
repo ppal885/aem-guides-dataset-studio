@@ -7,6 +7,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -16,7 +17,12 @@ from app.db.chat_models import ChatMessage
 from app.db.learned_prompt_models import LearnedPromptEntry
 from app.db.session import SessionLocal
 from app.services.embedding_service import embed_query, embed_texts_batched, is_embedding_available
-from app.services.source_review_state_service import load_source_state
+from app.services.source_review_state_service import (
+    load_source_state,
+    record_source_failure,
+    record_source_success,
+    save_source_state,
+)
 from app.services.vector_store_service import (
     CHROMA_COLLECTION_LEARNED_QA,
     add_documents,
@@ -31,6 +37,7 @@ LEARNED_QA_EXPORT_FILENAME = "learned_qa_pairs.json"
 LEARNED_QA_ANSWER_STYLE = "senior_technical_docs"
 LEARNED_QA_NEAR_DUP_THRESHOLD = 0.72
 LEARNED_QA_DEFAULT_K = 4
+_LEARNED_QA_SYNC_LOCK = Lock()
 
 _KNOWN_TAGS: tuple[str, ...] = (
     "morerows",
@@ -111,6 +118,29 @@ def _coerce_naive_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _read_seed_items() -> list[dict[str, Any]]:
+    if not LEARNED_QA_SEED_PATH.is_file():
+        raise FileNotFoundError(f"Missing learned QA seed file: {LEARNED_QA_SEED_PATH}")
+    raw = json.loads(LEARNED_QA_SEED_PATH.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("learned_qa_seed.json must contain a list")
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _seed_file_metadata() -> dict[str, Any]:
+    payload = LEARNED_QA_SEED_PATH.read_bytes()
+    item_count = len(_read_seed_items())
+    return {
+        "seed_file": str(LEARNED_QA_SEED_PATH),
+        "seed_hash": hashlib.sha256(payload).hexdigest(),
+        "seed_item_count": item_count,
+        "seed_file_mtime": datetime.fromtimestamp(
+            LEARNED_QA_SEED_PATH.stat().st_mtime,
+            tz=timezone.utc,
+        ).isoformat(),
+    }
 
 
 def infer_tags(prompt: str, answer: str = "") -> list[str]:
@@ -333,16 +363,10 @@ def upsert_learned_prompt_entry(
 
 
 def seed_learned_qa(session: Session) -> dict[str, Any]:
-    if not LEARNED_QA_SEED_PATH.is_file():
-        raise FileNotFoundError(f"Missing learned QA seed file: {LEARNED_QA_SEED_PATH}")
-    raw = json.loads(LEARNED_QA_SEED_PATH.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise ValueError("learned_qa_seed.json must contain a list")
+    raw = _read_seed_items()
     created = 0
     updated = 0
     for item in raw:
-        if not isinstance(item, dict):
-            continue
         prompt = str(item.get("prompt") or "").strip()
         final_answer = str(item.get("final_answer") or "").strip()
         if not prompt or not final_answer:
@@ -368,6 +392,139 @@ def seed_learned_qa(session: Session) -> dict[str, Any]:
             updated += 1
     session.commit()
     return {"created": created, "updated": updated, "total": created + updated}
+
+
+def sync_learned_qa_corpus(
+    session: Session | None = None,
+    *,
+    force_seed: bool = False,
+    force_reindex: bool = False,
+    reason: str = "auto",
+) -> dict[str, Any]:
+    created_session = session is None
+    db = session or SessionLocal()
+    try:
+        with _LEARNED_QA_SYNC_LOCK:
+            metadata = _seed_file_metadata()
+            state = load_source_state(CHROMA_COLLECTION_LEARNED_QA)
+            last_stats = dict(state.last_stats or {})
+
+            approved_seed_count = (
+                db.query(LearnedPromptEntry)
+                .filter(
+                    LearnedPromptEntry.status == "approved",
+                    LearnedPromptEntry.source_type == "seed",
+                )
+                .count()
+            )
+            approved_total_count = (
+                db.query(LearnedPromptEntry)
+                .filter(LearnedPromptEntry.status == "approved")
+                .count()
+            )
+            chroma_ok = is_chroma_available()
+            auto_index_ready = chroma_ok and is_embedding_available()
+            indexed_count = get_collection_count(CHROMA_COLLECTION_LEARNED_QA) if chroma_ok else 0
+
+            seed_changed = (
+                force_seed
+                or last_stats.get("seed_hash") != metadata["seed_hash"]
+                or int(last_stats.get("seed_item_count") or -1) != int(metadata["seed_item_count"])
+            )
+            seed_missing_in_db = int(metadata["seed_item_count"] or 0) > 0 and approved_seed_count == 0
+            index_out_of_sync = chroma_ok and approved_total_count != indexed_count
+
+            needs_seed = bool(seed_changed or seed_missing_in_db)
+            needs_reindex = bool(
+                force_reindex
+                or needs_seed
+                or (auto_index_ready and index_out_of_sync)
+                or (auto_index_ready and approved_total_count > 0 and indexed_count == 0)
+            )
+
+            seed_stats: dict[str, Any] = {
+                "created": 0,
+                "updated": 0,
+                "total": 0,
+                "skipped": True,
+                "reason": "up_to_date",
+            }
+            index_stats: dict[str, Any] = {
+                "collection": CHROMA_COLLECTION_LEARNED_QA,
+                "indexed": indexed_count,
+                "errors": [],
+                "skipped": True,
+                "reason": "up_to_date",
+            }
+
+            if needs_seed:
+                seed_stats = seed_learned_qa(db)
+                approved_total_count = (
+                    db.query(LearnedPromptEntry)
+                    .filter(LearnedPromptEntry.status == "approved")
+                    .count()
+                )
+                needs_reindex = True
+
+            if needs_reindex:
+                index_stats = index_approved_learned_qa(
+                    db,
+                    force_reindex=bool(force_reindex or needs_seed or index_out_of_sync),
+                )
+                indexed_count = int(index_stats.get("indexed") or 0)
+
+            sync_stats = {
+                **last_stats,
+                **metadata,
+                "approved_count": int(approved_total_count or 0),
+                "indexed": int(indexed_count or 0),
+                "performed_seed": bool(needs_seed),
+                "performed_reindex": bool(needs_reindex),
+                "sync_reason": reason,
+            }
+
+            if index_stats.get("errors"):
+                record_source_failure(
+                    source_id=CHROMA_COLLECTION_LEARNED_QA,
+                    operation="auto_sync",
+                    error="; ".join(str(err) for err in index_stats.get("errors") or []),
+                    failed_items=list(index_stats.get("errors") or []),
+                    stats=sync_stats,
+                )
+            elif needs_seed or needs_reindex:
+                record_source_success(
+                    source_id=CHROMA_COLLECTION_LEARNED_QA,
+                    operation="auto_sync",
+                    stats=sync_stats,
+                )
+            else:
+                state.last_stats = sync_stats
+                save_source_state(state)
+
+            return {
+                "seed": seed_stats,
+                "index": index_stats,
+                "performed_seed": bool(needs_seed),
+                "performed_reindex": bool(needs_reindex),
+                "seed_changed": bool(seed_changed),
+                "seed_missing_in_db": bool(seed_missing_in_db),
+                "approved_count": int(approved_total_count or 0),
+                "indexed_count": int(indexed_count or 0),
+                "reason": reason,
+                "seed_file": metadata["seed_file"],
+                "seed_item_count": int(metadata["seed_item_count"] or 0),
+            }
+    except Exception as exc:
+        record_source_failure(
+            source_id=CHROMA_COLLECTION_LEARNED_QA,
+            operation="auto_sync",
+            error=str(exc),
+            failed_items=[str(exc)],
+        )
+        raise
+    finally:
+        if created_session:
+            db.close()
 
 
 def index_approved_learned_qa(session: Session, *, force_reindex: bool = False) -> dict[str, Any]:
@@ -449,6 +606,10 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
     if not text:
         return []
     result_limit = max(1, min(int(k), 10))
+    try:
+        sync_learned_qa_corpus(reason="chat_retrieval")
+    except Exception:
+        pass
 
     if is_chroma_available() and is_embedding_available() and get_collection_count(CHROMA_COLLECTION_LEARNED_QA) > 0:
         emb = embed_query(text[:4000])

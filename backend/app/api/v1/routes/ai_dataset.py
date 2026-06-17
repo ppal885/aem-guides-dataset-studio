@@ -503,7 +503,7 @@ def get_rag_status(
         is_chroma_available,
     )
     from app.services.github_dita_examples_service import get_github_dita_rag_summary
-    from app.services.learned_qa_service import get_learned_qa_summary
+    from app.services.learned_qa_service import get_learned_qa_summary, sync_learned_qa_corpus
     from app.services.tavily_search_service import get_tavily_rag_status
     from app.utils.evidence_extractor import USE_AEM_DOCS_ENRICHMENT
 
@@ -650,6 +650,16 @@ def get_rag_status(
             "github_dita": github_dita,
         }
 
+    sync_error: str | None = None
+    try:
+        session = SessionLocal()
+        try:
+            sync_learned_qa_corpus(session, reason="rag_status")
+        finally:
+            session.close()
+    except Exception as ex:
+        sync_error = str(ex)
+
     try:
         chroma_ok = is_chroma_available()
         aem_count = get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0
@@ -657,7 +667,7 @@ def get_rag_status(
         dita_ot_count = get_collection_count(CHROMA_COLLECTION_DITA_OT_GITHUB) if chroma_ok else 0
         jira_qa_count = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
         learned_qa_count = get_collection_count(CHROMA_COLLECTION_LEARNED_QA) if chroma_ok else 0
-        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, jira_qa_count, learned_qa_count, None)
+        return _payload(chroma_ok, aem_count, dita_count, dita_ot_count, jira_qa_count, learned_qa_count, sync_error)
     except Exception as e:
         logger.warning_structured("RAG status failed", extra_fields={"error": str(e)})
         # Always return the same shape so Settings UI can show all sections (with zeros).

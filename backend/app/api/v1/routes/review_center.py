@@ -17,7 +17,7 @@ from app.services.learned_qa_service import (
     index_approved_learned_qa,
     list_learned_prompt_entries,
     reject_learned_prompt_entry,
-    seed_learned_qa,
+    sync_learned_qa_corpus,
 )
 from app.services.review_center_service import build_review_center_status
 from app.services.source_review_state_service import record_source_failure, record_source_success
@@ -59,6 +59,10 @@ def get_review_center(
     session: Session = Depends(get_db),
     user: UserIdentity = CurrentUser,
 ):
+    try:
+        sync_learned_qa_corpus(session, reason="review_center")
+    except Exception:
+        pass
     requested_tenant = tenant_id if str(tenant_id or "").strip() not in {"", "default"} else None
     authorized_tenant_id = get_authorized_tenant_id(request, user, requested_tenant=requested_tenant)
     return build_review_center_status(session=session, tenant_id=authorized_tenant_id)
@@ -230,9 +234,12 @@ def seed_reviewed_learned_qa(
 ):
     del user
     try:
-        seed_stats = seed_learned_qa(session)
-        index_stats = _sync_learned_qa_index(session, force_reindex=True)
-        return {"seed": seed_stats, "index": index_stats}
+        return sync_learned_qa_corpus(
+            session,
+            force_seed=True,
+            force_reindex=True,
+            reason="manual_seed",
+        )
     except Exception as exc:
         record_source_failure(
             source_id=CHROMA_COLLECTION_LEARNED_QA,
