@@ -460,6 +460,39 @@ async def startup_event():
                 exc_info=True
             )
             # Don't fail startup if database init fails - might be migration issue
+
+        learned_qa_auto_sync_enabled = os.getenv("LEARNED_QA_AUTO_SYNC_ON_STARTUP", "true").lower() == "true"
+        if learned_qa_auto_sync_enabled:
+            try:
+                from app.db.session import SessionLocal
+                from app.services.learned_qa_service import sync_learned_qa_corpus
+
+                db = SessionLocal()
+                try:
+                    sync_stats = sync_learned_qa_corpus(db, reason="startup")
+                finally:
+                    db.close()
+
+                if sync_stats.get("performed_seed") or sync_stats.get("performed_reindex"):
+                    logger.info_structured(
+                        "Learned QA auto-sync completed",
+                        extra_fields=sync_stats,
+                    )
+                else:
+                    logger.info_structured(
+                        "Learned QA already up to date",
+                        extra_fields={
+                            "approved_count": sync_stats.get("approved_count", 0),
+                            "indexed_count": sync_stats.get("indexed_count", 0),
+                            "seed_item_count": sync_stats.get("seed_item_count", 0),
+                        },
+                    )
+            except Exception as e:
+                logger.warning_structured(
+                    "Learned QA auto-sync failed (non-fatal)",
+                    extra_fields={"error": str(e)},
+                    exc_info=True,
+                )
         
         # Log Jira config status (agentic pipeline: Index One, Plan, Generate)
         jira_url = os.getenv("JIRA_BASE_URL") or os.getenv("JIRA_URL", "")
