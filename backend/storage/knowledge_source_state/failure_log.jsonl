@@ -1,1 +1,2 @@
 {"ts": "2026-06-17T07:05:39.840502+00:00", "source_id": "learned_qa", "operation": "seed", "error": "can't compare offset-naive and offset-aware datetimes", "failed_items": ["can't compare offset-naive and offset-aware datetimes"]}
+{"ts": "2026-06-25T10:42:11.106595+00:00", "source_id": "learned_qa", "operation": "auto_sync", "error": "Embedding batch failed.", "failed_items": ["Embedding batch failed."]}

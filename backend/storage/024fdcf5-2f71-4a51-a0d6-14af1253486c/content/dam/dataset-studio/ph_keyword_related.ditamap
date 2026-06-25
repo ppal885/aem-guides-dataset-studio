@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "technicalContent/dtd/map.dtd">
-<map id="ph_kw_map_6fe92279" xmlns="http://www.oasis-open.org/committees/entity/release/1.1/catalog" xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/">
-  <title>ph / keyword / related-links map</title>
-  <topicref href="topics/ph_keyword_related.dita" />
-  <topicref href="topics/ph_kw_related_peer.dita" />
-</map>

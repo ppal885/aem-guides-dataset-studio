@@ -1,0 +1,10 @@
+{
+  "job_id": "748fe5a6-713c-4622-9207-994a5fb8573b",
+  "generated_at": "2026-06-17T23:17:09.510913",
+  "dataset_name": "Chat Job - conref_pack",
+  "seed": "chat-seed",
+  "total_files": 14,
+  "dita_files": 11,
+  "recipe_count": 1,
+  "status": "completed"
+}
