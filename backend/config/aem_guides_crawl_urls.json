@@ -411,7 +411,9 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/components",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/accessible-content",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/keyboard-shortcuts",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-file-management",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-upload-existing-files"
   ],
   "recursive": {
     "enabled": false,

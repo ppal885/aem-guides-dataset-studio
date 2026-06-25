@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from app.services.ai_flow_intelligence_service import recommend_recipe
-from app.services.chat_tools import RECIPE_TYPE_ALLOWLIST
+from app.services.chat_tools import RECIPE_TYPE_ALLOWLIST, _FREEFORM_REDIRECT_PATTERN
 
 AGENT_PLAN_KEY = "_agent_plan"
 AGENT_EXECUTION_KEY = "_agent_execution"
@@ -80,6 +80,17 @@ _SKIP_FIX_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SHOW_STEP_PATTERN = re.compile(r"\bshow\s+step\s+(\d+)(?:\s+results?)?\b", re.IGNORECASE)
+_FREEFORM_DATASET_HINT_PATTERN = re.compile(
+    r"\b(free[\s-]?form|llm[-\s]?generated|real content|based on (?:my|the) (?:chat )?prompt|"
+    r"from (?:my|the) (?:chat )?prompt|using (?:my|the) (?:chat )?prompt)\b",
+    re.IGNORECASE,
+)
+_FREEFORM_DATASET_CONSTRUCT_PATTERN = re.compile(
+    r"\b(topicref|topichead|topicgroup|topicset|topicmeta|mapref|navref|keydef|keyref|conref|"
+    r"conkeyref|reltable|relrow|relcell|ditavalref|bookmap|chapter|frontmatter|backmatter|"
+    r"processing-role|collection-type|navtitle|locktitle|chunk|toc|linking)\b",
+    re.IGNORECASE,
+)
 
 _LIST_BULK_PRESETS_PATTERN = re.compile(
     r"\b(?:list|show)\s+(?:my\s+)?(?:saved\s+)?bulk\s+(?:dataset\s+)?presets?\b",
@@ -621,6 +632,42 @@ def _looks_like_research_request(text: str) -> bool:
 
 def _build_dataset_plan(text: str) -> dict[str, Any]:
     explicit_recipe = _extract_explicit_recipe_type(text)
+    freeform_preferred = bool(
+        explicit_recipe == "freeform"
+        or (explicit_recipe is None and _should_prefer_freeform_dataset(text))
+    )
+    if freeform_preferred:
+        note = (
+            "LLM-first dataset generation is a better fit here because the request is expressed as DITA constructs, not a single fixed recipe."
+            if explicit_recipe is None
+            else ""
+        )
+        return {
+            "goal": "Generate a freeform dataset from your chat prompt",
+            "mode": "single_step",
+            "requires_approval": True,
+            "expected_outputs": [
+                "An in-chat dataset status card",
+                "A ZIP download action when the dataset is ready",
+            ],
+            "status": "proposed",
+            "resume_tokens": ["approve", "continue", "show step 1 results"],
+            "user_request": text,
+            "steps": [
+                {
+                    "id": "step-1",
+                    "title": "Start freeform dataset generation",
+                    "tool_name": "create_job",
+                    "tool_input": {"recipe_type": "freeform", "prompt_text": text},
+                    "kind": "generate",
+                    "approval_required": True,
+                    "status": "pending",
+                    "summary": "Generate a freeform dataset directly from your chat prompt using LLM-authored DITA content.",
+                    "note": note,
+                }
+            ],
+        }
+
     pattern = _dataset_pattern(text)
     default_recipe = explicit_recipe or _infer_recipe_from_text(text)
     recommended_recipe, learning_note = recommend_recipe("chat_dataset", pattern, default_recipe)
@@ -818,6 +865,38 @@ def _infer_recipe_from_text(text: str) -> str:
     if any(token in lowered for token in ("conref", "conkeyref", "parent map", "child map", "key resolution", "self reference")):
         return "parent_child_maps_keys_conref_conkeyref_selfrefs"
     return "task_topics"
+
+
+def _should_prefer_freeform_dataset(text: str) -> bool:
+    if _FREEFORM_DATASET_HINT_PATTERN.search(text):
+        return True
+    if _FREEFORM_REDIRECT_PATTERN.search(text):
+        return True
+    constructs = {
+        str(match).strip().lower()
+        for match in _FREEFORM_DATASET_CONSTRUCT_PATTERN.findall(text or "")
+        if str(match).strip()
+    }
+    if len(constructs) >= 2:
+        return True
+    return bool(
+        constructs
+        & {
+            "topichead",
+            "topicgroup",
+            "topicset",
+            "topicmeta",
+            "mapref",
+            "navref",
+            "reltable",
+            "relrow",
+            "relcell",
+            "ditavalref",
+            "bookmap",
+            "frontmatter",
+            "backmatter",
+        }
+    )
 
 
 def _dataset_pattern(text: str) -> str:
@@ -1054,10 +1133,17 @@ def _summarize_tool_result(tool_name: str, result: dict[str, Any]) -> list[str]:
     if tool_name in ("create_job", "create_job_from_jira"):
         recipe_type = result.get("recipe_type")
         job_id = result.get("job_id")
-        detail_bullets = [
-            f"Started recipe `{recipe_type}`." if recipe_type else "Started a dataset generation job.",
-            f"Job ID: `{job_id}`." if job_id else "The in-chat dataset card will track progress.",
-        ]
+        detail_bullets = (
+            [
+                "Started freeform dataset generation from your chat prompt.",
+                f"Job ID: `{job_id}`." if job_id else "The in-chat dataset card will track progress.",
+            ]
+            if recipe_type == "freeform"
+            else [
+                f"Started recipe `{recipe_type}`." if recipe_type else "Started a dataset generation job.",
+                f"Job ID: `{job_id}`." if job_id else "The in-chat dataset card will track progress.",
+            ]
+        )
         if tool_name == "create_job_from_jira":
             jk = str(result.get("jira_key") or "").strip()
             if jk:

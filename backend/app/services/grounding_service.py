@@ -379,6 +379,8 @@ def _missing_query_terms(question: str, evidence_pack: "EvidencePack") -> list[s
         lowered = token.lower()
         if lowered in _PROMPT_SHAPE_TERMS:
             continue
+        if len(lowered) < 5 and not re.search(r"[-_@0-9]", lowered):
+            continue
         if lowered in all_text:
             continue
         if lowered in missing:
@@ -1209,6 +1211,20 @@ async def verify_grounded_answer(
                     confidence_override=max(0.74, evidence_pack.decision.confidence),
                     thin_evidence_override=False,
                 )
+
+        if structured_tool_answer:
+            status = evidence_pack.decision.status
+            if status in {"abstain", "conflict"}:
+                status = "partial"
+            return GroundedAnswer(
+                answer=_append_sources_if_missing(draft_answer.strip(), citation_objects),
+                citation_ids=citation_ids,
+                unsupported_points=[],
+                grounding_status=status,
+                reason="Returned the structured tool-backed answer directly.",
+                confidence_override=max(0.74, evidence_pack.decision.confidence),
+                thin_evidence_override=False,
+            )
 
         if evidence_pack.decision.status in {"abstain", "conflict"}:
             if structured_fallback_answer.strip() and _looks_like_overconfident_draft(

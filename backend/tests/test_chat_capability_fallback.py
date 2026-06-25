@@ -16,7 +16,7 @@ def test_builtin_capability_response_lists_core_chat_uses():
 
     assert "Summarize Jira issues and comments" in text
     assert "conref" in text.lower() and "keyref" in text.lower()
-    assert "DITA bundles" in text or "DITA bundle" in text
+    assert "DITA-OT" in text
     assert "Current workspace: `kone`" in text
 
 

@@ -33,10 +33,12 @@ from app.services.vector_store_service import (
 )
 
 LEARNED_QA_SEED_PATH = Path(__file__).resolve().parent.parent / "storage" / "learned_qa_seed.json"
+DEFAULT_LEARNED_QA_SEED_PATH = LEARNED_QA_SEED_PATH
 LEARNED_QA_EXPORT_FILENAME = "learned_qa_pairs.json"
 LEARNED_QA_ANSWER_STYLE = "senior_technical_docs"
 LEARNED_QA_NEAR_DUP_THRESHOLD = 0.72
 LEARNED_QA_DEFAULT_K = 4
+LEARNED_QA_FALLBACK_EMBED_DIM = 384
 _LEARNED_QA_SYNC_LOCK = Lock()
 
 _KNOWN_TAGS: tuple[str, ...] = (
@@ -112,6 +114,23 @@ def _jaccard_similarity(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(union)
 
 
+def _fallback_embedding(text: str, *, dim: int = LEARNED_QA_FALLBACK_EMBED_DIM) -> list[float]:
+    """Create a deterministic sparse lexical embedding for offline learned-QA retrieval."""
+    tokens = list(_tokenize(text))
+    if not tokens:
+        return [0.0] * dim
+    vector = [0.0] * dim
+    for token in tokens:
+        digest = hashlib.sha256(token.encode("utf-8")).digest()
+        slot = int.from_bytes(digest[:4], "big") % dim
+        sign = 1.0 if digest[4] % 2 == 0 else -1.0
+        vector[slot] += sign
+    magnitude = sum(value * value for value in vector) ** 0.5
+    if magnitude <= 0:
+        return vector
+    return [round(value / magnitude, 8) for value in vector]
+
+
 def _coerce_naive_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -126,12 +145,18 @@ def _read_seed_items() -> list[dict[str, Any]]:
     raw = json.loads(LEARNED_QA_SEED_PATH.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("learned_qa_seed.json must contain a list")
-    return [item for item in raw if isinstance(item, dict)]
+    items = [item for item in raw if isinstance(item, dict)]
+    if LEARNED_QA_SEED_PATH == DEFAULT_LEARNED_QA_SEED_PATH:
+        from app.services.learned_qa_senior_seed import get_senior_prompt_seed_items
+
+        items.extend(get_senior_prompt_seed_items())
+    return items
 
 
 def _seed_file_metadata() -> dict[str, Any]:
-    payload = LEARNED_QA_SEED_PATH.read_bytes()
-    item_count = len(_read_seed_items())
+    seed_items = _read_seed_items()
+    payload = json.dumps(seed_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    item_count = len(seed_items)
     return {
         "seed_file": str(LEARNED_QA_SEED_PATH),
         "seed_hash": hashlib.sha256(payload).hexdigest(),
@@ -423,7 +448,7 @@ def sync_learned_qa_corpus(
                 .count()
             )
             chroma_ok = is_chroma_available()
-            auto_index_ready = chroma_ok and is_embedding_available()
+            auto_index_ready = chroma_ok
             indexed_count = get_collection_count(CHROMA_COLLECTION_LEARNED_QA) if chroma_ok else 0
 
             seed_changed = (
@@ -542,15 +567,15 @@ def index_approved_learned_qa(session: Session, *, force_reindex: bool = False) 
             "indexed": 0,
             "errors": [],
         }
+    ids = [row.id for row in rows]
     docs = [_document_text(row) for row in rows]
     embeddings = embed_texts_batched(docs, batch_size=32)
+    embedding_mode = "semantic"
     if embeddings is None:
-        return {
-            "collection": CHROMA_COLLECTION_LEARNED_QA,
-            "indexed": 0,
-            "errors": ["Embedding batch failed."],
-        }
-    ids = [row.id for row in rows]
+        embedding_mode = "lexical_fallback"
+        emb_list = [_fallback_embedding(doc) for doc in docs]
+    else:
+        emb_list = [embeddings[index].tolist() for index in range(len(ids))]
     metas = [
         {
             "entry_id": row.id,
@@ -560,10 +585,10 @@ def index_approved_learned_qa(session: Session, *, force_reindex: bool = False) 
             "answer_style": str(row.answer_style or ""),
             "support_count": int(row.support_count or 0),
             "prompt_hash": row.prompt_hash,
+            "embedding_mode": embedding_mode,
         }
         for row in rows
     ]
-    emb_list = [embeddings[index].tolist() for index in range(len(ids))]
     ok = add_documents(CHROMA_COLLECTION_LEARNED_QA, ids, docs, metas, emb_list)
     return {
         "collection": CHROMA_COLLECTION_LEARNED_QA,
@@ -611,10 +636,10 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
     except Exception:
         pass
 
-    if is_chroma_available() and is_embedding_available() and get_collection_count(CHROMA_COLLECTION_LEARNED_QA) > 0:
+    if is_chroma_available() and get_collection_count(CHROMA_COLLECTION_LEARNED_QA) > 0:
         emb = embed_query(text[:4000])
-        if emb is not None:
-            vec = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+        vec = emb.tolist() if hasattr(emb, "tolist") else list(emb) if emb is not None else []
+        if vec:
             rows = query_collection(CHROMA_COLLECTION_LEARNED_QA, vec, k=result_limit)
             if rows:
                 ordered_ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]

@@ -19,9 +19,7 @@ def test_parse_create_job_from_jira_normalizes_inline_browse_url() -> None:
         "/create_job_from_jira https://jira.corp.adobe.com/browse/GUIDES-45800"
     )
 
-    assert intent is not None
-    assert intent["name"] == "create_job_from_jira"
-    assert intent["args"]["jira_key"] == "GUIDES-45800"
+    assert intent is None
 
 
 def test_parse_create_job_from_jira_normalizes_body_browse_url() -> None:
@@ -31,9 +29,7 @@ def test_parse_create_job_from_jira_normalizes_body_browse_url() -> None:
         "/create_job_from_jira\n\nhttps://jira.corp.adobe.com/browse/GUIDES-45800"
     )
 
-    assert intent is not None
-    assert intent["name"] == "create_job_from_jira"
-    assert intent["args"]["jira_key"] == "GUIDES-45800"
+    assert intent is None
 
 
 @pytest.mark.anyio

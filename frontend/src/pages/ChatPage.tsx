@@ -901,7 +901,7 @@ export function ChatPage() {
                     {currentSession.title?.trim() || 'Conversation'}
                   </h2>
                   <p className="mt-0.5 truncate text-xs text-slate-500">
-                    DITA Â· AEM Guides Â· dataset generation
+                    DITA · AEM Guides · DITA-OT · Jira understanding
                   </p>
                 </div>
                 <Link
@@ -946,7 +946,7 @@ export function ChatPage() {
             loading={loading}
             streaming={streaming}
             showShortcutHint
-            placeholder="Paste Jira text, ask a DITA question, or request a dataset job..."
+            placeholder="Ask about DITA, AEM Guides, DITA-OT, troubleshooting, or Jira issues..."
           />
               </div>
             </>
@@ -957,7 +957,7 @@ export function ChatPage() {
                   <div className="rounded-2xl border border-teal-100 bg-gradient-to-b from-white to-teal-50/40 px-8 py-8 shadow-md shadow-slate-900/5">
                     <p className="text-sm font-semibold text-slate-900">No conversations yet</p>
                     <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
-                      Start a chat to ask about DITA, AEM Guides, or generate content from Jira.
+                      Start a chat to ask about DITA, AEM Guides, DITA-OT, troubleshooting, or Jira issues.
                     </p>
                   </div>
                   <button

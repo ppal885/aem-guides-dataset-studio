@@ -1,6 +1,7 @@
 """Chat tools - generate_dita, create_job for AI assistant."""
 import asyncio
 import json
+import os
 import re
 from typing import Any
 from uuid import uuid4
@@ -254,6 +255,17 @@ _TOOL_KIND_BY_NAME: dict[str, str] = {
     "generate_image": "artifact",
 }
 
+CHAT_GUIDANCE_ONLY_DISABLED_TOOLS: frozenset[str] = frozenset(
+    {
+        "create_job",
+        "create_job_from_jira",
+        "find_recipes",
+        "get_job_status",
+        "list_jobs",
+        "browse_dataset",
+    }
+)
+
 # Tools that require explicit user approval before execution (e.g. write/job-creation tools)
 _TOOL_APPROVAL_REQUIRED: frozenset[str] = frozenset({
     "create_job",
@@ -296,6 +308,20 @@ _RECIPE_LEVEL_PARAMS = frozenset({
 # Tools shown in the chat input palette (slash-command picker).
 # All other tools remain available to the LLM internally.
 _PALETTE_TOOLS: frozenset[str] = frozenset(_TOOL_UI_META.keys())
+
+
+def is_chat_guidance_only_mode() -> bool:
+    """When true, chat stays question/troubleshooting-focused and Builder handles dataset jobs."""
+    return os.getenv("CHAT_GUIDANCE_ONLY_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_chat_tool_enabled(name: str) -> bool:
+    tool_name = str(name or "").strip()
+    if not tool_name:
+        return False
+    if is_chat_guidance_only_mode() and tool_name in CHAT_GUIDANCE_ONLY_DISABLED_TOOLS:
+        return False
+    return True
 
 
 def _extract_dita_attribute_from_query(query: str) -> str:
@@ -3256,7 +3282,7 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
 
 def get_tool_definitions() -> list[dict]:
     """Return Anthropic-style tool definitions for the chat LLM."""
-    return [
+    tools = [
         {
             "name": "generate_dita",
             "description": (
@@ -3735,6 +3761,7 @@ def get_tool_definitions() -> list[dict]:
             },
         },
     ]
+    return [tool for tool in tools if is_chat_tool_enabled(str(tool.get("name") or "").strip())]
 
 
 async def run_tool(

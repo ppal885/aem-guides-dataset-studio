@@ -202,6 +202,17 @@ def test_route_prompt_generates_when_construct_example_requests_bundle():
     assert policy.action in {"preview_first", "clarify_first"}
 
 
+def test_route_prompt_routes_construct_dataset_request_to_dataset_job():
+    prompt = "Generate a dataset for topicref, topichead, and topicgroup with full map examples."
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "dataset_job"
+    assert route.legacy_answer_mode == "default"
+    assert policy.action == "run_directly"
+    assert chat_service._determine_answer_mode(prompt) == "agent_research_plan"
+
+
 def test_route_prompt_detects_processing_role_as_dita_question():
     route = route_prompt("What do you mean by processing-role in dita?")
     policy = decide_execution_policy(route)

@@ -575,8 +575,15 @@ def test_llm_chat_tool_definitions_are_subset_of_frontend_registry():
     """LLM-facing catalog tools must all be registered in the frontend KNOWN_FIRST_PARTY_TOOLS set."""
     llm_names = {str(tool["name"]).strip() for tool in get_tool_definitions()}
     # Verify all expected tools are present
-    expected_core = {"generate_dita", "generate_xml_flowchart", "create_job", "find_recipes",
-                     "review_dita_xml", "fix_dita_xml", "lookup_dita_spec", "lookup_aem_guides"}
+    expected_core = {
+        "generate_dita",
+        "generate_xml_flowchart",
+        "review_dita_xml",
+        "fix_dita_xml",
+        "lookup_dita_spec",
+        "lookup_aem_guides",
+        "lookup_dita_attribute",
+    }
     assert expected_core.issubset(llm_names), f"Missing core tools: {expected_core - llm_names}"
     tool_utils_path = (
         Path(__file__).resolve().parents[2]

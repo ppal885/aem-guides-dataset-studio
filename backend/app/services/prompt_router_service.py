@@ -159,8 +159,8 @@ _DITA_OT_ARGUMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DATASET_JOB_PATTERN = re.compile(
-    r"\b(job|dataset|recipe)\b.*\b(status|history|create|run|start|list|browse)\b|"
-    r"\b(create|run|start|browse|list)\b.*\b(job|dataset|recipe)\b",
+    r"\b(job|dataset|recipe)\b.*\b(status|history|generate|create|build|make|run|start|prepare|list|browse)\b|"
+    r"\b(generate|create|build|make|run|start|prepare|browse|list)\b.*\b(job|dataset|recipe)\b",
     re.IGNORECASE,
 )
 _SCREENSHOT_PATTERN = re.compile(

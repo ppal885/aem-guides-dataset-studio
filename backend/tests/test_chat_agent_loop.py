@@ -15,8 +15,20 @@ def test_build_agent_plan_for_dataset_request_requires_approval():
     assert plan["steps"][0]["tool_input"]["recipe_type"] == "parent_child_maps_keys_conref_conkeyref_selfrefs"
 
 
+def test_build_agent_plan_for_construct_dataset_prefers_freeform():
+    prompt = "Generate a dataset for topicref, topichead, and topicgroup with full map examples."
+    plan = build_agent_plan(prompt)
+
+    assert plan is not None
+    assert plan["requires_approval"] is True
+    assert plan["goal"] == "Generate a freeform dataset from your chat prompt"
+    assert len(plan["steps"]) == 1
+    assert plan["steps"][0]["tool_name"] == "create_job"
+    assert plan["steps"][0]["tool_input"] == {"recipe_type": "freeform", "prompt_text": prompt}
+
+
 @pytest.mark.anyio
-async def test_chat_turn_dataset_request_emits_plan_and_approval():
+async def test_chat_turn_dataset_request_redirects_to_builder():
     session_id = chat_service.create_session()
     try:
         events = []
@@ -27,45 +39,67 @@ async def test_chat_turn_dataset_request_emits_plan_and_approval():
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
-        assert any(event["type"] == "approval_required" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "approval_required" for event in events)
         assert events[-1]["type"] == "done"
+
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        assert "Builder" in text
+        assert "Dataset generation has moved out of chat" in text
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
         tool_results = assistant["tool_results"] or {}
-        assert tool_results["_approval_state"]["state"] == "required"
-        assert tool_results["_agent_plan"]["status"] == "awaiting_approval"
+        assert tool_results["_builder_handoff"]["reason"] == "chat_guidance_only"
+        assert tool_results["_builder_handoff"]["builder_path"] == "/builder"
     finally:
         chat_service.delete_session(session_id)
 
 
 @pytest.mark.anyio
-async def test_chat_turn_approve_executes_saved_create_job_plan(monkeypatch):
+async def test_chat_turn_construct_dataset_request_redirects_to_builder():
     session_id = chat_service.create_session()
+    prompt = "Generate a dataset for topicref, topichead, and topicgroup with full map examples."
     try:
-        async for _ in chat_service.chat_turn(
+        events = []
+        async for event in chat_service.chat_turn(
             session_id,
-            "Create a dataset with the task_topics recipe.",
+            prompt,
             tenant_id="kone",
         ):
-            pass
+            events.append(event)
 
-        captured: dict[str, object] = {}
+        messages = chat_service.get_messages(session_id)
+        assistant = messages[-1]
+        tool_results = assistant["tool_results"] or {}
+        assert tool_results["_builder_handoff"]["reason"] == "chat_guidance_only"
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        assert "Builder" in text
+        assert "Dataset generation has moved out of chat" in text
+    finally:
+        chat_service.delete_session(session_id)
 
-        async def fake_run_tool(name: str, params: dict, **kwargs):
-            captured["name"] = name
-            captured["params"] = params
-            captured["user_id"] = kwargs.get("user_id")
-            return {
-                "job_id": "job-4242",
-                "recipe_type": params.get("recipe_type"),
-                "status": "pending",
-                "status_url": "/api/v1/jobs/job-4242",
-                "download_url": "/api/v1/datasets/job-4242/download",
-            }
 
-        monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
+@pytest.mark.anyio
+async def test_chat_turn_approve_blocks_legacy_create_job_plan():
+    session_id = chat_service.create_session()
+    try:
+        legacy_plan = build_agent_plan("Create a dataset with the task_topics recipe.")
+        assert legacy_plan is not None
+        chat_service._persist_assistant_message(
+            session_id,
+            "legacy-dataset-plan",
+            "Legacy dataset plan",
+            tool_results={
+                "_agent_plan": legacy_plan,
+                "_agent_execution": {"status": "awaiting_approval"},
+                "_approval_state": {
+                    "state": "required",
+                    "pending_step_id": "step-1",
+                    "pending_tool_name": "create_job",
+                },
+            },
+        )
 
         events = []
         async for event in chat_service.chat_turn(
@@ -76,63 +110,21 @@ async def test_chat_turn_approve_executes_saved_create_job_plan(monkeypatch):
         ):
             events.append(event)
 
-        assert any(event["type"] == "tool" and event.get("name") == "create_job" for event in events)
-        assert captured["name"] == "create_job"
-        assert captured["params"] == {"recipe_type": "task_topics"}
-        assert captured["user_id"] == "test-user-1"
+        assert not any(event["type"] == "tool" and event.get("name") == "create_job" for event in events)
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        assert "Builder" in text
+        assert "can no longer run from chat" in text
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
         tool_results = assistant["tool_results"] or {}
-        assert tool_results["create_job"]["job_id"] == "job-4242"
-        assert tool_results["_agent_plan"]["status"] == "completed"
+        assert tool_results["_builder_handoff"]["legacy_plan_blocked"] is True
     finally:
         chat_service.delete_session(session_id)
 
 
 @pytest.mark.anyio
-async def test_chat_turn_can_show_step_results_for_pending_plan(monkeypatch):
-    session_id = chat_service.create_session()
-    try:
-        async def fake_run_tool(name: str, params: dict, **kwargs):
-            assert name == "find_recipes"
-            return {
-                "query": params.get("query"),
-                "recipes": [
-                    {
-                        "recipe_id": "compact_parent_child_key_resolution",
-                        "description": "Compact parent/child key-resolution dataset.",
-                    }
-                ],
-                "count": 1,
-            }
-
-        monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
-
-        async for _ in chat_service.chat_turn(
-            session_id,
-            "Create a dataset for compact parent child key resolution testing.",
-            tenant_id="kone",
-        ):
-            pass
-
-        events = []
-        async for event in chat_service.chat_turn(
-            session_id,
-            "show step 1 results",
-            tenant_id="kone",
-        ):
-            events.append(event)
-
-        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
-        assert "Step 1" in text
-        assert "compact_parent_child_key_resolution" in text
-    finally:
-        chat_service.delete_session(session_id)
-
-
-@pytest.mark.anyio
-async def test_chat_turn_domain_question_runs_read_only_research_plan(monkeypatch):
+async def test_chat_turn_domain_question_uses_grounded_answer_path(monkeypatch):
     session_id = chat_service.create_session()
     try:
         async def fake_run_tool(name: str, params: dict, **kwargs):
@@ -157,6 +149,13 @@ async def test_chat_turn_domain_question_runs_read_only_research_plan(monkeypatc
                     ],
                     "query": params.get("query"),
                 }
+            if name == "lookup_dita_attribute":
+                return {
+                    "attribute_name": "href",
+                    "purpose": "Points to the target resource for a reference.",
+                    "supported_elements": ["topicref"],
+                    "syntax": "URI reference",
+                }
             if name == "search_tenant_knowledge":
                 return {"results": [], "indexed_doc_count": 0, "count": 0}
             raise AssertionError(f"Unexpected tool {name}")
@@ -172,20 +171,11 @@ async def test_chat_turn_domain_question_runs_read_only_research_plan(monkeypatc
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
-        assert any(event["type"] == "step_status" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "step_status" for event in events)
         assert not any(event["type"] == "approval_required" for event in events)
         text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
-        assert "At a glance" in text
-        assert "Author view renders resolved references in map context" in text
-        assert "Search AEM Guides documentation: completed" not in text
-
-        messages = chat_service.get_messages(session_id)
-        assistant = messages[-1]
-        tool_results = assistant["tool_results"] or {}
-        assert tool_results["_agent_plan"]["status"] == "completed"
-        assert "lookup_aem_guides" in tool_results
-        assert "lookup_dita_spec" in tool_results
+        assert "available evidence" in text
     finally:
         chat_service.delete_session(session_id)
 

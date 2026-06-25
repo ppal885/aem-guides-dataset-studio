@@ -12,6 +12,7 @@ Add or remove URLs in the config file without code changes.
 """
 import json
 import os
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -20,6 +21,8 @@ from app.services.embedding_service import embed_texts, embed_texts_batched, is_
 from app.services.vector_store_service import (
     add_documents as chroma_add_documents,
     delete_collection,
+    delete_documents,
+    get_documents_where,
     is_chroma_available,
     CHROMA_COLLECTION_AEM_GUIDES,
 )
@@ -106,10 +109,45 @@ def _get_doc_chunks_path() -> Path:
     return storage.base_path / DOC_CHUNKS_FILENAME
 
 
+def _load_existing_doc_chunks() -> list[dict]:
+    path = _get_doc_chunks_path()
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
 def _get_structured_by_url_path() -> Path:
     """Path for storing per-URL structured content (Playwright only)."""
     storage = get_storage()
     return storage.base_path / STRUCTURED_BY_URL_FILENAME
+
+
+def _stable_chunk_id(url: str, chunk_index: int) -> str:
+    digest = hashlib.sha256(f"{url}|{chunk_index}".encode("utf-8")).hexdigest()[:24]
+    return f"aem_url_{digest}"
+
+
+def _fallback_embedding(text: str, *, dim: int = 384) -> list[float]:
+    cleaned = "".join(char.lower() if char.isalnum() else " " for char in str(text or ""))
+    tokens = {token for token in cleaned.split() if len(token) >= 2}
+    if not tokens:
+        return [0.0] * dim
+    vector = [0.0] * dim
+    for token in tokens:
+        digest = hashlib.sha256(token.encode("utf-8")).digest()
+        slot = int.from_bytes(digest[:4], "big") % dim
+        sign = 1.0 if digest[4] % 2 == 0 else -1.0
+        vector[slot] += sign
+    magnitude = sum(value * value for value in vector) ** 0.5
+    if magnitude <= 0:
+        return vector
+    return [round(value / magnitude, 8) for value in vector]
 
 
 def _load_crawl_config() -> dict:
@@ -171,6 +209,7 @@ def crawl_and_index(
     Returns stats: pages_crawled, chunks_stored, errors.
     """
     stats = {"pages_crawled": 0, "chunks_stored": 0, "errors": []}
+    explicit_urls = urls is not None
 
     try:
         from langchain_community.document_loaders import WebBaseLoader
@@ -361,15 +400,30 @@ def crawl_and_index(
             # Store full metadata as JSON on the record for JSON file fallback
             r["chunk_metadata"] = meta.model_dump(mode="json")
 
-    # Store to ChromaDB when available (full replace)
+    embedding_mode = "semantic"
+    if embeddings_list is None and records:
+        embedding_mode = "lexical_fallback"
+        embeddings_list = [_fallback_embedding(r["content"]) for r in records]
+        for i, r in enumerate(records):
+            r["embedding"] = embeddings_list[i]
+
+    # Store to ChromaDB when available. Full crawls replace; explicit URL crawls upsert only those pages.
     if is_chroma_available() and embeddings_list and records:
-        delete_collection(CHROMA_COLLECTION_AEM_GUIDES)
-        ids = [f"aem_{i}" for i in range(len(records))]
+        if explicit_urls:
+            for url in {str(r.get("url") or "").strip() for r in records if str(r.get("url") or "").strip()}:
+                existing_docs = get_documents_where(CHROMA_COLLECTION_AEM_GUIDES, {"url": url}, limit=1000)
+                existing_ids = [str(item.get("id") or "").strip() for item in existing_docs if str(item.get("id") or "").strip()]
+                if existing_ids:
+                    delete_documents(CHROMA_COLLECTION_AEM_GUIDES, existing_ids)
+            ids = [_stable_chunk_id(r.get("url", ""), int(r.get("chunk_index") or 0)) for r in records]
+        else:
+            delete_collection(CHROMA_COLLECTION_AEM_GUIDES)
+            ids = [f"aem_{i}" for i in range(len(records))]
         documents = [r["content"] for r in records]
         if chunk_metadata_enabled:
             metadatas = []
             for r in records:
-                md = {"url": r.get("url", ""), "title": r.get("title", "")}
+                md = {"url": r.get("url", ""), "title": r.get("title", ""), "embedding_mode": embedding_mode}
                 cm = r.get("chunk_metadata", {})
                 # Add only ChromaDB-compatible scalar fields (str/float/int/bool)
                 for key in (
@@ -381,7 +435,7 @@ def crawl_and_index(
                 metadatas.append(md)
         else:
             metadatas = [
-                {"url": r.get("url", ""), "title": r.get("title", "")}
+                {"url": r.get("url", ""), "title": r.get("title", ""), "embedding_mode": embedding_mode}
                 for r in records
             ]
         if chroma_add_documents(
@@ -396,10 +450,20 @@ def crawl_and_index(
                 extra_fields={"count": len(records)},
             )
 
-    # Store to JSON for backward compatibility and lexical fallback
+    # Store to JSON for backward compatibility and lexical fallback.
     path = _get_doc_chunks_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    if explicit_urls:
+        new_urls = {str(r.get("url") or "").strip() for r in records if str(r.get("url") or "").strip()}
+        merged_records = [
+            item
+            for item in _load_existing_doc_chunks()
+            if str(item.get("url") or "").strip() not in new_urls
+        ]
+        merged_records.extend(records)
+    else:
+        merged_records = records
+    path.write_text(json.dumps(merged_records, indent=2), encoding="utf-8")
     stats["chunks_stored"] = len(records)
 
     logger.info_structured(

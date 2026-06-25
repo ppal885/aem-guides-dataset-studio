@@ -24,7 +24,14 @@ from app.services.llm_service import (
     store_chat_llm_run,
     summarize_llm_trace,
 )
-from app.services.chat_tools import get_tool_catalog, get_tool_definitions, parse_tool_intent_from_content, run_tool
+from app.services.chat_tools import (
+    CHAT_GUIDANCE_ONLY_DISABLED_TOOLS,
+    get_tool_catalog,
+    get_tool_definitions,
+    is_chat_guidance_only_mode,
+    parse_tool_intent_from_content,
+    run_tool,
+)
 from app.core.schemas_chat_authoring import ChatAttachmentRef, ChatAuthoringRequestPayload, ChatDitaGenerationOptions
 from app.core.schemas_grounded_answer import (
     ComparisonRow,
@@ -666,7 +673,8 @@ def _get_chat_prompt_builder() -> PromptBuilder:
         sections={
             "base": (
                 "You are a friendly AI assistant for AEM Guides Dataset Studio. "
-                "Help with DITA, recipes, and dataset generation. Use generate_dita when user pastes Jira content or asks to create DITA. "
+                "Help with DITA, AEM Guides, DITA-OT, troubleshooting, and Jira issue understanding. "
+                "Keep answers grounded, senior-level, and practical. Builder handles dataset generation workflows. "
                 "Never invent download URLs, external links, file sizes, or bundle contents. "
                 "Only reference a download when a tool result provides a verified app URL."
             )
@@ -689,6 +697,69 @@ def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
         "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
     )
     return prompt + safety_rules
+
+
+def _is_chat_generation_redirect_tool(tool_name: str) -> bool:
+    normalized = str(tool_name or "").strip()
+    return normalized in CHAT_GUIDANCE_ONLY_DISABLED_TOOLS or normalized == "generate_dita"
+
+
+def _plan_contains_chat_generation_redirect(plan: dict[str, Any] | None) -> bool:
+    if not isinstance(plan, dict):
+        return False
+    for step in plan.get("steps") or []:
+        if _is_chat_generation_redirect_tool(str(step.get("tool_name") or "").strip()):
+            return True
+    return False
+
+
+def _build_builder_handoff_message(
+    user_content: str,
+    *,
+    blocked_tool: str = "",
+    legacy_plan: bool = False,
+    mixed_intent: bool = False,
+) -> str:
+    lines = [
+        "Chat now focuses on DITA, AEM Guides, DITA-OT, troubleshooting, and Jira issue understanding.",
+        "",
+    ]
+    if legacy_plan:
+        lines.append("That saved dataset workflow can no longer run from chat.")
+    elif blocked_tool:
+        lines.append(f"`{blocked_tool}` is no longer available from chat.")
+    else:
+        lines.append("Dataset generation has moved out of chat.")
+    lines.extend(
+        [
+            "",
+            "Use Builder for dataset and artifact generation instead.",
+            "- Open Builder: `/builder`",
+            "- Use chat here for grounded explanations, troubleshooting, Jira issue understanding, and senior-quality XML examples.",
+        ]
+    )
+    if mixed_intent:
+        lines.extend(
+            [
+                "",
+                "I answered the guidance part here and left generation to Builder.",
+            ]
+        )
+    elif extract_issue_key_from_generation_request(user_content) or _JIRA_SEARCH_PATTERN.search(user_content):
+        lines.extend(
+            [
+                "",
+                "If you want, I can still summarize the Jira issue, explain the repro, or help troubleshoot the DITA/AEM impact here.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "If you want, I can still explain the DITA pattern or help refine the question before you generate anything in Builder.",
+            ]
+        )
+    return "\n".join(lines).strip()
 
 
 _tiktoken_encoder = None
@@ -772,8 +843,8 @@ def _build_context_block(
             parts.append(f"Issue summary: {issue_summary[:300]}{'...' if len(issue_summary) > 300 else ''}")
     if _detect_jira_style_text(user_content):
         parts.append(
-            "The user has pasted Jira-style content. Call generate_dita immediately with the pasted text. "
-            "Do not just summarize. If generation succeeds, direct the user to the in-app download action from the tool result."
+            "The user has pasted Jira-style content. Focus on issue understanding, repro analysis, DITA/AEM impact, "
+            "and troubleshooting unless they explicitly need Builder-based generation."
         )
     # Conversational refinement: last generation in this session
     if session_id:
@@ -3706,8 +3777,13 @@ def _select_tools_for_query(all_tools: list[dict], query: str, max_tools: int = 
     max_extra: maximum number of non-core tools to add (default 4).
     """
     q = query.lower()
+    available_names = {str(tool.get("name") or "").strip() for tool in all_tools}
     # Core tools always included
-    core_tools = {"generate_dita", "lookup_aem_guides", "lookup_dita_spec", "search_tenant_knowledge"}
+    core_tools = {
+        name
+        for name in {"generate_dita", "lookup_aem_guides", "lookup_dita_spec", "search_tenant_knowledge"}
+        if name in available_names
+    }
     # Relevance keywords for optional tools
     tool_keywords: dict[str, list[str]] = {
         "create_job": ["dataset", "recipe", "generate", "create", "bulk", "sample", "smoke"],
@@ -3735,6 +3811,8 @@ def _select_tools_for_query(all_tools: list[dict], query: str, max_tools: int = 
     selected_names = set(core_tools)
     scored: list[tuple[str, int]] = []
     for name, keywords in tool_keywords.items():
+        if name not in available_names:
+            continue
         if name in selected_names:
             continue
         score = sum(1 for kw in keywords if kw in q)
@@ -3843,6 +3921,9 @@ def _grounded_example_explanation_points(
         candidates.append(
             "Rows below a `@morerows` entry do not repeat that occupied cell position; the spanning cell above already covers it."
         )
+        candidates.append(
+            "For `morerows=\"1\"`, the cell starts in the current row and spans one additional row, so it covers two rows total."
+        )
     if "namest=" in snippet_lower and "nameend=" in snippet_lower:
         candidates.append(
             "`@namest` and `@nameend` mark the start and end columns for a horizontal cell span."
@@ -3853,6 +3934,9 @@ def _grounded_example_explanation_points(
         )
         candidates.append(
             "A qualified reference such as `keyref=\"book-b.install\"` means “resolve the key `install` inside the `book-b` scope.”"
+        )
+        candidates.append(
+            "This lets different branches reuse the same key names without collisions because each branch can own its own scope."
         )
     if "scope=\"peer\"" in snippet_lower and "format=\"ditamap\"" in snippet_lower:
         candidates.append(
@@ -3886,7 +3970,14 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     if quick_reference:
         sections.extend(quick_reference)
 
+    practical_points = []
+    for value in [*usage_patterns[:3], *default_behavior[:2], *facts.placement_notes[:2]]:
+        if value and value not in practical_points:
+            practical_points.append(value)
+
     if facts.answer_kind in {"dita_attribute", "dita_map_construct"}:
+        if practical_points:
+            sections.extend(["", "## In practice", *[f"- {value}" for value in practical_points[:4]]])
         if facts.syntax:
             sections.extend(["", "## Syntax", f"- {facts.syntax}"])
         if facts.valid_values:
@@ -3899,6 +3990,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
         if facts.companion_attributes:
             title = "## Common attributes" if facts.answer_kind == "dita_map_construct" else "## Companion attributes"
             sections.extend(["", title, *[f"- `{value}`" for value in facts.companion_attributes[:8]]])
+            related = [
+                f"`@{value.lstrip('@')}`" if not str(value).startswith("<") else f"`{value}`"
+                for value in facts.companion_attributes[:6]
+                if str(value).strip()
+            ]
+            if related:
+                sections.extend(["", "## Related concepts", f"- See also: {', '.join(related)}"])
         if default_behavior:
             sections.extend(["", "## Default behavior", *[f"- {value}" for value in default_behavior[:4]]])
         if facts.answer_kind == "dita_map_construct":
@@ -3977,6 +4075,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
                 )
                 + " |"
             )
+        usage_rows = [
+            f"- `@{row.label.lstrip('@')}`: {row.usage_patterns[0]}"
+            for row in facts.comparison_rows[:4]
+            if row.usage_patterns
+        ]
+        if usage_rows:
+            sections.extend(["", "## When to use each", *usage_rows[:4]])
     elif facts.answer_kind == "dita_element_comparison":
         if not facts.comparison_rows:
             return ""
@@ -4002,6 +4107,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
                 )
                 + " |"
             )
+        usage_rows = [
+            f"- `<{row.label.strip('<>')}>`: {row.usage_patterns[0]}"
+            for row in facts.comparison_rows[:4]
+            if row.usage_patterns
+        ]
+        if usage_rows:
+            sections.extend(["", "## When to use each", *usage_rows[:4]])
         mistakes = []
         for row in facts.comparison_rows[:4]:
             for mistake in row.common_mistakes[:2]:
@@ -4033,6 +4145,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
             for mistake in facts.common_mistakes[:4]:
                 if mistake and mistake not in mistakes:
                     mistakes.append(mistake)
+        usage_rows = [
+            f"- `<{row.label.strip('<>')}>`: {row.usage_patterns[0]}"
+            for row in facts.comparison_rows[:4]
+            if row.usage_patterns
+        ]
+        if usage_rows:
+            sections.extend(["", "## When to use each", *usage_rows[:4]])
         if mistakes:
             sections.extend(["", "## Common mistakes", *[f"- {value}" for value in mistakes[:4]]])
     elif facts.answer_kind == "native_pdf_guidance":
@@ -4087,7 +4206,7 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
         if item not in notes:
             notes.append(item)
     if notes:
-        sections.extend(["", "## Notes", *[f"- {value}" for value in notes]])
+        sections.extend(["", "## Verification notes", *[f"- {value}" for value in notes]])
 
     # Strengthen hint when evidence is thin or retrieval confidence is low
     if facts.thin_evidence or facts.semantic_warnings:
@@ -4260,16 +4379,18 @@ def _question_shape_hint(question: str) -> str:
         )
     if _wants_full_example(q):
         hints.append(
-            "If you include XML, prefer one full, self-contained example with the enclosing topic, map, or table structure instead of only a fragment."
+            "If you include XML, prefer one full, self-contained example with the enclosing topic, map, or table structure instead of only a fragment. "
+            "After the XML, briefly explain the expected result or why the example works."
         )
     elif _extract_example_shape_request(q):
         hints.append(
-            "Include a verified XML example. Prefer a complete enclosing structure when the construct normally sits inside a map, topic, or table."
+            "Include a verified XML example. Prefer a complete enclosing structure when the construct normally sits inside a map, topic, or table. "
+            "After the XML, briefly explain what the processor or reader would see."
         )
     if _is_definition_style_question(q):
         hints.append(
             "Open with a direct one-sentence definition. "
-            "Then cover: where it appears, what it can contain, key attributes, an example, common mistakes."
+            "Then cover: scope note, how it works in practice, key attributes or related concepts, an example, and common mistakes."
         )
     elif re.search(r"\bhow\s+do\s+I\b|\bhow\s+to\b|\bhow\s+can\s+I\b", q, re.IGNORECASE):
         hints.append(
@@ -4320,20 +4441,19 @@ def _builtin_capability_response(tenant_id: str) -> str:
     return (
         "I can work in a few chat-first modes even without a live model reply:\n\n"
         "- Summarize Jira issues and comments into author-ready guidance.\n"
-        "- Grounded answers for DITA, AEM Guides, keys, conref/conkeyref, maps, reltables, and reuse questions.\n"
-        "- Multi-step research plans that look up AEM Guides docs, DITA spec details, tenant knowledge, and Jira matches before answering.\n"
-        "- Approval-gated generation flows for DITA bundles, dataset jobs, and XML auto-fixes.\n"
-        "- XML review flows that score pasted DITA, explain the issues, and pause before any fix is applied.\n"
-        "- Jira search and comparison workflows that keep issue keys and results grounded in verified search output.\n"
-        "- Dataset generation from chat with an in-thread progress card and ZIP download when the job completes.\n\n"
+        "- Answer DITA, AEM Guides, DITA-OT, publishing, reuse, maps, and troubleshooting questions with grounded evidence.\n"
+        "- Give senior-style XML examples, including full map or table context when the question needs it.\n"
+        "- Run read-only research plans that look up DITA spec details, AEM Guides docs, tenant knowledge, and Jira matches before answering.\n"
+        "- Review pasted DITA XML, explain what is wrong, and suggest safer fixes.\n"
+        "- Search Jira and compare similar issues using verified search output.\n\n"
         f"Current workspace: `{tenant_id}`.\n\n"
         "Try one of these prompts:\n"
+        "- What is keyscope in DITA? Show a full example.\n"
+        "- How do I exclude draft-only content at publish time?\n"
+        "- Review this DITA topic for conref, keyref, and keyword improvements.\n"
         "- Search Jira for issues about map validation and summarize the findings.\n"
-        "- Review this DITA topic for conref, keyref, and keyword improvements, then pause before fixing it.\n"
-        "- How do I fix broken keyrefs in a root map with multiple submaps?\n"
-        "- Create a dataset with the parent_child_maps_keys_conref_conkeyref_selfrefs recipe.\n"
-        "- Generate a DITA bundle from this Jira text, but show me the plan first.\n"
-        "- Continue the last approved plan."
+        "- Why is my keyref not resolving in a root map with multiple submaps?\n"
+        "- What does `processing-role=\"resource-only\"` do in a map?"
     )
 
 
@@ -4346,8 +4466,8 @@ def _builtin_unavailable_response(user_content: str, tenant_id: str) -> str:
         "You can retry in a few minutes, or ask in a more directed way such as:\n"
         "- Summarize these Jira comments into author guidance.\n"
         "- Suggest conref, conkeyref, keyref, and keyword improvements for this XML.\n"
-        "- Convert this issue into a task topic outline.\n"
-        "- Review this draft for reuse and AEM Guides readiness.\n\n"
+        "- Explain the difference between `<topicgroup>` and `<topichead>` with an example.\n"
+        "- Review this draft for reuse, publishing, and AEM Guides readiness.\n\n"
         f"Workspace: `{tenant_id}`"
     )
 
@@ -5807,7 +5927,10 @@ def _build_approval_state(plan: dict[str, Any], next_step: dict[str, Any]) -> di
     if tool_name == "create_job":
         recipe_type = str(((next_step.get("tool_input") or {}).get("recipe_type") or "")).strip()
         if recipe_type:
-            affected_artifacts.append(f"Dataset job using recipe `{recipe_type}`")
+            if recipe_type == "freeform":
+                affected_artifacts.append("Freeform dataset job based on your chat prompt")
+            else:
+                affected_artifacts.append(f"Dataset job using recipe `{recipe_type}`")
         affected_artifacts.append("Dataset ZIP and job status card")
     elif tool_name == "generate_dita":
         preview = plan.get("preview") if isinstance(plan.get("preview"), dict) else {}
@@ -6447,6 +6570,28 @@ async def _stream_agent_command_reply(
         yield {"type": "done"}
         return
 
+    if is_chat_guidance_only_mode() and _plan_contains_chat_generation_redirect(plan):
+        redirect_text = _build_builder_handoff_message(
+            plan.get("user_request") or state.get("message", {}).get("content") or user_content,
+            legacy_plan=True,
+        )
+        _persist_assistant_message(
+            session_id,
+            assistant_msg_id,
+            redirect_text,
+            tool_results={
+                "_builder_handoff": {
+                    "builder_path": "/builder",
+                    "reason": "chat_guidance_only",
+                    "legacy_plan_blocked": True,
+                }
+            },
+        )
+        async for event in _emit_streamed_text(redirect_text):
+            yield event
+        yield {"type": "done"}
+        return
+
     async for event in _stream_agent_plan_reply(
         session_id,
         user_content=plan.get("user_request") or state.get("message", {}).get("content") or user_content,
@@ -6825,6 +6970,31 @@ async def _stream_mixed_dita_answer_then_preview_reply(
             grounding["answer_intent"] = answer_segment
             yield {"type": "grounding", "grounding": grounding, "notice": grounding_to_notice(grounding)}
 
+    if is_chat_guidance_only_mode():
+        handoff_text = _build_builder_handoff_message(
+            user_content,
+            blocked_tool="generate_dita",
+            mixed_intent=True,
+        )
+        final_text = "\n\n---\n\n".join(
+            part for part in [answer_text.strip() if answer_text else "", handoff_text] if part
+        ).strip()
+        tool_results: dict[str, Any] = {
+            "_builder_handoff": {
+                "builder_path": "/builder",
+                "reason": "chat_guidance_only",
+                "blocked_tool": "generate_dita",
+                "mixed_intent": True,
+            }
+        }
+        if grounding:
+            tool_results["_grounding"] = grounding
+        _persist_assistant_message(session_id, assistant_msg_id, final_text, tool_results=tool_results)
+        async for event in _emit_streamed_text(final_text):
+            yield event
+        yield {"type": "done"}
+        return
+
     yield {"type": "plan", "plan": copy.deepcopy(plan)}
     tool_results_by_name: dict[str, dict[str, Any]] = {}
     preview_status = str(plan.get("status") or "").strip().lower()
@@ -6887,6 +7057,28 @@ async def _stream_tool_intent_reply(
     tool_name = str(tool_intent.get("name") or "").strip()
     if not tool_name:
         yield {"type": "error", "message": "Tool intent is missing a tool name."}
+        return
+
+    if is_chat_guidance_only_mode() and _is_chat_generation_redirect_tool(tool_name):
+        redirect_text = _build_builder_handoff_message(
+            user_content,
+            blocked_tool=tool_name,
+        )
+        _persist_assistant_message(
+            session_id,
+            assistant_msg_id,
+            redirect_text,
+            tool_results={
+                "_builder_handoff": {
+                    "builder_path": "/builder",
+                    "reason": "chat_guidance_only",
+                    "blocked_tool": tool_name,
+                }
+            },
+        )
+        async for event in _emit_streamed_text(redirect_text):
+            yield event
+        yield {"type": "done"}
         return
 
     if tool_name == "generate_dita":
@@ -7213,6 +7405,28 @@ async def _stream_assistant_reply(
         )
         _persist_assistant_message(session_id, assistant_msg_id, rejection_text)
         async for event in _emit_streamed_text(rejection_text):
+            yield event
+        yield {"type": "done"}
+        return
+
+    if is_chat_guidance_only_mode() and route_decision.intent in {"dataset_job", "dita_generation"}:
+        redirect_text = _build_builder_handoff_message(
+            user_content,
+            blocked_tool="generate_dita" if route_decision.intent == "dita_generation" else "",
+        )
+        _persist_assistant_message(
+            session_id,
+            assistant_msg_id,
+            redirect_text,
+            tool_results={
+                "_builder_handoff": {
+                    "builder_path": "/builder",
+                    "reason": "chat_guidance_only",
+                    "route_intent": route_decision.intent,
+                }
+            },
+        )
+        async for event in _emit_streamed_text(redirect_text):
             yield event
         yield {"type": "done"}
         return

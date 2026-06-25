@@ -1634,23 +1634,20 @@ async def test_chat_turn_mixed_explain_then_generate_shows_answer_and_preview(mo
             events.append(event)
 
         assert any(event.get("type") == "grounding" for event in events)
-        assert any(event.get("type") == "plan" for event in events)
-        assert any(event.get("type") == "approval_required" for event in events)
+        assert not any(event.get("type") == "plan" for event in events)
+        assert not any(event.get("type") == "approval_required" for event in events)
         assert not any(event.get("type") == "tool_start" and event.get("name") == "generate_dita" for event in events)
         text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
         assert "## Short answer" in text
         assert "@conref reuses content" in text
-        assert "## Generation preview" in text
-        assert "Generate DITA bundle" in text
+        assert "Builder" in text
+        assert "generate_dita" in text
 
         messages = chat_service.get_messages(session_id, limit=5)
         assistant = next(message for message in reversed(messages) if message.get("role") == "assistant")
         tool_results = assistant.get("tool_results") or {}
-        assert tool_results["_mixed_intent"]["mixed_intent"] is True
-        assert tool_results["_mixed_intent"]["answer_intent"] == "Explain conref"
-        assert tool_results["_mixed_intent"]["generation_intent"] == "generate a conref example bundle"
-        assert tool_results["_agent_plan"]["mode"] == "generate_dita_preview"
-        assert tool_results["_approval_state"]["state"] == "required"
+        assert tool_results["_builder_handoff"]["mixed_intent"] is True
+        assert tool_results["_builder_handoff"]["blocked_tool"] == "generate_dita"
         assert tool_results["_grounding"]["answer_kind"] in {"dita_attribute", "dita_map_construct"}
     finally:
         chat_service.delete_session(session_id)

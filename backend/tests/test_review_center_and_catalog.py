@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.db.chat_models import ChatMessage, ChatSession
 from app.db.learned_prompt_models import LearnedPromptEntry
 from app.db.session import SessionLocal
-from app.services.learned_qa_service import sync_learned_qa_corpus
+from app.services.learned_qa_service import _read_seed_items, sync_learned_qa_corpus
 from app.services.source_review_state_service import load_source_state
 from app.services.vector_store_service import CHROMA_COLLECTION_LEARNED_QA
 
@@ -36,11 +36,7 @@ def test_recipe_catalog_endpoint(client, auth_headers):
 
 
 def test_seeded_learned_qa_appears_in_review_center_and_rag_status(client, auth_headers, monkeypatch):
-    expected_count = len(
-        json.loads(
-            (Path(__file__).resolve().parents[1] / "app" / "storage" / "learned_qa_seed.json").read_text(encoding="utf-8")
-        )
-    )
+    expected_count = len(_read_seed_items())
     monkeypatch.setattr(
         "app.api.v1.routes.review_center.index_approved_learned_qa",
         lambda session, force_reindex=True: {"collection": CHROMA_COLLECTION_LEARNED_QA, "indexed": expected_count, "errors": []},
@@ -99,7 +95,10 @@ def test_feedback_capture_only_learns_latest_assistant_draft(client, auth_header
         db.add(session_row)
         db.commit()
 
-        unique_prompt = f"Transient review-center capture proof {uuid4()} zebra quartz nebula"
+        unique_prompt = (
+            f"Transient review-center capture proof {uuid4()} "
+            f"zebra quartz nebula {uuid4()} glacier orbit lantern {uuid4()}"
+        )
         user_msg = ChatMessage(id=user_message_id, session_id=session_id, role="user", content=unique_prompt, created_at=now)
         assistant_old = ChatMessage(
             id=assistant_old_id,

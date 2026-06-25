@@ -11,11 +11,17 @@ from app.services.chat_tools import get_tool_catalog, parse_tool_intent_from_con
 def test_get_tool_catalog_exposes_only_llm_invokable_tools():
     catalog = {item["name"]: item for item in get_tool_catalog()}
 
-    assert set(catalog.keys()) == {"generate_dita", "generate_xml_flowchart"}
+    assert "create_job" not in catalog
+    assert "create_job_from_jira" not in catalog
+    assert "find_recipes" not in catalog
+    assert "get_job_status" not in catalog
+    assert "list_jobs" not in catalog
+    assert "browse_dataset" not in catalog
+    assert {"generate_dita", "lookup_dita_spec", "lookup_aem_guides", "generate_xml_flowchart"}.issubset(catalog.keys())
     assert catalog["generate_xml_flowchart"]["category"] == "Visualization"
     assert catalog["generate_xml_flowchart"]["primary_arg"] == "xml"
 
-    assert catalog["generate_dita"]["approval_required"] is False
+    assert catalog["generate_dita"]["approval_required"] is True
     assert catalog["generate_dita"]["review_first"] is True
     assert catalog["generate_dita"]["execution_mode"] == "preview_then_generate"
 
@@ -143,7 +149,9 @@ def test_chat_tools_endpoint_lists_llm_chat_tools():
 
     assert response.status_code == 200
     names = {item["name"] for item in response.json()["tools"]}
-    assert names == {"generate_dita", "generate_xml_flowchart"}
+    assert "create_job" not in names
+    assert "find_recipes" not in names
+    assert {"generate_dita", "lookup_dita_spec", "lookup_aem_guides", "generate_xml_flowchart"}.issubset(names)
 
 
 @pytest.mark.anyio
@@ -184,7 +192,7 @@ async def test_chat_turn_with_tool_intent_runs_direct_xml_flowchart():
 
 
 @pytest.mark.anyio
-async def test_chat_turn_create_job_tool_intent_requires_approval():
+async def test_chat_turn_create_job_tool_intent_redirects_to_builder():
     session_id = chat_service.create_session()
     try:
         events = []
@@ -200,14 +208,13 @@ async def test_chat_turn_create_job_tool_intent_requires_approval():
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
-        assert any(event["type"] == "approval_required" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "approval_required" for event in events)
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
         tool_results = assistant["tool_results"] or {}
-        assert tool_results["_approval_state"]["state"] == "required"
-        assert tool_results["_agent_plan"]["steps"][0]["tool_name"] == "create_job"
+        assert tool_results["_builder_handoff"]["blocked_tool"] == "create_job"
     finally:
         chat_service.delete_session(session_id)
 
@@ -227,6 +234,7 @@ async def test_execute_generate_dita_uses_shared_service_with_tenant_context(mon
         tenant_id: str,
         skip_rag_check: bool = False,
         progress_run_id: str | None = None,
+        forced_jira_id: str | None = None,
     ):
         captured.update(
             {
@@ -239,6 +247,7 @@ async def test_execute_generate_dita_uses_shared_service_with_tenant_context(mon
                 "tenant_id": tenant_id,
                 "skip_rag_check": skip_rag_check,
                 "progress_run_id": progress_run_id,
+                "forced_jira_id": forced_jira_id,
             }
         )
         return {
@@ -284,18 +293,14 @@ async def test_chat_turn_generate_dita_tool_intent_proposes_review_first_plan(mo
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
-        assert any(event["type"] == "approval_required" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "approval_required" for event in events)
         assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
         tool_results = assistant["tool_results"] or {}
-        assert tool_results["_approval_state"]["state"] == "required"
-        assert tool_results["_approval_state"]["kind"] == "review"
-        assert tool_results["_agent_plan"]["mode"] == "generate_dita_preview"
-        assert tool_results["_agent_plan"]["preview"]["status"] == "preview_ready"
-        assert tool_results["_agent_plan"]["steps"][0]["gate_type"] == "review"
+        assert tool_results["_builder_handoff"]["blocked_tool"] == "generate_dita"
     finally:
         chat_service.delete_session(session_id)
 
@@ -312,15 +317,13 @@ async def test_chat_turn_generate_dita_glossary_request_asks_for_clarification()
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
         assert not any(event["type"] == "approval_required" for event in events)
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["clarification_needed"] is True
-        assert "subject" in plan["preview"]["clarification_question"].lower()
+        tool_results = assistant["tool_results"] or {}
+        assert tool_results["_builder_handoff"]["blocked_tool"] == "generate_dita"
     finally:
         chat_service.delete_session(session_id)
 
@@ -342,7 +345,7 @@ async def test_chat_turn_generate_dita_unsupported_mixed_request_rejects_cleanly
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        assert "DITA only" in str(assistant["content"] or "")
+        assert "Builder" in str(assistant["content"] or "")
     finally:
         chat_service.delete_session(session_id)
 
@@ -359,16 +362,13 @@ async def test_chat_turn_plain_generate_dita_request_uses_review_first_preview()
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
         assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["mode"] == "generate_dita_preview"
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["subject"] == "cars"
-        assert "concept" in str(plan["preview"]["clarification_question"]).lower()
+        tool_results = assistant["tool_results"] or {}
+        assert tool_results["_builder_handoff"]["route_intent"] == "dita_generation"
     finally:
         chat_service.delete_session(session_id)
 
@@ -392,17 +392,13 @@ async def test_chat_turn_new_generate_request_does_not_resume_old_clarification(
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
         assert not any(event["type"] == "approval_required" for event in events)
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["mode"] == "generate_dita_preview"
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["subject"] == "cars"
-        assert "concept" in str(plan["preview"]["clarification_question"]).lower()
-        assert "subject" not in str(plan["preview"]["clarification_question"]).lower()
+        tool_results = assistant["tool_results"] or {}
+        assert tool_results["_builder_handoff"]["route_intent"] == "dita_generation"
     finally:
         chat_service.delete_session(session_id)
 
@@ -445,45 +441,19 @@ async def test_chat_turn_generate_dita_clarification_then_approve_executes(monke
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
 
     try:
-        async for _ in chat_service.chat_turn(
+        events = []
+        async for event in chat_service.chat_turn(
             session_id,
             "/generate_dita\n\nCreate a map and 10 glossaries",
             tenant_id="kone",
         ):
-            pass
+            events.append(event)
 
-        clarification_events = []
-        async for event in chat_service.chat_turn(
-            session_id,
-            "AEM Guides terminology",
-            tenant_id="kone",
-        ):
-            clarification_events.append(event)
-
-        assert any(event["type"] == "plan" for event in clarification_events)
-        assert any(event["type"] == "approval_required" for event in clarification_events)
         assert not captured
-
-        approval_events = []
-        async for event in chat_service.chat_turn(
-            session_id,
-            "approve",
-            tenant_id="kone",
-        ):
-            approval_events.append(event)
-
-        assert any(event["type"] == "tool_start" and event.get("name") == "generate_dita" for event in approval_events)
-        assert any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in approval_events)
-        assert captured["name"] == "generate_dita"
-        assert "AEM Guides terminology" in str((captured["params"] or {}).get("text"))
-        assert captured["tenant_id"] == "kone"
-        assert (captured["params"] or {}).get("bundle_contract", {}).get("topic_family") == "glossentry"
-
+        assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        assert assistant["tool_results"]["generate_dita"]["bundle_summary"].startswith("Generated a DITA bundle")
-        assert "Generated a DITA bundle with 1 map file and 10 topic files." in (assistant["content"] or "")
-        assert "I prepared an agent plan for" not in (assistant["content"] or "")
+        assert (assistant["tool_results"] or {})["_builder_handoff"]["blocked_tool"] == "generate_dita"
     finally:
         chat_service.delete_session(session_id)
 
@@ -564,12 +534,11 @@ async def test_chat_turn_approve_refreshes_generate_dita_step_from_preview(monke
         ):
             events.append(event)
 
-        assert any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
-        assert captured["name"] == "generate_dita"
-        params = captured["params"] or {}
-        assert params["text"] == "Generate 20 reference topics about insurance reference"
-        assert params["bundle_contract"]["topic_family"] == "reference"
-        assert params["bundle_contract"]["counts"]["reference"] == 20
+        assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
+        assert not captured
+        messages = chat_service.get_messages(session_id)
+        assistant = messages[-1]
+        assert (assistant["tool_results"] or {})["_builder_handoff"]["legacy_plan_blocked"] is True
     finally:
         chat_service.delete_session(session_id)
 
@@ -584,39 +553,18 @@ async def test_chat_turn_generate_dita_processing_role_map_bundle_executes_end_t
             'Generate 10 reference topics about insurance and keep 5 topics with '
             'processing-role="resource-only" in the map.'
         )
-        async for _ in chat_service.chat_turn(
+        events = []
+        async for event in chat_service.chat_turn(
             session_id,
             prompt,
             tenant_id="kone",
         ):
-            pass
-
-        events = []
-        async for event in chat_service.chat_turn(
-            session_id,
-            "approve",
-            tenant_id="kone",
-        ):
             events.append(event)
 
-        tool_event = next(
-            event for event in events if event["type"] == "tool" and event.get("name") == "generate_dita"
-        )
-        result = tool_event["result"]
-        assert not result.get("error")
-        assert result["artifact_counts"]["map_files"] == 1
-        assert result["artifact_counts"]["topic_files"] == 10
-        contract = result["generation_contract"]
-        assert contract["topic_family"] == "reference"
-        assert contract["counts"]["reference"] == 10
-        assert contract["include_map"] is True
-        assert contract["subject"] == "insurance"
-        assert contract["topicref_attribute_distributions"][0]["attribute_name"] == "processing-role"
-        assert contract["topicref_attribute_distributions"][0]["count"] == 5
-
+        assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in events)
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        assert "Generated a DITA bundle with 1 map file and 10 topic files." in (assistant["content"] or "")
+        assert "Builder" in str(assistant["content"] or "")
     finally:
         chat_service.delete_session(session_id)
 
@@ -625,17 +573,10 @@ async def test_chat_turn_generate_dita_processing_role_map_bundle_executes_end_t
 async def test_chat_turn_generate_dita_clarification_yes_reasks_missing_family():
     session_id = chat_service.create_session()
     try:
-        async for _ in chat_service.chat_turn(
-            session_id,
-            "/generate_dita\n\ninstructions: add external links with scope attribute as external\n\nGenerate 20 topics about cars",
-            tenant_id="kone",
-        ):
-            pass
-
         events = []
         async for event in chat_service.chat_turn(
             session_id,
-            "yes",
+            "/generate_dita\n\ninstructions: add external links with scope attribute as external\n\nGenerate 20 topics about cars",
             tenant_id="kone",
         ):
             events.append(event)
@@ -645,13 +586,7 @@ async def test_chat_turn_generate_dita_clarification_yes_reasks_missing_family()
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["mode"] == "generate_dita_preview"
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["subject"] == "cars"
-        assert "concept" in str(plan["preview"]["clarification_question"]).lower()
-        assert "20" in str(plan["preview"]["clarification_question"]) or plan["preview"]["requested_count"] == 20
-        assert assistant["content"].strip() == str(plan["preview"]["clarification_question"]).strip()
+        assert (assistant["tool_results"] or {})["_builder_handoff"]["blocked_tool"] == "generate_dita"
     finally:
         chat_service.delete_session(session_id)
 
@@ -741,18 +676,14 @@ async def test_chat_turn_generate_keyscope_example_requires_shape_clarification(
         ):
             events.append(event)
 
-        assert any(event["type"] == "plan" for event in events)
+        assert not any(event["type"] == "plan" for event in events)
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["mode"] == "generate_dita_preview"
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["example_request"] is True
-        assert plan["preview"]["example_construct"] == "keyscope"
-        assert plan["preview"]["example_shape"] == "unspecified"
-        assert plan["preview"]["clarification_request"]["missing_field"] == "example_shape"
-        assert "minimal demo" in str(plan["preview"]["clarification_question"]).lower()
-        assert "full demo" in str(plan["preview"]["clarification_question"]).lower()
+        tool_results = assistant["tool_results"] or {}
+        assert tool_results["_builder_handoff"]["route_intent"] == "dita_generation"
+        text = "".join(str(event.get("content") or "") for event in events if event.get("type") == "chunk")
+        assert "Builder" in text
+        assert "generate_dita" in text
     finally:
         chat_service.delete_session(session_id)
 
@@ -776,17 +707,11 @@ async def test_chat_turn_keyscope_example_full_demo_reply_unlocks_preview():
         ):
             followup_events.append(event)
 
-        assert any(event["type"] == "plan" for event in followup_events)
+        assert not any(event["type"] == "plan" for event in followup_events)
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["status"] == "awaiting_approval"
-        assert plan["preview"]["status"] == "preview_ready"
-        assert plan["preview"]["example_construct"] == "keyscope"
-        assert plan["preview"]["example_shape"] == "full_demo"
-        assert plan["preview"]["counts"]["ditamap"] == 3
-        assert plan["preview"]["counts"]["topic"] == 6
-        assert not plan["preview"]["conflicts"]
+        text = "".join(str(event.get("content") or "") for event in followup_events if event.get("type") == "chunk")
+        assert text
     finally:
         chat_service.delete_session(session_id)
 
@@ -829,27 +754,6 @@ async def test_chat_turn_new_generate_request_after_completed_bundle_starts_fres
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
 
     try:
-        async for _ in chat_service.chat_turn(
-            session_id,
-            "/generate_dita\n\nCreate a map and 10 glossaries",
-            tenant_id="kone",
-        ):
-            pass
-
-        async for _ in chat_service.chat_turn(
-            session_id,
-            "AEM Guides terminology",
-            tenant_id="kone",
-        ):
-            pass
-
-        async for _ in chat_service.chat_turn(
-            session_id,
-            "approve",
-            tenant_id="kone",
-        ):
-            pass
-
         followup_events = []
         async for event in chat_service.chat_turn(
             session_id,
@@ -858,16 +762,12 @@ async def test_chat_turn_new_generate_request_after_completed_bundle_starts_fres
         ):
             followup_events.append(event)
 
-        assert any(event["type"] == "plan" for event in followup_events)
+        assert not any(event["type"] == "plan" for event in followup_events)
         assert not any(event["type"] == "tool" and event.get("name") == "generate_dita" for event in followup_events)
+        assert not captured
 
         messages = chat_service.get_messages(session_id)
         assistant = messages[-1]
-        plan = (assistant["tool_results"] or {})["_agent_plan"]
-        assert plan["mode"] == "generate_dita_preview"
-        assert plan["status"] == "clarification_required"
-        assert plan["preview"]["subject"] == "cars"
-        assert "concept" in str(plan["preview"]["clarification_question"]).lower()
-        assert "AEM Guides terminology" not in (assistant["content"] or "")
+        assert (assistant["tool_results"] or {})["_builder_handoff"]["route_intent"] == "dita_generation"
     finally:
         chat_service.delete_session(session_id)
