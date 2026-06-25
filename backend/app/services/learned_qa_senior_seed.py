@@ -612,4 +612,62 @@ def get_senior_prompt_seed_items() -> list[dict[str, Any]]:
             )
         )
 
+    senior_example_specs = [
+        ("Show a full example of topichead with topicrefs and explain the TOC output.", "topichead full example", "Use topichead when you need a visible TOC heading that does not link to its own topic."),
+        ("Show a full example of topicgroup and explain why it is invisible in the TOC.", "topicgroup full example", "Use topicgroup for structural grouping when the group itself should not create a navigation heading."),
+        ("Show a full example of mapref with a reused submap.", "mapref full example", "Use mapref when a root map needs to include another map as part of the effective publication structure."),
+        ("Show a full example of a key library map with resource-only.", "key library full example", "Use a resource-only key library when keys and reusable targets must resolve without publishing as normal chapters."),
+        ("Show a full example of conkeyref for a reusable warning.", "conkeyref full example", "Use conkeyref when reusable content should be resolved through a map-defined key instead of a fixed file path."),
+        ("Show a full example of branch filtering for cloud and on-prem outputs.", "branch filtering full example", "Use branch filtering when one map branch needs a specific DITAVAL condition for a variant output."),
+        ("Show a full example of DITAVAL excluding internal-only paragraphs.", "ditaval exclude full example", "Use a DITAVAL exclude rule when internal content must stay in source but not appear in customer output."),
+        ("Show a full example of subject scheme controlled values for audience.", "subject scheme full example", "Use subject scheme maps to constrain profiling values so authors pick consistent metadata."),
+        ("Show a full example of reltable generated related links.", "reltable full example", "Use relationship tables to define links among topics without adding inline xrefs to every topic."),
+        ("Show a full example of copy-to and explain when it is risky.", "copy-to full example", "Use copy-to sparingly when one source topic needs multiple output addresses or labels."),
+        ("Show a full example of navtitle and locktitle.", "navtitle locktitle full example", "Use locktitle when the map navigation label must override the topic title."),
+        ("Show a full example of chunk to-content versus by-topic.", "chunk full example", "Use chunking to influence output file grouping, not to change source topic ownership."),
+        ("How should I answer a user asking why their uploaded map cannot find topics?", "uploaded map missing topics", "Check relative hrefs, folder placement, case-sensitive filenames, upload completeness, and root map selection."),
+        ("How should I answer a user asking why AEM Guides upload accepted files but validation fails?", "upload validation", "Explain that repository import and DITA validation are separate checks, then inspect DTD/schema references and links."),
+        ("How should I answer a user asking where to store shared reusable topics in AEM Guides?", "shared reuse folder", "Recommend a governed shared folder or reuse map with permissions, naming conventions, and resource-only references."),
+        ("How should I answer a user asking how to rename DITA files safely?", "rename files", "Rename with reference updates, check maps, xrefs, conrefs, image hrefs, baselines, and publishing presets."),
+        ("How should I answer a user asking how to move DITA topics between folders?", "move topics", "Move topics only after reviewing relative links, reuse references, images, map references, and translation state."),
+        ("How should I answer a user asking why deleted files still appear in output?", "deleted files output", "Check baseline selection, cached output, old map references, generated artifacts, and whether the publishing job used latest content."),
+        ("How should I answer a user asking why a new topic does not appear in AEM Guides output?", "new topic missing output", "Check whether the topic is referenced by the root map, filtered out, marked resource-only, or excluded by the preset."),
+        ("How should I answer a user asking why a topic appears twice in output?", "duplicate topic output", "Check duplicate topicrefs, maprefs, copy-to, generated navigation, and nested submap inclusion."),
+        ("How do I triage a Jira that says publishing is slow?", "jira publishing slow", "Separate content scale, image size, transform type, PDF template complexity, environment load, and external service calls."),
+        ("How do I triage a Jira that says upload is slow?", "jira upload slow", "Separate package size, file count, asset validation, network latency, repository indexing, and virus/security scanning."),
+        ("How do I triage a Jira that says search cannot find uploaded topics?", "jira search indexing", "Check repository indexing delay, metadata extraction, permissions, path, title/shortdesc content, and search scope."),
+        ("How do I triage a Jira that says review comments disappeared?", "jira review comments", "Check version history, baseline, workflow state, file rename/move operations, permissions, and whether comments belong to another revision."),
+        ("How do I triage a Jira that says conref works locally but not in AEM Guides?", "jira conref aem", "Compare local DITA-OT root map context with AEM Guides repository paths, keys, permissions, and validation pipeline."),
+        ("How do I triage a Jira that says DITAVAL works in DITA-OT but not AEM Guides?", "jira ditaval aem", "Compare the command-line filter with the AEM Guides output preset and confirm the same DITAVAL is selected."),
+        ("How do I triage a Jira that says Native PDF drops a table row?", "jira native pdf table", "Check CALS table validity, morerows spans, row/entry counts, conditional filtering, and PDF plugin table processing."),
+        ("How do I triage a Jira that says keyscope links are wrong after mapref?", "jira keyscope mapref", "Check keyscope name, peer/local scope, submap key definitions, branch position, and duplicate keys."),
+        ("How do I explain AEM Guides file management to a new technical writer?", "aem file management onboarding", "Explain that files are managed as repository assets with references, versions, locks, metadata, and publishing context."),
+        ("How do I explain uploading existing files to a new AEM Guides user?", "aem upload onboarding", "Explain that upload should preserve folder structure and references, then validate maps, topics, images, and metadata."),
+        ("How do I answer if RAG finds AEM docs but no DITA spec evidence?", "rag source split", "Say the AEM workflow is grounded in Experience League, while base DITA semantics should be verified against DITA spec sources."),
+        ("How do I answer if RAG finds learned QA but no live source chunks?", "learned qa fallback", "Use learned QA as a reviewed pattern, but call out source limitations and avoid presenting unsupported product specifics as verified."),
+        ("How do I answer when the user asks for exact command syntax but sources are weak?", "weak command source", "Give a cautious command pattern only if known, label it as a pattern, and ask for version/preset details for exact syntax."),
+        ("How do I answer when the user asks for full XML but the element parent is uncertain?", "uncertain xml parent", "Provide a minimal safe snippet only when valid, otherwise explain the required parent/child context before showing XML."),
+        ("How do I answer when the user asks for comparison of DITA table and HTML table?", "dita html table", "Explain DITA table semantics and publishing transformation, not browser HTML authoring as the primary source model."),
+        ("How do I answer when the user asks simpletable row span support?", "simpletable row span", "State clearly that row/column span is a CALS table feature, not simpletable behavior."),
+        ("How do I answer when the user asks about morerows in simpletable?", "morerows simpletable", "State that morerows applies to CALS table entry cells and does not apply to simpletable stentry cells."),
+        ("How do I answer when the user asks about uploading Markdown into AEM Guides?", "upload markdown", "Explain whether Markdown is supported by the configured workflow, then distinguish source upload from DITA conversion."),
+        ("How do I answer when the user asks whether AEM Guides changes source DITA during publishing?", "publishing source mutation", "Explain that publishing should generate output artifacts from source and presets, not silently rewrite source topics."),
+        ("How do I answer when the user asks why output differs between two presets?", "preset diff", "Compare transform type, filter, baseline, template, parameters, root map, and publishing environment."),
+    ]
+    for prompt, tag, direct in senior_example_specs:
+        items.append(
+            _entry(
+                prompt,
+                "senior_examples_and_triage",
+                ["senior", tag, "full example", "aem guides", "dita", "dita-ot", "jira"],
+                _troubleshooting_answer(
+                    title=direct,
+                    first_check="Start with the exact user goal and classify it as authoring, repository management, publishing, or Jira triage.",
+                    second_check="Retrieve indexed AEM Guides, DITA spec, DITA-OT, learned QA, or Jira evidence before drafting the final answer.",
+                    third_check="Give a direct answer first, then include a minimal valid XML or workflow example when it helps.",
+                    mistake="Do not give generic AI advice when the user needs product-specific AEM Guides, DITA, DITA-OT, or Jira troubleshooting guidance.",
+                ),
+            )
+        )
+
     return items
