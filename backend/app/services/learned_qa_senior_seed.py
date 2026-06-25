@@ -670,4 +670,72 @@ def get_senior_prompt_seed_items() -> list[dict[str, Any]]:
             )
         )
 
+    senior_operational_specs = [
+        ("How do I answer when a map has circular maprefs?", "circular maprefs", "Explain that circular map references can create infinite or invalid effective map structures and must be broken at the map architecture level."),
+        ("How do I troubleshoot circular conrefs in imported content?", "circular conrefs", "Find the conref chain, identify the loop, and replace one side with authored content or a non-cyclic reusable source."),
+        ("How do I explain why a conref target must have a stable ID?", "conref target id", "A conref resolves to a specific element ID, so changing or omitting the target ID breaks reusable content."),
+        ("How do I answer when a conref target has the wrong element type?", "conref type mismatch", "Explain that conref replacement must be compatible with the target element type and context."),
+        ("How do I troubleshoot conrefend range reuse?", "conrefend range", "Verify the start and end elements are valid siblings, ordered correctly, and compatible with the consuming context."),
+        ("How do I explain why xref to a topic ID differs from xref to an element ID?", "xref element id", "A topic-level xref targets the whole topic, while an element-level xref targets a specific element within that topic."),
+        ("How do I answer when href points to a folder instead of a DITA file?", "href folder", "Explain that href should resolve to a valid resource, usually a topic/map/image file depending on context."),
+        ("How do I troubleshoot spaces and special characters in uploaded DITA filenames?", "filename characters", "Check repository naming rules, URL encoding, transform behavior, and whether references use exact filenames."),
+        ("How do I explain case sensitivity problems after migrating DITA files?", "case sensitivity", "Windows may hide case mismatches that Linux, AEM, or publishing pipelines treat as different paths."),
+        ("How do I answer when image href works locally but fails after upload?", "image local upload", "Compare local folder layout with DAM/repository layout and update relative hrefs or uploaded asset paths."),
+        ("How do I troubleshoot SVG images in Native PDF output?", "svg native pdf", "Check SVG support in the PDF pipeline, image dimensions, external resources, fonts, and PDF plugin limitations."),
+        ("How do I troubleshoot MathML rendering in Native PDF output?", "mathml native pdf", "Check transform support, plugin configuration, namespace validity, fonts, and whether fallback images are required."),
+        ("How do I answer when codeblock formatting changes in PDF?", "codeblock pdf", "Check outputclass, PDF CSS, whitespace preservation, font settings, and line-wrapping rules."),
+        ("How do I explain outputclass without overusing it?", "outputclass guidance", "Use outputclass for output-specific styling hooks, not as a replacement for semantic DITA markup."),
+        ("How do I troubleshoot a table that validates but looks wrong in PDF?", "table pdf layout", "Check column specs, widths, spans, filtering side effects, long text, and PDF table styling."),
+        ("How do I explain colspec in CALS tables?", "colspec", "Use colspec to define column names, widths, alignment, and other column-level table behavior."),
+        ("How do I answer when namest/nameend spans are broken?", "namest nameend", "Verify both column names exist in colspec and that the span does not collide with other cells."),
+        ("How do I troubleshoot row spans after conditional filtering?", "filtered row span", "Filtering can remove cells or rows around spans, so validate the effective table after filtering."),
+        ("How do I explain why simpletable is better for small lookup tables?", "simpletable small", "Simpletable is easier to author and maintain when no spans, column specs, or complex layout rules are needed."),
+        ("How do I answer when a user asks to convert simpletable to CALS table?", "simpletable to cals", "Preserve rows and cells first, then add tgroup, row, entry, and optional colspec only when needed."),
+        ("How do I troubleshoot glossary term reuse?", "glossary reuse", "Check glossary entries, key definitions, term references, map context, and whether the glossary map is included."),
+        ("How do I explain abbrev and glossentry usage?", "glossentry abbrev", "Use glossentry for glossary definitions and abbreviation structures where terminology needs controlled reuse."),
+        ("How do I answer when index terms do not appear in PDF?", "indexterm pdf", "Check indexterm placement, transform support, PDF index generation settings, and whether the preset includes an index."),
+        ("How do I troubleshoot searchtitle not appearing in output?", "searchtitle", "Check whether the transform uses searchtitle for search metadata rather than visible navigation."),
+        ("How do I explain titlealts to a writer?", "titlealts", "Title alternatives provide alternate titles for specific processing contexts without changing the main topic title."),
+        ("How do I troubleshoot shortdesc missing from search results?", "shortdesc search", "Check search indexing settings, metadata extraction, output type, and whether shortdesc is present in the topic."),
+        ("How do I answer when a map title and bookmap title conflict?", "bookmap title conflict", "Explain which title is used by the output preset and how map/bookmap metadata affects generated front matter."),
+        ("How do I explain bookmap frontmatter and backmatter?", "bookmap frontmatter", "Bookmap frontmatter and backmatter organize publication-level material such as notices, prefaces, appendixes, and index content."),
+        ("How do I troubleshoot appendixes not appearing in PDF?", "bookmap appendix", "Check bookmap structure, appendix topicrefs, filtering, output preset, and whether topics are resource-only."),
+        ("How do I answer when chapter numbering is wrong?", "chapter numbering", "Check map/bookmap hierarchy, topicref nesting, output preset numbering settings, and filtered branches."),
+        ("How do I troubleshoot cross-map links after splitting a guide?", "split guide links", "Check scope, format, keyscope, peer map configuration, and whether each deliverable has the needed keys."),
+        ("How do I explain when to use peer scope for another guide?", "peer guide scope", "Use peer scope when the target is another DITA deliverable, not part of the same local output package."),
+        ("How do I troubleshoot links opening as external instead of local?", "link scope mismatch", "Check scope, format, href type, output transform, and whether the target is included in the same deliverable."),
+        ("How do I answer when generated HTML has broken CSS or assets?", "html assets", "Check resource copying, output directory structure, base paths, custom plugins, and browser network errors."),
+        ("How do I troubleshoot AEM Guides publishing assets not copied?", "aem publish assets", "Check asset references, permissions, output preset asset handling, repository paths, and job logs."),
+        ("How do I answer when a user asks about uploading non-DITA assets?", "upload non dita", "Explain supported asset types, where they are stored, how DITA references them, and what publishing outputs require."),
+        ("How do I troubleshoot a map that opens but cannot be edited?", "map edit lock", "Check permissions, checkout/lock state, repository health, file type association, and workflow state."),
+        ("How do I explain versioning versus baseline in AEM Guides?", "version baseline", "Versioning tracks asset revisions; a baseline selects specific revisions for stable review or publishing."),
+        ("How do I answer when users confuse review status with publish readiness?", "review publish readiness", "Explain that approval helps governance but publish readiness also requires validation, map context, filters, and output preset checks."),
+        ("How do I troubleshoot publishing from the wrong baseline?", "wrong baseline", "Confirm selected baseline, compare topic versions, regenerate output, and record the baseline in the troubleshooting notes."),
+        ("How do I answer when a Jira has screenshots but no XML?", "jira screenshots no xml", "Use screenshots as symptoms, but request or infer minimally from map/topic/XML evidence before recommending source changes."),
+        ("How do I answer when a Jira has logs but no reproduction steps?", "jira logs no repro", "Extract the first concrete error, map it to likely source/preset context, and ask for the smallest reproducible map/topic set."),
+        ("How do I answer when Jira expected result is missing?", "jira missing expected", "State the observed behavior, identify missing acceptance criteria, and ask for expected output or product rule before closing analysis."),
+        ("How do I answer when Jira actual result is vague?", "jira vague actual", "Ask for exact output, logs, affected file, root map, preset, and environment before choosing a root cause."),
+        ("How do I decide whether a Jira should become learned QA?", "jira learned criteria", "Only learn from a Jira when the prompt, final answer, evidence, and accepted resolution are clear and reusable."),
+        ("How do I answer when learned QA conflicts with current Experience League docs?", "learned conflict docs", "Prefer current trusted source evidence and treat learned QA as style/context, not authority over newer documentation."),
+        ("How do I answer when DITA spec and AEM Guides behavior differ?", "spec product difference", "Separate normative DITA rules from AEM Guides product behavior and explain which layer controls the observed result."),
+        ("How do I answer when DITA-OT behavior differs from AEM Guides output?", "ditaot aem difference", "Compare DITA-OT version, plugins, AEM output preset, Native PDF template, and any product-specific preprocessing."),
+        ("How do I explain source confidence in final answers?", "source confidence", "Mention whether the answer is grounded in DITA spec, Experience League, DITA-OT issues, Jira QA, or learned QA examples."),
+        ("How do I answer when no indexed source is relevant?", "no source relevant", "Say the indexed sources did not provide enough evidence, give a cautious general path, and recommend what to index or verify next."),
+    ]
+    for prompt, tag, direct in senior_operational_specs:
+        items.append(
+            _entry(
+                prompt,
+                "senior_operational_troubleshooting",
+                ["senior", tag, "operations", "dita", "aem guides", "dita-ot", "jira"],
+                _troubleshooting_answer(
+                    title=direct,
+                    first_check="Identify the effective source context: root map, topic, referenced asset, output preset, baseline, and environment.",
+                    second_check="Confirm whether the problem is authoring markup, repository/file management, publishing transform, or Jira evidence quality.",
+                    third_check="Give a minimal reproducible example or diagnostic checklist before recommending broad content changes.",
+                    mistake="Do not collapse source authoring, AEM Guides repository behavior, and DITA-OT publishing behavior into one generic explanation.",
+                ),
+            )
+        )
+
     return items
