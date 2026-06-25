@@ -75,7 +75,7 @@ from app.services.doc_retriever_service import retrieve_relevant_docs, format_do
 from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
-from app.services.learned_qa_service import format_learned_qa_for_prompt
+from app.services.learned_qa_service import format_learned_qa_for_prompt, retrieve_learned_qa
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
@@ -339,7 +339,7 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LEARNED_QA_DOMAIN_PATTERN = re.compile(
-    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|dita-ot|chunk|subject scheme|subjectscheme|topicref|table)\b",
+    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|dita-ot|chunk|subject scheme|subjectscheme|topicref|table|upload|import|file management|existing files|authoring files?|publish|publishing|jira|troubleshoot|troubleshooting)\b",
     re.IGNORECASE,
 )
 _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
@@ -4563,6 +4563,51 @@ def _build_rag_grounded_fallback_response(
     return "\n".join(lines).strip()
 
 
+def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str) -> str:
+    query = (user_content or "").strip()
+    if not query or not _LEARNED_QA_DOMAIN_PATTERN.search(query):
+        return ""
+
+    try:
+        matches = retrieve_learned_qa(query, k=1)
+    except Exception as exc:
+        logger.debug_structured("Learned QA local fallback skipped", extra_fields={"error": str(exc)})
+        return ""
+
+    if not matches:
+        return ""
+
+    top = matches[0]
+    try:
+        score = float(top.get("score") or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
+    if score < 0.72:
+        return ""
+
+    answer = str(top.get("final_answer") or "").strip()
+    if len(answer) < 120:
+        return ""
+
+    lines = [answer]
+    lowered_answer = answer.lower()
+    if "source" not in lowered_answer and "verification" not in lowered_answer:
+        source_label = str(top.get("source_type") or "learned_qa").strip() or "learned_qa"
+        topic = str(top.get("topic") or "").strip()
+        lines.extend(
+            [
+                "",
+                "## Verification note",
+                f"- Answered from an approved senior learned-QA example in `{source_label}`.",
+            ]
+        )
+        if topic:
+            lines.append(f"- Topic: {topic}.")
+    if f"workspace: `{tenant_id}`".lower() not in lowered_answer:
+        lines.extend(["", f"Workspace: `{tenant_id}`"])
+    return "\n".join(lines).strip()
+
+
 def _format_exposed_chat_error(exc: Exception) -> str:
     """User-visible error for chat: safe summary plus underlying provider message when present (no stack traces)."""
     base = format_llm_error_for_user(exc)
@@ -4739,6 +4784,10 @@ async def _build_local_fallback_response(
     lowered = trimmed.lower()
     if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
         return _finalize(_build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id))
+
+    learned_fallback = _build_learned_qa_local_fallback_response(trimmed, tenant_id)
+    if learned_fallback:
+        return _finalize(learned_fallback)
 
     resolved_answer_mode = str(answer_mode or _determine_answer_mode(trimmed, session_id=session_id)).strip().lower()
     if resolved_answer_mode in {"grounded_dita_answer", "grounded_aem_answer"}:

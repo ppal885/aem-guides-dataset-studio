@@ -94,6 +94,49 @@ async def test_build_local_fallback_response_prefers_grounded_publish_filtering_
 
 
 @pytest.mark.anyio
+async def test_build_local_fallback_response_prefers_strong_learned_qa_match(monkeypatch):
+    monkeypatch.setattr(
+        chat_service,
+        "_build_rag_context",
+        lambda *_args, **_kwargs: "LEARNED PROMPT CORPUS:\n[1] Prompt: upload files\nAnswer:\nUse the upload workflow.",
+    )
+    monkeypatch.setattr(
+        chat_service,
+        "retrieve_learned_qa",
+        lambda *_args, **_kwargs: [
+            {
+                "prompt": "How do I troubleshoot AEM Guides upload of existing DITA files?",
+                "final_answer": (
+                    "## Short answer\n"
+                    "For AEM Guides upload troubleshooting, validate the target folder, file names, dependencies, and duplicate assets before blaming DITA markup.\n\n"
+                    "## Checklist\n"
+                    "- Confirm the upload target is the intended DAM folder.\n"
+                    "- Check whether related DITA files, images, and maps were uploaded together.\n"
+                    "- Resolve duplicate filenames or path conflicts before retrying.\n"
+                    "- Reopen the uploaded map or topic and verify references resolve in AEM Guides."
+                ),
+                "score": 0.98,
+                "topic": "aem_guides_upload",
+                "source_type": "learned_qa_seed",
+            }
+        ],
+    )
+
+    text = await chat_service._build_local_fallback_response(
+        "How do I troubleshoot AEM Guides upload of existing DITA files?",
+        "kone",
+        answer_mode="grounded_aem_answer",
+    )
+
+    lowered = text.lower()
+    assert "validate the target folder" in lowered
+    assert "duplicate filenames" in lowered
+    assert "couldn't verify this directly" not in lowered
+    assert "best available guidance" not in lowered
+    assert "Workspace: `kone`" in text
+
+
+@pytest.mark.anyio
 async def test_chat_turn_uses_local_fallback_when_llm_is_unavailable(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
     monkeypatch.setattr(

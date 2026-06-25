@@ -597,18 +597,50 @@ def get_senior_prompt_seed_items() -> list[dict[str, Any]]:
         ("How do I troubleshoot translation issues caused by reuse?", "translation reuse", "Check conrefs, keyrefs, variables, locked text, IDs, and whether reused content needs independent translation context."),
     ]
     for prompt, tag, direct in senior_field_specs:
+        if tag == "upload existing files":
+            final_answer = """## Short answer
+When existing DITA files fail or behave oddly after upload in AEM Guides, troubleshoot the upload package first: folder target, file names, relative references, duplicate assets, DTD/schema references, and whether the root map plus dependent topics/images were uploaded together.
+
+## Scope note
+This is an AEM Guides repository/file-management question, not only a DITA syntax question. A file can upload successfully and still fail later during validation, map resolution, preview, or publishing.
+
+## Triage checklist
+1. Confirm the target repository folder and whether the upload preserved the original folder structure.
+2. Check file names for duplicates, spaces, special characters, case mismatches, and overwritten assets.
+3. Verify that the root map, topics, conref targets, key libraries, images, and media assets were all uploaded.
+4. Open the map in AEM Guides and validate unresolved `href`, `conref`, `conkeyref`, `keyref`, image, and DTD/schema references.
+5. If upload succeeds but output fails, separate repository import issues from DITA-OT publishing or AEM Guides output preset issues.
+
+## Small example
+```xml
+<map>
+  <title>Upload validation sample</title>
+  <topicref href="topics/install.dita"/>
+  <topicref href="reuse/warnings.dita" processing-role="resource-only"/>
+</map>
+```
+
+Expected result
+- `topics/install.dita` exists in the same relative location after upload.
+- `reuse/warnings.dita` is uploaded even if it is not meant to appear in navigation.
+- Images and reusable fragments referenced from those files resolve from the uploaded repository paths.
+
+## Common mistake
+Do not treat “upload completed” as proof that the DITA set is ready to publish. Upload confirms repository import; validation and publishing confirm DITA references, map context, filters, and transform behavior."""
+        else:
+            final_answer = _troubleshooting_answer(
+                title=direct,
+                first_check="Identify the root map, repository location, output preset, and active filters or baseline.",
+                second_check="Collect the smallest topic/map/XML sample plus the exact warning, error, or observed output.",
+                third_check="Separate DITA semantics, AEM Guides workflow behavior, DITA-OT transform behavior, and Jira evidence.",
+                mistake="Do not answer from general LLM memory first. Ground the response in indexed source evidence, then use the LLM to explain it clearly.",
+            )
         items.append(
             _entry(
                 prompt,
                 "senior_field_guidance",
                 ["senior", tag, "dita", "aem guides", "dita-ot", "jira"],
-                _troubleshooting_answer(
-                    title=direct,
-                    first_check="Identify the root map, repository location, output preset, and active filters or baseline.",
-                    second_check="Collect the smallest topic/map/XML sample plus the exact warning, error, or observed output.",
-                    third_check="Separate DITA semantics, AEM Guides workflow behavior, DITA-OT transform behavior, and Jira evidence.",
-                    mistake="Do not answer from general LLM memory first. Ground the response in indexed source evidence, then use the LLM to explain it clearly.",
-                ),
+                final_answer,
             )
         )
 
