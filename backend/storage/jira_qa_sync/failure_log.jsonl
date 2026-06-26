@@ -23,3 +23,27 @@
 {"ts": "2026-06-09T18:10:08.156704+00:00", "jira_key": "GUIDES-2", "error": "permission denied", "sync_state_id": "default"}
 {"ts": "2026-06-09T18:48:27.936937+00:00", "jira_key": "GUIDES-2", "error": "permission denied", "sync_state_id": "default"}
 {"ts": "2026-06-09T18:57:00.271493+00:00", "jira_key": "GUIDES-2", "error": "permission denied", "sync_state_id": "default"}
+{"ts": "2026-06-25T19:20:23.888887+00:00", "jira_key": "GUIDES-2600", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:24.425488+00:00", "jira_key": "GUIDES-2583", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:24.963161+00:00", "jira_key": "GUIDES-2601", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:25.480973+00:00", "jira_key": "GUIDES-2602", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:26.007662+00:00", "jira_key": "GUIDES-2513", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:26.516420+00:00", "jira_key": "GUIDES-2568", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:27.036882+00:00", "jira_key": "GUIDES-2597", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:27.565936+00:00", "jira_key": "GUIDES-1407", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:28.076300+00:00", "jira_key": "GUIDES-2591", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:28.585575+00:00", "jira_key": "GUIDES-2622", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:29.106071+00:00", "jira_key": "GUIDES-2623", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:29.628088+00:00", "jira_key": "GUIDES-2609", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:30.182847+00:00", "jira_key": "GUIDES-2608", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:30.709749+00:00", "jira_key": "GUIDES-2634", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:31.237021+00:00", "jira_key": "GUIDES-1760", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:31.745209+00:00", "jira_key": "GUIDES-2328", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:32.253396+00:00", "jira_key": "GUIDES-2557", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:32.778601+00:00", "jira_key": "GUIDES-2157", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:33.306088+00:00", "jira_key": "GUIDES-2598", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:33.833686+00:00", "jira_key": "GUIDES-2606", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:34.343520+00:00", "jira_key": "GUIDES-2589", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:34.859478+00:00", "jira_key": "GUIDES-2642", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:35.395275+00:00", "jira_key": "GUIDES-2653", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}
+{"ts": "2026-06-25T19:20:35.931892+00:00", "jira_key": "GUIDES-2638", "error": "[Errno 11001] getaddrinfo failed", "sync_state_id": "project:DXML"}

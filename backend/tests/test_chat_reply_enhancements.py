@@ -9,6 +9,7 @@ from app.core.schemas_grounded_answer import NormalizedGroundedFactSet
 from app.db.chat_models import ChatMessage
 from app.db.session import SessionLocal
 from app.services import chat_service
+from app.services.learned_qa_senior_seed import get_senior_prompt_seed_items
 
 
 def test_grounded_user_prompt_notes_internal_evidence_ids_when_present():
@@ -60,6 +61,42 @@ def test_compact_system_prompt_includes_followups_only_when_env_truthy(monkeypat
 def test_compact_system_prompt_always_includes_evidence_discipline_rule():
     prompt = chat_service._build_compact_chat_system_prompt()
     assert "No evidence line tags" in prompt or "do not include bracketed evidence" in prompt.lower()
+
+
+def test_compact_system_prompt_sets_senior_dita_expert_contract():
+    prompt = chat_service._build_compact_chat_system_prompt(
+        rag_context="LEARNED PROMPT CORPUS:\n[1] Prompt: What is keyscope?\nAnswer:\nSenior answer"
+    )
+
+    assert "Senior DITA Expert" in prompt
+    assert "ask you first before opening docs" in prompt
+    assert "LEARNED QA PRIORITY" in prompt
+    assert "search result" in prompt
+
+
+def test_rag_grounded_fallback_uses_senior_guidance_not_generic_source_dump():
+    text = chat_service._build_rag_grounded_fallback_response(
+        "How do I troubleshoot missing images in AEM Guides Native PDF?",
+        "AEM GUIDES DOCUMENTATION:\n[1] Native PDF images\nImages must resolve from repository paths.",
+        "kone",
+    )
+
+    assert text.startswith("## Short answer")
+    assert "## Senior handling" in text
+    assert "Best available guidance" not in text
+    assert "Using local indexed knowledge" not in text
+
+
+def test_senior_seed_has_html_success_pdf_failure_answer():
+    items = get_senior_prompt_seed_items()
+    match = next(
+        item for item in items if item["prompt"] == "How do I debug a topic that publishes in HTML but fails in PDF?"
+    )
+
+    answer = match["final_answer"].lower()
+    assert "output-pipeline parity" in answer
+    assert "processing-role" in answer
+    assert "unless the actual symptom" in answer
 
 
 def test_fetch_last_messages_returns_latest_not_oldest():

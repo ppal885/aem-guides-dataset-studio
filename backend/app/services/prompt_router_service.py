@@ -137,7 +137,16 @@ _QUESTION_LED_PRODUCT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _NATIVE_PDF_PATTERN = re.compile(
-    r"\b(native pdf|pdf output|pdf preset|output preset|toc styling|page layout|headers?|footers?|watermark)\b",
+    r"\b(native pdf|pdf output|pdf publishing|pdf publish|pdf preset|output preset|toc styling|page layout|headers?|footers?|watermark)\b|"
+    r"\b(?:html|html5|web)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:pdf|pdf2|native\s+pdf)\b.{0,80}\b(?:html|html5|web)\b|"
+    r"\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b.{0,60}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:pdf|pdf2|native\s+pdf)\b.{0,60}\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b",
+    re.IGNORECASE,
+)
+_PDF_OUTPUT_TROUBLESHOOTING_PATTERN = re.compile(
+    r"\b(?:topic|map|image|table|xref|keyref|conref)\b.{0,80}\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:publish|publishes|published|publishing)\b.{0,80}\b(?:html|html5|web)\b.{0,80}\b(?:fail|fails|failed|failing|break|breaks|broken)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b",
     re.IGNORECASE,
 )
 # DITA-OT / toolkit: engine id + build-parameter intent (tolerates typos like "Argumernts").
@@ -355,6 +364,18 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             legacy_answer_mode="grounded_aem_answer",
             reasoning_notes=[
                 "Detected DITA-OT arguments in a Native PDF/PDF output context; route to AEM Guides output-preset guidance before DITA spec fallback."
+            ],
+        )
+
+    if _PDF_OUTPUT_TROUBLESHOOTING_PATTERN.search(trimmed):
+        return PromptRouteDecision(
+            intent="native_pdf_guidance",
+            confidence=0.94,
+            supported=True,
+            execution_hint="answer_directly",
+            legacy_answer_mode="grounded_aem_answer",
+            reasoning_notes=[
+                "Detected HTML-vs-PDF publishing failure; route to output-pipeline troubleshooting before DITA element/attribute lookup."
             ],
         )
 

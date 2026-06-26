@@ -339,7 +339,7 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LEARNED_QA_DOMAIN_PATTERN = re.compile(
-    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|dita-ot|chunk|subject scheme|subjectscheme|topicref|table|upload|import|file management|existing files|authoring files?|publish|publishing|jira|troubleshoot|troubleshooting)\b",
+    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|pdf|html|html5|dita-ot|chunk|subject scheme|subjectscheme|topicref|table|upload|import|file management|existing files|authoring files?|publish|publishes|published|publishing|fail|fails|failed|jira|troubleshoot|troubleshooting)\b",
     re.IGNORECASE,
 )
 _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
@@ -358,7 +358,21 @@ _AEM_UI_CONFIGURATION_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _NATIVE_PDF_QUERY_PATTERN = re.compile(
-    r"\b(native pdf|pdf template|watermark|page layout|headers?|footers?|table of contents|toc|cover page)\b",
+    r"\b(native pdf|pdf output|pdf publishing|pdf publish|pdf template|watermark|page layout|headers?|footers?|table of contents|toc|cover page)\b|"
+    r"\b(?:html|html5|web)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:pdf|pdf2|native\s+pdf)\b.{0,80}\b(?:html|html5|web)\b|"
+    r"\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b.{0,60}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:pdf|pdf2|native\s+pdf)\b.{0,60}\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b",
+    re.IGNORECASE,
+)
+_PDF_OUTPUT_TROUBLESHOOTING_PATTERN = re.compile(
+    r"\b(?:topic|map|image|table|xref|keyref|conref)\b.{0,80}\b(?:fail|fails|failed|failing|break|breaks|broken|missing)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b|"
+    r"\b(?:publish|publishes|published|publishing)\b.{0,80}\b(?:html|html5|web)\b.{0,80}\b(?:fail|fails|failed|failing|break|breaks|broken)\b.{0,80}\b(?:pdf|pdf2|native\s+pdf)\b",
+    re.IGNORECASE,
+)
+_DITA_TROUBLESHOOTING_QUESTION_PATTERN = re.compile(
+    r"\b(?:debug|troubleshoot|diagnose|fix|resolve|why)\b|"
+    r"\b(?:fail|fails|failed|failing|error|exception|broken|missing|not\s+render|not\s+show)\b",
     re.IGNORECASE,
 )
 _OUTPUT_PRESET_QUERY_PATTERN = re.compile(
@@ -455,6 +469,10 @@ def _should_include_structural_dita_rag(question: str) -> bool:
     # DITA-OT error codes / build failures: spec RAG is noise, not signal
     if _DITA_OT_ERROR_PATTERN.search(text):
         return False
+    # HTML-vs-PDF publishing parity questions need output-pipeline evidence first,
+    # not generic element/attribute snippets.
+    if _PDF_OUTPUT_TROUBLESHOOTING_PATTERN.search(text):
+        return False
     # AEM-product publishing questions (Native PDF, output preset, AEM Guides UI):
     # the structural DITA spec is not the relevant evidence source here
     _aem_product_ctx = re.search(
@@ -543,7 +561,7 @@ _DITA_OT_GUIDANCE: Optional[str] = None
 _DITA_AUTHORING_GUIDANCE: Optional[str] = None
 
 _DITA_OT_PATTERN = re.compile(
-    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish|publishing|"
+    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish(?:es|ed|ing)?|"
     r"output preset|native pdf|ant\s+propert|plugin|ditaval filter|xsl.fo|fop|xslt|"
     r"dita command|dita --input|dita --format|dita --output|"
     # DITA-OT error/warning codes (DOTX, DOTJ, DOTA, DOTF prefixes)
@@ -1260,6 +1278,8 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         return "agent_research_plan"
     if _RECIPE_TYPE_GENERATION_PATTERN.search(text):
         return "generation_request"
+    if _PDF_OUTPUT_TROUBLESHOOTING_PATTERN.search(text):
+        return "grounded_aem_answer"
     if _DITA_OT_PATTERN.search(text):
         # Error codes / build failures → default mode so GitHub RAG is primary evidence
         if _DITA_OT_ERROR_PATTERN.search(text):
@@ -4220,6 +4240,57 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     return _repair_text_encoding_artifacts("\n".join(sections).strip())
 
 
+def _grounded_fact_matches_question(question: str, facts: NormalizedGroundedFactSet | None) -> bool:
+    """Reject clearly off-topic structured snippets before they become answers."""
+    if facts is None:
+        return True
+    q = (question or "").lower()
+    if not q:
+        return True
+
+    if _DITA_TROUBLESHOOTING_QUESTION_PATTERN.search(q) or _NATIVE_PDF_QUERY_PATTERN.search(q):
+        return facts.answer_kind in {
+            "native_pdf_guidance",
+            "aem_guides_guidance",
+            "dita_output_behavior",
+        }
+
+    structural_kinds = {
+        "dita_attribute",
+        "dita_map_construct",
+        "dita_content_model",
+        "dita_placement",
+        "dita_element",
+    }
+    if facts.answer_kind not in structural_kinds:
+        return True
+
+    candidate_terms: set[str] = set()
+    for match in re.findall(r"<\s*/?\s*([a-z][a-z0-9._-]*)\b", str(facts.canonical_definition or "").lower()):
+        if match and len(match) > 1:
+            candidate_terms.add(match)
+    for value in [
+        *facts.supported_elements,
+        *facts.parent_elements,
+        *facts.allowed_children,
+        *facts.companion_attributes,
+    ]:
+        rendered = str(value or "").strip().lower().strip("<>@")
+        if rendered and len(rendered) > 1:
+            candidate_terms.add(rendered)
+
+    for snippet in facts.verified_examples:
+        snippet_text = str(snippet.snippet or "").lower()
+        for match in re.findall(r"</?([a-z][a-z0-9._-]*)\b|([a-z][a-z0-9._-]*)=", snippet_text):
+            for token in match:
+                if token and len(token) > 1:
+                    candidate_terms.add(token.strip("@"))
+
+    if not candidate_terms:
+        return True
+    return any(re.search(rf"(?<![\w.-]){re.escape(term)}(?![\w.-])", q) for term in candidate_terms)
+
+
 async def _maybe_enrich_illustrative_dita_examples(
     *,
     question: str,
@@ -4326,6 +4397,8 @@ def _build_grounded_tool_draft_answer(
         tool_results_by_name=tool_results_by_name,
     )
     if facts is None:
+        return "", None
+    if not _grounded_fact_matches_question(question, facts):
         return "", None
     return _render_normalized_grounded_fact_set(facts), facts
 
@@ -4539,23 +4612,27 @@ def _build_rag_grounded_fallback_response(
     if not highlights:
         return _builtin_unavailable_response(user_content, tenant_id)
 
-    lines = [
-        "Using local indexed knowledge while live providers recover.",
-        "",
-    ]
+    question = (user_content or "").strip()
+    lines = ["## Short answer"]
     if issue_key:
-        lines.append(f"Issue reference: `{issue_key}`")
-        lines.append("")
-    lines.append("Best available guidance:")
+        lines.append(f"For `{issue_key}`, turn the indexed evidence into clear author-facing guidance instead of repeating the ticket text.")
+    elif re.search(r"\b(troubleshoot|error|fail|broken|missing|not resolving|warning|issue)\b", question, re.IGNORECASE):
+        lines.append("Start with the smallest reproducible DITA/AEM Guides context, then separate authoring markup, repository behavior, and publishing/output behavior.")
+    elif re.search(r"\b(example|show|xml|snippet|map|topic|table)\b", question, re.IGNORECASE):
+        lines.append("Explain the DITA construct first, then show the smallest safe XML pattern that keeps its real enclosing context.")
+    else:
+        lines.append("Answer directly from the available DITA/AEM Guides evidence, then add only the caveats that affect the user’s decision.")
+
+    lines.extend(["", "## What to use from the indexed evidence"])
     for item in highlights:
         lines.append(f"- {item}")
     lines.extend(
         [
             "",
-            "Good next prompts:",
-            "- Review this XML for conref, conkeyref, keyref, and keyword improvements.",
-            "- Turn this issue into a task topic outline with context, steps, and result.",
-            "- Summarize the Jira discussion into user-facing author guidance.",
+            "## Senior handling",
+            "- State the likely answer first; do not make the user interpret source snippets.",
+            "- Label scope clearly as DITA spec, AEM Guides, DITA-OT, or Jira evidence when behavior may differ.",
+            "- For XML questions, prefer a complete enclosing topic, map, or table structure over a fragment.",
             f"",
             f"Workspace: `{tenant_id}`",
         ]
@@ -4563,7 +4640,7 @@ def _build_rag_grounded_fallback_response(
     return "\n".join(lines).strip()
 
 
-def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str) -> str:
+def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str, *, min_score: float = 0.72) -> str:
     query = (user_content or "").strip()
     if not query or not _LEARNED_QA_DOMAIN_PATTERN.search(query):
         return ""
@@ -4582,7 +4659,7 @@ def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str)
         score = float(top.get("score") or 0.0)
     except (TypeError, ValueError):
         score = 0.0
-    if score < 0.72:
+    if score < min_score:
         return ""
 
     answer = str(top.get("final_answer") or "").strip()
@@ -4862,14 +4939,20 @@ def _build_compact_chat_system_prompt(
     full 37K prompt.  Total size ~3-4K chars (~800-1000 tokens).
     """
     base = (
-        "You are **DITA Dataset Studio Chat** — a senior assistant for DITA XML, "
-        "AEM Guides, and technical documentation. Use a clear, professional tone "
+        "You are **DITA Dataset Studio Chat** - a Senior DITA Expert for DITA XML, "
+        "AEM Guides, DITA-OT, Jira issue understanding, and technical documentation. "
+        "The user should be able to ask you first before opening docs. Use a clear, professional tone "
         "appropriate for enterprise technical communication.\n\n"
         "# VOICE AND STRUCTURE\n"
         "- Open with a direct answer; follow with `##` sections only as needed.\n"
         "- Never open with retrieval-language like 'Retrieved DITA specification guidance' unless the user explicitly asks for sources.\n"
         "- Make each reply self-contained: the reader should understand without guessing from prior turns.\n"
         "- Prefer precise terminology; avoid marketing tone and filler.\n"
+        "- Do not sound like a search result. Sound like a senior technical documentation engineer explaining the answer.\n"
+        "- For every DITA-domain answer, first classify the user's real intent: authoring semantics, map/reuse/key resolution, "
+        "publishing/output behavior, DITA-OT build behavior, AEM Guides product workflow, validation, or Jira issue analysis. "
+        "Answer that intent; do not answer with a nearby element/attribute definition just because it appeared in retrieved context.\n"
+        "- If retrieved context is about a different construct than the question, ignore it and provide a senior expert answer with a short caution.\n"
         "- Use emoji or decorative callouts sparingly; only when they aid scanning.\n\n"
         "# ANSWER RULES\n"
         "1. **XML examples**: Include when the user asks for examples or when a short, spec-aligned snippet "
@@ -4886,15 +4969,19 @@ def _build_compact_chat_system_prompt(
         "may be shorter while remaining complete.\n"
         "6. **Markdown**: Use `##`, bullets, fenced code blocks; **bold** or `backticks` for element and attribute names.\n"
         "7. **Evidence**: Ground claims in context supplied below. If evidence is thin or conflicting, keep the answer useful "
-        "and direct, then add a brief caveat; do not replace the answer with a source-by-source recap or a retrieval summary.\n"
+        "and direct from DITA/AEM/DITA-OT expertise, then add a brief `## Evidence note`; do not replace the answer "
+        "with a source-by-source recap or a retrieval summary.\n"
         "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
         "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
         "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
         "# ANSWER PATTERNS (choose what fits)\n"
-        "- **Definitional**: Overview, content model, attributes, optional example, common mistakes.\n"
+        "- **Definitional**: Direct definition, scope note, how it works, XML example when useful, common mistakes.\n"
         "- **Comparison**: Short lead-in, **comparison table**, when to use each, optional examples.\n"
-        "- **How-to**: Prerequisites, numbered steps, optional snippet, caveats.\n"
-        "- **Troubleshooting**: Likely cause, checks, fix.\n\n"
+        "- **How-to**: Prerequisites, numbered steps, XML/command snippet when relevant, caveats.\n"
+        "- **Troubleshooting**: Likely cause, triage checks, smallest fix, prevention.\n"
+        "- **Publishing parity**: Say whether this is DITA semantics or output-pipeline behavior, then compare HTML vs PDF transforms, "
+        "filters, map inclusion, templates/CSS, images/fonts, formatter limits, and the first relevant log error.\n"
+        "- **Jira**: Restate the user-facing problem, normalize repro steps, classify scope, then propose docs/product/data action.\n\n"
         "Do **not** use a rigid global template of '## Short answer / ## How it works / ## What is verified' for "
         "normal chat replies. (Long-form **agent research** answers use a separate prescribed outline from the "
         "synthesis step.)\n"
@@ -4910,6 +4997,13 @@ def _build_compact_chat_system_prompt(
         base += f"\n\n# ANSWERING GUIDANCE\n{skill_guidance}"
     if rag_context:
         base += f"\n\n# REFERENCE KNOWLEDGE\n{rag_context}"
+        if "LEARNED PROMPT CORPUS" in rag_context:
+            base += (
+                "\n\n# LEARNED QA PRIORITY\n"
+                "Approved learned-QA examples above are high-priority senior answer patterns. "
+                "When one closely matches the user question, reuse its structure and practical explanation, "
+                "while checking DITA/AEM/DITA-OT facts against other available evidence."
+            )
         if "DITA OPEN TOOLKIT GITHUB ISSUES" in rag_context:
             base += (
                 "\n\n# DITA-OT GITHUB CONTEXT\n"
@@ -5085,7 +5179,9 @@ def _build_grounded_answer_user_prompt(
     has_evidence_ids = bool(_EVIDENCE_ID_RE.search(evidence_context or ""))
     evidence_instruction = (
         "Write in a natural assistant voice. Base the answer on the evidence above, but do not narrate the retrieval process. "
-        "If evidence is thin or conflicting, answer directly with the best supported explanation, then add a short caution in a `## Verification notes` section."
+        "First answer the user's actual intent, not merely the closest retrieved element or attribute. "
+        "If evidence is thin, conflicting, or about a different construct, answer directly with senior DITA/AEM/DITA-OT expertise, "
+        "then add a short caution in a `## Verification notes` section."
     )
     if has_evidence_ids:
         evidence_instruction += (
@@ -7540,6 +7636,14 @@ async def _stream_assistant_reply(
             tenant_id=tenant_id,
         ):
             yield event
+        return
+
+    learned_direct_answer = _build_learned_qa_local_fallback_response(user_content, tenant_id, min_score=0.92)
+    if learned_direct_answer:
+        _persist_assistant_message(session_id, assistant_msg_id, learned_direct_answer)
+        async for event in _emit_streamed_text(learned_direct_answer):
+            yield event
+        yield {"type": "done"}
         return
 
     if _should_use_tool_mode(user_content, session_id=session_id):

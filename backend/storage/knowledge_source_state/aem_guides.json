@@ -1,17 +1,13 @@
 {
   "source_id": "aem_guides",
-  "last_operation": "crawl",
-  "last_successful_run": "2026-06-25T11:16:44.759825+00:00",
+  "last_operation": "reindex",
+  "last_successful_run": "2026-06-25T19:20:00.806260+00:00",
   "last_error": null,
   "failed_item_count": 0,
   "failed_items": [],
   "last_stats": {
-    "pages_crawled": 2,
-    "chunks_stored": 32,
-    "errors": [],
-    "manual_urls": [
-      "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-file-management",
-      "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-upload-existing-files"
-    ]
+    "pages_crawled": 412,
+    "chunks_stored": 3446,
+    "errors": []
   }
 }

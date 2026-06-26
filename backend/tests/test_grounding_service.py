@@ -242,7 +242,7 @@ Retrieved DITA specification guidance for `What is call out attribute in dita?`.
 
 
 @pytest.mark.anyio
-async def test_verify_grounded_answer_marks_unknown_term_as_not_verified():
+async def test_verify_grounded_answer_marks_unknown_term_with_evidence_note():
     pack = build_evidence_pack(
         query="Do we require href in Hasinstance and how does it resolve in Author view?",
         tenant_id="kone",
@@ -270,7 +270,7 @@ async def test_verify_grounded_answer_marks_unknown_term_as_not_verified():
 
     assert grounded.grounding_status == "partial"
     assert grounded.answer.startswith("href points to the represented resource")
-    assert "not verified" in grounded.answer.lower()
+    assert "## Evidence note" in grounded.answer
     assert "hasinstance" in grounded.answer.lower()
 
 
@@ -378,7 +378,34 @@ async def test_verify_grounded_answer_preserves_supported_draft_with_light_cavea
     assert grounded.grounding_status == "partial"
     assert grounded.answer.startswith("The keyref attribute references a key defined in a map")
     assert "translation workflows" in grounded.answer.lower()
-    assert "verification notes" in grounded.answer.lower()
+    assert "evidence note" in grounded.answer.lower()
+    assert "## Sources" in grounded.answer
+
+
+@pytest.mark.anyio
+async def test_verify_grounded_answer_does_not_complain_about_show_full_example_terms():
+    pack = build_evidence_pack(
+        query="What is keyscope in DITA? Show a full example.",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="DITA keyscope",
+                text="The keyscope attribute creates a named scope for key definitions. The root map defines an implicit unnamed scope.",
+                metadata={"title": "DITA keyscope"},
+            ),
+        ],
+    )
+
+    grounded = await verify_grounded_answer(
+        question="What is keyscope in DITA? Show a full example.",
+        draft_answer="The keyscope attribute creates a named scope for key definitions in a DITA map.",
+        evidence_pack=pack,
+    )
+
+    lowered = grounded.answer.lower()
+    assert "not verified" not in lowered
+    assert "show" not in lowered or "show a full example" not in lowered
     assert "## Sources" in grounded.answer
 
 

@@ -193,6 +193,20 @@ def test_route_prompt_keeps_dita_ot_draft_comment_argument_question_grounded():
     assert chat_service._determine_answer_mode(prompt) == "grounded_dita_answer"
 
 
+def test_route_prompt_routes_html_success_pdf_failure_to_publishing_troubleshooting():
+    prompt = "How do I debug a topic that publishes in HTML but fails in PDF?"
+    route = route_prompt(prompt)
+    policy = decide_execution_policy(route)
+
+    assert route.intent == "native_pdf_guidance"
+    assert route.legacy_answer_mode == "grounded_aem_answer"
+    assert policy.action == "answer_directly"
+    assert chat_service._determine_answer_mode(prompt) == "grounded_aem_answer"
+    tool_names = [name for name, _params in chat_service._grounded_tool_requests("grounded_aem_answer", prompt)]
+    assert "lookup_dita_attribute" not in tool_names
+    assert "generate_native_pdf_config" in tool_names
+
+
 def test_route_prompt_generates_when_construct_example_requests_bundle():
     route = route_prompt("Generate a topichead example bundle")
     policy = decide_execution_policy(route)

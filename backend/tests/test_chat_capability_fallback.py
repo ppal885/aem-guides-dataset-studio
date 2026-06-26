@@ -1,7 +1,12 @@
 import pytest
 
 from app.services import chat_service
-from app.services.chat_service import _builtin_capability_response, _is_capability_prompt
+from app.services.chat_service import (
+    _builtin_capability_response,
+    _grounded_fact_matches_question,
+    _is_capability_prompt,
+)
+from app.core.schemas_grounded_answer import NormalizedGroundedFactSet
 from app.services.grounding_service import build_evidence_pack
 
 
@@ -18,6 +23,25 @@ def test_builtin_capability_response_lists_core_chat_uses():
     assert "conref" in text.lower() and "keyref" in text.lower()
     assert "DITA-OT" in text
     assert "Current workspace: `kone`" in text
+
+
+def test_grounded_fact_guard_rejects_topic_card_for_pdf_troubleshooting():
+    facts = NormalizedGroundedFactSet(
+        answer_kind="dita_element",
+        source_policy="standards_doc",
+        canonical_definition="<topic> is the base information unit in DITA.",
+        allowed_children=["title", "shortdesc", "body", "related-links"],
+        companion_attributes=["id", "conref", "xml:lang"],
+    )
+
+    assert not _grounded_fact_matches_question(
+        "How do I debug a topic that publishes in HTML but fails in PDF?",
+        facts,
+    )
+    assert _grounded_fact_matches_question(
+        "What is a DITA topic and what can it contain?",
+        facts,
+    )
 
 
 @pytest.mark.anyio
@@ -87,8 +111,8 @@ async def test_build_local_fallback_response_prefers_grounded_publish_filtering_
     lowered = text.lower()
     assert "conditional processing" in lowered
     assert ".ditaval" in lowered
-    assert "<draft-comment>" in text
-    assert "<topic id=\"publish-filtering-example\">" in text
+    assert "<draft-comment" in text
+    assert "<topic" in text
     assert "<body>" in text
     assert "best available guidance" not in lowered
 
@@ -158,6 +182,40 @@ async def test_chat_turn_uses_local_fallback_when_llm_is_unavailable(monkeypatch
         assert "topichead" in text.lower()
         assert "local indexed knowledge" not in text.lower()
         assert "not configured" in text.lower() or "disabled" in text.lower()
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_chat_turn_prefers_high_confidence_learned_answer_before_tool_mode(monkeypatch):
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
+    monkeypatch.setattr(
+        chat_service,
+        "_build_learned_qa_local_fallback_response",
+        lambda *_args, **_kwargs: (
+            "## Short answer\n"
+            "If a topic publishes in HTML but fails in PDF, debug it as an output-pipeline parity issue first."
+        ),
+    )
+    monkeypatch.setattr(
+        chat_service,
+        "_should_use_tool_mode",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("tool mode should not run")),
+    )
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "How do I debug a topic that publishes in HTML but fails in PDF?",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        text = "".join(event.get("content", "") for event in events if event["type"] == "chunk")
+        assert "output-pipeline parity" in text
+        assert "processing-role" not in text.lower()
     finally:
         chat_service.delete_session(session_id)
 

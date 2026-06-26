@@ -568,6 +568,7 @@ def get_senior_prompt_seed_items() -> list[dict[str, Any]]:
         ("How do I troubleshoot a DITA-OT preprocess failure?", "dita-ot preprocess", "Start with the first preprocessing error, root map, filters, key resolution, and input file validity."),
         ("How do I troubleshoot DITA-OT duplicate ID warnings?", "dita-ot duplicate id", "Find the duplicate topic or element IDs, then decide whether copy-to or reused source created repeated addresses."),
         ("How do I explain DITA-OT key resolution warnings?", "dita-ot key warnings", "Key warnings usually mean the effective map does not define the key, filtered it out, or defines it in another scope."),
+        ("How do I debug a topic that publishes in HTML but fails in PDF?", "dita output parity html pdf", "Treat it as an output-pipeline parity issue: compare transform type, PDF plugin/template support, formatter limitations, image/font handling, CSS/outputclass rules, and the first PDF-specific log error."),
         ("How do I debug DITA-OT failing only in PDF but not HTML?", "dita-ot pdf only", "Compare transform type, PDF plugin customization, image/font handling, and outputclass/CSS processing."),
         ("How do I debug DITA-OT failing only in HTML but not PDF?", "dita-ot html only", "Check HTML-specific chunking, resource copying, link generation, script/CSS assets, and transform parameters."),
         ("How do I explain DITA-OT args.input versus map context?", "args.input", "The input map controls key resolution, filtering, navigation, and relationship links for the transform."),
@@ -627,6 +628,42 @@ Expected result
 
 ## Common mistake
 Do not treat “upload completed” as proof that the DITA set is ready to publish. Upload confirms repository import; validation and publishing confirm DITA references, map context, filters, and transform behavior."""
+        elif tag == "dita output parity html pdf":
+            final_answer = """## Short answer
+If a topic publishes in HTML but fails in PDF, debug it as an output-pipeline parity issue first, not as a generic DITA attribute problem. HTML and PDF transforms use different processors, plugins, CSS/XSL-FO handling, image/font support, and output preset/template settings.
+
+## Triage order
+1. Confirm the same root map, branch filters, baseline, and input files are used for both HTML and PDF.
+2. Check the first PDF-specific error in the DITA-OT or AEM Guides publish log; ignore later cascade errors until the first one is understood.
+3. Compare the transform type: HTML5 may tolerate markup, links, CSS, images, or media that the PDF formatter cannot render.
+4. Inspect PDF-only dependencies: Native PDF template, PDF CSS, fonts, image formats, SVG/MathML/foreign content, table widths, and `outputclass` selectors.
+5. Create a minimal repro topic and map, then remove sections until PDF output succeeds.
+
+## Minimal repro shape
+```xml
+<map>
+  <title>PDF parity repro</title>
+  <topicref href="topics/problem-topic.dita"/>
+</map>
+```
+
+```xml
+<topic id="problem-topic">
+  <title>Problem topic</title>
+  <body>
+    <p>Keep only the content that reproduces the PDF failure.</p>
+  </body>
+</topic>
+```
+
+## What to compare
+- HTML output path and transtype versus PDF/PDF2/Native PDF output path.
+- PDF preset/template changes made recently.
+- Image paths and formats that render in a browser but not in the PDF formatter.
+- Tables, long code blocks, `outputclass`, `<foreign>`, SVG, MathML, or custom styling.
+
+## Common mistake
+Do not answer this with `@processing-role` unless the actual symptom is that resource-only topics are included or excluded incorrectly. Most HTML-vs-PDF failures are transform, formatter, preset, asset, or styling issues."""
         else:
             final_answer = _troubleshooting_answer(
                 title=direct,

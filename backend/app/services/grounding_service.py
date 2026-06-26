@@ -379,7 +379,7 @@ def _missing_query_terms(question: str, evidence_pack: "EvidencePack") -> list[s
         lowered = token.lower()
         if lowered in _PROMPT_SHAPE_TERMS:
             continue
-        if len(lowered) < 5 and not re.search(r"[-_@0-9]", lowered):
+        if len(lowered) < 5 and lowered not in {"grid"} and not re.search(r"[-_@0-9]", lowered):
             continue
         if lowered in all_text:
             continue
@@ -387,6 +387,52 @@ def _missing_query_terms(question: str, evidence_pack: "EvidencePack") -> list[s
             continue
         missing.append(lowered)
     return missing[:4]
+
+
+def _is_noise_verification_point(point: str) -> bool:
+    text = _normalize_space(point).lower().strip("`'\". ")
+    if not text:
+        return True
+    if text in _PROMPT_SHAPE_TERMS or text in _STOPWORDS:
+        return True
+    if re.fullmatch(r"(show|example|examples|sample|snippet|full|proper|please)(\s+\w+){0,2}", text):
+        return True
+    return False
+
+
+def _evidence_note_for_term(term: str) -> str:
+    cleaned = _normalize_space(term).strip("`'\". ")
+    if not cleaned or _is_noise_verification_point(cleaned):
+        return ""
+    return f"Indexed evidence did not directly cover `{cleaned}`."
+
+
+def _build_evidence_notes(
+    question: str,
+    evidence_pack: "EvidencePack",
+    unsupported: Iterable[str] | None = None,
+    *,
+    limit: int = 3,
+) -> list[str]:
+    notes: list[str] = []
+    for point in unsupported or []:
+        cleaned = _normalize_space(point)
+        if not cleaned or _is_noise_verification_point(cleaned):
+            continue
+        if cleaned.lower().startswith("not verified:"):
+            cleaned = cleaned.split(":", 1)[1].strip()
+        note = cleaned
+        if note not in notes:
+            notes.append(note)
+        if len(notes) >= limit:
+            return notes[:limit]
+    for term in _missing_query_terms(question, evidence_pack):
+        note = _evidence_note_for_term(term)
+        if note and note not in notes:
+            notes.append(note)
+        if len(notes) >= limit:
+            break
+    return notes[:limit]
 
 
 def _top_evidence_points(evidence_pack: "EvidencePack", *, limit: int = 3) -> list[str]:
@@ -1267,21 +1313,17 @@ async def verify_grounded_answer(
                         reason="LLM answer returned directly — evidence was thin but draft was substantive.",
                         thin_evidence_override=False,
                     )
-                verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
-                for term in _missing_query_terms(question, evidence_pack)[:3]:
-                    note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."
-                    if note not in verification_notes:
-                        verification_notes.append(note)
+                verification_notes = _build_evidence_notes(question, evidence_pack, unsupported, limit=3)
                 if not verification_notes:
                     verification_notes.append(
-                        "Not verified: The retrieved evidence is thin or conflicting, so this answer should be treated as tentative."
+                        "Indexed evidence is thin or conflicting, so treat processor-specific details as tentative."
                     )
                 answer_text = _build_thin_evidence_answer(
                     question=question,
                     evidence_pack=evidence_pack,
                     unsupported=unsupported,
                 )
-                answer_text = answer_text.rstrip() + "\n\n## Verification notes\n" + "\n".join(
+                answer_text = answer_text.rstrip() + "\n\n## Evidence note\n" + "\n".join(
                     f"- {note}" for note in verification_notes[:3]
                 )
                 if citation_objects and "## Sources" not in answer_text:
@@ -1368,13 +1410,9 @@ async def verify_grounded_answer(
                 evidence_pack=evidence_pack,
                 unsupported=unsupported,
             )
-        verification_notes = [f"Not verified: {point}" for point in unsupported[:3] if point]
-        for term in _missing_query_terms(question, evidence_pack)[:3]:
-            note = f"Not verified: The term `{term}` was not directly verified in the retrieved evidence."
-            if note not in verification_notes:
-                verification_notes.append(note)
-        if verification_notes and "not verified" not in answer_text.lower():
-            answer_text = answer_text.rstrip() + "\n\n## Verification notes\n" + "\n".join(
+        verification_notes = _build_evidence_notes(question, evidence_pack, unsupported, limit=3)
+        if verification_notes and "## Evidence note" not in answer_text:
+            answer_text = answer_text.rstrip() + "\n\n## Evidence note\n" + "\n".join(
                 f"- {note}" for note in verification_notes
             )
         if citation_objects and "## Sources" not in answer_text:

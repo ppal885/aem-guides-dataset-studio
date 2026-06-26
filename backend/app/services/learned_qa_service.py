@@ -708,7 +708,12 @@ def format_learned_qa_for_prompt(query: str, k: int = 3) -> str:
             f"Tags: {tags}\n"
             f"Score: {row.get('score')}"
         )
-    return "LEARNED PROMPT CORPUS:\n" + "\n\n".join(parts)
+    return (
+        "LEARNED PROMPT CORPUS:\n"
+        "These are approved senior prompt/answer examples. For close matches, prefer their answer shape, "
+        "practical explanation, and XML/example depth over generic source summaries.\n\n"
+        + "\n\n".join(parts)
+    )
 
 
 def capture_learned_candidate_from_chat_feedback(
