@@ -97,6 +97,36 @@ Common mistake
 {mistake}"""
 
 
+def _exact_tag_answer(
+    *,
+    direct: str,
+    scope: str,
+    example: str,
+    expected: list[str],
+    mistake: str,
+    related: str = "",
+) -> str:
+    expected_lines = "\n".join(f"- {item}" for item in expected)
+    related_block = f"\n\n## Related concept\n{related}" if related else ""
+    return f"""## Short answer
+{direct}
+
+## Scope note
+{scope}
+
+## XML example
+```xml
+{example.strip()}
+```
+
+## Expected result
+{expected_lines}
+{related_block}
+
+## Common mistake
+{mistake}"""
+
+
 def get_senior_prompt_seed_items() -> list[dict[str, Any]]:
     """Return approved prompt-answer pairs ordered from easy to difficult."""
 
@@ -803,6 +833,559 @@ Do not answer this with `@processing-role` unless the actual symptom is that res
                     second_check="Confirm whether the problem is authoring markup, repository/file management, publishing transform, or Jira evidence quality.",
                     third_check="Give a minimal reproducible example or diagnostic checklist before recommending broad content changes.",
                     mistake="Do not collapse source authoring, AEM Guides repository behavior, and DITA-OT publishing behavior into one generic explanation.",
+                ),
+            )
+        )
+
+    exact_senior_qa = [
+        _entry(
+            "What is keyscope in DITA? Show an example.",
+            "reuse_and_maps",
+            ["senior", "keyscope", "keyref", "keydef", "map", "dita"],
+            """## Short answer
+`@keyscope` creates a named key-resolution scope in a DITA map. It lets different branches reuse the same key names without collisions, because a key can be resolved inside a specific scope such as `admin.install` or `user.install`.
+
+## Scope note
+`@keyscope` is a map-level/key-resolution concept. It is not a topic-body element and it does not directly create visible output. The visible result comes from how `@keyref`, `@conkeyref`, links, variables, and topicrefs resolve through the effective map.
+
+## Full example
+```xml
+<map>
+  <title>Product guide</title>
+
+  <topicref keyscope="admin">
+    <keydef keys="install" href="admin/installing-admin-tools.dita"/>
+    <topicref href="admin/overview.dita"/>
+  </topicref>
+
+  <topicref keyscope="user">
+    <keydef keys="install" href="user/installing-user-tools.dita"/>
+    <topicref href="user/overview.dita"/>
+  </topicref>
+
+  <topicref href="shared/links.dita"/>
+</map>
+```
+
+Inside `shared/links.dita`:
+
+```xml
+<topic id="links">
+  <title>Installation links</title>
+  <body>
+    <p>Administrator setup: <xref keyref="admin.install"/></p>
+    <p>User setup: <xref keyref="user.install"/></p>
+  </body>
+</topic>
+```
+
+## Expected result
+- `keyref="admin.install"` resolves to `admin/installing-admin-tools.dita`.
+- `keyref="user.install"` resolves to `user/installing-user-tools.dita`.
+- Both branches can define a key named `install` because each branch owns a different key scope.
+
+## Common mistake
+Do not define `@keyscope` and then keep using only unqualified `keyref="install"` from outside the branch. Use the qualified form, such as `admin.install`, when the reference must target a specific scope.""",
+        ),
+        _entry(
+            "How do I exclude draft-only content at publish time?",
+            "publishing",
+            ["senior", "ditaval", "draft-comment", "required-cleanup", "draft filtering", "dita-ot", "publishing"],
+            """## Short answer
+Use DITA conditional processing for author-controlled draft-only content, and use DITA-OT/AEM Guides draft settings for special draft elements such as `<draft-comment>` and `<required-cleanup>`.
+
+## Recommended pattern
+Mark draft-only content with a profiling attribute, then exclude that value with a DITAVAL file at publish time.
+
+```xml
+<topic id="install">
+  <title>Install the product</title>
+  <body>
+    <p audience="internal">Draft-only note for reviewers.</p>
+    <p>Customer-visible installation instruction.</p>
+  </body>
+</topic>
+```
+
+```xml
+<val>
+  <prop att="audience" val="internal" action="exclude"/>
+</val>
+```
+
+## DITA-OT draft elements
+For `<draft-comment>` and `<required-cleanup>`, use the DITA-OT draft parameter when you intentionally want draft content included:
+
+```bash
+dita --input=guide.ditamap --format=pdf --filter=customer.ditaval --args.draft=no
+```
+
+## Expected result
+- Content with `audience="internal"` is removed when the DITAVAL excludes it.
+- Normal customer content remains.
+- Draft-comment/required-cleanup behavior follows the output preset or `args.draft` setting.
+
+## Common mistake
+Do not rely only on `<draft-comment>` for all draft-only content. Use profiling attributes plus DITAVAL when ordinary paragraphs, sections, tables, or steps must be excluded from customer output.""",
+        ),
+        _entry(
+            "What is the difference between simpletable and table in DITA?",
+            "tables",
+            ["senior", "simpletable", "table", "cals", "morerows", "dita"],
+            """## Short answer
+Use `<simpletable>` for lightweight row-and-cell grids. Use `<table>` for CALS tables when you need column specs, captions, spans, row spanning, or more precise publishing control.
+
+## Comparison
+| Area | `<simpletable>` | `<table>` / CALS |
+|---|---|---|
+| Best use | Small lookup tables and simple grids | Complex technical tables |
+| Main row/cell elements | `<strow>`, `<stentry>` | `<tgroup>`, `<row>`, `<entry>` |
+| Column control | Minimal | `colspec`, `namest`, `nameend`, alignment, widths |
+| Row/column spans | Not the right model | Supported through CALS attributes such as `morerows`, `namest`, and `nameend` |
+| Maintenance | Easier for authors | More verbose but more powerful |
+
+## Simpletable example
+```xml
+<simpletable>
+  <sthead>
+    <stentry>Option</stentry>
+    <stentry>Meaning</stentry>
+  </sthead>
+  <strow>
+    <stentry>Basic</stentry>
+    <stentry>Use for small lookup information.</stentry>
+  </strow>
+</simpletable>
+```
+
+## CALS table example
+```xml
+<table>
+  <title>Feature matrix</title>
+  <tgroup cols="2">
+    <colspec colname="c1"/>
+    <colspec colname="c2"/>
+    <tbody>
+      <row>
+        <entry morerows="1">Shared feature</entry>
+        <entry>PDF</entry>
+      </row>
+      <row>
+        <entry>HTML</entry>
+      </row>
+    </tbody>
+  </tgroup>
+</table>
+```
+
+## Common mistake
+Do not use `<simpletable>` if you need `@morerows`. `@morerows` applies to CALS `<entry>` cells, not `<stentry>` cells in `<simpletable>`.""",
+        ),
+        _entry(
+            "When should I use topicgroup instead of topichead?",
+            "reuse_and_maps",
+            ["senior", "topicgroup", "topichead", "topicref", "map", "navigation"],
+            """## Short answer
+Use `<topichead>` when you want a visible navigation heading that does not link to its own topic. Use `<topicgroup>` when you only need to group topicrefs structurally and do not want the group itself to create a visible heading.
+
+## Comparison
+| Choice | Use when | Output behavior |
+|---|---|---|
+| `<topichead>` | You need a TOC/navigation heading such as “Administration” | Usually appears as a heading in navigation but has no `href` topic |
+| `<topicgroup>` | You need an invisible structural wrapper for conditions, metadata, or organization | Groups child topicrefs without adding its own navigation label |
+
+## Example
+```xml
+<map>
+  <title>Guide</title>
+
+  <topichead navtitle="Administration">
+    <topicref href="admin/users.dita"/>
+    <topicref href="admin/roles.dita"/>
+  </topichead>
+
+  <topicgroup audience="internal">
+    <topicref href="internal/release-checklist.dita"/>
+    <topicref href="internal/support-notes.dita"/>
+  </topicgroup>
+</map>
+```
+
+## Expected result
+- “Administration” can appear as a navigation heading.
+- The internal topic group is only a grouping construct; it should not create its own TOC heading.
+
+## Common mistake
+Do not use `<topichead>` just to apply shared metadata or filtering. If no visible navigation heading is intended, `<topicgroup>` is usually the safer map structure.""",
+        ),
+        _entry(
+            "Why is my keyref not resolving in a root map with multiple submaps?",
+            "reuse_and_maps",
+            ["senior", "keyref", "keyscope", "mapref", "keydef", "troubleshooting"],
+            """## Short answer
+Keyref failures in a root map with multiple submaps usually come from effective-map context: the key is not defined in the scope where the reference is resolved, the submap is included with a keyscope, or duplicate key names resolve differently than expected.
+
+## Triage checklist
+1. Confirm the root map actually includes the submap that defines the key.
+2. Check whether the submap or branch has `@keyscope`; if yes, try the qualified key name such as `scope-name.key-name`.
+3. Verify the key definition uses `@keys` on a map construct such as `<keydef>` or `<topicref>`.
+4. Check duplicate key names across branches; first/effective definitions can hide the one you expected.
+5. Publish from the same root map used by AEM Guides or DITA-OT; key resolution changes when the root map changes.
+
+## Minimal map pattern
+```xml
+<map>
+  <title>Root guide</title>
+
+  <mapref href="libraries/shared-keys.ditamap" keyscope="shared"/>
+
+  <topicref href="topics/using-support.dita"/>
+</map>
+```
+
+```xml
+<map>
+  <keydef keys="support" href="../reference/support.dita"/>
+</map>
+```
+
+In `topics/using-support.dita`:
+
+```xml
+<xref keyref="shared.support">Support information</xref>
+```
+
+## Common mistake
+Do not test a topic alone and expect keyrefs to resolve. Keyrefs resolve from the effective map, so always test with the same root map, submaps, scopes, filters, and preset used for publishing.""",
+        ),
+    ]
+    items.extend(exact_senior_qa)
+
+    exact_tag_specs = [
+        (
+            "topicref",
+            "maps",
+            "What is topicref in DITA? Show an example.",
+            "Use `<topicref>` in a map to include a topic, map, or resource in the publication structure.",
+            "`<topicref>` is a map construct. It controls navigation, hierarchy, linking context, keys, and publishing inclusion; it is not topic body content.",
+            """<map>
+  <title>Getting started</title>
+  <topicref href="intro.dita"/>
+  <topicref href="install.dita">
+    <topicref href="configure.dita"/>
+  </topicref>
+</map>""",
+            ["The map publishes `intro.dita`, then `install.dita`, then nested `configure.dita`.", "The nested topicref creates a parent-child navigation relationship."],
+            "Do not use `<topicref>` inside a topic body. Use it in maps; use `<xref>` inside topic content.",
+            "Use `<keydef>` when the referenced resource should define a key without necessarily becoming normal reading-order content.",
+        ),
+        (
+            "keydef",
+            "reuse_and_maps",
+            "What is keydef in DITA? Show an example.",
+            "Use `<keydef>` to define a key in a map, commonly for reusable link targets, variables, or resource-only content.",
+            "`<keydef>` participates in key resolution. It usually behaves like a resource-only topicref rather than a visible chapter in navigation.",
+            """<map>
+  <title>Product guide</title>
+  <keydef keys="product-name">
+    <topicmeta>
+      <keywords>
+        <keyword>Acme Cloud</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <topicref href="overview.dita"/>
+</map>""",
+            ["Authors can reference the key `product-name` from topic content.", "The key definition does not need to appear as a normal navigation topic."],
+            "Do not define keys in a map that is not part of the effective root map; keyrefs resolve from the effective map context.",
+            "For cross-branch key reuse, combine keys with `@keyscope`.",
+        ),
+        (
+            "mapref",
+            "reuse_and_maps",
+            "What is mapref in DITA? Show an example.",
+            "Use `<mapref>` to reference another DITA map from a root map so its topicrefs become part of the effective map.",
+            "`<mapref>` is for map-to-map composition. It is different from linking to a normal topic and can affect keys, hierarchy, filters, and navigation.",
+            """<map>
+  <title>Administrator guide</title>
+  <mapref href="shared/common-topics.ditamap"/>
+  <topicref href="admin/users.dita"/>
+</map>""",
+            ["The referenced submap contributes its topicrefs to the root publication.", "Shared map content can be reused by more than one deliverable."],
+            "Do not use `<mapref>` when you only need a link to another guide; use the appropriate linking/scope pattern instead.",
+            "If the submap owns keys, check whether it needs `@keyscope` to avoid key collisions.",
+        ),
+        (
+            "xref",
+            "dita_authoring",
+            "What is xref in DITA? Show an example.",
+            "Use `<xref>` to create an inline cross-reference from topic content to another topic, element, or external resource.",
+            "`<xref>` belongs in topic content. Its target can be direct through `@href` or indirect through `@keyref`.",
+            """<topic id="install">
+  <title>Install the product</title>
+  <body>
+    <p>Before you begin, read <xref href="requirements.dita">System requirements</xref>.</p>
+    <p>For support, see <xref keyref="support-page">Support</xref>.</p>
+  </body>
+</topic>""",
+            ["The first xref points directly to `requirements.dita`.", "The second xref resolves through the effective map key named `support-page`."],
+            "Do not use file paths for reusable/product-variable links when a map-defined key is the stable contract.",
+            "Use `@scope` and `@format` carefully for external or non-DITA targets.",
+        ),
+        (
+            "image",
+            "dita_authoring",
+            "What is image in DITA? Show an example.",
+            "Use `<image>` to reference an image asset from topic content, usually with useful alternate text.",
+            "`<image>` references an asset; it does not embed the binary file in the DITA source. Publishing depends on the asset path and output pipeline.",
+            """<fig>
+  <title>Repository settings</title>
+  <image href="images/repository-settings.png" placement="break">
+    <alt>Repository settings dialog</alt>
+  </image>
+</fig>""",
+            ["The image is displayed as a block because `placement=\"break\"` is used.", "The figure title labels the image for readers.", "The alternate text supports accessibility."],
+            "Do not assume an image that works locally will work after upload; verify repository path, case, permissions, and output asset handling.",
+            "Use `<fig>` when the image needs a title or surrounding figure context.",
+        ),
+        (
+            "fig",
+            "dita_authoring",
+            "What is fig in DITA? Show an example.",
+            "Use `<fig>` to group a figure title, image, and related explanatory content as one semantic unit.",
+            "`<fig>` is useful when the graphic is important enough to have a title, caption-like context, or cross-reference target.",
+            """<fig id="publish-flow">
+  <title>Publishing flow</title>
+  <image href="images/publishing-flow.svg" placement="break">
+    <alt>Publishing flow from map selection to generated output</alt>
+  </image>
+  <p>The flow shows how a root map and output preset produce generated output.</p>
+</fig>""",
+            ["The title identifies the figure.", "The image and explanation stay grouped.", "Other topics can link to the figure ID if needed."],
+            "Do not wrap every decorative icon in `<fig>`. Use `<fig>` when the figure has reader-facing meaning.",
+            "For PDF issues with SVG or MathML, verify formatter support separately.",
+        ),
+        (
+            "note",
+            "dita_authoring",
+            "What is note in DITA? Show an example.",
+            "Use `<note>` for information that supplements the main flow without becoming a normal paragraph or step.",
+            "`<note>` can use `@type` values such as `important`, `warning`, or `tip`, but the visual label is controlled by the publishing transform.",
+            """<p>Configure the output preset before publishing.</p>
+<note type="important">Changing the preset affects all users who publish with this shared configuration.</note>
+<note type="warning">Do not delete the source map while a publishing job is running.</note>""",
+            ["The important note highlights high-impact guidance.", "The warning note is reserved for a serious negative outcome."],
+            "Do not overuse `type=\"warning\"` for ordinary reminders; warning fatigue makes real warnings less effective.",
+            "Use hazardstatement for formal safety/hazard communication when required by your information model.",
+        ),
+        (
+            "steps",
+            "dita_authoring",
+            "What are steps, step, and cmd in DITA? Show an example.",
+            "Use `<steps>` for an ordered procedure, `<step>` for each action unit, and `<cmd>` for the user action in that step.",
+            "These elements belong inside `<taskbody>` in a DITA task. They are for procedural content, not conceptual explanation.",
+            """<task id="generate_pdf">
+  <title>Generate a PDF</title>
+  <taskbody>
+    <steps>
+      <step><cmd>Open the DITA map.</cmd></step>
+      <step><cmd>Select the Native PDF output preset.</cmd></step>
+      <step><cmd>Select Generate.</cmd></step>
+    </steps>
+  </taskbody>
+</task>""",
+            ["The procedure renders as ordered steps.", "Each command starts with an imperative verb.", "The task stays action-focused."],
+            "Do not put multiple independent actions in one `<cmd>`. Split them into separate steps or add substeps when needed.",
+            "Use `<info>` inside a step for supporting explanation, not for the main action.",
+        ),
+        (
+            "ul",
+            "dita_authoring",
+            "What is ul in DITA? Show an example.",
+            "Use `<ul>` for an unordered list when the items do not need to be performed or read in sequence.",
+            "`<ul>` is topic body content. Each item goes in `<li>`. If order matters, use `<ol>` or task `<steps>` instead.",
+            """<section>
+  <title>Supported outputs</title>
+  <ul>
+    <li>HTML5</li>
+    <li>Native PDF</li>
+    <li>AEM Sites</li>
+  </ul>
+</section>""",
+            ["The items render as a bulleted list.", "The list does not imply sequence or procedure."],
+            "Do not use `<ul>` for a procedure. Use `<steps>` in a task when the reader must perform actions in order.",
+            "Use `<ol>` when sequence matters but the content is not a formal task.",
+        ),
+        (
+            "dl",
+            "dita_authoring",
+            "What is dl in DITA? Show an example.",
+            "Use `<dl>` for term-and-description pairs, such as option definitions, field meanings, or terminology explanations.",
+            "`<dl>` is not a table replacement. Use it when each item has a term and an explanation.",
+            """<dl>
+  <dlentry>
+    <dt>Root map</dt>
+    <dd>The map used as the publication entry point.</dd>
+  </dlentry>
+  <dlentry>
+    <dt>Output preset</dt>
+    <dd>The publishing configuration used to generate output.</dd>
+  </dlentry>
+</dl>""",
+            ["Each `<dt>` provides a term.", "Each `<dd>` provides the matching description."],
+            "Do not use `<dl>` for matrix-style data with multiple columns; use `<simpletable>` or CALS `<table>` instead.",
+            "For parameter reference tables, consider `<properties>` when the structure is property/value oriented.",
+        ),
+        (
+            "choicetable",
+            "dita_authoring",
+            "What is choicetable in DITA? Show an example.",
+            "Use `<choicetable>` in a task when a step offers choices and each choice has a description.",
+            "`<choicetable>` belongs in task step context. It is not a general-purpose comparison table.",
+            """<task id="choose_output">
+  <title>Choose an output type</title>
+  <taskbody>
+    <steps>
+      <step>
+        <cmd>Select an output type.</cmd>
+        <choicetable>
+          <chrow>
+            <choption>HTML5</choption>
+            <chdesc>Use for browser delivery.</chdesc>
+          </chrow>
+          <chrow>
+            <choption>Native PDF</choption>
+            <chdesc>Use for fixed-layout documents.</chdesc>
+          </chrow>
+        </choicetable>
+      </step>
+    </steps>
+  </taskbody>
+</task>""",
+            ["The choices are tied to the step action.", "Each option has a matching description."],
+            "Do not use `<choicetable>` for ordinary reference data outside a task choice; use a table or simpletable instead.",
+            "Use `<choices>` when the choices are short and do not need descriptions.",
+        ),
+        (
+            "properties",
+            "dita_authoring",
+            "What is properties in DITA? Show an example.",
+            "Use `<properties>` for structured property reference information, typically property/type/value/description rows.",
+            "`<properties>` is best for reference material where readers look up configuration or parameter details.",
+            """<properties>
+  <prophead>
+    <proptype>Parameter</proptype>
+    <propvalue>Value</propvalue>
+    <propdesc>Description</propdesc>
+  </prophead>
+  <property>
+    <proptype>args.draft</proptype>
+    <propvalue>yes | no</propvalue>
+    <propdesc>Controls whether draft-comment and required-cleanup content is included.</propdesc>
+  </property>
+</properties>""",
+            ["The reference data is typed as property information.", "Each row has a parameter, value, and description."],
+            "Do not use `<properties>` for arbitrary layout. If the data is not property-oriented, use `<simpletable>` or `<table>`.",
+            "For CALS spans or complex layout, use `<table>` instead.",
+        ),
+        (
+            "reltable",
+            "maps",
+            "What is reltable in DITA? Show an example.",
+            "Use `<reltable>` in a map to define relationships among topics so processors can generate related links.",
+            "`<reltable>` is map-level relationship metadata. It avoids hard-coding every related link inside topic bodies.",
+            """<map>
+  <title>Install guide</title>
+  <topicref href="install.dita"/>
+  <topicref href="troubleshoot.dita"/>
+
+  <reltable>
+    <relrow>
+      <relcell><topicref href="install.dita"/></relcell>
+      <relcell><topicref href="troubleshoot.dita"/></relcell>
+    </relrow>
+  </reltable>
+</map>""",
+            ["The map declares a relationship between install and troubleshooting topics.", "The transform can generate related links from that relationship."],
+            "Do not duplicate the same relationship both inline and in reltables unless your linking strategy explicitly requires it.",
+            "Relationship output depends on transform and linking settings.",
+        ),
+        (
+            "glossentry",
+            "dita_authoring",
+            "What is glossentry in DITA? Show an example.",
+            "Use `<glossentry>` for a controlled glossary term and its definition.",
+            "`<glossentry>` is a specialized topic type. It is useful when terminology needs reuse, linking, or glossary output.",
+            """<glossentry id="baseline">
+  <glossterm>Baseline</glossterm>
+  <glossdef>A named set of specific content versions used for review or publishing.</glossdef>
+</glossentry>""",
+            ["The term is stored in `<glossterm>`.", "The definition is stored in `<glossdef>`.", "The glossary entry can be referenced from maps or term links."],
+            "Do not use a normal paragraph list as a glossary when terms need controlled reuse or linking.",
+            "Glossary output behavior depends on how the glossary topics are included in the map and transform.",
+        ),
+        (
+            "indexterm",
+            "dita_authoring",
+            "What is indexterm in DITA? Show an example.",
+            "Use `<indexterm>` to mark text that should contribute to a generated index when the output transform supports index generation.",
+            "`<indexterm>` is metadata-like authoring markup. Whether readers see an index depends on the PDF/web transform and preset.",
+            """<topic id="publishing">
+  <title>Publishing</title>
+  <prolog>
+    <metadata>
+      <keywords>
+        <indexterm>publishing</indexterm>
+        <indexterm>Native PDF</indexterm>
+      </keywords>
+    </metadata>
+  </prolog>
+  <body>
+    <p>Publishing generates output from a root map and preset.</p>
+  </body>
+</topic>""",
+            ["The topic contributes index terms for publishing and Native PDF.", "The generated index appears only if the output pipeline is configured to produce one."],
+            "Do not assume adding `<indexterm>` guarantees a visible index. Check the output type and index generation settings.",
+            "For search metadata, also consider title, shortdesc, keywords, and product metadata.",
+        ),
+        (
+            "prolog",
+            "dita_authoring",
+            "What is prolog in DITA? Show an example.",
+            "Use `<prolog>` to store topic metadata such as authoring, audience, product, keywords, and index terms.",
+            "`<prolog>` is not reader body content. It supports processing, search, filtering, governance, and metadata workflows.",
+            """<topic id="install">
+  <title>Install the product</title>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword>installation</keyword>
+        <indexterm>installing</indexterm>
+      </keywords>
+    </metadata>
+  </prolog>
+  <body>
+    <p>Install the product from the package.</p>
+  </body>
+</topic>""",
+            ["Metadata is separated from the body.", "Search/indexing/publishing pipelines can use the metadata."],
+            "Do not put visible instructions in `<prolog>`. Put reader-facing content in `<body>`, `<conbody>`, `<taskbody>`, or `<refbody>`.",
+            "Map-level metadata uses map structures such as `<topicmeta>` and `<metadata>`.",
+        ),
+    ]
+    for tag, topic, prompt, direct, scope, example, expected, mistake, related in exact_tag_specs:
+        items.append(
+            _entry(
+                prompt,
+                topic,
+                ["senior", tag, "dita", "xml", "tag"],
+                _exact_tag_answer(
+                    direct=direct,
+                    scope=scope,
+                    example=example,
+                    expected=expected,
+                    mistake=mistake,
+                    related=related,
                 ),
             )
         )

@@ -4248,7 +4248,7 @@ def _grounded_fact_matches_question(question: str, facts: NormalizedGroundedFact
     if not q:
         return True
 
-    if _DITA_TROUBLESHOOTING_QUESTION_PATTERN.search(q) or _NATIVE_PDF_QUERY_PATTERN.search(q):
+    if _PDF_OUTPUT_TROUBLESHOOTING_PATTERN.search(q) or _NATIVE_PDF_QUERY_PATTERN.search(q):
         return facts.answer_kind in {
             "native_pdf_guidance",
             "aem_guides_guidance",
@@ -4267,6 +4267,9 @@ def _grounded_fact_matches_question(question: str, facts: NormalizedGroundedFact
 
     candidate_terms: set[str] = set()
     for match in re.findall(r"<\s*/?\s*([a-z][a-z0-9._-]*)\b", str(facts.canonical_definition or "").lower()):
+        if match and len(match) > 1:
+            candidate_terms.add(match)
+    for match in re.findall(r"@([a-z][a-z0-9_.:-]*)\b", str(facts.canonical_definition or "").lower()):
         if match and len(match) > 1:
             candidate_terms.add(match)
     for value in [
@@ -4465,15 +4468,15 @@ def _question_shape_hint(question: str) -> str:
             "Open with a direct one-sentence definition. "
             "Then cover: scope note, how it works in practice, key attributes or related concepts, an example, and common mistakes."
         )
+    elif re.search(r"\bdebug\b|\btroubleshoot\b|\bdiagnose\b|\bwhy\b|\bwhat.*wrong\b|\bproblem\b|\bfail(ed|ing)?\b|\berror\b|not\s+resolv", q, re.IGNORECASE):
+        hints.append(
+            "Lead with the most likely cause (1-2 sentences). "
+            "Then: how to diagnose, the fix, and how to prevent it next time."
+        )
     elif re.search(r"\bhow\s+do\s+I\b|\bhow\s+to\b|\bhow\s+can\s+I\b", q, re.IGNORECASE):
         hints.append(
             "Use numbered steps. Include a code block (XML or command) if the answer involves markup or CLI. "
             "End with a 'Common mistakes' note if applicable."
-        )
-    elif re.search(r"\bwhy\b|\bwhat.*wrong\b|\bproblem\b|\bfail(ed|ing)?\b|\berror\b", q, re.IGNORECASE):
-        hints.append(
-            "Lead with the most likely cause (1-2 sentences). "
-            "Then: how to diagnose, the fix, and how to prevent it next time."
         )
     elif re.search(r"\blist\b|\ball\s+(the\s+)?(type|value|option|attr|element)\b", q, re.IGNORECASE):
         hints.append(
@@ -4659,12 +4662,17 @@ def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str,
         score = float(top.get("score") or 0.0)
     except (TypeError, ValueError):
         score = 0.0
-    if score < min_score:
+    if score < min_score and not _is_safe_dita_learned_match(query, top, score):
         return ""
 
     answer = str(top.get("final_answer") or "").strip()
     if len(answer) < 120:
         return ""
+    if not answer.lstrip().startswith("#"):
+        first_paragraph, separator, remainder = answer.partition("\n\n")
+        answer = "## Short answer\n" + first_paragraph.strip()
+        if separator and remainder.strip():
+            answer += "\n\n" + remainder.strip()
 
     lines = [answer]
     lowered_answer = answer.lower()
@@ -4683,6 +4691,36 @@ def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str,
     if f"workspace: `{tenant_id}`".lower() not in lowered_answer:
         lines.extend(["", f"Workspace: `{tenant_id}`"])
     return "\n".join(lines).strip()
+
+
+_DITA_LEARNED_MATCH_TERM_RE = re.compile(
+    r"@?(keyscope|keyref|keys|conref|conkeyref|xref|topicref|topichead|topicgroup|"
+    r"mapref|keydef|reltable|glossentry|indexterm|prolog|metadata|shortdesc|"
+    r"simpletable|table|morerows|namest|nameend|processing-role|ditaval|ditavalref|"
+    r"draft-comment|required-cleanup|fig|image|note|steps|step|cmd|choicetable|properties)\b",
+    re.IGNORECASE,
+)
+
+
+def _dita_learned_terms(text: str) -> set[str]:
+    normalized = (text or "").lower().replace("_", "-")
+    return {match.group(1).lower() for match in _DITA_LEARNED_MATCH_TERM_RE.finditer(normalized)}
+
+
+def _is_safe_dita_learned_match(query: str, learned_row: dict[str, Any], score: float) -> bool:
+    if score < 0.72:
+        return False
+    query_terms = _dita_learned_terms(query)
+    if not query_terms:
+        return False
+    learned_text = " ".join(
+        str(learned_row.get(key) or "")
+        for key in ("prompt", "final_answer", "topic")
+    )
+    learned_terms = _dita_learned_terms(learned_text)
+    if not (query_terms & learned_terms):
+        return False
+    return bool(re.search(r"\bdita\b|@|<\w+", f"{query} {learned_text}", re.IGNORECASE))
 
 
 def _format_exposed_chat_error(exc: Exception) -> str:
@@ -4958,6 +4996,9 @@ def _build_compact_chat_system_prompt(
         "1. **XML examples**: Include when the user asks for examples or when a short, spec-aligned snippet "
         "is essential. Never invent element nesting or attributes. Do not force XML into purely UI or "
         "product-navigation questions.\n"
+        "1a. **RAG + expert reasoning**: Treat retrieved context as evidence, not as the answer. "
+        "Use your DITA/AEM/DITA-OT expertise to classify intent, reject irrelevant chunks, connect concepts, "
+        "and explain practical consequences. If the context is off-topic, say so briefly and answer from senior expertise with caution.\n"
         "2. **Common mistakes**: If evidence lists common mistakes, add a concise **Common mistakes** subsection "
         "with incorrect vs correct patterns (prose or XML as fits).\n"
         "3. **Be specific**: Name parents, children, and attributes that matter. Do not say "

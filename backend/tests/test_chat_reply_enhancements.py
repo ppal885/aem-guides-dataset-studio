@@ -99,6 +99,50 @@ def test_senior_seed_has_html_success_pdf_failure_answer():
     assert "unless the actual symptom" in answer
 
 
+def test_senior_seed_has_exact_high_value_dita_answers():
+    items = get_senior_prompt_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    keyscope = by_prompt["What is keyscope in DITA? Show an example."]
+    assert "keyref=\"admin.install\"" in keyscope
+    assert "keyref=\"user.install\"" in keyscope
+    assert "qualified form" in keyscope
+
+    draft = by_prompt["How do I exclude draft-only content at publish time?"]
+    assert "DITAVAL" in draft
+    assert "audience=\"internal\"" in draft
+    assert "--args.draft=no" in draft
+
+    tables = by_prompt["What is the difference between simpletable and table in DITA?"]
+    assert "`<simpletable>`" in tables
+    assert "`@morerows` applies to CALS `<entry>` cells" in tables
+
+
+def test_senior_seed_has_exact_common_dita_tag_answers():
+    items = get_senior_prompt_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    topicref = by_prompt["What is topicref in DITA? Show an example."]
+    assert "<topicref href=\"intro.dita\"/>" in topicref
+    assert "map construct" in topicref
+
+    xref = by_prompt["What is xref in DITA? Show an example."]
+    assert "<xref href=\"requirements.dita\"" in xref
+    assert "keyref=\"support-page\"" in xref
+
+    steps = by_prompt["What are steps, step, and cmd in DITA? Show an example."]
+    assert "<steps>" in steps
+    assert "<cmd>Open the DITA map.</cmd>" in steps
+
+    reltable = by_prompt["What is reltable in DITA? Show an example."]
+    assert "<reltable>" in reltable
+    assert "map-level relationship metadata" in reltable
+
+    prolog = by_prompt["What is prolog in DITA? Show an example."]
+    assert "<prolog>" in prolog
+    assert "not reader body content" in prolog
+
+
 def test_fetch_last_messages_returns_latest_not_oldest():
     session_id = chat_service.create_session()
     db = SessionLocal()

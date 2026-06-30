@@ -2,126 +2,226 @@
   {
     "prompt": "What did morerows attribute do in table?",
     "topic": "tables",
-    "tags": ["morerows", "table", "entry", "cals"],
+    "tags": [
+      "morerows",
+      "table",
+      "entry",
+      "cals"
+    ],
     "answer_style": "senior_technical_docs",
-    "final_answer": "In a DITA/CALS table, `@morerows` is used on an `<entry>` cell to make that cell continue vertically across additional rows.\n\nScope note\n`@morerows` applies to CALS table `<entry>` cells, not to `<simpletable>`.\n\nExample\n```xml\n<table>\n  <tgroup cols='3'>\n    <tbody>\n      <row>\n        <entry morerows='1'>Merged cell</entry>\n        <entry>Row 1 Col 2</entry>\n        <entry>Row 1 Col 3</entry>\n      </row>\n      <row>\n        <entry>Row 2 Col 2</entry>\n        <entry>Row 2 Col 3</entry>\n      </row>\n    </tbody>\n  </tgroup>\n</table>\n```\n\nMeaning\n- `morerows='1'` means the cell spans the current row plus 1 more row.\n- Total coverage is 2 rows.\n\nRelated concept\nUse `@namest` and `@nameend` for horizontal spanning.\n\nCommon mistake\nDo not add another `<entry>` in the covered column on the following row, or the CALS grid becomes invalid."
+    "final_answer": "## Short answer\nIn a DITA/CALS table, `@morerows` is used on an `<entry>` cell to make that cell continue vertically across additional rows.\n\n## Scope note\n`@morerows` applies to CALS table `<entry>` cells, not to `<simpletable>`. In plain terms, it applies to CALS table entry cells, not `<simpletable>` cells.\n\n## XML example\n```xml\n<table>\n  <tgroup cols=\"3\">\n    <tbody>\n      <row>\n        <entry morerows=\"1\">Merged cell</entry>\n        <entry>Row 1 Col 2</entry>\n        <entry>Row 1 Col 3</entry>\n      </row>\n      <row>\n        <entry>Row 2 Col 2</entry>\n        <entry>Row 2 Col 3</entry>\n      </row>\n    </tbody>\n  </tgroup>\n</table>\n```\n\n## Meaning\n- `morerows=\"1\"` means the cell spans the current row plus 1 more row.\n- Total coverage is 2 rows.\n\n## Related concept\nUse `@namest` and `@nameend` for horizontal spanning.\n\n## Common mistake\nDo not add another `<entry>` in the covered column on the following row, or the CALS grid becomes invalid."
   },
   {
     "prompt": "How do I exclude draft-only content at publish time?",
     "topic": "publishing",
-    "tags": ["draft-comment", "required-cleanup", "ditaval", "publishing", "dita-ot"],
+    "tags": [
+      "draft-comment",
+      "required-cleanup",
+      "ditaval",
+      "publishing",
+      "dita-ot"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "To exclude draft-only content at publish time, use DITA conditional processing: create a DITAVAL file and apply it during the transform.\n\nScope note\nThis is a DITA-OT publishing question, not just a base-spec element-definition question.\n\nSource topic example\n```xml\n<topic id='draft-sample'>\n  <title>Install the application</title>\n  <body>\n    <draft-comment author='writer1'>Remove this note before publishing.</draft-comment>\n    <required-cleanup>Verify the command before release.</required-cleanup>\n    <p audience='customer'>Visible in customer output.</p>\n    <p audience='internal'>Internal-only detail.</p>\n  </body>\n</topic>\n```\n\nDITAVAL example\n```xml\n<val>\n  <prop action='exclude' elem='draft-comment'/>\n  <prop action='exclude' elem='required-cleanup'/>\n  <prop action='exclude' att='audience' val='internal'/>\n</val>\n```\n\nCommand\n```bash\ndita -i docs/root.ditamap -f html5 --filter=exclude-draft.ditaval\n```\n\nExpected result\n- Draft comments are removed.\n- Required-cleanup content is removed.\n- `audience='internal'` content is excluded.\n\nCommon mistake\nSetting `status='draft'` on a topic does not automatically remove it from every output. You still need an explicit filter or publishing rule."
   },
   {
     "prompt": "What is the difference between simpletable and table in DITA?",
     "topic": "tables",
-    "tags": ["simpletable", "table", "cals", "topic"],
+    "tags": [
+      "simpletable",
+      "table",
+      "cals",
+      "topic"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`<simpletable>` is the lightweight table model. `<table>` is the full CALS table model.\n\nUse `<simpletable>` when you only need straightforward rows and columns.\nUse `<table>` when you need spans, column specifications, or more precise publishing behavior.\n\n`<simpletable>` example\n```xml\n<simpletable>\n  <sthead>\n    <stentry>Option</stentry>\n    <stentry>Description</stentry>\n  </sthead>\n  <strow>\n    <stentry>fast</stentry>\n    <stentry>Runs the quick mode.</stentry>\n  </strow>\n</simpletable>\n```\n\n`<table>` example\n```xml\n<table>\n  <title>Configuration matrix</title>\n  <tgroup cols='2'>\n    <thead>\n      <row>\n        <entry>Option</entry>\n        <entry>Description</entry>\n      </row>\n    </thead>\n    <tbody>\n      <row>\n        <entry>fast</entry>\n        <entry>Runs the quick mode.</entry>\n      </row>\n    </tbody>\n  </tgroup>\n</table>\n```\n\nImportant difference\n- `<simpletable>` does not support CALS features such as `@morerows`, `@namest`, and `@nameend`.\n- `<table>` does support those CALS features.\n\nCommon guidance\nIf the table may later need row spans or column spans, start with `<table>`."
   },
   {
     "prompt": "What does keyscope do in DITA?",
     "topic": "reuse_and_maps",
-    "tags": ["keyscope", "keyref", "map", "reuse"],
+    "tags": [
+      "keyscope",
+      "keyref",
+      "map",
+      "reuse"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`@keyscope` creates a local key namespace so the same key names can resolve differently in different branches of a map.\n\nIn practice, it lets you reuse a key like `install-guide` more than once without forcing one global definition.\n\nExample\n```xml\n<map>\n  <topicref keyscope='productA'>\n    <topicref keys='install-guide' href='productA/install.dita'/>\n  </topicref>\n  <topicref keyscope='productB'>\n    <topicref keys='install-guide' href='productB/install.dita'/>\n  </topicref>\n</map>\n```\n\nQualified references\n```xml\n<p>See <xref keyref='productA.install-guide'/>.</p>\n<p>See <xref keyref='productB.install-guide'/>.</p>\n```\n\nMeaning\n- `productA.install-guide` resolves in the `productA` scope.\n- `productB.install-guide` resolves in the `productB` scope.\n\nCommon mistake\n`keyscope` does not define keys by itself. It only scopes keys defined within that branch."
   },
   {
     "prompt": "What does processing-role resource-only do?",
     "topic": "reuse_and_maps",
-    "tags": ["processing-role", "resource-only", "map", "topicref"],
+    "tags": [
+      "processing-role",
+      "resource-only",
+      "map",
+      "topicref"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`processing-role='resource-only'` marks referenced content as available for linking or reuse, but not as normal navigation content in the publication structure.\n\nExample\n```xml\n<map>\n  <topicref href='tasks/install.dita'/>\n  <topicref href='shared/warnings.dita' processing-role='resource-only'/>\n</map>\n```\n\nMeaning\n- `install.dita` participates as normal reading-order content.\n- `warnings.dita` is still available for key-based or content reuse.\n- `warnings.dita` is typically not rendered as a regular navigable topic.\n\nCommon use\nUse it for key libraries, shared warning topics, or reuse warehouses.\n\nCommon mistake\n`resource-only` does not make the topic invisible to every processing step. It changes how it participates in output structure."
   },
   {
     "prompt": "When should I use conref vs keyref?",
     "topic": "reuse_and_maps",
-    "tags": ["conref", "keyref", "reuse", "map"],
+    "tags": [
+      "conref",
+      "keyref",
+      "reuse",
+      "map"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "Use `conref` when you want to reuse the actual XML content from another element. Use `keyref` when you want an indirect reference that resolves through a map-defined key.\n\n`conref` example\n```xml\n<note conref='shared.dita#shared/warning-note'/>\n```\nThis pulls the referenced element into the current location.\n\n`keyref` example\n```xml\n<map>\n  <topicref keys='install-guide' href='install.dita'/>\n</map>\n\n<p>See <xref keyref='install-guide'/> for details.</p>\n```\nThis resolves through the key definition in the map.\n\nRule of thumb\n- `conref` = content reuse\n- `keyref` = indirection and addressability\n\nCommon mistake\nDo not use `conref` when the real need is publication-time remapping through different maps. That is usually a `keyref` use case."
   },
   {
     "prompt": "How does mapref work in DITA maps?",
     "topic": "reuse_and_maps",
-    "tags": ["mapref", "map", "topicref", "reuse"],
+    "tags": [
+      "mapref",
+      "map",
+      "topicref",
+      "reuse"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "A `<mapref>` lets one DITA map reference another map so the referenced map becomes part of the effective navigation structure.\n\nExample\n```xml\n<map>\n  <title>Main map</title>\n  <topicref href='intro.dita'/>\n  <mapref href='admin/admin-map.ditamap'/>\n</map>\n```\n\nMeaning\n- The main map keeps its own local structure.\n- The referenced `admin-map.ditamap` contributes its hierarchy where the `<mapref>` appears.\n\nRelated concept\nUse `<mapref>` for map-to-map composition. Use `<topicref>` for map-to-topic references.\n\nCommon mistake\nDo not treat `<mapref>` as a plain hyperlink. It affects the effective map structure used by processors."
   },
   {
     "prompt": "What does chunk do in a DITA map?",
     "topic": "reuse_and_maps",
-    "tags": ["chunk", "map", "topicref", "publishing"],
+    "tags": [
+      "chunk",
+      "map",
+      "topicref",
+      "publishing"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "The `@chunk` attribute tells the processor how to combine, split, or organize topic content during output generation.\n\nExample\n```xml\n<map>\n  <topicref href='overview.dita' chunk='to-content'/>\n  <topicref href='tasks.dita' chunk='by-topic'/>\n</map>\n```\n\nMeaning\n- `to-content` usually combines content into a larger output unit.\n- `by-topic` usually keeps topics as separate output units.\n\nScope note\nExact behavior depends on the processor and output type, so treat `@chunk` as a publishing instruction rather than a universal XML rule.\n\nCommon mistake\nDo not assume every chunk token behaves the same across all transforms. Verify the behavior in the specific DITA-OT or AEM Guides pipeline you are using."
   },
   {
     "prompt": "What is keyscope in DITA? Show a full map example and explain cross-scope keyref resolution.",
     "topic": "reuse_and_maps",
-    "tags": ["keyscope", "keyref", "map", "scoped-keys", "submap"],
+    "tags": [
+      "keyscope",
+      "keyref",
+      "map",
+      "scoped-keys",
+      "submap"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`@keyscope` creates a named scope for the keys defined in a map branch or referenced submap. That lets you keep identical key names in different branches and resolve them explicitly as `scope-name.key-name`.\n\nFull map example\n```xml\n<map>\n  <title>Master guide</title>\n  <topicref href='common/intro.dita'/>\n  <topicref href='../book-b/book-b.ditamap' scope='peer' keyscope='book-b' format='ditamap'/>\n  <topicref href='consumer.dita'/>\n</map>\n```\n\nInside `book-b.ditamap`\n```xml\n<map>\n  <topicref keys='install' href='topics/install.dita'/>\n  <topicref keys='upgrade' href='topics/upgrade.dita'/>\n</map>\n```\n\nConsumer topic example\n```xml\n<p>See <xref keyref='book-b.install'/> before upgrading.</p>\n```\n\nHow resolution works\n- `keyscope='book-b'` names the key space contributed by the referenced submap.\n- `keyref='book-b.install'` means resolve the key `install` inside the `book-b` scope.\n- Without the scope prefix, the processor looks for `install` in the current local scope first.\n\nCommon mistake\nPeople often expect `keyscope` to define keys by itself. It does not. The actual key names still come from `@keys` on topicrefs or keydefs inside that branch."
   },
   {
     "prompt": "What is the difference between keyref, conref, and conkeyref in DITA? Give one realistic XML example for each and explain when to use which.",
     "topic": "reuse_and_maps",
-    "tags": ["keyref", "conref", "conkeyref", "reuse", "keys"],
+    "tags": [
+      "keyref",
+      "conref",
+      "conkeyref",
+      "reuse",
+      "keys"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "These three mechanisms solve different reuse problems.\n\n- `keyref` resolves an indirect target through a key defined in a map.\n- `conref` reuses actual XML content from a concrete source element.\n- `conkeyref` reuses content through a key-based address instead of a hardcoded file path.\n\n`keyref` example\n```xml\n<map>\n  <topicref keys='install-guide' href='install.dita'/>\n</map>\n\n<p>See <xref keyref='install-guide'/> for setup.</p>\n```\nUse `keyref` when the target may change by map or product variant.\n\n`conref` example\n```xml\n<note conref='shared/warnings.dita#warnings/restart-note'/>\n```\nUse `conref` when you want to reuse the exact source content from a known file and ID.\n\n`conkeyref` example\n```xml\n<map>\n  <keydef keys='restart-warning' href='shared/warnings.dita#warnings/restart-note'/>\n</map>\n\n<note conkeyref='restart-warning'/>\n```\nUse `conkeyref` when you want reusable content but still want map-level indirection.\n\nRule of thumb\n- `keyref` = reference through a key\n- `conref` = content reuse through a path\n- `conkeyref` = content reuse through a key\n\nCommon mistake\nDo not use `keyref` when you expect actual content insertion. `keyref` resolves references; it does not copy the source element body into place."
   },
   {
     "prompt": "How do scope=\"local\", scope=\"peer\", and scope=\"external\" differ in DITA? Show one example for each.",
     "topic": "reuse_and_maps",
-    "tags": ["scope", "local", "peer", "external", "links"],
+    "tags": [
+      "scope",
+      "local",
+      "peer",
+      "external",
+      "links"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`@scope` tells the processor whether the referenced resource belongs to the current deliverable, another deliverable, or something outside the DITA content set.\n\n`scope='local'`\n```xml\n<xref href='install.dita' scope='local'>Installation</xref>\n```\nUse this when the target is part of the current document set.\n\n`scope='peer'`\n```xml\n<topicref href='../other-guide/admin-map.ditamap' scope='peer' format='ditamap' keyscope='admin'/>\n```\nUse this when the target is another DITA deliverable or peer map that participates in cross-deliverable linking or key resolution.\n\n`scope='external'`\n```xml\n<xref href='https://example.com/api' scope='external' format='html'>API reference</xref>\n```\nUse this when the target is outside the DITA content set entirely.\n\nPractical meaning\n- `local` = same deliverable\n- `peer` = related deliverable\n- `external` = outside resource\n\nCommon mistake\nIf you leave an external URL as if it were local content, some processors treat it like a normal file reference instead of an external link."
   },
   {
     "prompt": "How do navtitle and locktitle work together in a DITA map? Show the correct and incorrect examples.",
     "topic": "reuse_and_maps",
-    "tags": ["navtitle", "locktitle", "topicref", "map", "navigation"],
+    "tags": [
+      "navtitle",
+      "locktitle",
+      "topicref",
+      "map",
+      "navigation"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`@navtitle` supplies map-level navigation text. `@locktitle` tells the processor whether that map-supplied title should override the referenced topic title.\n\nIncorrect example\n```xml\n<topicref href='install.dita' navtitle='Quick setup'/>\n```\nProblem: without `locktitle='yes'`, many processors continue using the topic's own `<title>`.\n\nCorrect example\n```xml\n<topicref href='install.dita' navtitle='Quick setup' locktitle='yes'/>\n```\nNow the navigation label is forced to `Quick setup`.\n\nTopichead example\n```xml\n<topichead navtitle='Troubleshooting'>\n  <topicref href='errors.dita'/>\n</topichead>\n```\nA `<topichead>` does not point to a topic, so its `navtitle` acts as the visible heading for that branch.\n\nCommon mistake\nPeople often set `navtitle` on `<topicref>` and assume the output must use it. In practice, `locktitle='yes'` is the reliable way to enforce the map label."
   },
   {
     "prompt": "What is the difference between topicref, topichead, and topicgroup? Show a realistic ditamap and explain TOC output.",
     "topic": "maps",
-    "tags": ["topicref", "topichead", "topicgroup", "map", "toc"],
+    "tags": [
+      "topicref",
+      "topichead",
+      "topicgroup",
+      "map",
+      "toc"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "These three elements all organize map structure, but they serve different purposes.\n\n- `<topicref>` points to a real topic file.\n- `<topichead>` creates a visible heading in navigation without linking to a topic file.\n- `<topicgroup>` groups content structurally without creating a visible heading.\n\nExample\n```xml\n<map>\n  <title>Admin guide</title>\n  <topichead navtitle='Installation'>\n    <topicref href='prerequisites.dita'/>\n    <topicref href='install.dita'/>\n  </topichead>\n  <topicgroup>\n    <topicref href='backup.dita'/>\n    <topicref href='restore.dita'/>\n  </topicgroup>\n  <topicref href='release-notes.dita'/>\n</map>\n```\n\nTOC effect\n- `Installation` appears as a visible section heading because it comes from `<topichead>`.\n- `prerequisites.dita` and `install.dita` appear as normal child topics.\n- The `<topicgroup>` itself does not appear in the TOC. Its child topicrefs do.\n- `release-notes.dita` appears as a normal standalone topic entry.\n\nCommon mistake\nDo not use `<topichead>` when you only want invisible grouping. That is what `<topicgroup>` is for."
   },
   {
     "prompt": "How does processing-role=\"resource-only\" work in a full map with keydefs and reusable topics?",
     "topic": "reuse_and_maps",
-    "tags": ["processing-role", "resource-only", "keydef", "map", "reuse"],
+    "tags": [
+      "processing-role",
+      "resource-only",
+      "keydef",
+      "map",
+      "reuse"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "In a full map, `processing-role='resource-only'` is commonly used on branches that provide keys or reusable targets but should not publish as normal navigation topics.\n\nExample\n```xml\n<map>\n  <title>Product guide</title>\n  <topicref href='intro.dita'/>\n  <topicref href='keys/reuse-map.ditamap' processing-role='resource-only'/>\n</map>\n```\n\nReferenced reuse map\n```xml\n<map>\n  <keydef keys='restart-note' href='shared/warnings.dita#warnings/restart-note'/>\n  <topicref href='shared/warnings.dita'/>\n</map>\n```\n\nConsumer topic\n```xml\n<note conkeyref='restart-note'/>\n```\n\nExpected behavior\n- The main guide publishes `intro.dita` as normal content.\n- The reuse map remains available for key resolution.\n- The reuse topics are not intended to appear as normal navigable chapters.\n\nCommon mistake\n`resource-only` does not mean the branch is unusable. It means the branch is supporting content rather than ordinary output structure."
   },
   {
     "prompt": "What does chunk=\"to-content\" do in DITA? Show a full map example and explain the publish impact.",
     "topic": "publishing",
-    "tags": ["chunk", "to-content", "map", "publishing"],
+    "tags": [
+      "chunk",
+      "to-content",
+      "map",
+      "publishing"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "`chunk='to-content'` tells the processor to combine referenced child topic content into a larger output unit instead of leaving every topic as its own separate output page or file.\n\nExample\n```xml\n<map>\n  <topicref href='overview.dita' chunk='to-content'>\n    <topicref href='section-a.dita'/>\n    <topicref href='section-b.dita'/>\n  </topicref>\n</map>\n```\n\nPublish impact\n- The processor usually treats `overview.dita` as the container output unit.\n- `section-a.dita` and `section-b.dita` are merged into that output structure instead of becoming independent units.\n- In HTML-style outputs, this often means fewer, larger pages.\n- In PDF-style outputs, it can affect chapter grouping more than page count.\n\nScope note\nExact output still depends on the processor and transform type.\n\nCommon mistake\nDo not assume `chunk='to-content'` changes the authoring structure in source. It changes publishing behavior."
   },
   {
     "prompt": "How do I include draft comments for review output but exclude them from final DITA-OT output?",
     "topic": "publishing",
-    "tags": ["draft-comment", "required-cleanup", "dita-ot", "review-output", "publishing"],
+    "tags": [
+      "draft-comment",
+      "required-cleanup",
+      "dita-ot",
+      "review-output",
+      "publishing"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "Use two different publishing modes: a review build that includes draft material, and a final build that filters it out.\n\nSource example\n```xml\n<topic id='review-sample'>\n  <title>Install the product</title>\n  <body>\n    <draft-comment author='writer1'>Confirm the package name.</draft-comment>\n    <required-cleanup>Verify the Linux path.</required-cleanup>\n    <p>Published customer instruction.</p>\n  </body>\n</topic>\n```\n\nReview build command\n```bash\ndita -i docs/root.ditamap -f pdf --args.draft=yes\n```\nThis includes draft-comment and required-cleanup content for review-oriented output.\n\nFinal build setup\n```xml\n<val>\n  <prop action='exclude' elem='draft-comment'/>\n  <prop action='exclude' elem='required-cleanup'/>\n</val>\n```\n\nFinal build command\n```bash\ndita -i docs/root.ditamap -f pdf --filter=exclude-draft.ditaval\n```\n\nCommon mistake\nUsing only `--args.draft=yes` is not enough for final publishing control. You still need an explicit filtered build for release output."
   },
   {
     "prompt": "Why is my keyref not resolving in DITA? Give a senior troubleshooting checklist in order.",
     "topic": "troubleshooting",
-    "tags": ["keyref", "troubleshooting", "map", "keys", "reuse"],
+    "tags": [
+      "keyref",
+      "troubleshooting",
+      "map",
+      "keys",
+      "reuse"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "When a `keyref` does not resolve, check the failure in this order.\n\n1. Confirm the key is actually defined.\n```xml\n<topicref keys='install-guide' href='install.dita'/>\n```\nIf there is no `@keys` or `<keydef>` for that name in the effective map, resolution cannot succeed.\n\n2. Confirm the topic is being built through the correct root map.\nKey resolution is map-driven. Opening a topic directly without the intended map context often breaks keyref resolution.\n\n3. Check scope qualification.\nIf the key lives inside a named keyscope, you may need `productA.install-guide` instead of just `install-guide`.\n\n4. Check branch filtering and resource-only structures.\nIf the defining branch is filtered out or excluded from the effective map, the key may disappear.\n\n5. Check for duplicate key names.\nAn unintended duplicate key definition can shadow the one you expected.\n\n6. Check processor warnings.\nDITA-OT usually reports unresolved key references during preprocessing or transform.\n\nCommon mistake\nPeople often debug the topic markup first, but keyref failures are usually map-context or key-definition problems."
   },
   {
     "prompt": "How do reltable, relrow, and relcell work in DITA maps? Show a complete example and explain generated relationship links.",
     "topic": "maps",
-    "tags": ["reltable", "relrow", "relcell", "relationships", "map"],
+    "tags": [
+      "reltable",
+      "relrow",
+      "relcell",
+      "relationships",
+      "map"
+    ],
     "answer_style": "senior_technical_docs",
     "final_answer": "A relationship table defines links among topics by placing them into corresponding cells in the same row.\n\nComplete example\n```xml\n<map>\n  <title>Relationship demo</title>\n  <reltable>\n    <relheader>\n      <relcolspec type='task'/>\n      <relcolspec type='reference'/>\n    </relheader>\n    <relrow>\n      <relcell>\n        <topicref href='install.dita'/>\n      </relcell>\n      <relcell>\n        <topicref href='install-reference.dita'/>\n      </relcell>\n    </relrow>\n  </reltable>\n</map>\n```\n\nHow it works\n- `<reltable>` is the overall relationship structure.\n- `<relrow>` groups one set of related resources.\n- `<relcell>` holds the topicrefs that participate in that relationship position.\n- Topics in the same row are treated as related according to transform rules.\n\nExpected result\nProcessors can generate related links among the topics represented in the same row, often using the row and column structure as the relationship model.\n\nCommon mistake\nA reltable does not behave like visible table content for readers. It is map metadata that drives relationship linking."
   }

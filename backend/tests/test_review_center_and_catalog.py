@@ -8,7 +8,12 @@ from uuid import uuid4
 from app.db.chat_models import ChatMessage, ChatSession
 from app.db.learned_prompt_models import LearnedPromptEntry
 from app.db.session import SessionLocal
-from app.services.learned_qa_service import _read_seed_items, sync_learned_qa_corpus
+from app.services.learned_qa_service import (
+    _read_seed_items,
+    retrieve_learned_qa,
+    seed_learned_qa,
+    sync_learned_qa_corpus,
+)
 from app.services.source_review_state_service import load_source_state
 from app.services.vector_store_service import CHROMA_COLLECTION_LEARNED_QA
 
@@ -255,3 +260,53 @@ def test_sync_learned_qa_corpus_skips_reindex_when_seed_is_unchanged(monkeypatch
     state = load_source_state(CHROMA_COLLECTION_LEARNED_QA)
     assert state.last_stats["seed_hash"]
     assert int(state.last_stats["seed_item_count"]) == 1
+
+
+def test_seeded_learned_qa_keeps_similar_tag_prompts_separate(monkeypatch, tmp_path):
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_path.write_text(
+        json.dumps(
+            [
+                {
+                    "prompt": "What is topicref in DITA? Show an example.",
+                    "final_answer": "## Short answer\nUse `<topicref>` in a map.\n\n```xml\n<topicref href=\"intro.dita\"/>\n```",
+                    "tags": ["topicref", "dita"],
+                    "topic": "maps",
+                    "answer_style": "senior_technical_docs",
+                },
+                {
+                    "prompt": "What is prolog in DITA? Show an example.",
+                    "final_answer": "## Short answer\nUse `<prolog>` for metadata.\n\n```xml\n<prolog><metadata/></prolog>\n```",
+                    "tags": ["prolog", "dita"],
+                    "topic": "dita_authoring",
+                    "answer_style": "senior_technical_docs",
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+
+    db = SessionLocal()
+    try:
+        result = seed_learned_qa(db)
+        prompts = {
+            row.prompt
+            for row in db.query(LearnedPromptEntry)
+            .filter(LearnedPromptEntry.status == "approved")
+            .all()
+        }
+    finally:
+        db.close()
+
+    assert result["total"] == 2
+    assert {
+        "What is topicref in DITA? Show an example.",
+        "What is prolog in DITA? Show an example.",
+    }.issubset(prompts)
+
+    topicref = retrieve_learned_qa("What is topicref in DITA? Show an example.", k=1)
+    assert topicref[0]["prompt"] == "What is topicref in DITA? Show an example."
+    assert "<topicref" in topicref[0]["final_answer"]

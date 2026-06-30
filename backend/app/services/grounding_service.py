@@ -133,6 +133,15 @@ _DITA_OT_RUNTIME_RE = re.compile(
     r"args\.\w+|ant\s+prop|dita\s+install)\b",
     re.IGNORECASE,
 )
+_DITA_EXPERT_TERM_RE = re.compile(
+    r"</?\s*([A-Za-z][A-Za-z0-9_.:-]*)\b|"
+    r"@([A-Za-z_:][A-Za-z0-9_.:-]*)\b|"
+    r"\b(topicref|topichead|topicgroup|mapref|keydef|keyref|conref|conkeyref|xref|reltable|"
+    r"glossentry|indexterm|prolog|metadata|shortdesc|section|fig|image|note|steps|step|cmd|"
+    r"choicetable|properties|simpletable|table|morerows|keyscope|processing-role|ditaval|ditavalref|"
+    r"draft-comment|required-cleanup|subjectscheme|subject\s+scheme)\b",
+    re.IGNORECASE,
+)
 
 
 def _looks_like_publish_filtering_question(text: str) -> bool:
@@ -349,6 +358,23 @@ def _term_overlap_ratio(query: str, text: str) -> float:
     lowered_text = (text or "").lower()
     matched = sum(1 for token in query_terms if token.lower() in lowered_text)
     return matched / max(1, len(query_terms))
+
+
+def _important_dita_query_terms(query: str) -> set[str]:
+    terms: set[str] = set()
+    for match in _DITA_EXPERT_TERM_RE.findall(query or ""):
+        for value in match:
+            normalized = str(value or "").strip().lower().strip("<>@")
+            if normalized:
+                terms.add(normalized)
+    return terms
+
+
+def _evidence_mentions_any_term(terms: set[str], chunk: "EvidenceChunk") -> bool:
+    if not terms:
+        return True
+    haystack = f"{chunk.title}\n{chunk.section}\n{chunk.content}\n{json.dumps(chunk.metadata, ensure_ascii=False)}".lower()
+    return any(re.search(rf"(?<![\w.-]){re.escape(term)}(?![\w.-])", haystack) for term in terms)
 
 
 def _phrase_bonus(query: str, text: str) -> float:
@@ -689,13 +715,32 @@ def build_evidence_pack(
         )
     )
     deduped = _dedupe_chunks(normalized)[:max_chunks]
+    important_terms = _important_dita_query_terms(query_text) if _looks_like_dita_structure_question(query_text) else set()
+    if important_terms:
+        term_matched = [chunk for chunk in deduped if _evidence_mentions_any_term(important_terms, chunk)]
+        # If the query names a concrete DITA construct, do not let authoritative but unrelated
+        # chunks dominate the answer. Keep relevant chunks first; if none mention the construct,
+        # the decision becomes abstain below.
+        if term_matched:
+            remaining = [chunk for chunk in deduped if chunk not in term_matched]
+            deduped = [*term_matched, *remaining][:max_chunks]
     has_conflict, conflict_reason = _detect_conflicts(query_text, deduped)
     avg_score = (
         sum(chunk.rerank_score for chunk in deduped[:3]) / max(1, min(3, len(deduped)))
         if deduped
         else 0.0
     )
-    thin_evidence = len(deduped) < 2 or sum(1 for chunk in deduped[:3] if chunk.authority_score >= 0.75) == 0
+    top_term_match_count = (
+        sum(1 for chunk in deduped[:3] if _evidence_mentions_any_term(important_terms, chunk))
+        if important_terms
+        else len(deduped[:3])
+    )
+    term_mismatch = bool(important_terms and top_term_match_count == 0)
+    thin_evidence = (
+        len(deduped) < 2
+        or sum(1 for chunk in deduped[:3] if chunk.authority_score >= 0.75) == 0
+        or term_mismatch
+    )
     if not deduped:
         decision = GroundingDecision(
             status="abstain",
@@ -717,10 +762,13 @@ def build_evidence_pack(
             thin_evidence=thin_evidence,
         )
     elif thin_evidence or avg_score < 0.45:
+        reason = "Evidence is too thin or weak to support a confident answer."
+        if term_mismatch:
+            reason = "Top evidence does not mention the DITA construct or attribute named in the question."
         decision = GroundingDecision(
             status="abstain",
             confidence=round(avg_score, 2),
-            reason="Evidence is too thin or weak to support a confident answer.",
+            reason=reason,
             evidence_count=len(deduped),
             source_kinds=list(dict.fromkeys(chunk.source_kind for chunk in deduped[:4])),
             has_conflict=False,
@@ -861,6 +909,35 @@ def _looks_like_dita_structure_question(question: str) -> bool:
 
 def _looks_like_dita_example_request(question: str) -> bool:
     return bool(_looks_like_dita_structure_question(question) and _DITA_EXAMPLE_REQUEST_PATTERN.search(question or ""))
+
+
+def _meets_senior_dita_answer_quality(question: str, answer: str) -> bool:
+    if not _looks_like_dita_structure_question(question):
+        return True
+    text = _normalize_space(answer)
+    if len(text) < 120:
+        return False
+    lowered = text.lower()
+    if _looks_like_retrieval_summary(answer):
+        return False
+    if _looks_like_dita_example_request(question) and "```xml" not in lowered:
+        return False
+    has_practical_shape = any(
+        marker in lowered
+        for marker in (
+            "## scope note",
+            "## xml example",
+            "## full example",
+            "## expected result",
+            "## common mistake",
+            "## common mistakes",
+            "## triage",
+            "## recommended",
+        )
+    )
+    if not has_practical_shape and len(text) < 260:
+        return False
+    return True
 
 
 def _requested_dita_root(question: str) -> str | None:
@@ -1304,6 +1381,7 @@ async def verify_grounded_answer(
                     len(draft_clean) > 25
                     and not _looks_like_retrieval_summary(draft_clean)
                     and not _unsafe_xml
+                    and _meets_senior_dita_answer_quality(question, draft_clean)
                 ):
                     return GroundedAnswer(
                         answer=_append_sources_if_missing(draft_clean, citation_objects),
@@ -1366,7 +1444,7 @@ async def verify_grounded_answer(
                 evidence_pack=evidence_pack,
                 verified_examples=verified_examples,
             )
-            if _looks_like_retrieval_summary(answer_text):
+            if _looks_like_retrieval_summary(answer_text) or not _meets_senior_dita_answer_quality(question, answer_text):
                 answer_text = _build_thin_evidence_answer(
                     question=question,
                     evidence_pack=evidence_pack,

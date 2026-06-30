@@ -44,6 +44,21 @@ def test_grounded_fact_guard_rejects_topic_card_for_pdf_troubleshooting():
     )
 
 
+def test_grounded_fact_guard_allows_relevant_keyref_troubleshooting():
+    facts = NormalizedGroundedFactSet(
+        answer_kind="dita_attribute",
+        source_policy="standards_doc",
+        canonical_definition="@keyref resolves a reference through map-defined keys.",
+        supported_elements=["xref", "link", "keyword", "topicref"],
+        companion_attributes=["keys", "keyscope", "href"],
+    )
+
+    assert _grounded_fact_matches_question(
+        "Why is my keyref not resolving in a root map with multiple submaps?",
+        facts,
+    )
+
+
 @pytest.mark.anyio
 async def test_build_local_fallback_response_reviews_xml_with_local_suggestions(monkeypatch):
     def fake_rag_context(*_args, **_kwargs):
@@ -158,6 +173,43 @@ async def test_build_local_fallback_response_prefers_strong_learned_qa_match(mon
     assert "couldn't verify this directly" not in lowered
     assert "best available guidance" not in lowered
     assert "Workspace: `kone`" in text
+
+
+def test_learned_qa_direct_answer_tolerates_dita_question_typo(monkeypatch):
+    monkeypatch.setattr(
+        chat_service,
+        "retrieve_learned_qa",
+        lambda *_args, **_kwargs: [
+            {
+                "prompt": "What is keyscope in DITA? Show an example.",
+                "final_answer": (
+                    "## Short answer\n"
+                    "`@keyscope` creates a named key-resolution scope in a DITA map.\n\n"
+                    "## XML example\n"
+                    "```xml\n"
+                    "<map>\n"
+                    "  <topicref keyscope=\"admin\" href=\"admin/install.dita\"/>\n"
+                    "</map>\n"
+                    "```\n\n"
+                    "## Common mistake\n"
+                    "Do not treat `@keyscope` as topic-body markup."
+                ),
+                "score": 0.7778,
+                "topic": "keyscope",
+                "source_type": "learned_qa_seed",
+            }
+        ],
+    )
+
+    text = chat_service._build_learned_qa_local_fallback_response(
+        "hat is keyscope in DITA? Show an example.",
+        "kone",
+        min_score=0.92,
+    )
+
+    assert "`@keyscope` creates a named key-resolution scope" in text
+    assert "<topicref keyscope=" in text
+    assert "couldn't verify this directly" not in text.lower()
 
 
 @pytest.mark.anyio
@@ -284,7 +336,8 @@ async def test_chat_turn_offline_prefers_grounded_structured_answer_for_dita_que
         assert "not <simpletable>" in text
         assert 'morerows="1"' in text
         assert "local indexed knowledge" not in text.lower()
-        assert "not configured" in text.lower() or "disabled" in text.lower()
+        assert "not configured" not in text.lower()
+        assert "disabled" not in text.lower()
     finally:
         chat_service.delete_session(session_id)
 

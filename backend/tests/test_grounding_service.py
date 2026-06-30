@@ -97,6 +97,32 @@ def test_build_evidence_pack_detects_conflicts():
     assert pack.decision.has_conflict is True
 
 
+def test_build_evidence_pack_abstains_when_dita_construct_is_missing_from_top_evidence():
+    pack = build_evidence_pack(
+        query="What is reltable in DITA? Show an example.",
+        tenant_id="kone",
+        candidates=[
+            _candidate(
+                source="dita_spec",
+                title="prolog",
+                text="The prolog element stores topic metadata such as keywords and index terms.",
+                metadata={"title": "prolog"},
+                score=0.95,
+            ),
+            _candidate(
+                source="dita_spec",
+                title="shortdesc",
+                text="The shortdesc element provides a short topic summary.",
+                metadata={"title": "shortdesc"},
+                score=0.9,
+            ),
+        ],
+    )
+
+    assert pack.decision.status == "abstain"
+    assert "does not mention the DITA construct" in pack.decision.reason
+
+
 def test_build_evidence_pack_hides_internal_workspace_code_references_from_citations():
     pack = build_evidence_pack(
         query="What is keyscope in DITA?",
@@ -119,6 +145,17 @@ def test_build_evidence_pack_hides_internal_workspace_code_references_from_citat
     assert citation.uri == ""
     assert citation.title == "DITA Spec"
     assert "KeyscopeDemoConfig" not in citation.label
+
+
+def test_senior_dita_quality_gate_requires_examples_for_example_prompts():
+    assert grounding_service._meets_senior_dita_answer_quality(
+        "What is reltable in DITA? Show an example.",
+        "A reltable defines related links.",
+    ) is False
+    assert grounding_service._meets_senior_dita_answer_quality(
+        "What is reltable in DITA? Show an example.",
+        "## Short answer\nUse `<reltable>` in a map.\n\n## XML example\n```xml\n<reltable><relrow><relcell><topicref href=\"a.dita\"/></relcell></relrow></reltable>\n```\n\n## Common mistake\nDo not put reltable inside topic body.",
+    ) is True
 
 
 def test_build_section_evidence_map_prefers_examples_for_steps():

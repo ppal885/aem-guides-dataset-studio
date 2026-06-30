@@ -64,6 +64,31 @@ _KNOWN_TAGS: tuple[str, ...] = (
     "publishing",
     "topicgroup",
     "topichead",
+    "topicref",
+    "keydef",
+    "xref",
+    "image",
+    "fig",
+    "note",
+    "steps",
+    "step",
+    "cmd",
+    "ul",
+    "ol",
+    "li",
+    "dl",
+    "dlentry",
+    "dt",
+    "dd",
+    "choicetable",
+    "properties",
+    "reltable",
+    "glossentry",
+    "indexterm",
+    "prolog",
+    "metadata",
+    "section",
+    "shortdesc",
 )
 
 
@@ -311,6 +336,7 @@ def upsert_learned_prompt_entry(
     message_id: str | None = None,
     tags: list[str] | None = None,
     topic: str | None = None,
+    allow_near_dedupe: bool = True,
 ) -> tuple[LearnedPromptEntry, bool, str]:
     accepted_at = _coerce_naive_utc(accepted_at)
     approved_at = _coerce_naive_utc(approved_at)
@@ -320,7 +346,7 @@ def upsert_learned_prompt_entry(
     resolved_topic = topic or infer_topic(prompt, resolved_tags)
     entry = session.query(LearnedPromptEntry).filter(LearnedPromptEntry.prompt_hash == phash).first()
     dedupe_kind = "exact" if entry else "new"
-    if entry is None:
+    if entry is None and allow_near_dedupe:
         entry = _find_near_duplicate(session, normalized)
         if entry is not None:
             dedupe_kind = "near"
@@ -407,6 +433,7 @@ def seed_learned_qa(session: Session) -> dict[str, Any]:
             answer_style=str(item.get("answer_style") or LEARNED_QA_ANSWER_STYLE),
             accepted_at=datetime.now(timezone.utc),
             approved_at=datetime.now(timezone.utc),
+            allow_near_dedupe=False,
         )
         if was_created:
             created += 1
@@ -636,6 +663,23 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
     except Exception:
         pass
 
+    normalized = normalize_prompt(text)
+    exact_hash = prompt_hash(normalized)
+    db = SessionLocal()
+    try:
+        exact_entry = (
+            db.query(LearnedPromptEntry)
+            .filter(
+                LearnedPromptEntry.prompt_hash == exact_hash,
+                LearnedPromptEntry.status == "approved",
+            )
+            .first()
+        )
+        if exact_entry:
+            return [{**_serialize_entry(exact_entry), "score": 1.0, "distance": 0.0}]
+    finally:
+        db.close()
+
     if is_chroma_available() and get_collection_count(CHROMA_COLLECTION_LEARNED_QA) > 0:
         emb = embed_query(text[:4000])
         vec = emb.tolist() if hasattr(emb, "tolist") else list(emb) if emb is not None else []
@@ -673,12 +717,11 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
     try:
         rows = db.query(LearnedPromptEntry).filter(LearnedPromptEntry.status == "approved").all()
         scored: list[tuple[float, LearnedPromptEntry]] = []
-        norm = normalize_prompt(text)
         for row in rows:
-            score = _jaccard_similarity(norm, row.normalized_prompt or "")
+            score = _jaccard_similarity(normalized, row.normalized_prompt or "")
             if score <= 0:
                 haystack = f"{row.prompt}\n{row.final_answer}\n{' '.join(_json_loads_tags(row.tags_json))}"
-                score = _jaccard_similarity(norm, normalize_prompt(haystack))
+                score = _jaccard_similarity(normalized, normalize_prompt(haystack))
             if score > 0:
                 scored.append((score, row))
         scored.sort(key=lambda item: (-item[0], -(item[1].support_count or 0)))
