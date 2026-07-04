@@ -11,6 +11,7 @@ from threading import Lock
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.chat_models import ChatMessage
@@ -92,14 +93,32 @@ _KNOWN_TAGS: tuple[str, ...] = (
 )
 
 
-def normalize_prompt(prompt: str) -> str:
-    text = re.sub(r"\s+", " ", str(prompt or "").strip().lower())
-    text = re.sub(r"[“”‘’`\"]", "", text)
-    return text
-
-
 def prompt_hash(normalized_prompt: str) -> str:
     return hashlib.sha256(str(normalized_prompt or "").encode("utf-8")).hexdigest()
+
+
+def normalize_prompt(prompt: str) -> str:
+    text = str(prompt or "").strip().lower()
+    replacements = {
+        "â€œ": '"',
+        "â€": '"',
+        "â€˜": "'",
+        "â€™": "'",
+        "â€”": "-",
+        "â€“": "-",
+        "â€¦": "...",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u2013": "-",
+        "\u2014": "-",
+    }
+    for bad, good in replacements.items():
+        text = text.replace(bad, good)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[`\"]", "", text)
+    return text
 
 
 def _json_loads_tags(raw: str | None) -> list[str]:
@@ -139,6 +158,71 @@ def _jaccard_similarity(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(union)
 
 
+_LEARNED_QA_DOMAIN_TERMS = {
+    "dita",
+    "dita-ot",
+    "oxygen",
+    "webhelp",
+    "pdf",
+    "pdf chemistry",
+    "native pdf",
+    "aem guides",
+    "author mode",
+    "web author",
+    "dita maps manager",
+    "root map",
+    "keyref",
+    "keydef",
+    "keyscope",
+    "conref",
+    "conkeyref",
+    "xref",
+    "topicref",
+    "topichead",
+    "topicmeta",
+    "ditaval",
+    "processing-role",
+    "resource-only",
+    "copy-to",
+    "chunk",
+    "reltable",
+    "relationship table",
+    "subject scheme",
+    "schematron",
+    "specialization",
+    "catalog",
+    "transformation scenario",
+    "publishing template",
+    "warnings",
+    "publishing warnings",
+    "published output",
+    "accessibility",
+    "context-help",
+    "context help",
+}
+
+
+def is_learned_qa_domain_query(query: str) -> bool:
+    """Return True when a user query is likely covered by learned DITA/Oxygen expertise."""
+    normalized = normalize_prompt(query)
+    if not normalized:
+        return False
+    if any(term in normalized for term in _LEARNED_QA_DOMAIN_TERMS):
+        return True
+    try:
+        matches = retrieve_learned_qa(normalized, k=1)
+    except Exception:
+        matches = []
+    if not matches:
+        return False
+    try:
+        score = float(matches[0].get("score") or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
+    source_type = str(matches[0].get("source_type") or "")
+    return score >= 0.82 or (score >= 0.68 and source_type in {"oxygen_customer_questions", "customer_paraphrase"})
+
+
 def _fallback_embedding(text: str, *, dim: int = LEARNED_QA_FALLBACK_EMBED_DIM) -> list[float]:
     """Create a deterministic sparse lexical embedding for offline learned-QA retrieval."""
     tokens = list(_tokenize(text))
@@ -172,10 +256,27 @@ def _read_seed_items() -> list[dict[str, Any]]:
         raise ValueError("learned_qa_seed.json must contain a list")
     items = [item for item in raw if isinstance(item, dict)]
     if LEARNED_QA_SEED_PATH == DEFAULT_LEARNED_QA_SEED_PATH:
+        from app.services.learned_qa_advanced_seed import get_advanced_dita_seed_items
+        from app.services.learned_qa_eval_seed import get_dita_expert_eval_seed_items
+        from app.services.learned_qa_enterprise_seed import get_enterprise_dita_seed_items
+        from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
         from app.services.learned_qa_senior_seed import get_senior_prompt_seed_items
 
         items.extend(get_senior_prompt_seed_items())
-    return items
+        items.extend(get_enterprise_dita_seed_items())
+        items.extend(get_dita_expert_eval_seed_items())
+        items.extend(get_advanced_dita_seed_items())
+        items.extend(get_oxygen_customer_seed_items())
+
+    deduped: list[dict[str, Any]] = []
+    seen_prompts: set[str] = set()
+    for item in items:
+        normalized = normalize_prompt(str(item.get("prompt") or ""))
+        if not normalized or normalized in seen_prompts:
+            continue
+        seen_prompts.add(normalized)
+        deduped.append(item)
+    return deduped
 
 
 def _seed_file_metadata() -> dict[str, Any]:
@@ -222,6 +323,12 @@ def infer_topic(prompt: str, tags: list[str] | None = None) -> str:
         return "tables"
     if any(marker in corpus for marker in ("keyscope", "keyref", "conref", "mapref", "processing-role")):
         return "reuse_and_maps"
+    if any(marker in corpus for marker in ("cms", "root map", "dependency graph", "rename", "move", "standalone topic")):
+        return "cms_architecture"
+    if any(marker in corpus for marker in ("cache", "preprocessing", "invalidation", "processor-specific", "processor behavior")):
+        return "processing_architecture"
+    if any(marker in corpus for marker in ("chatbot", "evidence", "specification-defined", "dita specification")):
+        return "chatbot_governance"
     if "subject scheme" in corpus or "subjectscheme" in corpus:
         return "controlled_values"
     return "dita_general"
@@ -265,6 +372,17 @@ def get_learned_qa_summary(session: Session) -> dict[str, Any]:
     approved = session.query(LearnedPromptEntry).filter(LearnedPromptEntry.status == "approved").count()
     pending = session.query(LearnedPromptEntry).filter(LearnedPromptEntry.status == "pending_review").count()
     rejected = session.query(LearnedPromptEntry).filter(LearnedPromptEntry.status == "rejected").count()
+    source_rows = (
+        session.query(LearnedPromptEntry.source_type, LearnedPromptEntry.status, func.count(LearnedPromptEntry.id))
+        .group_by(LearnedPromptEntry.source_type, LearnedPromptEntry.status)
+        .all()
+    )
+    source_type_counts: dict[str, dict[str, int]] = {}
+    for source_type, status, count in source_rows:
+        source_key = str(source_type or "unknown")
+        status_key = str(status or "unknown")
+        source_type_counts.setdefault(source_key, {})
+        source_type_counts[source_key][status_key] = int(count or 0)
     state = load_source_state(CHROMA_COLLECTION_LEARNED_QA)
     return {
         "total_count": int(total),
@@ -276,6 +394,11 @@ def get_learned_qa_summary(session: Session) -> dict[str, Any]:
         "last_error": state.last_error,
         "failed_item_count": int(state.failed_item_count or 0),
         "failed_items": list(state.failed_items or []),
+        "source_type_counts": source_type_counts,
+        "customer_question_count": int(
+            sum(sum(statuses.values()) for source, statuses in source_type_counts.items() if source == "oxygen_customer_questions")
+        ),
+        "customer_unmapped_count": int(source_type_counts.get("oxygen_customer_questions_unmapped", {}).get("pending_review", 0)),
     }
 
 
@@ -428,7 +551,7 @@ def seed_learned_qa(session: Session) -> dict[str, Any]:
             final_answer=final_answer,
             tags=[str(tag).strip() for tag in item.get("tags") or [] if str(tag).strip()],
             topic=str(item.get("topic") or "").strip() or None,
-            source_type="seed",
+            source_type=str(item.get("source_type") or "seed").strip() or "seed",
             status="approved",
             answer_style=str(item.get("answer_style") or LEARNED_QA_ANSWER_STYLE),
             accepted_at=datetime.now(timezone.utc),

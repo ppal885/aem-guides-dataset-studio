@@ -75,7 +75,7 @@ from app.services.doc_retriever_service import retrieve_relevant_docs, format_do
 from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
-from app.services.learned_qa_service import format_learned_qa_for_prompt, retrieve_learned_qa
+from app.services.learned_qa_service import format_learned_qa_for_prompt, is_learned_qa_domain_query, retrieve_learned_qa
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
@@ -339,7 +339,30 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LEARNED_QA_DOMAIN_PATTERN = re.compile(
-    r"\b(dita|aem guides|morerows|simpletable|cals|keyscope|keyref|conref|mapref|processing-role|resource-only|draft-comment|required-cleanup|ditaval|native pdf|pdf|html|html5|dita-ot|chunk|subject scheme|subjectscheme|topicref|table|upload|import|file management|existing files|authoring files?|publish|publishes|published|publishing|fail|fails|failed|jira|troubleshoot|troubleshooting)\b",
+    r"\b(dita|aem guides|morerows|simpletable|cals|key|keys|keyscope|keyref|keydef|conref|conkeyref|"
+    r"mapref|topicref|topichead|topicgroup|xref|copy-to|xml:base|metadata|cascade|profiling|audience|"
+    r"platform|product|props|subject scheme|subjectscheme|processing-role|resource-only|draft-comment|"
+    r"required-cleanup|ditaval|ditavalref|native pdf|pdf|html|html5|dita-ot|chunk|chunked|chunking|"
+    r"specialization|constraint|generalization|reltable|relationship table|scope|format|toc|linking|"
+    r"answer quality|did the answer|effective processed content|source content|processor-specific|"
+    r"deterministic troubleshooting|active key space|unresolved keys|broken key targets|"
+    r"xml:lang|translate|translation|translated|locale|localization|rtl|right-to-left|bookmap|"
+    r"booktitle|frontmatter|backmatter|chapter|appendix|booklists|indexterm|index term|glossary|"
+    r"glossentry|acronym|terminology|hazard|hazardstatement|hazardsymbol|accessibility|wcag|"
+    r"alternative text|screen reader|svg|mathml|learning|assessment|quiz|course|scorm|xapi|"
+    r"ci|jenkins|baseline|permission|restricted|unauthorized|security|service-user|"
+    r"deliverytarget|delivery-target|print attribute|searchtitle|navtitle|linktext|locktitle|"
+    r"shortdesc|short description|abstract|topic type|concept topic|task topic|reference topic|"
+    r"troubleshooting topic|steps-unordered|steps-informal|substeps|stepresult|codeblock|codeph|"
+    r"filepath|systemoutput|userinput|uicontrol|wintitle|menucascade|shortcut|properties|"
+    r"property rows|api parameters|conref push|pushreplace|pushbefore|pushafter|topic id|element id|"
+    r"fragment references|map refactor|map refactoring|word document|unstructured content|"
+    r"oxygen|dita maps manager|author mode|completeness check|webhelp|pdf chemistry|css-based pdf|"
+    r"outputclass|lockmeta|locktitle|othermeta|key map|subject scheme map|profiled content|"
+    r"footnote|temporary files|temporary copies|preprocessing|source-map corruption|ant-based|antcall|plugin upgrade|copied output identity|copy-to output|"
+    r"copied topic|index point|index terms|"
+    r"table|upload|import|file management|existing files|authoring files?|publish|publishes|published|"
+    r"publishing|fail|fails|failed|jira|troubleshoot|troubleshooting)\b",
     re.IGNORECASE,
 )
 _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN = re.compile(
@@ -4645,7 +4668,7 @@ def _build_rag_grounded_fallback_response(
 
 def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str, *, min_score: float = 0.72) -> str:
     query = (user_content or "").strip()
-    if not query or not _LEARNED_QA_DOMAIN_PATTERN.search(query):
+    if not query or not (_LEARNED_QA_DOMAIN_PATTERN.search(query) or is_learned_qa_domain_query(query)):
         return ""
 
     try:
@@ -4694,10 +4717,14 @@ def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str,
 
 
 _DITA_LEARNED_MATCH_TERM_RE = re.compile(
-    r"@?(keyscope|keyref|keys|conref|conkeyref|xref|topicref|topichead|topicgroup|"
+    r"@?(key|keys|keyscope|keyref|keydef|conref|conkeyref|xref|topicref|topichead|topicgroup|"
     r"mapref|keydef|reltable|glossentry|indexterm|prolog|metadata|shortdesc|"
     r"simpletable|table|morerows|namest|nameend|processing-role|ditaval|ditavalref|"
-    r"draft-comment|required-cleanup|fig|image|note|steps|step|cmd|choicetable|properties)\b",
+    r"draft-comment|required-cleanup|fig|image|note|steps|step|cmd|choicetable|properties|"
+    r"copy-to|xml:base|cascade|profiling|audience|platform|product|subjectscheme|subject scheme|"
+    r"chunk|chunking|specialization|constraint|generalization|toc|linking|scope|format|"
+    r"oxygen|webhelp|pdf chemistry|author mode|root map|dita-ot|publishing template|"
+    r"transformation scenario|accessibility|context-help|catalog|schematron|plugin|plug-in)\b",
     re.IGNORECASE,
 )
 
@@ -4720,7 +4747,7 @@ def _is_safe_dita_learned_match(query: str, learned_row: dict[str, Any], score: 
     learned_terms = _dita_learned_terms(learned_text)
     if not (query_terms & learned_terms):
         return False
-    return bool(re.search(r"\bdita\b|@|<\w+", f"{query} {learned_text}", re.IGNORECASE))
+    return bool(re.search(r"\bdita\b|\boxygen\b|\bwebhelp\b|\bdita-ot\b|\bpdf\b|@|<\w+", f"{query} {learned_text}", re.IGNORECASE))
 
 
 def _format_exposed_chat_error(exc: Exception) -> str:
@@ -5382,7 +5409,7 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     parts = []
 
     try:
-        if _LEARNED_QA_DOMAIN_PATTERN.search(query):
+        if _LEARNED_QA_DOMAIN_PATTERN.search(query) or is_learned_qa_domain_query(query):
             learned_context = format_learned_qa_for_prompt(capped_query, k=3)
             if learned_context:
                 parts.append(learned_context[:RAG_CONTEXT_MAX_CHARS])

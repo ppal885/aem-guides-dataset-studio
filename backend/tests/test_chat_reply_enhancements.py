@@ -9,6 +9,9 @@ from app.core.schemas_grounded_answer import NormalizedGroundedFactSet
 from app.db.chat_models import ChatMessage
 from app.db.session import SessionLocal
 from app.services import chat_service
+from app.services.learned_qa_advanced_seed import get_advanced_dita_seed_items
+from app.services.learned_qa_eval_seed import get_dita_expert_eval_seed_items
+from app.services.learned_qa_enterprise_seed import get_enterprise_dita_seed_items
 from app.services.learned_qa_senior_seed import get_senior_prompt_seed_items
 
 
@@ -141,6 +144,427 @@ def test_senior_seed_has_exact_common_dita_tag_answers():
     prolog = by_prompt["What is prolog in DITA? Show an example."]
     assert "<prolog>" in prolog
     assert "not reader body content" in prolog
+
+
+def test_enterprise_dita_seed_has_all_supplied_architecture_questions():
+    items = get_enterprise_dita_seed_items()
+    prompts = {str(item.get("prompt") or "") for item in items}
+
+    expected = {
+        "When should direct addressing be preferred over key-based indirect addressing?",
+        "When does excessive key indirection reduce maintainability instead of improving it?",
+        "How many levels of chained key definitions are operationally reasonable?",
+        "What governance rules should be established for key naming?",
+        "How should key names be namespaced across large documentation repositories?",
+        "How should reusable fragments be organized to avoid conref spaghetti?",
+        "When should conref be replaced by variables, keys, or conditional content?",
+        "When should conkeyref be preferred over conref?",
+        "How can circular dependencies be prevented through repository architecture?",
+        "How should reusable content be versioned when consumed by multiple products?",
+        "How should map context be represented in an enterprise content-management system?",
+        "How should a CMS determine the active root map for standalone topic editing?",
+        "How should a system index indirect dependencies created by keys and conkeyrefs?",
+        "What dependency graph is needed to safely rename or move DITA assets?",
+        "How should broken direct references and broken indirect references be reported differently?",
+        "How can preprocessing results be cached without returning stale key resolutions?",
+        "How should caches be invalidated when a key-defining map changes?",
+        "How should a DITA chatbot distinguish specification-defined behavior from processor-specific behavior?",
+        "What evidence should the chatbot provide when two DITA processors behave differently?",
+        "What should an enterprise-grade DITA expert chatbot say when the DITA specification does not mandate one exact processor behavior?",
+    }
+
+    assert expected.issubset(prompts)
+    assert len(items) >= len(expected)
+
+
+def test_enterprise_dita_seed_answers_include_scope_and_guardrails():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    direct = by_prompt["When should direct addressing be preferred over key-based indirect addressing?"]
+    assert "## Behavior scope" in direct
+    assert "direct references name the target in source XML" in direct
+    assert "keyref is always better than href" in direct
+
+    cache = by_prompt["How can preprocessing results be cached without returning stale key resolutions?"]
+    assert "source XML, intermediate resolved content, and final output artifacts" in cache
+    assert "cached resolved topics are valid across all root maps" in cache
+
+    chatbot = by_prompt["How should a DITA chatbot distinguish specification-defined behavior from processor-specific behavior?"]
+    assert "DITA-OT behavior is always the DITA specification" in chatbot
+    assert "label behavior scope clearly" in chatbot
+
+
+def test_enterprise_dita_seed_has_failure_behavior_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    keyref = by_prompt["A keyref works in one map but not another. What processing contexts should be compared?"]
+    assert "effective root map" in keyref
+    assert "keyscope" in keyref
+    assert "A keyref can be validated completely from the topic alone." in keyref
+
+    conkeyref = by_prompt["A conkeyref works when publishing the root map but fails when previewing the topic. Why?"]
+    assert "topic-only preview" in conkeyref
+    assert "root map context" in conkeyref
+
+    chatbot = by_prompt[
+        "A topic is published correctly but the chatbot gives the wrong explanation of why. How would you design a source-grounded evaluation to detect the hallucination?"
+    ]
+    assert "source XML, effective map context, processor logs" in chatbot
+    assert "Correct final output proves the chatbot explanation is correct." in chatbot
+
+
+def test_enterprise_dita_seed_has_uri_and_key_resolution_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    direct = by_prompt["What is direct URI-based addressing in DITA?"]
+    assert "source XML points directly" in direct
+    assert "Direct URI addressing is deprecated." in direct
+
+    fragment = by_prompt["What does the URI topic.dita#topicId/elementId address?"]
+    assert "element with ID `elementId`" in fragment
+    assert "The element ID alone is always enough." in fragment
+
+    xml_base = by_prompt["Can xml:base change how DITA references are resolved?"]
+    assert "`xml:base` can change the base URI" in xml_base
+    assert "Every DITA tool supports complex `xml:base` use identically." in xml_base
+
+    duplicate_key = by_prompt["How is the effective definition selected when duplicate key definitions exist?"]
+    assert "effective map" in duplicate_key
+    assert "The last duplicate key always wins universally." in duplicate_key
+
+
+def test_enterprise_dita_seed_has_resource_semantics_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    resource_only = by_prompt['What is the semantic meaning of processing-role="resource-only"?']
+    assert "supporting material rather than normal reading-order content" in resource_only
+    assert "resource-only` and `toc=\"no\"` are the same thing" in resource_only
+
+    toc = by_prompt['Does toc="no" mean the topic should not be generated?']
+    assert "omitted from generated navigation" in toc
+    assert "`toc=\"no\"` means do not publish the topic." in toc
+
+    matrix = by_prompt["How would you test every combination of toc, linking, print, and processing-role?"]
+    assert "matrix of map fixtures" in matrix
+    assert "TOC entry" in matrix
+    assert "generated links" in matrix
+    assert "print/PDF presence" in matrix
+
+
+def test_enterprise_dita_seed_has_reltable_link_generation_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    generated = by_prompt["How does a relationship table generate related links?"]
+    assert "Each `relrow` defines a relationship set." in generated
+    assert "A reltable physically inserts xref elements into source topics." in generated
+
+    linking = by_prompt['What is the effect of linking="sourceonly"?']
+    assert "source of generated links" in linking
+    assert "`sourceonly` means links only point to this topic." in linking
+
+    copy_to = by_prompt["How does copy-to affect relationship-table links?"]
+    assert "source-to-copy URI mapping" in copy_to
+    assert "`copy-to` never affects related links." in copy_to
+
+
+def test_enterprise_dita_seed_has_map_reference_integration_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    mapref = by_prompt["What is the difference between referencing a map with mapref and referencing it using a normal topicref?"]
+    assert "map-to-map composition" in mapref
+    assert "`mapref` and normal `topicref` are always identical." in mapref
+
+    keys = by_prompt["How are keys defined in a referenced map added to the effective key space?"]
+    assert "effective key space" in keys
+    assert "All keys in every repository map are globally available." in keys
+
+    navref = by_prompt["How does navref differ from including a submap through mapref?"]
+    assert "navigation-oriented" in navref
+    assert "`navref` and `mapref` have identical processing semantics." in navref
+
+
+def test_enterprise_dita_seed_has_branch_filtering_questions():
+    items = get_enterprise_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    branch = by_prompt["What is branch filtering in DITA?"]
+    assert "specific branch of a DITA map" in branch
+    assert "Branch filtering is the same as one global DITAVAL file." in branch
+
+    rename = by_prompt["How do resourceprefix and resourcesuffix prevent naming collisions?"]
+    assert "branch-specific text to generated resource names" in rename
+    assert "They affect only TOC labels." in rename
+
+    conkeyref = by_prompt["Can one reusable topic resolve different conkeyrefs in different filtered branches?"]
+    assert "correct scoped behavior" in conkeyref
+    assert "A reused topic must always resolve identical conkeyrefs." in conkeyref
+
+
+def test_dita_expert_eval_seed_contains_200_questions():
+    items = get_dita_expert_eval_seed_items()
+    prompts = {str(item.get("prompt") or "") for item in items}
+
+    assert len(items) == 200
+    assert len(prompts) == 200
+    assert "What is DITA, and what problem does it solve?" in prompts
+    assert "What information should be collected before reporting a DITA publishing defect?" in prompts
+
+
+def test_dita_expert_eval_seed_has_senior_answer_requirements():
+    items = get_dita_expert_eval_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    fundamentals = by_prompt["What is DITA, and what problem does it solve?"]
+    assert "topic-based XML architecture" in fundamentals
+    assert "Senior answer requirements" in fundamentals
+
+    troubleshooting = by_prompt["How would you troubleshoot a broken cross-reference in published output?"]
+    assert "expected behavior, probable causes, deterministic checks" in troubleshooting
+    assert "active map context" in troubleshooting
+
+
+def test_advanced_dita_seed_covers_attached_question_batch():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    assert len(items) >= 270
+
+    cascade = by_prompt["How does metadata cascade from a root DITA map to nested topicref elements?"]
+    assert "effective DITA processing context" in cascade
+    assert "source XML was permanently changed" in cascade
+
+    chunk = by_prompt['What does chunk="to-content" mean?']
+    assert "generated URIs" in chunk
+    assert "Behavior scope" in chunk
+
+    specialization = by_prompt["How does DITA specialization preserve compatibility with base DITA?"]
+    assert "Specialization, constraints, generalization" in specialization
+    assert "class" in specialization
+
+    dita_ot = by_prompt["What major preprocessing stages occur before DITA-OT transformation?"]
+    assert "preprocessing" in dita_ot
+    assert "temporary files" in dita_ot
+
+    scenario = by_prompt[
+        "A topic is published correctly but the chatbot gives the wrong explanation of why. How would you design a source-grounded evaluation to detect the hallucination?"
+    ]
+    assert "source markup" in scenario
+    assert "processor logs" in scenario
+
+
+def test_advanced_dita_seed_covers_challenge_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    challenge_prompts = [
+        'A root map sets audience="admin", a nested topicgroup sets audience="developer", and a child topicref sets audience="reviewer". What is the child\'s effective audience under merge and no-merge behavior?',
+        "A key is defined three times: once globally, once inside a filtered branch, and once inside a key scope. Which definition should an unqualified reference use?",
+        "An xref has a keyref, explicit text, and the key definition has a navtitle. Which text should be displayed?",
+        "Can a key be valid for variable text but invalid as a link target?",
+        "A keyref works in DITA-OT HTML5 but fails in Native PDF. Which processing stages should be compared first?",
+        "When the DITA specification is silent but two processors behave differently, how should the chatbot present the answer without hallucinating a universal rule?",
+    ]
+
+    for prompt in challenge_prompts:
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        assert "effective DITA processing context" in answer
+        assert "Do not present DITA-OT, AEM Guides, editor preview, HTML5, or PDF behavior" in answer
+
+
+def test_learned_qa_local_fallback_handles_bare_expert_terms():
+    key_answer = chat_service._build_learned_qa_local_fallback_response(
+        "Can a key be valid for variable text but invalid as a link target?",
+        "kone",
+        min_score=0.92,
+    )
+    assert "variable text" in key_answer
+    assert "usable link target" in key_answer
+    assert "<link> element" not in key_answer
+
+    cascade_answer = chat_service._build_learned_qa_local_fallback_response(
+        'A root map sets audience="admin", a nested topicgroup sets audience="developer", and a child topicref sets audience="reviewer". What is the child\'s effective audience under merge and no-merge behavior?',
+        "kone",
+        min_score=0.92,
+    )
+    assert "Under merge behavior" in cascade_answer
+    assert "source topic itself remains unchanged" in cascade_answer
+
+    evaluation_answer = chat_service._build_learned_qa_local_fallback_response(
+        "Did the answer separate source content from effective processed content?",
+        "kone",
+        min_score=0.92,
+    )
+    assert "Evaluate the answer" in evaluation_answer
+    assert "separate source from effective processed content" in evaluation_answer
+
+    copy_to_index_answer = chat_service._build_learned_qa_local_fallback_response(
+        "Should the index point to the source topic or the copied output identity?",
+        "kone",
+        min_score=0.92,
+    )
+    assert "copied output identity" in copy_to_index_answer
+    assert "original source topic URI" in copy_to_index_answer
+
+    chunked_url_answer = chat_service._build_learned_qa_local_fallback_response(
+        "Why do chunked child-topic URLs sometimes contain generated identifiers?",
+        "kone",
+        min_score=0.92,
+    )
+    assert "generated identifiers" in chunked_url_answer
+    assert "combined output page" in chunked_url_answer
+
+    temporary_copy_answer = chat_service._build_learned_qa_local_fallback_response(
+        "Why must preprocessing always operate on temporary copies rather than original source files?",
+        "kone",
+        min_score=0.92,
+    )
+    assert "temporary copies" in temporary_copy_answer
+    assert "source corruption" in temporary_copy_answer
+
+
+def test_advanced_dita_seed_covers_varied_evaluation_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    expected = {
+        "Explain why keyref requires a map context while href does not.": ["`href` directly names a URI", "active map"],
+        "Compare href, keyref, conref, and conkeyref.": ["direct URI-based linking", "indirect key-based content reuse"],
+        'Compare toc="no" with processing-role="resource-only".': ["removes a normal topic reference from navigation", "support material"],
+        'What will be the effective audience value if the parent has audience="admin" and the child has audience="developer"?': ["merge behavior", "no-merge behavior"],
+        "What happens when conref resolves successfully but the consuming element contains local text?": ["replaces the consuming element", "fallback content"],
+        "What happens when two branches generate the same copy-to output name?": ["collide on output identity", "unique `copy-to` values"],
+    }
+
+    for prompt, required_terms in expected.items():
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        for term in required_terms:
+            assert term in answer
+
+
+def test_advanced_dita_seed_covers_correction_and_adversarial_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    expected = {
+        'Correct this statement: "keyref is simply another syntax for href."': ["Correction:", "`href` directly addresses a URI", "`keyref` resolves indirectly"],
+        'Correct this statement: "toc="no" prevents the topic from being published."': ["Correction:", "affects navigation", "cannot be generated"],
+        "Since a DITA file validates against its DTD, it cannot contain broken key references. Is this correct?": ["No.", "DTD validation checks grammar", "cross-file key"],
+        "Root map ke bina keyref resolve hoga kya?": ["Usually no", "active root map", "key-space context"],
+        "Create a test scenario for duplicate key definitions.": ["minimal root map", "expected result", "negative assertion"],
+        "Did the answer separate source content from effective processed content?": ["Evaluate the answer", "separate source from effective processed content"],
+    }
+
+    for prompt, required_terms in expected.items():
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        for term in required_terms:
+            assert term in answer
+
+
+def test_advanced_dita_seed_covers_broader_domain_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    expected = {
+        "How should xml:lang be applied in a DITA topic?": ["`xml:lang` should be set", "accessibility language metadata"],
+        "When should a bookmap be used instead of a normal DITA map?": ["Use a `bookmap`", "frontmatter"],
+        "What is the purpose of the indexterm element?": ["`indexterm` marks", "generated index"],
+        "What is the purpose of a glossary entry topic?": ["controlled term", "generated glossaries"],
+        "What accessibility information should be added to images?": ["alternative text", "decorative images"],
+        "Why might an SVG appear in the editor but disappear in PDF output?": ["PDF renderer", "image conversion pipeline"],
+        "How should DITA validation be integrated into a CI pipeline?": ["grammar", "publishing smoke tests"],
+        "What is a publication baseline?": ["reproducible selection", "specific release"],
+        "How should permissions affect DITA map resolution?": ["honor permissions", "unauthorized dependencies"],
+        "Why does my build pass locally but fail in Jenkins?": ["DITA-OT version", "filesystem case sensitivity"],
+    }
+
+    for prompt, required_terms in expected.items():
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        for term in required_terms:
+            assert term in answer
+
+
+def test_advanced_dita_seed_covers_authoring_model_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    expected = {
+        'If a topic contains audience="admin" but its parent topicref applies audience="developer", what is the effective processing context?': ["topic source", "effective processing context"],
+        "What is the purpose of the deliveryTarget attribute?": ["`deliveryTarget` identifies output-specific applicability", "publishing presets"],
+        "What is the difference between title, navtitle, searchtitle, and linktext?": ["`title` is the topic's primary title", "`searchtitle`"],
+        "What is the difference between shortdesc and abstract?": ["`shortdesc` is a concise summary", "`abstract`"],
+        "What is the difference between steps, steps-unordered, and steps-informal?": ["`steps` models ordered", "`steps-informal`"],
+        "What is the difference between codeblock and codeph?": ["`codeblock` is for block-level", "`codeph`"],
+        "What is the difference between uicontrol, wintitle, and menucascade?": ["`uicontrol`", "`menucascade`"],
+        "When should conref push be preferred over normal conref pull?": ["conref push", "normal conref pull"],
+        "How should a large Word document be split into DITA topics?": ["concepts", "tasks", "references"],
+    }
+
+    for prompt, required_terms in expected.items():
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        for term in required_terms:
+            assert term in answer
+
+
+def test_advanced_dita_seed_covers_oxygen_webhelp_pdf_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    expected = {
+        "Why does a key definition remain unresolved when the key map exists but no root map is selected in Oxygen?": ["key map file existing", "active root map"],
+        "Does metadata on the root map cascade through a topichead to its child topic references?": ["`topichead`", "effective metadata context"],
+        "What is the difference between validating one DITA topic and validating a complete map?": ["Topic validation", "complete map validation"],
+        "Why can a topic outside the map directory publish successfully but produce a broken WebHelp navigation link?": ["WebHelp", "output path"],
+        "Why might a CSS property work in a browser but not in PDF Chemistry?": ["paged-media renderer", "unsupported"],
+        "Why can an SVG render correctly in a browser but appear distorted in PDF?": ["viewBox", "PDF engines"],
+        "Should the index point to the source topic or the copied output identity?": ["copied output identity", "original source topic URI"],
+        "What information about key definitions appears in DITA-OT temporary files?": ["effective key definitions", "job metadata"],
+        "Why can an Ant-based custom plug-in fail after upgrading DITA-OT?": ["internal targets", "documented extension points"],
+    }
+
+    for prompt, required_terms in expected.items():
+        assert prompt in by_prompt
+        answer = by_prompt[prompt]
+        for term in required_terms:
+            assert term in answer
+
+
+def test_advanced_dita_seed_covers_oxygen_forum_inspired_questions():
+    items = get_advanced_dita_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+    def answer_for(prompt: str) -> str:
+        if prompt in by_prompt:
+            return by_prompt[prompt]
+        prompt_norm = prompt.replace("'", "")
+        for existing_prompt, answer in by_prompt.items():
+            if existing_prompt.replace("â€™", "").replace("'", "") == prompt_norm:
+                return answer
+        return ""
+
+    expected = {
+        "What does an externally imposed key context mean in Oxygen?": ["external key manager", "selected DITA map context"],
+        "Why can a manually entered keyref work even when Oxygen's key-reference dialog is empty?": ["Manual `keyref` entry can work", "insertion dialog"],
+        "Why do chunked child-topic URLs sometimes contain generated identifiers?": ["generated identifiers", "combined output page"],
+        "Why can a conref to a topicref that references a DITA map fail during preprocessing?": ["map-reference preprocessing", "original element ID"],
+        "Why must preprocessing always operate on temporary copies rather than original source files?": ["temporary copies", "source corruption"],
+        "A key publishes correctly but Oxygen marks it unresolved. Which editor-context checks should be performed before changing the DITA source?": ["active root map", "publishing command"],
+    }
+
+    for prompt, required_terms in expected.items():
+        answer = answer_for(prompt)
+        assert answer
+        for term in required_terms:
+            assert term in answer
 
 
 def test_fetch_last_messages_returns_latest_not_oldest():

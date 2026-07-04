@@ -1,0 +1,6 @@
+system index indirect dependencies created by keys and conkeyrefs?
+- How should a CMS determine the active root map for standalone topic editing?
+
+Topic: reuse_and_maps
+Tags: keys, keyscope, keyref, namespace, map_context, cms, dita_addressing_and_reuse, key_namespacing_and_keyscope, architecture, enterprise, dita
+Answer style: senior_technical_docsependency analysis\n\n## Verification\n- DITA ver

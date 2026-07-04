@@ -10,10 +10,14 @@ from app.db.learned_prompt_models import LearnedPromptEntry
 from app.db.session import SessionLocal
 from app.services.learned_qa_service import (
     _read_seed_items,
+    get_learned_qa_summary,
+    is_learned_qa_domain_query,
+    normalize_prompt,
     retrieve_learned_qa,
     seed_learned_qa,
     sync_learned_qa_corpus,
 )
+from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
 from app.services.source_review_state_service import load_source_state
 from app.services.vector_store_service import CHROMA_COLLECTION_LEARNED_QA
 
@@ -310,3 +314,196 @@ def test_seeded_learned_qa_keeps_similar_tag_prompts_separate(monkeypatch, tmp_p
     topicref = retrieve_learned_qa("What is topicref in DITA? Show an example.", k=1)
     assert topicref[0]["prompt"] == "What is topicref in DITA? Show an example."
     assert "<topicref" in topicref[0]["final_answer"]
+
+
+def test_default_seed_loader_keeps_first_rich_answer_for_duplicate_eval_prompts():
+    items = _read_seed_items()
+    by_prompt = {str(item.get("prompt") or ""): str(item.get("final_answer") or "") for item in items}
+
+    answer = by_prompt["What is the difference between concept, task, and reference topics?"]
+    assert "<concept id=\"why_keys\">" in answer
+    assert "Senior answer requirements" not in answer
+
+
+def test_enterprise_dita_seed_records_are_retrievable(monkeypatch):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    direct = retrieve_learned_qa("When should direct addressing be preferred over key-based indirect addressing?", k=1)
+    assert direct[0]["prompt"] == "When should direct addressing be preferred over key-based indirect addressing?"
+    assert "direct URI addressing" in direct[0]["final_answer"]
+    assert "## Must not claim" in direct[0]["final_answer"]
+
+    cms = retrieve_learned_qa("How should a CMS determine the active root map for standalone topic editing?", k=1)
+    assert cms[0]["prompt"] == "How should a CMS determine the active root map for standalone topic editing?"
+    assert "multiple valid root maps" in cms[0]["final_answer"]
+
+    cache = retrieve_learned_qa("How should caches be invalidated when a key-defining map changes?", k=1)
+    assert cache[0]["prompt"] == "How should caches be invalidated when a key-defining map changes?"
+    assert "key-defining map" in cache[0]["final_answer"]
+
+    chatbot = retrieve_learned_qa("How should a DITA chatbot distinguish specification-defined behavior from processor-specific behavior?", k=1)
+    assert chatbot[0]["prompt"] == "How should a DITA chatbot distinguish specification-defined behavior from processor-specific behavior?"
+    assert "DITA-OT behavior is always the DITA specification" in chatbot[0]["final_answer"]
+
+    failure = retrieve_learned_qa(
+        "A conkeyref works when publishing the root map but fails when previewing the topic. Why?",
+        k=1,
+    )
+    assert failure[0]["prompt"] == "A conkeyref works when publishing the root map but fails when previewing the topic. Why?"
+    assert "topic-only preview" in failure[0]["final_answer"]
+
+    grounding = retrieve_learned_qa(
+        "A topic is published correctly but the chatbot gives the wrong explanation of why. How would you design a source-grounded evaluation to detect the hallucination?",
+        k=1,
+    )
+    assert grounding[0]["prompt"].startswith("A topic is published correctly")
+    assert "source XML, effective map context, processor logs" in grounding[0]["final_answer"]
+
+    uri = retrieve_learned_qa("What is direct URI-based addressing in DITA?", k=1)
+    assert uri[0]["prompt"] == "What is direct URI-based addressing in DITA?"
+    assert "source XML points directly" in uri[0]["final_answer"]
+
+    fragment = retrieve_learned_qa("What does the URI topic.dita#topicId/elementId address?", k=1)
+    assert fragment[0]["prompt"] == "What does the URI topic.dita#topicId/elementId address?"
+    assert "element with ID `elementId`" in fragment[0]["final_answer"]
+
+    duplicate_key = retrieve_learned_qa("How is the effective definition selected when duplicate key definitions exist?", k=1)
+    assert duplicate_key[0]["prompt"] == "How is the effective definition selected when duplicate key definitions exist?"
+    assert "The last duplicate key always wins universally." in duplicate_key[0]["final_answer"]
+
+    resource_only = retrieve_learned_qa('What is the semantic meaning of processing-role="resource-only"?', k=1)
+    assert resource_only[0]["prompt"] == 'What is the semantic meaning of processing-role="resource-only"?'
+    assert "supporting material rather than normal reading-order content" in resource_only[0]["final_answer"]
+
+    toc = retrieve_learned_qa('Does toc="no" mean the topic should not be generated?', k=1)
+    assert toc[0]["prompt"] == 'Does toc="no" mean the topic should not be generated?'
+    assert "omitted from generated navigation" in toc[0]["final_answer"]
+
+    reltable = retrieve_learned_qa("How does a relationship table generate related links?", k=1)
+    assert reltable[0]["prompt"] == "How does a relationship table generate related links?"
+    assert "Each `relrow` defines a relationship set." in reltable[0]["final_answer"]
+
+    sourceonly = retrieve_learned_qa('What is the effect of linking="sourceonly"?', k=1)
+    assert sourceonly[0]["prompt"] == 'What is the effect of linking="sourceonly"?'
+    assert "source of generated links" in sourceonly[0]["final_answer"]
+
+    mapref = retrieve_learned_qa(
+        "What is the difference between referencing a map with mapref and referencing it using a normal topicref?",
+        k=1,
+    )
+    assert mapref[0]["prompt"] == "What is the difference between referencing a map with mapref and referencing it using a normal topicref?"
+    assert "map-to-map composition" in mapref[0]["final_answer"]
+
+    navref = retrieve_learned_qa("How does navref differ from including a submap through mapref?", k=1)
+    assert navref[0]["prompt"] == "How does navref differ from including a submap through mapref?"
+    assert "navigation-oriented" in navref[0]["final_answer"]
+
+    branch = retrieve_learned_qa("What is branch filtering in DITA?", k=1)
+    assert branch[0]["prompt"] == "What is branch filtering in DITA?"
+    assert "specific branch of a DITA map" in branch[0]["final_answer"]
+
+    resource_prefix = retrieve_learned_qa("How do resourceprefix and resourcesuffix prevent naming collisions?", k=1)
+    assert resource_prefix[0]["prompt"] == "How do resourceprefix and resourcesuffix prevent naming collisions?"
+    assert "branch-specific text to generated resource names" in resource_prefix[0]["final_answer"]
+
+
+def test_oxygen_customer_questions_seed_all_400_records():
+    items = get_oxygen_customer_seed_items()
+
+    assert len(items) == 400
+    assert all(item["source_type"] == "oxygen_customer_questions" for item in items)
+    assert all(item["answer_style"] == "senior_technical_docs" for item in items)
+    assert all("## Deterministic checks" in item["final_answer"] for item in items)
+    assert all("not an authoritative forum citation" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "Why am I getting DITA-OT warnings in Oxygen 28 that did not appear in Oxygen 26?" in prompts
+    assert "Why does my conref work in Author mode but fail during publishing?" in prompts
+    assert "Why does a keyref work when publishing the root map but fail when publishing the submap alone?" in prompts
+    assert "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?" in prompts
+    assert "How can I exclude the mini-TOC from only selected chapters?" in prompts
+    assert "Why are keys defined in a subject-scheme map not available in Oxygen Author mode?" in prompts
+    assert "How should review metadata be preserved when topics are moved or renamed?" in prompts
+
+
+def test_oxygen_customer_questions_are_retrievable_and_counted(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_questions = {
+        "Why am I getting DITA-OT warnings in Oxygen 28 that did not appear in Oxygen 26?",
+        "Why does my conref work in Author mode but fail during publishing?",
+        "Why does a keyref work when publishing the root map but fail when publishing the submap alone?",
+        "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_oxygen_customer_seed_items() if item["prompt"] in sample_questions]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+        summary = get_learned_qa_summary(db)
+    finally:
+        db.close()
+
+    assert summary["customer_question_count"] >= 4
+    assert summary["source_type_counts"]["oxygen_customer_questions"]["approved"] >= 4
+
+    upgrade = retrieve_learned_qa("Why am I getting DITA-OT warnings in Oxygen 28 that did not appear in Oxygen 26?", k=1)
+    assert upgrade[0]["source_type"] == "oxygen_customer_questions"
+    assert "environment and processor-version regression" in upgrade[0]["final_answer"]
+    assert "DITA specification behavior" in upgrade[0]["final_answer"]
+
+    conref = retrieve_learned_qa("Why does my conref work in Author mode but fail during publishing?", k=1)
+    assert conref[0]["source_type"] == "oxygen_customer_questions"
+    assert "active publication" in conref[0]["final_answer"]
+    assert "preprocessing context" in conref[0]["final_answer"]
+    assert "`@conref` URI" in conref[0]["final_answer"]
+    assert "topic ID, element ID" in conref[0]["final_answer"]
+    assert "structurally compatible specialization" in conref[0]["final_answer"]
+    assert "publication dependency graph" in conref[0]["final_answer"]
+
+    keyref = retrieve_learned_qa("Why does a keyref work when publishing the root map but fail when publishing the submap alone?", k=1)
+    assert keyref[0]["source_type"] == "oxygen_customer_questions"
+    assert "active root map" in keyref[0]["final_answer"]
+    assert "effective key space" in keyref[0]["final_answer"]
+    assert "selected key scope" in keyref[0]["final_answer"]
+    assert "filtered-out key definitions" in keyref[0]["final_answer"]
+
+    ci = retrieve_learned_qa(
+        "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?",
+        k=1,
+    )
+    assert ci[0]["source_type"] == "oxygen_customer_questions"
+    assert "versions" in ci[0]["final_answer"]
+    assert "full logs" in ci[0]["final_answer"]
+
+
+def test_oxygen_customer_normalization_and_domain_detector_handles_customer_wording(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_questions = {
+        "Why does content that published successfully in the previous Oxygen version now generate warnings?",
+        "How do I verify which root map Oxygen is using to resolve the key?",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_oxygen_customer_seed_items() if item["prompt"] in sample_questions]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    assert normalize_prompt("productâ€™s navigation") == "product's navigation"
+    assert is_learned_qa_domain_query("Why does content that published successfully now generate warnings?")
+    assert is_learned_qa_domain_query("How do I verify which root map Oxygen is using to resolve the key?")

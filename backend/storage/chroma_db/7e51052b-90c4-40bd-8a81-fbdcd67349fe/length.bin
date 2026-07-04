@@ -1,0 +1,10 @@
+invalid type: string "Prompt: What does keyscope do?\n\nAnswer:\nFinal accepted answer about keyscope.\n\nTopic: reuse_and_maps\nTags: keyscope\nAnswer style: senior_technical_docs", expected a booleannswer:
+Final accepted answer about keyscope.
+
+Topic: reuse_and_maps
+Tags: keyscope
+Answer style: senior_technical_docsCALS table entry cells, not `<simpletable>` cells.
+
+## XML example
+```xml
+ struct
