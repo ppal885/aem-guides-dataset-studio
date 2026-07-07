@@ -158,6 +158,159 @@ def _jaccard_similarity(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(union)
 
 
+def _extract_attribute_query_terms(text: str) -> set[str]:
+    normalized = normalize_prompt(text).replace("_", "-")
+    explicit = {match.group(1).lower() for match in re.finditer(r"@([a-z][\w:-]*)", normalized)}
+    candidates = {
+        "morerows", "namest", "nameend", "conref", "conkeyref", "conrefend", "keyref", "keys",
+        "keyscope", "processing-role", "copy-to", "collection-type", "locktitle", "lockmeta",
+        "navtitle", "searchtitle", "linktext", "cascade", "chunk", "href", "scope", "format",
+        "toc", "linking", "audience", "platform", "product", "props", "otherprops", "rev",
+        "translate", "xml:lang", "dir", "outputclass", "class", "id", "xml:id", "domains",
+        "deliverytarget", "print", "colname", "colnum", "colwidth", "rowsep", "colsep",
+        "align", "valign", "char", "charoff", "frame", "pgwide", "orient", "rowheader",
+        "headers", "alt", "placement", "height", "width", "scale", "scalefit", "longdescref",
+        "keyscopeprefix", "keyscopesuffix", "resourceprefix", "resourcesuffix", "filter",
+        "conaction", "ditavalref",
+    }
+    found = explicit | {candidate for candidate in candidates if re.search(rf"\b{re.escape(candidate)}\b", normalized)}
+    if "resource-only" in normalized:
+        found.add("processing-role")
+    if "branch filtering" in normalized or "branch-filtering" in normalized:
+        found |= {"ditavalref", "filter", "keyscopeprefix", "keyscopesuffix", "resourceprefix", "resourcesuffix"}
+    if "key scope" in normalized or "key scopes" in normalized:
+        found.add("keyscope")
+    if "table header" in normalized or "table headers" in normalized or ("accessible" in normalized and "table" in normalized):
+        found |= {"headers", "rowheader"}
+    if "native pdf" in normalized and "styling" in normalized:
+        found.add("outputclass")
+    if not found and "attribute" not in normalized and not any(
+        domain in normalized
+        for domain in ("dita", "cals", "table", "pdf", "webhelp", "oxygen", "aem guides", "branch filtering", "native pdf")
+    ):
+        return set()
+    if not found and "table" in normalized and "attribute" in normalized:
+        found |= {"headers", "rowheader", "valign", "align", "colwidth", "rowsep", "colsep", "morerows", "namest", "nameend"}
+    if not found and "image" in normalized and "attribute" in normalized:
+        found |= {"scale", "scalefit", "width", "height", "placement", "alt", "longdescref"}
+    return found
+
+
+def _retrieve_attribute_qa_candidates(normalized_query: str, result_limit: int) -> list[dict[str, Any]]:
+    attrs = _extract_attribute_query_terms(normalized_query)
+    if not attrs:
+        return []
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(LearnedPromptEntry)
+            .filter(
+                LearnedPromptEntry.status == "approved",
+                LearnedPromptEntry.source_type == "dita_attribute_questions",
+            )
+            .all()
+        )
+        scored: list[tuple[float, LearnedPromptEntry]] = []
+        for row in rows:
+            tags = set(_json_loads_tags(row.tags_json))
+            row_text = normalize_prompt(f"{row.prompt}\n{row.final_answer}\n{' '.join(tags)}")
+            row_attrs = _extract_attribute_query_terms(row.prompt) | {tag.lower() for tag in tags}
+            overlap = attrs & row_attrs
+            if not overlap:
+                continue
+            score = _jaccard_similarity(normalized_query, normalize_prompt(row.prompt))
+            score = max(score, _jaccard_similarity(normalized_query, row_text) * 0.7)
+            score += 0.75 + min(0.2, 0.05 * len(overlap))
+            direct_overlap = {
+                attr
+                for attr in overlap
+                if re.search(rf"\b{re.escape(attr)}\b", normalized_query)
+            }
+            score += min(0.35, 0.18 * len(direct_overlap))
+            if "resource-only" in normalized_query and "processing-role" in overlap:
+                score += 0.45
+            if "simpletable" in normalized_query and "morerows" in overlap:
+                score += 0.1
+            if "accessibility" in normalized_query and overlap & {"headers", "rowheader", "alt", "longdescref"}:
+                score += 0.18
+            if "pdf" in normalized_query and overlap & {"headers", "rowheader", "valign", "scale", "scalefit", "copy-to"}:
+                score += 0.08
+            scored.append((score, row))
+        scored.sort(key=lambda item: (-item[0], item[1].prompt))
+        return [
+            {
+                **_serialize_entry(row),
+                "score": round(min(score, 0.99), 4),
+                "distance": round(max(0.0, 1.0 - min(score, 0.99)), 4),
+            }
+            for score, row in scored[:result_limit]
+        ]
+    finally:
+        db.close()
+
+
+def _extract_dita_ot_query_terms(text: str) -> set[str]:
+    normalized = normalize_prompt(text).replace("_", "-")
+    terms = {
+        "dita-ot", "dita ot", "jenkins", "ci", "pipeline", "docker", "pdf", "pdf2", "fop",
+        "xsl-fo", "html5", "webhelp", "ditaval", "branch filtering", "preprocess", "preprocessing",
+        "keyref", "conref", "conkeyref", "chunk", "copy-to", "resource-only", "plugin", "plug-in",
+        "extension point", "integrator", "catalog", "grammar", "validation", "log", "warning",
+        "local", "command-line", "memory", "performance", "upgrade", "migration",
+    }
+    found = {term for term in terms if term in normalized}
+    if "build" in normalized and ("local" in normalized or "jenkins" in normalized or "ci" in normalized):
+        found |= {"ci", "jenkins", "pipeline"}
+    if "dita-ot" in normalized or "dita ot" in normalized:
+        found.add("dita-ot")
+    return found
+
+
+def _retrieve_dita_ot_complex_candidates(normalized_query: str, result_limit: int) -> list[dict[str, Any]]:
+    terms = _extract_dita_ot_query_terms(normalized_query)
+    if not terms:
+        return []
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(LearnedPromptEntry)
+            .filter(
+                LearnedPromptEntry.status == "approved",
+                LearnedPromptEntry.source_type == "dita_ot_docs_complex",
+            )
+            .all()
+        )
+        scored: list[tuple[float, LearnedPromptEntry]] = []
+        for row in rows:
+            tags = {tag.lower() for tag in _json_loads_tags(row.tags_json)}
+            row_text = normalize_prompt(f"{row.prompt}\n{row.final_answer}\n{' '.join(tags)}")
+            row_terms = tags | _extract_dita_ot_query_terms(row.prompt)
+            overlap = terms & row_terms
+            if not overlap:
+                continue
+            score = max(
+                _jaccard_similarity(normalized_query, normalize_prompt(row.prompt)),
+                _jaccard_similarity(normalized_query, row_text) * 0.75,
+            )
+            score += 0.72 + min(0.25, 0.05 * len(overlap))
+            if {"jenkins", "ci", "pipeline"} & terms and {"jenkins", "ci", "pipeline"} & row_terms:
+                score += 0.35
+            if "dita-ot" in terms or "dita ot" in terms:
+                score += 0.08
+            scored.append((score, row))
+        scored.sort(key=lambda item: (-item[0], item[1].prompt))
+        return [
+            {
+                **_serialize_entry(row),
+                "score": round(min(score, 0.99), 4),
+                "distance": round(max(0.0, 1.0 - min(score, 0.99)), 4),
+            }
+            for score, row in scored[:result_limit]
+        ]
+    finally:
+        db.close()
+
+
 _LEARNED_QA_DOMAIN_TERMS = {
     "dita",
     "dita-ot",
@@ -257,6 +410,8 @@ def _read_seed_items() -> list[dict[str, Any]]:
     items = [item for item in raw if isinstance(item, dict)]
     if LEARNED_QA_SEED_PATH == DEFAULT_LEARNED_QA_SEED_PATH:
         from app.services.learned_qa_advanced_seed import get_advanced_dita_seed_items
+        from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
+        from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
         from app.services.learned_qa_eval_seed import get_dita_expert_eval_seed_items
         from app.services.learned_qa_enterprise_seed import get_enterprise_dita_seed_items
         from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
@@ -267,6 +422,8 @@ def _read_seed_items() -> list[dict[str, Any]]:
         items.extend(get_dita_expert_eval_seed_items())
         items.extend(get_advanced_dita_seed_items())
         items.extend(get_oxygen_customer_seed_items())
+        items.extend(get_dita_attribute_seed_items())
+        items.extend(get_dita_ot_complex_seed_items())
 
     deduped: list[dict[str, Any]] = []
     seen_prompts: set[str] = set()
@@ -802,6 +959,14 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
             return [{**_serialize_entry(exact_entry), "score": 1.0, "distance": 0.0}]
     finally:
         db.close()
+
+    attribute_matches = _retrieve_attribute_qa_candidates(normalized, result_limit)
+    if attribute_matches and float(attribute_matches[0].get("score") or 0.0) >= 0.78:
+        return attribute_matches
+
+    dita_ot_matches = _retrieve_dita_ot_complex_candidates(normalized, result_limit)
+    if dita_ot_matches and float(dita_ot_matches[0].get("score") or 0.0) >= 0.78:
+        return dita_ot_matches
 
     if is_chroma_available() and get_collection_count(CHROMA_COLLECTION_LEARNED_QA) > 0:
         emb = embed_query(text[:4000])

@@ -17,6 +17,8 @@ from app.services.learned_qa_service import (
     seed_learned_qa,
     sync_learned_qa_corpus,
 )
+from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
+from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
 from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
 from app.services.source_review_state_service import load_source_state
 from app.services.vector_store_service import CHROMA_COLLECTION_LEARNED_QA
@@ -507,3 +509,297 @@ def test_oxygen_customer_normalization_and_domain_detector_handles_customer_word
     assert normalize_prompt("productâ€™s navigation") == "product's navigation"
     assert is_learned_qa_domain_query("Why does content that published successfully now generate warnings?")
     assert is_learned_qa_domain_query("How do I verify which root map Oxygen is using to resolve the key?")
+
+
+def test_dita_attribute_seed_generates_around_1000_senior_questions():
+    items = get_dita_attribute_seed_items()
+
+    assert len(items) == 1060
+    assert all(item["source_type"] == "dita_attribute_questions" for item in items)
+    assert all(item["topic"] == "dita_attributes" for item in items)
+    assert all("## XML example" in item["final_answer"] for item in items)
+    assert all("## Validation checklist" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "What does @morerows do in DITA?" in prompts
+    assert "Show a senior example for the DITA @keyscope attribute." in prompts
+    assert "Why might @processing-role behave differently in HTML, PDF, Oxygen preview, and AEM Guides output?" in prompts
+    assert "What minimal repro should I create for a suspected @conaction issue?" in prompts
+    assert "What does @ditavalref do in DITA?" in prompts
+    assert "Can copy-to fix duplicate output names created by branch filtering resourcesuffix?" in prompts
+
+
+def test_dita_attribute_questions_are_retrievable(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_questions = {
+        "What does @morerows do in DITA?",
+        "Show a senior example for the DITA @keyscope attribute.",
+        "How do I troubleshoot a problem involving @processing-role in DITA?",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_dita_attribute_seed_items() if item["prompt"] in sample_questions]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    morerows = retrieve_learned_qa("What does @morerows do in DITA?", k=1)
+    assert morerows[0]["source_type"] == "dita_attribute_questions"
+    assert "CALS table entry only" in morerows[0]["final_answer"]
+    assert "row-span" in morerows[0]["final_answer"]
+
+    keyscope = retrieve_learned_qa("Show a senior example for the DITA @keyscope attribute.", k=1)
+    assert keyscope[0]["source_type"] == "dita_attribute_questions"
+    assert "keyscope=\"admin\"" in keyscope[0]["final_answer"]
+    assert "map context" in keyscope[0]["final_answer"].lower()
+
+    processing_role = retrieve_learned_qa("How do I troubleshoot a problem involving @processing-role in DITA?", k=1)
+    assert processing_role[0]["source_type"] == "dita_attribute_questions"
+    assert "resource-only" in processing_role[0]["final_answer"]
+    assert "root map" in processing_role[0]["final_answer"].lower()
+
+
+def test_dita_attribute_reranker_handles_variant_prompts(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_attrs = {"morerows", "namest", "nameend", "conref", "conkeyref", "cascade", "copy-to", "ditavalref"}
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in get_dita_attribute_seed_items()
+        if any(attr in item["tags"] for attr in sample_attrs)
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    simpletable = retrieve_learned_qa("Does @morerows work in simpletable?", k=1)
+    assert simpletable[0]["source_type"] == "dita_attribute_questions"
+    assert "do not apply CALS spanning attributes" in simpletable[0]["final_answer"]
+    assert "<simpletable>" in simpletable[0]["final_answer"]
+
+    span = retrieve_learned_qa("Explain @namest and @nameend with XML example.", k=1)
+    assert span[0]["source_type"] == "dita_attribute_questions"
+    assert "Spans columns 1 through 3" in span[0]["final_answer"]
+
+    reuse = retrieve_learned_qa("How does @conkeyref differ from @conref?", k=1)
+    assert reuse[0]["source_type"] == "dita_attribute_questions"
+    assert "target URI/key" in reuse[0]["final_answer"]
+
+    ditavalref = retrieve_learned_qa("What does @ditavalref do?", k=1)
+    assert ditavalref[0]["source_type"] == "dita_attribute_questions"
+    assert "not a normal attribute" in ditavalref[0]["final_answer"]
+
+
+def test_complex_dita_attribute_answers_include_senior_specifics(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_attrs = {"scale", "scalefit", "valign", "align", "copy-to", "chunk", "cascade", "headers", "rowheader"}
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in get_dita_attribute_seed_items()
+        if any(attr in item["tags"] for attr in sample_attrs)
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    scale = retrieve_learned_qa("How does scale attribute work for images in DITA PDF?", k=1)
+    assert scale[0]["source_type"] == "dita_attribute_questions"
+    assert "`@scale`" in scale[0]["final_answer"]
+    assert "percentage-style sizing hint" in scale[0]["final_answer"]
+    assert "Native PDF" in scale[0]["final_answer"]
+
+    valign = retrieve_learned_qa("Explain valign attribute of DITA tables.", k=1)
+    assert valign[0]["source_type"] == "dita_attribute_questions"
+    assert "`@valign`" in valign[0]["final_answer"]
+    assert "CALS table vertical-alignment" in valign[0]["final_answer"]
+    assert "invalid row spans" in valign[0]["final_answer"]
+
+    copy_to = retrieve_learned_qa("How should I use copy-to attribute safely in DITA maps?", k=1)
+    assert copy_to[0]["source_type"] == "dita_attribute_questions"
+    assert "`@copy-to` changes output/resource identity" in copy_to[0]["final_answer"]
+    assert "generated output URIs" in copy_to[0]["final_answer"]
+
+    headers = retrieve_learned_qa("What should I check for headers attribute in accessible DITA tables?", k=1)
+    assert headers[0]["source_type"] == "dita_attribute_questions"
+    assert "`@headers` supports table accessibility" in headers[0]["final_answer"]
+    assert "PDF tagging" in headers[0]["final_answer"]
+
+    table_family = retrieve_learned_qa("What complex DITA table attributes should I check for PDF accessibility?", k=1)
+    assert table_family[0]["source_type"] == "dita_attribute_questions"
+    assert any(token in table_family[0]["final_answer"] for token in ("`@headers`", "`@rowheader`", "`@valign`"))
+    assert "table" in table_family[0]["final_answer"].lower()
+
+
+def test_complex_attribute_prompts_prefer_attribute_corpus(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_attrs = {
+        "morerows", "namest", "nameend", "colname", "scale", "width", "scalefit", "copy-to",
+        "processing-role", "toc", "conref", "conkeyref", "keyscope", "cascade", "audience",
+        "product", "keyscopeprefix", "resourcesuffix", "outputclass", "headers", "rowheader",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in get_dita_attribute_seed_items()
+        if any(attr in item["tags"] for attr in sample_attrs)
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    prompts = [
+        "In a CALS table, why does morerows fail after filtering removes a row, and what should I inspect?",
+        "Explain how namest and nameend interact with colspec colname when a PDF table renders incorrectly.",
+        "How should I debug image scale versus width and scalefit when Native PDF clips an SVG?",
+        "What is the safest way to use copy-to for the same source topic in two product outputs?",
+        "Why can processing-role resource-only content still resolve keys or conrefs but not appear in the TOC?",
+        "How do cascade and DITAVAL branch filtering change effective audience/product attributes?",
+        "When should keyscopeprefix/resourcesuffix be used in branch filtering?",
+        "How does conkeyref resolution differ from conref when a topic is reused under two key scopes?",
+        "What should a DITA expert check when outputclass works in WebHelp but not in Native PDF?",
+        "How should table headers and rowheader be authored for accessible PDF output?",
+    ]
+    for prompt in prompts:
+        row = retrieve_learned_qa(prompt, k=1)[0]
+        assert row["source_type"] == "dita_attribute_questions", prompt
+        assert "## XML example" in row["final_answer"], prompt
+        assert "## Attribute-family notes" in row["final_answer"], prompt
+
+
+def test_composite_complex_attribute_answers_cover_interactions(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    prompts = {
+        "Can copy-to fix duplicate output names created by branch filtering resourcesuffix?",
+        "Why does conkeyref resolve differently after keyscopeprefix is applied by ditavalref?",
+        "How should headers rowheader and colspec be validated for screen reader support?",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_dita_attribute_seed_items() if item["prompt"] in prompts]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    copy_to = retrieve_learned_qa("Can copy-to fix duplicate output names created by branch filtering resourcesuffix?", k=1)
+    assert copy_to[0]["source_type"] == "dita_attribute_questions"
+    assert "`@copy-to`" in copy_to[0]["final_answer"]
+    assert "`@resourcesuffix`" in copy_to[0]["final_answer"]
+    assert "generated URIs" in copy_to[0]["final_answer"]
+
+    conkeyref = retrieve_learned_qa("Why does conkeyref resolve differently after keyscopeprefix is applied by ditavalref?", k=1)
+    assert "`@conkeyref`" in conkeyref[0]["final_answer"]
+    assert "`@keyscopeprefix`" in conkeyref[0]["final_answer"]
+    assert "`ditavalref`" in conkeyref[0]["final_answer"]
+
+    headers = retrieve_learned_qa("How should headers rowheader and colspec be validated for screen reader support?", k=1)
+    assert "`@headers`" in headers[0]["final_answer"]
+    assert "`@rowheader`" in headers[0]["final_answer"]
+    assert "`@colspec`" in headers[0]["final_answer"]
+
+
+def test_dita_ot_complex_seed_generates_100_doc_style_prompts():
+    items = get_dita_ot_complex_seed_items()
+
+    assert len(items) == 100
+    assert all(item["source_type"] == "dita_ot_docs_complex" for item in items)
+    assert all(item["topic"] == "dita_ot_complex" for item in items)
+    assert all("## Senior DITA-OT reasoning" in item["final_answer"] for item in items)
+    assert all("## Deterministic checks" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "How should a senior DITA-OT expert troubleshoot DITAVAL and branch filtering?" in prompts
+    assert "What deterministic checks should I run for PDF/PDF2 output in DITA-OT?" in prompts
+    assert "Create a minimal repro strategy for a complex DITA-OT issue involving DITA-OT plug-ins and extension points." in prompts
+
+
+def test_dita_ot_complex_prompts_are_retrievable(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_prompts = {
+        "How should a senior DITA-OT expert troubleshoot DITAVAL and branch filtering?",
+        "What deterministic checks should I run for PDF/PDF2 output in DITA-OT?",
+        "Why can Key reference resolution behave differently in Oxygen, AEM Guides, CI, and command-line DITA-OT?",
+        "Create a minimal repro strategy for a complex DITA-OT issue involving Plug-ins and extension points.",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_dita_ot_complex_seed_items() if item["prompt"] in sample_prompts]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    branch = retrieve_learned_qa("How should a senior DITA-OT expert troubleshoot DITAVAL and branch filtering?", k=1)
+    assert branch[0]["source_type"] == "dita_ot_docs_complex"
+    assert "branch-specific" in branch[0]["final_answer"]
+    assert "DITAVAL" in branch[0]["final_answer"]
+
+    pdf = retrieve_learned_qa("What deterministic checks should I run for PDF/PDF2 output in DITA-OT?", k=1)
+    assert pdf[0]["source_type"] == "dita_ot_docs_complex"
+    assert "XSL-FO" in pdf[0]["final_answer"]
+    assert "formatter" in pdf[0]["final_answer"]
+
+    keyref = retrieve_learned_qa(
+        "Why can Key reference resolution behave differently in Oxygen, AEM Guides, CI, and command-line DITA-OT?",
+        k=1,
+    )
+    assert keyref[0]["source_type"] == "dita_ot_docs_complex"
+    assert "root map" in keyref[0]["final_answer"]
+    assert "key scopes" in keyref[0]["final_answer"]
+
+
+def test_dita_ot_complex_reranker_handles_ci_variant(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in get_dita_ot_complex_seed_items()
+        if "CI and reproducible publishing" in item["prompt"]
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    ci = retrieve_learned_qa("How should I debug a DITA-OT build that works locally but fails in Jenkins?", k=1)
+    assert ci[0]["source_type"] == "dita_ot_docs_complex"
+    assert "Java" in ci[0]["final_answer"]
+    assert "plug-ins" in ci[0]["final_answer"]
+    assert "CI" in ci[0]["final_answer"]
