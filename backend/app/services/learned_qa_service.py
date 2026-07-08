@@ -269,6 +269,16 @@ def _extract_dita_ot_query_terms(text: str) -> set[str]:
         "table rows", "table", "morerows", "conrefend", "range reuse", "xref rewriting",
         "related links", "relationship table", "svg", "image", "windows", "linux", "spaces",
         "non-ascii", "case-sensitive", "case sensitive", "path issues", "filenames",
+        "args.figurelink.style", "args.tablelink.style", "args.input.dir", "output.dir",
+        "remove-broken-links", "result.rewrite-rule.class", "result.rewrite-rule.xsl",
+        "args.cssroot", "args.hdr", "args.ftr", "args.hdf", "args.html5.classattr",
+        "args.xhtml.classattr", "html5.toc.generate", "nav-toc", "args.outext",
+        "args.indexshow", "args.artlbl", "args.bookmap-order", "args.chapter.layout",
+        "args.bookmark.style", "args.fo.userconfig", "org.dita.pdf2.i18n.enabled",
+        "org.dita.pdf2.chunk.enabled", "theme", "--property", "--propertyfile",
+        ".ditaotrc", "local.properties", "plugin.properties", "configuration.properties",
+        "pdf theme", "mini-toc", "minitoc", "bookmarks", "font mapping", "i18n",
+        "toc file", "navigation toc", "custom css", "not copied", "--format", "format option",
     }
     found = {term for term in terms if term in normalized}
     if "build" in normalized and ("local" in normalized or "jenkins" in normalized or "ci" in normalized):
@@ -277,7 +287,7 @@ def _extract_dita_ot_query_terms(text: str) -> set[str]:
         found |= {"args.draft", "draft-comment", "required-cleanup"}
     if "release output" in normalized and "draft" in normalized:
         found |= {"args.draft", "draft-comment", "required-cleanup"}
-    if "branch" in normalized and ("filter" in normalized or "resource" in normalized or "keyscope" in normalized):
+    if "branch" in normalized and ("filter" in normalized or "resource" in normalized or "keyscope" in normalized or "resourceprefix" in normalized or "resourcesuffix" in normalized):
         found |= {"branch filtering", "ditaval", "resourceprefix", "resourcesuffix", "keyscopeprefix"}
     if "filtered branch" in normalized or "filtered branches" in normalized:
         found |= {"branch filtering", "ditaval"}
@@ -301,8 +311,8 @@ def _retrieve_dita_ot_complex_candidates(normalized_query: str, result_limit: in
         rows = (
             db.query(LearnedPromptEntry)
             .filter(
-                LearnedPromptEntry.status == "approved",
-                LearnedPromptEntry.source_type.in_(("dita_ot_docs_complex", "dita_ot_docs_researched")),
+            LearnedPromptEntry.status == "approved",
+                LearnedPromptEntry.source_type.in_(("dita_ot_docs_complex", "dita_ot_docs_researched", "dita_ot_docs_more")),
             )
             .all()
         )
@@ -323,6 +333,97 @@ def _retrieve_dita_ot_complex_candidates(normalized_query: str, result_limit: in
                 score += 0.35
             if "dita-ot" in terms or "dita ot" in terms:
                 score += 0.08
+            if str(row.source_type or "") == "dita_ot_docs_more":
+                exact_parameter_overlap = {
+                    term
+                    for term in overlap
+                    if "." in term or term.startswith("--") or term in {".ditaotrc", "nav-toc", "theme", "output.dir", "resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix"}
+                }
+                score += min(0.55, 0.2 * len(exact_parameter_overlap))
+                if exact_parameter_overlap:
+                    missing_exact = {
+                        term
+                        for term in terms
+                        if ("." in term or term.startswith("--") or term in {".ditaotrc", "nav-toc", "theme", "output.dir", "resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix"})
+                        and term not in row_terms
+                    }
+                    score -= min(0.2, 0.08 * len(missing_exact))
+            if "args.rellinks" in terms and "args.rellinks" not in row_terms:
+                score -= 0.45
+            if {"branch filtering", "resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix"} & terms and {"branch filtering", "resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix"} & row_terms:
+                score += 0.24
+            scored.append((score, row))
+        scored.sort(key=lambda item: (-item[0], item[1].prompt))
+        return [
+            {
+                **_serialize_entry(row),
+                "score": round(min(score, 0.99), 4),
+                "distance": round(max(0.0, 1.0 - min(score, 0.99)), 4),
+            }
+            for score, row in scored[:result_limit]
+        ]
+    finally:
+        db.close()
+
+
+def _extract_reltable_query_terms(text: str) -> set[str]:
+    normalized = normalize_prompt(text)
+    terms = {
+        "reltable", "reltables", "relationship table", "relationship tables", "related links",
+        "relrow", "relcell", "relheader", "relcolspec", "linking", "sourceonly",
+        "targetonly", "collection-type", "family", "sequence", "choice", "unordered",
+        "scope", "format", "external", "keyref", "keyscope", "toc", "processing-role",
+        "resource-only", "copy-to", "branch filtering",
+    }
+    found = {term for term in terms if term in normalized}
+    if "rel row" in normalized:
+        found.add("relrow")
+    if "rel cell" in normalized:
+        found.add("relcell")
+    if "rel col spec" in normalized or "relcol spec" in normalized:
+        found.add("relcolspec")
+    if "one-way" in normalized or "two-way" in normalized:
+        found |= {"linking", "sourceonly", "targetonly", "related links"}
+    return found
+
+
+def _retrieve_reltable_candidates(normalized_query: str, result_limit: int) -> list[dict[str, Any]]:
+    if any(term in normalized_query for term in {"args.rellinks", "dita-ot", "dita ot"}):
+        return []
+    terms = _extract_reltable_query_terms(normalized_query)
+    if not terms or not (terms & {"reltable", "reltables", "relationship table", "relationship tables", "relrow", "relcell", "relheader", "relcolspec", "related links"}):
+        return []
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(LearnedPromptEntry)
+            .filter(
+                LearnedPromptEntry.status == "approved",
+                LearnedPromptEntry.source_type == "dita_reltable_senior_seed",
+            )
+            .all()
+        )
+        scored: list[tuple[float, LearnedPromptEntry]] = []
+        for row in rows:
+            tags = {tag.lower() for tag in _json_loads_tags(row.tags_json)}
+            row_text = normalize_prompt(f"{row.prompt}\n{row.final_answer}\n{' '.join(tags)}")
+            row_terms = tags | _extract_reltable_query_terms(row.prompt)
+            overlap = terms & row_terms
+            if not overlap:
+                continue
+            score = max(
+                _jaccard_similarity(normalized_query, normalize_prompt(row.prompt)),
+                _jaccard_similarity(normalized_query, row_text) * 0.78,
+            )
+            score += 0.78 + min(0.22, 0.045 * len(overlap))
+            if {"relrow", "relcell"} & terms and {"relrow", "relcell"} & row_terms:
+                score += 0.18
+            if {"relheader", "relcolspec"} & terms and {"relheader", "relcolspec"} & row_terms:
+                score += 0.22
+            if {"linking", "sourceonly", "targetonly"} & terms and {"linking", "sourceonly", "targetonly"} & row_terms:
+                score += 0.2
+            if {"scope", "format", "external"} & terms and {"scope", "format", "external"} & row_terms:
+                score += 0.2
             scored.append((score, row))
         scored.sort(key=lambda item: (-item[0], item[1].prompt))
         return [
@@ -345,8 +446,23 @@ def _should_prefer_dita_ot_retrieval(normalized_query: str) -> bool:
         "args.copycss", "args.csspath", "args.rellinks", "pdf.formatter", "customization.dir",
         "dita install", "plugin.xml", "store-type", "parallel", "conserve-memory", "validate",
         "generate.copy.outer",
+        "args.figurelink.style", "args.tablelink.style", "args.input.dir", "output.dir",
+        "remove-broken-links", "result.rewrite-rule.class", "result.rewrite-rule.xsl",
+        "args.cssroot", "args.hdr", "args.ftr", "args.hdf", "args.html5.classattr",
+        "args.xhtml.classattr", "html5.toc.generate", "nav-toc", "args.outext",
+        "args.indexshow", "args.artlbl", "args.bookmap-order", "args.chapter.layout",
+        "args.bookmark.style", "args.fo.userconfig", "org.dita.pdf2.i18n.enabled",
+        "org.dita.pdf2.chunk.enabled", "theme", "--property", "--propertyfile",
+        ".ditaotrc", "local.properties", "plugin.properties", "configuration.properties",
+        "--format", "transtype",
     }
     if any(term in normalized_query for term in parameter_terms):
+        return True
+    if "html5" in normalized_query and ("toc" in normalized_query or "nav" in normalized_query):
+        return True
+    if "pdf2" in normalized_query and "chunk" in normalized_query:
+        return True
+    if "custom css" in normalized_query or ("css" in normalized_query and "cop" in normalized_query):
         return True
     dita_ot_intent_terms = {
         "ditaval", "branch filtering", "resourceprefix", "resourcesuffix", "keyscopeprefix",
@@ -357,6 +473,15 @@ def _should_prefer_dita_ot_retrieval(normalized_query: str) -> bool:
         "case-sensitive", "case sensitive", "path issues",
     }
     if any(term in normalized_query for term in dita_ot_intent_terms) and "@" not in normalized_query:
+        reltable_terms = _extract_reltable_query_terms(normalized_query)
+        reltable_core_terms = {
+            "reltable", "reltables", "relationship table", "relationship tables",
+            "relrow", "relcell", "relheader", "relcolspec",
+        }
+        if reltable_terms & reltable_core_terms and not any(term in normalized_query for term in {"dita-ot", "dita ot", "html5", "pdf", "args.rellinks", "output", "publish", "publishing"}):
+            return False
+        return True
+    if "branch" in normalized_query and any(term in normalized_query for term in {"resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix"}):
         return True
     return (
         ("dita-ot" in normalized_query or "dita ot" in normalized_query)
@@ -466,6 +591,7 @@ def _read_seed_items() -> list[dict[str, Any]]:
         from app.services.learned_qa_advanced_seed import get_advanced_dita_seed_items
         from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
         from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
+        from app.services.learned_qa_dita_ot_more_docs_seed import get_dita_ot_more_docs_seed_items
         from app.services.learned_qa_dita_ot_researched_seed import get_dita_ot_researched_seed_items
         from app.services.learned_qa_eval_seed import get_dita_expert_eval_seed_items
         from app.services.learned_qa_enterprise_seed import get_enterprise_dita_seed_items
@@ -481,6 +607,7 @@ def _read_seed_items() -> list[dict[str, Any]]:
         items.extend(get_dita_attribute_seed_items())
         items.extend(get_dita_ot_complex_seed_items())
         items.extend(get_dita_ot_researched_seed_items())
+        items.extend(get_dita_ot_more_docs_seed_items())
         items.extend(get_reltable_seed_items())
 
     deduped: list[dict[str, Any]] = []
@@ -1017,6 +1144,10 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
             return [{**_serialize_entry(exact_entry), "score": 1.0, "distance": 0.0}]
     finally:
         db.close()
+
+    reltable_matches = _retrieve_reltable_candidates(normalized, result_limit)
+    if reltable_matches and float(reltable_matches[0].get("score") or 0.0) >= 0.78:
+        return reltable_matches
 
     if _should_prefer_dita_ot_retrieval(normalized):
         dita_ot_matches = _retrieve_dita_ot_complex_candidates(normalized, result_limit)

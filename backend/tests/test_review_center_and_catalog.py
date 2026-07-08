@@ -19,6 +19,7 @@ from app.services.learned_qa_service import (
 )
 from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
 from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
+from app.services.learned_qa_dita_ot_more_docs_seed import get_dita_ot_more_docs_seed_items
 from app.services.learned_qa_dita_ot_researched_seed import get_dita_ot_researched_seed_items
 from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
 from app.services.learned_qa_reltable_seed import get_reltable_seed_items
@@ -429,6 +430,11 @@ def test_oxygen_customer_questions_seed_all_400_records():
     prompts = {item["prompt"] for item in items}
     assert "Why am I getting DITA-OT warnings in Oxygen 28 that did not appear in Oxygen 26?" in prompts
     assert "Why does my conref work in Author mode but fail during publishing?" in prompts
+    assert "Why does a keyref work when publishing the root map but fail when publishing the submap alone?" in prompts
+    assert "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?" in prompts
+    assert "How can I exclude the mini-TOC from only selected chapters?" in prompts
+    assert "Why are keys defined in a subject-scheme map not available in Oxygen Author mode?" in prompts
+    assert "How should review metadata be preserved when topics are moved or renamed?" in prompts
 
 
 def test_reltable_seed_has_senior_relationship_table_records():
@@ -466,11 +472,6 @@ def test_reltable_seed_retrieval_handles_attributes_and_aliases():
     assert external[0]["source_type"] == "dita_reltable_senior_seed"
     assert 'scope="external"' in external[0]["final_answer"]
     assert 'format="pdf"' in external[0]["final_answer"]
-    assert "Why does a keyref work when publishing the root map but fail when publishing the submap alone?" in prompts
-    assert "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?" in prompts
-    assert "How can I exclude the mini-TOC from only selected chapters?" in prompts
-    assert "Why are keys defined in a subject-scheme map not available in Oxygen Author mode?" in prompts
-    assert "How should review metadata be preserved when topics are moved or renamed?" in prompts
 
 
 def test_oxygen_customer_questions_are_retrievable_and_counted(monkeypatch, tmp_path):
@@ -927,6 +928,57 @@ def test_dita_ot_researched_prompts_are_retrievable(monkeypatch, tmp_path):
     assert plugin[0]["source_type"] == "dita_ot_docs_researched"
     assert "extension-point" in plugin[0]["final_answer"]
     assert "custom transtype" in plugin[0]["final_answer"]
+
+
+def test_dita_ot_more_docs_seed_generates_80_official_parameter_prompts():
+    items = get_dita_ot_more_docs_seed_items()
+
+    assert len(items) == 80
+    assert all(item["source_type"] == "dita_ot_docs_more" for item in items)
+    assert all(item["topic"] == "dita_ot_more_docs" for item in items)
+    assert all("official DITA-OT documentation" in item["final_answer"] for item in items)
+    assert all("## Deterministic checks" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "How should I use HTML CSS file, source root, copy flag, and destination path in DITA-OT?" in prompts
+    assert "What can go wrong with PDF bookmap order, chapter mini-TOC, and bookmark style in DITA-OT?" in prompts
+    assert "Give a senior troubleshooting answer for DITA-OT configuration property precedence." in prompts
+    assert "Why can HTML5 navigation TOC generation behave differently in command-line DITA-OT, Oxygen, AEM Guides, and CI?" in prompts
+
+
+def test_dita_ot_more_docs_retrieval_handles_official_parameters(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = get_dita_ot_more_docs_seed_items()
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    css = retrieve_learned_qa("How do args.css args.cssroot args.copycss and args.csspath work in DITA-OT HTML5?", k=1)
+    assert css[0]["source_type"] == "dita_ot_docs_more"
+    assert "args.cssroot" in css[0]["final_answer"]
+    assert "args.copycss" in css[0]["final_answer"]
+
+    toc = retrieve_learned_qa("How do I generate nav-toc partial or full in HTML5 output?", k=1)
+    assert toc[0]["source_type"] == "dita_ot_docs_more"
+    assert "nav-toc" in toc[0]["final_answer"]
+    assert "partial" in toc[0]["final_answer"]
+
+    pdf = retrieve_learned_qa("How do args.chapter.layout and args.bookmark.style affect PDF output?", k=1)
+    assert pdf[0]["source_type"] == "dita_ot_docs_more"
+    assert "args.chapter.layout" in pdf[0]["final_answer"]
+    assert "args.bookmark.style" in pdf[0]["final_answer"]
+
+    config = retrieve_learned_qa("Why does .ditaotrc override my local DITA-OT configuration in CI?", k=1)
+    assert config[0]["source_type"] == "dita_ot_docs_more"
+    assert ".ditaotrc" in config[0]["final_answer"]
+    assert "first value found wins" in config[0]["final_answer"]
 
 
 def test_dita_ot_complex_reranker_handles_branch_table_path_and_draft_variants(monkeypatch, tmp_path):

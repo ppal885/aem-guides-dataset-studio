@@ -96,6 +96,8 @@ _RELTABLE_TOPICS: list[dict[str, Any]] = [
         "prompt": "How does the linking attribute affect reltable generated links?",
         "short": "`@linking` controls generated-link participation: `normal`, `sourceonly`, `targetonly`, and `none` affect whether a topic acts as a source, target, both, or neither.",
         "details": [
+            '`linking="sourceonly"` means the topic can be a source of generated links, but should not receive generated incoming links where honored.',
+            '`linking="targetonly"` means the topic can receive generated links, but should not be the source of outgoing generated related links where honored.',
             "`linking` does not mean the topic is unpublished; it is different from `toc` and `processing-role`.",
             "Evaluate the effective `linking` value on the topicrefs in the active map context.",
             "HTML, PDF, Oxygen, AEM Guides, or custom DITA-OT transforms can render or suppress related links differently.",
@@ -192,6 +194,31 @@ _RELTABLE_TOPICS: list[dict[str, Any]] = [
         "tags": ["toc", "linking", "processing-role", "resource-only", "reltable"],
     },
     {
+        "id": "duplicate_reltable_links",
+        "prompt": "Can relationship tables create duplicate related links?",
+        "short": "Yes. Duplicate related links, or duplicates, can occur when the same relationship is declared in more than one reltable row, appears through hierarchy-generated links, or is also authored as an inline link.",
+        "details": [
+            "A senior implementation should normalize effective targets before duplicate suppression.",
+            "Normalization must account for direct `href`, `keyref`, `copy-to`, branch filtering, and scoped output identity.",
+            "Do not blindly collapse links that point to the same source file if they represent different effective output instances.",
+        ],
+        "xml": """<map>
+  <topicref href="install.dita"/>
+  <topicref href="troubleshoot.dita"/>
+  <reltable>
+    <relrow>
+      <relcell><topicref href="install.dita"/></relcell>
+      <relcell><topicref href="troubleshoot.dita"/></relcell>
+    </relrow>
+    <relrow>
+      <relcell><topicref href="install.dita"/></relcell>
+      <relcell><topicref href="troubleshoot.dita"/></relcell>
+    </relrow>
+  </reltable>
+</map>""",
+        "tags": ["duplicate links", "duplicates", "related links", "reltable", "copy-to", "keyref"],
+    },
+    {
         "id": "troubleshoot_missing_reltable_links",
         "prompt": "How do I troubleshoot reltable related links that do not appear in output?",
         "short": "Troubleshoot missing reltable links by checking the effective map, row/cell structure, target availability, `linking`, filtering, and transform-specific related-link settings.",
@@ -235,10 +262,14 @@ _RELTABLE_TOPICS: list[dict[str, Any]] = [
 _ALIASES: list[tuple[str, str]] = [
     ("Explain reltable relrow relcell with XML example.", "reltable_overview"),
     ("What attributes should I check for relationship table link generation?", "toc_processing_role_reltable"),
+    ("Which attributes control reltable links?", "toc_processing_role_reltable"),
     ("Why are my reltable links one-way instead of two-way?", "linking_attribute_reltable"),
+    ("How does linking sourceonly affect reltable generated links?", "linking_attribute_reltable"),
+    ("Can relcell contain multiple topicrefs?", "relcell_semantics"),
     ("Can I use scoped keys inside relcell topicrefs?", "reltable_keys"),
     ("What does relcolspec type mean in a relationship table?", "relheader_relcolspec"),
     ("Why does a related link appear in HTML but not PDF?", "troubleshoot_missing_reltable_links"),
+    ("How should duplicate reltable links be handled?", "duplicate_reltable_links"),
 ]
 
 

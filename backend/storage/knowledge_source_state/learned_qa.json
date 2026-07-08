@@ -1,21 +1,21 @@
 {
   "source_id": "learned_qa",
   "last_operation": "auto_sync",
-  "last_successful_run": "2026-07-07T14:40:35.071103+00:00",
+  "last_successful_run": "2026-07-08T15:03:48.624347+00:00",
   "last_error": null,
   "failed_item_count": 0,
   "failed_items": [],
   "last_stats": {
     "collection": "learned_qa",
-    "indexed": 3848,
+    "indexed": 3950,
     "errors": [],
     "seed_file": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\app\\storage\\learned_qa_seed.json",
-    "seed_hash": "833539333a6d746e2392653fb5574bb5ee9b1a3c0c4074f9543f789097ec7161",
-    "seed_item_count": 3832,
+    "seed_hash": "854cb5da3509ecbbf0bad3e589a64699b3afc499d80a067fa838339f1ce07c7f",
+    "seed_item_count": 3934,
     "seed_file_mtime": "2026-07-07T14:29:07.178454+00:00",
-    "approved_count": 3848,
-    "performed_seed": false,
-    "performed_reindex": false,
-    "sync_reason": "startup"
+    "approved_count": 3950,
+    "performed_seed": true,
+    "performed_reindex": true,
+    "sync_reason": "dita_ot_more_docs_final"
   }
 }
