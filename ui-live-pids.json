@@ -1,0 +1,9 @@
+{
+  "keeper_pid": 19268,
+  "backend_launcher_pid": 17344,
+  "frontend_launcher_pid": 40792,
+  "ready": true,
+  "restarts": 0,
+  "backend_returncode": null,
+  "frontend_returncode": null
+}

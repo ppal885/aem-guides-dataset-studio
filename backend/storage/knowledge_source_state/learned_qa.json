@@ -1,21 +1,21 @@
 {
   "source_id": "learned_qa",
   "last_operation": "auto_sync",
-  "last_successful_run": "2026-07-07T09:48:38.193325+00:00",
+  "last_successful_run": "2026-07-07T14:40:35.071103+00:00",
   "last_error": null,
   "failed_item_count": 0,
   "failed_items": [],
   "last_stats": {
     "collection": "learned_qa",
-    "indexed": 3747,
+    "indexed": 3848,
     "errors": [],
     "seed_file": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\backend\\app\\storage\\learned_qa_seed.json",
-    "seed_hash": "803abde57fb377cb417c6babc820fef4efe79b8119ad0064507c722cf6326da2",
-    "seed_item_count": 3731,
-    "seed_file_mtime": "2026-06-26T09:35:51.103081+00:00",
-    "approved_count": 3747,
+    "seed_hash": "833539333a6d746e2392653fb5574bb5ee9b1a3c0c4074f9543f789097ec7161",
+    "seed_item_count": 3832,
+    "seed_file_mtime": "2026-07-07T14:29:07.178454+00:00",
+    "approved_count": 3848,
     "performed_seed": false,
     "performed_reindex": false,
-    "sync_reason": "chat_retrieval"
+    "sync_reason": "startup"
   }
 }

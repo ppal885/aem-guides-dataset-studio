@@ -256,11 +256,37 @@ def _extract_dita_ot_query_terms(text: str) -> set[str]:
         "xsl-fo", "html5", "webhelp", "ditaval", "branch filtering", "preprocess", "preprocessing",
         "keyref", "conref", "conkeyref", "chunk", "copy-to", "resource-only", "plugin", "plug-in",
         "extension point", "integrator", "catalog", "grammar", "validation", "log", "warning",
-        "local", "command-line", "memory", "performance", "upgrade", "migration",
+        "debug", "temp", "temporary", "xtrf", "xtrc", "css",
+        "local", "command-line", "memory", "performance", "upgrade", "migration", "args.filter",
+        "args.draft", "clean.temp", "dita.temp.dir", "generate-debug-attributes", "processing-mode",
+        "args.grammar.cache", "args.resources", "outer.control", "onlytopic.in.map", "link-crawl",
+        "force-unique", "root-chunk-override", "args.css", "args.copycss", "args.csspath",
+        "args.rellinks", "pdf.formatter", "customization.dir", "dita install", "plugin.xml",
+        "store-type", "parallel", "conserve-memory", "validate", "generate.copy.outer",
+        "resourceprefix", "resourcesuffix", "keyscopeprefix", "keyscopesuffix", "generated file",
+        "generated file names", "generated filenames", "filtered branch", "filtered branches",
+        "draft-comment", "required-cleanup", "release output", "row spans", "row span", "cals",
+        "table rows", "table", "morerows", "conrefend", "range reuse", "xref rewriting",
+        "related links", "relationship table", "svg", "image", "windows", "linux", "spaces",
+        "non-ascii", "case-sensitive", "case sensitive", "path issues", "filenames",
     }
     found = {term for term in terms if term in normalized}
     if "build" in normalized and ("local" in normalized or "jenkins" in normalized or "ci" in normalized):
         found |= {"ci", "jenkins", "pipeline"}
+    if "draft-comment" in normalized or "required-cleanup" in normalized:
+        found |= {"args.draft", "draft-comment", "required-cleanup"}
+    if "release output" in normalized and "draft" in normalized:
+        found |= {"args.draft", "draft-comment", "required-cleanup"}
+    if "branch" in normalized and ("filter" in normalized or "resource" in normalized or "keyscope" in normalized):
+        found |= {"branch filtering", "ditaval", "resourceprefix", "resourcesuffix", "keyscopeprefix"}
+    if "filtered branch" in normalized or "filtered branches" in normalized:
+        found |= {"branch filtering", "ditaval"}
+    if "row span" in normalized or "row spans" in normalized:
+        found |= {"cals", "morerows", "table"}
+    if "copy-to" in normalized and "chunk" in normalized:
+        found |= {"chunk", "copy-to", "xref rewriting"}
+    if ("windows" in normalized and "linux" in normalized) or "case-sensitive" in normalized or "case sensitive" in normalized:
+        found |= {"windows", "linux", "case-sensitive", "path"}
     if "dita-ot" in normalized or "dita ot" in normalized:
         found.add("dita-ot")
     return found
@@ -276,7 +302,7 @@ def _retrieve_dita_ot_complex_candidates(normalized_query: str, result_limit: in
             db.query(LearnedPromptEntry)
             .filter(
                 LearnedPromptEntry.status == "approved",
-                LearnedPromptEntry.source_type == "dita_ot_docs_complex",
+                LearnedPromptEntry.source_type.in_(("dita_ot_docs_complex", "dita_ot_docs_researched")),
             )
             .all()
         )
@@ -309,6 +335,34 @@ def _retrieve_dita_ot_complex_candidates(normalized_query: str, result_limit: in
         ]
     finally:
         db.close()
+
+
+def _should_prefer_dita_ot_retrieval(normalized_query: str) -> bool:
+    parameter_terms = {
+        "args.filter", "args.draft", "clean.temp", "dita.temp.dir", "generate-debug-attributes",
+        "processing-mode", "args.grammar.cache", "args.resources", "outer.control",
+        "onlytopic.in.map", "link-crawl", "force-unique", "root-chunk-override", "args.css",
+        "args.copycss", "args.csspath", "args.rellinks", "pdf.formatter", "customization.dir",
+        "dita install", "plugin.xml", "store-type", "parallel", "conserve-memory", "validate",
+        "generate.copy.outer",
+    }
+    if any(term in normalized_query for term in parameter_terms):
+        return True
+    dita_ot_intent_terms = {
+        "ditaval", "branch filtering", "resourceprefix", "resourcesuffix", "keyscopeprefix",
+        "keyscopesuffix", "draft-comment", "required-cleanup", "release output", "row spans",
+        "row span", "cals", "filtered rows", "filtered branch", "filtered branches",
+        "conrefend", "range reuse", "xref rewriting", "publishing a submap", "submap alone",
+        "related links", "relationship table", "svg", "windows", "linux", "non-ascii",
+        "case-sensitive", "case sensitive", "path issues",
+    }
+    if any(term in normalized_query for term in dita_ot_intent_terms) and "@" not in normalized_query:
+        return True
+    return (
+        ("dita-ot" in normalized_query or "dita ot" in normalized_query)
+        and any(term in normalized_query for term in {"command", "parameter", "temp", "plugin", "build", "debug", "html5", "pdf"})
+        and "@" not in normalized_query
+    )
 
 
 _LEARNED_QA_DOMAIN_TERMS = {
@@ -412,9 +466,11 @@ def _read_seed_items() -> list[dict[str, Any]]:
         from app.services.learned_qa_advanced_seed import get_advanced_dita_seed_items
         from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
         from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
+        from app.services.learned_qa_dita_ot_researched_seed import get_dita_ot_researched_seed_items
         from app.services.learned_qa_eval_seed import get_dita_expert_eval_seed_items
         from app.services.learned_qa_enterprise_seed import get_enterprise_dita_seed_items
         from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
+        from app.services.learned_qa_reltable_seed import get_reltable_seed_items
         from app.services.learned_qa_senior_seed import get_senior_prompt_seed_items
 
         items.extend(get_senior_prompt_seed_items())
@@ -424,6 +480,8 @@ def _read_seed_items() -> list[dict[str, Any]]:
         items.extend(get_oxygen_customer_seed_items())
         items.extend(get_dita_attribute_seed_items())
         items.extend(get_dita_ot_complex_seed_items())
+        items.extend(get_dita_ot_researched_seed_items())
+        items.extend(get_reltable_seed_items())
 
     deduped: list[dict[str, Any]] = []
     seen_prompts: set[str] = set()
@@ -959,6 +1017,11 @@ def retrieve_learned_qa(query: str, k: int = LEARNED_QA_DEFAULT_K) -> list[dict[
             return [{**_serialize_entry(exact_entry), "score": 1.0, "distance": 0.0}]
     finally:
         db.close()
+
+    if _should_prefer_dita_ot_retrieval(normalized):
+        dita_ot_matches = _retrieve_dita_ot_complex_candidates(normalized, result_limit)
+        if dita_ot_matches and float(dita_ot_matches[0].get("score") or 0.0) >= 0.78:
+            return dita_ot_matches
 
     attribute_matches = _retrieve_attribute_qa_candidates(normalized, result_limit)
     if attribute_matches and float(attribute_matches[0].get("score") or 0.0) >= 0.78:

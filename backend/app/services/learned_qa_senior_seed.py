@@ -1116,6 +1116,21 @@ Do not test a topic alone and expect keyrefs to resolve. Keyrefs resolve from th
             "If the submap owns keys, check whether it needs `@keyscope` to avoid key collisions.",
         ),
         (
+            "mapref",
+            "reuse_and_maps",
+            "How does mapref differ from normal topicref?",
+            "Use `<mapref>` when the target is another DITA map that should be composed into the effective publication hierarchy. Use a normal `<topicref>` when the target is a topic or ordinary resource in the map reading order.",
+            "`<mapref>` is map-to-map integration. It can bring the referenced map's topicrefs, keys, metadata, filters, and relationship-table effects into the parent processing context. A normal `<topicref>` is primarily a reference to a topic/resource branch, even though specialized map-reference behavior can be represented through domain support.",
+            """<map>
+  <title>Product guide</title>
+  <topicref href="overview.dita"/>
+  <mapref href="shared/reuse-library.ditamap"/>
+</map>""",
+            ["`overview.dita` is a normal topic in the publication.", "`shared/reuse-library.ditamap` contributes its map hierarchy at the point of the map reference."],
+            "Do not treat `<mapref>` as only a hyperlink to another guide. If you only need an external navigation link, use an appropriate link/xref pattern with `@scope` and `@format`.",
+            "When a submap defines keys, check root-map context, key scopes, duplicate keys, and filtering before diagnosing broken keyrefs.",
+        ),
+        (
             "xref",
             "dita_authoring",
             "What is xref in DITA? Show an example.",

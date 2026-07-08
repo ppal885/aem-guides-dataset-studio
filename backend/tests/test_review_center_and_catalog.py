@@ -19,7 +19,9 @@ from app.services.learned_qa_service import (
 )
 from app.services.learned_qa_attribute_seed import get_dita_attribute_seed_items
 from app.services.learned_qa_dita_ot_complex_seed import get_dita_ot_complex_seed_items
+from app.services.learned_qa_dita_ot_researched_seed import get_dita_ot_researched_seed_items
 from app.services.learned_qa_oxygen_customer_seed import get_oxygen_customer_seed_items
+from app.services.learned_qa_reltable_seed import get_reltable_seed_items
 from app.services.source_review_state_service import load_source_state
 from app.services.vector_store_service import CHROMA_COLLECTION_LEARNED_QA
 
@@ -427,6 +429,43 @@ def test_oxygen_customer_questions_seed_all_400_records():
     prompts = {item["prompt"] for item in items}
     assert "Why am I getting DITA-OT warnings in Oxygen 28 that did not appear in Oxygen 26?" in prompts
     assert "Why does my conref work in Author mode but fail during publishing?" in prompts
+
+
+def test_reltable_seed_has_senior_relationship_table_records():
+    items = get_reltable_seed_items()
+
+    assert len(items) >= 16
+    assert all(item["source_type"] == "dita_reltable_senior_seed" for item in items)
+    assert all(item["answer_style"] == "senior_technical_docs" for item in items)
+    assert all("## XML example" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "What does relrow do inside a DITA relationship table?" in prompts
+    assert "What does relcell mean in a DITA reltable?" in prompts
+    assert "How do relheader and relcolspec work in DITA reltables?" in prompts
+    assert "What attributes should I check for relationship table link generation?" in prompts
+
+
+def test_reltable_seed_retrieval_handles_attributes_and_aliases():
+    relrow = retrieve_learned_qa("Explain relrow and relcell in a DITA relationship table", k=1)
+    assert relrow[0]["source_type"] == "dita_reltable_senior_seed"
+    assert "<relrow>" in relrow[0]["final_answer"]
+    assert "<relcell>" in relrow[0]["final_answer"]
+
+    relheader = retrieve_learned_qa("What does relcolspec type mean in a relationship table?", k=1)
+    assert relheader[0]["prompt"] == "What does relcolspec type mean in a relationship table?"
+    assert "<relheader>" in relheader[0]["final_answer"]
+    assert "<relcolspec" in relheader[0]["final_answer"]
+
+    attributes = retrieve_learned_qa("Which attributes control reltable links: linking, toc, processing-role, scope and format?", k=1)
+    assert attributes[0]["source_type"] == "dita_reltable_senior_seed"
+    assert "`@toc` affects navigation visibility" in attributes[0]["final_answer"]
+    assert "`@linking` affects generated-link participation" in attributes[0]["final_answer"]
+
+    external = retrieve_learned_qa("Can reltable use scope external and format pdf for related links?", k=1)
+    assert external[0]["source_type"] == "dita_reltable_senior_seed"
+    assert 'scope="external"' in external[0]["final_answer"]
+    assert 'format="pdf"' in external[0]["final_answer"]
     assert "Why does a keyref work when publishing the root map but fail when publishing the submap alone?" in prompts
     assert "How can I compare Oxygen desktop publishing, Oxygen Publishing Engine, and CI output to find configuration differences?" in prompts
     assert "How can I exclude the mini-TOC from only selected chapters?" in prompts
@@ -648,6 +687,35 @@ def test_complex_dita_attribute_answers_include_senior_specifics(monkeypatch, tm
     assert "table" in table_family[0]["final_answer"].lower()
 
 
+def test_format_attribute_answer_includes_default_cascade_and_values(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in get_dita_attribute_seed_items()
+        if "format" in item["tags"]
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    result = retrieve_learned_qa("What does the format attribute do in DITA links and map references?", k=1)
+
+    assert result[0]["source_type"] == "dita_attribute_questions"
+    assert "`@format` identifies the format of the referenced resource" in result[0]["final_answer"]
+    assert "processing default is `dita`" in result[0]["final_answer"]
+    assert "can cascade from the closest ancestor" in result[0]["final_answer"]
+    assert "`dita`, `ditamap`, `html`, and `pdf`" in result[0]["final_answer"]
+    assert "file extension without the dot" in result[0]["final_answer"]
+    assert "`@scope` says whether the relationship is local, peer, or external" in result[0]["final_answer"]
+
+
 def test_complex_attribute_prompts_prefer_attribute_corpus(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
     monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
@@ -803,3 +871,122 @@ def test_dita_ot_complex_reranker_handles_ci_variant(monkeypatch, tmp_path):
     assert "Java" in ci[0]["final_answer"]
     assert "plug-ins" in ci[0]["final_answer"]
     assert "CI" in ci[0]["final_answer"]
+
+
+def test_dita_ot_researched_seed_generates_100_doc_inspired_prompts():
+    items = get_dita_ot_researched_seed_items()
+
+    assert len(items) == 100
+    assert all(item["source_type"] == "dita_ot_docs_researched" for item in items)
+    assert all(item["topic"] == "dita_ot_researched" for item in items)
+    assert all("## Senior reasoning" in item["final_answer"] for item in items)
+    assert all("## Chatbot answer guardrails" in item["final_answer"] for item in items)
+
+    prompts = {item["prompt"] for item in items}
+    assert "How should I troubleshoot args.filter precedence and multiple DITAVAL files in DITA-OT?" in prompts
+    assert "Create a minimal repro plan for temporary directory and generated debug attributes." in prompts
+    assert "What answer should a senior DITA-OT expert give for plugin.xml extension points and custom transtypes?" in prompts
+
+
+def test_dita_ot_researched_prompts_are_retrievable(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    sample_prompts = {
+        "How should I troubleshoot args.filter precedence and multiple DITAVAL files in DITA-OT?",
+        "What senior checks should a DITA-OT chatbot give for temporary directory and generated debug attributes?",
+        "Why can HTML5 CSS parameters and copied assets behave differently between command-line DITA-OT, Oxygen, AEM Guides, and CI?",
+        "What answer should a senior DITA-OT expert give for plugin.xml extension points and custom transtypes?",
+    }
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [item for item in get_dita_ot_researched_seed_items() if item["prompt"] in sample_prompts]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    filters = retrieve_learned_qa("How should I debug multiple args.filter DITAVAL files?", k=1)
+    assert filters[0]["source_type"] == "dita_ot_docs_researched"
+    assert "filter-file order" in filters[0]["final_answer"]
+    assert "OS path separator" in filters[0]["final_answer"]
+
+    temp = retrieve_learned_qa("How do I keep DITA-OT temp files with xtrf and xtrc for debugging?", k=1)
+    assert temp[0]["source_type"] == "dita_ot_docs_researched"
+    assert "`clean.temp=no`" in temp[0]["final_answer"]
+    assert "xtrf" in temp[0]["final_answer"]
+
+    css = retrieve_learned_qa("Why does args.css work in command line but not through Oxygen or AEM Guides?", k=1)
+    assert css[0]["source_type"] == "dita_ot_docs_researched"
+    assert "generated HTML link element" in css[0]["final_answer"]
+    assert "wrapper-tool" in css[0]["final_answer"]
+
+    plugin = retrieve_learned_qa("How should I validate plugin.xml extension points for a custom transtype?", k=1)
+    assert plugin[0]["source_type"] == "dita_ot_docs_researched"
+    assert "extension-point" in plugin[0]["final_answer"]
+    assert "custom transtype" in plugin[0]["final_answer"]
+
+
+def test_dita_ot_complex_reranker_handles_branch_table_path_and_draft_variants(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.services.learned_qa_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.learned_qa_service.sync_learned_qa_corpus", lambda *args, **kwargs: {})
+    seed_path = tmp_path / "learned_qa_seed.json"
+    seed_items = [
+        item
+        for item in [*get_dita_ot_complex_seed_items(), *get_dita_ot_researched_seed_items()]
+        if any(
+            token in " ".join(item["tags"])
+            for token in (
+                "branch filtering",
+                "keyscopeprefix",
+                "conrefend",
+                "CALS",
+                "args.draft",
+                "generate.copy.outer",
+                "xref rewriting",
+                "case-sensitive",
+            )
+        )
+    ]
+    seed_path.write_text(json.dumps(seed_items), encoding="utf-8")
+    monkeypatch.setattr("app.services.learned_qa_service.LEARNED_QA_SEED_PATH", seed_path)
+
+    db = SessionLocal()
+    try:
+        seed_learned_qa(db)
+    finally:
+        db.close()
+
+    branch = retrieve_learned_qa("How do I debug branch filtering with resourceprefix and resourcesuffix?", k=1)
+    assert branch[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "branch" in branch[0]["final_answer"].lower()
+    assert "DITAVAL" in branch[0]["final_answer"] or "filter" in branch[0]["final_answer"].lower()
+
+    conrefend = retrieve_learned_qa("What should I check when conrefend range reuse fails in DITA-OT?", k=1)
+    assert conrefend[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "conref" in conrefend[0]["final_answer"].lower()
+    assert "preprocess" in conrefend[0]["final_answer"].lower()
+
+    table = retrieve_learned_qa("What should I inspect when row spans break after filtering table rows?", k=1)
+    assert table[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "CALS" in table[0]["final_answer"] or "table" in table[0]["final_answer"].lower()
+    assert "filter" in table[0]["final_answer"].lower()
+
+    draft = retrieve_learned_qa("How do I exclude draft-comment and required-cleanup from release output?", k=1)
+    assert draft[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "args.draft" in draft[0]["final_answer"]
+    assert "required-cleanup" in draft[0]["final_answer"]
+
+    outer = retrieve_learned_qa("What does generate.copy.outer do for content outside the map directory?", k=1)
+    assert outer[0]["source_type"] == "dita_ot_docs_researched"
+    assert "outside the" in outer[0]["final_answer"].lower()
+
+    chunk = retrieve_learned_qa("How do chunk and copy-to interact with xref rewriting?", k=1)
+    assert chunk[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "link rewriting" in chunk[0]["final_answer"] or "xref" in chunk[0]["final_answer"].lower()
+
+    paths = retrieve_learned_qa("How do I diagnose path issues that work on Windows but fail on Linux?", k=1)
+    assert paths[0]["source_type"] in {"dita_ot_docs_complex", "dita_ot_docs_researched"}
+    assert "Windows" in paths[0]["final_answer"] or "Linux" in paths[0]["final_answer"]

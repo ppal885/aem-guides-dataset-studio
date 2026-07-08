@@ -242,6 +242,13 @@ def _specific_attribute_note(attribute: str) -> str:
             "- `@rowheader` is important for row-header semantics and accessible table output; it is not merely a styling switch.\n"
             "- Confirm the table structure and generated PDF/HTML accessibility tree."
         ),
+        "format": (
+            "- `@format` identifies the format of the referenced resource; the processing default is `dita` when no value is specified.\n"
+            "- In map branches and in `<related-links>`, `@format` can cascade from the closest ancestor that specifies it.\n"
+            "- Common values include `dita`, `ditamap`, `html`, and `pdf`; for other resource types, use the file extension without the dot, such as `txt` for `readme.txt`.\n"
+            "- `format=\"ditamap\"` means the linked resource is a DITA map that contributes its referenced hierarchy at the current point in the referencing map; relationship tables from referenced maps are treated as children of the referencing map.\n"
+            "- Do not confuse `@format` with `@scope`: `@format` says what kind of resource is referenced, while `@scope` says whether the relationship is local, peer, or external."
+        ),
     }
     return notes.get(attribute, "")
 
