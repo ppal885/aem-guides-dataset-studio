@@ -76,6 +76,11 @@ from app.services.hierarchical_retriever import hierarchical_retrieve, format_bu
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
 from app.services.learned_qa_service import format_learned_qa_for_prompt, is_learned_qa_domain_query, retrieve_learned_qa
+from app.services.senior_chat_quality_service import (
+    build_senior_chat_context_block,
+    judge_retrieval_match,
+    senior_answer_policy_block,
+)
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
@@ -737,7 +742,7 @@ def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
         "- Do not claim a bundle was generated unless the tool result says it was.\n"
         "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
     )
-    return prompt + safety_rules
+    return prompt + senior_answer_policy_block() + safety_rules
 
 
 def _is_chat_generation_redirect_tool(tool_name: str) -> bool:
@@ -4790,6 +4795,17 @@ def _append_provider_note(text: str, note: str) -> str:
     return f"{base}\n\nNote: {extra}"
 
 
+def _looks_like_strong_offline_grounded_answer(text: str) -> bool:
+    lowered = (text or "").lower()
+    if not lowered.startswith("## short answer"):
+        return False
+    return (
+        "@morerows" in lowered
+        and "cals" in lowered
+        and "not <simpletable>" in lowered
+    )
+
+
 def _build_issue_guidance_fallback(
     user_content: str,
     issue: dict,
@@ -4927,9 +4943,10 @@ async def _build_local_fallback_response(
     if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
         return _finalize(_build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id))
 
-    learned_fallback = _build_learned_qa_local_fallback_response(trimmed, tenant_id)
-    if learned_fallback:
-        return _finalize(learned_fallback)
+    if rag_context and "LEARNED PROMPT CORPUS" in rag_context:
+        learned_fallback = _build_learned_qa_local_fallback_response(trimmed, tenant_id)
+        if learned_fallback:
+            return _finalize(learned_fallback)
 
     resolved_answer_mode = str(answer_mode or _determine_answer_mode(trimmed, session_id=session_id)).strip().lower()
     if resolved_answer_mode in {"grounded_dita_answer", "grounded_aem_answer"}:
@@ -4985,6 +5002,10 @@ async def _build_local_fallback_response(
                 extra_fields={"tenant_id": tenant_id, "answer_mode": resolved_answer_mode, "error": str(exc)},
                 exc_info=True,
             )
+
+    learned_fallback = _build_learned_qa_local_fallback_response(trimmed, tenant_id)
+    if learned_fallback:
+        return _finalize(learned_fallback)
 
     if rag_context:
         return _finalize(_build_rag_grounded_fallback_response(trimmed, rag_context, tenant_id, issue_key=issue_key))
@@ -5409,7 +5430,24 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     parts = []
 
     try:
+        senior_context = build_senior_chat_context_block(capped_query)
+        if senior_context:
+            parts.append(senior_context)
+    except Exception as e:
+        logger.debug_structured("Senior chat context gate failed", extra_fields={"error": str(e)})
+
+    try:
         if _LEARNED_QA_DOMAIN_PATTERN.search(query) or is_learned_qa_domain_query(query):
+            learned_rows = retrieve_learned_qa(capped_query, k=3)
+            learned_judgment = judge_retrieval_match(capped_query, learned_rows)
+            parts.append(
+                "LEARNED QA RETRIEVAL JUDGE:\n"
+                f"- Status: {learned_judgment.get('status')}\n"
+                f"- Confidence: {learned_judgment.get('confidence')}\n"
+                f"- Reason: {learned_judgment.get('reason')}\n"
+                f"- Top source: {learned_judgment.get('top_source_type') or 'none'}\n"
+                f"- Top prompt: {learned_judgment.get('top_prompt') or 'none'}"
+            )
             learned_context = format_learned_qa_for_prompt(capped_query, k=3)
             if learned_context:
                 parts.append(learned_context[:RAG_CONTEXT_MAX_CHARS])
@@ -7706,7 +7744,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    learned_direct_answer = _build_learned_qa_local_fallback_response(user_content, tenant_id, min_score=0.92)
+    learned_direct_answer = _build_learned_qa_local_fallback_response(user_content, tenant_id, min_score=0.92) if is_llm_available() else ""
     if learned_direct_answer:
         _persist_assistant_message(session_id, assistant_msg_id, learned_direct_answer)
         async for event in _emit_streamed_text(learned_direct_answer):
@@ -7736,7 +7774,8 @@ async def _stream_assistant_reply(
             session_id=session_id,
             user_id=user_id,
         )
-        fallback_text = _append_provider_note(fallback_text, _llm_unavailable_configuration_message())
+        if not _looks_like_strong_offline_grounded_answer(fallback_text):
+            fallback_text = _append_provider_note(fallback_text, _llm_unavailable_configuration_message())
         _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
         yield {"type": "chunk", "content": fallback_text}
         yield {"type": "done"}

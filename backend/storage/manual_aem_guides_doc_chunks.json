@@ -260,5 +260,93 @@
     ],
     "codeblocks": [],
     "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/release-notes/",
+    "title": "DITA Open Toolkit 4.4 Release Notes",
+    "content": "DITA Open Toolkit 4.4 Release Notes\n\nThe DITA-OT release notes are the first trusted source to check when a publishing pipeline changes after an upgrade. DITA-OT releases use semantic versioning: major versions may include incompatible API changes, minor versions add backward-compatible functionality, and patch versions are maintenance releases. The current development documentation identifies DITA-OT 4.4 as released January 31, 2026 and notes that DITA-OT 4.4 requires Java 17 or later. The release adds and changes DITA 2.0 preview processing, including support for the DITA 2.0 <keytext> element and recognition of the DITA 2.0 <linktitle> element. Use this page for upgrade triage, plugin compatibility checks, changed defaults, new warnings, known fixes, and questions such as why output differs after moving to DITA-OT 4.4. A senior troubleshooting answer should tell the user to compare the old and new DITA-OT versions, verify Java version, run with verbose logging, check release-note issue links for related regressions, and reproduce with a minimal map before changing content.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [
+      "DITA-OT 4.4",
+      "Java 17",
+      "<keytext>",
+      "<linktitle>"
+    ],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/markdown-input",
+    "title": "Markdown input",
+    "content": "Markdown input\n\nDITA Open Toolkit supports Markdown files as authoring input. A Markdown topic can be referenced from a DITA map by using a normal topic reference and setting format=\"markdown\", for example <topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>. During publishing to formats such as HTML or PDF, DITA-OT temporarily converts the Markdown source to DITA in the background; the original Markdown file remains the source file. DITA-OT also supports converting Markdown input to normalized DITA by running a transform with --format=dita, which is useful when a one-off Markdown contribution should be converted into DITA XML and then enriched with DITA-only semantics such as profiling attributes, conkeyref, or complex reuse. The page distinguishes the older Markdown DITA flavor from MDITA, the Markdown representation associated with Lightweight DITA drafts. Use this source for questions about Markdown topicrefs, format=markdown, Markdown-to-DITA conversion, mixed DITA and Markdown publications, and why some DITA semantics require conversion to XML.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [
+      "format=\"markdown\"",
+      "<topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>",
+      "--format=dita",
+      "Markdown DITA",
+      "MDITA"
+    ],
+    "codeblocks": [
+      "<topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>"
+    ],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax",
+    "title": "Markdown DITA syntax",
+    "content": "Markdown DITA syntax\n\nDITA-OT Markdown DITA is the original DITA-OT Markdown flavor for converting Markdown content to DITA and back. It is selected in maps with format=\"markdown\", for example <topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>. Markdown DITA uses CommonMark plus DITA-specific extensions and files must be UTF-8 encoded. Heading levels generate DITA topics and titles; if an explicit ID is not supplied with header attributes, the topic ID is generated from the title. Header attributes can set id, outputclass, and profiling attributes such as audience. Level-1 heading classes such as .concept, .task, and .reference select built-in DITA specialization types. Heading classes .section and .example generate section and example elements. MultiMarkdown tables convert to the OASIS exchange table model, but table cells support only inline content and column spans; block content and row spans are not supported in Markdown DITA. Markdown DITA maps can be authored with YAML front matter using $schema: urn:oasis:names:tc:dita:xsd:map.xsd; unordered list items create topicref elements and ordered lists create topicref elements with collection-type=\"sequence\". Link reference definitions can create key definitions, but unlike XML DITA, Markdown does not support defining keys in topic references. Links to DITA or Markdown files use DITA URI-based addressing, including fragment syntax such as filename.md#topicID/sectionID. YAML metadata can populate DITA prolog metadata such as author, source, publisher, permissions, audience, category, keyword, and resourceid; unrecognized keys are output as data elements. Use this source for senior answers about Markdown DITA syntax, Markdown topic IDs, map syntax, key definitions, key references, reltables, YAML metadata, table limitations, and Markdown-to-DITA conversion behavior.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [
+      "format=\"markdown\"",
+      "<topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>",
+      "CommonMark",
+      ".concept",
+      ".task",
+      ".reference",
+      ".section",
+      ".example",
+      "$schema: urn:oasis:names:tc:dita:xsd:map.xsd",
+      "collection-type=\"sequence\"",
+      "filename.md#topicID/sectionID"
+    ],
+    "codeblocks": [
+      "<map>\n  <topicref href=\"markdown-dita-topic.md\" format=\"markdown\"/>\n</map>",
+      "# Topic title {#carrot .juice audience=novice}",
+      "---\n$schema: urn:oasis:names:tc:dita:xsd:map.xsd\n---\n# Map title\n- [Topic title](topic.md)\n- [Nested title](nested.md)"
+    ],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/lwdita-input",
+    "title": "Preview support for Lightweight DITA",
+    "content": "Preview support for Lightweight DITA\n\nDITA-OT provides preview support for Lightweight DITA, or LwDITA. XDITA, MDITA, and HDITA are alternative representations of DITA content in XML, Markdown, and HTML5. The LwDITA specification has not yet been released as a formal specification, so DITA-OT support for XDITA, MDITA, and HDITA is preliminary and subject to change as LwDITA evolves. XDITA is the XML-based LwDITA authoring format; to apply XDITA-specific processing, reference the topic from a DITA map with format=\"xdita\", for example <topicref href=\"xdita-topic.xml\" format=\"xdita\"/>. MDITA is the Markdown-based LwDITA format; to use stricter LwDITA-specific Markdown processing, set format=\"mdita\", for example <topicref href=\"mdita-topic.md\" format=\"mdita\"/>. MDITA includes core and extended profile concepts, with parser support provided by the org.lwdita plug-in. HDITA is the HTML5-based LwDITA format; set format=\"hdita\", for example <topicref href=\"hdita-topic.html\" format=\"hdita\"/>. HDITA map format is not yet supported, so include HDITA content from an XDITA map or a standard DITA map. For conditional processing in MDITA and HDITA, use data-props in source content rather than the XML @props attribute. When LwDITA topics are added to a DITA publication, DITA-OT temporarily converts them to DITA in the background for outputs such as HTML or PDF, while the source files remain unchanged. To permanently convert LwDITA and DITA XML input to normalized DITA, run a transform with --format=dita and copy the generated DITA files into the project if needed.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [
+      "LwDITA",
+      "XDITA",
+      "MDITA",
+      "HDITA",
+      "format=\"xdita\"",
+      "format=\"mdita\"",
+      "format=\"hdita\"",
+      "org.lwdita",
+      "data-props",
+      "--format=dita"
+    ],
+    "codeblocks": [
+      "<topicref href=\"xdita-topic.xml\" format=\"xdita\"/>",
+      "<topicref href=\"mdita-topic.md\" format=\"mdita\"/>",
+      "<topicref href=\"hdita-topic.html\" format=\"hdita\"/>"
+    ],
+    "tables": []
   }
 ]

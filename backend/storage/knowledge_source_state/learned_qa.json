@@ -14,8 +14,8 @@
     "seed_item_count": 3934,
     "seed_file_mtime": "2026-07-07T14:29:07.178454+00:00",
     "approved_count": 3950,
-    "performed_seed": true,
-    "performed_reindex": true,
-    "sync_reason": "dita_ot_more_docs_final"
+    "performed_seed": false,
+    "performed_reindex": false,
+    "sync_reason": "chat_retrieval"
   }
 }

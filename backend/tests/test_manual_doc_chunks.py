@@ -46,6 +46,10 @@ def test_manual_dita_ot_troubleshooting_chunks_are_present():
     assert "--args.draft=yes" in text
     assert "https://www.dita-ot.org/dev/topics/error-messages" in text
     assert "https://www.dita-ot.org/dev/topics/dita-command-help" in text
+    assert "https://www.dita-ot.org/dev/release-notes/" in text
+    assert "https://www.dita-ot.org/dev/topics/markdown-input" in text
+    assert "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax" in text
+    assert "https://www.dita-ot.org/dev/topics/lwdita-input" in text
 
 
 def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):
@@ -142,6 +146,167 @@ def test_retrieve_relevant_docs_uses_manual_dita_command_arguments(monkeypatch):
     urls = {item.get("url") for item in docs}
 
     assert "https://www.dita-ot.org/dev/parameters/dita-command-arguments" in urls
+
+
+def test_retrieve_relevant_docs_prioritizes_dita_command_required_arguments(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What are the required arguments for the dita command?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/parameters/dita-command-arguments" in urls[:2]
+
+
+def test_retrieve_relevant_docs_prioritizes_dita_ot_pdf2_debugging(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How do I debug a topic that publishes in HTML5 but fails in PDF2?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/error-messages" in urls[:3]
+
+
+def test_retrieve_relevant_docs_prioritizes_dita_ot_logs_and_evidence(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What DITA-OT evidence should I collect for a PDF2 failure?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/error-messages" in urls[:3]
+
+
+def test_retrieve_relevant_docs_prioritizes_dita_ot_draft_comment_parameter(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "My PDF transform ignores draft-comment content. What command-line option should I try?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/parameters/parameters-base" in urls[:2]
+
+
+def test_retrieve_relevant_docs_uses_manual_dita_ot_release_notes(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "DITA-OT release notes upgrade Java 17 changed defaults regression",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://www.dita-ot.org/dev/release-notes/" in urls
+
+
+def test_retrieve_relevant_docs_uses_manual_dita_ot_markdown_input(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Can DITA-OT process Markdown input with format markdown and convert to DITA?",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://www.dita-ot.org/dev/topics/markdown-input" in urls
+
+
+def test_retrieve_relevant_docs_prioritizes_customer_markdown_pdf_failure(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "I have a customer saying markdown topics work in HTML but not in PDF. What would you ask first?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/markdown-input" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_manual_markdown_dita_syntax(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How does Markdown DITA syntax create topic IDs, maps, keys, and tables?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_markdown_dita_syntax_for_map_schema(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "In Markdown DITA, how do I use YAML schema to author a DITA map with topicrefs?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_manual_lwdita_input(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What are XDITA MDITA and HDITA in DITA-OT Lightweight DITA?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_lwdita_for_format_values(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Which format values should I use for xdita, mdita, and hdita topicrefs?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_lwdita_for_conditional_processing(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How does conditional processing work in MDITA and HDITA with data-props?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
 
 
 def test_retrieve_relevant_docs_can_filter_to_experience_league_and_rerank_translation_docs(monkeypatch):

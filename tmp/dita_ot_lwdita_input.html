@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Preview support for Lightweight DITA</title>
+    <meta name="description" content="DITA-OT provides preview support for the authoring formats proposed for Lightweight DITA, or “LwDITA”. The XDITA, MDITA and HDITA formats are alternative representations of DITA content in XML, Markdown and HTML5.">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+    <meta name="docsearch:version" content="dev">
+    
+    <link href="/css/main.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/images/dita-ot-logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
+    
+    <link href="../toc.html" rel="index">
+    
+    
+  </head>
+  <body>
+    <header>
+  <nav class="navbar navbar-expand-md navbar-dark bg-primary flex-column flex-md-row">
+    <div class="container">
+      <a class="navbar-brand" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+          <path
+            d="M4.458.007A4.462 4.462 0 0 0-.014 4.48v23.057a4.462 4.462 0 0 0 4.472 4.471h23.057a4.462 4.462 0 0 0 4.471-4.471V18.45H29.505l-6.217 5.063v.001l-.008.011c-.02.017-.041.031-.063.049-.413.337-1.119.645-2.063-.26-.05-.049-.156-.14-.156-.14l-2.477-2.025a7.586 7.586 0 0 0 2.568.217 5.555 5.555 0 0 0 1.71-.443l.72-.36c1.719-.98 3.14-2.667 4.016-4.1 1.263-2.068 1.437-4.712 1.393-5.48-.043-.77-.392-3.702-.392-4.327s.13-1.01.13-1.01l2.222-.865-1.699-1.635s-.086-.865-.391-1.49C28.493 1.031 27.49.358 25.836.214a3.584 3.584 0 0 0-.31-.014c-1.913-.04-3.24.644-3.726 1.38-.701 1.058-1.581 4.403-1.973 5.7-.021.07-.048.142-.079.216.177.149.358.315.504.45 1.733 1.376.92 4.736-.168 6.73-.954 1.75-2.197 3.414-3.388 4.981l-.01-.008c-.18.252-.38.52-.59.797l-.068.09a64.19 64.19 0 0 1-.71.912l5.237 4.29c.194.14.386.252.573.341v3.595H7.388V14.953l4.553 3.73c.218-.988.36-1.564.597-2.424l-5.164-4.22 11.898-9.69V.007H4.458zm21.76 2.113c.226-.009.44.071.487.387.091.612-.092.874-.595.977-.504.103-1.1-.051-1.1-.411s.432-.743.825-.875c.11-.036.249-.073.384-.078zm-21.461.22h10.962l-.07.048-9.495 7.636c-.66.524-1.03 1.193-1.03 1.973 0 .033.002.065.003.097h-.002v17.58h-.368a2.432 2.432 0 0 1-2.437-2.437V4.778a2.432 2.432 0 0 1 2.437-2.437zm23.638.644 1.59 1.553-2.58.992s-.036-.475-.106-.863c-.071-.388-.248-.56-.248-.56s.212-.475.46-.734c.247-.259.884-.388.884-.388zM18.807 8.3c-.49-.015-1.062.458-1.36.817-.77.932-.922 1.202-1.332 1.838-.428.664-.839 1.344-1.172 2.06-.6 1.289-1.073 2.638-1.479 4.001-.239.805-.473 1.686-.693 2.713-.456 2.118-.65 3.074-.687 3.585-.015.205.06.112.13.045.966-.95 1.78-2.023 2.248-2.612.501-.63.925-1.189 1.368-1.798 1.832-2.52 2.22-2.846 3.28-4.8 1.18-2.174 1.426-4.87.02-5.753a.633.633 0 0 0-.323-.096zm10.846 12.968v5.969a2.432 2.432 0 0 1-2.437 2.437h-3.568V26.13c.13-.066.272-.156.406-.28l.026-.016 5.573-4.565z"
+            fill="currentColor"
+          />
+        </svg>
+        DITA Open Toolkit
+      </a>
+      <button
+        class="navbar-toggler my-2"
+        type="button"
+        data-toggle="collapse"
+        data-target="#navbarToggle"
+        aria-controls="navbarToggle"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarToggle">
+        <ul class="navbar-nav mr-auto flex-row">
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              data-toggle="dropdown"
+              id="codeDropdownMenuLink"
+              href="#"
+              role="button"
+              aria-expanded="false"
+            >
+              Code <b class="caret"></b>
+            </a>
+            <div class="dropdown-menu" aria-labelledby="codeDropdownMenuLink">
+              <h6 class="dropdown-header">Core repository</h6>
+              <a class="dropdown-item" href="https://github.com/dita-ot/dita-ot"
+                >DITA-OT Source Code</a
+              >
+              <a class="dropdown-item" href="https://github.com/dita-ot/dita-ot/issues"
+                >DITA-OT Issue Tracker</a
+              >
+              <a class="dropdown-item" href="https://github.com/dita-ot/dita-ot/wiki"
+                >DITA-OT Project Wiki</a
+              >
+              <div class="dropdown-divider"></div>
+              <h6 class="dropdown-header">Docs</h6>
+              <a class="dropdown-item" href="https://github.com/dita-ot/docs"
+                >Documentation Source</a
+              >
+              <a class="dropdown-item" href="https://github.com/dita-ot/docs/issues"
+                >Documentation Issues</a
+              >
+              <a class="dropdown-item" href="https://github.com/dita-ot/docs/wiki"
+                >Documentation Wiki</a
+              >
+              <div class="dropdown-divider"></div>
+              <h6 class="dropdown-header">About This Website</h6>
+              <a class="dropdown-item" href="/faq">Frequently Asked Questions</a>
+              <a class="dropdown-item" href="/colophon">Colophon</a>
+            </div>
+          </li>
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              data-toggle="dropdown"
+              id="communityDropdownMenuLink"
+              href="#"
+              role="button"
+              aria-expanded="false"
+            >
+              Community <b class="caret"></b>
+            </a>
+            <div class="dropdown-menu" aria-labelledby="communityDropdownMenuLink">
+              <a class="dropdown-item" href="/who_we_are">Who We Are</a>
+              <a class="dropdown-item" href="/contributing">How To Contribute</a>
+              <a class="dropdown-item" href="/management">Project Management</a>
+              <div class="dropdown-divider"></div>
+              <h6 class="dropdown-header">Support Forums</h6>
+              <a class="dropdown-item" href="/support">Community Support</a>
+              <a class="dropdown-item" href="https://groups.io/g/dita-users">DITA Users group</a>
+              <a class="dropdown-item" href="https://github.com/orgs/dita-ot/discussions"
+                >DITA-OT Discussions</a
+              >
+              <a class="dropdown-item" href="https://groups.google.com/d/forum/dita-ot-users"
+                >DITA-OT Users group archive</a
+              >
+              <a class="dropdown-item" href="http://stackoverflow.com/questions/tagged/dita-ot"
+                >Stack Overflow [dita-ot]</a
+              >
+              <a class="dropdown-item" href="https://www.oasis-open.org/committees/dita/"
+                >OASIS DITA Technical Committee
+              </a>
+              <div class="dropdown-divider"></div>
+              <h6 class="dropdown-header">DITA-OT Day Events</h6>
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2026/dita-ot_day.html"
+                target="_blank"
+                >2026 🇧🇪 Brussels</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2025/dita-ot_day.html"
+                target="_blank"
+                >2025 🇩🇰 Copenhagen</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2024/dita-ot_day.html"
+                target="_blank"
+                >2024 🇫🇮 Helsinki</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2022/dita-ot_day.html"
+                target="_blank"
+                >2022 🇳🇱 Rotterdam</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2019/dita-ot_day.html"
+                target="_blank"
+                >2019 🇧🇪 Brussels</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2018/dita-ot_day.html"
+                target="_blank"
+                >2018 🇳🇱 Rotterdam</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2017/dita-ot_day.html"
+                target="_blank"
+                >2017 🇩🇪 Berlin</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2016/dita-ot_day.html"
+                target="_blank"
+                >2016 🇩🇪 Munich</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2015/dita-ot_day.html"
+                target="_blank"
+                >2015 🇩🇪 Munich</a
+              >
+              <a
+                class="dropdown-item"
+                href="https://www.oxygenxml.com/events/2014/dita-ot_day.html"
+                target="_blank"
+                >2014 🇩🇪 Munich</a
+              >
+            </div>
+          </li>
+          <li class="nav-item d-none d-xl-block">
+            <a
+              class="nav-link"
+              href="https://www.oxygenxml.com/events/2026/dita-ot_day.html"
+              title="February 1, 2026 in Brussels, Belgium"
+            >
+              🇧🇪 DITA-OT Day</a
+            >
+          </li>
+          <li class="nav-item d-none d-lg-block">
+            <a class="nav-link" href="/dev/">Docs</a>
+          </li>
+          <li class="nav-item d-none d-lg-block">
+            <a class="nav-link" href="/download">Download</a>
+          </li>
+          <li class="nav-item d-none d-lg-block">
+            <a class="nav-link" href="/plugins">Plugins</a>
+          </li>
+          <li class="nav-item d-none d-lg-block">
+            <a
+              class="nav-link"
+              href="https://github.com/dita-ot/dita-ot/releases.atom"
+              title="Release feed"
+            >
+              <svg class="octicon octicon-rss" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M2.002 2.725a.75.75 0 0 1 .797-.699C8.79 2.42 13.58 7.21 13.974 13.201a.75.75 0 0 1-1.497.098 10.502 10.502 0 0 0-9.776-9.776.747.747 0 0 1-.7-.798ZM2.84 7.05h-.002a7.002 7.002 0 0 1 6.113 6.111.75.75 0 0 1-1.49.178 5.503 5.503 0 0 0-4.8-4.8.75.75 0 0 1 .179-1.489ZM2 13a1 1 0 1 1 2 0 1 1 0 0 1-2 0Z"></path></svg>
+            </a>
+          </li>
+        </ul>
+
+        <div id="docsearch">
+          <form class="form-inline" id="search" role="search">
+            <div class="form-group">
+              <label for="q"><svg class="octicon octicon-search bg-gradient-light mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"></path></svg></label>
+              <input
+                type="text"
+                name="q"
+                class="form-control"
+                maxlength="255"
+                placeholder="Search the latest docs…"
+              />
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+
+    
+      <div class="alert alert-warning alert-dismissible fade rounded-0 show" role="alert" id="banner">
+  <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+    <span aria-hidden="true">&times;</span>
+  </button>
+  <div class="docs-banner docs-banner-dev flex-row row">
+    <div class="d-flex px-2"><div class="dropdown">
+  <a
+    class="alert-link nav-link dropdown-toggle"
+    data-toggle="dropdown"
+    href="#"
+    role="button"
+    aria-expanded="false"
+    id="docsDropdownMenuLink"
+    ><span class="badge badge-warning mr-3">Latest</span> Dev Docs
+     <b class="caret"></b
+  ></a>
+  <div class="dropdown-menu" aria-labelledby="docsDropdownMenuLink">
+    <a
+      class="dropdown-item
+       active"
+      href="/dev/"
+      >Development Docs
+      <span class="badge badge-warning float-right my-1">Latest</span>
+    </a>
+    <div class="dropdown-divider"></div>
+    <a
+      class="dropdown-item
+      "
+      href="/4.4/"
+      >Release 4.4
+      <span class="badge badge-success float-right my-1">Current</span>
+    </a>
+    <div class="dropdown-divider"></div>
+    <h6 class="dropdown-header">Previous versions</h6>
+    <a
+      class="dropdown-item
+      "
+      href="/4.3/"
+      >4.3</a>
+    <a
+      class="dropdown-item
+      "
+      href="/4.2/"
+      >4.2</a>
+    <a
+      class="dropdown-item
+      "
+      href="/4.1/"
+      >4.1</a>
+    <a
+      class="dropdown-item
+      "
+      href="/4.0/"
+      >4.0</a>
+    <div class="dropdown-divider"></div>
+    <a
+      class="dropdown-item
+      "
+      href="/3.7/"
+      >3.7</a>
+    <a
+      class="dropdown-item
+      "
+      href="/3.6/"
+      >3.6</a>
+    <a
+      class="dropdown-item
+      "
+      href="/3.5/"
+      >3.5</a>
+    <a
+      class="dropdown-item
+      "
+      href="/3.4/"
+      >3.4</a>
+    <a
+      class="dropdown-item
+      "
+      href="/3.3/"
+      >3.3</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/3.2/"
+      >3.2</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/3.1/"
+      >3.1</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/3.0/"
+      >3.0</a
+    >
+    <div class="dropdown-divider"></div>
+    <a
+      class="dropdown-item
+      "
+      href="/2.5/"
+      >2.5</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/2.4/"
+      >2.4</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/2.3/"
+      >2.3</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/2.2/"
+      >2.2</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/2.1/"
+      >2.1</a
+    >
+    <a
+      class="dropdown-item
+      "
+      href="/2.0/"
+      >2.0</a
+    >
+    <div class="dropdown-divider"></div>
+    <h6 class="dropdown-header">Legacy versions for DITA ≤ 1.2</h6>
+    <a
+      class="dropdown-item
+      "
+      href="/1.8/"
+      >1.8</a
+    >
+    <p class="mb-0 p-4 small text-muted">
+      For earlier versions, see the <tt>doc</tt> folder in the download.
+    </p>
+  </div>
+</div>
+</div>
+    <div class="d-flex px-2">
+      <p>
+        <svg class="octicon octicon-beaker mt-n1" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M5 5.782V2.5h-.25a.75.75 0 0 1 0-1.5h6.5a.75.75 0 0 1 0 1.5H11v3.282l3.666 5.76C15.619 13.04 14.543 15 12.767 15H3.233c-1.776 0-2.852-1.96-1.899-3.458Zm-2.4 6.565a.75.75 0 0 0 .633 1.153h9.534a.75.75 0 0 0 .633-1.153L12.225 10.5h-8.45ZM9.5 2.5h-3V6c0 .143-.04.283-.117.403L4.73 9h6.54L9.617 6.403A.746.746 0 0 1 9.5 6Z"></path></svg> May describe unreleased features · Switch to current
+        release
+        <a href="/4.4" class="alert-link">4.4</a>
+        · For shortcuts, type <kbd>?</kbd>
+      </p>
+    </div>
+  </div>
+</div>
+
+    
+    <div id="content" class="container">
+      <div class="row">
+        <nav class="col-lg-3 toc" role="navigation"><ul><li><a href='/dev/'>DITA Open Toolkit 4.4</a><ul class="nav nav-list"><li><a href='/dev/release-notes/'>Release Notes</a></li><li><a href='/dev/topics/input-formats'>Authoring formats</a><ul class="nav nav-list"><li><a href='/dev/topics/dita-xml-input'>Standard DITA XML</a></li><li><a href='/dev/topics/markdown-input'>Markdown input</a></li><li class="active"><a href='/dev/topics/lwdita-input'>Lightweight DITA</a></li></ul></li><li><a href='/dev/topics/output-formats'>Output formats</a></li></ul></li><li><a href='/dev/topics/installing'>Installing</a></li><li><a href='/dev/topics/publishing'>Publishing</a></li><li><a href='/dev/parameters/'>Configuring</a></li><li><a href='/dev/topics/extending'>Extending</a></li><li><a href='/dev/topics/troubleshooting-overview'>Troubleshooting</a></li><li><a href='/dev/reference/'>Reference</a></li></ul></nav><main role="main" class="col-lg-9"><article role="article" aria-labelledby="ariaid-title1">
+  <h1 class="title topictitle1" id="ariaid-title1">Preview support for Lightweight DITA</h1>
+  
+  
+  
+
+  <div class="body"><p class="shortdesc">DITA-OT provides preview support for the authoring formats proposed for
+    <a class="xref" href="http://docs.oasis-open.org/dita/LwDITA/v1.0/cn01/LwDITA-v1.0-cn01.pdf" target="_blank" rel="external noopener">Lightweight DITA</a>, or “<dfn class="term">LwDITA</dfn>”. The <dfn class="term">XDITA</dfn>, <dfn class="term">MDITA</dfn> and <dfn class="term">HDITA</dfn>
+    formats are alternative representations of DITA content in XML, Markdown and HTML5.</p>
+    <div class="note attention note_attention"><span class="note__title">Attention:</span> <div class="note__body">Since
+      <a class="xref" href="http://docs.oasis-open.org/dita/LwDITA/v1.0/cn01/LwDITA-v1.0-cn01.pdf" target="_blank" rel="external noopener">Lightweight DITA</a> has not yet been released as a formal specification, the implementation for
+        <dfn class="term">XDITA</dfn>, <dfn class="term">MDITA</dfn> and <dfn class="term">HDITA</dfn> authoring formats is subject to change. Future
+      versions of DITA Open Toolkit will be updated as LwDITA evolves.</div></div>
+    <section class="section"><h2 class="title sectiontitle">XDITA</h2>
+      
+      <p class="p"><dfn class="term">XDITA</dfn> is the LwDITA authoring format that uses XML to structure information. XDITA is a subset of
+        DITA, with new multimedia element types added to support interoperability with HTML5. XDITA is designed for
+        users who want to write DITA content but who do not want (or need) the full power of DITA.</p>
+      <p class="p">The XDITA parser included in the <code class="ph codeph">org.lwdita</code> plug-in provides preliminary support for XDITA
+        maps and XDITA topics.</p>
+      <p class="p">To apply XDITA-specific processing to topics in an XDITA map or a full DITA 1.3 map, set the
+          <code class="keyword markupname xmlatt">@format</code> attribute on a <code class="keyword markupname xmlelement">&lt;topicref&gt;</code> to <code class="ph codeph">xdita</code>:</p>
+      <div class="p">
+        <pre class="pre codeblock language-xml normalize-space show-line-numbers show-whitespace"><code>&lt;map&gt;
+  &lt;topicref href="xdita-topic.xml" <strong class="ph b">format="xdita"</strong>/&gt;
+&lt;/map&gt;</code></pre>
+      </div>
+      <div class="note tip note_tip"><span class="note__title">Tip:</span> <div class="note__body">For examples of cross-format content sharing between topics in <dfn class="term">XDITA</dfn>,
+          <dfn class="term">HDITA</dfn>, extended-profile <dfn class="term">MDITA</dfn>, and DITA 1.3, see the LwDITA sample files in the
+        DITA-OT installation directory under <span class="ph filepath">plugins/org.oasis-open.xdita.v0_2_2/samples</span>.</div></div>
+    </section>
+    <section class="section"><h2 class="title sectiontitle">MDITA</h2>
+      
+      <p class="p"><dfn class="term">MDITA</dfn> is the LwDITA authoring format based on Markdown. It is designed for users who want to write
+        structured content with the minimum of overhead, but who also want to take advantage of the reuse mechanisms
+        associated with the DITA standard and the multi-channel publishing afforded by standard DITA tooling.</p>
+      <p class="p">Recent proposals for LwDITA include two profiles for authoring MDITA topics:</p>
+      <ul class="ul">
+        <li class="li">The “<dfn class="term">Core profile</dfn>” is based on
+          <a class="xref" href="https://github.github.com/gfm/" target="_blank" rel="external noopener">GitHub-Flavored Markdown</a> and includes elements that are common to many other Markdown implementations.</li>
+        <li class="li">The “<dfn class="term">Extended profile</dfn>” borrows additional features from other flavors of Markdown to represent
+          a broader range of DITA content with existing plain-text syntax conventions.</li>
+      </ul>
+      <p class="p">The MDITA parser included in the <code class="ph codeph">org.lwdita</code> plug-in provides preliminary support for these
+        profiles and additional Markdown constructs as described in the
+        <a class='xref' href='/dev/reference/markdown/mdita-syntax' title='In 2017, the Markdown plug-in was superseded by the LwDITA plug-in, which was bundled with DITA-OT 3.0, and added new formats for Lightweight DITA. The mdita format implements the subset of Markdown features proposed in the latest specification drafts, but differs in some ways from the original Markdown DITA format.'>MDITA syntax</a>.</p>
+      <p class="p">To apply the stricter LwDITA-specific processing to Markdown topics, set the <code class="keyword markupname xmlatt">@format</code> attribute
+        to <code class="ph codeph">mdita</code>:</p>
+      <div class="p">
+        <pre class="pre codeblock language-xml normalize-space show-line-numbers show-whitespace"><code>&lt;map&gt;
+  &lt;topicref href="mdita-topic.md" <strong class="ph b">format="mdita"</strong>/&gt;
+&lt;/map&gt;</code></pre>
+      </div>
+      <p class="p">In this case, the first paragraph in the topic will be treated as a short description, for example, and
+        additional metadata can be specified for the topic via a YAML front matter block.</p>
+      <div class="note tip note_tip"><span class="note__title">Tip:</span> <div class="note__body">For details on the differences in
+        <a class='xref' href='/dev/reference/markdown-formats' title='The following topics show how DITA XML constructs are represented in Markdown and MDITA, provide details on common syntax, differences between the markdown and mdita formats, and describe additional configuration options.'>Markdown formats</a>, see
+        <a class='xref' href='/dev/reference/markdown/markdown-dita-syntax' title='In 2015, the original DITA-OT Markdown plug-in introduced a series of conventions to convert Markdown content to DITA, and vice-versa. This Markdown flavor was called “Markdown DITA”. The markdown format adds several complementary constructs to represent DITA content in Markdown, beyond those proposed for the MDITA format in the Lightweight DITA specification drafts.'>Markdown DITA syntax</a>,
+        <a class='xref' href='/dev/reference/markdown/mdita-syntax' title='In 2017, the Markdown plug-in was superseded by the LwDITA plug-in, which was bundled with DITA-OT 3.0, and added new formats for Lightweight DITA. The mdita format implements the subset of Markdown features proposed in the latest specification drafts, but differs in some ways from the original Markdown DITA format.'>MDITA syntax</a>, and
+        <a class='xref' href='/dev/reference/markdown/format-comparison' title='Although the original Markdown DITA format and the MDITA format for LwDITA share some common syntax, there are several differences to consider when choosing which format to use.'>Format comparison</a>.</div></div>
+    </section>
+
+    <section class="section"><h2 class="title sectiontitle">HDITA</h2>
+      
+      <p class="p"><dfn class="term">HDITA</dfn> is the LwDITA authoring format based on HTML5, which is intended to support structured
+        content authoring with tools designed for HTML authoring. HDITA also uses custom data attributes to provide
+        interoperability with DITA.</p>
+      <p class="p">The HDITA parser included in the <code class="ph codeph">org.lwdita</code> plug-in provides preliminary support for these
+        constructs.</p>
+      <p class="p">To apply LwDITA-specific processing to HTML topics, set the <code class="keyword markupname xmlatt">@format</code> attribute to
+          <code class="ph codeph">hdita</code>:</p>
+      <div class="p">
+        <pre class="pre codeblock language-xml normalize-space show-line-numbers show-whitespace"><code>&lt;map&gt;
+  &lt;topicref href="hdita-topic.html" <strong class="ph b">format="hdita"</strong>/&gt;
+&lt;/map&gt;</code></pre>
+      </div>
+      <div class="note attention note_attention"><span class="note__title">Attention:</span> <div class="note__body">The HDITA map format is not yet supported. To include HDITA content, use an XDITA map or a
+        DITA 1.3 map.</div></div>
+    </section>
+    <section class="section" id="lwdita-input__conditional-processing"><h2 class="title sectiontitle">Using conditional processing in MDITA and HDITA</h2>
+      
+      <p class="p">When you set up conditional processing in MDITA and HDITA, use the <code class="keyword markupname xmlatt">@data-props</code> attribute in the
+        element that will have the conditional processing applied. In the <span class="ph filepath">.ditaval</span> file, however,
+        use the <code class="keyword markupname xmlatt">@props</code> attribute.</p>
+    </section>
+    <section class="section"><h2 class="title sectiontitle">Converting lightweight formats to DITA XML</h2>
+      
+      <p class="p">When you add LwDITA topics to a DITA publication, the content is temporarily converted to DITA in the
+        background when generating other output formats like HTML or PDF, but the source files remain unchanged.</p>
+      <p class="p">If you prefer to maintain this content in DITA in the future, you can generate DITA output by passing the
+          <span class="keyword parmname">--format</span>=<span class="keyword option">dita</span> option on the command line.</p>
+      <p class="p">This converts all input files (both LwDITA formats and DITA XML) to
+        <a class='xref' href='/dev/topics/dita2dita' title='The dita transformation generates normalized topics and maps from DITA input. The normalized output includes the results of DITA Open Toolkit pre-processing operations, which resolve map references, keys, content references, code references and push metadata back and forth between maps and topics.'>Normalized DITA</a>. You can then copy the generated DITA files from the output
+        folder to your project and replace references to the lightweight topics with their DITA equivalents.</p>
+    </section>
+  </div>
+<nav role="navigation" class="related-links"><div class="linklist relinfo"><strong>Related information</strong><br><ul class="linklist"><li class="linklist"><a class='link' href='/dev/topics/dita-xml-input' title='DITA Open Toolkit supports all released versions of the OASIS DITA specification, including 1.0, 1.1, 1.2, and 1.3. As of release 4.4, DITA-OT also provides an initial preview of features for the latest draft of the upcoming DITA 2.0 standard.'>Standard DITA XML</a></li><li class="linklist"><a class='link' href='/dev/topics/markdown-input' title='Markdown is a lightweight markup language that allows you to write using an easy-to-read plain text format and convert to structurally valid markup as necessary.'>Markdown input</a></li><li class="linklist"><a class='link' href='/dev/reference/markdown/mdita-syntax' title='In 2017, the Markdown plug-in was superseded by the LwDITA plug-in, which was bundled with DITA-OT 3.0, and added new formats for Lightweight DITA. The mdita format implements the subset of Markdown features proposed in the latest specification drafts, but differs in some ways from the original Markdown DITA format.'>MDITA syntax</a></li></ul></div></nav></article></main>
+
+      </div>
+    </div>
+    <footer>
+  <div class="container">
+    <p class="text-center text-muted">
+      
+      Page content generated from
+      
+        <a href="https://github.com/dita-ot/docs/blob/640302e34bda043893c21b0f6ae3801f3b526b3b/topics/lwdita-input.dita" target="_blank" title="Show the source file on GitHub.">DITA source</a>
+      
+      · Last changed in
+      <a href="https://github.com/dita-ot/docs/commit/640302e34bda043893c21b0f6ae3801f3b526b3b" target="_blank" title="Show the most recent change to the source file on GitHub.">
+        dita-ot/docs@640302e</a>
+      
+    </p>
+
+    <div class="row py-5">
+      <div class="col-12 col-md">
+        <h5>DITA Open Toolkit</h5>
+        <a href="/">
+          <img
+            src="/images/dita-ot-logo.svg"
+            class="my-2"
+            alt="DITA Open Toolkit logo"
+            height="128px"
+          />
+        </a>
+      </div>
+      <div class="col-6 col-md">
+        <h5>Code</h5>
+        <ul class="list-unstyled">
+          <li><a href="https://github.com/dita-ot/dita-ot">DITA-OT Source Code</a></li>
+          <li><a href="https://github.com/dita-ot/dita-ot/issues">DITA-OT Issue Tracker</a></li>
+          <li><a href="https://github.com/dita-ot/dita-ot/wiki">DITA-OT Project Wiki</a></li>
+          <li class="dropdown-divider"></li>
+          <li><a href="https://github.com/dita-ot/docs">Documentation Source</a></li>
+          <li><a href="https://github.com/dita-ot/docs/issues">Documentation Issues</a></li>
+          <li><a href="https://github.com/dita-ot/docs/wiki">Documentation Wiki</a></li>
+          <li class="dropdown-divider mb-2"></li>
+          <li class="pt-1">
+            <a href="https://github.com/dita-ot/dita-ot/releases.atom">Release feed <svg class="octicon octicon-rss" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M2.002 2.725a.75.75 0 0 1 .797-.699C8.79 2.42 13.58 7.21 13.974 13.201a.75.75 0 0 1-1.497.098 10.502 10.502 0 0 0-9.776-9.776.747.747 0 0 1-.7-.798ZM2.84 7.05h-.002a7.002 7.002 0 0 1 6.113 6.111.75.75 0 0 1-1.49.178 5.503 5.503 0 0 0-4.8-4.8.75.75 0 0 1 .179-1.489ZM2 13a1 1 0 1 1 2 0 1 1 0 0 1-2 0Z"></path></svg></a>
+          </li>
+        </ul>
+      </div>
+      <div class="col-6 col-md">
+        <h5>Community</h5>
+        <ul class="list-unstyled">
+          <li><a href="/who_we_are">Who We Are</a></li>
+          <li><a href="/contributing">How To Contribute</a></li>
+          <li><a href="/management">Project Management</a></li>
+          <li class="dropdown-divider"></li>
+          <li><a href="/support">Support Forums</a></li>
+          <li><a href="https://groups.io/g/dita-users">DITA Users group</a></li>
+          <li><a href="https://github.com/orgs/dita-ot/discussions">DITA-OT Discussions</a></li>
+          <li><a href="https://groups.google.com/d/forum/dita-ot-users">DITA-OT Users group archive</a></li>
+          <li>
+            <a href="http://stackoverflow.com/questions/tagged/dita-ot">Stack Overflow [dita-ot]</a>
+          </li>
+        </ul>
+      </div>
+      <div class="col-6 col-md">
+        <h5>Events</h5>
+        <ul class="list-unstyled">
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2026/dita-ot_day.html"
+              target="_blank"
+              title="Brussels"
+              >DITA-OT Day 2026</a
+            >
+          </li>
+        </ul>
+        <h5>Resources</h5>
+        <ul class="list-unstyled">
+          <li><a href="/colophon">About This Website</a></li>
+          <li><a href="/dev/">Documentation</a></li>
+          <li><a href="/download">Download</a></li>
+          <li><a href="/plugins">Plugins</a></li>
+          <li class="dropdown-divider"></li>
+          <li>
+            <a href="https://www.oasis-open.org/committees/dita/" title="DITA Technical Committee"
+              >OASIS DITA TC
+            </a>
+          </li>
+        </ul>
+      </div>
+      <div class="col-6 col-md">
+        <h5>Past Events</h5>
+        <ul class="list-unstyled">
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2025/dita-ot_day.html"
+              target="_blank"
+              title="Copenhagen"
+              >DITA-OT Day 2025</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2024/dita-ot_day.html"
+              target="_blank"
+              title="Helsinki"
+              >DITA-OT Day 2024</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2022/dita-ot_day.html"
+              target="_blank"
+              title="Brussels"
+              >DITA-OT Day 2022</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2019/dita-ot_day.html"
+              target="_blank"
+              title="Brussels"
+              >DITA-OT Day 2019</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2018/dita-ot_day.html"
+              target="_blank"
+              title="Rotterdam"
+              >DITA-OT Day 2018</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2017/dita-ot_day.html"
+              target="_blank"
+              title="Berlin"
+              >DITA-OT Day 2017</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2016/dita-ot_day.html"
+              target="_blank"
+              title="Munich"
+              >DITA-OT Day 2016</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2015/dita-ot_day.html"
+              target="_blank"
+              title="Munich"
+              >DITA-OT Day 2015</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://www.oxygenxml.com/events/2014/dita-ot_day.html"
+              target="_blank"
+              title="Munich"
+              >DITA-OT Day 2014</a
+            >
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+    <div class="modal fade" id="tocSearch" tabindex="-1" role="dialog" aria-labelledby="tocSeachLabel">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title" id="tocSeachLabel">Find topics by title</h4>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="tocSearchInput" class="mb-3" style="width: 100%" />
+        <p class="small">
+          <em>Topic finder</em> activated by typing “<strong>t</strong>”. Continue typing to filter
+          the list of topics.
+        </p>
+        <p class="small">
+          Use <kbd>↑</kbd> and <kbd>↓</kbd> to navigate the results; then press <kbd>ENTER</kbd> to
+          view a topic, or <kbd>ESC</kbd> to close this dialog.
+        </p>
+      </div>
+      <!-- (search results appear here) -->
+      <div class="modal-footer"></div>
+    </div>
+  </div>
+</div>
+
+    <div
+  class="modal fade"
+  id="keyboardHelp"
+  tabindex="-1"
+  role="dialog"
+  aria-labelledby="keyboardHelpLabel"
+>
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title" id="keyboardHelpLabel">Keyboard shortcuts</h4>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="small">
+          You’ve activated the <em>keyboard shortcuts</em> help by typing “<strong>?</strong>”.
+        </p>
+        <table class="small table">
+          <tr>
+            <td><kbd>t</kbd></td>
+            <td>Open the <em>topic finder</em> to filter the list of topic titles</td>
+          </tr>
+          <tr>
+            <td><kbd>s</kbd></td>
+            <td>Use the <em>search</em> field to find text in topic content</td>
+          </tr>
+          <tr>
+            <td><kbd>?</kbd></td>
+            <td>Show this list of keyboard shortcuts</td>
+          </tr>
+          <tr>
+            <td><kbd>ESC</kbd></td>
+            <td>Close this dialog</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js" integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+    <script src="/js/main.js" type="text/javascript" ></script>
+    <script src="https://cdn.usefathom.com/script.js" site="MEDTXGXM" defer></script>
+    <script type="text/javascript">
+      docsearch({
+        container: '#docsearch',
+        appId: '3RVXFPL77E',
+        apiKey: '10c10e348f7e5a284187d61528d54b5f',
+        indexName: 'dita-ot',
+        inputSelector: '#search input[type=text]',
+        algoliaOptions: {
+          hitsPerPage: 10,
+        },
+        debug: false
+      });
+    </script>
+  </body>
+</html>

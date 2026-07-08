@@ -413,7 +413,11 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/keyboard-shortcuts",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-file-management",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-upload-existing-files"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-upload-existing-files",
+    "https://www.dita-ot.org/dev/release-notes/",
+    "https://www.dita-ot.org/dev/topics/markdown-input",
+    "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax",
+    "https://www.dita-ot.org/dev/topics/lwdita-input"
   ],
   "recursive": {
     "enabled": false,

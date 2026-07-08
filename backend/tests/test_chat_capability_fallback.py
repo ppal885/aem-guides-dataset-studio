@@ -3,11 +3,13 @@ import pytest
 from app.services import chat_service
 from app.services.chat_service import (
     _builtin_capability_response,
+    _build_chat_system_prompt,
     _grounded_fact_matches_question,
     _is_capability_prompt,
 )
 from app.core.schemas_grounded_answer import NormalizedGroundedFactSet
 from app.services.grounding_service import build_evidence_pack
+from app.services.senior_chat_quality_service import detect_senior_chat_context, judge_retrieval_match
 
 
 def test_is_capability_prompt_matches_help_questions():
@@ -23,6 +25,78 @@ def test_builtin_capability_response_lists_core_chat_uses():
     assert "conref" in text.lower() and "keyref" in text.lower()
     assert "DITA-OT" in text
     assert "Current workspace: `kone`" in text
+
+
+def test_senior_chat_context_detects_troubleshooting_slots():
+    context = detect_senior_chat_context(
+        "How do I debug a topic that publishes in HTML5 but fails in PDF with DITA-OT 4.4 and filters?"
+    )
+
+    assert context.domain == "DITA-OT publishing"
+    assert context.question_type == "troubleshooting"
+    assert context.output_type == "PDF / PDF2"
+    assert "Command-line DITA-OT" in context.tool_contexts
+    assert context.has_filter_context is True
+
+
+def test_retrieval_judge_rejects_attribute_card_for_dita_ot_question():
+    judgment = judge_retrieval_match(
+        "How do I debug DITA-OT args.chapter.layout in PDF?",
+        [
+            {
+                "prompt": "What does @chapter do in DITA?",
+                "final_answer": "This is a DITA attribute answer with no DITA-OT implementation behavior.",
+                "source_type": "dita_attribute_questions",
+                "score": 0.91,
+                "tags": ["chapter"],
+            }
+        ],
+    )
+
+    assert judgment["status"] == "mismatch"
+    assert judgment["confidence"] == "low"
+
+
+def test_chat_system_prompt_includes_senior_answer_policy():
+    prompt = _build_chat_system_prompt("", "SENIOR CHAT CONTEXT:\n- Detected domain: DITA")
+
+    assert "SENIOR DITA EXPERT ANSWER POLICY" in prompt
+    assert "Do not answer as a search-result summarizer" in prompt
+    assert "For DITA-OT failures" in prompt
+
+
+def test_build_rag_context_includes_senior_context_and_retrieval_judge(monkeypatch):
+    monkeypatch.setattr(chat_service, "is_learned_qa_domain_query", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        chat_service,
+        "retrieve_learned_qa",
+        lambda *_args, **_kwargs: [
+            {
+                "prompt": "What is a DITA topic?",
+                "final_answer": "<topic> is the base information unit in DITA.",
+                "source_type": "dita_attribute_questions",
+                "score": 0.93,
+                "tags": ["topic"],
+            }
+        ],
+    )
+    monkeypatch.setattr(chat_service, "format_learned_qa_for_prompt", lambda *_args, **_kwargs: "LEARNED PROMPT CORPUS:\n[1] Topic card")
+    monkeypatch.setattr(chat_service, "retrieve_relevant_docs", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_service, "retrieve_dita_knowledge", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_service, "retrieve_tenant_context", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_service, "retrieve_tenant_examples", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_service, "retrieve_claude_code_context", lambda *_args, **_kwargs: "")
+
+    text = chat_service._build_rag_context(
+        "How do I debug a topic that publishes in HTML but fails in PDF?",
+        tenant_id="kone",
+    )
+
+    assert "SENIOR CHAT CONTEXT" in text
+    assert "Question type: troubleshooting" in text
+    assert "LEARNED QA RETRIEVAL JUDGE" in text
+    assert "Status: mismatch" in text
+    assert "A generic topic-definition record matched an output troubleshooting question." in text
 
 
 def test_grounded_fact_guard_rejects_topic_card_for_pdf_troubleshooting():

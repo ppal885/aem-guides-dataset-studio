@@ -183,8 +183,87 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     lowered_title = str(title or "").lower()
     lowered_url = str(url or "").lower()
     lowered_content = str(content or "").lower()
+    lowered_query = str(query or "").lower()
     intent = _classify_aem_query_intent(query)
     bonus = 0.0
+
+    if re.search(r"\b(dita.?ot|dita open toolkit)\b", lowered_query) and re.search(
+        r"\b(release notes?|upgrade|upgrading|version|java 17|regression|changed defaults?|compatibility)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/release-notes" in lowered_url:
+            bonus += 1.10
+        elif "dita-ot.org" in lowered_url:
+            bonus += 0.25
+
+    if re.search(r"\bdita\s+command\b|\bdita.?ot\b|\bdita open toolkit\b", lowered_query) and re.search(
+        r"\b(required arguments?|arguments?|options?|subcommands?|--input|--format|transtype|propertyfile)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/parameters/dita-command-arguments" in lowered_url:
+            bonus += 1.15
+        elif "dita-ot.org" in lowered_url and "/topics/dita-command-help" in lowered_url:
+            bonus += 0.55
+
+    if re.search(r"\bdita.?ot\b|\bdita open toolkit\b|\bpdf2?\b|\bhtml5?\b|\bpublishing\b", lowered_query) and re.search(
+        r"\b(debug|troubleshoot|failure|fails?|logs?|error code|dotj|evidence|minimal reproduc|broken|inspect|"
+        r"content, transform, or environment|transform|environment)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/topics/error-messages" in lowered_url:
+            bonus += 1.25
+        elif "dita-ot.org" in lowered_url and "/release-notes" in lowered_url:
+            bonus += 0.45
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.45
+
+    if re.search(r"\b(draft-comment|draft comments?|args\.draft|draft content)\b", lowered_query):
+        if "dita-ot.org" in lowered_url and "/parameters/parameters-base" in lowered_url:
+            bonus += 1.20
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.35
+
+    if re.search(r"\b(dita.?ot|dita open toolkit|dita)\b", lowered_query) and re.search(
+        r"\b(markdown|mdita|lwdita|format=['\"]?markdown|md files?|\\.md\\b)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/topics/markdown-input" in lowered_url:
+            bonus += 1.10
+        elif "dita-ot.org" in lowered_url and "markdown" in lowered_url:
+            bonus += 0.40
+
+    if re.search(r"\b(markdown|mdita|md files?|\\.md\\b)\b", lowered_query) and re.search(
+        r"\b(html5?|pdf2?|publishing|publish|output|works?|fails?|not in pdf)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/topics/markdown-input" in lowered_url:
+            bonus += 1.05
+        elif "dita-ot.org" in lowered_url and "/topics/error-messages" in lowered_url:
+            bonus += 0.55
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.35
+
+    if re.search(r"\bmarkdown\s+dita\b", lowered_query) and re.search(
+        r"\b(syntax|yaml|schema|topic ids?|generated ids?|nested topics?|maps?|topicrefs?|keys?|"
+        r"key definitions?|key references?|reltables?|relationship tables?|tables?|metadata|header attributes?)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/markdown/markdown-dita-syntax" in lowered_url:
+            bonus += 2.20
+        elif "dita-ot.org" in lowered_url and "/topics/markdown-input" in lowered_url:
+            bonus += 0.35
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 1.30
+
+    if re.search(r"\b(lwdita|lightweight dita|xdita|mdita|hdita|data-props)\b", lowered_query):
+        if "dita-ot.org" in lowered_url and "/topics/lwdita-input" in lowered_url:
+            bonus += 1.45
+        elif "dita-ot.org" in lowered_url and "/reference/markdown/mdita-syntax" in lowered_url:
+            bonus += 0.40
+        elif "dita-ot.org" in lowered_url and "/topics/markdown-input" in lowered_url:
+            bonus += 0.20
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.45
 
     if intent == "dita_ot_params":
         # Boost dita-ot.org parameter/argument documentation pages
@@ -353,7 +432,7 @@ def _filter_and_rank_docs(
                     query,
                     title=str(doc.get("title") or ""),
                     url=str(doc.get("url") or ""),
-                    content=str(doc.get("snippet") or doc.get("content") or ""),
+                    content=str(doc.get("_rank_content") or doc.get("snippet") or doc.get("content") or ""),
                     allowed_host_suffixes=allowed_host_suffixes,
                 ),
                 doc,
@@ -375,6 +454,7 @@ def _filter_and_rank_docs(
         if count >= limit_per_doc:
             continue
         seen_counts[dedupe_key] = count + 1
+        doc.pop("_rank_content", None)
         deduped.append(doc)
         if len(deduped) >= k:
             break
@@ -576,7 +656,7 @@ def retrieve_relevant_docs_with_diagnostics(
             query,
             title=str(c.get("title") or ""),
             url=str(c.get("url") or ""),
-            content=snippet,
+            content=str(c.get("content") or ""),
             allowed_host_suffixes=allowed_hosts,
         )
         if score <= 0:
@@ -588,6 +668,7 @@ def retrieve_relevant_docs_with_diagnostics(
                     "url": c.get("url", ""),
                     "title": c.get("title", ""),
                     "snippet": snippet,
+                    "_rank_content": c.get("content") or snippet,
                 },
             )
         )
