@@ -309,6 +309,34 @@ def test_retrieve_relevant_docs_uses_lwdita_for_conditional_processing(monkeypat
     assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
 
 
+def test_retrieve_relevant_docs_uses_markdown_input_for_dita_only_semantics(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "My Markdown content needs profiling and conkeyrefs later. Should I keep it as Markdown?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/markdown-input" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_lwdita_for_hdita_map_limit(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Can I create an HDITA map directly, or do I need another map type?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
+
+
 def test_retrieve_relevant_docs_can_filter_to_experience_league_and_rerank_translation_docs(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)

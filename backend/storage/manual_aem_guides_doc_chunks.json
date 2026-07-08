@@ -348,5 +348,24 @@
       "<topicref href=\"hdita-topic.html\" format=\"hdita\"/>"
     ],
     "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/lwdita-input",
+    "title": "HDITA map limitations in LwDITA",
+    "content": "HDITA map limitations in LwDITA\n\nDITA-OT preview support for Lightweight DITA includes HDITA topics, but the HDITA map format is not yet supported. To include HDITA content in a publication, use an XDITA map or a standard DITA map and reference the HTML5 topic with format=\"hdita\", for example <topicref href=\"hdita-topic.html\" format=\"hdita\"/>. This is DITA-OT/LwDITA implementation guidance, not a general DITA XML map rule. In a senior troubleshooting answer, tell the user not to create an HDITA map directly; verify the root map type, the topicref @format value, and whether the HDITA source is being converted in the DITA-OT preprocessing stage.",
+    "chunk_index": 1,
+    "paragraphs": [],
+    "list_items": [],
+    "codeph": [
+      "HDITA map",
+      "not yet supported",
+      "XDITA map",
+      "standard DITA map",
+      "format=\"hdita\""
+    ],
+    "codeblocks": [
+      "<topicref href=\"hdita-topic.html\" format=\"hdita\"/>"
+    ],
+    "tables": []
   }
 ]

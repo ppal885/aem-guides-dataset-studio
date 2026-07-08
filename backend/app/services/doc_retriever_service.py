@@ -243,6 +243,20 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
         elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
             bonus -= 0.35
 
+    if re.search(r"\b(markdown|mdita|md files?|\\.md\\b)\b", lowered_query) and re.search(
+        r"\b(profiling|profiled?|conditional|conditions?|conkeyref|conref|keyref|reuse|"
+        r"dita-only semantics?|semantics?|enrich|normalized dita)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/topics/markdown-input" in lowered_url:
+            bonus += 1.25
+        elif "dita-ot.org" in lowered_url and "/topics/lwdita-input" in lowered_url:
+            bonus += 0.75
+        elif "dita-ot.org" in lowered_url and "/reference/markdown/markdown-dita-syntax" in lowered_url:
+            bonus += 0.45
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.65
+
     if re.search(r"\bmarkdown\s+dita\b", lowered_query) and re.search(
         r"\b(syntax|yaml|schema|topic ids?|generated ids?|nested topics?|maps?|topicrefs?|keys?|"
         r"key definitions?|key references?|reltables?|relationship tables?|tables?|metadata|header attributes?)\b",
@@ -264,6 +278,12 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
             bonus += 0.20
         elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
             bonus -= 0.45
+
+    if re.search(r"\bhdita\b", lowered_query) and re.search(r"\b(map|maps|map type|directly|another map)\b", lowered_query):
+        if "dita-ot.org" in lowered_url and "/topics/lwdita-input" in lowered_url:
+            bonus += 1.20
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.85
 
     if intent == "dita_ot_params":
         # Boost dita-ot.org parameter/argument documentation pages
