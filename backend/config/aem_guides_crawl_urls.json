@@ -417,7 +417,20 @@
     "https://www.dita-ot.org/dev/release-notes/",
     "https://www.dita-ot.org/dev/topics/markdown-input",
     "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax",
-    "https://www.dita-ot.org/dev/topics/lwdita-input"
+    "https://www.dita-ot.org/dev/topics/lwdita-input",
+    "https://www.dita-ot.org/dev/topics/dita-xml-input",
+    "https://www.dita-ot.org/dev/topics/input-formats",
+    "https://www.dita-ot.org/dev/topics/output-formats",
+    "https://www.dita-ot.org/dev/topics/publishing",
+    "https://www.dita-ot.org/dev/topics/dita2dita",
+    "https://www.dita-ot.org/dev/topics/troubleshooting-overview",
+    "https://www.dita-ot.org/dev/reference/markdown/mdita-syntax",
+    "https://www.dita-ot.org/dev/reference/markdown/format-comparison",
+    "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/cascading-in-a-ditamap.html",
+    "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/metadata-in-maps-and-topics.html",
+    "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config"
   ],
   "recursive": {
     "enabled": false,

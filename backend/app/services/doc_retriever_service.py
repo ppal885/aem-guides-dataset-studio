@@ -285,6 +285,115 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
         elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
             bonus -= 0.85
 
+    if re.search(r"\b(normalized dita|dita2dita|effective processed content|preprocess(?:ing)?|resolved keys?|resolved conrefs?)\b", lowered_query):
+        if "dita-ot.org" in lowered_url and "/topics/dita2dita" in lowered_url:
+            bonus += 1.35
+        elif "dita-ot.org" in lowered_url and "/topics/publishing" in lowered_url:
+            bonus += 0.35
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.35
+
+    if re.search(
+        r"\b(aem guides|experience manager guides|cloud service|web editor|topic preview|single[- ]topic|folder profile|ui_config)\b",
+        lowered_query,
+    ) and re.search(r"\b(dita-ot|old pdf|pdf generation|pdf preview|download_topic_pdf|editor_save_as_pdf)\b", lowered_query):
+        if "experienceleague.adobe.com" in lowered_url and "conf-pdf-generation-dita-ot" in lowered_url:
+            bonus += 3.20
+        elif "experienceleague.adobe.com" in lowered_url and "generate-output-pdf-dita-ot" in lowered_url:
+            bonus += 0.80
+        elif "dita-ot.org" in lowered_url:
+            bonus -= 0.35
+
+    if re.search(
+        r"\b(aem guides|experience manager guides|xml editor|web editor|folder profile|advanced user guide|ui[_ -]?config)\b",
+        lowered_query,
+    ) and re.search(
+        r"\b(convert|conversion|migrate|migration|modular json|json|toolbar|topbar|targeteditor|editor_toolbar|map_console_action_bar)\b",
+        lowered_query,
+    ):
+        if "experienceleague.adobe.com" in lowered_url and "conver-ui-config" in lowered_url:
+            bonus += 3.35
+        elif "experienceleague.adobe.com" in lowered_url and "editor-configuration" in lowered_url:
+            bonus += 0.75
+        elif "experienceleague.adobe.com" in lowered_url and "conf-pdf-generation-dita-ot" in lowered_url:
+            bonus += 0.25
+
+    if re.search(r"\bmdita\b", lowered_query) and re.search(
+        r"\b(syntax|shortdesc|simpletable|mditamap|markdown dita|format comparison|compare|difference|"
+        r"tables?|commonmark|extended profile)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/markdown/format-comparison" in lowered_url and re.search(
+            r"\b(markdown dita|compare|comparison|difference|versus|vs)\b",
+            lowered_query,
+        ):
+            bonus += 1.85
+        elif "dita-ot.org" in lowered_url and "/reference/markdown/mdita-syntax" in lowered_url:
+            bonus += 1.25
+        elif "dita-ot.org" in lowered_url and "/reference/markdown/format-comparison" in lowered_url:
+            bonus += 1.05
+        elif "dita-ot.org" in lowered_url and "/topics/lwdita-input" in lowered_url:
+            bonus += 0.35
+
+    if re.search(r"\bdita\s*1\.(2|3)\b|\bdita\s*(?:version|versions)\b", lowered_query) and re.search(
+        r"\b(dita-ot|support|supports|input|standard dita|xml|preview|dita 2\\.0)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/topics/dita-xml-input" in lowered_url:
+            bonus += 1.20
+        elif "dita-ot.org" in lowered_url and "/release-notes" in lowered_url:
+            bonus += 0.45
+
+    if re.search(r"\b(cascade|cascading|merge|nomerge|effective metadata|metadata cascade|lockmeta|topicmeta)\b", lowered_query):
+        if "docs.oasis-open.org" in lowered_url and "/dita/v1.2/" in lowered_url and "1.2" in lowered_query:
+            bonus += 1.30
+        elif "docs.oasis-open.org" in lowered_url and "/cascading-in-a-ditamap" in lowered_url:
+            bonus += 1.20
+        elif "docs.oasis-open.org" in lowered_url and "/metadata-in-maps-and-topics" in lowered_url:
+            bonus += 0.95
+        elif "docs.oasis-open.org" in lowered_url and "/commonMapAttributes" in lowered_url:
+            bonus += 0.45
+        elif "experienceleague.adobe.com" in lowered_url and "baseline" not in lowered_query:
+            bonus -= 0.35
+
+    if re.search(r"\b(metadata|topicmeta|keywords?|audience|product|category)\b", lowered_query) and re.search(
+        r"\b(topic source|source xml|source file|does not contain|missing from topic|appear in output|appears in output|effective)\b",
+        lowered_query,
+    ):
+        if "docs.oasis-open.org" in lowered_url and "/metadata-in-maps-and-topics" in lowered_url:
+            bonus += 1.55
+        elif "docs.oasis-open.org" in lowered_url and "/cascading-in-a-ditamap" in lowered_url:
+            bonus += 0.80
+        elif "experienceleague.adobe.com" in lowered_url:
+            bonus -= 0.50
+
+    if re.search(
+        r"\b(common map attributes?|common attributes?|processing-role|resource-only|chunk|copy-to|"
+        r"keyscope|linking|toc|print|search|format attribute|scope attribute|type attribute)\b",
+        lowered_query,
+    ):
+        if (
+            "docs.oasis-open.org" in lowered_url
+            and "/commonAttributes" in lowered_url
+            and re.search(r"\b(common attributes?|every dita element|every element|conref|outputclass|keyref)\b", lowered_query)
+        ):
+            bonus += 1.65
+        elif "docs.oasis-open.org" in lowered_url and "/commonMapAttributes" in lowered_url:
+            bonus += 1.90
+        elif "docs.oasis-open.org" in lowered_url and "/commonAttributes" in lowered_url:
+            bonus += 0.85
+        elif "docs.oasis-open.org" in lowered_url and "/cascading-in-a-ditamap" in lowered_url:
+            bonus += 0.20
+
+    if re.search(r"\b(every dita element|every element|all elements|common attributes?)\b", lowered_query) and re.search(
+        r"\b(conref|outputclass|keyref|allowed|support|use every)\b",
+        lowered_query,
+    ):
+        if "docs.oasis-open.org" in lowered_url and "/commonAttributes" in lowered_url:
+            bonus += 2.40
+        elif "docs.oasis-open.org" in lowered_url and "/cascading-in-a-ditamap" in lowered_url:
+            bonus -= 0.65
+
     if intent == "dita_ot_params":
         # Boost dita-ot.org parameter/argument documentation pages
         if "dita-ot.org" in lowered_url:

@@ -463,8 +463,14 @@ def crawl_and_index(
         merged_records.extend(records)
     else:
         merged_records = records
-    path.write_text(json.dumps(merged_records, indent=2), encoding="utf-8")
     stats["chunks_stored"] = len(records)
+    try:
+        path.write_text(json.dumps(merged_records, indent=2), encoding="utf-8")
+    except OSError as e:
+        logger.warning_structured(
+            "Failed to update JSON crawl fallback after Chroma indexing",
+            extra_fields={"path": str(path), "error": str(e), "chunks_stored": len(records)},
+        )
 
     logger.info_structured(
         "AEM Guides crawl completed",

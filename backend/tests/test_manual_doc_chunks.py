@@ -50,6 +50,15 @@ def test_manual_dita_ot_troubleshooting_chunks_are_present():
     assert "https://www.dita-ot.org/dev/topics/markdown-input" in text
     assert "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax" in text
     assert "https://www.dita-ot.org/dev/topics/lwdita-input" in text
+    assert "https://www.dita-ot.org/dev/topics/dita2dita" in text
+    assert "https://www.dita-ot.org/dev/reference/markdown/mdita-syntax" in text
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot" in text
+    assert "DOWNLOAD_TOPIC_PDF" in text
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config" in text
+    assert "Convert UI config to JSON" in text
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/cascading-in-a-ditamap.html" in text
+    assert "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html" in text
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html" in text
 
 
 def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):
@@ -63,6 +72,32 @@ def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):
     urls = {item.get("url") for item in docs}
 
     assert "https://www.dita-ot.org/dev/parameters/parameters-base" in urls
+
+
+def test_retrieve_relevant_docs_uses_aem_guides_dita_ot_pdf_config(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How do I enable old DITA-OT PDF generation from topic preview in AEM Guides Cloud Service Web Editor?",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot" in urls
+
+
+def test_retrieve_relevant_docs_uses_aem_guides_ui_config_conversion(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How do I convert old ui_config customizations to modular JSON in AEM Guides XML Editor?",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config" in urls
 
 
 def test_retrieve_relevant_docs_uses_manual_svg_chunks(monkeypatch):
@@ -335,6 +370,118 @@ def test_retrieve_relevant_docs_uses_lwdita_for_hdita_map_limit(monkeypatch):
     urls = [item.get("url") for item in docs]
 
     assert "https://www.dita-ot.org/dev/topics/lwdita-input" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_normalized_dita(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How do I inspect normalized DITA to see resolved keys and conrefs after preprocessing?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/topics/dita2dita" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_mdita_syntax_for_shortdesc_simpletable(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "In MDITA syntax, why does the first paragraph become shortdesc and tables become simpletable?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/markdown/mdita-syntax" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita13_cascading(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "In DITA 1.3, how do cascade merge and nomerge affect audience and product metadata?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/cascading-in-a-ditamap.html" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita12_cascading(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "For DITA 1.2, which map attributes cascade before DITA 1.3 cascade merge tokens existed?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita13_common_map_attributes(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Compare processing-role resource-only, toc, linking, chunk, copy-to, and keyscope on topicrefs.",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_markdown_format_comparison(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What is the difference between Markdown DITA and MDITA?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/markdown/format-comparison" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_metadata_maps_topics_for_effective_metadata(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Why does metadata appear in output if the topic source does not contain it?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/metadata-in-maps-and-topics.html" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_common_attributes_for_every_element_question(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "get_embedding_diagnostics", lambda: {"available": False})
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Can every DITA element use every common attribute like conref outputclass keyref?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonAttributes.html" in urls[:3]
 
 
 def test_retrieve_relevant_docs_can_filter_to_experience_league_and_rerank_translation_docs(monkeypatch):

@@ -350,7 +350,7 @@
     "tables": []
   },
   {
-    "url": "https://www.dita-ot.org/dev/topics/lwdita-input",
+    "url": "https://www.dita-ot.org/dev/topics/lwdita-input#hdita-map-limitations",
     "title": "HDITA map limitations in LwDITA",
     "content": "HDITA map limitations in LwDITA\n\nDITA-OT preview support for Lightweight DITA includes HDITA topics, but the HDITA map format is not yet supported. To include HDITA content in a publication, use an XDITA map or a standard DITA map and reference the HTML5 topic with format=\"hdita\", for example <topicref href=\"hdita-topic.html\" format=\"hdita\"/>. This is DITA-OT/LwDITA implementation guidance, not a general DITA XML map rule. In a senior troubleshooting answer, tell the user not to create an HDITA map directly; verify the root map type, the topicref @format value, and whether the HDITA source is being converted in the DITA-OT preprocessing stage.",
     "chunk_index": 1,
@@ -366,6 +366,261 @@
     "codeblocks": [
       "<topicref href=\"hdita-topic.html\" format=\"hdita\"/>"
     ],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/dita2dita",
+    "title": "DITA-OT Normalized DITA transform",
+    "content": "DITA-OT Normalized DITA transform\n\nThe DITA-OT dita transformation generates normalized DITA topics and maps from DITA input. Use it when you need to inspect effective processed content rather than authored source XML. Normalized DITA includes results of preprocessing operations such as map reference resolution, key resolution, content reference resolution, code reference resolution, and metadata movement between maps and topics. A senior troubleshooting answer should distinguish source XML from normalized/effective DITA: if the source looks correct but output fails, generate normalized DITA with --format=dita and inspect resolved keys, conrefs, filters, topicrefs, and metadata before blaming the PDF/HTML transform.",
+    "codeph": [
+      "--format=dita",
+      "Normalized DITA",
+      "key resolution",
+      "content reference resolution",
+      "map reference resolution"
+    ],
+    "codeblocks": [
+      "dita --input=map.ditamap --format=dita --output=out-normalized"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/dita-xml-input",
+    "title": "DITA-OT standard DITA XML input",
+    "content": "DITA-OT standard DITA XML input\n\nDITA-OT supports released versions of the OASIS DITA specification, including DITA 1.0, 1.1, 1.2, and 1.3. In DITA-OT 4.4, the docs also describe initial preview support for draft DITA 2.0 features. For enterprise answers, keep DITA specification behavior separate from DITA-OT implementation/version behavior: DITA 1.2 and 1.3 are stable specification versions; DITA 2.0 support in current DITA-OT docs is preview behavior and should not be stated as a universal DITA rule. Use this source for questions about which DITA versions DITA-OT can process and when a failure might be caused by using draft or preview constructs.",
+    "codeph": [
+      "DITA 1.2",
+      "DITA 1.3",
+      "DITA 2.0 preview",
+      "DITA-OT 4.4"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/publishing",
+    "title": "DITA-OT publishing workflow",
+    "content": "DITA-OT publishing workflow\n\nDITA-OT publishing runs source maps/topics through preprocessing and then a selected transformation type such as HTML5, PDF/PDF2, or normalized DITA. Human troubleshooting should ask for the root map, DITA-OT version, Java version, exact command, transform type, filter files, property files, plugins, and the first error in the log. Compare source XML, normalized DITA, and final output artifacts. If HTML succeeds but PDF fails, suspect transform-specific handling after preprocessing such as images, fonts, tables, generated links, FO/PDF layout, or custom PDF plugins; do not answer with a generic DITA element definition.",
+    "codeph": [
+      "html5",
+      "pdf",
+      "pdf2",
+      "--input",
+      "--format",
+      "--filter",
+      "--propertyfile"
+    ],
+    "codeblocks": [
+      "dita --input=map.ditamap --format=html5 --output=out/html5\ndita --input=map.ditamap --format=pdf --output=out/pdf"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/markdown/mdita-syntax",
+    "title": "MDITA syntax in DITA-OT",
+    "content": "MDITA syntax in DITA-OT\n\nThe mdita format is the LwDITA Markdown format. To apply stricter LwDITA-specific processing to a Markdown topic, reference it from a map with format=\"mdita\". In MDITA, the first paragraph is treated as shortdesc, tables are converted to DITA simpletable elements, and files must be UTF-8 encoded. MDITA uses CommonMark and follows the LwDITA extended profile by default; a core profile can be enabled through custom parser configuration. MDITA maps use the mditamap file extension; both ordered and unordered list items create topicref elements. For questions comparing MDITA with Markdown DITA, say MDITA is the LwDITA-constrained flavor, while markdown is the older Markdown DITA flavor with additional DITA-specific extensions.",
+    "codeph": [
+      "format=\"mdita\"",
+      "shortdesc",
+      "simpletable",
+      "mditamap",
+      "CommonMark",
+      "Extended profile"
+    ],
+    "codeblocks": [
+      "<topicref href=\"mdita-topic.md\" format=\"mdita\"/>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/markdown/format-comparison",
+    "title": "Markdown DITA vs MDITA format comparison",
+    "content": "Markdown DITA vs MDITA format comparison\n\nDITA-OT documents differences between the original Markdown DITA format and MDITA for LwDITA. Markdown DITA and MDITA share common Markdown syntax, but differ in topic structure, map syntax, tables, raw DITA support, list handling, and which extensions are available. A senior answer should not treat format=\"markdown\" and format=\"mdita\" as synonyms. Use format=\"markdown\" for the older Markdown DITA behavior and format=\"mdita\" for stricter LwDITA Markdown processing. When users ask why a Markdown table becomes table versus simpletable, or why first paragraph is body text versus shortdesc, retrieve this comparison plus the specific syntax page.",
+    "codeph": [
+      "format=\"markdown\"",
+      "format=\"mdita\"",
+      "Markdown DITA",
+      "MDITA",
+      "simpletable",
+      "shortdesc"
+    ],
+    "codeblocks": [
+      "<topicref href=\"topic.md\" format=\"markdown\"/>\n<topicref href=\"topic.md\" format=\"mdita\"/>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/cascading-in-a-ditamap.html",
+    "title": "DITA 1.3 cascading metadata attributes in a map",
+    "content": "DITA 1.3 cascading metadata attributes in a map\n\nIn DITA 1.3, certain map-level metadata attributes cascade through the containment hierarchy of a DITA map. Cascading means values set on a map or topicref apply to child elements unless overridden by more specific effective values. Attributes that cascade include profiling metadata such as audience, platform, product, otherprops, and rev, as well as format, scope, type, processing-role, and cascade. The cascade attribute modifies additive merging behavior but does not turn cascading off completely. cascade=\"merge\" is the processing default and values are additive; cascade=\"nomerge\" prevents adding inherited values for an attribute when a new local value is encountered. The processing order resolves conref/keyref, explicit values, defaults, controlled values, then cascading; after attributes are resolved in a map, they cascade to referenced maps with additional map-to-map rules.",
+    "codeph": [
+      "audience",
+      "platform",
+      "product",
+      "otherprops",
+      "rev",
+      "format",
+      "scope",
+      "type",
+      "processing-role",
+      "cascade=\"merge\"",
+      "cascade=\"nomerge\""
+    ],
+    "codeblocks": [
+      "<map audience=\"admin\" cascade=\"merge\">\n  <topicref href=\"install.dita\" audience=\"developer\"/>\n</map>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html",
+    "title": "DITA 1.2 cascading attributes and metadata in a map",
+    "content": "DITA 1.2 cascading attributes and metadata in a map\n\nDITA 1.2 also defines cascading of attributes and metadata in DITA maps. The DITA 1.2 architecture describes cascading for audience, platform, product, otherprops, rev, format, scope, type, processing-role, and metadata elements such as audience, category, prodinfo, and othermeta. Cascading applies to children in the containment hierarchy, not to every element type globally. The DITA 1.2 processing order evaluates conref and keyref first, then explicit values, then defaults, then cascading. Senior answers should mention version scope: DITA 1.2 has cascading behavior, but DITA 1.3 adds/clarifies the cascade attribute merge/nomerge controls, so do not apply DITA 1.3 cascade token details blindly to a DITA 1.2-only environment.",
+    "codeph": [
+      "DITA 1.2",
+      "audience",
+      "platform",
+      "product",
+      "format",
+      "scope",
+      "type",
+      "processing-role",
+      "conref",
+      "keyref"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html",
+    "title": "DITA 1.3 common map attributes",
+    "content": "DITA 1.3 common map attributes\n\nThe DITA 1.3 common map attributes page defines attributes used on many map elements and topicref specializations. Important attributes for expert chatbot answers include cascade, processing-role, linking, toc, print, search, chunk, copy-to, keyscope, and others. cascade controls how metadata attributes cascade in a map. processing-role controls whether referenced content is normal processing content or resource-only. linking controls participation in link generation, while toc controls table-of-contents/navigation inclusion; neither should be confused with output generation by itself. chunk controls how topics are combined or split during output processing. keyscope marks boundaries for scoped key definitions. Use this source when the user asks about map attributes, topicref behavior, resource-only semantics, keyscope, chunking, or why toc/linking/processing-role have different output effects.",
+    "codeph": [
+      "cascade",
+      "processing-role",
+      "linking",
+      "toc",
+      "print",
+      "search",
+      "chunk",
+      "copy-to",
+      "keyscope",
+      "resource-only"
+    ],
+    "codeblocks": [
+      "<topicref href=\"warehouse.dita\" processing-role=\"resource-only\"/>\n<topicref href=\"guide.dita\" toc=\"no\" linking=\"none\"/>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonAttributes.html",
+    "title": "DITA 1.3 other common attributes",
+    "content": "DITA 1.3 other common attributes\n\nDITA 1.3 common attributes are used across many elements, but they are not one universal group that applies identically everywhere. Elements include only the attributes allowed by their grammar. Senior answers should avoid saying every DITA element supports every common attribute. Commonly discussed attributes include id, conref, conkeyref, keyref, outputclass, translate, xml:lang, dir, and localization/filtering-related metadata depending on the element. Always verify the specific element and DITA version before claiming an attribute is allowed. This source is useful when users ask why an attribute validates on topicref but not on entry, why conref/conkeyref behavior depends on allowed content, or why outputclass is not semantic metadata.",
+    "codeph": [
+      "id",
+      "conref",
+      "conkeyref",
+      "keyref",
+      "outputclass",
+      "translate",
+      "xml:lang",
+      "dir"
+    ],
+    "codeblocks": [
+      "<p id=\"reuse-source\">Reusable paragraph.</p>\n<p conref=\"topic.dita#topic/reuse-source\"/>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/metadata-in-maps-and-topics.html",
+    "title": "DITA 1.3 metadata in maps and topics",
+    "content": "DITA 1.3 metadata in maps and topics\n\nDITA 1.3 metadata can be specified both in a topic and in the map that references the topic. By default, metadata in the map can supplement or override metadata specified at topic level, unless lockmeta=\"no\" on topicmeta changes reconciliation behavior. This is central to understanding source XML versus effective metadata: a topic file may not contain an audience/product/category value, but the effective publication context can add metadata from map topicmeta or ancestor topicrefs. Senior answers should tell users to inspect the root map and effective map context, not only the standalone topic, when metadata appears in output, search, filtering, or generated navigation.",
+    "codeph": [
+      "topicmeta",
+      "lockmeta",
+      "audience",
+      "product",
+      "category",
+      "effective metadata",
+      "root map"
+    ],
+    "codeblocks": [
+      "<topicref href=\"install.dita\">\n  <topicmeta lockmeta=\"yes\">\n    <keywords><keyword>admin</keyword></keywords>\n  </topicmeta>\n</topicref>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot",
+    "title": "AEM Guides Cloud Service DITA-OT single-topic PDF generation",
+    "content": "AEM Guides Cloud Service DITA-OT single-topic PDF generation\n\nThis Experience League page explains how administrators can enable the older DITA-OT based PDF generation action from topic preview mode in AEM Guides Cloud Service. Native PDF is the default PDF generation method in current AEM Guides versions, but DITA-OT PDF can be exposed by editing the Web Editor UI configuration. The workflow is: sign in as an administrator, open Tools > Guides > Folder Profiles, open the Global Profile, edit XML Editor Configuration, download ui_config.json, replace the preview PDF button action from EDITOR_SAVE_AS_PDF to DOWNLOAD_TOPIC_PDF, save and upload the updated configuration, then choose the same folder profile in Editor user preferences. Use this source for questions about Cloud Service, Web Editor configuration, single-topic PDF preview, enabling old DITA-OT PDF generation, or why the PDF preview action uses Native PDF by default.",
+    "codeph": [
+      "ui_config.json",
+      "EDITOR_SAVE_AS_PDF",
+      "DOWNLOAD_TOPIC_PDF",
+      "DITA-OT",
+      "Native PDF",
+      "Global Profile",
+      "XML Editor Configuration"
+    ],
+    "codeblocks": [
+      "{\n  \"component\": \"button\",\n  \"icon\": \"filePDF\",\n  \"variant\": \"action\",\n  \"quiet\": true,\n  \"title\": \"Export as PDF\",\n  \"on-click\": \"DOWNLOAD_TOPIC_PDF\",\n  \"show\": [\"@isPreviewMode\", \"@isXmlMode\"]\n}"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config",
+    "title": "AEM Guides Editor Configuration and UI config conversion",
+    "content": "AEM Guides Editor Configuration and UI config conversion\n\nThis Experience League advanced user guide page explains how to migrate old AEM Guides ui_config customizations to the newer modular XML Editor UI configuration framework. When moving from the old UI to the new AEM Guides UI, updates in ui_config must be converted into flexible JSON files for widgets such as editor_toolbar, editor_tab_bar, file_mode_switcher, map_console_navigation_bar, map_console_action_bar, and home_navigation_bar. Each JSON uses an id for the widget, targetEditor to control when a component appears, and target to append, prepend, replace, or hide a component. The page documents targetEditor properties such as mode, displayMode, editor, documentType, documentSubType, and flag. The conversion workflow is: open Tools > Guides > Folder Profiles, select a folder profile, open XML Editor Configuration, then use Convert UI config to JSON. The conversion generates modular JSON such as editor_toolbar and map_console_action_bar. Toolbar/topbar changes go to editor_toolbar; Presets or Translation button changes go to map_console_action_bar. Use this source for questions about converting ui_config, modular JSONs, toolbar customization, targetEditor rules, DOWNLOAD_TOPIC_PDF buttons, and uploading customized JSON or CSS in AEM Guides.",
+    "codeph": [
+      "ui_config",
+      "Convert UI config to JSON",
+      "editor_toolbar",
+      "map_console_action_bar",
+      "targetEditor",
+      "target",
+      "displayMode",
+      "documentType",
+      "documentSubType",
+      "DOWNLOAD_TOPIC_PDF"
+    ],
+    "codeblocks": [
+      "{\n  \"id\": \"editor_toolbar\",\n  \"view\": {\n    \"items\": [{\n      \"icon\": \"filePDF\",\n      \"title\": \"Export as PDF\",\n      \"on-click\": \"$DOWNLOAD_TOPIC_PDF\",\n      \"key\": \"$DOWNLOAD_TOPIC_PDF\",\n      \"targetEditor\": {\n        \"editor\": [\"ditamap\", \"xml\"],\n        \"mode\": [\"preview\"]\n      },\n      \"target\": {\n        \"key\": \"label\",\n        \"value\": \"Download as PDF\",\n        \"viewState\": \"prepend\"\n      }\n    }]\n  }\n}"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
     "tables": []
   }
 ]
