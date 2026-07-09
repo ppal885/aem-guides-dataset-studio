@@ -622,5 +622,307 @@
     "paragraphs": [],
     "list_items": [],
     "tables": []
+  },
+  {
+    "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config#understanding-targeteditor-properties",
+    "title": "AEM Guides UI config targetEditor properties",
+    "content": "AEM Guides UI config targetEditor properties\n\nThe targetEditor object in AEM Guides modular UI configuration controls where a customized UI component is shown after converting old ui_config customizations to JSON. Use targetEditor to scope a button, toolbar item, or action to specific editor contexts instead of showing it everywhere. Important properties include mode, displayMode, editor, documentType, documentSubType, and flag. mode is used for states such as preview or edit. displayMode controls the authoring display mode, editor scopes the component to editors such as XML editor or map editor contexts, documentType and documentSubType restrict behavior to DITA maps, topics, or specialized document types, and flag is used for feature/context flags. Senior guidance: do not put all migrated actions into one global toolbar rule. Place each action in the correct modular JSON, then use targetEditor to make the action appear only in the intended context. For example, a PDF export action that should appear only in XML preview mode should include targetEditor rules for XML/DITA map editor context and preview mode. Use this source when users ask why a toolbar button appears in the wrong place, how to scope DOWNLOAD_TOPIC_PDF, or how targetEditor differs from target append/prepend/replace behavior.",
+    "codeph": [
+      "targetEditor",
+      "mode",
+      "displayMode",
+      "editor",
+      "documentType",
+      "documentSubType",
+      "flag",
+      "target",
+      "DOWNLOAD_TOPIC_PDF",
+      "editor_toolbar"
+    ],
+    "codeblocks": [
+      "{\n  \"key\": \"$DOWNLOAD_TOPIC_PDF\",\n  \"on-click\": \"$DOWNLOAD_TOPIC_PDF\",\n  \"targetEditor\": {\n    \"editor\": [\"ditamap\", \"xml\"],\n    \"mode\": [\"preview\"]\n  },\n  \"target\": {\n    \"key\": \"label\",\n    \"value\": \"Download as PDF\",\n    \"viewState\": \"prepend\"\n  }\n}"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/architecture",
+    "title": "DITA-OT architecture and processing pipeline",
+    "content": "DITA-OT architecture and processing pipeline\n\nDITA Open Toolkit is an open-source implementation of the OASIS DITA specification. Its architecture uses Ant, XSLT, and Java to transform DITA maps and topics into deliverable formats. DITA-OT processing is multi-stage and map-driven: stages examine source content, create or update temporary working files, and pass those temporary results to later stages. The source files themselves are not modified. DITA-OT supports map-first preprocessing as an alternative to the default preprocess operation. The processing pipeline is implemented as Ant targets, with modules implemented in Java or XSLT depending on performance and customization needs. The processing order matters; DITA-OT applies filtering before conref resolution because that order best matches user expectations, although the DITA specification does not require one universal processor order. DITA-OT extension happens through plug-ins: Ant targets can be inserted before or after common processing, and XSLT rules can override default processing. HTML-based transforms run preprocessing and then generate HTML/navigation outputs. PDF/PDF2 processing runs preprocessing, creates merged content, converts it to XSL-FO, and formats the FO to PDF. Use this source for DITA-OT architecture, preprocessing, map-first processing, plug-ins, extension points, Store API, HTML processing modules, and PDF processing modules.",
+    "codeph": [
+      "preprocess",
+      "map-first pre-processing",
+      "Ant",
+      "XSLT",
+      "Java",
+      "plug-in",
+      "extension points",
+      "Store API",
+      "PDF2",
+      "XSL-FO"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/processing-structure",
+    "title": "DITA-OT processing structure",
+    "content": "DITA-OT processing structure\n\nDITA-OT implements a multi-stage, map-driven architecture for processing DITA maps and topics. Each processing stage examines some or all content. Some stages create temporary files used by later steps, while other stages create updated copies of DITA content for downstream processing. Most processing happens in a temporary working directory; the original source files themselves are not modified. DITA-OT is designed as a pipeline. Most of the pipeline is common to all output formats and is known as the pre-processing stage. In general, any DITA process begins with this shared pre-processing set. After pre-processing completes, the pipeline diverges based on the requested output format. Some later processing is still shared by multiple formats; for example, Eclipse Help and HTML Help can share XHTML topic generation before branching to create different navigation files. Other output formats can add their own processing steps. Use this source when users ask about DITA-OT processing structure, temporary files, whether source files are modified, preprocessing, common pipeline stages, and how output-specific processing branches after common preprocessing.",
+    "codeph": [
+      "processing structure",
+      "pre-processing stage",
+      "temporary working directory",
+      "pipeline",
+      "maps",
+      "topics",
+      "output formats",
+      "XHTML",
+      "HTML5",
+      "PDF"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/map-first-preprocessing",
+    "title": "DITA-OT map-first pre-processing",
+    "content": "DITA-OT map-first pre-processing\n\nDITA-OT map-first pre-processing is an alternative to the default preprocess operation. It provides the same overall functionality as default preprocessing but uses a different processing approach. The default routine handles maps and topics together, often switching between map operations and topic operations. The map-first approach delays topic processing until nearly all map processing is complete. This simplifies module responsibilities and makes it easier to process only topics that remain referenced after filtering, or to validate only the map structure. Map-first processing is especially relevant because DITA 1.2 and 1.3 introduced more map-level features, including keys and key scopes, which are difficult to handle reliably before map-level features are resolved. The newer model uses hashed topic filenames in the temporary directory and better supports topics referenced outside the map directory. As of DITA-OT 3.0, map-first preprocessing is enabled by default for PDF and HTML Help; as of DITA-OT 4.2 it is enabled for HTML5 and Normalized DITA output and supports additional subject scheme features. Custom transformations can call the preprocess2 Ant target instead of preprocess. Limitation: preprocess.*.pre and preprocess.*.post extension points from the original preprocess pipeline are not available in preprocess2.",
+    "codeph": [
+      "map-first pre-processing",
+      "preprocess2",
+      "preprocess",
+      "keys",
+      "key scopes",
+      "filtering",
+      "hashed topic file names",
+      "subject scheme",
+      "preprocess.*.pre",
+      "preprocess.*.post"
+    ],
+    "codeblocks": [
+      "<target name=\"dita2myhtml\"\n        depends=\"myhtml.init,\n                 html5.init,\n                 build-init,\n                 preprocess2,\n                 html5.topic,\n                 html5.map,\n                 html5.css\"/>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/processing-pipeline-modules",
+    "title": "DITA-OT processing pipeline modules",
+    "content": "DITA-OT processing pipeline modules\n\nThe DITA-OT processing pipeline is implemented using Ant. Individual modules in the Ant script are implemented in Java or XSLT depending on performance needs and customization requirements. Almost all Ant and XSLT modules can be extended by adding a plug-in to the toolkit. Plug-ins can insert new Ant targets before or after common processing, and can import new rules into common XSLT modules to override default processing. XSLT modules normally use shell files: each shell imports common rules that apply to general topics, then imports additional overrides for DITA specializations such as reference, task, highlighting domain, or local plug-in specializations. Java modules are used when XSLT is not a good fit, such as processes that depend on Java libraries, index sorting, copying files, parsing source files, or copying resources into a temporary processing directory. Use this source when users ask about DITA-OT processing modules, Ant targets, XSLT shell files, Java modules, plug-in extension of modules, specialization overrides, or how default processing is overridden.",
+    "codeph": [
+      "Ant",
+      "XSLT",
+      "Java",
+      "plug-in",
+      "processing modules",
+      "Ant targets",
+      "XSLT shell files",
+      "specializations",
+      "dita2xhtml.xsl",
+      "temporary processing directory"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/processing-order",
+    "title": "DITA-OT processing order",
+    "content": "DITA-OT processing order\n\nProcessing order is significant when evaluating DITA content. The DITA specification does not mandate one universal processing order, but DITA-OT intentionally performs filtering before conref resolution because this best matches user expectations. If an element such as <note conref=\"documentA.dita#doc/note\" product=\"MyProd\"/> is filtered out first, DITA-OT can discard it immediately and does not need to parse the conref target document. This saves time, avoids unnecessary conref resolution, and can allow a build or translation package to succeed without unused referenced files. If conref were resolved before filtering, results could differ: attributes from the conref target might override local attributes, or a target that would later be filtered could still affect the resolved content. DITA-OT therefore treats filtering-before-conref as its chosen implementation order; another legal DITA processor could use a different order and produce different results. Senior answers should distinguish DITA specification behavior from DITA-OT implementation behavior and should not claim that all DITA processors must follow DITA-OT processing order.",
+    "codeph": [
+      "processing order",
+      "filtering",
+      "conref",
+      "product",
+      "DITAVAL",
+      "DITA-OT",
+      "processor-specific behavior",
+      "translation",
+      "conref resolution"
+    ],
+    "codeblocks": [
+      "<note conref=\"documentA.dita#doc/note\" product=\"MyProd\"/>\n<note id=\"note\" product=\"SomeOtherProduct\">This is an important note!</note>"
+    ],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/store-api",
+    "title": "DITA-OT Store API processing in memory",
+    "content": "DITA-OT Store API processing in memory\n\nThe DITA-OT Store API, org.dita.dost.store.Store, is a Java abstraction over temporary file operations. Older DITA-OT processing assumed resources were on disk and addressed by file paths. DITA-OT 3.6 introduced the Store API so temporary resources can be handled in memory rather than always being written to disk. The file-based Stream Store remains the default for backwards compatibility and uses the dita.temp.dir path; it is activated with store-type=file. The Cache Store keeps temporary resources in memory and can cache parsed XML as DOM Document or Saxon S9api XdmNode, avoiding repeated parsing when resources are read again. It can be activated with store-type=memory. In-memory processing can improve performance in I/O-bound environments such as cloud platforms, but not all custom plug-ins work with Cache Store because some assume direct file access. Custom plug-ins should use DITA-OT XSLT modules in custom pipeline elements rather than Ant built-in xslt tasks to benefit from the Store API.",
+    "codeph": [
+      "Store API",
+      "org.dita.dost.store.Store",
+      "StoreBuilder",
+      "Stream Store",
+      "Cache Store",
+      "store-type=file",
+      "store-type=memory",
+      "dita.temp.dir",
+      "DOM Document",
+      "S9api XdmNode"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocessing",
+    "title": "DITA-OT pre-processing modules",
+    "content": "DITA-OT pre-processing modules\n\nThe DITA-OT pre-processing operation is a set of steps that normally runs at the beginning of every DITA-OT transformation. Each step corresponds to an Ant target in the build pipeline, and the preprocess target calls the complete set of pre-processing steps. Important modules include gen-list, debug-filter, mapref, branch-filter, keyref, copy-to, conrefpush, conref, profile, topic-fragment, chunk, move-meta-entries, mappull, maplink, topicpull, flag-module, clean-map, and copy-files. These steps prepare effective content before output-specific transforms run. For example, keyref resolves key-based links and text, conref resolves content references, profile removes content using DITAVAL or print rules, chunk assembles or splits topics based on map chunk attributes, and maplink generates map-based links from hierarchy, collection-type, and relationship tables. Use this source when users ask for the list, purpose, or sequence of DITA-OT preprocessing modules.",
+    "codeph": [
+      "preprocess",
+      "gen-list",
+      "debug-filter",
+      "mapref",
+      "branch-filter",
+      "keyref",
+      "copy-to",
+      "conrefpush",
+      "conref",
+      "profile",
+      "topic-fragment",
+      "chunk",
+      "move-meta-entries",
+      "mappull",
+      "maplink",
+      "topicpull",
+      "flag-module",
+      "clean-map",
+      "copy-files"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocess-genlist",
+    "title": "DITA-OT gen-list preprocess module",
+    "content": "DITA-OT gen-list preprocess module\n\nThe gen-list step examines DITA-OT input files and creates lists of topics, images, document properties, and other content for later pipeline stages. It is implemented in Java. For example, gen-list creates a list of topics that use @conref so only those files need to be processed during the conref stage. The generated list file name is derived from a list file property; for example, conreffile produces conref.list, and the corresponding property is conreflist. gen-list creates several list files in the temporary directory, including dita.list and dita.xml.properties. Common generated list files include conref.list for documents with conref attributes, fullditamapandtopic.list for all map and topic files referenced during transformation, fullditamap.list, fullditatopic.list, hrefditatopic.list, hreftargets.list, html.list for resource files, image.list for referenced images, resourceonly.list, subjectscheme.list, and others. Use this source when users ask which preprocess step discovers referenced files or creates conref/image/topic/resource lists.",
+    "codeph": [
+      "gen-list",
+      "conreffile",
+      "conref.list",
+      "conreflist",
+      "dita.list",
+      "dita.xml.properties",
+      "fullditamapandtopic.list",
+      "hrefditatopic.list",
+      "image.list",
+      "resourceonly.list",
+      "subjectscheme.list"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocess-debugfilter",
+    "title": "DITA-OT debug-filter preprocess module",
+    "content": "DITA-OT debug-filter preprocess module\n\nThe debug-filter step processes all referenced DITA content and creates copies in the temporary directory. As the content is copied, DITA-OT performs filtering, inserts debugging information, and adjusts table column names. This step is implemented in Java and is part of the common DITA-OT preprocessing pipeline before output-specific transforms run. Use this source when users ask which preprocess module copies referenced DITA content, where filtering is applied while copying topics, which step inserts debug information, or why table column names may be adjusted in temporary DITA files. Senior answers should distinguish this DITA-OT implementation behavior from DITA specification behavior: the DITA specification defines vocabulary and semantics, while DITA-OT defines this concrete preprocessing step.",
+    "codeph": [
+      "debug-filter",
+      "preprocess",
+      "temporary directory",
+      "referenced DITA content",
+      "filtering",
+      "debugging information",
+      "table column names",
+      "Java",
+      "DITA-OT",
+      "preprocessing pipeline"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocess-mapref",
+    "title": "DITA-OT mapref preprocess module",
+    "content": "DITA-OT mapref preprocess module\n\nThe mapref step resolves map references in the DITA-OT preprocessing pipeline. In DITA-OT, elements that reference another map are replaced by the topicref elements from the referenced map. Relationship tables from the referenced map are also pulled into the referencing map. This is part of common preprocessing before output-specific transforms run, so final navigation, link generation, keys, and downstream map processing operate on an integrated effective map rather than on the originally authored map-reference boundary alone. Use this source when users ask what the mapref preprocessing step does, how submaps are integrated, whether referenced map topicrefs become part of the parent map, or why relationship tables from a submap affect the final publication. Senior answers should distinguish DITA-OT implementation behavior from the DITA specification and should not confuse the mapref preprocessing module with the DITA map-reference domain element name.",
+    "codeph": [
+      "mapref",
+      "preprocess",
+      "map references",
+      "referenced map",
+      "topicref",
+      "relationship tables",
+      "reltable",
+      "referencing map",
+      "effective map",
+      "DITA-OT"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocess-branch-filter",
+    "title": "DITA-OT branch-filter preprocess module",
+    "content": "DITA-OT branch-filter preprocess module\n\nThe branch-filter step filters topics using DITAVAL files that are defined in the map. It is part of the DITA-OT common preprocessing pipeline and is used when map branches carry their own filtering context, such as through ditavalref-based branch filtering. Branch filtering can cause the same source topic or map branch to produce different effective content in different branches because each branch can be filtered with a different DITAVAL context. Use this source when users ask how DITA-OT applies DITAVAL rules defined in a map, why a topic appears in one branch but not another, how branch filtering differs from one global DITAVAL file, or why effective content can differ across branches. Senior answers should distinguish DITA-OT branch-filter preprocessing from the DITA specification vocabulary and should explain that downstream modules operate on branch-filtered effective content.",
+    "codeph": [
+      "branch-filter",
+      "preprocess",
+      "DITAVAL",
+      "ditavalref",
+      "branch filtering",
+      "map branches",
+      "effective content",
+      "conditional processing",
+      "DITA-OT",
+      "preprocessing pipeline"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/reference/preprocess-keyref",
+    "title": "DITA-OT keyref preprocess module",
+    "content": "DITA-OT keyref preprocess module\n\nThe keyref step examines all defined keys in the effective map and resolves key references. During this DITA-OT preprocessing step, key-based link targets are resolved by replacing the key reference with the effective @href target from the key definition, and key-based text replacement is performed where appropriate. This means downstream preprocessing and output transforms work with effective resolved link targets and key-derived text rather than only the authored @keyref token. Use this source when users ask which module resolves @keyref, how key-defined @href values become link targets, why keyref requires a map context, why key text changes during processing, or why a key resolves differently after filtering, branch filtering, or key-scope changes. Senior answers should distinguish DITA key-space semantics from DITA-OT's concrete keyref preprocessing module.",
+    "codeph": [
+      "keyref",
+      "preprocess",
+      "keys",
+      "key definitions",
+      "key references",
+      "href",
+      "link targets",
+      "text replacement",
+      "effective map",
+      "key scope",
+      "DITA-OT"
+    ],
+    "codeblocks": [],
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [],
+    "tables": []
   }
 ]

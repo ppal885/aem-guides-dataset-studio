@@ -430,7 +430,20 @@
     "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/metadata-in-maps-and-topics.html",
     "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config#understanding-targeteditor-properties",
+    "https://www.dita-ot.org/dev/reference/architecture",
+    "https://www.dita-ot.org/dev/reference/processing-structure",
+    "https://www.dita-ot.org/dev/reference/map-first-preprocessing",
+    "https://www.dita-ot.org/dev/reference/processing-pipeline-modules",
+    "https://www.dita-ot.org/dev/reference/processing-order",
+    "https://www.dita-ot.org/dev/reference/store-api",
+    "https://www.dita-ot.org/dev/reference/preprocessing",
+    "https://www.dita-ot.org/dev/reference/preprocess-genlist",
+    "https://www.dita-ot.org/dev/reference/preprocess-debugfilter",
+    "https://www.dita-ot.org/dev/reference/preprocess-mapref",
+    "https://www.dita-ot.org/dev/reference/preprocess-branch-filter",
+    "https://www.dita-ot.org/dev/reference/preprocess-keyref"
   ],
   "recursive": {
     "enabled": false,

@@ -4721,6 +4721,503 @@ def _build_learned_qa_local_fallback_response(user_content: str, tenant_id: str,
     return "\n".join(lines).strip()
 
 
+def _build_aem_guides_ui_config_fallback_response(user_content: str) -> str:
+    """Senior offline answer for AEM Guides modular UI configuration questions."""
+    query = (user_content or "").strip()
+    lowered = query.lower()
+    if not (
+        re.search(r"\b(aem guides|experience manager guides|xml editor|web editor|folder profile|ui[_ -]?config|targeteditor)\b", lowered)
+        and re.search(
+            r"\b(convert|conversion|migrate|migration|modular json|json|toolbar|button|targeteditor|target editor|"
+            r"documenttype|documentsubtype|displaymode|wrong editor|wrong context|download_topic_pdf)\b",
+            lowered,
+        )
+    ):
+        return ""
+
+    target_anchor = (
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/"
+        "advanced-user-guide/conver-ui-config#understanding-targeteditor-properties"
+    )
+    conversion_url = (
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/"
+        "advanced-user-guide/conver-ui-config"
+    )
+    pdf_url = (
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/"
+        "cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot"
+    )
+
+    if re.search(
+        r"\b(targeteditor|target editor|documenttype|documentsubtype|displaymode|toolbar button)\b|wrong\b.{0,40}\b(editor|context)\b",
+        lowered,
+    ):
+        lines = [
+            "## Short answer",
+            "`targetEditor` controls the editor context in which an AEM Guides modular UI component appears. Use it to scope a toolbar button or action by editor, mode, display mode, document type, document subtype, or feature flag so the action does not appear globally.",
+            "",
+            "## How to use it",
+            "- Use `editor` to limit the component to XML editor, map editor, or related editor contexts.",
+            "- Use `mode` for states such as preview or edit.",
+            "- Use `displayMode` for the authoring display mode.",
+            "- Use `documentType` and `documentSubType` when a button should appear only for topics, maps, or a specialized document type.",
+            "- Use `flag` for feature/context flags exposed by the AEM Guides UI framework.",
+            "",
+            "## Example",
+            "```json",
+            "{",
+            '  "key": "$DOWNLOAD_TOPIC_PDF",',
+            '  "on-click": "$DOWNLOAD_TOPIC_PDF",',
+            '  "targetEditor": {',
+            '    "editor": ["ditamap", "xml"],',
+            '    "mode": ["preview"]',
+            "  },",
+            '  "target": {',
+            '    "key": "label",',
+            '    "value": "Download as PDF",',
+            '    "viewState": "prepend"',
+            "  }",
+            "}",
+            "```",
+            "",
+            "## Troubleshooting checklist",
+            "- Confirm the action is in the correct modular JSON, such as `editor_toolbar` for editor toolbar actions or `map_console_action_bar` for map-console actions.",
+            "- Check whether `targetEditor` is too broad; a missing `mode`, `editor`, or `documentType` can make the button appear in unintended places.",
+            "- Do not confuse `targetEditor` with `target`: `targetEditor` decides where the component is valid; `target` decides how it is inserted, replaced, hidden, appended, or prepended.",
+            "",
+            "## Sources",
+            f"- {target_anchor}",
+            f"- {conversion_url}",
+        ]
+        return "\n".join(lines)
+
+    lines = [
+        "## Short answer",
+        "To migrate old AEM Guides `ui_config` customizations, convert them into the newer modular XML Editor UI configuration JSON files, then place each customization in the JSON that owns that part of the UI.",
+        "",
+        "## Recommended workflow",
+        "- Open `Tools > Guides > Folder Profiles` and select the required folder profile.",
+        "- Open `XML Editor Configuration`.",
+        "- Use `Convert UI config to JSON` to convert old `ui_config` entries into modular JSON files.",
+        "- Review generated files such as `editor_toolbar`, `editor_tab_bar`, `file_mode_switcher`, `map_console_navigation_bar`, `map_console_action_bar`, and `home_navigation_bar`.",
+        "- Put toolbar/topbar changes in `editor_toolbar`; put map-console actions such as Presets or Translation buttons in `map_console_action_bar`.",
+        "",
+        "## Example pattern",
+        "```json",
+        "{",
+        '  "id": "editor_toolbar",',
+        '  "view": {',
+        '    "items": [{',
+        '      "key": "$DOWNLOAD_TOPIC_PDF",',
+        '      "title": "Export as PDF",',
+        '      "on-click": "$DOWNLOAD_TOPIC_PDF",',
+        '      "targetEditor": {',
+        '        "editor": ["ditamap", "xml"],',
+        '        "mode": ["preview"]',
+        "      }",
+        "    }]",
+        "  }",
+        "}",
+        "```",
+        "",
+        "## Common mistakes",
+        "- Leaving old `ui_config` actions as one global rule instead of distributing them into modular JSON files.",
+        "- Adding a button without `targetEditor`, which can make it appear in the wrong editor or mode.",
+        "- Editing the DITA-OT PDF output preset when the actual issue is Web Editor UI configuration.",
+        "",
+        "## Sources",
+        f"- {conversion_url}",
+        f"- {target_anchor}",
+        f"- {pdf_url}",
+    ]
+    return "\n".join(lines)
+
+
+def _build_dita_ot_architecture_fallback_response(user_content: str) -> str:
+    """Senior offline answer for DITA-OT architecture and processing pipeline questions."""
+    query = (user_content or "").strip()
+    lowered = query.lower()
+    dita_ot_domain_terms = re.search(
+        r"\b(dita-ot|dita open toolkit|map-first|preprocess2|gen-list|conref\.list|dita\.list|image\.list|"
+        r"store api|cache store|stream store|store-type|debug-filter|mapref|branch-filter|topicpull|maplink|"
+        r"clean-map|copy-files|preprocess target|output-specific transforms?|common preprocessing|temporary dita files?|"
+        r"temporary working directories?|authored dita.*temporary|filtering order|conref is evaluated first|"
+        r"another dita processor|processor-specific processing order|unused conref|ditaval conditional content|"
+        r"different effective content|final pdf.*source or temporary|final pdf.*temporary|"
+        r"conref push|normal conrefs?|href-referenced|referenced topic and image|related non-dita files?|"
+        r"ant versus xslt|customization go into ant|specialization needs custom output|org\.dita\.dost\.store|"
+        r"dita\.temp\.dir|fullditamapandtopic\.list|resourceonly\.list|subjectscheme\.list|"
+        r"referenced submaps?|submap reltables?|reltables? from .*submap|relationship tables? from .*submap|"
+        r"referenced map.*relationship tables?|referenced map.*reltables?|branch-filter|branch filter|"
+        r"branch filtering|ditavalref|branch-specific filtering|filtered branch|map branches?|"
+        r"preprocess-keyref|keyref|key references?|defined keys|key-based links?|key-based text|"
+        r"key text replacement|effective href)\b",
+        lowered,
+    )
+    if not dita_ot_domain_terms:
+        return ""
+
+    processing_order_url = "https://www.dita-ot.org/dev/reference/processing-order"
+    map_first_url = "https://www.dita-ot.org/dev/reference/map-first-preprocessing"
+    modules_url = "https://www.dita-ot.org/dev/reference/processing-pipeline-modules"
+    structure_url = "https://www.dita-ot.org/dev/reference/processing-structure"
+    architecture_url = "https://www.dita-ot.org/dev/reference/architecture"
+    store_api_url = "https://www.dita-ot.org/dev/reference/store-api"
+    preprocessing_url = "https://www.dita-ot.org/dev/reference/preprocessing"
+    genlist_url = "https://www.dita-ot.org/dev/reference/preprocess-genlist"
+    debugfilter_url = "https://www.dita-ot.org/dev/reference/preprocess-debugfilter"
+    mapref_url = "https://www.dita-ot.org/dev/reference/preprocess-mapref"
+    branch_filter_url = "https://www.dita-ot.org/dev/reference/preprocess-branch-filter"
+    keyref_url = "https://www.dita-ot.org/dev/reference/preprocess-keyref"
+
+    if re.search(r"\b(store api|cache store|stream store|store-type|in[- ]memory|temporary resources?|dita\.temp\.dir|s9api|storebuilder|repeated xml parsing|file store|org\.dita\.dost\.store)\b", lowered):
+        return "\n".join([
+            "## Short answer",
+            "The DITA-OT Store API is a Java abstraction for temporary resource operations. It lets DITA-OT process temporary resources through a store interface instead of assuming every temporary resource must be read and written directly as a local file.",
+            "",
+            "## Key behavior",
+            "- `org.dita.dost.store.Store` abstracts temporary file/resource access.",
+            "- The file-based Stream Store is the default for backwards compatibility and uses `dita.temp.dir`.",
+            "- `store-type=file` uses file-based processing.",
+            "- `store-type=memory` activates the Cache Store for in-memory temporary resources.",
+            "- Cache Store can keep parsed XML as DOM `Document` or Saxon `XdmNode`, avoiding repeated parsing.",
+            "",
+            "## Caveat",
+            "Some custom plug-ins may fail with Cache Store if they assume direct file-system access. Plug-ins should use DITA-OT pipeline/XSLT modules rather than Ant’s built-in `xslt` task when they need Store API compatibility.",
+            "",
+            "## Sources",
+            f"- {store_api_url}",
+            f"- {architecture_url}",
+        ])
+
+    if re.search(
+        r"\b(gen-list|conref\.list|dita\.list|image\.list|dita\.xml\.properties|conreflist|fullditamapandtopic\.list|"
+        r"href-referenced|href referenced|resourceonly\.list|subjectscheme\.list|referenced topics?|referenced images?|"
+        r"list files?|generated lists?|which list|which step discovers|step discovers referenced|need conref processing|"
+        r"temp directory|referenced topic and image files?)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`gen-list` is the DITA-OT preprocess step that scans input files and creates lists of topics, images, document properties, and other resources for later pipeline steps.",
+            "",
+            "## What it creates",
+            "- `dita.list` and `dita.xml.properties` in the temporary directory.",
+            "- `conref.list` for documents that contain `@conref` attributes needing conref processing.",
+            "- `image.list` for images referenced in content.",
+            "- `fullditamapandtopic.list`, `fullditamap.list`, and `fullditatopic.list` for referenced DITA maps/topics.",
+            "- Other lists such as `hrefditatopic.list`, `resourceonly.list`, and `subjectscheme.list`.",
+            "",
+            "## Why it matters",
+            "Later preprocessing modules use these lists to avoid processing every file for every step. For example, the conref stage can focus on files known to contain conrefs.",
+            "",
+            "## Sources",
+            f"- {genlist_url}",
+            f"- {preprocessing_url}",
+        ])
+
+    if re.search(
+        r"\b(debug-filter|debug filter|debugging information|debug information|copies referenced dita|copy referenced dita|"
+        r"referenced dita content|temporary directory|temporary dita files?|table column names?|adjusts? table column|"
+        r"filtering while copying|filter(?:ed|ing)? as content is copied)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`debug-filter` is the DITA-OT preprocess step that processes referenced DITA content and creates copies in the temporary directory. During that copy step, DITA-OT applies filtering, inserts debugging information, and adjusts table column names.",
+            "",
+            "## What happens in this step",
+            "- DITA-OT walks the referenced DITA content needed for the transformation.",
+            "- It creates temporary copies instead of modifying the authored source files.",
+            "- Filtering is performed as content is copied into the temporary processing area.",
+            "- Debugging information can be inserted into the temporary content.",
+            "- Table column names can be adjusted so later processing stages receive normalized table information.",
+            "- The module is implemented in `Java` as part of DITA-OT preprocessing.",
+            "",
+            "## Scope note",
+            "This is DITA-OT implementation behavior, not a universal rule from the DITA specification. The DITA spec defines markup semantics; DITA-OT defines this concrete preprocessing module and its temporary-file behavior.",
+            "",
+            "## Senior debugging guidance",
+            "If final HTML or PDF output looks wrong after filtering, inspect the temporary directory after `debug-filter` before blaming the final output transform. The authored source, filtered temporary DITA, and final output may differ intentionally.",
+            "",
+            "## Sources",
+            f"- {debugfilter_url}",
+            f"- {preprocessing_url}",
+        ])
+
+    if re.search(
+        r"\b(preprocess-mapref|mapref|map reference|map references|referenced map|referenced maps|submaps?|"
+        r"integrated map|effective map|replace(?:d)? by topicrefs?|topicrefs? from the referenced map|"
+        r"relationship tables?|reltables?|referencing map|submap reltables?)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`mapref` is the DITA-OT preprocess step that resolves references from one DITA map to another. DITA-OT replaces the map-reference element with the `topicref` elements from the referenced map, and pulls relationship tables from the referenced map into the referencing map.",
+            "",
+            "## What happens in this step",
+            "- A parent map can reference another map as a submap.",
+            "- During `mapref`, DITA-OT integrates the referenced map into the effective map used by later pipeline stages.",
+            "- The referenced map's `topicref` hierarchy is inserted at the point of reference.",
+            "- The referenced map's relationship tables are treated as children of the referencing map.",
+            "- Downstream processing works on this effective integrated map, not only on the authored map-reference boundary.",
+            "",
+            "## Why it matters",
+            "Navigation, generated links, relationship-table behavior, key processing, filtering, and output-specific transforms can all be affected by what the effective map looks like after `mapref` processing.",
+            "",
+            "## Scope note",
+            "This describes DITA-OT preprocessing behavior. Do not confuse the DITA-OT `mapref` module with a generic statement that every DITA processor must integrate maps in exactly the same internal step or order.",
+            "",
+            "## Senior debugging guidance",
+            "When a submap's topics, reltables, or links appear unexpectedly in output, inspect the temporary/effective map after `mapref` before debugging final HTML or PDF rendering.",
+            "",
+            "## Sources",
+            f"- {mapref_url}",
+            f"- {preprocessing_url}",
+        ])
+
+    if re.search(
+        r"\b(preprocess-branch-filter|branch-filter|branch filter|branch filtering|ditavalref|ditaval refs?|"
+        r"ditaval files? defined in the map|map branches?|branch-specific filtering|filtered branch|"
+        r"different effective content across branches|topic appears in one branch|global ditaval)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`branch-filter` is the DITA-OT preprocess step that filters topics using DITAVAL files defined in the map. It is the DITA-OT module behind branch-specific filtering behavior, especially when map branches carry their own `ditavalref` filtering context.",
+            "",
+            "## What happens in this step",
+            "- DITA-OT reads filtering context from the map, not only from one global command-line DITAVAL file.",
+            "- A branch can be filtered with its own DITAVAL rules.",
+            "- The same source topic can produce different effective content in different branches.",
+            "- Content excluded in one branch can remain available in another branch with a different filtering context.",
+            "- Later preprocessing and output transforms operate on the branch-filtered effective content.",
+            "",
+            "## Why it matters",
+            "If a topic, key, link, or conkeyref behaves differently in two branches, check the `ditavalref` and branch-filtered temporary/effective content before assuming the source topic is wrong.",
+            "",
+            "## Scope note",
+            "This is DITA-OT preprocessing behavior. The DITA specification defines filtering vocabulary and map constructs; DITA-OT defines this concrete `branch-filter` module and its pipeline placement.",
+            "",
+            "## Common mistake",
+            "Do not treat branch filtering as the same thing as applying one global DITAVAL file to the whole publication. Branch filtering can create branch-specific effective results from the same source files.",
+            "",
+            "## Sources",
+            f"- {branch_filter_url}",
+            f"- {preprocessing_url}",
+        ])
+
+    if re.search(
+        r"\b(preprocess-keyref|keyref|key reference|key references|defined keys|key definitions?|effective keys?|"
+        r"key space|key scope|key-based links?|key-based text|text replacement|key text|"
+        r"replace(?:s|d)? keyref|resolved keyref|effective href|key-defined href|key target|link targets?)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`keyref` is the DITA-OT preprocess step that examines defined keys and resolves key references. It replaces key-based link references with the effective `@href` target from the key definition and performs key-based text replacement where applicable.",
+            "",
+            "## What happens in this step",
+            "- DITA-OT builds from the effective map context, because keys are map-defined.",
+            "- It examines key definitions available after earlier map/filtering context has been established.",
+            "- It resolves `@keyref` references to their effective targets.",
+            "- For key-based links, the resolved key target supplies the effective `@href` used by later processing.",
+            "- For key-based text, DITA-OT can replace the authored key reference with key-derived link text or variable-like text.",
+            "- Later modules and output transforms operate on resolved effective key targets/text, not only the authored `@keyref` token.",
+            "",
+            "## Why it matters",
+            "If a key works in one map but not another, debug the active root map, key scope, branch filtering, and duplicate/filtered key definitions before blaming the topic. A topic alone usually does not contain enough context to resolve keys deterministically.",
+            "",
+            "## Scope note",
+            "The DITA specification defines key semantics and map context. This answer describes DITA-OT's concrete `keyref` preprocessing module and should not be read as a claim that every processor exposes the same internal step name.",
+            "",
+            "## Sources",
+            f"- {keyref_url}",
+            f"- {preprocessing_url}",
+        ])
+
+    if re.search(
+        r"\b(preprocessing modules?|pre-processing modules?|preprocess target|before output-specific|prepare effective content|"
+        r"output-specific transforms?|steps prepare effective content|"
+        r"debug-filter|mapref|branch-filter|keyref|copy-to|conrefpush|normal conrefs?|topic-fragment|profile|"
+        r"conditional content|ditaval conditional content|conref push|flag-module|clean-map|copy-files|maplink|topicpull|"
+        r"copies related non-dita|module copies related|module resolves)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT preprocessing is the shared set of pipeline steps that normally runs before output-specific transforms. Each preprocessing step corresponds to an Ant target, and the `preprocess` target calls the full set.",
+            "",
+            "## Important modules",
+            "- `gen-list`: creates lists of topics, images, properties, and related resources.",
+            "- `debug-filter`: copies referenced DITA content to the temporary directory while filtering and adding debug information.",
+            "- `mapref`: resolves references from one DITA map to another.",
+            "- `branch-filter`: applies branch filtering from DITAVAL references in maps.",
+            "- `keyref`: resolves key references and key-based text replacement.",
+            "- `conrefpush` and `conref`: resolve conref push and content references.",
+            "- `profile`: filters conditional content using DITAVAL or `@print` settings.",
+            "- `chunk`, `maplink`, `topicpull`, `flag-module`, `clean-map`, and `copy-files`: prepare effective content and resources for output transforms.",
+            "",
+            "## Senior guidance",
+            "Use preprocessing-module evidence when debugging effective DITA content before blaming final HTML/PDF styling. Many failures are introduced or revealed before the final transform starts.",
+            "",
+            "## Sources",
+            f"- {preprocessing_url}",
+            f"- {genlist_url}",
+        ])
+
+    if (
+        re.search(r"\b(filter(?:ing)?|ditaval)\b", lowered) and re.search(r"\bconref|conref resolution\b", lowered)
+    ) or re.search(
+        r"\b(processing order|another dita processor|different processing order|processor-specific processing order|"
+        r"different effective content|conref is evaluated first|package unused conref|translation.*filtering|"
+        r"filtering order.*product|dita specification.*processing order|unused conref source files|"
+        r"safe way to discuss.*processing order)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "Yes. DITA-OT applies filtering before conref resolution. This is a DITA-OT implementation choice; the DITA specification does not require every processor to use the same processing order.",
+            "",
+            "## Why it matters",
+            "- If an element is filtered out first, DITA-OT can discard it without parsing the conref target.",
+            "- This saves processing time and avoids requiring unused referenced files in a build or translation package.",
+            "- If conref were resolved first, target attributes or content could affect the result before filtering removes anything.",
+            "- Another legal DITA processor can choose a different order and produce different effective content.",
+            "",
+            "## Example",
+            "```xml",
+            "<note conref=\"documentA.dita#doc/note\" product=\"MyProd\"/>",
+            "",
+            "<note id=\"note\" product=\"SomeOtherProduct\">",
+            "  This is an important note!",
+            "</note>",
+            "```",
+            "",
+            "## Senior guidance",
+            "When debugging a difference between DITA-OT and another processor, compare authored source, filtered intermediate content, conref-resolved content, and final output. Do not treat DITA-OT processing order as a universal DITA specification rule.",
+            "",
+            "## Sources",
+            f"- {processing_order_url}",
+            f"- {architecture_url}",
+        ])
+
+    if re.search(
+        r"\b(map-first|preprocess2|default preprocess|key scopes?|subject scheme|hashed topic|custom html5 transform|"
+        r"process topics before maps|validate only map structure|dita 1\.2 and 1\.3 map features|html5.*map-first)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "Map-first preprocessing is DITA-OT’s alternative preprocessing model that completes nearly all map-level processing before processing topics. It provides the same broad function as default preprocessing, but with cleaner responsibilities for map-level features.",
+            "",
+            "## Difference from default preprocess",
+            "- Default preprocess handles maps and topics together, often switching between map operations and topic operations.",
+            "- Map-first preprocessing delays topic processing until map processing is mostly complete.",
+            "- This helps with DITA 1.2/1.3 map-level features such as keys and key scopes.",
+            "- It can process only topics that remain referenced after filtering or validate only the map structure.",
+            "- Custom transformations can call `preprocess2` instead of `preprocess`.",
+            "",
+            "## Example Ant target",
+            "```xml",
+            "<target name=\"dita2myhtml\"",
+            "        depends=\"myhtml.init,",
+            "                 html5.init,",
+            "                 build-init,",
+            "                 preprocess2,",
+            "                 html5.topic,",
+            "                 html5.map,",
+            "                 html5.css\"/>",
+            "```",
+            "",
+            "## Limitation",
+            "The original `preprocess.*.pre` and `preprocess.*.post` extension points are not available in the newer `preprocess2` pipeline.",
+            "",
+            "## Sources",
+            f"- {map_first_url}",
+            f"- {processing_order_url}",
+        ])
+
+    if re.search(
+        r"\b(processing (?:pipeline )?modules?|ant targets?|xslt|java|shell files?|plug-?ins?|override default processing|"
+        r"ant versus xslt|customization go into ant|specialization needs custom output|insert.*processing|"
+        r"local styles.*module overrides|custom output)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT processing modules are Ant-driven pipeline modules implemented in Java or XSLT. Plug-ins can extend them by adding Ant targets or importing XSLT rules that override default processing.",
+            "",
+            "## How the modules work",
+            "- The pipeline is implemented using `Ant`.",
+            "- Individual modules are implemented in `Java` or `XSLT` depending on performance and customization needs.",
+            "- XSLT modules typically use shell files that import common rules, then specialization-specific overrides.",
+            "- Java modules are used where XSLT is a poor fit, such as index sorting, file copying, parsing, or resource handling.",
+            "",
+            "## Plug-in extension model",
+            "- Plug-ins can insert new Ant targets before or after common processing.",
+            "- Plug-ins can import new rules into common XSLT modules.",
+            "- Plug-ins can override default behavior for local styling or custom specializations.",
+            "",
+            "## Senior guidance",
+            "Use this topic when diagnosing whether a customization belongs in Ant orchestration, XSLT transformation rules, Java pipeline code, or a plug-in extension point.",
+            "",
+            "## Sources",
+            f"- {modules_url}",
+            f"- {architecture_url}",
+        ])
+
+    if re.search(
+        r"\b(architecture|under the hood|new teammate|customizing dita-ot|customising dita-ot|common processing|"
+        r"output-specific processing|map-driven|topic-driven|build pipeline|builds output|processing architecture)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT is a map-driven processing architecture built around Ant orchestration, Java modules, and XSLT transforms. It first prepares effective DITA content through common processing, then branches into output-specific transforms such as HTML5 or PDF.",
+            "",
+            "## Architecture model",
+            "- `Ant` coordinates the build pipeline and calls processing targets.",
+            "- `Java` modules handle tasks where procedural processing or libraries are a better fit, such as file copying, indexing, parsing, or resource handling.",
+            "- `XSLT` modules transform DITA XML and can be extended with specialization-specific or plug-in rules.",
+            "- Plug-ins can add Ant targets or override/import XSLT processing rules.",
+            "- Common preprocessing prepares effective content before output-specific processing runs.",
+            "- Most processing is multi-stage and uses temporary working content; original source files are not modified.",
+            "",
+            "## Why it matters",
+            "When debugging, separate source-authoring issues from preprocessing issues and final output-transform issues. A PDF symptom might originate in common preprocessing, not in PDF styling.",
+            "",
+            "## Sources",
+            f"- {architecture_url}",
+            f"- {modules_url}",
+            f"- {structure_url}",
+        ])
+
+    if re.search(
+        r"\b(processing structure|temporary files?|temporary working directory|source files?|modify|modified|pipeline|"
+        r"maps and topics in stages|common preprocessing|output-specific processing|multi-stage processing|"
+        r"authored dita.*temporary content|source dita files|temporary working directories|temporary dita files|temporary.*files|"
+        r"final pdf.*temporary files|under the hood|builds output|map-driven|topic-driven)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT uses a multi-stage, map-driven processing pipeline. Most processing happens in a temporary working directory; original source files are not modified.",
+            "",
+            "## Processing structure",
+            "- Each stage examines some or all of the source content.",
+            "- Some stages create temporary files used by later stages.",
+            "- Common preprocessing runs before output-specific processing.",
+            "- After preprocessing, the pipeline branches for output formats such as HTML5, Help, or PDF.",
+            "",
+            "## Sources",
+            f"- {structure_url}",
+            f"- {architecture_url}",
+        ])
+
+    return ""
+
+
 _DITA_LEARNED_MATCH_TERM_RE = re.compile(
     r"@?(key|keys|keyscope|keyref|keydef|conref|conkeyref|xref|topicref|topichead|topicgroup|"
     r"mapref|keydef|reltable|glossentry|indexterm|prolog|metadata|shortdesc|"
@@ -4943,12 +5440,24 @@ async def _build_local_fallback_response(
     if issue_key and any(token in lowered for token in ("jira", "comment", "discussion", "outline", "task topic", "author guidance")):
         return _finalize(_build_issue_guidance_fallback(trimmed, issue, rag_context or "", tenant_id))
 
+    early_dita_ot_architecture_fallback = _build_dita_ot_architecture_fallback_response(trimmed)
+    if early_dita_ot_architecture_fallback:
+        return _finalize(early_dita_ot_architecture_fallback)
+
     if rag_context and "LEARNED PROMPT CORPUS" in rag_context:
         learned_fallback = _build_learned_qa_local_fallback_response(trimmed, tenant_id)
         if learned_fallback:
             return _finalize(learned_fallback)
 
     resolved_answer_mode = str(answer_mode or _determine_answer_mode(trimmed, session_id=session_id)).strip().lower()
+    if resolved_answer_mode in {"grounded_aem_answer", "grounded_dita_answer"}:
+        ui_config_fallback = _build_aem_guides_ui_config_fallback_response(trimmed)
+        if ui_config_fallback:
+            return _finalize(ui_config_fallback)
+        dita_ot_architecture_fallback = _build_dita_ot_architecture_fallback_response(trimmed)
+        if dita_ot_architecture_fallback:
+            return _finalize(dita_ot_architecture_fallback)
+
     if resolved_answer_mode in {"grounded_dita_answer", "grounded_aem_answer"}:
         try:
             evidence_pack, _retrieval_meta, grounded_tool_results = await _build_grounded_tool_evidence_pack(

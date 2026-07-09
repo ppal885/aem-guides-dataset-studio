@@ -207,6 +207,241 @@ async def test_build_local_fallback_response_prefers_grounded_publish_filtering_
 
 
 @pytest.mark.anyio
+async def test_build_local_fallback_response_formats_aem_ui_config_conversion(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "AEM Guides UI config")
+
+    text = await chat_service._build_local_fallback_response(
+        "How do I convert old ui_config customizations to modular JSON in AEM Guides?",
+        "kone",
+        answer_mode="grounded_aem_answer",
+    )
+
+    lowered = text.lower()
+    assert "modular json" in lowered
+    assert "convert ui config to json" in lowered
+    assert "editor_toolbar" in text
+    assert "map_console_action_bar" in text
+    assert "```json" in text
+    assert "stitched" not in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_aem_targeteditor_answer(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "AEM Guides targetEditor")
+
+    text = await chat_service._build_local_fallback_response(
+        "What is targetEditor in AEM Guides UI config JSON? Show an example.",
+        "kone",
+        answer_mode="grounded_aem_answer",
+    )
+
+    lowered = text.lower()
+    assert "targeteditor" in lowered
+    assert "documenttype" in lowered
+    assert "documentsubtype" in lowered
+    assert "displaymode" in lowered
+    assert "```json" in text
+    assert "$DOWNLOAD_TOPIC_PDF" in text
+    assert "target` decides how it is inserted" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_routes_wrong_editor_context_to_targeteditor(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "AEM Guides targetEditor")
+
+    text = await chat_service._build_local_fallback_response(
+        "My toolbar button appears in the wrong AEM Guides editor context. What should I check?",
+        "kone",
+        answer_mode="grounded_aem_answer",
+    )
+
+    lowered = text.lower()
+    assert "targeteditor" in lowered
+    assert "troubleshooting checklist" in lowered
+    assert "too broad" in lowered
+    assert "target` decides how it is inserted" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_processing_order(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT processing order")
+
+    text = await chat_service._build_local_fallback_response(
+        "Does DITA-OT apply filtering before conref resolution? Explain with an example.",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "filtering before conref resolution" in lowered
+    assert "dita specification" in lowered
+    assert "another legal dita processor" in lowered
+    assert "<note conref=" in text
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_map_first(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT map-first")
+
+    text = await chat_service._build_local_fallback_response(
+        "How is map-first preprocessing different from default preprocess in DITA-OT?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "map-first preprocessing" in lowered
+    assert "default preprocess" in lowered
+    assert "preprocess2" in lowered
+    assert "keys and key scopes" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_processing_modules(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT modules")
+
+    text = await chat_service._build_local_fallback_response(
+        "What are DITA-OT processing pipeline modules and how can plug-ins extend them?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "ant" in lowered
+    assert "xslt" in lowered
+    assert "java" in lowered
+    assert "plug-ins can insert new ant targets" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_store_api(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT Store API")
+
+    text = await chat_service._build_local_fallback_response(
+        "What is the DITA-OT Store API and how does store-type=memory work?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "store api" in lowered
+    assert "store-type=memory" in lowered
+    assert "cache store" in lowered
+    assert "dita.temp.dir" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_preprocessing_modules(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT preprocessing modules")
+
+    text = await chat_service._build_local_fallback_response(
+        "What are DITA-OT preprocessing modules like debug-filter, keyref, conref, profile, and chunk?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "preprocessing" in lowered
+    assert "debug-filter" in lowered
+    assert "keyref" in lowered
+    assert "conref" in lowered
+    assert "profile" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_gen_list(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT gen-list")
+
+    text = await chat_service._build_local_fallback_response(
+        "Which DITA-OT preprocess step creates conref.list, dita.list, and image.list?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "gen-list" in lowered
+    assert "conref.list" in lowered
+    assert "dita.list" in lowered
+    assert "image.list" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_debug_filter(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT debug-filter")
+
+    text = await chat_service._build_local_fallback_response(
+        "Which DITA-OT step copies referenced DITA content, applies filtering, inserts debugging information, and adjusts table column names?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "debug-filter" in lowered
+    assert "temporary directory" in lowered
+    assert "filtering" in lowered
+    assert "debugging information" in lowered
+    assert "table column names" in lowered
+    assert "java" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_mapref(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT mapref")
+
+    text = await chat_service._build_local_fallback_response(
+        "What does the DITA-OT mapref preprocess step do with a referenced submap and its relationship tables?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "mapref" in lowered
+    assert "referenced map" in lowered
+    assert "topicref" in lowered
+    assert "relationship tables" in lowered
+    assert "effective map" in lowered
+    assert "dita-ot preprocessing behavior" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_branch_filter(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT branch-filter")
+
+    text = await chat_service._build_local_fallback_response(
+        "How does the DITA-OT branch-filter preprocess step use ditavalref rules for branch-specific filtering?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "branch-filter" in lowered
+    assert "ditaval" in lowered
+    assert "ditavalref" in lowered
+    assert "branch-specific" in lowered
+    assert "effective content" in lowered
+    assert "global ditaval" in lowered
+
+
+@pytest.mark.anyio
+async def test_build_local_fallback_response_formats_dita_ot_keyref(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT keyref")
+
+    text = await chat_service._build_local_fallback_response(
+        "Which DITA-OT preprocess step resolves keyref, replaces key-based href targets, and performs key-based text replacement?",
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "keyref" in lowered
+    assert "defined keys" in lowered
+    assert "effective `@href`" in lowered
+    assert "key-based text" in lowered
+    assert "map context" in lowered
+    assert "key scope" in lowered
+
+
+@pytest.mark.anyio
 async def test_build_local_fallback_response_prefers_strong_learned_qa_match(monkeypatch):
     monkeypatch.setattr(
         chat_service,

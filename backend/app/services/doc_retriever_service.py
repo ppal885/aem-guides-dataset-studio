@@ -286,12 +286,187 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
             bonus -= 0.85
 
     if re.search(r"\b(normalized dita|dita2dita|effective processed content|preprocess(?:ing)?|resolved keys?|resolved conrefs?)\b", lowered_query):
-        if "dita-ot.org" in lowered_url and "/topics/dita2dita" in lowered_url:
+        if (
+            "dita-ot.org" in lowered_url
+            and "/reference/processing-order" in lowered_url
+            and re.search(r"\b(processing order|filtering before conref|conref resolution|filter(?:ed|ing)? first|processor(?:s)?|different order|dita specification)\b", lowered_query)
+        ):
+            bonus += 2.65
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/map-first-preprocessing" in lowered_url
+            and re.search(r"\b(map-first|preprocess2|default preprocess|key scopes?|subject scheme|hashed topic|filtering)\b", lowered_query)
+        ):
+            bonus += 2.45
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/processing-structure" in lowered_url
+            and re.search(r"\b(processing structure|temporary files?|temporary working directory|source files?|modify|modified|common pipeline|output formats?)\b", lowered_query)
+        ):
+            bonus += 1.95
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/architecture" in lowered_url
+            and re.search(r"\b(architecture|pipeline|processing structure|processing modules|map-first|extension points?|plug-?ins?)\b", lowered_query)
+        ):
+            bonus += 1.55
+        elif "dita-ot.org" in lowered_url and "/topics/dita2dita" in lowered_url:
             bonus += 1.35
         elif "dita-ot.org" in lowered_url and "/topics/publishing" in lowered_url:
             bonus += 0.35
         elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
             bonus -= 0.35
+
+    if re.search(
+        r"\bdita-ot\b.*\b(filter(?:ing)?|ditaval)\b.*\b(conref|conref resolution)\b|\bdita-ot\b.*\b(conref|conref resolution)\b.*\b(filter(?:ing)?|ditaval)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/processing-order" in lowered_url:
+            bonus += 3.40
+        elif "dita-ot.org" in lowered_url and "/reference/architecture" in lowered_url:
+            bonus -= 0.45
+
+    if re.search(
+        r"\b(conref\.list|dita\.list|image\.list|dita\.xml\.properties|list files?|referenced topics?|referenced images?|which preprocess step)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/preprocess-genlist" in lowered_url:
+            bonus += 4.60
+        elif "dita-ot.org" in lowered_url and "/topics/dita2dita" in lowered_url:
+            bonus -= 0.55
+
+    if re.search(
+        r"\b(debug-filter|debug filter|debugging information|debug information|copies referenced dita|copy referenced dita|"
+        r"referenced dita content|temporary directory|temporary dita files?|table column names?|adjusts? table column|"
+        r"filtering while copying|filter(?:ed|ing)? as content is copied)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/preprocess-debugfilter" in lowered_url:
+            bonus += 4.80
+        elif "dita-ot.org" in lowered_url and "/reference/preprocessing" in lowered_url:
+            bonus += 0.65
+        elif "dita-ot.org" in lowered_url and "/reference/preprocess-genlist" in lowered_url:
+            bonus -= 0.45
+
+    if re.search(
+        r"\b(preprocess-mapref|mapref|map reference|map references|referenced map|referenced maps|submaps?|"
+        r"integrated map|effective map|replace(?:d)? by topicrefs?|topicrefs? from the referenced map|"
+        r"relationship tables?|reltables?|referencing map|submap reltables?)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/preprocess-mapref" in lowered_url:
+            bonus += 4.70
+        elif "dita-ot.org" in lowered_url and "/reference/preprocessing" in lowered_url:
+            bonus += 0.70
+        elif "dita-ot.org" in lowered_url and "/reference/preprocess-genlist" in lowered_url:
+            bonus -= 0.35
+
+    if re.search(
+        r"\b(preprocess-branch-filter|branch-filter|branch filter|branch filtering|ditavalref|ditaval refs?|"
+        r"ditaval files? defined in the map|map branches?|branch-specific filtering|filtered branch|"
+        r"different effective content across branches|topic appears in one branch|global ditaval)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/preprocess-branch-filter" in lowered_url:
+            bonus += 4.85
+        elif "dita-ot.org" in lowered_url and "/reference/preprocessing" in lowered_url:
+            bonus += 0.75
+        elif "docs.oasis-open.org" in lowered_url and "ditavalref" in lowered_query:
+            bonus += 0.25
+
+    if re.search(
+        r"\b(preprocess-keyref|keyref|key reference|key references|defined keys|key definitions?|effective keys?|"
+        r"key space|key scope|key-based links?|key-based text|text replacement|key text|"
+        r"replace(?:s|d)? keyref|resolved keyref|effective href|key-defined href|key target|link targets?)\b",
+        lowered_query,
+    ):
+        if "dita-ot.org" in lowered_url and "/reference/preprocess-keyref" in lowered_url:
+            bonus += 4.90
+        elif "dita-ot.org" in lowered_url and "/reference/preprocessing" in lowered_url:
+            bonus += 0.80
+        elif "docs.oasis-open.org" in lowered_url and re.search(r"\bkeyref|key scope|key space|keys?\b", lowered_query):
+            bonus += 0.35
+
+    if re.search(
+        r"\bdita-ot\b.*\b(architecture|processing structure|processing modules|processing order|pipeline|map-first|preprocess2|preprocessing modules?|gen-list|debug-filter|debug filter|mapref|map reference|branch-filter|branch filter|branch filtering|keyref|key reference|store api|cache store|stream store|extension points?|plug-?in architecture|pdf processing modules|html processing modules)\b",
+        lowered_query,
+    ):
+        if (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocess-debugfilter" in lowered_url
+            and re.search(r"\b(debug-filter|debug filter|debugging information|debug information|copies referenced dita|referenced dita content|temporary directory|table column names?|filtering while copying)\b", lowered_query)
+        ):
+            bonus += 4.50
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocess-mapref" in lowered_url
+            and re.search(r"\b(mapref|map reference|referenced map|submaps?|topicrefs? from the referenced map|relationship tables?|reltables?|effective map)\b", lowered_query)
+        ):
+            bonus += 4.45
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocess-branch-filter" in lowered_url
+            and re.search(r"\b(branch-filter|branch filter|branch filtering|ditavalref|ditaval files?|map branches?|branch-specific filtering|filtered branch)\b", lowered_query)
+        ):
+            bonus += 4.50
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocess-keyref" in lowered_url
+            and re.search(r"\b(keyref|key reference|defined keys|key definitions?|key-based links?|key-based text|text replacement|effective href|link targets?)\b", lowered_query)
+        ):
+            bonus += 4.55
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocess-genlist" in lowered_url
+            and re.search(r"\b(gen-list|generate lists?|conref\\.list|dita\\.list|image\\.list|referenced topics?|referenced images?|list files?)\b", lowered_query)
+        ):
+            bonus += 4.35
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/preprocessing" in lowered_url
+            and re.search(r"\b(preprocessing modules?|pre-processing modules?|preprocess target|debug-filter|mapref|branch-filter|keyref|copy-to|conrefpush|topic-fragment|flag-module|clean-map|copy-files)\b", lowered_query)
+        ):
+            bonus += 4.20
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/store-api" in lowered_url
+            and re.search(r"\b(store api|cache store|stream store|store-type|memory|in[- ]memory|temporary resources?|dita\\.temp\\.dir|s9api|storebuilder)\b", lowered_query)
+        ):
+            bonus += 4.05
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/processing-order" in lowered_url
+            and re.search(r"\b(processing order|filtering before conref|conref resolution|filter(?:ed|ing)? first|different order|processor(?:s)?)\b", lowered_query)
+        ):
+            bonus += 3.25
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/processing-pipeline-modules" in lowered_url
+            and re.search(r"\b(processing (?:pipeline )?modules?|ant targets?|xslt|java|shell files?|plug-?ins?|specializations?|override default processing)\b", lowered_query)
+        ):
+            bonus += 4.15
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/map-first-preprocessing" in lowered_url
+            and re.search(r"\b(map-first|preprocess2|default preprocess|key scopes?|subject scheme|hashed topic|filtering)\b", lowered_query)
+        ):
+            bonus += 3.05
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/processing-structure" in lowered_url
+            and re.search(r"\b(processing structure|temporary files?|temporary working directory|source files?|modify|modified|common pipeline)\b", lowered_query)
+        ):
+            bonus += 2.70
+        elif (
+            "dita-ot.org" in lowered_url
+            and "/reference/architecture" in lowered_url
+            and re.search(r"\b(processing (?:pipeline )?modules?|ant targets?|xslt|java|shell files?)\b", lowered_query)
+        ):
+            bonus -= 0.35
+        elif "dita-ot.org" in lowered_url and "/reference/architecture" in lowered_url:
+            bonus += 2.35
+        elif "experienceleague.adobe.com" in lowered_url and "dita-ot" not in lowered_url:
+            bonus -= 0.70
 
     if re.search(
         r"\b(aem guides|experience manager guides|cloud service|web editor|topic preview|single[- ]topic|folder profile|ui_config)\b",
@@ -311,7 +486,13 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
         r"\b(convert|conversion|migrate|migration|modular json|json|toolbar|topbar|targeteditor|editor_toolbar|map_console_action_bar)\b",
         lowered_query,
     ):
-        if "experienceleague.adobe.com" in lowered_url and "conver-ui-config" in lowered_url:
+        if (
+            "experienceleague.adobe.com" in lowered_url
+            and "conver-ui-config#understanding-targeteditor-properties" in lowered_url
+            and re.search(r"\b(targeteditor|mode|displaymode|documenttype|documentsubtype|flag)\b", lowered_query)
+        ):
+            bonus += 3.95
+        elif "experienceleague.adobe.com" in lowered_url and "conver-ui-config" in lowered_url:
             bonus += 3.35
         elif "experienceleague.adobe.com" in lowered_url and "editor-configuration" in lowered_url:
             bonus += 0.75

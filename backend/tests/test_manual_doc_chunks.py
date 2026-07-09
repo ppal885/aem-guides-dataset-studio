@@ -51,11 +51,36 @@ def test_manual_dita_ot_troubleshooting_chunks_are_present():
     assert "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax" in text
     assert "https://www.dita-ot.org/dev/topics/lwdita-input" in text
     assert "https://www.dita-ot.org/dev/topics/dita2dita" in text
+    assert "https://www.dita-ot.org/dev/reference/architecture" in text
+    assert "https://www.dita-ot.org/dev/reference/processing-structure" in text
+    assert "https://www.dita-ot.org/dev/reference/map-first-preprocessing" in text
+    assert "https://www.dita-ot.org/dev/reference/processing-pipeline-modules" in text
+    assert "https://www.dita-ot.org/dev/reference/processing-order" in text
+    assert "https://www.dita-ot.org/dev/reference/store-api" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocessing" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocess-genlist" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocess-debugfilter" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocess-mapref" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocess-branch-filter" in text
+    assert "https://www.dita-ot.org/dev/reference/preprocess-keyref" in text
+    assert "map-first pre-processing" in text
+    assert "preprocess2" in text
+    assert "XSLT shell files" in text
+    assert "filtering before conref resolution" in text
+    assert "store-type=memory" in text
+    assert "gen-list" in text
+    assert "table column names" in text
+    assert "referenced map" in text
+    assert "ditavalref" in text
+    assert "key-based text replacement" in text
+    assert "temporary working directory" in text
     assert "https://www.dita-ot.org/dev/reference/markdown/mdita-syntax" in text
     assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/web-editor-configs-cs/conf-pdf-generation-dita-ot" in text
     assert "DOWNLOAD_TOPIC_PDF" in text
     assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config" in text
     assert "Convert UI config to JSON" in text
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config#understanding-targeteditor-properties" in text
+    assert "documentSubType" in text
     assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/cascading-in-a-ditamap.html" in text
     assert "https://docs.oasis-open.org/dita/v1.2/os/spec/archSpec/cascading-in-a-ditamap.html" in text
     assert "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/commonMapAttributes.html" in text
@@ -98,6 +123,19 @@ def test_retrieve_relevant_docs_uses_aem_guides_ui_config_conversion(monkeypatch
     urls = {item.get("url") for item in docs}
 
     assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config" in urls
+
+
+def test_retrieve_relevant_docs_uses_aem_guides_targeteditor_anchor(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What are targetEditor mode displayMode documentType documentSubType and flag in AEM Guides UI config?",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides-learn/videos/advanced-user-guide/conver-ui-config#understanding-targeteditor-properties" in urls
 
 
 def test_retrieve_relevant_docs_uses_manual_svg_chunks(monkeypatch):
@@ -384,6 +422,162 @@ def test_retrieve_relevant_docs_uses_dita_ot_normalized_dita(monkeypatch):
     urls = [item.get("url") for item in docs]
 
     assert "https://www.dita-ot.org/dev/topics/dita2dita" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_architecture_for_pipeline(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Explain the DITA-OT preprocessing pipeline architecture, map-first processing, and extension points.",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/architecture" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_processing_structure(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How does DITA-OT process maps and topics in temporary files, and does it modify source files?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/processing-structure" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_map_first_preprocessing(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How is map-first preprocessing different from default preprocess in DITA-OT, and when should I use preprocess2?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/map-first-preprocessing" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_processing_pipeline_modules(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How are DITA-OT processing modules implemented with Ant targets, XSLT shell files, Java, and plug-ins?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/processing-pipeline-modules" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_processing_order(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Does DITA-OT apply filtering before conref resolution, and can another DITA processor use a different processing order?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/processing-order" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_store_api(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What is the DITA-OT Store API and how does store-type=memory use Cache Store for temporary resources?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/store-api" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocessing_modules(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What are DITA-OT preprocessing modules such as debug-filter, mapref, keyref, conref, profile, and chunk?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocessing" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocess_genlist(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Which DITA-OT preprocess step creates conref.list, dita.list, image.list, and referenced topic lists?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocess-genlist" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocess_debugfilter(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Which DITA-OT preprocess step copies referenced DITA content, applies filtering, inserts debugging information, and adjusts table column names?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocess-debugfilter" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocess_mapref(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "What does the DITA-OT mapref preprocess step do with topicrefs and relationship tables from a referenced submap?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocess-mapref" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocess_branch_filter(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "How does the DITA-OT branch-filter preprocess step use ditavalref rules for branch-specific filtering?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocess-branch-filter" in urls[:3]
+
+
+def test_retrieve_relevant_docs_uses_dita_ot_preprocess_keyref(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "Which DITA-OT preprocess step resolves keyref, replaces key-based href targets, and performs key-based text replacement?",
+        k=5,
+    )
+    urls = [item.get("url") for item in docs]
+
+    assert "https://www.dita-ot.org/dev/reference/preprocess-keyref" in urls[:3]
 
 
 def test_retrieve_relevant_docs_uses_mdita_syntax_for_shortdesc_simpletable(monkeypatch):
