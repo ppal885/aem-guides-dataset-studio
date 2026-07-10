@@ -2,13 +2,15 @@
 # Start AEM Guides Dataset Studio on a Linux VM without Docker.
 # Usage:
 #   bash start-vm-dev.sh
-#   bash start-vm-dev.sh --backend-port 8000 --frontend-port 5173
+#   bash start-vm-dev.sh --backend-port 8001 --frontend-port 5173
 #   bash start-vm-dev.sh --kill-ports
 #   bash start-vm-dev.sh --stop
 
 set -euo pipefail
 
-BACKEND_PORT="8001"
+# Use 8010 by default for VM dev runs because 8000/8001 are commonly occupied
+# by existing FastAPI, Docker, or systemd services on shared Adobe VMs.
+BACKEND_PORT="8010"
 FRONTEND_PORT="5173"
 HOST="0.0.0.0"
 STOP_ONLY="false"

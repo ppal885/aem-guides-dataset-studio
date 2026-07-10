@@ -19,7 +19,7 @@ bash start-vm-dev.sh --kill-ports
 
 Default ports:
 
-- Backend: `8001`
+- Backend: `8010`
 - Frontend: `5173`
 
 Open:
@@ -28,10 +28,12 @@ Open:
 http://<VM-IP>:5173
 ```
 
-## If backend must run on 8000
+## If backend must run on 8000 or 8001
 
 ```bash
 bash start-vm-dev.sh --backend-port 8000 --frontend-port 5173
+# or
+bash start-vm-dev.sh --backend-port 8001 --frontend-port 5173
 ```
 
 The script writes `frontend/.env` automatically:
@@ -58,9 +60,9 @@ tail -f logs/frontend-vm-dev.log
 
 ```bash
 lsof -i :5173
-lsof -i :8001
+lsof -i :8010
 curl http://127.0.0.1:5173
-curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8010/health
 ```
 
 If `npm not found`, install Node.js 20 LTS:
