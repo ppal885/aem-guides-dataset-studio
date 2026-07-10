@@ -94,6 +94,59 @@ async def test_build_local_fallback_response_formats_dita_ot_runtime_modules(pro
     assert len(text) > 900
 
 
+@pytest.mark.parametrize(
+    ("prompt", "expected_terms"),
+    [
+        (
+            "My copied topic is there but the reused note inside it vanished in PDF. How should I debug this like a DITA-OT expert?",
+            ["copy-to", "conref", "profile", "ditaval", "expected result"],
+        ),
+        (
+            "I need a full example where one topic becomes two outputs and one version filters internal text.",
+            ["copy-to", "two effective topic resources", "filter", "expected result"],
+        ),
+        (
+            "Can you explain why the XML I authored is not the same as the XML DITA-OT transforms?",
+            ["source xml", "effective processed content", "copy-to", "conref"],
+        ),
+        (
+            "A pushed warning should appear before a step but does not. Show how it should work.",
+            ["conrefpush", "pushbefore", "target element", "expected result"],
+        ),
+        (
+            "My conref target exists but the final PDF is blank at that location. What are deterministic checks?",
+            ["conref", "effective processed content", "target", "debugging guidance"],
+        ),
+        (
+            "Why does resource-only reusable content still resolve but not appear in TOC?",
+            ["resource-only", "reuse source", "toc", "conref"],
+        ),
+        (
+            "I passed --filter but nothing changed. Give me exact checks and expected behavior.",
+            ["--filter", "ditaval", "profile", "expected result"],
+        ),
+        (
+            "Give me a complete troubleshooting answer for DITA-OT runtime options and filters.",
+            ["dita", "--input", "--format", "--filter", "expected result"],
+        ),
+    ],
+)
+def test_dita_ot_humanized_prompt_regression_answers_stay_senior(prompt, expected_terms):
+    text = chat_service._build_dita_ot_preprocess_runtime_fallback_response(prompt)
+
+    assert text, f"Prompt did not route to the DITA-OT senior fallback: {prompt}"
+    lowered = text.lower()
+    for term in expected_terms:
+        assert term.lower() in lowered
+    assert "## short answer" in lowered
+    assert "## example" in lowered
+    assert "## expected result" in lowered
+    assert len(text) > 900
+    assert "i couldn't verify this directly" not in lowered
+    assert "what it usually means" not in lowered
+    assert "## quick reference" not in lowered
+
+
 @pytest.mark.anyio
 async def test_build_local_fallback_response_prefers_grounded_publish_filtering_answer(monkeypatch):
     pack = build_evidence_pack(
