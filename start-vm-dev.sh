@@ -3,6 +3,7 @@
 # Usage:
 #   bash start-vm-dev.sh
 #   bash start-vm-dev.sh --backend-port 8000 --frontend-port 5173
+#   bash start-vm-dev.sh --kill-ports
 #   bash start-vm-dev.sh --stop
 
 set -euo pipefail
@@ -12,6 +13,7 @@ FRONTEND_PORT="5173"
 HOST="0.0.0.0"
 STOP_ONLY="false"
 SKIP_INSTALL="false"
+KILL_PORTS="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +35,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-install)
       SKIP_INSTALL="true"
+      shift
+      ;;
+    --kill-ports)
+      KILL_PORTS="true"
       shift
       ;;
     -h|--help)
@@ -100,8 +106,15 @@ stop_services() {
     local pids
     pids="$(port_pids "$port")"
     if [[ -n "$pids" ]]; then
-      warn "Port $port is still used by: $pids"
-      warn "If these are old app processes, stop them manually: kill $pids"
+      if [[ "$KILL_PORTS" == "true" ]]; then
+        warn "Killing process(es) on port $port: $pids"
+        kill $pids 2>/dev/null || true
+        sleep 2
+        kill -9 $pids 2>/dev/null || true
+      else
+        warn "Port $port is still used by: $pids"
+        warn "If these are old app processes, rerun with: bash start-vm-dev.sh --kill-ports"
+      fi
     fi
   done
 }
@@ -117,6 +130,18 @@ fi
 
 if ! command_exists python3; then
   fail "python3 not found. Install it first: sudo apt install -y python3 python3-venv python3-pip"
+  exit 1
+fi
+
+if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+  PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 3)"
+  fail "Python venv support is missing for python${PYTHON_VERSION}."
+  echo "Run this on Ubuntu/Debian, then rerun the script:"
+  echo "  sudo apt update"
+  echo "  sudo apt install -y python${PYTHON_VERSION}-venv python3-pip"
+  echo ""
+  echo "If that package is unavailable, try:"
+  echo "  sudo apt install -y python3-venv python3-pip"
   exit 1
 fi
 
@@ -140,7 +165,16 @@ stop_services
 if [[ "$SKIP_INSTALL" != "true" ]]; then
   if [[ ! -d "$BACKEND_DIR/.venv" ]]; then
     info "Creating backend virtual environment"
-    python3 -m venv "$BACKEND_DIR/.venv"
+    if ! python3 -m venv "$BACKEND_DIR/.venv"; then
+      PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 3)"
+      fail "Could not create backend virtual environment."
+      echo "Install venv support, remove the partial venv, then rerun:"
+      echo "  sudo apt update"
+      echo "  sudo apt install -y python${PYTHON_VERSION}-venv python3-pip"
+      echo "  rm -rf backend/.venv"
+      echo "  bash start-vm-dev.sh --kill-ports"
+      exit 1
+    fi
   fi
 
   info "Installing backend dependencies"

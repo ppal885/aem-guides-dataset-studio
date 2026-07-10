@@ -11,6 +11,12 @@ chmod +x start-vm-dev.sh
 bash start-vm-dev.sh
 ```
 
+If an old backend/frontend process is already using the ports:
+
+```bash
+bash start-vm-dev.sh --kill-ports
+```
+
 Default ports:
 
 - Backend: `8001`
@@ -67,5 +73,12 @@ sudo apt install -y nodejs
 If `python3-venv` is missing:
 
 ```bash
+sudo apt update
 sudo apt install -y python3 python3-venv python3-pip
+```
+
+If Ubuntu asks for the version-specific package:
+
+```bash
+sudo apt install -y python3.10-venv python3-pip
 ```
