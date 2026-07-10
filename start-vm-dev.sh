@@ -82,6 +82,18 @@ port_pids() {
   fi
 }
 
+wait_for_port_free() {
+  local port="$1"
+  local attempts="${2:-10}"
+  for _ in $(seq 1 "$attempts"); do
+    if [[ -z "$(port_pids "$port")" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 stop_pid_file() {
   local file="$1"
   local label="$2"
@@ -111,6 +123,13 @@ stop_services() {
         kill $pids 2>/dev/null || true
         sleep 2
         kill -9 $pids 2>/dev/null || true
+        if ! wait_for_port_free "$port" 8; then
+          fail "Port $port is still busy after kill attempt: $(port_pids "$port")"
+          echo "Run manually:"
+          echo "  sudo lsof -i :$port"
+          echo "  sudo kill -9 \$(sudo lsof -ti :$port)"
+          exit 1
+        fi
       else
         warn "Port $port is still used by: $pids"
         warn "If these are old app processes, rerun with: bash start-vm-dev.sh --kill-ports"
@@ -161,6 +180,15 @@ if [[ "${NODE_MAJOR:-0}" -lt 18 ]]; then
 fi
 
 stop_services
+
+for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+  if [[ -n "$(port_pids "$port")" ]]; then
+    fail "Port $port is still busy: $(port_pids "$port")"
+    echo "Rerun with:"
+    echo "  bash start-vm-dev.sh --kill-ports"
+    exit 1
+  fi
+done
 
 if [[ "$SKIP_INSTALL" != "true" ]]; then
   if [[ ! -d "$BACKEND_DIR/.venv" ]]; then
