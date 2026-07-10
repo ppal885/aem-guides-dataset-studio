@@ -4580,6 +4580,295 @@ async def _build_xml_review_fallback_response(
     return "\n".join(lines).strip()
 
 
+def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> str:
+    """Senior offline answer for DITA-OT preprocess modules and command arguments."""
+    query = (user_content or "").strip()
+    lowered = query.lower()
+    if not (
+        re.search(
+        r"\b(dita-ot|dita open toolkit|dita command|dita\s+--|preprocess|pre-processing|copy-to|conrefpush|"
+        r"conref push|pushed content|target element|pushbefore|pushafter|pushreplace|normal conrefs?|"
+        r"content references?|reused content|reused|referenced content|consuming topic|authored topic|copied ids?|copy ids?|copied|"
+        r"local cross references?|profile step|profile preprocessing|profiling|filtered content|filtering|conditional processing|conditional filtering|"
+        r"ditaval|conditional content|print rules?|effective processed content|source xml|final transforms?|"
+        r"command line|custom property|plugin|runtime options?|resource-only topic|resource-only reusable|warehouse topic|conref warehouse|map context|temp output|element type|"
+        r"fails publishing|final pdf|xref inside|points wrong|xml i authored|dita-ot transforms?|pushed warning|"
+        r"debugging checklist|html output differ|pdf.*html|toc|conkeyref|source content|two outputs?|internal text|junior dita author)\b",
+            lowered,
+        )
+        or re.search(r"--(?:input|format|output|filter|parameter)\b|-D\b|@print|print=", query)
+    ):
+        return ""
+
+    copy_to_url = "https://www.dita-ot.org/dev/reference/preprocess-copy-to"
+    conrefpush_url = "https://www.dita-ot.org/dev/reference/preprocess-conrefpush"
+    conref_url = "https://www.dita-ot.org/dev/reference/preprocess-conref"
+    profile_url = "https://www.dita-ot.org/dev/reference/preprocess-profile"
+    params_url = "https://www.dita-ot.org/dev/parameters/"
+    command_args_url = "https://www.dita-ot.org/dev/parameters/dita-command-arguments"
+
+    if (
+        re.search(r"\b(copy-to|copy to|copied topic|alternate resource identity|copied|two outputs?)\b", lowered)
+        and re.search(r"\b(conref|content reference|reused content|effective content|reused)\b", lowered)
+        and re.search(r"\b(filter|filtered|filtering|profile|profiling|ditaval|pdf|missing content)\b", lowered)
+    ) or (
+        re.search(r"\b(source xml|xml i authored|effective processed xml|effective processed content)\b", lowered)
+        and re.search(r"\b(copy-to|copy to|copied|conref|reused|preprocess|dita-ot transforms?)\b", lowered)
+    ) or (
+        re.search(r"\b(html output differ|html.*pdf|pdf.*html|preprocessing involved|debugging checklist)\b", lowered)
+    ) or (
+        re.search(r"\b(two outputs?|one topic.*two outputs?|version filters?|internal text)\b", lowered)
+    ):
+        return "\n".join([
+            "## Short answer",
+            "Inspect three DITA-OT preprocessing areas in order: `copy-to` for alternate resource identity, `conref` for effective reused content, and `profile` for DITAVAL/`@print` filtering before PDF output.",
+            "",
+            "## Why this order matters",
+            "DITA-OT does not publish directly from the authored source files. It builds temporary/effective content first. A PDF symptom can therefore be caused by a resource rename, a reuse resolution, or filtering before the PDF transform ever starts.",
+            "The original authored source can therefore differ from the generated effective resource, the conref-resolved content, and the final filtered output. If reused content includes an `@id` or an `xref`, verify how that content reference behaves after relocation into the consuming topic.",
+            "",
+            "## Example source",
+            "```xml",
+            "<map>",
+            "  <topicref href=\"shared/install.dita\" copy-to=\"product-a/install.dita\"/>",
+            "  <topicref href=\"shared/install.dita\" copy-to=\"product-b/install.dita\"/>",
+            "</map>",
+            "",
+            "<p conref=\"reuse/warnings.dita#warnings/pdf-note\" audience=\"admin\"/>",
+            "```",
+            "",
+            "## Deterministic checks",
+            "- `copy-to`: confirm whether the source topic was copied to a new effective resource name.",
+            "- `conref`: confirm whether reused content was pulled into the effective processed topic.",
+            "- `profile`: confirm whether DITAVAL rules or `@print` removed the content before the PDF transform.",
+            "- Compare source XML with intermediate/effective content; the PDF symptom may be caused before final PDF styling starts.",
+            "",
+            "## Expected result",
+            "You should be able to say exactly which stage changed the content: `copy-to` changed resource identity, `conref` changed effective topic content, or `profile` removed the content for the selected PDF/filtering context.",
+            "",
+            "## Sources",
+            f"- {copy_to_url}",
+            f"- {conref_url}",
+            f"- {profile_url}",
+        ])
+
+    if (
+        re.search(
+            r"\b(parameters?|command arguments?|dita command|command line|propertyfile|transtypes|"
+            r"input, format, output|custom ant property|custom property|runtime configuration|runtime options?|verbose|"
+            r"pdf transform command|plugin)\b",
+            lowered,
+        )
+        or re.search(r"--(?:input|format|output|filter|parameter)\b|-D\b", query)
+    ) and not re.search(r"\b(conrefpush|conref push|pushed warning|pushbefore|pushafter|pushreplace)\b", lowered):
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT can be configured with `dita` command arguments/options, transformation parameters, and configuration properties. Command arguments drive the invocation; parameters tune transformation behavior.",
+            "",
+            "## How to think about it",
+            "Use command arguments to tell DITA-OT what to run: input map, output format, output folder, and filter file. Use parameters when you need to tune a transformation, pass plug-in settings, or override properties for a particular output.",
+            "",
+            "## Command arguments",
+            "- `--input` / `-i`: main file for the documentation project, usually a map.",
+            "- `--format` / `-f`: output format or transformation type, such as `html5` or `pdf`.",
+            "- `--output` / `-o`: output directory.",
+            "- `--filter`: DITAVAL file used by the `profile` preprocessing step for conditional processing.",
+            "- Subcommands such as `plugins`, `transtypes`, `validate`, and `version` inspect or manage the toolkit.",
+            "",
+            "## Parameters",
+            "- Parameters can be passed with `--parameter=value` or `-D parameter=value`.",
+            "- Parameters can also be supplied through `.properties` files.",
+            "- Unsupported parameters for the selected transformation type can be ignored.",
+            "",
+            "## Example",
+            "```bash",
+            "dita --input=docs/my-map.ditamap --format=pdf --output=out/pdf --filter=filters/audience.ditaval",
+            "```",
+            "",
+            "## Expected result",
+            "DITA-OT reads `docs/my-map.ditamap`, applies conditional filtering from `filters/audience.ditaval` during the `profile` step, excludes matching profiled content before final output, runs the `pdf` transformation type, and writes the generated PDF artifacts under `out/pdf`. `@print` rules can also affect print/PDF-oriented output.",
+            "",
+            "## Common mistakes",
+            "- Using a DITAVAL file as `--input`; the input should normally be a map or topic.",
+            "- Expecting every parameter to work for every transformation type.",
+            "- Confusing command arguments such as `--output` with transformation parameters passed as `-D name=value`.",
+            "",
+            "## Sources",
+            f"- {params_url}",
+            f"- {command_args_url}",
+        ])
+
+    if re.search(r"\b(copy-to|copy to|copy-to processing|alternate resource|alternate output|more than one output|duplicate output)\b", lowered):
+        return "\n".join([
+            "## Short answer",
+            "`copy-to` is the DITA-OT preprocess step that copies original topic resources to new resources named by the DITA `@copy-to` attribute.",
+            "",
+            "## Senior explanation",
+            "`copy-to` separates source identity from output/effective resource identity. The same authored topic can be referenced more than once in a map, but each reference can request a different output resource name. DITA-OT handles that in preprocessing so later stages see separate effective resources.",
+            "",
+            "## Example",
+            "```xml",
+            "<map>",
+            "  <topicref href=\"common/install.dita\" copy-to=\"product-a/install.dita\" navtitle=\"Install Product A\"/>",
+            "  <topicref href=\"common/install.dita\" copy-to=\"product-b/install.dita\" navtitle=\"Install Product B\"/>",
+            "</map>",
+            "```",
+            "",
+            "## What this means",
+            "- The authored source topic remains the source XML.",
+            "- The `@copy-to` target represents a new effective resource used later in processing.",
+            "- This is why one source topic can participate in output under more than one output/resource identity.",
+            "- Debug output using the temporary/effective files, not only the original source file.",
+            "",
+            "## Expected result",
+            "DITA-OT can generate two effective topic resources from one source topic: one for `product-a/install.dita` and one for `product-b/install.dita`. Links, navigation, and downstream processing should use the copied/effective resource names.",
+            "",
+            "## Common mistake",
+            "Do not debug only `common/install.dita` when output uses `copy-to`; inspect the effective copied resource created during preprocessing.",
+            "",
+            "## Scope note",
+            "This is DITA-OT preprocessing behavior. The DITA vocabulary defines `@copy-to`; DITA-OT implements the concrete copying step in its pipeline.",
+            "",
+            "## Sources",
+            f"- {copy_to_url}",
+        ])
+
+    if re.search(r"\b(conrefpush|conref push|pushbefore|pushafter|pushreplace|pushed content|pushed warning|push action|target element|before a step)\b", lowered):
+        return "\n".join([
+            "## Short answer",
+            "`conrefpush` is the DITA-OT preprocess step that resolves conref-push actions. It renders pushed content before, after, or in place of the referenced element.",
+            "",
+            "## Senior explanation",
+            "Normal `conref` pulls content from a target into the current location. `conrefpush` works in the opposite direction: a source element pushes content into a target location. This is powerful but harder to debug because the target topic changes in the effective processed content, not necessarily in the authored target file.",
+            "",
+            "## Example",
+            "```xml",
+            "<p conaction=\"pushbefore\" conref=\"target.dita#topic/warning\">",
+            "  Read this before installation.",
+            "</p>",
+            "",
+            "<p conaction=\"pushafter\" conref=\"target.dita#topic/warning\">",
+            "  Continue only after verifying prerequisites.",
+            "</p>",
+            "",
+            "<p conaction=\"pushreplace\" conref=\"target.dita#topic/old-note\">",
+            "  Replacement note text.",
+            "</p>",
+            "```",
+            "",
+            "## What happens",
+            "- `pushbefore` inserts content before the target element.",
+            "- `pushafter` inserts content after the target element.",
+            "- `pushreplace` replaces the target element with the pushed content.",
+            "- DITA-OT processes only documents that use conref push or documents updated by the push action.",
+            "- The module is implemented in Java.",
+            "",
+            "## Expected result",
+            "The effective target topic contains the pushed content before, after, or instead of the referenced target element. The authored target topic might not visibly change on disk.",
+            "",
+            "## Debugging guidance",
+            "If pushed content is missing or appears in the wrong position, inspect the effective temporary content after `conrefpush`, then check the normal `conref` step separately.",
+            "",
+            "## Sources",
+            f"- {conrefpush_url}",
+        ])
+
+    if re.search(
+        r"\b(conref\b|normal conrefs?|content references?|content reference|conref resolution|source xml|"
+        r"effective processed content|copied ids?|copy ids?|local cross references?|consuming topic|conref target|"
+        r"authored topic|reused content|reusable content|referenced content|pulls referenced content|missing conref|"
+        r"fails publishing|editor.*fails publishing|element type.*incompatible|warehouse topic|"
+        r"resource-only topic|resource-only reusable|conkeyref|map context|temp output|xref inside|points wrong|final pdf.*blank|"
+        r"deterministic checks|expected output.*conref warehouse|junior dita author|toc)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`conref` is the DITA-OT preprocess step that resolves normal content references. It processes only DITA maps or topics that use the `@conref` attribute, and it is implemented in XSLT.",
+            "",
+            "## Senior explanation",
+            "`@conref` is source-level reuse syntax. Published output uses effective processed content after DITA-OT has pulled the referenced element into the consuming location. That distinction matters when the source looks correct but the output is wrong.",
+            "",
+            "## Example",
+            "```xml",
+            "<!-- consuming topic -->",
+            "<p conref=\"reuse/common-notes.dita#notes/install-warning\"/>",
+            "",
+            "<!-- reuse/common-notes.dita -->",
+            "<topic id=\"notes\">",
+            "  <title>Reusable notes</title>",
+            "  <body>",
+            "    <p id=\"install-warning\">Back up your files before installation.</p>",
+            "  </body>",
+            "</topic>",
+            "```",
+            "",
+            "## What changes during resolution",
+            "- Referenced content is pulled into the referencing context as effective processed content.",
+            "- DITA-OT can change copied `@id` values so IDs remain unique in the new context.",
+            "- Local cross references inside pulled content can be updated so they remain valid after relocation.",
+            "- The final output reflects the effective conref-resolved content, not just the authored source XML.",
+            "- A `resource-only` topic can still be used as a reuse source if it is reachable for processing; resource-only controls normal output/navigation participation, not whether the file can be a reuse target.",
+            "- Prefer `conkeyref` instead of direct `conref` when the reused fragment must vary by map context, branch, product, or key scope.",
+            "- If the target element type is incompatible with the consuming element, treat it as a content-reference validity problem rather than a PDF styling issue.",
+            "",
+            "## Expected result",
+            "The output behaves as if the warning paragraph exists in the consuming topic. If IDs or links inside the reused paragraph were context-sensitive, inspect the intermediate/effective topic to see how DITA-OT adjusted them.",
+            "",
+            "## Debugging guidance",
+            "When conref output looks wrong, compare the original source, the conref target, and the intermediate/effective content after the `conref` step.",
+            "",
+            "## Sources",
+            f"- {conref_url}",
+        ])
+
+    if re.search(
+        r"\b(profile step|preprocess-profile|profile\b|profile preprocessing|profiling|ditaval|conditional content|conditional processing|conditional filtering|"
+        r"filter(?:ed|ing)? content|filtered content|filtering|source content|filtered effective content|print rules?|print=no|pdf transform starts|"
+        r"final transforms?|html.*disappear.*pdf|content appear.*html.*disappear.*pdf|"
+        r"source content.*filtered effective content|test filtering|two audiences|missing in pdf)\b",
+        lowered,
+    ) or re.search(r"@print|print=", query):
+        return "\n".join([
+            "## Short answer",
+            "`profile` is the DITA-OT preprocess step that removes content from topics and maps based on DITAVAL rules or the `@print` attribute setting.",
+            "",
+            "## Senior explanation",
+            "Profiling is not a final PDF styling decision. In DITA-OT, the `profile` preprocess step can remove content before output-specific transforms run. If content is gone before PDF processing, no PDF template or CSS rule can bring it back.",
+            "",
+            "## Example DITA",
+            "```xml",
+            "<p audience=\"admin\">Admin-only installation step.</p>",
+            "<p audience=\"user\">User-facing installation step.</p>",
+            "<note print=\"no\">Shown online, excluded from print-oriented output.</note>",
+            "```",
+            "",
+            "## Example DITAVAL",
+            "```xml",
+            "<val>",
+            "  <prop att=\"audience\" val=\"admin\" action=\"exclude\"/>",
+            "</val>",
+            "```",
+            "",
+            "## Why content disappears before PDF",
+            "- Conditional filtering happens in preprocessing, before the final PDF transform.",
+            "- DITAVAL rules can include or exclude content based on profiling attributes.",
+            "- `@print` can also affect whether content participates in print/PDF-oriented output.",
+            "- Output can differ depending on when filtering is performed relative to other preprocessing steps.",
+            "",
+            "## Expected result",
+            "With the sample DITAVAL, `audience=\"admin\"` content is removed from the effective processed content. With print-oriented output, `print=\"no\"` content should not appear in the PDF result.",
+            "",
+            "## Debugging guidance",
+            "Inspect the DITAVAL file, `@print` values, active map context, and intermediate/effective files after `profile` before debugging PDF styling.",
+            "",
+            "## Sources",
+            f"- {profile_url}",
+        ])
+
+    return ""
+
+
 async def _build_local_fallback_response(
     user_content: str,
     tenant_id: str,
@@ -4599,6 +4888,11 @@ async def _build_local_fallback_response(
 
     issue_key = _extract_issue_key(trimmed, context)
     issue = _fallback_issue_stub(issue_key, context)
+
+    if not _looks_like_dita_xml(trimmed):
+        early_dita_ot_runtime_fallback = _build_dita_ot_preprocess_runtime_fallback_response(trimmed)
+        if early_dita_ot_runtime_fallback:
+            return _finalize(early_dita_ot_runtime_fallback)
 
     if rag_context is None:
         rag_context = _build_rag_context(trimmed[:500], tenant_id=tenant_id)

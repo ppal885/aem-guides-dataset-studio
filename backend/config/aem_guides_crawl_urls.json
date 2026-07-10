@@ -411,6 +411,13 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/components",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/accessible-content",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/page-editor/keyboard-shortcuts",
+    "https://www.dita-ot.org/dev/reference/preprocess-copy-to",
+    "https://www.dita-ot.org/dev/reference/preprocess-conrefpush",
+    "https://www.dita-ot.org/dev/reference/preprocess-conref",
+    "https://www.dita-ot.org/dev/reference/preprocess-profile",
+    "https://www.dita-ot.org/dev/parameters/",
+    "https://www.dita-ot.org/dev/parameters/dita-command-arguments",
+    "https://www.dita-ot.org/dev/topics/plugins-installing",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts"
   ],
   "recursive": {

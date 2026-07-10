@@ -103,3 +103,7 @@ build/
 
 # Sync scripts config (keep template, ignore user-specific)
 sync-config.local.json
+
+# Local/generated AI indexes and machine-specific settings
+backend/storage/chroma_db/
+.claude/settings.local.json

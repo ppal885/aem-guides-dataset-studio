@@ -185,6 +185,33 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     lowered_content = str(content or "").lower()
     intent = _classify_aem_query_intent(query)
     bonus = 0.0
+    lowered_query = str(query or "").lower()
+
+    if "dita-ot.org" in lowered_url:
+        preprocess_targets = [
+            (
+                "/reference/preprocess-copy-to",
+                r"\b(copy-to|copy to|copy-to processing|duplicate output|alternate output filename|copy-to target)\b",
+            ),
+            (
+                "/reference/preprocess-conrefpush",
+                r"\b(conrefpush|conref push|push content|pushed content|pushreplace|pushbefore|pushafter)\b",
+            ),
+            (
+                "/reference/preprocess-conref",
+                r"\b(conref\b|normal conrefs?|content reference|content references|resolve conrefs?|conref resolution)\b",
+            ),
+            (
+                "/reference/preprocess-profile",
+                r"\b(profile|profiling|ditaval|conditional processing|filter content|filters content|print rules?|exclude content)\b",
+            ),
+        ]
+        for url_fragment, pattern in preprocess_targets:
+            if url_fragment in lowered_url and re.search(pattern, lowered_query):
+                bonus += 4.40
+                break
+        if "/parameters/" in lowered_url and re.search(r"\b(parameters?|command arguments?|dita command|--input|--format|--output|--filter|--args)\b", lowered_query):
+            bonus += 1.60
 
     if intent == "dita_ot_params":
         # Boost dita-ot.org parameter/argument documentation pages

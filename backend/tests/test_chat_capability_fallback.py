@@ -52,6 +52,49 @@ async def test_build_local_fallback_response_reviews_xml_with_local_suggestions(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("prompt", "expected_terms"),
+    [
+        (
+            "What does the DITA-OT copy-to preprocess step do?",
+            ["copy-to", "preprocess", "@copy-to", "effective resource"],
+        ),
+        (
+            "What does conrefpush do in DITA-OT preprocessing?",
+            ["conrefpush", "pushbefore", "pushafter", "pushreplace"],
+        ),
+        (
+            "Which DITA-OT module resolves normal conref references?",
+            ["conref", "@conref", "xslt", "effective processed content"],
+        ),
+        (
+            "Which DITA-OT preprocess step filters content with DITAVAL and print rules?",
+            ["profile", "ditaval", "@print", "preprocessing"],
+        ),
+        (
+            "What are DITA command arguments like --input, --format, and --output used for?",
+            ["--input", "--format", "--output", "--filter"],
+        ),
+    ],
+)
+async def test_build_local_fallback_response_formats_dita_ot_runtime_modules(prompt, expected_terms, monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "DITA-OT runtime module docs")
+
+    text = await chat_service._build_local_fallback_response(
+        prompt,
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    for term in expected_terms:
+        assert term.lower() in lowered
+    assert "## example" in lowered
+    assert "## expected result" in lowered
+    assert len(text) > 900
+
+
+@pytest.mark.anyio
 async def test_build_local_fallback_response_prefers_grounded_publish_filtering_answer(monkeypatch):
     pack = build_evidence_pack(
         query="exclude draft-only content at publish time",
