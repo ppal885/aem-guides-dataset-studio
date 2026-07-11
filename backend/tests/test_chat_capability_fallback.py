@@ -207,6 +207,23 @@ def test_behavior_answer_quality_gate_replaces_basic_definition_answers(prompt, 
         assert term.lower() in lowered
 
 
+def test_runtime_fallback_does_not_steal_format_attribute_question():
+    assert not chat_service._should_try_dita_ot_runtime_fallback(
+        "Explain the format attribute for DITA links with examples for html, pdf, and ditamap."
+    )
+
+
+def test_resource_only_toc_question_gets_resource_semantics_not_conref_definition():
+    text = chat_service._build_dita_ot_preprocess_runtime_fallback_response(
+        "Why does resource-only reusable content still resolve but not appear in TOC?"
+    )
+    lowered = text.lower()
+
+    assert 'processing-role="resource-only"' in lowered
+    assert "expected result" in lowered
+    assert "`conref` is the dita-ot preprocess step" not in lowered
+
+
 @pytest.mark.anyio
 async def test_local_fallback_prefers_learned_qa_over_dita_ot_toc_false_positive(monkeypatch):
     monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")

@@ -3948,6 +3948,29 @@ def _grounded_example_explanation_points(
     return _unique_fact_points(candidates)[:limit]
 
 
+def _grounded_example_expected_result(facts: NormalizedGroundedFactSet, *, snippet: str) -> str:
+    snippet_lower = str(snippet or "").lower()
+    if "keyscope=" in snippet_lower and "keyref=" in snippet_lower:
+        return (
+            "References that use the qualified key name resolve inside the named key scope first. "
+            "For example, `keyref=\"book-b.install\"` resolves the `install` key in the `book-b` scope, "
+            "rather than using an unrelated `install` key from another branch."
+        )
+    if "morerows=" in snippet_lower:
+        return (
+            "The entry occupies the current row plus the number of additional rows specified by `@morerows`; "
+            "the rows covered by the span do not repeat that cell in the same column."
+        )
+    if "processing-role=\"resource-only\"" in snippet_lower:
+        return (
+            "The referenced resource is available for supporting processing such as keys or reuse, "
+            "but it is not treated as normal navigable topic content from that reference."
+        )
+    if facts.answer_kind in {"dita_attribute", "dita_map_construct"} and facts.default_behavior:
+        return " ".join(str(value).strip() for value in facts.default_behavior[:2] if str(value).strip())
+    return ""
+
+
 def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
     short_answer = _preferred_grounded_short_answer(facts)
     if not short_answer:
@@ -4035,6 +4058,7 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
     elif facts.answer_kind == "dita_attribute_comparison":
         if not facts.comparison_rows:
             return ""
+        comparison_labels = {str(row.label or "").strip().lstrip("@").lower() for row in facts.comparison_rows}
         sections.extend(
             [
                 "",
@@ -4057,6 +4081,12 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
                 )
                 + " |"
             )
+        if {"toc", "processing-role"}.issubset(comparison_labels):
+            sections.extend([
+                "",
+                "## Expected result",
+                "`toc=\"no\"` keeps a normal topic out of generated navigation, but the topic can still be processed and generated. `processing-role=\"resource-only\"` marks the reference as supporting material, so it is available for keys/reuse but should not behave like normal publishable navigation content from that reference.",
+            ])
     elif facts.answer_kind == "dita_element_comparison":
         if not facts.comparison_rows:
             return ""
@@ -4158,6 +4188,12 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
             )
             if example_notes:
                 sections.extend(["", "## Example explained", *[f"- {value}" for value in example_notes]])
+            expected_result = _grounded_example_expected_result(
+                facts,
+                snippet=facts.verified_examples[0].snippet,
+            )
+            if expected_result:
+                sections.extend(["", "## Expected result", expected_result])
 
     notes = []
     for item in facts.unsupported_points[:3]:
@@ -4798,6 +4834,9 @@ def _should_try_dita_ot_runtime_fallback(user_content: str) -> bool:
     query = strip_humanized_chat_prefix(user_content)
     if not query.strip():
         return False
+    requested_attribute = _extract_requested_dita_attribute(query)
+    if requested_attribute and not _is_behavior_or_troubleshooting_question(query):
+        return False
     if _DITA_OT_RUNTIME_SIGNAL_PATTERN.search(query):
         return True
     if _DITA_AUTHORING_ONLY_PATTERN.search(query):
@@ -5132,6 +5171,38 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
             "",
             "## Sources",
             f"- {conrefpush_url}",
+        ])
+
+    if re.search(r"\b(resource-only|processing-role)\b", lowered) and re.search(
+        r"\b(toc|navigation|appear|generated?|output|resolve|reuse|conref|keyref)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "`processing-role=\"resource-only\"` means the referenced topic or map branch is available as a supporting resource, but it should not behave like normal publishable navigation content. It can still participate in reuse/key resolution when reachable in the processing context, but it normally should not appear in the TOC as a regular topic.",
+            "",
+            "## Expected behavior",
+            "- `toc=\"no\"` hides a normal topic reference from navigation; it does not by itself make the topic a reuse-only resource.",
+            "- `processing-role=\"resource-only\"` marks the reference as supporting content, commonly used for key definitions, conref warehouses, subject schemes, or shared resources.",
+            "- Resource-only content can remain available for `conref`, `conkeyref`, `keyref`, or metadata/key processing if the map context includes it.",
+            "- Output generation depends on processor/output behavior and whether the same resource is also referenced normally elsewhere.",
+            "",
+            "## Example",
+            "```xml",
+            "<map>",
+            "  <topicref href=\"install.dita\"/>",
+            "  <topicref href=\"reuse/warnings.dita\" processing-role=\"resource-only\" toc=\"no\"/>",
+            "  <keydef keys=\"product\" href=\"keys/product.dita\"/>",
+            "</map>",
+            "```",
+            "",
+            "## Expected result",
+            "`install.dita` appears as normal publication content. `reuse/warnings.dita` is available to resolve reuse references but should not appear as a normal TOC entry from that resource-only reference. The `keydef` supplies key information without acting like a normal navigable topic.",
+            "",
+            "## Common mistakes",
+            "- Treating `toc=\"no\"` and `processing-role=\"resource-only\"` as the same thing.",
+            "- Removing resource-only references from the map and then wondering why keys or conrefs no longer resolve.",
+            "- Debugging only the topic file instead of the root map that establishes processing context.",
         ])
 
     if re.search(
@@ -7867,6 +7938,17 @@ async def _stream_assistant_reply(
                     yield event
                 return
 
+    if _is_dita_ot_issue_request_without_explicit_jira(user_content):
+        resolved_dita_ot_issue_query = _resolve_vague_dita_ot_issue_query_from_context(session_id, user_content)
+        async for event in _stream_dita_ot_github_issue_reply(
+            session_id,
+            user_content=user_content,
+            resolved_query=resolved_dita_ot_issue_query or user_content,
+            assistant_msg_id=assistant_msg_id,
+        ):
+            yield event
+        return
+
     agent_command = detect_agent_command(user_content, history)
     if agent_command:
         async for event in _stream_agent_command_reply(
@@ -8387,6 +8469,8 @@ def _format_dita_ot_github_issue_matches(original_query: str, resolved_query: st
         "I treated this as a DITA-OT GitHub issue lookup, not a Jira lookup. "
         "If you want internal Jira tickets, ask `Show Jira issues for ...`."
     )
+    if resolved:
+        intro.append(f"Search topic: `{resolved}`.")
 
     if not issues:
         return (

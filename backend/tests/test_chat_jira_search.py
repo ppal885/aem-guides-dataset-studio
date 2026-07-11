@@ -205,6 +205,48 @@ def test_dita_ot_issue_without_jira_does_not_route_to_jira_search():
 
 
 @pytest.mark.anyio
+async def test_explicit_dita_ot_github_issues_bypass_agent_plan(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("DITA-OT GitHub issue lookup should not use LLM/tool planning")
+
+    def fake_retrieve(query: str, k: int = 4):
+        assert "copy-to" in query.lower()
+        return [
+            {
+                "issue_number": 991,
+                "title": "copy-to links are rewritten incorrectly",
+                "url": "https://github.com/dita-ot/dita-ot/issues/991",
+                "snippet": "copy-to link rewrite issue",
+            }
+        ]
+
+    monkeypatch.setattr(chat_service, "generate_chat_stream_with_tools", fail_if_called)
+    monkeypatch.setattr("app.services.dita_ot_github_rag_service.retrieve_dita_ot_github_for_query", fake_retrieve)
+
+    session_id = chat_service.create_session()
+    try:
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "Show DITA-OT GitHub issues about copy-to link rewriting",
+            user_id="real-user-11",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        assert any(
+            event.get("type") == "tool" and event.get("name") == "search_dita_ot_github_issues"
+            for event in events
+        )
+        text = "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+        assert "DITA-OT GitHub issue lookup" in text
+        assert "copy-to links are rewritten incorrectly" in text
+        assert "## Plan" not in text
+    finally:
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
 async def test_chat_turn_routes_glossstatus_native_pdf_jira_prompt_without_calling_llm(monkeypatch):
     captured: dict[str, object] = {}
 
