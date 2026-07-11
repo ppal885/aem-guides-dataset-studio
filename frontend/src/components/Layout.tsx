@@ -63,7 +63,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="mx-auto hidden w-full max-w-[560px] items-center rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm lg:flex">
               <ShieldCheck className="mr-3 h-4 w-4 text-teal-600" />
               <span className="text-sm font-medium text-stone-600">Trusted knowledge:</span>
-              <span className="ml-2 text-sm text-stone-500">DITA ? AEM Guides ? DITA-OT ? Jira</span>
+              <span className="ml-2 text-sm text-stone-500">DITA | AEM Guides | DITA-OT | Jira</span>
               <span className="ml-auto rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">RAG ready</span>
             </div>
 
