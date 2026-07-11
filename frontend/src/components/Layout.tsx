@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings, Search } from 'lucide-react';
+import { Home, LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -61,18 +61,13 @@ export function Layout({ children }: LayoutProps) {
             </nav>
 
             <div className="mx-auto hidden w-full max-w-[560px] items-center rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm lg:flex">
-              <Search className="mr-3 h-4 w-4 text-stone-400" />
-              <span className="text-sm text-stone-500">Search docs...</span>
-              <span className="ml-auto rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-xs text-stone-400">⌘K</span>
+              <ShieldCheck className="mr-3 h-4 w-4 text-teal-600" />
+              <span className="text-sm font-medium text-stone-600">Trusted knowledge:</span>
+              <span className="ml-2 text-sm text-stone-500">DITA ? AEM Guides ? DITA-OT ? Jira</span>
+              <span className="ml-auto rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">RAG ready</span>
             </div>
 
             <div className="ml-auto flex items-center gap-3">
-              <Link
-                to="/chat"
-                className="hidden rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 shadow-sm transition hover:text-teal-700 md:inline-flex"
-              >
-                Ask AI
-              </Link>
               <Link
                 to="/chat"
                 className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700"
