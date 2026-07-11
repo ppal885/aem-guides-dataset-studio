@@ -4,7 +4,7 @@ import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FeedbackProvider } from './components/feedback/FeedbackProvider'
 import { Builder } from './pages/Builder'
-import { LandingPage } from './pages/LandingPage'
+import { LandingDocsPage } from './pages/LandingDocsPage'
 import { Loader2 } from 'lucide-react'
 
 const JobHistoryPage = lazy(() => import('./pages/JobHistoryPage').then(module => ({ default: module.JobHistoryPage })))
@@ -25,7 +25,7 @@ function App() {
                 </div>
               }>
                 <Routes>
-                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/" element={<LandingDocsPage />} />
                   <Route path="/builder" element={<Builder />} />
                   <Route path="/job-history" element={<JobHistoryPage />} />
                   <Route path="/dataset-explorer" element={<DatasetExplorerPage />} />
