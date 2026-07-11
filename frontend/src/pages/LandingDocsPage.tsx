@@ -5,6 +5,7 @@ import {
   BookOpen,
   Bot,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Code2,
   Database,
@@ -57,8 +58,52 @@ const prompts = [
   'Compare toc="no" and processing-role="resource-only".',
 ]
 
+const previewSlides = [
+  {
+    badge: 'Key scopes',
+    prompt: 'What is @keyscope in DITA? Show an example.',
+    checks: ['Uses learned Q&A first', 'Verifies against indexed DITA sources', 'Includes XML and expected result'],
+    answer: '@keyscope creates a named key-resolution boundary in a DITA map branch.',
+    xml: `<map>
+  <topicref keyscope="productA">
+    <keydef keys="install" href="install-a.dita"/>
+    <topicref href="guide.dita"/>
+  </topicref>
+</map>`,
+    expected: 'Key references inside the branch resolve in productA before falling back to broader map context.',
+  },
+  {
+    badge: 'PDF troubleshooting',
+    prompt: 'How do I debug a topic that publishes in HTML but fails in PDF?',
+    checks: ['Separates DITA-OT from AEM behavior', 'Lists deterministic checks', 'Points to logs and temp files'],
+    answer: 'Start by comparing the HTML and PDF preprocessing paths, then inspect PDF-specific plug-ins, filters, and generated intermediate files.',
+    xml: `<topic id="pdf-debug">
+  <title>PDF debug topic</title>
+  <body>
+    <p outputclass="pdf-only">Check formatter support.</p>
+  </body>
+</topic>`,
+    expected: 'The answer should guide the user through logs, DITAVAL differences, image/table constraints, and PDF transform configuration.',
+  },
+  {
+    badge: 'Resource-only',
+    prompt: 'Compare toc="no" and processing-role="resource-only".',
+    checks: ['Explains navigation vs generation', 'Avoids false equivalence', 'Includes map example'],
+    answer: 'toc="no" removes a topic from navigation, while processing-role="resource-only" marks it as a non-output resource for keys or reuse.',
+    xml: `<map>
+  <keydef keys="legal" href="reuse/legal.dita" processing-role="resource-only"/>
+  <topicref href="hidden-in-toc.dita" toc="no"/>
+</map>`,
+    expected: 'The resource-only topic remains available for reuse/key resolution; the toc="no" topic may still generate output.',
+  },
+]
+
 export function LandingDocsPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [activePreview, setActivePreview] = useState(0)
+  const activeSlide = previewSlides[activePreview]
+  const showPreviousSlide = () => setActivePreview((current) => (current === 0 ? previewSlides.length - 1 : current - 1))
+  const showNextSlide = () => setActivePreview((current) => (current + 1) % previewSlides.length)
 
   return (
     <div className="min-h-[calc(100vh-68px)] bg-[#fbfaf7] text-[#1f1f1d]">
@@ -143,18 +188,42 @@ export function LandingDocsPage() {
                   <span className="h-3 w-3 rounded-full bg-amber-300" />
                   <span className="h-3 w-3 rounded-full bg-emerald-400" />
                 </div>
-                <span className="rounded-full bg-teal-400/10 px-3 py-1 text-xs font-semibold text-teal-200">
-                  Senior answer preview
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Previous senior answer"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      showPreviousSlide()
+                    }}
+                    className="rounded-full bg-white/10 p-1.5 text-stone-300 transition hover:bg-white/20 hover:text-white"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="rounded-full bg-teal-400/10 px-3 py-1 text-xs font-semibold text-teal-200">
+                    {activeSlide.badge}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Next senior answer"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      showNextSlide()
+                    }}
+                    className="rounded-full bg-white/10 p-1.5 text-stone-300 transition hover:bg-white/20 hover:text-white"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
                 <div className="border-b border-white/10 p-6 lg:border-b-0 lg:border-r">
                   <p className="mb-4 text-sm font-semibold text-stone-400">Prompt</p>
                   <div className="rounded-2xl bg-white/5 p-5 text-lg font-semibold leading-8 text-white">
-                    What is <code className="text-teal-200">@keyscope</code> in DITA? Show an example.
+                    {activeSlide.prompt}
                   </div>
                   <div className="mt-5 space-y-3 text-sm text-stone-300">
-                    {['Uses learned Q&A first', 'Verifies against indexed DITA sources', 'Includes XML and expected result'].map((item) => (
+                    {activeSlide.checks.map((item) => (
                       <div key={item} className="flex gap-2">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 text-teal-300" />
                         {item}
@@ -166,23 +235,32 @@ export function LandingDocsPage() {
                   <p className="mb-4 text-sm font-semibold text-stone-400">Answer shape</p>
                   <div className="space-y-4 text-sm leading-7 text-stone-200">
                     <p>
-                      <span className="font-bold text-white">Short answer:</span> <code>@keyscope</code> creates a named
-                      key-resolution boundary in a DITA map branch.
+                      <span className="font-bold text-white">Short answer:</span> {activeSlide.answer}
                     </p>
                     <pre className="overflow-x-auto rounded-2xl bg-black/35 p-4 text-xs text-teal-100">
-{`<map>
-  <topicref keyscope="productA">
-    <keydef keys="install" href="install-a.dita"/>
-    <topicref href="guide.dita"/>
-  </topicref>
-</map>`}
+{activeSlide.xml}
                     </pre>
                     <p>
-                      <span className="font-bold text-white">Expected result:</span> key references inside the branch
-                      resolve in <code>productA</code> before falling back to broader map context.
+                      <span className="font-bold text-white">Expected result:</span> {activeSlide.expected}
                     </p>
                   </div>
                 </div>
+              </div>
+              <div className="flex items-center justify-center gap-2 border-t border-white/10 px-5 py-3">
+                {previewSlides.map((slide, index) => (
+                  <button
+                    key={slide.badge}
+                    type="button"
+                    aria-label={`Show ${slide.badge} preview`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setActivePreview(index)
+                    }}
+                    className={`h-2 rounded-full transition ${
+                      index === activePreview ? 'w-8 bg-teal-300' : 'w-2 bg-white/25 hover:bg-white/45'
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </section>
@@ -287,25 +365,43 @@ export function LandingDocsPage() {
                 <span className="h-3 w-3 rounded-full bg-red-400" />
                 <span className="h-3 w-3 rounded-full bg-amber-300" />
                 <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                <span className="ml-3 text-sm font-semibold text-stone-300">Senior answer preview</span>
+                <span className="ml-3 text-sm font-semibold text-stone-300">{activeSlide.badge}</span>
               </div>
-              <button
-                type="button"
-                aria-label="Close preview"
-                onClick={() => setIsPreviewOpen(false)}
-                className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Previous senior answer"
+                  onClick={showPreviousSlide}
+                  className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next senior answer"
+                  onClick={showNextSlide}
+                  className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Close preview"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <div className="grid max-h-[calc(88vh-57px)] overflow-auto lg:grid-cols-[0.9fr_1.1fr]">
               <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r">
                 <p className="mb-4 text-sm font-semibold text-stone-400">Prompt</p>
                 <div className="rounded-2xl bg-white/5 p-6 text-2xl font-semibold leading-10 text-white">
-                  What is <code className="text-teal-200">@keyscope</code> in DITA? Show an example.
+                  {activeSlide.prompt}
                 </div>
                 <div className="mt-6 space-y-4 text-base text-stone-300">
-                  {['Uses learned Q&A first', 'Verifies against indexed DITA sources', 'Includes XML and expected result'].map((item) => (
+                  {activeSlide.checks.map((item) => (
                     <div key={item} className="flex gap-3">
                       <CheckCircle2 className="mt-0.5 h-5 w-5 text-teal-300" />
                       {item}
@@ -317,21 +413,27 @@ export function LandingDocsPage() {
                 <p className="mb-4 text-sm font-semibold text-stone-400">Answer shape</p>
                 <div className="space-y-5 text-base leading-8 text-stone-200">
                   <p>
-                    <span className="font-bold text-white">Short answer:</span> <code>@keyscope</code> creates a named
-                    key-resolution boundary in a DITA map branch.
+                    <span className="font-bold text-white">Short answer:</span> {activeSlide.answer}
                   </p>
                   <pre className="overflow-x-auto rounded-2xl bg-black/35 p-5 text-sm text-teal-100">
-{`<map>
-  <topicref keyscope="productA">
-    <keydef keys="install" href="install-a.dita"/>
-    <topicref href="guide.dita"/>
-  </topicref>
-</map>`}
+{activeSlide.xml}
                   </pre>
                   <p>
-                    <span className="font-bold text-white">Expected result:</span> key references inside the branch
-                    resolve in <code>productA</code> before falling back to broader map context.
+                    <span className="font-bold text-white">Expected result:</span> {activeSlide.expected}
                   </p>
+                  <div className="flex gap-2 pt-2">
+                    {previewSlides.map((slide, index) => (
+                      <button
+                        key={slide.badge}
+                        type="button"
+                        aria-label={`Show ${slide.badge} preview`}
+                        onClick={() => setActivePreview(index)}
+                        className={`h-2 rounded-full transition ${
+                          index === activePreview ? 'w-8 bg-teal-300' : 'w-2 bg-white/25 hover:bg-white/45'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
