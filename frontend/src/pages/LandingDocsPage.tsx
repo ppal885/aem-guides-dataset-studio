@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -10,10 +11,12 @@ import {
   FileText,
   GitBranch,
   LifeBuoy,
+  Maximize2,
   MessageSquare,
   ShieldCheck,
   Slack,
   Sparkles,
+  X,
 } from 'lucide-react'
 
 const sidebarSections = [
@@ -55,6 +58,8 @@ const prompts = [
 ]
 
 export function LandingDocsPage() {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+
   return (
     <div className="min-h-[calc(100vh-68px)] bg-[#fbfaf7] text-[#1f1f1d]">
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_280px]">
@@ -115,7 +120,23 @@ export function LandingDocsPage() {
               })}
             </div>
 
-            <div className="mt-10 overflow-hidden rounded-[1.75rem] border border-stone-200 bg-stone-950 shadow-2xl shadow-stone-900/10">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Open senior answer preview"
+              onClick={() => setIsPreviewOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setIsPreviewOpen(true)
+                }
+              }}
+              className="group relative mt-10 cursor-zoom-in overflow-hidden rounded-[1.75rem] border border-stone-200 bg-stone-950 shadow-2xl shadow-stone-900/10 outline-none transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-stone-900/20 focus-visible:ring-4 focus-visible:ring-teal-500/20"
+            >
+              <div className="pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-2 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+                <Maximize2 className="h-3.5 w-3.5" />
+                Click to expand
+              </div>
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
                 <div className="flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full bg-red-400" />
@@ -248,6 +269,75 @@ export function LandingDocsPage() {
           </div>
         </aside>
       </div>
+
+      {isPreviewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Expanded senior answer preview"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div
+            className="max-h-[88vh] w-full max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/15 bg-stone-950 text-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-red-400" />
+                <span className="h-3 w-3 rounded-full bg-amber-300" />
+                <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                <span className="ml-3 text-sm font-semibold text-stone-300">Senior answer preview</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Close preview"
+                onClick={() => setIsPreviewOpen(false)}
+                className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid max-h-[calc(88vh-57px)] overflow-auto lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r">
+                <p className="mb-4 text-sm font-semibold text-stone-400">Prompt</p>
+                <div className="rounded-2xl bg-white/5 p-6 text-2xl font-semibold leading-10 text-white">
+                  What is <code className="text-teal-200">@keyscope</code> in DITA? Show an example.
+                </div>
+                <div className="mt-6 space-y-4 text-base text-stone-300">
+                  {['Uses learned Q&A first', 'Verifies against indexed DITA sources', 'Includes XML and expected result'].map((item) => (
+                    <div key={item} className="flex gap-3">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 text-teal-300" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-8">
+                <p className="mb-4 text-sm font-semibold text-stone-400">Answer shape</p>
+                <div className="space-y-5 text-base leading-8 text-stone-200">
+                  <p>
+                    <span className="font-bold text-white">Short answer:</span> <code>@keyscope</code> creates a named
+                    key-resolution boundary in a DITA map branch.
+                  </p>
+                  <pre className="overflow-x-auto rounded-2xl bg-black/35 p-5 text-sm text-teal-100">
+{`<map>
+  <topicref keyscope="productA">
+    <keydef keys="install" href="install-a.dita"/>
+    <topicref href="guide.dita"/>
+  </topicref>
+</map>`}
+                  </pre>
+                  <p>
+                    <span className="font-bold text-white">Expected result:</span> key references inside the branch
+                    resolve in <code>productA</code> before falling back to broader map context.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
