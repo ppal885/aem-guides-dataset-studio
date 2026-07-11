@@ -47,7 +47,45 @@ call "%ROOT%STOP_LOCAL.cmd" >nul 2>nul
 start "AEM Guides Backend" cmd /k "%RUN_DIR%\backend-local.cmd"
 start "AEM Guides Frontend" cmd /k "%RUN_DIR%\frontend-local.cmd"
 
-timeout /t 6 /nobreak >nul
+echo.
+echo Waiting for backend health...
+set "BACKEND_READY=0"
+for /L %%i in (1,1,30) do (
+  curl -s -m 2 http://127.0.0.1:8001/health >nul 2>nul
+  if not errorlevel 1 (
+    set "BACKEND_READY=1"
+    goto backend_ready
+  )
+  ping -n 2 127.0.0.1 >nul
+)
+
+:backend_ready
+if "%BACKEND_READY%"=="1" (
+  echo [OK] Backend is healthy.
+) else (
+  echo [WARN] Backend did not respond yet.
+  echo        Check the "AEM Guides Backend" terminal window for errors.
+)
+
+echo Waiting for frontend...
+set "FRONTEND_READY=0"
+for /L %%i in (1,1,20) do (
+  curl -s -m 2 http://127.0.0.1:5173/ >nul 2>nul
+  if not errorlevel 1 (
+    set "FRONTEND_READY=1"
+    goto frontend_ready
+  )
+  ping -n 2 127.0.0.1 >nul
+)
+
+:frontend_ready
+if "%FRONTEND_READY%"=="1" (
+  echo [OK] Frontend is reachable.
+) else (
+  echo [WARN] Frontend did not respond yet.
+  echo        Check the "AEM Guides Frontend" terminal window for errors.
+)
+
 start http://127.0.0.1:5173/
 
 echo Launched. Keep both terminal windows open while testing.
