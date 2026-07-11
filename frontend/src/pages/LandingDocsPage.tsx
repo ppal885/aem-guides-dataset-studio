@@ -14,6 +14,7 @@ import {
   LifeBuoy,
   Maximize2,
   MessageSquare,
+  PlayCircle,
   ShieldCheck,
   Slack,
   Sparkles,
@@ -100,6 +101,7 @@ const previewSlides = [
 
 export function LandingDocsPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isVideoOpen, setIsVideoOpen] = useState(false)
   const [activePreview, setActivePreview] = useState(0)
   const activeSlide = previewSlides[activePreview]
   const showPreviousSlide = () => setActivePreview((current) => (current === 0 ? previewSlides.length - 1 : current - 1))
@@ -265,6 +267,73 @@ export function LandingDocsPage() {
             </div>
           </section>
 
+          <section id="qa-video" className="mx-auto mt-16 max-w-5xl">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-stone-500">Product walkthrough</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-stone-950">
+                  See senior Q&A in action
+                </h2>
+              </div>
+              <Link to="/chat" className="hidden text-sm font-bold text-teal-700 transition hover:text-teal-900 sm:inline-flex">
+                Try in chat <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsVideoOpen(true)}
+              className="group grid w-full overflow-hidden rounded-[1.75rem] border border-stone-200 bg-white text-left shadow-xl shadow-stone-900/5 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-stone-900/10 lg:grid-cols-[1.05fr_0.95fr]"
+            >
+              <div className="relative min-h-[320px] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.24),transparent_34%),linear-gradient(135deg,#111827,#020617)] p-6 text-white">
+                <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:28px_28px]" />
+                <div className="relative flex h-full flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-red-400" />
+                      <span className="h-3 w-3 rounded-full bg-amber-300" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                    </div>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-teal-100">
+                      2 min demo
+                    </span>
+                  </div>
+
+                  <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-white/15 text-white shadow-2xl backdrop-blur transition group-hover:scale-105 group-hover:bg-teal-400/25">
+                    <PlayCircle className="h-12 w-12" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-teal-200">Question</p>
+                    <p className="mt-2 max-w-xl text-2xl font-semibold leading-9">
+                      “A keyref works in one map but not another. What should I check?”
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-7">
+                <p className="text-sm font-semibold text-stone-500">What the video shows</p>
+                <div className="mt-5 space-y-4">
+                  {[
+                    'How the bot detects map context and keyscope issues.',
+                    'How it separates DITA specification behavior from processor behavior.',
+                    'How the final answer includes checks, XML examples, and expected result.',
+                  ].map((item) => (
+                    <div key={item} className="flex gap-3 rounded-2xl bg-stone-50 p-4 text-sm font-semibold leading-6 text-stone-700">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-teal-600" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 flex items-center gap-2 text-sm font-bold text-teal-700">
+                  Watch Q&A demo
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </div>
+              </div>
+            </button>
+          </section>
+
           <section id="features" className="mx-auto mt-16 max-w-5xl">
             <h2 className="text-3xl font-semibold tracking-[-0.035em] text-stone-950">What you can do with it</h2>
             <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -347,6 +416,104 @@ export function LandingDocsPage() {
           </div>
         </aside>
       </div>
+
+      {isVideoOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Questions and answers product video"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-6 backdrop-blur-sm"
+          onClick={() => setIsVideoOpen(false)}
+        >
+          <div
+            className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/15 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+              <div>
+                <p className="text-sm font-bold text-stone-950">Q&A product walkthrough</p>
+                <p className="text-xs text-stone-500">Senior answer flow for DITA troubleshooting</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close video"
+                onClick={() => setIsVideoOpen(false)}
+                className="rounded-full bg-stone-100 p-2 text-stone-700 transition hover:bg-stone-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid max-h-[calc(88vh-65px)] overflow-auto lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="relative min-h-[460px] bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.22),transparent_34%),linear-gradient(135deg,#0f172a,#020617)] p-8 text-white">
+                <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
+                <div className="relative flex h-full flex-col">
+                  <div className="mb-8 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-red-400" />
+                      <span className="h-3 w-3 rounded-full bg-amber-300" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                    </div>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-teal-100">Demo preview</span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="max-w-xl rounded-2xl bg-white/10 p-5 backdrop-blur">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">User question</p>
+                      <p className="mt-3 text-2xl font-semibold leading-9">
+                        A keyref works in one map but not another. What processing contexts should I check?
+                      </p>
+                    </div>
+                    <div className="ml-auto max-w-xl rounded-2xl bg-teal-400/15 p-5 backdrop-blur">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-100">Senior answer</p>
+                      <p className="mt-3 leading-7 text-stone-100">
+                        Check the active root map, keyscope branch, filtered key definitions, and whether the topic
+                        is being previewed outside its intended map context.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto">
+                    <div className="mt-10 h-1.5 overflow-hidden rounded-full bg-white/15">
+                      <div className="h-full w-2/3 rounded-full bg-teal-300" />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-xs font-semibold text-stone-300">
+                      <span>00:42</span>
+                      <span>02:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-7">
+                <p className="text-sm font-bold text-stone-950">Transcript highlights</p>
+                <div className="mt-5 space-y-4">
+                  {[
+                    ['1', 'Detect whether the user is asking about direct URI resolution or key-based resolution.'],
+                    ['2', 'Retrieve learned Q&A and DITA map/keyscope source chunks before generic context.'],
+                    ['3', 'Answer with expected behavior, probable causes, deterministic checks, and XML example.'],
+                  ].map(([step, text]) => (
+                    <div key={step} className="flex gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-black text-teal-800">
+                        {step}
+                      </div>
+                      <p className="text-sm font-medium leading-6 text-stone-700">{text}</p>
+                    </div>
+                  ))}
+                </div>
+                <Link
+                  to="/chat"
+                  onClick={() => setIsVideoOpen(false)}
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-stone-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-700"
+                >
+                  Try this in chat
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isPreviewOpen && (
         <div
