@@ -352,7 +352,7 @@ export function LandingDocsPage() {
             </div>
           </section>
 
-          <section className="mx-auto mt-16 grid max-w-5xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <section id="sources" className="mx-auto mt-16 grid max-w-5xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <div className="rounded-3xl border border-stone-200 bg-white p-7 shadow-sm">
               <div className="mb-4 flex items-center gap-3">
                 <Database className="h-6 w-6 text-teal-700" />
@@ -391,11 +391,16 @@ export function LandingDocsPage() {
 
         <aside className="hidden border-l border-stone-200 px-8 py-10 xl:block">
           <div className="sticky top-24">
-            <p className="mb-4 text-sm font-semibold text-stone-500">Start here</p>
+            <p className="mb-4 text-sm font-semibold text-stone-500">On this page</p>
             <nav className="space-y-3 border-b border-stone-200 pb-6">
-              {['Start here', 'What this bot does', 'Trusted sources', 'Try example prompts', 'Team workflow'].map((item) => (
-                <a key={item} href="#welcome" className="block text-sm font-medium text-stone-500 transition hover:text-stone-950">
-                  {item}
+              {[
+                { label: 'Welcome', href: '#welcome' },
+                { label: 'Q&A demo', href: '#qa-video' },
+                { label: 'What this bot does', href: '#features' },
+                { label: 'Sources and prompts', href: '#sources' },
+              ].map((item) => (
+                <a key={item.label} href={item.href} className="block text-sm font-medium text-stone-500 transition hover:text-stone-950">
+                  {item.label}
                 </a>
               ))}
             </nav>
