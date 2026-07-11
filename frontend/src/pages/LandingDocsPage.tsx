@@ -11,7 +11,6 @@ import {
   GitBranch,
   LifeBuoy,
   MessageSquare,
-  Search,
   ShieldCheck,
   Slack,
   Sparkles,
@@ -57,29 +56,7 @@ const prompts = [
 
 export function LandingDocsPage() {
   return (
-    <div className="-mx-6 -my-8 min-h-[calc(100vh-8rem)] bg-[#fbfaf7] text-[#1f1f1d]">
-      <div className="border-b border-stone-200 bg-[#fbfaf7]/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-4 px-6 py-4">
-          <div className="flex flex-1 items-center rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
-            <Search className="mr-3 h-5 w-5 text-stone-400" />
-            <span className="text-sm text-stone-500">Search DITA, AEM Guides, DITA-OT, Jira issues...</span>
-            <span className="ml-auto rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-400">⌘K</span>
-          </div>
-          <Link
-            to="/chat"
-            className="hidden rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-teal-200 hover:text-teal-700 md:inline-flex"
-          >
-            Ask AI
-          </Link>
-          <Link
-            to="/chat"
-            className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700"
-          >
-            Launch Chat
-          </Link>
-        </div>
-      </div>
-
+    <div className="min-h-[calc(100vh-68px)] bg-[#fbfaf7] text-[#1f1f1d]">
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_280px]">
         <aside className="hidden border-r border-stone-200 bg-[#f5f3ef] px-6 py-8 lg:block">
           <div className="sticky top-24 space-y-8">

@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
+import { Home, LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -9,6 +9,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const isDocsHome = location.pathname === '/';
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
@@ -19,6 +20,73 @@ export function Layout({ children }: LayoutProps) {
     { path: '/upload', label: 'Upload to AEM', icon: Upload },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];
+
+  if (isDocsHome) {
+    return (
+      <div className="min-h-screen bg-[#fbfaf7] text-stone-950">
+        <header className="sticky top-0 z-50 border-b border-stone-200 bg-[#fbfaf7]/95 backdrop-blur">
+          <div className="flex h-[68px] items-center gap-6 px-6">
+            <Link to="/" className="flex min-w-[210px] items-center gap-3">
+              <img
+                src="/app-icon.svg"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-lg ring-1 ring-stone-200"
+                decoding="async"
+              />
+              <span className="text-lg font-extrabold tracking-tight text-stone-950">DITA Expert</span>
+            </Link>
+
+            <nav className="hidden h-full items-center gap-6 md:flex">
+              {[
+                { to: '/', label: 'Docs' },
+                { to: '/chat', label: 'AI Chat' },
+                { to: '/builder', label: 'Builder' },
+                { to: '/settings', label: 'Sources' },
+              ].map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    'flex h-full items-center border-b-2 px-1 text-sm font-semibold transition',
+                    item.to === '/'
+                      ? 'border-teal-600 text-teal-700'
+                      : 'border-transparent text-stone-500 hover:text-stone-950'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+
+            <div className="mx-auto hidden w-full max-w-[560px] items-center rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm lg:flex">
+              <Search className="mr-3 h-4 w-4 text-stone-400" />
+              <span className="text-sm text-stone-500">Search docs...</span>
+              <span className="ml-auto rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-xs text-stone-400">⌘K</span>
+            </div>
+
+            <div className="ml-auto flex items-center gap-3">
+              <Link
+                to="/chat"
+                className="hidden rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-600 shadow-sm transition hover:text-teal-700 md:inline-flex"
+              >
+                Ask AI
+              </Link>
+              <Link
+                to="/chat"
+                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-700"
+              >
+                Open Chat
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50/35 to-slate-100">
