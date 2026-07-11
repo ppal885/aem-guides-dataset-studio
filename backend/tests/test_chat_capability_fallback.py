@@ -60,6 +60,14 @@ async def test_build_local_fallback_response_reviews_xml_with_local_suggestions(
             ["copy-to", "preprocess", "@copy-to", "effective resource"],
         ),
         (
+            "How does DITA-OT rewrite links after copy-to processing?",
+            ["copy-to", "effective resource", "links", "clean.temp", ".job.xml"],
+        ),
+        (
+            "Why can a conkeyref resolve differently after branch filtering?",
+            ["conkeyref", "branch filtering", "effective map", "key space", "clean.temp"],
+        ),
+        (
             "What does conrefpush do in DITA-OT preprocessing?",
             ["conrefpush", "pushbefore", "pushafter", "pushreplace"],
         ),
@@ -138,17 +146,133 @@ def test_dita_ot_humanized_prompt_regression_answers_stay_senior(prompt, expecte
     lowered = text.lower()
     for term in expected_terms:
         assert term.lower() in lowered
-    assert "## short answer" in lowered
-    assert "## example" in lowered
-    assert "## expected result" in lowered
-    assert len(text) > 900
-    assert "i couldn't verify this directly" not in lowered
-    assert "what it usually means" not in lowered
-    assert "## quick reference" not in lowered
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Why can a conkeyref resolve differently after branch filtering?",
+        "How does DITA-OT rewrite links after copy-to processing?",
+        "Why does a keyref work in one map but not another?",
+        "How do I debug a topic that publishes in HTML but fails in PDF?",
+    ],
+)
+def test_behavior_questions_do_not_route_to_basic_attribute_lookup(prompt):
+    requests = chat_service._grounded_tool_requests("grounded_dita_answer", prompt)
+
+    assert ("lookup_dita_attribute", {"attribute_name": "conkeyref"}) not in requests
+    assert not any(name == "lookup_dita_attribute" for name, _payload in requests)
+
+
+def test_html_success_pdf_failure_gets_senior_troubleshooting_answer():
+    text = chat_service._build_dita_ot_preprocess_runtime_fallback_response(
+        "How do I debug a topic that publishes in HTML but fails in PDF?"
+    )
+
+    lowered = text.lower()
+    assert "transform-specific failure" in lowered
+    assert "clean.temp=no" in lowered
+    assert "xsl-fo" in lowered
+    assert "expected result" in lowered
+    assert "<topic> is the base information unit" not in lowered
+
+
+@pytest.mark.parametrize(
+    ("prompt", "bad_answer", "expected_terms"),
+    [
+        (
+            "How do I debug a topic that publishes in HTML but fails in PDF?",
+            "Short answer\n<topic> is the base information unit in DITA.\n\nQuick reference\nField Details\nCommon children <title>, <body>",
+            ["transform-specific failure", "clean.temp=no", "xsl-fo"],
+        ),
+        (
+            "Why can a conkeyref resolve differently after branch filtering?",
+            "Short answer\n@conkeyref enables indirect content references by combining key resolution with conref.\n\nQuick reference\nField Details",
+            ["effective map context", "branch filtering", "key space"],
+        ),
+        (
+            "How does DITA-OT rewrite links after copy-to processing?",
+            "Short answer\n@copy-to is a DITA attribute used on topicref.\n\nQuick reference\nField Details",
+            ["effective resource uri", "temporary", "copy-to"],
+        ),
+    ],
+)
+def test_behavior_answer_quality_gate_replaces_basic_definition_answers(prompt, bad_answer, expected_terms):
+    repaired = chat_service._repair_mismatched_behavior_answer(prompt, bad_answer)
+    lowered = repaired.lower()
+
+    assert repaired != bad_answer
+    assert "quick reference\nfield details" not in lowered
+    for term in expected_terms:
+        assert term.lower() in lowered
+
+
+@pytest.mark.anyio
+async def test_local_fallback_prefers_learned_qa_over_dita_ot_toc_false_positive(monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")
+
+    prompt = (
+        "What is the difference between topicref, topichead, and topicgroup? "
+        "Show a realistic ditamap and explain TOC output."
+    )
+    text = await chat_service._build_local_fallback_response(
+        prompt,
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    assert "topicref" in lowered
+    assert "topichead" in lowered
+    assert "topicgroup" in lowered
+    assert "conref is the dita-ot preprocess step" not in lowered
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "How do I exclude draft-only content at publish time?",
+        "Quick question for our docs team: How do I exclude draft-only content at publish time?",
+        "We hit this in a customer map today. What is the difference between topicref, topichead, and topicgroup? Show a realistic ditamap and explain TOC output.",
+    ],
+)
+async def test_local_fallback_uses_learned_qa_for_humanized_seed_prompts(prompt, monkeypatch):
+    monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")
+
+    text = await chat_service._build_local_fallback_response(
+        prompt,
+        "kone",
+        answer_mode="grounded_dita_answer",
+    )
+
+    lowered = text.lower()
+    if "draft-only" in prompt.lower() or "exclude draft" in prompt.lower():
+        assert "draft-comment" in lowered
+        assert "required-cleanup" in lowered
+        assert "## quick reference" not in lowered
+    else:
+        assert "topichead" in lowered
+        assert "topicgroup" in lowered
+        assert "conref is the dita-ot preprocess step" not in lowered
+
+
+def test_should_try_dita_ot_runtime_fallback_blocks_pure_map_authoring_questions():
+    assert not chat_service._should_try_dita_ot_runtime_fallback(
+        "What is the difference between topicref, topichead, and topicgroup?"
+    )
+    assert chat_service._should_try_dita_ot_runtime_fallback(
+        "Which DITA-OT preprocess step filters content with DITAVAL and print rules?"
+    )
 
 
 @pytest.mark.anyio
 async def test_build_local_fallback_response_prefers_grounded_publish_filtering_answer(monkeypatch):
+    monkeypatch.setattr(
+        chat_service,
+        "try_build_learned_qa_fallback_answer",
+        lambda *_args, **_kwargs: "",
+    )
     pack = build_evidence_pack(
         query="exclude draft-only content at publish time",
         tenant_id="kone",

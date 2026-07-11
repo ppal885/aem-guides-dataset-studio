@@ -410,9 +410,13 @@ async def startup_event():
         # Enable LangSmith tracing when API key is present (LangChain PyPDFLoader, WebBaseLoader, etc.)
         if os.getenv("LANGSMITH_API_KEY"):
             os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+            os.environ.setdefault("LANGSMITH_TRACING", "true")
             logger.info_structured(
                 "LangSmith tracing enabled",
-                extra_fields={"hint": "Set LANGCHAIN_TRACING_V2=false to disable"},
+                extra_fields={
+                    "hint": "Set LANGCHAIN_TRACING_V2=false or LANGSMITH_TRACING=false to disable",
+                    "project": os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT") or "default",
+                },
             )
         
         # Initialize database tables
@@ -420,6 +424,7 @@ async def startup_event():
             from app.db.session import DATABASE_URL, engine
             from app.db.base import Base
             from app.db.chat_models import ChatSession, ChatMessage, ChatMessageFeedback  # noqa: F401
+            from app.db.chat_quality_models import ChatAnswerQuality  # noqa: F401
             from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
             from app.db.llm_models import LLMRun  # noqa: F401
             

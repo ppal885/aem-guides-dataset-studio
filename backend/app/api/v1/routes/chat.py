@@ -1,22 +1,17 @@
 """Chat API routes - sessions, messages, streaming."""
 import json
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.core.auth import AdminUser, CurrentUser, UserIdentity
 from app.core.content_validation import (
-    validate_authoring_jira_context,
     validate_chat_content,
     validate_chat_context,
 )
 from app.core.schemas_chat_authoring import (
-    ChatAuthoringOutputMode,
-    ChatAuthoringPattern,
-    ChatAuthoringRequestPayload,
     ChatDitaGenerationOptions,
-    ChatScreenshotDeliverableMode,
-    ChatStyleStrictness,
 )
 from app.utils.api_rate_limit import check_chat_sessions_limit, check_chat_messages_limit
 from app.services.chat_service import (
@@ -32,10 +27,19 @@ from app.services.chat_service import (
     update_session_title,
     update_user_message_truncate_after,
 )
-from app.services.chat_asset_service import ensure_user_can_access_asset, read_asset_bytes, save_upload_asset
+from app.services.chat_asset_service import ensure_user_can_access_asset, read_asset_bytes
 from app.services.chat_tools import get_tool_catalog
 from app.services.tenant_service import get_authorized_tenant_id
 from app.services.llm_service import format_llm_error_for_user
+from app.db.session import get_db
+from app.services.chat_eval_dashboard_service import get_chat_eval_stats, list_chat_eval_pairs
+from app.services.chat_quality_service import (
+    apply_feedback_to_quality,
+    get_chat_eval_breakdown,
+    get_chat_eval_trends,
+    promote_eval_pair_to_learned_qa,
+    set_eval_pair_review_status,
+)
 
 router = APIRouter(prefix="/chat", tags=["Chat"], dependencies=[CurrentUser])
 
@@ -70,52 +74,11 @@ class BranchSessionRequest(BaseModel):
     message_id: str
 
 
-def _parse_form_json(value: str | None) -> dict | None:
-    raw = (value or "").strip()
-    if not raw:
-        return None
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON form field: {exc.msg}") from exc
-    if parsed is not None and not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail="Context form field must decode to a JSON object")
-    return parsed
-
-
 def _parse_form_bool(value: str | None, *, default: bool) -> bool:
     raw = (value or "").strip().lower()
     if not raw:
         return default
     return raw in {"1", "true", "yes", "on"}
-
-
-def _parse_style_strictness(value: str | None) -> ChatStyleStrictness:
-    raw = (value or "").strip().lower()
-    if raw in {"low", "medium", "high"}:
-        return raw  # type: ignore[return-value]
-    return "medium"
-
-
-def _parse_output_mode(value: str | None) -> ChatAuthoringOutputMode:
-    raw = (value or "").strip().lower().replace("-", "_")
-    if raw in {"xml_only", "xml_explanation", "xml_validation", "xml_style_diff"}:
-        return raw  # type: ignore[return-value]
-    return "xml_validation"
-
-
-def _parse_authoring_pattern(value: str | None) -> ChatAuthoringPattern:
-    raw = (value or "").strip().lower().replace("-", "_")
-    if raw in {"default", "cisco_task", "cisco_reference", "auto"}:
-        return raw  # type: ignore[return-value]
-    return "default"
-
-
-def _parse_screenshot_deliverable(value: str | None) -> ChatScreenshotDeliverableMode:
-    raw = (value or "").strip().lower().replace("-", "_")
-    if raw in {"single_topic", "map_hierarchy"}:
-        return raw  # type: ignore[return-value]
-    return "single_topic"
 
 
 @router.post("/sessions", response_model=CreateSessionResponse)
@@ -199,119 +162,16 @@ def get_session_messages(
 
 @router.post("/sessions/{session_id}/messages/authoring")
 async def post_send_authoring_message(
-    request: Request,
     session_id: str,
-    content: str = Form(...),
-    context: str | None = Form(None),
-    human_prompts: str | None = Form(None),
-    dita_type: str | None = Form(None),
-    save_path: str | None = Form(None),
-    file_name: str | None = Form(None),
-    strict_validation: str | None = Form(None),
-    style_strictness: str | None = Form(None),
-    preserve_prolog: str | None = Form(None),
-    xref_placeholders: str | None = Form(None),
-    auto_ids: str | None = Form(None),
-    output_mode: str | None = Form(None),
-    authoring_pattern: str | None = Form(None),
-    preserve_reference_doctype: str | None = Form(None),
-    screenshot_deliverable: str | None = Form(None),
-    jira_context: str | None = Form(None),
-    image_attachment: UploadFile = File(...),
-    reference_dita: UploadFile | None = File(None),
     user: UserIdentity = CurrentUser,
 ):
-    """Send a message with screenshot/reference attachments and stream the response via SSE."""
-    err = check_chat_messages_limit(request)
-    if err:
-        raise HTTPException(status_code=429, detail=err)
-    tenant_id = get_authorized_tenant_id(request, user)
-    session = get_session(session_id, user_id=user.id, tenant_id=tenant_id, is_admin=user.is_admin)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    content = (content or "").strip()
-    err = validate_chat_content(content)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    err = validate_authoring_jira_context(jira_context)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    jira_stripped = (jira_context or "").strip() or None
-    parsed_context = _parse_form_json(context)
-    err = validate_chat_context(parsed_context)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    if not image_attachment:
-        raise HTTPException(status_code=400, detail="image_attachment is required")
-
-    attachments = [
-        await save_upload_asset(
-            session_id=session_id,
-            user_id=user.id,
-            kind="image",
-            upload=image_attachment,
-        )
-    ]
-    if reference_dita is not None and (reference_dita.filename or "").strip():
-        attachments.append(
-            await save_upload_asset(
-                session_id=session_id,
-                user_id=user.id,
-                kind="reference_dita",
-                upload=reference_dita,
-            )
-        )
-
-    generation_options = ChatDitaGenerationOptions(
-        dita_type=(dita_type or "").strip().lower() or None,
-        save_path=(save_path or "").strip() or None,
-        file_name=(file_name or "").strip() or None,
-        strict_validation=_parse_form_bool(strict_validation, default=True),
-        style_strictness=_parse_style_strictness(style_strictness),
-        preserve_prolog=_parse_form_bool(preserve_prolog, default=False),
-        xref_placeholders=_parse_form_bool(xref_placeholders, default=False),
-        auto_ids=_parse_form_bool(auto_ids, default=True),
-        output_mode=_parse_output_mode(output_mode),
-        authoring_pattern=_parse_authoring_pattern(authoring_pattern),
-        preserve_reference_doctype=_parse_form_bool(preserve_reference_doctype, default=False),
-        screenshot_deliverable=_parse_screenshot_deliverable(screenshot_deliverable),
-    )
-    payload = ChatAuthoringRequestPayload(
-        content=content,
-        attachments=attachments,
-        generation_options=generation_options,
-        context=parsed_context,
-        human_prompts=_parse_form_bool(human_prompts, default=False),
-        jira_context=jira_stripped,
-    )
-
-    async def event_stream():
-        try:
-            async for event in chat_turn(
-                session_id,
-                content,
-                user_id=user.id,
-                context=payload.context,
-                tenant_id=tenant_id,
-                human_prompts=payload.human_prompts,
-                attachments=payload.attachments,
-                generation_options=payload.generation_options,
-                jira_context=payload.jira_context,
-            ):
-                line = json.dumps(event) + "\n"
-                yield f"data: {line}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': format_llm_error_for_user(e)})}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    """Screenshot attachment authoring was removed; use text chat and /generate_dita instead."""
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Screenshot-to-DITA authoring is no longer available. "
+            "Use AI Chat with /generate_dita, /review_dita, or /fix_dita, or paste XML in the composer."
+        ),
     )
 
 
@@ -480,7 +340,10 @@ def post_message_feedback(
     from uuid import uuid4
     from app.db.session import SessionLocal
     from app.db.chat_models import ChatMessageFeedback
-    from app.services.learned_qa_service import capture_learned_candidate_from_chat_feedback
+    from app.services.learned_qa_service import (
+        capture_learned_candidate_from_chat_feedback,
+        capture_rejected_learned_from_chat_feedback,
+    )
 
     if body.rating not in ("up", "down"):
         raise HTTPException(status_code=400, detail="rating must be 'up' or 'down'")
@@ -501,6 +364,12 @@ def post_message_feedback(
             auto_detected=False,
         )
         db.add(fb)
+        apply_feedback_to_quality(
+            db,
+            message_id=message_id,
+            rating=body.rating,
+            correction_text=body.comment,
+        )
         db.commit()
         learned_capture = capture_learned_candidate_from_chat_feedback(
             db,
@@ -508,7 +377,18 @@ def post_message_feedback(
             message_id=message_id,
             rating=body.rating,
         )
-        return {"status": "ok", "id": fb.id, "learned_capture": learned_capture}
+        rejected_capture = capture_rejected_learned_from_chat_feedback(
+            db,
+            session_id=session_id,
+            message_id=message_id,
+            rating=body.rating,
+        )
+        return {
+            "status": "ok",
+            "id": fb.id,
+            "learned_capture": learned_capture,
+            "rejected_capture": rejected_capture,
+        }
     finally:
         db.close()
 
@@ -528,6 +408,140 @@ def get_suggested_prompts():
             {"title": "Translation", "text": "How does the translation workflow work in AEM Guides?", "icon": "globe"},
         ]
     }
+
+
+@router.get("/eval/stats")
+def get_chat_eval_dashboard_stats(
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """Aggregate counts for the chat evaluation dashboard."""
+    tenant_id = get_authorized_tenant_id(request, user)
+    return get_chat_eval_stats(
+        session,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        is_admin=user.is_admin,
+    )
+
+
+@router.get("/eval/pairs")
+def get_chat_eval_dashboard_pairs(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Filter by question, answer, or session title"),
+    rating: str | None = Query(None, description="Filter by feedback: up, down, or none"),
+    weak_only: bool = Query(False, description="Only weak/abstain answers (quality < 60)"),
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """List stored user question + assistant answer pairs for evaluation review."""
+    if rating is not None and rating not in {"", "up", "down", "none"}:
+        raise HTTPException(status_code=400, detail="rating must be up, down, none, or omitted")
+    tenant_id = get_authorized_tenant_id(request, user)
+    return list_chat_eval_pairs(
+        session,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        is_admin=user.is_admin,
+        limit=limit,
+        offset=offset,
+        search=search,
+        rating=rating or None,
+        weak_only=weak_only,
+    )
+
+
+class EvalReviewRequest(BaseModel):
+    status: str  # pass | fail | needs_seed
+
+
+@router.get("/eval/trends")
+def get_chat_eval_dashboard_trends(
+    request: Request,
+    days: int = Query(30, ge=1, le=90),
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """Time series of answer volume and quality for the eval dashboard."""
+    tenant_id = get_authorized_tenant_id(request, user)
+    return get_chat_eval_trends(
+        session,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        is_admin=user.is_admin,
+        days=days,
+    )
+
+
+@router.get("/eval/breakdown")
+def get_chat_eval_dashboard_breakdown(
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """Breakdown charts data: grounding status, domain, ratings, confidence buckets."""
+    tenant_id = get_authorized_tenant_id(request, user)
+    return get_chat_eval_breakdown(
+        session,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        is_admin=user.is_admin,
+    )
+
+
+@router.post("/eval/pairs/{message_id}/review")
+def post_chat_eval_pair_review(
+    message_id: str,
+    body: EvalReviewRequest,
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = AdminUser,
+):
+    """Mark an eval pair as pass, fail, or needs_seed."""
+    tenant_id = get_authorized_tenant_id(request, user)
+    try:
+        return set_eval_pair_review_status(
+            session,
+            message_id=message_id,
+            review_status=body.status,
+            user_id=user.id,
+            tenant_id=tenant_id,
+            is_admin=user.is_admin,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/eval/pairs/{message_id}/promote")
+def post_chat_eval_pair_promote(
+    message_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    user: UserIdentity = CurrentUser,
+):
+    """Promote a strong Q&A pair to the learned QA review queue."""
+    tenant_id = get_authorized_tenant_id(request, user)
+    try:
+        return promote_eval_pair_to_learned_qa(
+            session,
+            message_id=message_id,
+            user_id=user.id,
+            tenant_id=tenant_id,
+            is_admin=user.is_admin,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/tools")

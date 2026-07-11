@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Filter, Loader2, Search, Sparkles, Zap } from 'lucide-react';
 
+import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
+
 import { SchedulePicker } from '@/components/SchedulePicker';
 import { ValidationDisplay } from '@/components/ValidationDisplay';
 import { Button } from '@/components/ui/button';
@@ -169,7 +171,7 @@ function JsonEditorField({
           }
         }}
         rows={6}
-        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+        className="w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
       />
       {error ? <p className="text-xs text-red-600">{error}</p> : <p className="text-xs text-slate-500">Valid JSON is applied when the field loses focus.</p>}
     </div>
@@ -385,13 +387,11 @@ export function Builder() {
   }, [selectedRecipe]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-8">
-      <div className="border-l-4 border-teal-500 pl-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dataset Builder</h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          Discover the full backend recipe catalog, filter by senior workflow tracks, inspect full XML examples, and create dataset jobs without frontend-specific recipe branching.
-        </p>
-      </div>
+    <AppPageShell wide className="space-y-8">
+      <AppPageHeader
+        title="Dataset Builder"
+        description="Discover the full backend recipe catalog, filter by workflow tracks, inspect XML examples, and create dataset jobs."
+      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -511,7 +511,7 @@ export function Builder() {
                         className={`rounded-lg border p-4 text-left transition ${
                           activeWorkflowId === workflow.id
                             ? 'border-teal-500 bg-teal-50 shadow-sm'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-border bg-card hover:border-slate-300'
                         }`}
                       >
                         <div className="text-sm font-semibold text-slate-900">{workflow.title}</div>
@@ -534,7 +534,7 @@ export function Builder() {
                         className={`rounded-lg border p-4 text-left transition ${
                           selectedRecipeId === entry.id
                             ? 'border-teal-500 bg-teal-50 shadow-sm'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-border bg-card hover:border-slate-300'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -549,7 +549,7 @@ export function Builder() {
                         <p className="mt-3 text-sm leading-6 text-slate-600">{entry.description}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {entry.featured_track_labels.slice(0, 3).map(label => (
-                            <span key={label} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200">
+                            <span key={label} className="rounded-full bg-card px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200 dark:text-teal-300 dark:ring-teal-900">
                               {label}
                             </span>
                           ))}
@@ -591,7 +591,7 @@ export function Builder() {
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {selectedRecipe.featured_track_labels.map(label => (
-                              <span key={label} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200">
+                              <span key={label} className="rounded-full bg-card px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200 dark:text-teal-300 dark:ring-teal-900">
                                 {label}
                               </span>
                             ))}
@@ -730,6 +730,6 @@ export function Builder() {
           </div>
         </>
       ) : null}
-    </div>
+    </AppPageShell>
   );
 }

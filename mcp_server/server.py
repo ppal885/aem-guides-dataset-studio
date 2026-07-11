@@ -1,9 +1,9 @@
 """
 AEM Guides Studio — MCP Server
 
-Exposes DITA authoring, dataset generation, DITA spec lookup, AEM Guides
-documentation search, Jira search, and job management as MCP tools so
-Claude Desktop, Cursor, and other MCP-capable editors can use them.
+Exposes DITA spec lookup, dataset generation, AEM Guides documentation search,
+Jira search, and job management as MCP tools so Claude Desktop, Cursor, and
+other MCP-capable editors can use them.
 
 Prerequisites:
   1. Backend running:  cd backend && python run_local.py   (default port 8001)
@@ -18,10 +18,8 @@ Environment variables:
 """
 
 import asyncio
-import base64
 import json
 import os
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -261,55 +259,6 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["query"],
             },
         ),
-        types.Tool(
-            name="generate_dita_from_screenshot",
-            description=(
-                "Convert a UI screenshot into a DITA XML topic using the full 9-stage "
-                "screenshot-guided authoring pipeline (vision → semantic plan → XML serialization → validation). "
-                "Provide either image_path (local file) or image_base64 (base64-encoded bytes). "
-                "Optionally supply reference_xml to guide style and structure, "
-                "and dita_type to force concept / task / reference output."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "image_path": {
-                        "type": "string",
-                        "description": "Absolute local path to the screenshot file (PNG / JPEG / WebP). Use this when running in Claude Code or Cursor on the same machine as the backend.",
-                    },
-                    "image_base64": {
-                        "type": "string",
-                        "description": "Base64-encoded screenshot bytes. Use this when the image is embedded in the conversation (e.g. Claude Desktop).",
-                    },
-                    "image_filename": {
-                        "type": "string",
-                        "description": "Filename hint for the image (e.g. 'settings-ui.png'). Defaults to 'screenshot.png'.",
-                        "default": "screenshot.png",
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "Authoring instruction (e.g. 'Convert this settings panel to a reference topic', 'Generate a task topic for these steps').",
-                    },
-                    "reference_xml": {
-                        "type": "string",
-                        "description": "Optional reference DITA XML to guide style and structure of the output.",
-                    },
-                    "dita_type": {
-                        "type": "string",
-                        "enum": ["concept", "task", "reference", "topic"],
-                        "description": "Force a specific DITA topic type. Omit to let the pipeline infer from the screenshot.",
-                    },
-                    "jira_context": {
-                        "type": "string",
-                        "description": "Optional Jira issue body text to merge into the authoring prompt for richer context.",
-                    },
-                },
-                "anyOf": [
-                    {"required": ["image_path"]},
-                    {"required": ["image_base64"]},
-                ],
-            },
-        ),
     ]
 
 
@@ -377,38 +326,7 @@ async def _dispatch(name: str, args: dict) -> Any:
             "limit": args.get("limit", 5),
         })
 
-    if name == "generate_dita_from_screenshot":
-        return await _screenshot_to_dita(args)
-
     raise ValueError(f"Unknown tool: {name}")
-
-
-# ---------------------------------------------------------------------------
-# Screenshot-to-DITA helper
-# ---------------------------------------------------------------------------
-
-async def _screenshot_to_dita(args: dict) -> Any:
-    """Resolve image bytes and delegate to the backend pipeline."""
-    body: dict = {
-        "image_filename": args.get("image_filename", "screenshot.png"),
-        "prompt": args.get("prompt", ""),
-        "reference_xml": args.get("reference_xml"),
-        "dita_type": args.get("dita_type"),
-        "jira_context": args.get("jira_context"),
-    }
-
-    if "image_base64" in args and args["image_base64"]:
-        body["image_base64"] = args["image_base64"]
-    elif "image_path" in args and args["image_path"]:
-        img = Path(args["image_path"])
-        if not img.is_file():
-            return {"error": f"File not found: {args['image_path']}"}
-        body["image_base64"] = base64.b64encode(img.read_bytes()).decode("ascii")
-        body["image_filename"] = body["image_filename"] or img.name
-    else:
-        return {"error": "Provide either image_path or image_base64."}
-
-    return await _post("/api/v1/mcp/screenshot-to-dita", body)
 
 
 # ---------------------------------------------------------------------------

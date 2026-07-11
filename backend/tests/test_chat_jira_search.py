@@ -1,6 +1,10 @@
 import pytest
+from datetime import datetime
+from uuid import uuid4
 
 from app.services import chat_service, jira_chat_search_service
+from app.db.chat_models import ChatMessage
+from app.db.session import SessionLocal
 
 
 @pytest.mark.anyio
@@ -71,6 +75,133 @@ async def test_chat_turn_routes_jira_search_requests_without_calling_llm(monkeyp
         assert "GUIDES-42533" in str(assistant.get("content") or "")
     finally:
         chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_vague_dita_ot_issue_followup_resolves_previous_topic(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("Vague DITA-OT issue follow-up should resolve context and use Jira search")
+
+    async def fake_run_tool(
+        name: str,
+        params: dict,
+        user_id: str = "chat-user",
+        session_id: str | None = None,
+        run_id: str | None = None,
+        tenant_id: str = "kone",
+    ):
+        captured["name"] = name
+        captured["params"] = params
+        return {
+            "query": params.get("query"),
+            "source": "jira_index",
+            "issues": [],
+            "message": "No Jira issues matched the resolved topic.",
+        }
+
+    monkeypatch.setattr(chat_service, "generate_chat_stream_with_tools", fail_if_called)
+    monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
+
+    session_id = chat_service.create_session()
+    db = SessionLocal()
+    try:
+        db.add(
+            ChatMessage(
+                id=str(uuid4()),
+                session_id=session_id,
+                role="user",
+                content="Why can a conkeyref resolve differently after branch filtering?",
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "Give me any Jira issues of dita ot related to it",
+            user_id="real-user-9",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        assert captured["name"] == "search_jira_issues"
+        resolved_query = str(captured["params"]["query"]).lower()
+        assert "dita-ot" in resolved_query
+        assert "conkeyref" in resolved_query
+        assert "branch-filtering" in resolved_query
+        assert " it" not in resolved_query
+        assert any(event.get("type") == "tool" and event.get("name") == "search_jira_issues" for event in events)
+    finally:
+        db.close()
+        chat_service.delete_session(session_id)
+
+
+@pytest.mark.anyio
+async def test_vague_dita_ot_issue_followup_uses_github_issue_corpus(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("DITA-OT issue lookup should not fall through to generic LLM")
+
+    def fake_retrieve(query: str, k: int = 4):
+        assert "dita-ot" in query.lower()
+        assert "conkeyref" in query.lower()
+        assert "branch-filtering" in query.lower()
+        assert " it" not in query.lower()
+        return [
+            {
+                "issue_number": 1234,
+                "title": "Branch filtering changes indirect reference resolution",
+                "url": "https://github.com/dita-ot/dita-ot/issues/1234",
+                "snippet": "A filtered branch can create a different effective key space for conkeyref resolution.",
+            }
+        ]
+
+    monkeypatch.setattr(chat_service, "generate_chat_stream_with_tools", fail_if_called)
+    monkeypatch.setattr("app.services.dita_ot_github_rag_service.retrieve_dita_ot_github_for_query", fake_retrieve)
+
+    session_id = chat_service.create_session()
+    db = SessionLocal()
+    try:
+        db.add(
+            ChatMessage(
+                id=str(uuid4()),
+                session_id=session_id,
+                role="user",
+                content="Why can a conkeyref resolve differently after branch filtering?",
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+
+        events = []
+        async for event in chat_service.chat_turn(
+            session_id,
+            "Give me any issues of dita ot related to it",
+            user_id="real-user-10",
+            tenant_id="kone",
+        ):
+            events.append(event)
+
+        assert any(
+            event.get("type") == "tool" and event.get("name") == "search_dita_ot_github_issues"
+            for event in events
+        )
+        text = "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+        assert "DITA-OT GitHub issue lookup" in text
+        assert "Branch filtering changes indirect reference resolution" in text
+        assert "No Jira issues matched" not in text
+        assert "dita ot it" not in text.lower()
+    finally:
+        db.close()
+        chat_service.delete_session(session_id)
+
+
+def test_dita_ot_issue_without_jira_does_not_route_to_jira_search():
+    assert not chat_service._is_direct_jira_search_request("Give me any issues of dita ot related to it")
+    assert not chat_service._is_direct_jira_search_request("Show DITA-OT GitHub issues about copy-to")
+    assert chat_service._is_direct_jira_search_request("Show Jira issues about conkeyref branch filtering")
 
 
 @pytest.mark.anyio

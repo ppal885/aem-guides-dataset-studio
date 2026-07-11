@@ -10,9 +10,9 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    /* Teal-600 — aligns chat shell, sidebar, and shadcn primary */
-    --primary: 173.4 80.4% 40%;
-    --primary-foreground: 210 40% 98%;
+    /* Neutral primary — Cursor-docs-style dark actions */
+    --primary: 24 9.8% 10%;
+    --primary-foreground: 0 0% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -23,36 +23,45 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 173.4 80.4% 40%;
+    --ring: 24 5.4% 63.9%;
     --radius: 0.5rem;
+    --app-header-h: 56px;
+    --app-mobile-nav-h: 0px;
+    --chat-page-height: calc(100dvh - var(--app-header-h) - var(--app-mobile-nav-h));
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 172.5 66% 50.4%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 20 14.3% 4.1%;
+    --foreground: 60 9.1% 97.8%;
+    --card: 24 9.8% 10%;
+    --card-foreground: 60 9.1% 97.8%;
+    --popover: 24 9.8% 10%;
+    --popover-foreground: 60 9.1% 97.8%;
+    --primary: 60 9.1% 97.8%;
+    --primary-foreground: 20 14.3% 4.1%;
+    --secondary: 24 5.7% 15.9%;
+    --secondary-foreground: 60 9.1% 97.8%;
+    --muted: 24 5.7% 15.9%;
+    --muted-foreground: 24 5.4% 63.9%;
+    --accent: 24 5.7% 15.9%;
+    --accent-foreground: 60 9.1% 97.8%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 24 5.7% 25.9%;
+    --input: 24 5.7% 25.9%;
+    --ring: 24 5.4% 63.9%;
+  }
+
+  @media (max-width: 767px) {
+    :root {
+      --app-mobile-nav-h: 41px;
+    }
   }
 }
 
 @layer base {
   * {
-    @apply border-slate-200;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
@@ -64,7 +73,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(to bottom right, #f8fafc 0%, #e2e8f0 100%);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -84,21 +96,72 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: hsl(var(--muted));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: hsl(var(--border));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+/* Cursor-docs-style page prose */
+.docs-prose h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+
+.docs-prose h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.docs-prose h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.docs-prose p,
+.docs-prose ul,
+.docs-prose ol {
+  font-size: 15px;
+  line-height: 1.65;
+  color: hsl(var(--muted-foreground));
+}
+
+.docs-prose a {
+  color: hsl(var(--foreground));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.docs-prose a:hover {
+  opacity: 0.85;
+}
+
+.docs-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
 }
 
 .chat-response-prose {
-  color: #0f172a;
+  color: hsl(var(--foreground));
   font-size: 0.96rem;
   line-height: 1.8;
 }
@@ -116,7 +179,7 @@ body {
 .chat-response-prose h3,
 .chat-response-prose h4 {
   margin: 1.35rem 0 0.75rem;
-  color: #020617;
+  color: hsl(var(--foreground));
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -157,36 +220,41 @@ body {
 }
 
 .chat-response-prose strong {
-  color: #020617;
+  color: hsl(var(--foreground));
   font-weight: 700;
 }
 
 .chat-response-prose a {
-  color: #1d4ed8;
+  color: #2563eb;
   font-weight: 600;
   text-decoration: underline;
-  text-decoration-color: rgba(29, 78, 216, 0.3);
+  text-decoration-color: rgba(37, 99, 235, 0.35);
   text-underline-offset: 0.22em;
 }
 
+.dark .chat-response-prose a {
+  color: #93c5fd;
+  text-decoration-color: rgba(147, 197, 253, 0.35);
+}
+
 .chat-response-prose a:hover {
-  color: #1e40af;
+  opacity: 0.9;
 }
 
 .chat-response-prose blockquote {
   border-left: 4px solid #60a5fa;
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(248, 250, 252, 0.95));
+  background: hsl(var(--muted) / 0.65);
   border-radius: 0 18px 18px 0;
   padding: 0.9rem 1rem;
-  color: #1e3a8a;
+  color: hsl(var(--foreground));
 }
 
 .chat-response-prose :not(pre) > code {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.8);
   border-radius: 0.55rem;
   padding: 0.18rem 0.45rem;
-  color: #0f172a;
+  color: hsl(var(--foreground));
   font-size: 0.88em;
 }
 
@@ -224,8 +292,8 @@ body {
 }
 
 .chat-response-prose th {
-  background: rgba(15, 23, 42, 0.05);
-  color: #0f172a;
+  background: hsl(var(--muted) / 0.85);
+  color: hsl(var(--foreground));
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -234,18 +302,17 @@ body {
 
 .chat-response-prose hr {
   border: 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  border-top: 1px solid hsl(var(--border));
   margin: 1.25rem 0;
 }
 
-/* ChatMarkdown custom heading accents (h2/h3 components) */
 .chat-section-heading {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   margin: 1.5rem 0 0.85rem !important;
   font-size: 1.2rem !important;
-  color: #020617;
+  color: hsl(var(--foreground));
 }
 
 .chat-section-accent {
@@ -264,7 +331,7 @@ body {
   gap: 0.5rem;
   margin: 1.15rem 0 0.65rem !important;
   font-size: 1.05rem !important;
-  color: #0f172a;
+  color: hsl(var(--foreground));
 }
 
 .chat-subsection-accent {

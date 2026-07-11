@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Brain, CheckCircle, Clock3, Database, Download, Loader2, RefreshCw, Settings, XCircle } from 'lucide-react';
+import { AlertTriangle, Brain, CheckCircle, Clock3, Database, Download, Loader2, RefreshCw, XCircle } from 'lucide-react';
+
+import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -241,16 +243,11 @@ export function SettingsPage() {
   }, [customUrlsText, loadReviewCenter, setActionBusy]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-8">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
-          <Settings className="h-6 w-6 text-slate-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Review Center</h1>
-          <p className="text-sm text-slate-600">Trusted-source health, learned prompt review, and indexing actions.</p>
-        </div>
-      </div>
+    <AppPageShell wide className="space-y-8">
+      <AppPageHeader
+        title="Review Center"
+        description="Trusted-source health, learned prompt review, and indexing actions."
+      />
 
       {loading ? (
         <Card>
@@ -582,6 +579,6 @@ export function SettingsPage() {
           </div>
         </>
       ) : null}
-    </div>
+    </AppPageShell>
   );
 }

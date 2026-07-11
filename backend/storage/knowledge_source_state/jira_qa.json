@@ -1,0 +1,107 @@
+{
+  "source_id": "jira_qa",
+  "last_operation": "reindex",
+  "last_successful_run": "2026-07-11T10:44:23.039332+00:00",
+  "last_error": null,
+  "failed_item_count": 0,
+  "failed_items": [],
+  "last_stats": {
+    "jira_total": 49712,
+    "keys_requested": 1000,
+    "keys_returned": 1000,
+    "indexed_issues": 1000,
+    "issues_indexed": 1000,
+    "issues_failed": 0,
+    "errors_count": 0,
+    "chunks": 5977,
+    "chunks_avg_per_indexed_issue": 5.977,
+    "sync_state": {
+      "last_successful_sync_time": "2020-01-24T09:44:12.000+0000",
+      "last_indexed_jira_key": "GUIDES-4337",
+      "total_indexed": 1000,
+      "failed_keys": []
+    },
+    "sync_state_id": "project:DXML",
+    "errors": [],
+    "collection": "jira_qa",
+    "batch_logs": [
+      {
+        "batch": 1,
+        "start_at": 0,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 2,
+        "start_at": 100,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 3,
+        "start_at": 200,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 4,
+        "start_at": 300,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 5,
+        "start_at": 400,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 6,
+        "start_at": 500,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 7,
+        "start_at": 600,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 8,
+        "start_at": 700,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 9,
+        "start_at": 800,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      },
+      {
+        "batch": 10,
+        "start_at": 900,
+        "fetched": 100,
+        "indexed": 100,
+        "failed": 0
+      }
+    ],
+    "pagination": {
+      "page_size": 100,
+      "start_at_final": 1000,
+      "issues_per_embed_batch": 32
+    },
+    "fallback": "backfill",
+    "message": "No prior sync state; ran backfill for up to 1000 issues instead of incremental."
+  }
+}

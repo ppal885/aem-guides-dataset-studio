@@ -11,13 +11,13 @@ export function SuggestedFollowups({ followups, onSelect, className }: Suggested
 
   return (
     <div className={`flex flex-wrap gap-2 ${className ?? ''}`}>
-      <span className="self-center text-[11px] font-medium text-slate-400">Try next:</span>
+      <span className="self-center text-[11px] font-medium text-muted-foreground">Try next:</span>
       {followups.map((f, i) => (
         <button
           key={i}
           type="button"
           onClick={() => onSelect(f.text)}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:bg-slate-100"
+          className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
           title={f.text}
         >
           {f.label}

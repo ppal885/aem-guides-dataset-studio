@@ -1,38 +1,17 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response
-from pydantic import BaseModel, Field
 from app.core.auth import UserIdentity, CurrentUser
 from app.db.session import Session, db_session
 from app.jobs import crud
 from app.storage import get_storage
-from app.services.aem_upload_service import get_upload_service
 import zipfile
 import os
-import tempfile
-import shutil
 from io import BytesIO
 from typing import Optional
 from pathlib import Path
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-
-class AemUploadRequest(BaseModel):
-    """Request model for AEM upload.
-
-    Supports two auth modes:
-    - **Basic Auth**: provide ``username`` + ``password`` (AEM on-premise / AMS)
-    - **Bearer Token**: provide ``access_token`` from AEM Developer Console (AEM Cloud Service)
-
-    If ``access_token`` is supplied it takes precedence over username/password.
-    """
-    aem_base_url: str = Field(..., description="AEM instance base URL")
-    target_path: str = Field(..., description="Target path in AEM (e.g., 'content/dam/Priyanka_Perf/')")
-    username: str = Field(default="", description="AEM username (Basic Auth — on-premise / AMS)")
-    password: str = Field(default="", description="AEM password (Basic Auth — on-premise / AMS)")
-    access_token: str = Field(default="", description="Bearer token from AEM Developer Console (Cloud Service)")
-    max_concurrent: int = Field(default=20, ge=1, le=100, description="Maximum concurrent uploads")
-    max_upload_files: int = Field(default=70000, ge=1, description="Maximum files to upload")
 
 @router.get("/{job_id}/download")
 def download_dataset(
@@ -417,214 +396,9 @@ def _search_files(zip_bytes: bytes, query: str, file_type: Optional[str] = None)
 
 
 @router.post("/{job_id}/upload-to-aem")
-def upload_dataset_to_aem(
-    job_id: str,
-    upload_request: AemUploadRequest,
-    user: UserIdentity = CurrentUser,
-    session: Session = Depends(db_session),
-):
-    """Upload dataset to AEM instance."""
-    from app.core.structured_logging import get_structured_logger
-    logger = get_structured_logger(__name__)
-    
-    job = crud.get_job(session, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    if job.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    storage = get_storage()
-    
-    if not storage.exists(job_id):
-        logger.warning_structured(
-            "Upload requested but dataset not found",
-            extra_fields={"job_id": job_id}
-        )
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset not found. Please ensure the job has completed successfully."
-        )
-    
-    source_path = str(storage.get_job_path(job_id))
-    temp_extract_dir = None
-    
-    # Ensure we're uploading a directory, not a zip file
-    # If source_path is a zip file, extract it first
-    if os.path.isfile(source_path) and source_path.endswith('.zip'):
-        logger.info_structured(
-            "Zip file detected, extracting before upload",
-            extra_fields={"job_id": job_id, "zip_path": source_path}
-        )
-        try:
-            temp_extract_dir = tempfile.mkdtemp(prefix=f"aem_upload_{job_id}_")
-            with zipfile.ZipFile(source_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_dir)
-            source_path = temp_extract_dir
-            logger.info_structured(
-                "Zip file extracted successfully",
-                extra_fields={"job_id": job_id, "extract_dir": temp_extract_dir}
-            )
-        except Exception as e:
-            logger.error_structured(
-                "Failed to extract zip file",
-                extra_fields={
-                    "job_id": job_id,
-                    "zip_path": source_path,
-                    "error": str(e)
-                },
-                exc_info=True
-            )
-            if temp_extract_dir and os.path.exists(temp_extract_dir):
-                shutil.rmtree(temp_extract_dir, ignore_errors=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to extract zip file: {str(e)}"
-            )
-    
-    # Validate that source_path is a directory
-    if not os.path.isdir(source_path):
-        logger.error_structured(
-            "Source path is not a directory",
-            extra_fields={"job_id": job_id, "source_path": source_path}
-        )
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        raise HTTPException(
-            status_code=400,
-            detail="Source path must be a directory. Only folder contents are uploaded, not zip files."
-        )
-    
-    # Validate that at least one auth method is provided
-    has_basic = bool(upload_request.username and upload_request.password)
-    has_token = bool(upload_request.access_token)
-    if not has_basic and not has_token:
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        raise HTTPException(
-            status_code=400,
-            detail="Authentication required. Provide either username+password (AEM on-premise) or access_token (AEM Cloud Service)."
-        )
-
-    try:
-        try:
-            upload_service = get_upload_service()
-        except FileNotFoundError as e:
-            # Clean up temp directory before re-raising
-            if temp_extract_dir and os.path.exists(temp_extract_dir):
-                shutil.rmtree(temp_extract_dir, ignore_errors=True)
-            logger.error_structured(
-                "AEM upload service initialization failed",
-                extra_fields={
-                    "job_id": job_id,
-                    "error": str(e)
-                }
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Upload service not available: {str(e)}"
-            )
-
-        result = upload_service.upload_dataset(
-            source_path=source_path,
-            aem_base_url=upload_request.aem_base_url,
-            target_path=upload_request.target_path,
-            username=upload_request.username,
-            password=upload_request.password,
-            access_token=upload_request.access_token,
-            max_concurrent=upload_request.max_concurrent,
-            max_upload_files=upload_request.max_upload_files
-        )
-        
-        # Clean up temporary extraction directory if it was created
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            try:
-                shutil.rmtree(temp_extract_dir, ignore_errors=True)
-                logger.info_structured(
-                    "Cleaned up temporary extraction directory",
-                    extra_fields={"job_id": job_id, "temp_dir": temp_extract_dir}
-                )
-            except Exception as cleanup_error:
-                logger.warning_structured(
-                    "Failed to clean up temporary directory",
-                    extra_fields={
-                        "job_id": job_id,
-                        "temp_dir": temp_extract_dir,
-                        "error": str(cleanup_error)
-                    }
-                )
-        
-        if result.get("success"):
-            logger.info_structured(
-                "AEM upload completed successfully",
-                extra_fields={
-                    "job_id": job_id,
-                    "duration": result.get("duration"),
-                    "aem_base_url": upload_request.aem_base_url,
-                    "target_path": upload_request.target_path
-                }
-            )
-            return {
-                "success": True,
-                "job_id": job_id,
-                "message": result.get("message", "Upload completed successfully"),
-                "duration": result.get("duration")
-            }
-        else:
-            # Clean up temporary extraction directory before returning error
-            if temp_extract_dir and os.path.exists(temp_extract_dir):
-                try:
-                    shutil.rmtree(temp_extract_dir, ignore_errors=True)
-                except Exception:
-                    pass
-            error_message = result.get("error", "Unknown error")
-            logger.error_structured(
-                "AEM upload failed",
-                extra_fields={
-                    "job_id": job_id,
-                    "error": error_message,
-                    "aem_base_url": upload_request.aem_base_url
-                }
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Upload failed: {error_message}"
-            )
-    
-    except HTTPException:
-        # Clean up temp directory before re-raising
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        raise
-    except FileNotFoundError as e:
-        # Clean up temp directory before re-raising
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        logger.error_structured(
-            "AEM upload service error - file not found",
-            extra_fields={
-                "job_id": job_id,
-                "error": str(e)
-            }
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Upload service error: {str(e)}"
-        )
-    except Exception as e:
-        # Clean up temp directory before re-raising
-        if temp_extract_dir and os.path.exists(temp_extract_dir):
-            shutil.rmtree(temp_extract_dir, ignore_errors=True)
-        logger.error_structured(
-            "AEM upload endpoint error",
-            extra_fields={
-                "job_id": job_id,
-                "error_type": type(e).__name__,
-                "error_message": str(e)
-            },
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to upload dataset: {str(e)}"
-        )
+def upload_dataset_to_aem(job_id: str, user: UserIdentity = CurrentUser):
+    """Legacy AEM dataset upload — removed from the product."""
+    raise HTTPException(
+        status_code=410,
+        detail="AEM dataset upload is no longer available. Download the ZIP from Jobs or Explorer instead.",
+    )

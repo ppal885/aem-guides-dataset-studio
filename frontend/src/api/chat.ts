@@ -338,38 +338,6 @@ export interface ChatApprovalState {
   allowed_responses?: string[];
 }
 
-export interface ChatToolSchemaProperty {
-  type?: string;
-  description?: string;
-  enum?: string[];
-  items?: { type?: string };
-}
-
-export interface ChatToolSchema {
-  type?: string;
-  properties?: Record<string, ChatToolSchemaProperty>;
-  required?: string[];
-}
-
-export interface ChatToolCatalogItem {
-  name: string;
-  slash_alias: string;
-  title: string;
-  description: string;
-  category: string;
-  args_schema: ChatToolSchema;
-  approval_required: boolean;
-  read_only: boolean;
-  enabled: boolean;
-  primary_arg?: string;
-}
-
-export interface ChatToolIntent {
-  name: string;
-  args: Record<string, unknown>;
-  source: 'slash';
-}
-
 export type AgentState = 'analyzing' | 'tool_calling' | 'synthesizing' | 'retrying';
 
 export interface SuggestedFollowup {
@@ -378,7 +346,20 @@ export interface SuggestedFollowup {
 }
 
 export interface SSEEvent {
-  type: 'chunk' | 'done' | 'tool' | 'tool_start' | 'error' | 'grounding' | 'plan' | 'approval_required' | 'step_status';
+  type:
+    | 'chunk'
+    | 'done'
+    | 'tool'
+    | 'tool_start'
+    | 'error'
+    | 'grounding'
+    | 'plan'
+    | 'approval_required'
+    | 'step_status'
+    | 'thinking'
+    | 'state'
+    | 'job_progress'
+    | 'suggested_followups';
   content?: string;
   message?: string;
   name?: string;
@@ -389,13 +370,22 @@ export interface SSEEvent {
   approval?: ChatApprovalState;
   execution?: ChatAgentExecution;
   step?: ChatAgentStep;
+  state?: AgentState;
+  tools?: string[];
+  round?: number;
+  max_rounds?: number;
+  job_id?: string;
+  recipe_type?: string;
+  status?: string;
+  download_url?: string;
+  followups?: SuggestedFollowup[];
 }
 
-function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
+async function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): Promise<void> {
   if (event.type === 'chunk' && event.content != null) {
     callbacks.onChunk?.(event.content);
   } else if (event.type === 'done') {
-    callbacks.onDone?.();
+    await callbacks.onDone?.();
   } else if (event.type === 'tool' && event.name != null) {
     callbacks.onTool?.(event.name, event.result);
   } else if (event.type === 'tool_start' && event.name != null) {
@@ -408,6 +398,24 @@ function dispatchSseEvent(event: SSEEvent, callbacks: SseCallbacks): void {
     callbacks.onApprovalRequired?.(event.plan, event.approval);
   } else if (event.type === 'step_status' && event.execution != null) {
     callbacks.onStepStatus?.(event.execution, event.step);
+  } else if (event.type === 'thinking' && event.content != null) {
+    callbacks.onThinking?.(event.content);
+  } else if (event.type === 'state' && event.state != null) {
+    callbacks.onState?.(event.state, event.message, {
+      tools: event.tools,
+      round: event.round,
+      maxRounds: event.max_rounds,
+    });
+  } else if (event.type === 'job_progress' && event.job_id != null) {
+    callbacks.onJobProgress?.({
+      jobId: event.job_id,
+      name: event.name ?? '',
+      recipeType: event.recipe_type ?? '',
+      status: event.status ?? 'pending',
+      downloadUrl: event.download_url ?? '',
+    });
+  } else if (event.type === 'suggested_followups' && event.followups != null) {
+    callbacks.onSuggestedFollowups?.(event.followups);
   } else if (event.type === 'error') {
     callbacks.onError?.(event.message ?? 'Unknown error');
   }
@@ -429,13 +437,17 @@ export interface JobProgressInfo {
 
 export interface SseCallbacks {
   onChunk?: (content: string) => void;
-  onDone?: () => void;
+  onDone?: () => void | Promise<void>;
   onTool?: (name: string, result: unknown) => void;
   onToolStart?: (name: string, runId?: string) => void;
   onGrounding?: (grounding: ChatGrounding) => void;
   onPlan?: (plan: ChatAgentPlan) => void;
   onApprovalRequired?: (plan: ChatAgentPlan, approval: ChatApprovalState) => void;
   onStepStatus?: (execution: ChatAgentExecution, step?: ChatAgentStep) => void;
+  onThinking?: (content: string) => void;
+  onState?: (state: AgentState, message?: string, info?: AgentStateInfo) => void;
+  onJobProgress?: (progress: JobProgressInfo) => void;
+  onSuggestedFollowups?: (followups: SuggestedFollowup[]) => void;
   onError?: (message: string) => void;
 }
 
@@ -463,11 +475,11 @@ async function readChatSseBody(reader: ReadableStreamDefaultReader<Uint8Array>, 
   let sawTerminal = false;
   let reading = true;
 
-  const dispatch = (event: SSEEvent) => {
+  const dispatch = async (event: SSEEvent) => {
     if (event.type === 'done' || event.type === 'error') {
       sawTerminal = true;
     }
-    dispatchSseEvent(event, callbacks);
+    await dispatchSseEvent(event, callbacks);
   };
 
   // Stream until the browser closes the reader.
@@ -482,16 +494,16 @@ async function readChatSseBody(reader: ReadableStreamDefaultReader<Uint8Array>, 
     buffer = lines.pop() || '';
     for (const line of lines) {
       const event = parseSseDataPayload(line);
-      if (event) dispatch(event);
+      if (event) await dispatch(event);
     }
   }
   if (buffer.length > 0) {
     const event = parseSseDataPayload(buffer);
-    if (event) dispatch(event);
+    if (event) await dispatch(event);
   }
 
   if (!sawTerminal) {
-    callbacks.onDone?.();
+    await callbacks.onDone?.();
   }
 }
 
@@ -606,14 +618,6 @@ export interface SendMessageOptions {
   context?: ChatContext;
   /** When true, server appends human-precision rules (concise, less filler). Omit to use server env default. */
   humanPrompts?: boolean;
-  toolIntent?: ChatToolIntent;
-  attachments?: {
-    imageFile?: File | null;
-    referenceDitaFile?: File | null;
-  };
-  generationOptions?: ChatDitaGenerationOptions;
-  /** Optional Jira/issue text merged into screenshot authoring (server length-capped). */
-  jiraContext?: string | null;
   /** Abort ongoing stream (Stop button). */
   signal?: AbortSignal;
 }
@@ -624,87 +628,19 @@ export async function sendMessage(
   callbacks: SseCallbacks,
   options?: SendMessageOptions
 ): Promise<void> {
-  const imageFile = options?.attachments?.imageFile ?? null;
-  const referenceDitaFile = options?.attachments?.referenceDitaFile ?? null;
-  const hasAuthoringAttachments = Boolean(imageFile);
-
-  let res: Response;
-  if (hasAuthoringAttachments) {
-    const formData = new FormData();
-    formData.append('content', content);
-    if (options?.context) {
-      formData.append('context', JSON.stringify(options.context));
-    }
-    if (options?.humanPrompts !== undefined) {
-      formData.append('human_prompts', String(options.humanPrompts));
-    }
-    if (options?.generationOptions?.dita_type) {
-      formData.append('dita_type', String(options.generationOptions.dita_type));
-    }
-    if (options?.generationOptions?.save_path) {
-      formData.append('save_path', String(options.generationOptions.save_path));
-    }
-    if (options?.generationOptions?.file_name) {
-      formData.append('file_name', String(options.generationOptions.file_name));
-    }
-    if (options?.generationOptions?.strict_validation !== undefined) {
-      formData.append('strict_validation', String(options.generationOptions.strict_validation));
-    }
-    if (options?.generationOptions?.style_strictness) {
-      formData.append('style_strictness', String(options.generationOptions.style_strictness));
-    }
-    if (options?.generationOptions?.preserve_prolog !== undefined) {
-      formData.append('preserve_prolog', String(options.generationOptions.preserve_prolog));
-    }
-    if (options?.generationOptions?.xref_placeholders !== undefined) {
-      formData.append('xref_placeholders', String(options.generationOptions.xref_placeholders));
-    }
-    if (options?.generationOptions?.auto_ids !== undefined) {
-      formData.append('auto_ids', String(options.generationOptions.auto_ids));
-    }
-    if (options?.generationOptions?.output_mode) {
-      formData.append('output_mode', String(options.generationOptions.output_mode));
-    }
-    if (options?.generationOptions?.authoring_pattern) {
-      formData.append('authoring_pattern', String(options.generationOptions.authoring_pattern));
-    }
-    if (options?.generationOptions?.preserve_reference_doctype !== undefined) {
-      formData.append('preserve_reference_doctype', String(options.generationOptions.preserve_reference_doctype));
-    }
-    if (options?.generationOptions?.screenshot_deliverable) {
-      formData.append('screenshot_deliverable', String(options.generationOptions.screenshot_deliverable));
-    }
-    const jc = (options?.jiraContext ?? '').trim();
-    if (jc) {
-      formData.append('jira_context', jc);
-    }
-    formData.append('image_attachment', imageFile);
-    if (referenceDitaFile) {
-      formData.append('reference_dita', referenceDitaFile);
-    }
-    res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages/authoring`), {
-      method: 'POST',
-      body: formData,
-      signal: options?.signal,
-    });
-  } else {
-    const body: Record<string, unknown> = {
-      content,
-      context: options?.context ?? undefined,
-    };
-    if (options?.humanPrompts !== undefined) {
-      body.human_prompts = options.humanPrompts;
-    }
-    if (options?.toolIntent) {
-      body.tool_intent = options.toolIntent;
-    }
-    res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: options?.signal,
-    });
+  const body: Record<string, unknown> = {
+    content,
+    context: options?.context ?? undefined,
+  };
+  if (options?.humanPrompts !== undefined) {
+    body.human_prompts = options.humanPrompts;
   }
+  const res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: options?.signal,
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail || res.statusText);
@@ -720,28 +656,6 @@ export async function sendMessage(
   }
 }
 
-export async function listChatTools(): Promise<{ tools: ChatToolCatalogItem[] }> {
-  return fetchJson(apiUrl('/api/v1/chat/tools'));
-}
-
-/** JSON body shape for POST /regenerate (snake_case for FastAPI). */
-function generationOptionsToApiPayload(opts: ChatDitaGenerationOptions): Record<string, unknown> {
-  return {
-    dita_type: opts.dita_type ?? null,
-    save_path: opts.save_path ?? null,
-    file_name: opts.file_name ?? null,
-    strict_validation: opts.strict_validation,
-    style_strictness: opts.style_strictness,
-    preserve_prolog: opts.preserve_prolog,
-    xref_placeholders: opts.xref_placeholders,
-    auto_ids: opts.auto_ids,
-    output_mode: opts.output_mode,
-    authoring_pattern: opts.authoring_pattern,
-    preserve_reference_doctype: opts.preserve_reference_doctype,
-    screenshot_deliverable: opts.screenshot_deliverable,
-  };
-}
-
 export async function regenerateAssistant(
   sessionId: string,
   callbacks: SseCallbacks,
@@ -751,9 +665,6 @@ export async function regenerateAssistant(
     context: options?.context ?? undefined,
     human_prompts: options?.humanPrompts,
   };
-  if (options?.generationOptions) {
-    body.generation_options = generationOptionsToApiPayload(options.generationOptions);
-  }
   const res = await fetch(apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/regenerate`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

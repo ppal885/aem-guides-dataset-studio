@@ -51,10 +51,6 @@ Calls `list_jobs` with default limit of 10.
 Calls `get_job_status` with `job_id = <word after /job_status>`.
 Example: `/job_status abc-123-def` → calls get_job_status(job_id="abc-123-def")
 
-### `/screenshot_dita <image_path>`
-Calls `generate_dita_from_screenshot` with `image_path = <path after /screenshot_dita>`.
-Example: `/screenshot_dita C:/Users/prashantp/Desktop/ui.png` → calls generate_dita_from_screenshot(image_path="C:/Users/prashantp/Desktop/ui.png")
-
 ---
 
 ## Dispatch rules

@@ -1,13 +1,13 @@
 {
   "source_id": "aem_guides",
-  "last_operation": "reindex",
-  "last_successful_run": "2026-06-17T10:40:51.946018+00:00",
+  "last_operation": "crawl",
+  "last_successful_run": "2026-07-11T15:31:54.826128+00:00",
   "last_error": null,
   "failed_item_count": 0,
   "failed_items": [],
   "last_stats": {
-    "pages_crawled": 410,
-    "chunks_stored": 3566,
+    "pages_crawled": 1,
+    "chunks_stored": 5,
     "errors": []
   }
 }

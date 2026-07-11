@@ -40,10 +40,10 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
 
   if (!status) {
     return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+      <div className="rounded-lg border border-border bg-muted p-4 text-sm">
         <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
-          <span className="text-blue-800">Connecting...</span>
+          <Loader2 className="h-4 w-4 animate-spin text-teal-600 dark:text-teal-400" />
+          <span className="text-foreground">Connecting...</span>
         </div>
       </div>
     );
@@ -51,7 +51,7 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
 
   if (status.status === 'failed') {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
         <strong>Generation failed:</strong> {status.error || 'Unknown error'}
       </div>
     );
@@ -60,14 +60,14 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
   if (status.status === 'completed' && status.result?.download_url) {
     const url = apiUrl(status.result.download_url);
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm">
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-green-800 font-medium">DITA bundle ready</span>
+          <span className="font-medium text-emerald-900 dark:text-emerald-100">DITA bundle ready</span>
           <a
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="rounded bg-green-600 px-3 py-1.5 text-white hover:bg-green-700"
+            className="rounded bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
           >
             Download
           </a>
@@ -78,10 +78,10 @@ export function GenerationProgressCard({ runId, onComplete }: GenerationProgress
 
   const stageLabel = status.stage ? STAGE_LABELS[status.stage] || status.message || status.stage : 'Processing...';
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+    <div className="rounded-lg border border-border bg-muted p-4 text-sm">
       <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
-        <span className="text-blue-800">{stageLabel}</span>
+        <Loader2 className="h-4 w-4 animate-spin text-teal-600 dark:text-teal-400" />
+        <span className="text-foreground">{stageLabel}</span>
       </div>
     </div>
   );

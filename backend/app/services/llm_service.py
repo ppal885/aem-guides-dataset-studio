@@ -635,10 +635,12 @@ def format_llm_error_for_user(
 
 def _is_langsmith_tracing_enabled() -> bool:
     """Return True when LangSmith tracing should be used."""
-    return (
+    api_key = bool(os.getenv("LANGSMITH_API_KEY", "").strip())
+    tracing = (
         os.getenv("LANGSMITH_TRACING", "").lower() in ("true", "1", "yes")
-        and bool(os.getenv("LANGSMITH_API_KEY", "").strip())
+        or os.getenv("LANGCHAIN_TRACING_V2", "").lower() in ("true", "1", "yes")
     )
+    return api_key and tracing
 
 
 def _wrap_for_tracing(client):

@@ -419,6 +419,9 @@
     "https://www.dita-ot.org/dev/parameters/dita-command-arguments",
     "https://www.dita-ot.org/dev/topics/plugins-installing",
     "https://www.dita-ot.org/dev/topics/pdf-customization-approaches",
+    "https://www.dita-ot.org/dev/topics/sample-pdf-theme",
+    "https://www.dita-ot.org/dev/resources/theme/variables",
+    "https://www.dita-ot.org/dev/resources/theme/extending-themes",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts"
   ],
   "recursive": {

@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Download, Search, Filter, Loader2, CheckCircle2, XCircle, Clock, PlayCircle, Copy, ShieldCheck, FileCode2, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
+import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
 import { apiUrl, canonicalJobsRouteErrorMessage } from '@/utils/api';
 
 interface Job {
@@ -330,13 +331,11 @@ export function JobHistoryPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="border-l-4 border-teal-500 pl-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Job History</h1>
-        <p className="mt-2 text-slate-600">
-          View and manage all your dataset generation jobs. Total: {totalCount} jobs
-        </p>
-      </div>
+    <AppPageShell wide className="space-y-8">
+      <AppPageHeader
+        title="Job History"
+        description={`View and manage dataset generation jobs. Total: ${totalCount} jobs`}
+      />
 
       {/* Search and Filters */}
       <Card>
@@ -530,7 +529,7 @@ export function JobHistoryPage() {
           )}
         </div>
       )}
-    </div>
+    </AppPageShell>
   );
 }
 

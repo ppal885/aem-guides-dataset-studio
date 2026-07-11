@@ -34,6 +34,15 @@ from app.services.vector_store_service import (
 
 LEARNED_QA_SEED_PATH = Path(__file__).resolve().parent.parent / "storage" / "learned_qa_seed.json"
 LEARNED_QA_EXPORT_FILENAME = "learned_qa_pairs.json"
+LEARNED_QA_FALLBACK_MIN_SCORE = 0.18
+
+_CHAT_HUMAN_PREFIX_PATTERNS = (
+    re.compile(r"^quick question for our docs team:\s*", re.IGNORECASE),
+    re.compile(r"^i'?m trying to explain this to a new writer\s*[—:-]\s*", re.IGNORECASE),
+    re.compile(r"^can you walk me through this like a senior tech writer would\?\s*", re.IGNORECASE),
+    re.compile(r"^we hit this in a customer map today\.\s*", re.IGNORECASE),
+    re.compile(r"^need a senior answer here\s*[—:-]\s*", re.IGNORECASE),
+)
 LEARNED_QA_ANSWER_STYLE = "senior_technical_docs"
 LEARNED_QA_NEAR_DUP_THRESHOLD = 0.72
 LEARNED_QA_DEFAULT_K = 4
@@ -69,6 +78,127 @@ def normalize_prompt(prompt: str) -> str:
     text = re.sub(r"\s+", " ", str(prompt or "").strip().lower())
     text = re.sub(r"[“”‘’`\"]", "", text)
     return text
+
+
+def strip_humanized_chat_prefix(prompt: str) -> str:
+    """Remove conversational wrappers so routing/retrieval match seed prompts."""
+    text = str(prompt or "").strip()
+    if not text:
+        return ""
+    for pattern in _CHAT_HUMAN_PREFIX_PATTERNS:
+        updated = pattern.sub("", text).strip()
+        if updated:
+            text = updated
+    return text
+
+
+def _match_learned_qa_from_seed(query: str) -> dict[str, Any] | None:
+    """Fast lexical match against the bundled seed corpus (no Chroma sync)."""
+    text = strip_humanized_chat_prefix(query)
+    if not text:
+        return None
+    try:
+        items = _read_seed_items()
+    except Exception:
+        return None
+    query_norm = normalize_prompt(text)
+    dita_ot_explicit = bool(
+        re.search(
+            r"\b(dita-ot|dita open toolkit)\b.{0,80}\b("
+            r"preprocess(?:ing)?|module|copy-to|conrefpush|profile step|command arguments?"
+            r")\b|\b("
+            r"preprocess(?:ing)?|copy-to preprocess|conrefpush|profile step"
+            r")\b.{0,80}\b(dita-ot|dita open toolkit)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    for item in items:
+        prompt_norm = normalize_prompt(str(item.get("prompt") or ""))
+        if prompt_norm and prompt_norm == query_norm:
+            return {**item, "score": 1.0}
+    best_score = 0.0
+    best_item: dict[str, Any] | None = None
+    for item in items:
+        prompt = str(item.get("prompt") or "")
+        prompt_norm = normalize_prompt(prompt)
+        if not prompt_norm:
+            continue
+        overlap = _jaccard_similarity(prompt_norm, query_norm)
+        if prompt_norm in query_norm or query_norm in prompt_norm:
+            overlap = max(overlap, 0.95)
+        if overlap > best_score:
+            best_score = overlap
+            best_item = item
+    if not best_item:
+        return None
+    if best_score >= 0.95 or normalize_prompt(str(best_item.get("prompt") or "")) in query_norm:
+        return {**best_item, "score": round(best_score, 4)}
+    if dita_ot_explicit:
+        return None
+    if best_score >= 0.35:
+        return {**best_item, "score": round(best_score, 4)}
+    return None
+
+
+def _format_learned_qa_answer(answer: str) -> str:
+    text = str(answer or "").strip()
+    if not text:
+        return ""
+    if not text.lstrip().startswith("#"):
+        return f"## Short answer\n{text}"
+    return text
+
+
+def try_build_learned_qa_fallback_answer(query: str) -> str:
+    """Return a trusted learned Q&A answer when retrieval confidence is high."""
+    text = strip_humanized_chat_prefix(query)
+    seed_hit = _match_learned_qa_from_seed(query)
+    if seed_hit:
+        return _format_learned_qa_answer(str(seed_hit.get("final_answer") or ""))
+
+    if not text:
+        return ""
+
+    dita_ot_explicit = bool(
+        re.search(
+            r"\b(dita-ot|dita open toolkit)\b.{0,80}\b("
+            r"preprocess(?:ing)?|module|copy-to|conrefpush|profile step|command arguments?"
+            r")\b|\b("
+            r"preprocess(?:ing)?|copy-to preprocess|conrefpush|profile step"
+            r")\b.{0,80}\b(dita-ot|dita open toolkit)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if dita_ot_explicit:
+        return ""
+
+    if re.search(
+        r"\b(dita command|dita\s+--|--input|--format|--output|--filter)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return ""
+
+    rows = retrieve_learned_qa(text, k=2)
+    if not rows:
+        return ""
+    top = rows[0]
+    answer = str(top.get("final_answer") or "").strip()
+    if len(answer) < 80:
+        return ""
+    score = float(top.get("score") or 0.0)
+    top_prompt = normalize_prompt(str(top.get("prompt") or ""))
+    query_norm = normalize_prompt(text)
+    prompt_overlap = _jaccard_similarity(top_prompt, query_norm) if top_prompt and query_norm else 0.0
+    if score >= 0.45 or prompt_overlap >= 0.28:
+        return _format_learned_qa_answer(answer)
+    if score >= LEARNED_QA_FALLBACK_MIN_SCORE and (
+        top_prompt in query_norm or query_norm in top_prompt or prompt_overlap >= 0.18
+    ):
+        return _format_learned_qa_answer(answer)
+    return ""
 
 
 def prompt_hash(normalized_prompt: str) -> str:
@@ -753,6 +883,57 @@ def capture_learned_candidate_from_chat_feedback(
         status="pending_review",
         answer_style=LEARNED_QA_ANSWER_STYLE,
         accepted_at=accepted_at,
+        session_id=session_id,
+        message_id=message_id,
+    )
+    session.commit()
+    return {
+        "entry": _serialize_entry(entry),
+        "created": created,
+        "dedupe_kind": dedupe_kind,
+    }
+
+
+def capture_rejected_learned_from_chat_feedback(
+    session: Session,
+    *,
+    session_id: str,
+    message_id: str,
+    rating: str,
+) -> dict[str, Any] | None:
+    """Record a rejected learned-QA stub on thumbs-down for dedupe (not indexed)."""
+    if rating != "down":
+        return None
+    assistant = (
+        session.query(ChatMessage)
+        .filter(ChatMessage.id == message_id, ChatMessage.session_id == session_id, ChatMessage.role == "assistant")
+        .first()
+    )
+    if assistant is None:
+        return None
+    user_message = (
+        session.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.role == "user",
+            ChatMessage.created_at <= assistant.created_at,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .first()
+    )
+    if user_message is None:
+        return None
+    prompt = str(user_message.content or "").strip()
+    final_answer = str(assistant.content or "").strip()
+    if not prompt:
+        return None
+    entry, created, dedupe_kind = upsert_learned_prompt_entry(
+        session,
+        prompt=prompt,
+        final_answer=final_answer or "(rejected answer)",
+        source_type="chat_feedback_rejected",
+        status="rejected",
+        answer_style=LEARNED_QA_ANSWER_STYLE,
         session_id=session_id,
         message_id=message_id,
     )

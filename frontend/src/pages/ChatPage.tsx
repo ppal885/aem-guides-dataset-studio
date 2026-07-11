@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { ChatSidebar } from '@/components/Chat/ChatSidebar';
 import { ChatMessageList } from '@/components/Chat/ChatMessageList';
 import { ChatInput } from '@/components/Chat/ChatInput';
 import {
   createSession,
   listSessions,
-  listChatTools,
   getSession,
   deleteSession,
   deleteAllSessions,
@@ -16,12 +15,9 @@ import {
   regenerateAssistant,
   type ChatSession,
   type ChatMessage,
-  type ChatDitaGenerationOptions,
   type ChatAgentExecution,
   type ChatAgentPlan,
   type ChatApprovalState,
-  type ChatToolCatalogItem,
-  type ChatToolIntent,
   type AgentState,
   type AgentStateInfo,
   type JobProgressInfo,
@@ -29,8 +25,6 @@ import {
 } from '@/api/chat';
 import { apiUrl } from '@/utils/api';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
-import type { AuthoringVisualContext } from '@/components/Authoring/AuthoringGenerationSplitReview';
-import type { ChatToolsStatus } from '@/components/Chat/toolCatalogStateUtils';
 import { resolvePendingWorkflowGuideWithKey } from '@/components/Chat/pendingWorkflowUtils';
 
 const HUMAN_PROMPTS_STORAGE_KEY = 'chatHumanPrompts';
@@ -76,15 +70,7 @@ export function ChatPage() {
   const [suggestedFollowups, setSuggestedFollowups] = useState<SuggestedFollowup[]>([]);
   const [humanPrompts, setHumanPrompts] = useState<boolean>(readHumanPromptsDefault);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [chatTools, setChatTools] = useState<ChatToolCatalogItem[]>([]);
-  const [chatToolsStatus, setChatToolsStatus] = useState<ChatToolsStatus>('idle');
-  const [chatToolsErrorMessage, setChatToolsErrorMessage] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const chatToolsLoadPromiseRef = useRef<Promise<void> | null>(null);
-  const previousBackendReachableRef = useRef<boolean | null>(null);
-  const lastAuthoringRegenOptionsRef = useRef<ChatDitaGenerationOptions | null>(null);
-  const authoringPreviewObjectUrlRef = useRef<string | null>(null);
-  const [authoringVisualContext, setAuthoringVisualContext] = useState<AuthoringVisualContext | null>(null);
 
   const { guide: rawPendingWorkflowGuide, sourceKey: pendingWorkflowSourceKey } = useMemo(
     () => resolvePendingWorkflowGuideWithKey(messages, streamingToolResults),
@@ -110,24 +96,6 @@ export function ChatPage() {
       setDismissedPendingWorkflowKey(null);
     }
   }, [rawPendingWorkflowGuide, pendingWorkflowSourceKey]);
-
-  const revokeAuthoringScreenshotPreview = useCallback(() => {
-    if (authoringPreviewObjectUrlRef.current) {
-      URL.revokeObjectURL(authoringPreviewObjectUrlRef.current);
-      authoringPreviewObjectUrlRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      revokeAuthoringScreenshotPreview();
-    };
-  }, [revokeAuthoringScreenshotPreview]);
-
-  useEffect(() => {
-    revokeAuthoringScreenshotPreview();
-    setAuthoringVisualContext(null);
-  }, [currentSession?.id, revokeAuthoringScreenshotPreview]);
 
   useEffect(() => {
     try {
@@ -171,36 +139,6 @@ export function ChatPage() {
     }
   }, []);
 
-  const loadChatTools = useCallback(async () => {
-    if (chatToolsLoadPromiseRef.current) {
-      return chatToolsLoadPromiseRef.current;
-    }
-
-    setChatToolsStatus('loading');
-    setChatToolsErrorMessage(null);
-
-    const request = (async () => {
-      try {
-        const { tools } = await listChatTools();
-        setChatTools(tools || []);
-        setChatToolsStatus('ready');
-        setChatToolsErrorMessage(null);
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message.trim()
-            ? error.message.trim()
-            : 'The backend responded, but the tool catalog request failed.';
-        setChatToolsStatus('error');
-        setChatToolsErrorMessage(message);
-      } finally {
-        chatToolsLoadPromiseRef.current = null;
-      }
-    })();
-
-    chatToolsLoadPromiseRef.current = request;
-    return request;
-  }, []);
-
   /** Probe on mount; keep retrying every 4s until the API responds (covers slow backend / start order). */
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
@@ -225,34 +163,15 @@ export function ChatPage() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         void checkBackend();
-        if (chatToolsStatus !== 'ready') {
-          void loadChatTools();
-        }
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [chatToolsStatus, checkBackend, loadChatTools]);
+  }, [checkBackend]);
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
-
-  useEffect(() => {
-    void loadChatTools();
-  }, [loadChatTools]);
-
-  useEffect(() => {
-    const previous = previousBackendReachableRef.current;
-    previousBackendReachableRef.current = backendReachable;
-    if (
-      backendReachable === true &&
-      previous !== true &&
-      (chatToolsStatus === 'idle' || chatToolsStatus === 'error')
-    ) {
-      void loadChatTools();
-    }
-  }, [backendReachable, chatToolsStatus, loadChatTools]);
 
   const handleNewChat = useCallback(async () => {
     setCreatingSession(true);
@@ -286,10 +205,18 @@ export function ChatPage() {
     (id: string) => {
       abortRef.current?.abort();
       abortRef.current = null;
-      loadSession(id);
+      setMessages([]);
+      setMessagesLoading(true);
       setStreamingContent(null);
       setStreamingToolResults(null);
+      setSuggestedFollowups([]);
+      setThinking(null);
+      setAgentState(null);
+      setAgentStateMessage(null);
+      setAgentStateInfo(null);
+      setJobProgress(null);
       setLoading(false);
+      void loadSession(id);
     },
     [loadSession]
   );
@@ -403,26 +330,34 @@ export function ChatPage() {
     }
   }, [currentSession, loadSession]);
 
+  const clearStreamingState = useCallback(() => {
+    setStreamingContent(null);
+    setStreamingToolResults(null);
+    setGenerationRunId(null);
+    setThinking(null);
+    setAgentState(null);
+    setAgentStateMessage(null);
+    setAgentStateInfo(null);
+    setApprovalMessage(null);
+    setApprovalTools([]);
+    setJobProgress(null);
+  }, []);
+
   const streamCallbacks = useCallback(
     (sessionId: string) => ({
       onChunk: (chunk: string) => {
-        // Clear thinking/state once real content starts flowing
         setThinking(null);
         setAgentState(null);
+        setAgentStateMessage(null);
+        setAgentStateInfo(null);
         setStreamingContent((prev) => (prev || '') + chunk);
       },
-      onDone: () => {
-        setStreamingContent(null);
-        setStreamingToolResults(null);
-        setGenerationRunId(null);
-        const regenOpts = lastAuthoringRegenOptionsRef.current;
-        lastAuthoringRegenOptionsRef.current = null;
-        void (async () => {
+      onDone: async () => {
+        try {
           await loadSession(sessionId);
-          if (regenOpts) {
-            setAuthoringVisualContext((prev) => (prev ? { ...prev, generationOptions: regenOpts } : prev));
-          }
-        })();
+        } finally {
+          clearStreamingState();
+        }
       },
       onPlan: (plan: ChatAgentPlan) => {
         setStreamingToolResults((prev) => ({
@@ -453,13 +388,6 @@ export function ChatPage() {
           ...(prev || {}),
           [name]: result,
         }));
-        const label =
-          name === 'generate_dita'
-            ? 'Generating DITA...'
-            : name === 'create_job'
-              ? 'Creating job...'
-              : `Using ${name}...`;
-        setStreamingContent((prev) => (prev || '') + `\n\n_(${label})_`);
       },
       onGrounding: (grounding) => {
         setStreamingToolResults((prev) => ({
@@ -467,23 +395,28 @@ export function ChatPage() {
           _grounding: grounding,
         }));
       },
+      onThinking: (content: string) => {
+        setThinking(content);
+      },
+      onState: (state: AgentState, message?: string, info?: AgentStateInfo) => {
+        setAgentState(state);
+        setAgentStateMessage(message ?? null);
+        setAgentStateInfo(info ?? null);
+      },
+      onJobProgress: (progress: JobProgressInfo) => {
+        setJobProgress(progress);
+      },
+      onSuggestedFollowups: (followups: SuggestedFollowup[]) => {
+        setSuggestedFollowups(followups);
+      },
       onError: (msg: string) => {
-        lastAuthoringRegenOptionsRef.current = null;
-        setStreamingContent(null);
-        setStreamingToolResults(null);
-        setGenerationRunId(null);
-        setThinking(null);
-        setAgentState(null);
-        setApprovalMessage(null);
-        setJobProgress(null);
+        clearStreamingState();
         const errBubble: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'assistant',
           content: `Error: ${msg}`,
           created_at: new Date().toISOString(),
         };
-        // Sync user rows from server (real ids), then append error. loadSession alone would drop the
-        // error bubble because failed turns are not persisted as assistant messages.
         void (async () => {
           try {
             const { session, messages: msgs } = await getSession(sessionId);
@@ -495,77 +428,31 @@ export function ChatPage() {
         })();
       },
     }),
-    [loadSession]
+    [clearStreamingState, loadSession]
   );
 
-  const submitTurn = useCallback(async (
-    content: string,
-    options?: {
-      toolIntent?: ChatToolIntent;
-      attachments?: { imageFile?: File | null; referenceDitaFile?: File | null };
-      generationOptions?: ChatDitaGenerationOptions;
-      jiraContext?: string;
-    }
-  ) => {
+  const submitTurn = useCallback(async (content: string) => {
     const trimmed = content.trim();
     if (!trimmed || !currentSession) return;
-    const toolIntent = options?.toolIntent;
-    const attachments = options?.attachments;
-    const generationOptions = options?.generationOptions;
-    const jiraContext = options?.jiraContext;
-    if (attachments?.imageFile) {
-      revokeAuthoringScreenshotPreview();
-      const url = URL.createObjectURL(attachments.imageFile);
-      authoringPreviewObjectUrlRef.current = url;
-      setAuthoringVisualContext({
-        screenshotObjectUrl: url,
-        screenshotFileName: attachments.imageFile.name,
-        referenceFileName: attachments.referenceDitaFile?.name ?? null,
-        generationOptions: generationOptions ?? null,
-      });
-    } else if (!toolIntent) {
-      revokeAuthoringScreenshotPreview();
-      setAuthoringVisualContext(null);
-    }
-    if (!toolIntent) {
-      setInput('');
-    }
+    setInput('');
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
     setLoading(true);
     setStreamingContent('');
     setStreamingToolResults({});
+    setSuggestedFollowups([]);
+    setThinking(null);
+    setAgentState(null);
+    setAgentStateMessage(null);
+    setAgentStateInfo(null);
+    setJobProgress(null);
 
     const userMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
       content: trimmed,
       created_at: new Date().toISOString(),
-      tool_results: attachments?.imageFile
-        ? {
-            _attachments: [
-              {
-                kind: 'image',
-                filename: attachments.imageFile.name,
-                mime_type: attachments.imageFile.type,
-                size_bytes: attachments.imageFile.size,
-              },
-              ...(attachments.referenceDitaFile
-                ? [
-                    {
-                      kind: 'reference_dita',
-                      filename: attachments.referenceDitaFile.name,
-                      mime_type: attachments.referenceDitaFile.type,
-                      size_bytes: attachments.referenceDitaFile.size,
-                    },
-                  ]
-                : []),
-            ],
-            _generation_options: generationOptions || {},
-            ...(jiraContext?.trim() ? { _jira_context: jiraContext.trim() } : {}),
-          }
-        : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
 
@@ -578,10 +465,6 @@ export function ChatPage() {
       await sendMessage(currentSession.id, trimmed, cbs, {
         context,
         humanPrompts,
-        toolIntent,
-        attachments,
-        generationOptions,
-        jiraContext: jiraContext?.trim() || undefined,
         signal: ac.signal,
       });
     } catch (e) {
@@ -589,8 +472,7 @@ export function ChatPage() {
         await loadSession(currentSession.id);
         return;
       }
-      setStreamingContent(null);
-      setStreamingToolResults(null);
+      clearStreamingState();
       setMessages((prev) => [
         ...prev,
         {
@@ -602,8 +484,6 @@ export function ChatPage() {
       ]);
     } finally {
       setLoading(false);
-      setStreamingContent(null);
-      setStreamingToolResults(null);
       abortRef.current = null;
     }
   }, [
@@ -612,7 +492,7 @@ export function ChatPage() {
     location.pathname,
     humanPrompts,
     streamCallbacks,
-    revokeAuthoringScreenshotPreview,
+    clearStreamingState,
   ]);
 
   const handleSend = useCallback(async () => {
@@ -624,30 +504,8 @@ export function ChatPage() {
     await submitTurn(reply);
   }, [submitTurn]);
 
-  const handleSendTool = useCallback(async (payload: { displayText: string; toolIntent: ChatToolIntent }) => {
-    await submitTurn(payload.displayText, { toolIntent: payload.toolIntent });
-  }, [submitTurn]);
-
-  const handleSendAuthoring = useCallback(async (payload: {
-    content: string;
-    jiraContext?: string;
-    attachments: { imageFile: File; referenceDitaFile?: File | null };
-    generationOptions: ChatDitaGenerationOptions;
-  }) => {
-    await submitTurn(payload.content, {
-      attachments: payload.attachments,
-      generationOptions: payload.generationOptions,
-      jiraContext: payload.jiraContext,
-    });
-  }, [submitTurn]);
-
-  const runRegenerateStream = useCallback(async (generationOptions?: ChatDitaGenerationOptions) => {
+  const runRegenerateStream = useCallback(async () => {
     if (!currentSession) return;
-    if (generationOptions) {
-      lastAuthoringRegenOptionsRef.current = generationOptions;
-    } else {
-      lastAuthoringRegenOptionsRef.current = null;
-    }
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -655,6 +513,12 @@ export function ChatPage() {
     setStreamingContent('');
     setStreamingToolResults({});
     setGenerationRunId(null);
+    setSuggestedFollowups([]);
+    setThinking(null);
+    setAgentState(null);
+    setAgentStateMessage(null);
+    setAgentStateInfo(null);
+    setJobProgress(null);
     const context = {
       source_page: location.pathname || '/chat',
     };
@@ -664,17 +528,13 @@ export function ChatPage() {
         context,
         humanPrompts,
         signal: ac.signal,
-        ...(generationOptions ? { generationOptions } : {}),
       });
     } catch (e) {
       if (isAbortError(e)) {
-        lastAuthoringRegenOptionsRef.current = null;
         await loadSession(currentSession.id);
         return;
       }
-      lastAuthoringRegenOptionsRef.current = null;
-      setStreamingContent(null);
-      setStreamingToolResults(null);
+      clearStreamingState();
       setMessages((prev) => [
         ...prev,
         {
@@ -686,22 +546,13 @@ export function ChatPage() {
       ]);
     } finally {
       setLoading(false);
-      setStreamingContent(null);
-      setStreamingToolResults(null);
       abortRef.current = null;
     }
-  }, [currentSession, loadSession, location.pathname, humanPrompts, streamCallbacks]);
+  }, [currentSession, loadSession, location.pathname, humanPrompts, streamCallbacks, clearStreamingState]);
 
   const handleRegenerate = useCallback(() => {
     void runRegenerateStream();
   }, [runRegenerateStream]);
-
-  const handleRegenerateAuthoring = useCallback(
-    (opts: ChatDitaGenerationOptions) => {
-      void runRegenerateStream(opts);
-    },
-    [runRegenerateStream]
-  );
 
   const handleRetry = useCallback(() => {
     setMessages((prev) => {
@@ -758,7 +609,6 @@ export function ChatPage() {
       setMessages(next);
 
       abortRef.current?.abort();
-      lastAuthoringRegenOptionsRef.current = null;
       const ac = new AbortController();
       abortRef.current = ac;
       setLoading(true);
@@ -802,8 +652,20 @@ export function ChatPage() {
     [currentSession, loadSession, location.pathname, humanPrompts, streamCallbacks]
   );
 
-  const handleCopyMessage = useCallback((content: string) => {
-    navigator.clipboard?.writeText(content);
+  const handleCopyMessage = useCallback(
+    async (content: string) => {
+      try {
+        await navigator.clipboard.writeText(content);
+        feedback.success('Copied to clipboard');
+      } catch {
+        feedback.error('Copy failed', 'Could not copy message text.');
+      }
+    },
+    [feedback]
+  );
+
+  const handleGenerationComplete = useCallback(() => {
+    setGenerationRunId(null);
   }, []);
 
   const handleExport = useCallback(
@@ -829,29 +691,37 @@ export function ChatPage() {
   );
 
   useEffect(() => {
-    if (sessions.length > 0 && !currentSession) {
-      loadSession(sessions[0].id);
+    const params = new URLSearchParams(location.search);
+    const sessionFromUrl = params.get('session')?.trim();
+    if (sessionFromUrl && sessions.some((s) => s.id === sessionFromUrl)) {
+      if (currentSession?.id !== sessionFromUrl) {
+        void loadSession(sessionFromUrl);
+      }
+      return;
     }
-  }, [sessions, currentSession, loadSession]);
+    if (sessions.length > 0 && !currentSession) {
+      void loadSession(sessions[0].id);
+    }
+  }, [sessions, currentSession, loadSession, location.search]);
 
   const streaming = streamingContent !== null && loading;
 
   return (
-    <div className="flex h-[calc(100dvh-10.5rem)] min-h-[28rem] flex-col gap-3 rounded-2xl border border-slate-200/90 bg-slate-100 p-3">
+    <div className="flex h-[var(--chat-page-height)] min-h-[28rem] flex-col bg-background px-4 py-4 sm:px-5">
       {backendReachable === false && (
         <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
           role="alert"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="min-w-0 flex-1">
               <span className="font-semibold">{"Can't reach the API."}</span>{' '}
               This page rechecks every few seconds. Start the backend from the repo root:{' '}
-              <code className="rounded border border-amber-200 bg-white px-1.5 py-0.5 font-mono text-xs">
+              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
                 .\START_BACKEND_SIMPLE.ps1
               </code>{' '}
               or{' '}
-              <code className="rounded border border-amber-200 bg-white px-1.5 py-0.5 font-mono text-xs">
+              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
                 .\RUN_BOTH.ps1
               </code>
               . If PowerShell blocks scripts, either run{' '}
@@ -862,7 +732,7 @@ export function ChatPage() {
               <span className="font-mono text-xs">start_backend.cmd</span> /{' '}
               <span className="font-mono text-xs">start_both.cmd</span>.
               . Wrong port? Set{' '}
-              <code className="rounded border border-amber-200 bg-white px-1.5 py-0.5 font-mono text-xs">
+              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
                 VITE_PROXY_TARGET
               </code>{' '}
               in <span className="font-mono text-xs">frontend/.env</span> and restart{' '}
@@ -870,7 +740,7 @@ export function ChatPage() {
             </p>
             <button
               type="button"
-              className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm hover:bg-amber-100"
+              className="shrink-0 rounded-md border border-amber-300 bg-card px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm hover:bg-amber-100 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/50"
               onClick={() => void checkBackend()}
             >
               Check now
@@ -878,7 +748,7 @@ export function ChatPage() {
           </div>
         </div>
       )}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08),0_8px_32px_-8px_rgba(15,23,42,0.06)]">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         <ChatSidebar
           sessions={sessions}
           currentId={currentSession?.id ?? null}
@@ -892,84 +762,76 @@ export function ChatPage() {
           deletingId={deletingId}
           clearingAll={clearingAllChats}
         />
-        <div className="flex min-w-0 flex-1 flex-col bg-slate-50/50">
+        <div className="flex min-w-0 flex-1 flex-col bg-background">
           {currentSession ? (
             <>
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5">
-                <div className="min-w-0 border-l-4 border-teal-500 pl-3">
-                  <h2 className="truncate text-base font-semibold tracking-tight text-slate-900">
-                    {currentSession.title?.trim() || 'Conversation'}
-                  </h2>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
-                    DITA · AEM Guides · dataset generation
-                  </p>
-                </div>
-                <Link
-                  to="/settings"
-                  className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 transition hover:border-teal-300 hover:bg-teal-50/60"
-                >
-                  RAG &amp; search
-                </Link>
+              <div className="flex shrink-0 items-center border-b border-border bg-card px-5 py-3">
+                <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+                  {currentSession.title?.trim() || 'New Chat'}
+                </h2>
               </div>
               <ChatMessageList
                 messages={messages}
                 sessionId={currentSession?.id}
                 streamingContent={streamingContent}
                 streamingToolResults={streamingToolResults}
+                streamingThinking={thinking}
+                streamingAgentState={agentState}
+                streamingAgentStateMessage={agentStateMessage}
+                streamingAgentStateInfo={agentStateInfo}
+                streamingJobProgress={jobProgress}
                 generationRunId={generationRunId}
                 messagesLoading={messagesLoading}
-                onGenerationComplete={() => setGenerationRunId(null)}
+                onGenerationComplete={handleGenerationComplete}
                 onCopyMessage={handleCopyMessage}
                 onExamplePromptSelect={(text) => setInput(text)}
                 onSaveUserMessage={handleSaveUserMessage}
                 actionDisabled={loading}
                 onRegenerate={handleRegenerate}
-                onRegenerateAuthoring={handleRegenerateAuthoring}
                 onRetry={handleRetry}
-                authoringVisualContext={authoringVisualContext}
                 onQuickReply={handleQuickReply}
+                suggestedFollowups={suggestedFollowups}
+                onFollowupSelect={handleQuickReply}
               />
-              <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
+              <div className="shrink-0 bg-background px-4 pb-4 pt-2 sm:px-6">
           <ChatInput
             value={input}
             onChange={setInput}
             onSend={handleSend}
             onQuickReply={handleQuickReply}
-            onSendTool={handleSendTool}
-            onSendAuthoring={handleSendAuthoring}
             onStop={handleStop}
-            tools={chatTools}
-            toolsUnavailable={chatToolsStatus === 'error' || backendReachable === false}
             pendingWorkflowGuide={pendingWorkflowGuide}
             onDismissPendingWorkflowGuide={pendingWorkflowGuide ? dismissPendingWorkflowGuide : undefined}
+            humanPrompts={humanPrompts}
+            onHumanPromptsChange={setHumanPrompts}
             disabled={loading}
             loading={loading}
             streaming={streaming}
             showShortcutHint
-            placeholder="Paste Jira text, ask a DITA question, or request a dataset job..."
+            placeholder="Ask a DITA question, paste XML, or describe an AEM Guides workflow…"
           />
               </div>
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-slate-600">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-muted-foreground">
               {sessions.length === 0 ? (
                 <>
-                  <div className="rounded-2xl border border-teal-100 bg-gradient-to-b from-white to-teal-50/40 px-8 py-8 shadow-md shadow-slate-900/5">
-                    <p className="text-sm font-semibold text-slate-900">No conversations yet</p>
-                    <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
-                      Start a chat to ask about DITA, AEM Guides, or generate content from Jira.
+                  <div className="rounded-lg border border-border bg-card px-8 py-8">
+                    <p className="text-sm font-medium text-foreground">No conversations yet</p>
+                    <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                      Start a chat to ask about DITA, AEM Guides, or DITA-OT.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleNewChat}
-                    className="rounded-full bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-900/20 transition hover:bg-teal-700 hover:-translate-y-0.5"
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
                   >
                     New conversation
                   </button>
                 </>
               ) : (
-                <p className="text-sm text-slate-500">Select a conversation from the list or create a new one.</p>
+                <p className="text-sm text-muted-foreground">Select a conversation from the list or create a new one.</p>
               )}
             </div>
           )}

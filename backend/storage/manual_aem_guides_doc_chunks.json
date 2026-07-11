@@ -260,5 +260,67 @@
     ],
     "codeblocks": [],
     "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/pdf2-creating-change-bars",
+    "title": "Generating revision bars",
+    "content": "Generating revision bars\n\nDITA Open Toolkit can generate revision bars (change bars) in PDF output when you flag revised content in a DITAVAL file using the `<revprop>` element. This page documents the PDF2 customization path for change bars, not general DITA authoring.\n\nDITAVAL configuration\nUse `<revprop action=\"flag\" changebar=\"...\" color=\"...\"/>` inside your DITAVAL. When `@action` is `flag`, DITA-OT reads:\n- `@changebar` — the line style for the revision bar. Values follow XSL-FO change-bar styles (for example `solid`, `groove`). Default: `groove`.\n- `@color` — the bar color using any XSL-FO color value (named colors or hex). Default: `black`.\n\nExample\n```xml\n<revprop action=\"flag\" changebar=\"solid\" color=\"green\"/>\n```\n\nRuntime behavior\n- DITA-OT places the bar near the edge of the text column with a default offset of 2 mm.\n- Offset, placement, and width are not currently configurable through DITAVAL attributes.\n- XSL-FO 1.1 supports rule-based change bars only; text-style revision indicators (for example numbers instead of rules) are not supported by the standard PDF transformation. Antenna House Formatter offers a proprietary extension, but the DITA-OT PDF transformation does not use it.\n\nUse this chunk for questions about PDF revision bars, change bars, `@changebar`, `@color`, `<revprop>`, DITAVAL flagging, and PDF2 output customization.\n\nSource: DITA Open Toolkit development documentation — https://www.dita-ot.org/dev/topics/pdf2-creating-change-bars",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Use for DITA-OT PDF revision bars and change bars in PDF2 output.",
+      "Use for DITAVAL `<revprop action=\"flag\" changebar=\"...\" color=\"...\"/>` configuration.",
+      "Use when users ask how to style revision bars with `@changebar` and `@color`."
+    ],
+    "codeph": [
+      "<revprop action=\"flag\" changebar=\"solid\" color=\"green\"/>",
+      "@changebar",
+      "@color",
+      "changebar=\"groove\"",
+      "action=\"flag\""
+    ],
+    "codeblocks": [
+      "<revprop action=\"flag\" changebar=\"solid\" color=\"green\"/>"
+    ],
+    "tables": []
+  },
+  {
+    "url": "https://www.dita-ot.org/dev/topics/pdf-themes",
+    "title": "PDF themes",
+    "content": "PDF themes\n\nDITA Open Toolkit 4.0 and later include the `com.elovirta.pdf` plug-in, which extends the default PDF2 transformation with a theme parameter. The `--theme` option takes a path to a theme file and changes PDF styling without editing XSLT stylesheets.\n\nWhat themes control\nThemes can adjust cover page images, page size and orientation, numbering, font properties, background colors and borders, spacing, and running content such as page headers and footers.\n\nCommand example\n```\ndita --project=samples/project-files/pdf.xml \\\n     --theme=path/to/custom-theme-file.yaml\n```\n\nTheme file structure\n- **Page settings** — use `size` and `orientation`; margins via `top`, `outside`, `bottom`, and `inside`.\n- **Header and footer** — `content` keys under `header` or `footer` accept static text or variable references in curly braces.\n- **Styles** — block and inline presentation via `style` keys using XSL-FO definitions plus style-specific keys.\n- **Variables** — previously defined keys can be referenced from other key values.\n- **Extending themes** — a theme can inherit from another theme with the `extends` key.\n- **Syntactic sugar** — shorthand keys are desugared to verbose equivalents before stylesheet generation.\n- **Examples** — theme files may be JSON or YAML; sample themes live under `docsrc/samples/themes` in the DITA-OT installation.\n\nUse this chunk for questions about DITA-OT PDF themes, `--theme`, `com.elovirta.pdf`, YAML/JSON theme files, PDF2 customization without XSLT, headers/footers, page margins, and theme inheritance.\n\nSource: DITA Open Toolkit development documentation — https://www.dita-ot.org/dev/topics/pdf-themes",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Use for DITA-OT PDF theme files and the `--theme` CLI option.",
+      "Use for `com.elovirta.pdf` PDF2 styling without XSLT customization.",
+      "Use for page settings, headers/footers, styles, variables, and `extends` in theme YAML/JSON."
+    ],
+    "codeph": [
+      "--theme",
+      "com.elovirta.pdf",
+      "dita --theme=path/to/custom-theme-file.yaml",
+      "extends",
+      "header",
+      "footer"
+    ],
+    "codeblocks": [
+      "dita --project=samples/project-files/pdf.xml \\\n     --theme=path/to/custom-theme-file.yaml"
+    ],
+    "tables": []
+  },
+  {
+    "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-understand-presets",
+    "title": "Understanding the output presets",
+    "content": "Understanding the output presets in AEM Guides\n\nAdobe Experience Manager Guides supports seven output preset types. An output preset defines how a DITA map is transformed and where the published output is delivered.\n\nThe seven preset types\n1. AEM Sites — Publish structured content into Adobe Experience Manager Sites for web delivery and Sites workflows.\n2. PDF — Generate PDF using the Native PDF engine with CSS/template-based styling.\n3. Knowledge Base — Produce knowledge-base style HTML suited for support portals.\n4. HTML5 — Standard HTML5 webhelp-style documentation output.\n5. EPUB — E-book format for digital readers.\n6. JSON — Structured JSON output for downstream applications or headless delivery.\n7. Custom — DITA-OT or other custom transform pipelines configured by your organization.\n\nWhen to use each\n- AEM Sites: content must live in AEM for tagging, personalization, or Sites publishing.\n- PDF / Native PDF: printable, regulated, or offline documentation.\n- Knowledge Base: searchable support articles with KB navigation patterns.\n- HTML5: classic static web documentation bundles (often SFTP or static hosting).\n- EPUB: distribution to e-readers.\n- JSON: programmatic consumption of structured content.\n- Custom: legacy DITA-OT pdf2 FO pipelines, custom plugins, or bespoke output formats.\n\nUse this chunk for questions about output preset types in AEM Guides, how many preset types exist, and when to choose Sites vs PDF vs HTML5 vs Custom.\n\nSource: Adobe Experience League — Understanding the output presets.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Seven AEM Guides output preset types: AEM Sites, PDF, Knowledge Base, HTML5, EPUB, JSON, Custom.",
+      "Use PDF/Native PDF for printable documentation.",
+      "Use Custom for DITA-OT plugin or legacy pdf2 pipelines."
+    ],
+    "codeph": [],
+    "codeblocks": [],
+    "tables": []
   }
 ]

@@ -133,6 +133,37 @@ def run_migrations() -> None:
                 except Exception as e:
                     logger.debug("learned_prompt_entries migration skipped: %s", e)
                 try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS chat_answer_quality (
+                            id VARCHAR(36) PRIMARY KEY,
+                            message_id VARCHAR(36) NOT NULL UNIQUE,
+                            session_id VARCHAR(36) NOT NULL,
+                            user_message_id VARCHAR(36),
+                            grounding_status VARCHAR(30) NOT NULL DEFAULT 'none',
+                            confidence REAL,
+                            thin_evidence INTEGER NOT NULL DEFAULT 0,
+                            has_conflict INTEGER NOT NULL DEFAULT 0,
+                            source_domain VARCHAR(50),
+                            answer_kind VARCHAR(80),
+                            source_policy VARCHAR(80),
+                            quality_score INTEGER NOT NULL DEFAULT 50,
+                            weak_phrases_detected INTEGER NOT NULL DEFAULT 0,
+                            needs_review INTEGER NOT NULL DEFAULT 0,
+                            review_status VARCHAR(30),
+                            langsmith_run_id VARCHAR(120),
+                            langsmith_trace_url VARCHAR(500),
+                            improvement_hints_json TEXT,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                            FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created chat_answer_quality table")
+                except Exception as e:
+                    logger.debug("chat_answer_quality migration skipped: %s", e)
+                try:
                     res = conn.execute(text("PRAGMA table_info(chat_sessions)"))
                     cs_cols = [row[1] for row in res.fetchall()]
                     if cs_cols and "last_generation_json" not in cs_cols:
@@ -274,6 +305,37 @@ def run_migrations() -> None:
                     logger.info("Migration: created learned_prompt_entries table (PostgreSQL)")
                 except Exception as e:
                     logger.debug("learned_prompt_entries migration skipped: %s", e)
+                try:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS chat_answer_quality (
+                            id VARCHAR(36) PRIMARY KEY,
+                            message_id VARCHAR(36) NOT NULL UNIQUE,
+                            session_id VARCHAR(36) NOT NULL,
+                            user_message_id VARCHAR(36),
+                            grounding_status VARCHAR(30) NOT NULL DEFAULT 'none',
+                            confidence DOUBLE PRECISION,
+                            thin_evidence BOOLEAN NOT NULL DEFAULT FALSE,
+                            has_conflict BOOLEAN NOT NULL DEFAULT FALSE,
+                            source_domain VARCHAR(50),
+                            answer_kind VARCHAR(80),
+                            source_policy VARCHAR(80),
+                            quality_score INTEGER NOT NULL DEFAULT 50,
+                            weak_phrases_detected BOOLEAN NOT NULL DEFAULT FALSE,
+                            needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+                            review_status VARCHAR(30),
+                            langsmith_run_id VARCHAR(120),
+                            langsmith_trace_url VARCHAR(500),
+                            improvement_hints_json TEXT,
+                            created_at TIMESTAMP NOT NULL,
+                            updated_at TIMESTAMP NOT NULL,
+                            FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+                            FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: created chat_answer_quality table (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("chat_answer_quality migration skipped: %s", e)
                 try:
                     if col_exists("chat_sessions", "last_generation_json") is False:
                         conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN last_generation_json TEXT"))

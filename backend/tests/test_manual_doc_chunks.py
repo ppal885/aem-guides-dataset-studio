@@ -46,6 +46,34 @@ def test_manual_dita_ot_troubleshooting_chunks_are_present():
     assert "--args.draft=yes" in text
     assert "https://www.dita-ot.org/dev/topics/error-messages" in text
     assert "https://www.dita-ot.org/dev/topics/dita-command-help" in text
+    assert "https://www.dita-ot.org/dev/topics/pdf2-creating-change-bars" in text
+    assert "https://www.dita-ot.org/dev/topics/pdf-themes" in text
+
+
+def test_retrieve_relevant_docs_uses_manual_dita_ot_pdf_themes(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "DITA-OT PDF themes --theme com.elovirta.pdf YAML",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://www.dita-ot.org/dev/topics/pdf-themes" in urls
+
+
+def test_retrieve_relevant_docs_uses_manual_dita_ot_change_bars(monkeypatch):
+    monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
+    monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
+
+    docs = doc_retriever_service.retrieve_relevant_docs(
+        "DITA-OT PDF revision bars changebar revprop DITAVAL",
+        k=5,
+    )
+    urls = {item.get("url") for item in docs}
+
+    assert "https://www.dita-ot.org/dev/topics/pdf2-creating-change-bars" in urls
 
 
 def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):

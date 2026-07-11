@@ -68,7 +68,11 @@ from app.services.doc_retriever_service import retrieve_relevant_docs, format_do
 from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
-from app.services.learned_qa_service import format_learned_qa_for_prompt
+from app.services.learned_qa_service import (
+    format_learned_qa_for_prompt,
+    strip_humanized_chat_prefix,
+    try_build_learned_qa_fallback_answer,
+)
 from app.services.claude_code_retriever import retrieve_claude_code_context
 from app.services.jira_chat_search_service import extract_jira_search_query
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
@@ -1229,7 +1233,11 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         if _is_dita_answer_request(text):
             return "grounded_dita_answer"
         return "agent_research_plan"
-    if requested_attribute and (_is_definition_style_question(text) or _DITA_ANSWER_INTENT_PATTERN.search(text)):
+    if (
+        requested_attribute
+        and not _is_behavior_or_troubleshooting_question(text)
+        and (_is_definition_style_question(text) or _DITA_ANSWER_INTENT_PATTERN.search(text))
+    ):
         return "grounded_dita_answer"
     if _DITA_STRUCTURAL_QUERY_PATTERN.search(text) and (_extract_example_shape_request(text) or _wants_full_example(text)):
         return "grounded_dita_answer"
@@ -1268,6 +1276,77 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
             return "grounded_aem_answer"
         return "agent_research_plan"
     return "default"
+
+
+_BEHAVIOR_OR_TROUBLESHOOTING_QUESTION_RE = re.compile(
+    r"\b("
+    r"why|how\s+does|how\s+do\s+i\s+debug|debug|troubleshoot|diagnos(?:e|is)|"
+    r"what\s+happens|what\s+processing|when\s+does|after|before|during|"
+    r"resolve(?:s|d)?\s+differently|differently|fails?|broken|missing|wrong|"
+    r"publishing|publish|output|preprocess(?:ing)?|effective\s+(?:map|content|key|resource)|"
+    r"key\s+space|branch\s+filter(?:ing)?|ditavalref|copy-to\s+processing|"
+    r"rewrite(?:s|n)?|generated\s+links?|temporary\s+files?|\.job\.xml"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_behavior_or_troubleshooting_question(question: str) -> bool:
+    """Detect questions that ask about processing behavior, not construct definitions.
+
+    These prompts often mention attributes/elements, but the user intent is not
+    "define @foo"; it is "explain how the processor behaves in this scenario".
+    """
+    text = (question or "").strip()
+    if not text:
+        return False
+    if _is_definition_style_question(text) and not re.search(
+        r"\b(after|before|during|fails?|debug|troubleshoot|publishing|preprocess|branch filtering|copy-to processing)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return False
+    return bool(_BEHAVIOR_OR_TROUBLESHOOTING_QUESTION_RE.search(text))
+
+
+_BASIC_DEFINITION_ANSWER_RE = re.compile(
+    r"(?is)"
+    r"("
+    r"short answer\s*[\r\n]+`?<[^>\s]+>`?\s+is\b|"
+    r"short answer\s*[\r\n]+@?[\w:-]+\s+is\s+(?:a|an|the)\b|"
+    r"<topic>\s+is\s+the\s+base\s+information\s+unit|"
+    r"quick reference\s+field\s+details|"
+    r"common children\s*<title>.*<body>|"
+    r"typical usage\s*[\r\n]+`?<[^>\s]+>`?\s+is\b"
+    r")"
+)
+
+_SENIOR_BEHAVIOR_ANSWER_RE = re.compile(
+    r"(?is)\b("
+    r"expected behavior|deterministic checks|probable causes?|how to diagnose|"
+    r"debug(?:ging)? workflow|root cause|temporary files?|clean\.temp|xsl-fo|"
+    r"effective (?:map|topic|content|key space)|processing pipeline|preprocess"
+    r")\b"
+)
+
+
+def _repair_mismatched_behavior_answer(user_content: str, answer: str) -> str:
+    """Replace definition-style answers when the user asked a behavior/troubleshooting question."""
+    question = (user_content or "").strip()
+    candidate = (answer or "").strip()
+    if not question or not candidate:
+        return candidate
+    if not _is_behavior_or_troubleshooting_question(question):
+        return candidate
+    if _SENIOR_BEHAVIOR_ANSWER_RE.search(candidate) and not _BASIC_DEFINITION_ANSWER_RE.search(candidate):
+        return candidate
+    if not _BASIC_DEFINITION_ANSWER_RE.search(candidate):
+        return candidate
+
+    replacement = _build_dita_ot_preprocess_runtime_fallback_response(question)
+    if not replacement:
+        replacement = try_build_learned_qa_fallback_answer(question) or ""
+    return replacement.strip() or candidate
 
 
 def _extract_requested_dita_attribute(user_content: str) -> str:
@@ -1315,7 +1394,8 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
     if answer_mode == "grounded_dita_answer":
         # Broad map-construct questions span multiple elements — skip single-attribute lookup
         is_broad_map = _needs_broad_map_construct_answer(user_content)
-        if not is_broad_map:
+        is_behavior_question = _is_behavior_or_troubleshooting_question(user_content)
+        if not is_broad_map and not is_behavior_question:
             attribute_name = _extract_requested_dita_attribute(user_content)
             if attribute_name:
                 requests.append(("lookup_dita_attribute", {"attribute_name": attribute_name}))
@@ -4293,9 +4373,125 @@ def _is_direct_jira_search_request(user_content: str) -> bool:
     text = (user_content or "").strip()
     if not text:
         return False
+    if _is_dita_ot_issue_request_without_explicit_jira(text):
+        return False
     if not _JIRA_SEARCH_PATTERN.search(text):
         return False
-    return bool(extract_jira_search_query(text))
+    query = extract_jira_search_query(text)
+    if _is_vague_jira_issue_followup(text, query):
+        return False
+    return bool(query)
+
+
+def _is_dita_ot_issue_request_without_explicit_jira(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    if re.search(r"\b(jira|jiras|guides-\d+|ticket|tickets)\b", lowered, re.IGNORECASE):
+        return False
+    return bool(
+        re.search(r"\b(?:dita-ot|dita\s+ot|dita open toolkit)\b", lowered)
+        and re.search(r"\b(issue|issues|bug|bugs|defect|defects|github)\b", lowered)
+    )
+
+
+_VAGUE_JIRA_REFERENCE_RE = re.compile(
+    r"\b(it|this|that|same|above|previous|related\s+to\s+it|related\s+to\s+this)\b",
+    re.IGNORECASE,
+)
+_JIRA_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+
+
+def _is_vague_jira_issue_followup(user_content: str, extracted_query: str | None = None) -> bool:
+    text = (user_content or "").strip()
+    query = (extracted_query if extracted_query is not None else extract_jira_search_query(text)).strip().lower()
+    if not text or not _JIRA_SEARCH_PATTERN.search(text):
+        return False
+    if _JIRA_KEY_RE.search(text):
+        return False
+    if not _VAGUE_JIRA_REFERENCE_RE.search(text):
+        return False
+
+    concrete_terms = [
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9._-]*", query)
+        if token not in {"it", "this", "that", "same", "above", "previous", "dita", "ot", "dita-ot", "jira", "issue", "issues"}
+    ]
+    return len(concrete_terms) < 2
+
+
+_DITA_OT_CONTEXT_TERMS = [
+    "conkeyref",
+    "conref",
+    "keyref",
+    "copy-to",
+    "copy to",
+    "branch filtering",
+    "branch-filter",
+    "ditavalref",
+    "pdf",
+    "html",
+    "reltable",
+    "relationship table",
+    "preprocess",
+    "preprocessing",
+    "keyscope",
+    "mapref",
+    "xref",
+    "resource-only",
+]
+
+
+def _resolve_vague_jira_issue_query_from_context(session_id: str, user_content: str) -> str:
+    """Expand vague Jira follow-ups like "issues related to it" using recent DITA topic context."""
+    extracted = extract_jira_search_query(user_content)
+    if not _is_vague_jira_issue_followup(user_content, extracted):
+        return user_content
+
+    messages = _fetch_last_messages_for_session(session_id, limit=8)
+    current = (user_content or "").strip()
+    for message in reversed(messages):
+        content = str(message.get("content") or "").strip()
+        if not content or content == current:
+            continue
+        lowered = content.lower()
+        hits = [term for term in _DITA_OT_CONTEXT_TERMS if term in lowered]
+        if hits:
+            primary_terms = []
+            for term in hits:
+                normalized = term.replace(" ", "-")
+                if normalized not in primary_terms:
+                    primary_terms.append(normalized)
+            return "related Jira issues for DITA-OT " + " ".join(primary_terms[:4])
+
+    return ""
+
+
+def _resolve_vague_dita_ot_issue_query_from_context(session_id: str, user_content: str) -> str:
+    """Expand vague DITA-OT issue follow-ups without forcing them through Jira search."""
+    if not _is_dita_ot_issue_request_without_explicit_jira(user_content):
+        return user_content
+    extracted = extract_jira_search_query(user_content)
+    if not _is_vague_jira_issue_followup(user_content, extracted):
+        return user_content
+
+    messages = _fetch_last_messages_for_session(session_id, limit=8)
+    current = (user_content or "").strip()
+    for message in reversed(messages):
+        content = str(message.get("content") or "").strip()
+        if not content or content == current:
+            continue
+        lowered = content.lower()
+        hits = [term for term in _DITA_OT_CONTEXT_TERMS if term in lowered]
+        if hits:
+            primary_terms = []
+            for term in hits:
+                normalized = term.replace(" ", "-")
+                if normalized not in primary_terms:
+                    primary_terms.append(normalized)
+            return "DITA-OT GitHub issues for " + " ".join(primary_terms[:4])
+
+    return ""
 
 
 def _is_capability_prompt(text: str) -> bool:
@@ -4580,6 +4776,35 @@ async def _build_xml_review_fallback_response(
     return "\n".join(lines).strip()
 
 
+_DITA_AUTHORING_ONLY_PATTERN = re.compile(
+    r"\b(topicref|topichead|topicgroup|navtitle|locktitle|mapref|keydef|subjectscheme|"
+    r"subject scheme|reltable|ditamap|morerows|simpletable|cals|glossentry|glossary|"
+    r"taskbody|conceptbody|branch filter|copy-to attribute)\b",
+    re.IGNORECASE,
+)
+_DITA_OT_RUNTIME_SIGNAL_PATTERN = re.compile(
+    r"\b(dita-ot|dita open toolkit|preprocess(?:ing)?|effective processed|intermediate/effective|"
+    r"conrefpush|conkeyref|conkeyref push|copy-to preprocess|profile step|preprocess-profile|"
+    r"branch filtering|branch-filter|branch-filtering|ditavalref|filtered branch|filtered branches|"
+    r"dita command|--input|--format|--output|--filter|--parameter|-D\b|"
+    r"temp(?:orary)? output|debugging checklist|xml i authored|source xml|"
+    r"authored topic.*effective|html output differ|html.*pdf|pdf.*html|final pdf|junior dita author)\b",
+    re.IGNORECASE,
+)
+
+
+def _should_try_dita_ot_runtime_fallback(user_content: str) -> bool:
+    """Skip DITA-OT preprocess shortcuts for pure DITA authoring/map questions."""
+    query = strip_humanized_chat_prefix(user_content)
+    if not query.strip():
+        return False
+    if _DITA_OT_RUNTIME_SIGNAL_PATTERN.search(query):
+        return True
+    if _DITA_AUTHORING_ONLY_PATTERN.search(query):
+        return False
+    return True
+
+
 def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> str:
     """Senior offline answer for DITA-OT preprocess modules and command arguments."""
     query = (user_content or "").strip()
@@ -4593,7 +4818,7 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
         r"ditaval|conditional content|print rules?|effective processed content|source xml|final transforms?|"
         r"command line|custom property|plugin|runtime options?|resource-only topic|resource-only reusable|warehouse topic|conref warehouse|map context|temp output|element type|"
         r"fails publishing|final pdf|xref inside|points wrong|xml i authored|dita-ot transforms?|pushed warning|"
-        r"debugging checklist|html output differ|pdf.*html|toc|conkeyref|source content|two outputs?|internal text|junior dita author)\b",
+        r"debugging checklist|html output differ|html.*pdf|pdf.*html|toc|conkeyref|source content|two outputs?|internal text|junior dita author)\b",
             lowered,
         )
         or re.search(r"--(?:input|format|output|filter|parameter)\b|-D\b|@print|print=", query)
@@ -4606,6 +4831,99 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
     profile_url = "https://www.dita-ot.org/dev/reference/preprocess-profile"
     params_url = "https://www.dita-ot.org/dev/parameters/"
     command_args_url = "https://www.dita-ot.org/dev/parameters/dita-command-arguments"
+
+    if re.search(r"\b(debug|troubleshoot|diagnos|fails?|failure|publishes?|works?)\b", lowered) and re.search(
+        r"\bhtml(?:5)?\b.*\bpdf\b|\bpdf\b.*\bhtml(?:5)?\b",
+        lowered,
+    ):
+        preprocess_url = "https://www.dita-ot.org/dev/reference/preprocessing"
+        processing_order_url = "https://www.dita-ot.org/dev/reference/processing-order"
+        return "\n".join([
+            "## Short answer",
+            "If a topic publishes in HTML but fails in PDF, do not debug `<topic>` as an element first. Treat it as a transform-specific failure: the source is probably valid enough for HTML, but PDF exposes stricter processing, styling, image, table, link, or XSL-FO/rendering constraints.",
+            "",
+            "## Expected behavior",
+            "The same DITA source should pass preprocessing for both outputs. After preprocessing, HTML5 and PDF diverge into different transformation pipelines, so a failure only in PDF usually means the problem appears after map resolution, filtering, key/conref resolution, copy-to handling, or during PDF-specific rendering.",
+            "",
+            "## Deterministic checks",
+            "1. Run both outputs from the same root map, not from a standalone topic preview.",
+            "2. Keep temp files: `dita -i root.ditamap -f pdf -Dclean.temp=no -v`.",
+            "3. Confirm preprocessing succeeded; inspect temp files after `mapref`, `branch-filter`, `keyref`, `conref`, `copy-to`, and `profile` processing.",
+            "4. Compare the HTML temp/effective topic with the PDF temp/effective topic. If they differ, debug filtering, keys, conrefs, or map context before PDF styling.",
+            "5. If temp content is correct, inspect the PDF error log for XSL-FO/FOP, image resolution, table layout, page layout, font, or plugin errors.",
+            "",
+            "## Common PDF-only causes",
+            "- A table, image, codeblock, or long inline text fits HTML but breaks PDF layout.",
+            "- An `xref`, `keyref`, or `conkeyref` resolves in the HTML map context but not in the PDF root map or filtered branch.",
+            "- Conditional processing excludes content or resources only for the PDF build.",
+            "- A custom PDF plug-in, theme, font, or page layout fails after preprocessing.",
+            "",
+            "## Example workflow",
+            "```bash",
+            "dita -i docs/root.ditamap -f html5 -o out/html -Dclean.temp=no -v",
+            "dita -i docs/root.ditamap -f pdf  -o out/pdf  -Dclean.temp=no -v",
+            "```",
+            "",
+            "## Expected result",
+            "If the PDF temp topic is already wrong, the bug is in DITA preprocessing or map context. If the temp topic is correct but PDF fails, the bug is in the PDF transform layer: XSL-FO, renderer, theme, fonts, images, tables, or plug-in customization.",
+            "",
+            "## Sources",
+            f"- {preprocess_url}",
+            f"- {processing_order_url}",
+            f"- {params_url}",
+        ])
+
+    if re.search(r"\bconkeyref\b", lowered) and re.search(
+        r"\b(branch filtering|branch-filter|branch-filtering|ditavalref|filtered branch|filtered branches|resolve differently|different)\b",
+        lowered,
+    ):
+        branch_filter_url = "https://www.dita-ot.org/dev/reference/preprocess-branch-filter"
+        keyref_url = "https://www.dita-ot.org/dev/reference/preprocess-keyref"
+        return "\n".join([
+            "## Short answer",
+            "A `conkeyref` can resolve differently after branch filtering because it is an indirect content reference: the key portion is resolved in the effective map context, and branch filtering can create separate filtered branches with different active key definitions, key scopes, or copied resource names.",
+            "",
+            "## Why branch filtering changes the result",
+            "DITA-OT does not resolve `conkeyref` only from the authored topic file. It first builds an effective map: map references are expanded, branch filters can duplicate or exclude branches, key scopes can be renamed, and key definitions can become active or inactive per branch. When the later key/conref processing resolves `conkeyref=\"key/elementId\"`, the `key` is looked up in that branch's effective key space.",
+            "",
+            "## Example",
+            "```xml",
+            "<map>",
+            "  <topicref keyscope=\"cloud\">",
+            "    <ditavalref href=\"cloud.ditaval\"/>",
+            "    <keydef keys=\"warning\" href=\"reuse/cloud-warnings.dita\"/>",
+            "    <topicref href=\"install.dita\"/>",
+            "  </topicref>",
+            "  <topicref keyscope=\"onprem\">",
+            "    <ditavalref href=\"onprem.ditaval\"/>",
+            "    <keydef keys=\"warning\" href=\"reuse/onprem-warnings.dita\"/>",
+            "    <topicref href=\"install.dita\"/>",
+            "  </topicref>",
+            "</map>",
+            "",
+            "<note conkeyref=\"warning/install-note\"/>",
+            "```",
+            "",
+            "## Expected result",
+            "In the `cloud` branch, `warning/install-note` resolves to the element in `reuse/cloud-warnings.dita`. In the `onprem` branch, the same authored `conkeyref` can resolve to `reuse/onprem-warnings.dita`. The source topic may be identical, but the effective processed content differs by branch context.",
+            "",
+            "## Deterministic checks",
+            "1. Run with temp retained: `dita -i root.ditamap -f html5 -Dclean.temp=no -v`.",
+            "2. Inspect the temporary/effective map after `branch-filter` to confirm whether branches were duplicated, removed, or renamed.",
+            "3. Check key definitions after filtering; a key filtered out in one branch cannot resolve there.",
+            "4. Inspect key scopes, `keyscopeprefix`, and `keyscopesuffix` if the same map branch is reused for variants.",
+            "5. Confirm the target element ID exists in the effective keyed topic, not only in the original unfiltered source.",
+            "",
+            "## Common mistakes",
+            "- Treating `conkeyref` like direct `conref`; `conkeyref` depends on map/key context.",
+            "- Debugging the standalone topic instead of the root map used for publishing.",
+            "- Assuming branch filtering only removes content; it can also create variant branches with different effective key spaces.",
+            "",
+            "## Sources",
+            f"- {branch_filter_url}",
+            f"- {keyref_url}",
+            f"- {conref_url}",
+        ])
 
     if (
         re.search(r"\b(copy-to|copy to|copied topic|alternate resource identity|copied|two outputs?)\b", lowered)
@@ -4698,6 +5016,49 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
             f"- {command_args_url}",
         ])
 
+    if re.search(r"\b(copy-to|copy to)\b", lowered) and re.search(
+        r"\b(rewrite|rewrites|rewritten|links?|xref|href|target|relative|point|points)\b",
+        lowered,
+    ):
+        return "\n".join([
+            "## Short answer",
+            "After `copy-to` processing, DITA-OT treats the `@copy-to` value as the effective resource URI for that map reference. Downstream link generation should use the copied/effective resource identity where that copied topic is the publication target, instead of blindly linking to the authored source file.",
+            "",
+            "## What actually gets rewritten",
+            "DITA-OT does not edit your source XML on disk. It updates the temporary processing model so later modules and final transforms see the copied topic as a distinct effective resource. That means links, navigation entries, and generated output paths are based on the copy target when the reference is resolved through the copied map branch.",
+            "",
+            "## Example",
+            "```xml",
+            "<map>",
+            "  <topicref href=\"common/install.dita\" copy-to=\"product-a/install.dita\"/>",
+            "  <topicref href=\"common/install.dita\" copy-to=\"product-b/install.dita\"/>",
+            "  <topicref href=\"overview.dita\"/>",
+            "</map>",
+            "```",
+            "",
+            "If the effective publication branch is `product-a/install.dita`, generated links for that branch should target the `product-a` output resource. In HTML output, that usually means a generated link such as `product-a/install.html`, not the original `common/install.html`. The exact final extension and path are transformation-specific.",
+            "",
+            "## Expected result",
+            "A link that belongs to the copied `product-a` branch should resolve to the generated `product-a` output target. A link that still points to the authored `common/install.dita` source after preprocessing is a signal to inspect copy-to mapping, map context, and duplicate references before blaming the PDF or HTML transform.",
+            "",
+            "## Important limitation",
+            "Do not assume every direct `href=\"common/install.dita\"` in every topic is magically rewritten to every `copy-to` target. If the same source topic is referenced normally and through multiple `copy-to` targets, DITA-OT must use map context and effective resource identity to decide which generated target is correct. Ambiguous source links are a common cause of wrong-output links.",
+            "",
+            "## Deterministic checks",
+            "1. Run with temp retained: `dita -i root.ditamap -f html5 -Dclean.temp=no -v`.",
+            "2. Inspect the temporary map and `.job.xml` for the mapping from `common/install.dita` to `product-a/install.dita` / `product-b/install.dita`.",
+            "3. Check whether the broken link points to the authored source URI or the copied effective URI.",
+            "4. If links differ between HTML and PDF, compare the preprocessed temp files before debugging CSS/XSL-FO.",
+            "",
+            "## Common mistakes",
+            "- Debugging only the authored `common/install.dita` and ignoring the effective copied resources.",
+            "- Reusing the same `@copy-to` target in two branches.",
+            "- Expecting `copy-to` to create different text by itself; use filtering, keys, or branch context for variant content.",
+            "",
+            "## Sources",
+            f"- {copy_to_url}",
+        ])
+
     if re.search(r"\b(copy-to|copy to|copy-to processing|alternate resource|alternate output|more than one output|duplicate output)\b", lowered):
         return "\n".join([
             "## Short answer",
@@ -4779,7 +5140,9 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
         r"authored topic|reused content|reusable content|referenced content|pulls referenced content|missing conref|"
         r"fails publishing|editor.*fails publishing|element type.*incompatible|warehouse topic|"
         r"resource-only topic|resource-only reusable|conkeyref|map context|temp output|xref inside|points wrong|final pdf.*blank|"
-        r"deterministic checks|expected output.*conref warehouse|junior dita author|toc)\b",
+        r"deterministic checks|expected output.*conref warehouse|junior dita author|"
+        r"(?:resource-only|processing-role|reuse source|conref warehouse|warehouse topic).{0,80}\btoc\b|"
+        r"\btoc\b.{0,80}(?:resource-only|processing-role|navigation|appear|participation|resolve))\b",
         lowered,
     ):
         return "\n".join([
@@ -4890,9 +5253,14 @@ async def _build_local_fallback_response(
     issue = _fallback_issue_stub(issue_key, context)
 
     if not _looks_like_dita_xml(trimmed):
-        early_dita_ot_runtime_fallback = _build_dita_ot_preprocess_runtime_fallback_response(trimmed)
-        if early_dita_ot_runtime_fallback:
-            return _finalize(early_dita_ot_runtime_fallback)
+        if _should_try_dita_ot_runtime_fallback(trimmed):
+            early_dita_ot_runtime_fallback = _build_dita_ot_preprocess_runtime_fallback_response(trimmed)
+            if early_dita_ot_runtime_fallback:
+                return _finalize(early_dita_ot_runtime_fallback)
+
+        learned_answer = try_build_learned_qa_fallback_answer(trimmed)
+        if learned_answer:
+            return _finalize(learned_answer)
 
     if rag_context is None:
         rag_context = _build_rag_context(trimmed[:500], tenant_id=tenant_id)
@@ -5309,6 +5677,18 @@ def _persist_assistant_message(
         )
         session.updated_at = datetime.utcnow()
         db.commit()
+        try:
+            from app.services.chat_quality_service import get_current_langsmith_run_id, record_chat_answer_quality
+
+            record_chat_answer_quality(
+                session_id,
+                assistant_msg_id,
+                _repair_text_encoding_artifacts(content),
+                tool_results=tool_results if isinstance(tool_results, dict) else None,
+                langsmith_run_id=get_current_langsmith_run_id(),
+            )
+        except Exception:
+            pass
     except Exception as exc:
         db.rollback()
         logger.error_structured(
@@ -5368,12 +5748,12 @@ def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
 
     capped_query = query[:RAG_QUERY_MAX_CHARS]
     parts = []
+    routing_query = strip_humanized_chat_prefix(capped_query) or capped_query
 
     try:
-        if _LEARNED_QA_DOMAIN_PATTERN.search(query):
-            learned_context = format_learned_qa_for_prompt(capped_query, k=3)
-            if learned_context:
-                parts.append(learned_context[:RAG_CONTEXT_MAX_CHARS])
+        learned_context = format_learned_qa_for_prompt(routing_query, k=3)
+        if learned_context:
+            parts.append(learned_context[:RAG_CONTEXT_MAX_CHARS])
     except Exception as e:
         logger.debug_structured("RAG learned QA failed", extra_fields={"error": str(e)})
 
@@ -7562,6 +7942,44 @@ async def _stream_assistant_reply(
         yield {"type": "done"}
         return
 
+    if _is_dita_ot_issue_request_without_explicit_jira(user_content):
+        resolved_dita_ot_issue_query = _resolve_vague_dita_ot_issue_query_from_context(session_id, user_content)
+        async for event in _stream_dita_ot_github_issue_reply(
+            session_id,
+            user_content=user_content,
+            resolved_query=resolved_dita_ot_issue_query or user_content,
+            assistant_msg_id=assistant_msg_id,
+        ):
+            yield event
+        return
+
+    resolved_vague_jira_query = (
+        ""
+        if _is_dita_ot_issue_request_without_explicit_jira(user_content)
+        else _resolve_vague_jira_issue_query_from_context(session_id, user_content)
+    )
+    if resolved_vague_jira_query and resolved_vague_jira_query != user_content:
+        async for event in _stream_direct_jira_search_reply(
+            session_id,
+            user_content=resolved_vague_jira_query,
+            assistant_msg_id=assistant_msg_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        ):
+            yield event
+        return
+    if _is_vague_jira_issue_followup(user_content, extract_jira_search_query(user_content)):
+        clarification_text = (
+            "I need the topic for `it` before searching issues. For example: "
+            "`Show Jira issues related to DITA-OT copy-to link rewriting` or "
+            "`Show issues related to conkeyref branch filtering`."
+        )
+        _persist_assistant_message(session_id, assistant_msg_id, clarification_text)
+        async for event in _emit_streamed_text(clarification_text):
+            yield event
+        yield {"type": "done"}
+        return
+
     if _is_direct_jira_search_request(user_content):
         async for event in _stream_direct_jira_search_reply(
             session_id,
@@ -7585,6 +8003,16 @@ async def _stream_assistant_reply(
         ):
             yield event
         return
+
+    if _should_try_dita_ot_runtime_fallback(user_content):
+        dita_ot_runtime_fallback = _build_dita_ot_preprocess_runtime_fallback_response(user_content)
+        if dita_ot_runtime_fallback:
+            fallback_text = _repair_text_encoding_artifacts(dita_ot_runtime_fallback).strip()
+            _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
+            async for event in _emit_streamed_text(fallback_text):
+                yield event
+            yield {"type": "done"}
+            return
 
     if not is_llm_available():
         fallback_text = await _build_local_fallback_response(
@@ -7824,6 +8252,20 @@ async def _stream_assistant_reply(
         grounding["retrieval_debug"] = dict(retrieval_meta.get("retrieval_debug") or {})
         if llm_enriched:
             grounding["llm_gate_reason"] = "llm_synthesis_attempted_with_grounded_evidence"
+
+        repaired_grounded_answer = _repair_mismatched_behavior_answer(user_content, grounded_answer.answer)
+        if repaired_grounded_answer != grounded_answer.answer:
+            grounded_answer = replace(
+                grounded_answer,
+                answer=repaired_grounded_answer,
+                grounding_status="partial",
+                reason=(
+                    f"{grounded_answer.reason}; replaced definition-style answer because "
+                    "the user asked a behavior/troubleshooting question."
+                ),
+            )
+            grounding["answer_quality_gate"] = "definition_style_answer_replaced_for_behavior_intent"
+
         yield {"type": "grounding", "grounding": grounding, "notice": grounding_to_notice(grounding)}
 
         _persist_assistant_message(
@@ -7930,6 +8372,75 @@ async def _stream_direct_jira_search_reply(
         assistant_msg_id,
         response_text,
         tool_results={"search_jira_issues": result},
+    )
+    yield {"type": "chunk", "content": response_text}
+    yield {"type": "done"}
+
+
+def _format_dita_ot_github_issue_matches(original_query: str, resolved_query: str, issues: list[dict]) -> str:
+    original = (original_query or "").strip()
+    resolved = (resolved_query or original).strip()
+    intro = []
+    if resolved and resolved != original:
+        intro.append(f"I interpreted `it` as `{resolved.replace('DITA-OT GitHub issues for ', '')}` from the previous DITA-OT question.")
+    intro.append(
+        "I treated this as a DITA-OT GitHub issue lookup, not a Jira lookup. "
+        "If you want internal Jira tickets, ask `Show Jira issues for ...`."
+    )
+
+    if not issues:
+        return (
+            "\n\n".join(intro)
+            + "\n\n## No indexed DITA-OT GitHub issue matches\n"
+            + f"I could not find a close DITA-OT GitHub issue match for `{resolved}` in the indexed corpus.\n\n"
+            + "Try a more specific topic such as `copy-to link rewriting`, `conkeyref branch filtering`, "
+            + "`preprocess keyref`, or `PDF theme variables`."
+        )
+
+    lines = ["\n\n".join(intro), "\n\n## DITA-OT GitHub issue matches"]
+    for idx, issue in enumerate(issues[:5], start=1):
+        title = str(issue.get("title") or "Untitled issue").strip()
+        number = issue.get("issue_number")
+        url = str(issue.get("url") or "").strip()
+        snippet = re.sub(r"\s+", " ", str(issue.get("snippet") or "")).strip()
+        snippet = snippet[:260].rstrip()
+        label = f"#{number} — {title}" if number else title
+        if url:
+            lines.append(f"{idx}. [{label}]({url})")
+        else:
+            lines.append(f"{idx}. {label}")
+        if snippet:
+            lines.append(f"   - Why it may be related: {snippet}")
+    lines.append(
+        "\n## How to use these results\n"
+        "- Compare the issue symptoms with your map context, DITAVAL/branch-filtering setup, and DITA-OT version.\n"
+        "- If the issue is about your product workflow rather than upstream DITA-OT, search Jira separately with the resolved topic."
+    )
+    return "\n".join(lines)
+
+
+async def _stream_dita_ot_github_issue_reply(
+    session_id: str,
+    *,
+    user_content: str,
+    resolved_query: str,
+    assistant_msg_id: str,
+) -> AsyncGenerator[dict, None]:
+    from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
+
+    issues = retrieve_dita_ot_github_for_query(resolved_query, k=5)
+    result = {
+        "query": resolved_query,
+        "source": "dita_ot_github",
+        "issues": issues,
+    }
+    yield {"type": "tool", "name": "search_dita_ot_github_issues", "result": result}
+    response_text = _format_dita_ot_github_issue_matches(user_content, resolved_query, issues)
+    _persist_assistant_message(
+        session_id,
+        assistant_msg_id,
+        response_text,
+        tool_results={"search_dita_ot_github_issues": result},
     )
     yield {"type": "chunk", "content": response_text}
     yield {"type": "done"}
@@ -8506,6 +9017,12 @@ async def _stream_tool_mode_reply(
                 rag_context=rag_context,
             )
 
+        repaired_full_text = _repair_mismatched_behavior_answer(user_content, full_text)
+        if repaired_full_text != full_text:
+            full_text = repaired_full_text
+            correction_text = "\n\nCorrection: I replaced a definition-style answer with the troubleshooting workflow for this question.\n\n"
+            yield {"type": "chunk", "content": correction_text + full_text}
+
         _persist_assistant_message(
             session_id,
             assistant_msg_id,
@@ -8612,6 +9129,56 @@ async def _stream_tool_mode_reply(
 
 
 async def chat_turn(
+    session_id: str,
+    user_content: str,
+    user_id: str = "chat-user",
+    context: Optional[dict] = None,
+    tenant_id: str = "kone",
+    human_prompts: bool | None = None,
+    tool_intent: Optional[dict[str, Any]] = None,
+    attachments: Optional[list[ChatAttachmentRef]] = None,
+    generation_options: Optional[ChatDitaGenerationOptions] = None,
+    jira_context: Optional[str] = None,
+) -> AsyncGenerator[dict, None]:
+    """Process a chat turn (LangSmith-traced when enabled)."""
+    impl = _get_traced_chat_turn_impl()
+    async for event in impl(
+        session_id,
+        user_content,
+        user_id=user_id,
+        context=context,
+        tenant_id=tenant_id,
+        human_prompts=human_prompts,
+        tool_intent=tool_intent,
+        attachments=attachments,
+        generation_options=generation_options,
+        jira_context=jira_context,
+    ):
+        yield event
+
+
+_TRACED_CHAT_TURN: Any = None
+
+
+def _get_traced_chat_turn_impl():
+    global _TRACED_CHAT_TURN
+    if _TRACED_CHAT_TURN is not None:
+        return _TRACED_CHAT_TURN
+    from app.services.chat_quality_service import is_langsmith_tracing_enabled
+
+    if is_langsmith_tracing_enabled():
+        try:
+            from langsmith.run_helpers import traceable
+
+            _TRACED_CHAT_TURN = traceable(name="chat_turn", run_type="chain")(_chat_turn_impl)
+        except ImportError:
+            _TRACED_CHAT_TURN = _chat_turn_impl
+    else:
+        _TRACED_CHAT_TURN = _chat_turn_impl
+    return _TRACED_CHAT_TURN
+
+
+async def _chat_turn_impl(
     session_id: str,
     user_content: str,
     user_id: str = "chat-user",

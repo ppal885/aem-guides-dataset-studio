@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DatasetExplorer } from '@/components/DatasetExplorer';
+import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
 import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
@@ -102,13 +103,11 @@ export function DatasetExplorerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="border-l-4 border-teal-500 pl-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dataset Explorer</h1>
-        <p className="mt-2 text-slate-600">
-          Browse and explore your generated datasets. Select a completed job to view its structure and files.
-        </p>
-      </div>
+    <AppPageShell wide className="space-y-8">
+      <AppPageHeader
+        title="Dataset Explorer"
+        description="Browse generated datasets. Select a completed job to view its structure and files."
+      />
 
       {/* Job Selector */}
       <Card>
@@ -196,7 +195,7 @@ export function DatasetExplorerPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </AppPageShell>
   );
 }
 

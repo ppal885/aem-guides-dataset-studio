@@ -17,11 +17,8 @@ import type {
 import { AssistantAvatar } from './AssistantAvatar';
 import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
 import { DatasetJobStatusCard } from './DatasetJobStatusCard';
-import {
-  AuthoringGenerationSplitReview,
-  type AuthoringVisualContext,
-} from '@/components/Authoring/AuthoringGenerationSplitReview';
 import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from './toolResultUtils';
+import { sortToolResultEntries } from './toolResultOrder';
 
 interface ChatMessageProps {
   messageId: string;
@@ -30,8 +27,6 @@ interface ChatMessageProps {
   content: string;
   createdAt?: string | null;
   toolResults?: Record<string, unknown>;
-  /** When this assistant message is the latest screenshot authoring result, show thumbnail + options used. */
-  authoringVisualContext?: AuthoringVisualContext | null;
   onCopy?: () => void;
   /** User message: open inline edit */
   onSaveEdit?: (messageId: string, newContent: string) => Promise<void>;
@@ -39,8 +34,6 @@ interface ChatMessageProps {
   /** Last assistant bubble: regenerate reply */
   showRegenerate?: boolean;
   onRegenerate?: () => void;
-  /** Authoring result: regenerate with generation_options payload */
-  onRegenerateAuthoring?: (options: ChatDitaGenerationOptions) => void;
   /** Error-style assistant bubble: retry (same as regenerate for server) */
   showRetry?: boolean;
   onRetry?: () => void;
@@ -254,13 +247,11 @@ export function ChatMessage({
   content,
   createdAt,
   toolResults,
-  authoringVisualContext,
   onCopy,
   onSaveEdit,
   actionDisabled,
   showRegenerate,
   onRegenerate,
-  onRegenerateAuthoring,
   showRetry,
   onRetry,
   onQuickReply,
@@ -322,7 +313,7 @@ export function ChatMessage({
     >
       {isUser ? (
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-800 text-white shadow-sm"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground shadow-sm"
           aria-hidden
         >
           <UserRound className="h-4 w-4" strokeWidth={2} />
@@ -335,21 +326,21 @@ export function ChatMessage({
         className={cn(
           'min-w-0 w-full max-w-full flex-1 rounded-xl px-5 py-3.5 transition-all duration-200',
           isUser
-            ? 'border border-slate-200/80 bg-white text-slate-900 shadow-sm'
-            : 'border border-slate-200/60 bg-white text-slate-800 shadow-sm hover:shadow-md'
+            ? 'border border-border bg-card text-foreground shadow-sm'
+            : 'border border-border bg-card text-foreground shadow-sm hover:shadow-md'
         )}
       >
-        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100/80 pb-2">
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
           <span
             className={cn(
               'text-[10px] font-bold uppercase tracking-[0.14em]',
-              isUser ? 'text-slate-500' : 'text-teal-600'
+              isUser ? 'text-muted-foreground' : 'text-teal-600 dark:text-teal-400'
             )}
           >
             {isUser ? 'You' : 'Assistant'}
           </span>
           {createdAt && (
-            <span className="text-[10px] text-slate-400 tabular-nums">
+            <span className="text-[10px] text-muted-foreground tabular-nums">
               {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
@@ -470,7 +461,7 @@ export function ChatMessage({
                 </div>
               </div>
             ) : (
-              <div className="whitespace-pre-wrap break-words text-slate-800">{content}</div>
+              <div className="whitespace-pre-wrap break-words text-foreground">{content}</div>
             )
           ) : (
             <div className={CHAT_MARKDOWN_PROSE_CLASS}>
@@ -479,28 +470,12 @@ export function ChatMessage({
           )}
         </div>
         {toolResults && Object.keys(toolResults).length > 0 && (
-          <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
-            {Object.entries(toolResults)
-              .sort(([a], [b]) => {
-                const order = ['_agent_plan', '_approval_state', '_agent_execution', '_grounding'];
-                const ai = order.indexOf(a);
-                const bi = order.indexOf(b);
-                const av = ai === -1 ? order.length : ai;
-                const bv = bi === -1 ? order.length : bi;
-                return av - bv;
-              })
-              .map(([name, result]) => (
+          <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+            {sortToolResultEntries(Object.entries(toolResults)).map(([name, result]) => (
               <ToolResult
                 key={name}
                 name={name}
                 result={result}
-                authoringOnRegenerate={showRegenerate ? onRegenerate : undefined}
-                authoringOnRegenerateWithOptions={
-                  showRegenerate && onRegenerateAuthoring ? onRegenerateAuthoring : undefined
-                }
-                authoringVisualContext={
-                  name === 'generate_dita_from_attachments' ? authoringVisualContext : undefined
-                }
                 onQuickReply={onQuickReply}
               />
             ))}
@@ -548,17 +523,10 @@ function XmlExamplesPanel({ result }: { result: Record<string, unknown> }) {
 export function ToolResult({
   name,
   result,
-  authoringOnRegenerate,
-  authoringOnRegenerateWithOptions,
-  authoringVisualContext,
   onQuickReply,
 }: {
   name: string;
   result: unknown;
-  /** When this is the last assistant message, wire chat regenerate for DITA authoring. */
-  authoringOnRegenerate?: () => void;
-  authoringOnRegenerateWithOptions?: (options: ChatDitaGenerationOptions) => void;
-  authoringVisualContext?: AuthoringVisualContext | null;
   onQuickReply?: (text: string) => void;
 }) {
   const r = result as Record<string, unknown> | null;
@@ -596,14 +564,7 @@ export function ToolResult({
     return <ImageGenerationPanel result={r} />;
   }
   if (name === 'generate_dita_from_attachments') {
-    return (
-      <AttachmentAuthoringResultPanel
-        result={r as unknown as ChatDitaAuthoringResult}
-        onRegenerateTopic={authoringOnRegenerateWithOptions}
-        onRegenerateTopicFallback={authoringOnRegenerate}
-        visualContext={authoringVisualContext}
-      />
-    );
+    return <LegacyAttachmentAuthoringPanel result={r as unknown as ChatDitaAuthoringResult} />;
   }
   const downloadUrl = r.download_url as string | undefined;
   const jiraId = r.jira_id as string | undefined;
@@ -2064,53 +2025,43 @@ function GenerationOptionsPanel({ options }: { options: ChatDitaGenerationOption
   );
 }
 
-function AttachmentAuthoringResultPanel({
-  result,
-  onRegenerateTopic,
-  onRegenerateTopicFallback,
-  visualContext,
-}: {
-  result: ChatDitaAuthoringResult;
-  onRegenerateTopic?: (options: ChatDitaGenerationOptions) => void;
-  /** When options-based regen is unavailable, header-style regenerate only. */
-  onRegenerateTopicFallback?: () => void;
-  visualContext?: AuthoringVisualContext | null;
-}) {
-  const actions = result.actions || [];
-  const savedAction = actions.find((action) => action.key === 'saved_to_aem') || null;
-
-  const [xmlDraft, setXmlDraft] = useState(result.xml_preview || '');
-  useEffect(() => {
-    setXmlDraft(result.xml_preview || '');
-  }, [result.xml_preview]);
+function LegacyAttachmentAuthoringPanel({ result }: { result: ChatDitaAuthoringResult }) {
+  const validation = result.validation_result;
+  const xml = (result.xml_preview || '').trim();
 
   return (
-    <div className="rounded-xl border border-teal-200/80 bg-gradient-to-br from-teal-50 to-teal-50/70 p-3 shadow-sm sm:p-4">
-      {(result.message || result.explanation || savedAction?.description || result.saved_asset_path) && (
-        <div className="mb-3 rounded-lg border border-teal-100 bg-white/70 px-3 py-2 text-xs text-slate-700">
-          {savedAction?.description && (
-            <p>
-              <span className="font-semibold text-slate-800">Saved to AEM:</span> {savedAction.description}
-            </p>
-          )}
-          {!savedAction?.description && result.saved_asset_path && (
-            <p>
-              <span className="font-semibold text-slate-800">Saved path:</span> {result.saved_asset_path}
-            </p>
-          )}
-          {result.message && <p className="mt-1 leading-relaxed">{result.message}</p>}
-          {result.explanation && <p className="mt-1 leading-relaxed text-slate-600">{result.explanation}</p>}
-        </div>
+    <div className="rounded-xl border border-stone-200 bg-stone-50/90 p-3 shadow-sm sm:p-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-700">
+          Legacy attachment result
+        </span>
+        {result.dita_type && (
+          <span className="text-xs text-stone-600">{result.dita_type}</span>
+        )}
+        {result.status && (
+          <span className="text-xs text-stone-500">{result.status}</span>
+        )}
+      </div>
+      {result.title && (
+        <p className="text-sm font-medium text-stone-900">{result.title}</p>
       )}
-
-      <AuthoringGenerationSplitReview
-        result={result}
-        visualContext={visualContext}
-        xmlDraft={xmlDraft}
-        onXmlDraftChange={setXmlDraft}
-        onRegenerateTopic={onRegenerateTopic}
-        onRegenerateTopicFallback={onRegenerateTopicFallback}
-      />
+      {(result.message || result.explanation) && (
+        <p className="mt-2 text-xs leading-relaxed text-stone-600">
+          {result.message || result.explanation}
+        </p>
+      )}
+      {validation && (
+        <p className="mt-2 text-[11px] text-stone-500">
+          Validation: {validation.valid ? 'valid' : 'invalid'}
+          {validation.repaired ? ' (repaired)' : ''}
+          {validation.quality_score != null ? ` · score ${validation.quality_score}` : ''}
+        </p>
+      )}
+      {xml ? (
+        <pre className="mt-3 max-h-80 overflow-auto rounded-lg border border-stone-200 bg-white p-3 text-[11px] leading-relaxed text-stone-800 whitespace-pre-wrap break-all">
+          {xml}
+        </pre>
+      ) : null}
     </div>
   );
 }

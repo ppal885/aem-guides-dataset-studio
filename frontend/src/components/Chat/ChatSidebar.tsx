@@ -71,6 +71,13 @@ export function ChatSidebar({
     try { localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* */ }
   }, [collapsed]);
 
+  useEffect(() => {
+    if (localStorage.getItem(COLLAPSED_KEY) !== null) return;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setCollapsed(true);
+    }
+  }, []);
+
   // Drag resize handler
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -129,11 +136,11 @@ export function ChatSidebar({
   // Collapsed sidebar
   if (collapsed) {
     return (
-      <div className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-slate-200 bg-slate-50 py-3">
+      <div className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-border bg-muted py-3">
         <button
           type="button"
           onClick={() => setCollapsed(false)}
-          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:border-teal-300 hover:text-teal-700"
+          className="rounded-md border border-border bg-card p-2 text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
           title="Expand sidebar"
         >
           <PanelLeftOpen className="h-4 w-4" />
@@ -141,7 +148,7 @@ export function ChatSidebar({
         <button
           type="button"
           onClick={onNew}
-          className="rounded-lg border border-slate-200 bg-white p-2 text-teal-600 shadow-sm transition-colors hover:border-teal-300 hover:bg-teal-50"
+          className="rounded-md border border-border bg-card p-2 text-foreground transition-colors hover:border-border hover:bg-muted"
           title="New conversation"
           disabled={creatingSession || clearingAll}
         >
@@ -154,16 +161,16 @@ export function ChatSidebar({
   return (
     <div
       ref={sidebarRef}
-      className="relative flex shrink-0 flex-col border-r border-slate-200 bg-slate-50"
+      className="relative flex shrink-0 flex-col border-r border-border bg-muted"
       style={{ width }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Conversations</p>
+      <div className="flex items-center justify-between border-b border-border bg-card px-3 py-3">
+        <p className="docs-section-label">Conversations</p>
         <button
           type="button"
           onClick={() => setCollapsed(true)}
-          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title="Collapse sidebar"
         >
           <PanelLeftClose className="h-3.5 w-3.5" />
@@ -175,7 +182,7 @@ export function ChatSidebar({
         <Button
           onClick={onNew}
           variant="outline"
-          className="h-8 w-full items-center justify-center gap-2 rounded-lg border-0 bg-teal-600 font-semibold text-white shadow-sm hover:bg-teal-700"
+          className="h-8 w-full items-center justify-center gap-2 rounded-md border-0 bg-primary font-medium text-primary-foreground hover:opacity-90"
           disabled={creatingSession || clearingAll}
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -203,7 +210,7 @@ export function ChatSidebar({
       {/* Session list */}
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         {sessions.length === 0 && !creatingSession && (
-          <p className="px-3 py-6 text-center text-xs leading-relaxed text-slate-400">
+          <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
             No history yet.
           </p>
         )}
@@ -211,10 +218,10 @@ export function ChatSidebar({
           <div
             key={s.id}
             className={cn(
-              'group mb-1 flex cursor-pointer items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2.5 transition-all duration-150',
+              'group mb-1 flex cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2.5 py-2 transition-all duration-150',
               currentId === s.id
-                ? 'border-teal-200 bg-teal-50/90 shadow-sm'
-                : 'hover:border-slate-200 hover:bg-white'
+                ? 'border-border bg-muted'
+                : 'hover:border-border hover:bg-card'
             )}
           >
             {editingId === s.id ? (
@@ -227,7 +234,7 @@ export function ChatSidebar({
                     if (e.key === 'Enter') void commitRename();
                     if (e.key === 'Escape') cancelRename();
                   }}
-                  className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/25"
+                  className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
                   disabled={savingTitle}
                   autoFocus
                 />
@@ -242,7 +249,7 @@ export function ChatSidebar({
                 </button>
                 <button
                   type="button"
-                  className="p-1 rounded-md hover:bg-slate-200 text-slate-500"
+                  className="rounded-md p-1 text-muted-foreground hover:bg-muted"
                   onClick={cancelRename}
                   disabled={savingTitle}
                   title="Cancel"
@@ -256,7 +263,7 @@ export function ChatSidebar({
                   type="button"
                   className={cn(
                     "flex-1 min-w-0 text-left text-[13px] leading-5",
-                    currentId === s.id ? "font-semibold text-slate-900" : "text-slate-700"
+                    currentId === s.id ? "font-semibold text-foreground" : "text-foreground/80"
                   )}
                   onClick={() => onSelect(s.id)}
                   title={s.title || 'New Chat'}
@@ -267,7 +274,7 @@ export function ChatSidebar({
                   <button
                     type="button"
                     onClick={(e) => startRename(s, e)}
-                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-white hover:text-teal-700 group-hover:opacity-100"
+                    className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-card hover:text-foreground group-hover:opacity-100"
                     title="Rename chat"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -280,7 +287,7 @@ export function ChatSidebar({
                       e.stopPropagation();
                       onExport(s.id);
                     }}
-                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-white hover:text-teal-700 group-hover:opacity-100"
+                    className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-card hover:text-foreground group-hover:opacity-100"
                     title="Export as Markdown"
                   >
                     <Download className="w-3.5 h-3.5" />
@@ -292,7 +299,7 @@ export function ChatSidebar({
                     e.stopPropagation();
                     onDelete(s.id);
                   }}
-                    className="rounded-md p-1 text-slate-400 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
+                    className="rounded-md p-1 text-stone-400 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
                   title="Delete"
                   disabled={deletingId === s.id}
                 >
@@ -312,7 +319,7 @@ export function ChatSidebar({
       <div
         className={cn(
           "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize transition-colors z-10",
-          dragging ? "bg-teal-500" : "bg-transparent hover:bg-teal-400/30"
+          dragging ? "bg-muted-foreground/50" : "bg-transparent hover:bg-border/60"
         )}
         onMouseDown={handleMouseDown}
         title="Drag to resize"
