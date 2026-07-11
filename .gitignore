@@ -106,4 +106,8 @@ sync-config.local.json
 
 # Local/generated AI indexes and machine-specific settings
 backend/storage/chroma_db/
+.run-local/
+backend/.venv312/
+local-*.pid
+local-*.log
 .claude/settings.local.json
