@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
+import { Home, LayoutDashboard, Upload, History, FolderOpen, Sparkles, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -11,7 +11,8 @@ export function Layout({ children }: LayoutProps) {
   const location = useLocation();
 
   const navItems = [
-    { path: '/', label: 'Builder', icon: LayoutDashboard },
+    { path: '/', label: 'Home', icon: Home },
+    { path: '/builder', label: 'Builder', icon: LayoutDashboard },
     { path: '/chat', label: 'AI Chat', icon: Sparkles },
     { path: '/job-history', label: 'Job History', icon: History },
     { path: '/dataset-explorer', label: 'Dataset Explorer', icon: FolderOpen },
