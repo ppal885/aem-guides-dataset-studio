@@ -9127,6 +9127,9 @@ _PREPUBLISH_STOPWORDS = {
 }
 
 
+_dita_content_root_warned: set[str] = set()
+
+
 def _dita_content_root() -> "Path | None":
     from pathlib import Path
 
@@ -9134,7 +9137,19 @@ def _dita_content_root() -> "Path | None":
     if not root:
         return None
     path = Path(root)
-    return path if path.exists() and path.is_dir() else None
+    if path.exists() and path.is_dir():
+        return path
+    # Configured but not found on this host (e.g. a dev/demo path deployed to a VM, or a
+    # Windows path on Linux). Warn once so it's diagnosable instead of silently behaving
+    # like "unset". Content is environment-specific — set DITA_CONTENT_ROOT to this host's
+    # AEM Guides content checkout (or the mounted /content path in Docker).
+    if root not in _dita_content_root_warned:
+        _dita_content_root_warned.add(root)
+        logger.warning_structured(
+            "DITA_CONTENT_ROOT is set but not found on this host; pre-publish map-by-name resolution is disabled",
+            extra_fields={"configured_path": root},
+        )
+    return None
 
 
 def _prepublish_reference(text: str) -> str:
