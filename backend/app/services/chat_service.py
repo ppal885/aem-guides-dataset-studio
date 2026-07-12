@@ -6026,7 +6026,20 @@ def _is_follow_up_question(text: str) -> bool:
     word_count = len(t.split())
     if word_count <= 5:
         return True   # "what about conref?" "give me an example"
-    return bool(_FOLLOW_UP_ANAPHORA.search(t))
+    if not _FOLLOW_UP_ANAPHORA.search(t):
+        return False
+    # A longer question can contain a pronoun ("...will it appear in published output?")
+    # whose antecedent is inside the same sentence, not a prior turn. If the question
+    # already names its own concrete DITA construct, it is self-contained — expanding it
+    # with the previous message pollutes retrieval (e.g. dragging in "create a new topic").
+    try:
+        from app.services.dita_query_interpreter import extract_attribute_names, extract_element_names
+
+        if extract_attribute_names(t) or extract_element_names(t):
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def _expand_query_with_context(query: str, transcript: str) -> str:
