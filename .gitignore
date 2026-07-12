@@ -111,3 +111,10 @@ backend/.venv312/
 local-*.pid
 local-*.log
 .claude/settings.local.json
+
+# Runtime state / logs the app rewrites every run — untracked to avoid pull conflicts
+# on running hosts (VMs). Regenerated automatically; not needed in version control.
+backend/storage/knowledge_source_state/
+backend/storage/ai_flow_intelligence.json
+backend/storage/corrective_rag_traces.jsonl
+backend/storage/**/failure_log.jsonl
