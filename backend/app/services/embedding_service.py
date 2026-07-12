@@ -6,6 +6,7 @@ The service also exposes runtime diagnostics so callers can distinguish true
 semantic retrieval from lexical fallback.
 """
 import os
+from pathlib import Path
 from typing import Any, Optional
 
 from app.core.structured_logging import get_structured_logger
@@ -53,6 +54,30 @@ def _try_azure_embedding(texts: list) -> Optional[list]:
         return None
 
 
+def _resolve_embedding_source() -> tuple[str, str]:
+    """Pick the embedding model source, portably across machines/containers.
+
+    Order: (1) DITA_EMBEDDING_MODEL_PATH if it exists on THIS host, (2) the model bundled
+    under ``backend/models/<name>`` (relative — survives a VM/container move), (3) the model
+    NAME so sentence-transformers downloads/caches it. This means a stale absolute path in
+    .env (e.g. a Windows path baked in, then deployed to a Linux VM) no longer disables
+    embeddings — it transparently falls back instead of failing.
+    """
+    if DITA_EMBEDDING_MODEL_PATH and Path(DITA_EMBEDDING_MODEL_PATH).exists():
+        return DITA_EMBEDDING_MODEL_PATH, "local_path"
+
+    bundled = Path(__file__).resolve().parent.parent.parent / "models" / DITA_EMBEDDING_MODEL
+    if bundled.exists():
+        return str(bundled), "local_path_relative"
+
+    if DITA_EMBEDDING_MODEL_PATH:
+        logger.warning_structured(
+            "DITA_EMBEDDING_MODEL_PATH not found on this host; falling back to model name",
+            extra_fields={"configured_path": DITA_EMBEDDING_MODEL_PATH, "model": DITA_EMBEDDING_MODEL},
+        )
+    return DITA_EMBEDDING_MODEL, "model_name"
+
+
 def _load_model():
     """Load embedding model lazily (singleton)."""
     global _embedding_model, _embedding_available
@@ -64,22 +89,14 @@ def _load_model():
     try:
         from sentence_transformers import SentenceTransformer
 
-        if DITA_EMBEDDING_MODEL_PATH:
-            _embedding_model = SentenceTransformer(DITA_EMBEDDING_MODEL_PATH)
-            _embedding_load_mode = "local_path"
-            _embedding_active_model_identifier = DITA_EMBEDDING_MODEL_PATH
-            logger.info_structured(
-                "Loaded fine-tuned DITA embedding model",
-                extra_fields={"path": DITA_EMBEDDING_MODEL_PATH},
-            )
-        else:
-            _embedding_model = SentenceTransformer(DITA_EMBEDDING_MODEL)
-            _embedding_load_mode = "model_name"
-            _embedding_active_model_identifier = DITA_EMBEDDING_MODEL
-            logger.info_structured(
-                "Loaded DITA embedding model",
-                extra_fields={"model": DITA_EMBEDDING_MODEL},
-            )
+        identifier, mode = _resolve_embedding_source()
+        _embedding_model = SentenceTransformer(identifier)
+        _embedding_load_mode = mode
+        _embedding_active_model_identifier = identifier
+        logger.info_structured(
+            "Loaded DITA embedding model",
+            extra_fields={"identifier": identifier, "mode": mode},
+        )
         _embedding_available = True
         _embedding_failure_reason = ""
         return _embedding_model
