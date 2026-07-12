@@ -625,6 +625,23 @@ class LargeScaleRecipe(BaseModel):
     content_titles: List[str] = Field(default_factory=list, description="Per-topic titles aligned to topic indices. When shorter than topic_count, the rest fall back to subject-templated titles.")
     content_bodies: List[str] = Field(default_factory=list, description="Per-topic body paragraphs aligned to topic indices. When shorter, the rest fall back to subject-templated bodies.")
 
+class CuratedRealtimeCorpusRecipe(BaseModel):
+    """
+    Curated large-scale corpus (100k–200k topics) from Stack Overflow, blockchain, and cloud seeds.
+
+    Each topic uses AEM Guides topic/map DTD, prolog keywords, tag sections, and optional live
+    Stack Exchange question titles when fetch_live is enabled.
+    """
+    type: Literal["curated_realtime_corpus"] = "curated_realtime_corpus"
+    topic_count: int = Field(default=100_000, ge=1_000, le=200_000)
+    data_sources: List[str] = Field(
+        default_factory=lambda: ["stackoverflow", "blockchain", "cloud_computing"]
+    )
+    batch_size: int = Field(default=1000, ge=100, le=10_000)
+    fetch_live: bool = True
+    map_sample_size: int = Field(default=2000, ge=0, le=10_000)
+    content_subject: str = Field(default="", description="Optional domain prefix for titles and shortdesc.")
+
 class DeepHierarchyRecipe(BaseModel):
     """
     Recipe for deep hierarchy testing (10+ levels).
@@ -1290,6 +1307,7 @@ Recipe = Annotated[
         WorkflowEnabledContentRecipe,
         OutputOptimizedRecipe,
         LargeScaleRecipe,
+        CuratedRealtimeCorpusRecipe,
         DeepHierarchyRecipe,
         WideBranchingRecipe,
         FlatHierarchicalDitaRecipe,

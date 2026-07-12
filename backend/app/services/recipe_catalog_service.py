@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.generator.recipe_manifest import RecipeSpec, discover_recipe_specs
+from app.services.recipe_sample_preview_service import get_recipe_sample_preview
 
 _FEATURED_TRACKS = {
     "dita_authoring": "DITA authoring",
@@ -79,6 +80,14 @@ _CURATED_EXAMPLES: dict[str, dict[str, str]] = {
   </reltable>
 </map>""",
         "expected_result": "Builds map relationships that connect related topics for navigation and related-links testing.",
+    },
+    "curated_realtime_corpus": {
+        "expected_result": (
+            "Writes topics/curated/curated_NNNNNNNN.dita files (100k-200k) rotated across Stack Overflow, "
+            "blockchain, and cloud computing seeds. Each topic has prolog source:* keywords, shortdesc, a "
+            "curated-summary paragraph, and a Tags section. Also emits maps/curated_root_sample.ditamap "
+            "(first map_sample_size topicrefs) and curated_corpus_manifest.json."
+        ),
     },
     "conditionals.audience_filter": {
         "full_example_xml": """<task id="install-app">
@@ -264,9 +273,7 @@ def _infer_editor_type(spec: RecipeSpec) -> str:
     return "defaults_only"
 
 
-def _fallback_example_xml(spec: RecipeSpec) -> str:
-    if spec.example_output and "<" in spec.example_output:
-        return str(spec.example_output).strip()
+def _legacy_fallback_example_xml(spec: RecipeSpec) -> str:
     if spec.id.startswith("conditionals."):
         return """<topic id="conditional-sample">
   <title>Conditional sample</title>
@@ -319,6 +326,22 @@ def _fallback_example_xml(spec: RecipeSpec) -> str:
 </topic>"""
 
 
+def _resolve_catalog_sample(spec: RecipeSpec) -> tuple[str, str]:
+    curated = _CURATED_EXAMPLES.get(spec.id) or {}
+    if curated.get("full_example_xml"):
+        return (
+            str(curated["full_example_xml"]).strip(),
+            curated.get("expected_result") or _expected_result(spec, _infer_category(spec)),
+        )
+
+    generated = get_recipe_sample_preview(spec.id)
+    if generated:
+        return generated
+
+    category = _infer_category(spec)
+    return _legacy_fallback_example_xml(spec), _expected_result(spec, category)
+
+
 def _expected_result(spec: RecipeSpec, category: str) -> str:
     if spec.id in _CURATED_EXAMPLES:
         return _CURATED_EXAMPLES[spec.id]["expected_result"]
@@ -332,7 +355,7 @@ def _expected_result(spec: RecipeSpec, category: str) -> str:
 def _entry_from_spec(spec: RecipeSpec) -> dict[str, Any]:
     category = _infer_category(spec)
     tracks = _infer_tracks(spec, category)
-    curated = _CURATED_EXAMPLES.get(spec.id) or {}
+    sample_xml, sample_summary = _resolve_catalog_sample(spec)
     normalized_params_schema = _normalized_params_schema(spec)
     tags = _normalize_text_list(
         list(spec.tags or [])
@@ -352,8 +375,8 @@ def _entry_from_spec(spec: RecipeSpec) -> dict[str, Any]:
         "params_schema": normalized_params_schema,
         "default_params": spec.default_params or {},
         "editor_type": "schema_form" if normalized_params_schema else _infer_editor_type(spec),
-        "full_example_xml": curated.get("full_example_xml") or _fallback_example_xml(spec),
-        "expected_result": _expected_result(spec, category),
+        "full_example_xml": sample_xml,
+        "expected_result": sample_summary,
         "stability": spec.stability,
         "topic_type": spec.topic_type,
         "mechanism_family": spec.mechanism_family,
@@ -378,28 +401,24 @@ def get_recipe_catalog() -> dict[str, Any]:
         ],
         "quick_workflows": [
             {
-                "id": "qa_pair_generation",
-                "title": "QA pair generation",
-                "description": "Surface recipes that help generate grounded examples, relationship patterns, and reusable QA validation content.",
+                "id": "curated_100k",
+                "title": "1 Lakh curated",
+                "description": "100,000 AEM Guides topics from Stack Overflow, blockchain, and cloud seeds.",
                 "category": "qa_dataset_creation",
                 "featured_track": "qa_dataset_creation",
-                "search_terms": ["qa", "relationship", "reference", "dataset"],
+                "search_terms": ["curated_realtime_corpus", "curated", "100k", "stackoverflow"],
+                "recipe_id": "curated_realtime_corpus",
+                "preset_params": {"topic_count": 100_000},
             },
             {
-                "id": "jira_repro_normalization",
-                "title": "Jira repro normalization",
-                "description": "Focus on troubleshooting and map/reuse patterns that turn bug-report steps into consistent, testable XML structures.",
-                "category": "troubleshooting",
-                "featured_track": "troubleshooting",
-                "search_terms": ["stress", "relationship", "task", "conditional"],
-            },
-            {
-                "id": "issue_to_rag_dataset_creation",
-                "title": "Issue-to-RAG dataset creation",
-                "description": "Filter toward recipes useful for building issue-pattern corpora and retrieval-ready reusable examples.",
+                "id": "curated_200k",
+                "title": "2 Lakh curated",
+                "description": "200,000 richly tagged topics with DITA prolog metadata and sample root map.",
                 "category": "qa_dataset_creation",
-                "featured_track": "reuse_maps",
-                "search_terms": ["conref", "keyref", "relationship", "reference"],
+                "featured_track": "qa_dataset_creation",
+                "search_terms": ["curated_realtime_corpus", "200k", "blockchain", "cloud"],
+                "recipe_id": "curated_realtime_corpus",
+                "preset_params": {"topic_count": 200_000},
             },
         ],
     }

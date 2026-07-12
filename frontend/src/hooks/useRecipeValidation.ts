@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react';
+import {
+  normalizeRecipeLimits,
+  topicCountCapForRecipe,
+  type RecipeLimits,
+} from '@/lib/recipeLimits';
 
 interface ValidationError {
   field: string;
@@ -12,12 +17,7 @@ interface ValidationResult {
   warnings: ValidationError[];
 }
 
-interface Limits {
-  topicrefs_per_map_max?: number;
-  total_topicrefs_max?: number;
-  topics_max?: number;
-  maps_max?: number;
-}
+interface Limits extends RecipeLimits {}
 
 export function useRecipeValidation(recipe: any, limits?: Limits): ValidationResult {
   const [validation, setValidation] = useState<ValidationResult>({
@@ -35,6 +35,8 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
       return;
     }
 
+    const normalizedLimits = normalizeRecipeLimits(limits);
+
     // Incremental Topicref Maps validation
     if (recipe.type === 'incremental_topicref_maps') {
       const mapCounts = recipe.map_topicref_counts || [];
@@ -51,10 +53,10 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
 
         // For incremental_topicref_maps, allow large topicref counts (this recipe is designed for performance testing)
         // Only show as warning if significantly exceeds the general limit
-        if (limits?.topicrefs_per_map_max && maxCount > limits.topicrefs_per_map_max * 2) {
+        if (normalizedLimits.topicrefs_per_map_max && maxCount > normalizedLimits.topicrefs_per_map_max * 2) {
           warnings.push({
             field: 'map_topicref_counts',
-            message: `Topicref count (${maxCount}) significantly exceeds recommended maximum per map (${limits.topicrefs_per_map_max}). This may impact performance.`,
+            message: `Topicref count (${maxCount}) significantly exceeds recommended maximum per map (${normalizedLimits.topicrefs_per_map_max}). This may impact performance.`,
             severity: 'warning',
           });
         } else if (maxCount >= 10000) {
@@ -66,10 +68,10 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
         }
 
         const totalTopicrefs = mapCounts.reduce((sum: number, count: number) => sum + count, 0);
-        if (limits?.total_topicrefs_max && totalTopicrefs > limits.total_topicrefs_max) {
+        if (normalizedLimits.total_topicrefs_max && totalTopicrefs > normalizedLimits.total_topicrefs_max) {
           errors.push({
             field: 'map_topicref_counts',
-            message: `Total topicrefs (${totalTopicrefs}) exceeds maximum (${limits.total_topicrefs_max})`,
+            message: `Total topicrefs (${totalTopicrefs}) exceeds maximum (${normalizedLimits.total_topicrefs_max})`,
             severity: 'error',
           });
         }
@@ -136,10 +138,10 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
         });
       }
 
-      if (limits?.topicrefs_per_map_max && recipe.map_topicref_count > limits.topicrefs_per_map_max) {
+      if (normalizedLimits.topicrefs_per_map_max && recipe.map_topicref_count > normalizedLimits.topicrefs_per_map_max) {
         errors.push({
           field: 'map_topicref_count',
-          message: `Map topicref count (${recipe.map_topicref_count}) exceeds maximum per map (${limits.topicrefs_per_map_max})`,
+          message: `Map topicref count (${recipe.map_topicref_count}) exceeds maximum per map (${normalizedLimits.topicrefs_per_map_max})`,
           severity: 'error',
         });
       }
@@ -157,25 +159,26 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
     // Bulk DITA root map + N topics (single map lists all topicrefs)
     if (recipe.type === 'bulk_dita_map_topics') {
       const n = recipe.topic_count ?? 20000;
-      if (limits?.topics_max && n > limits.topics_max) {
+      const cap = topicCountCapForRecipe(recipe.type, normalizedLimits);
+      if (n > cap) {
         errors.push({
           field: 'topic_count',
-          message: `Topic count (${n}) exceeds maximum (${limits.topics_max})`,
+          message: `Topic count (${n}) exceeds maximum (${cap})`,
           severity: 'error',
         });
       }
-      if (limits?.topicrefs_per_map_max && n > limits.topicrefs_per_map_max) {
+      if (normalizedLimits.topicrefs_per_map_max && n > normalizedLimits.topicrefs_per_map_max) {
         errors.push({
           field: 'topic_count',
-          message: `One map will contain ${n} topicrefs; max per map is ${limits.topicrefs_per_map_max}`,
+          message: `One map will contain ${n} topicrefs; max per map is ${normalizedLimits.topicrefs_per_map_max}`,
           severity: 'error',
         });
       }
       const totalRefs = n;
-      if (limits?.total_topicrefs_max && totalRefs > limits.total_topicrefs_max) {
+      if (normalizedLimits.total_topicrefs_max && totalRefs > normalizedLimits.total_topicrefs_max) {
         errors.push({
           field: 'topic_count',
-          message: `Total topicrefs (${totalRefs}) exceeds limit (${limits.total_topicrefs_max})`,
+          message: `Total topicrefs (${totalRefs}) exceeds limit (${normalizedLimits.total_topicrefs_max})`,
           severity: 'error',
         });
       }
@@ -190,10 +193,49 @@ export function useRecipeValidation(recipe: any, limits?: Limits): ValidationRes
 
     // Customer Reuse validation
     if (recipe.type === 'customer_reuse_pack') {
-      if (limits?.topicrefs_per_map_max && recipe.topic_references_per_map > limits.topicrefs_per_map_max) {
+      if (normalizedLimits.topicrefs_per_map_max && recipe.topic_references_per_map > normalizedLimits.topicrefs_per_map_max) {
         errors.push({
           field: 'topic_references_per_map',
-          message: `Topic references per map (${recipe.topic_references_per_map}) exceeds maximum (${limits.topicrefs_per_map_max})`,
+          message: `Topic references per map (${recipe.topic_references_per_map}) exceeds maximum (${normalizedLimits.topicrefs_per_map_max})`,
+          severity: 'error',
+        });
+      }
+    }
+
+    // Curated realtime corpus (100k–200k)
+    if (recipe.type === 'curated_realtime_corpus') {
+      const n = Number(recipe.topic_count ?? 100_000);
+      const cap = topicCountCapForRecipe(recipe.type, normalizedLimits);
+      if (n < 1000) {
+        errors.push({
+          field: 'topic_count',
+          message: 'Topic count must be at least 1,000 for curated corpus jobs.',
+          severity: 'error',
+        });
+      }
+      if (n > cap) {
+        errors.push({
+          field: 'topic_count',
+          message: `Topic count (${n.toLocaleString()}) exceeds maximum (${cap.toLocaleString()})`,
+          severity: 'error',
+        });
+      }
+      if (n >= 100_000) {
+        warnings.push({
+          field: 'topic_count',
+          message: 'Large curated jobs may take a long time and significant disk space.',
+          severity: 'warning',
+        });
+      }
+    }
+
+    if (recipe.type === 'large_scale') {
+      const n = Number(recipe.topic_count ?? 100_000);
+      const cap = topicCountCapForRecipe(recipe.type, normalizedLimits);
+      if (n > cap) {
+        errors.push({
+          field: 'topic_count',
+          message: `Topic count (${n.toLocaleString()}) exceeds maximum (${cap.toLocaleString()})`,
           severity: 'error',
         });
       }

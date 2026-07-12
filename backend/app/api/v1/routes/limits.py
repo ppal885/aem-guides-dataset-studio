@@ -14,7 +14,9 @@ def get_limits():
         limits = {
             "topicrefs_per_map_max": 25000,
             "total_topicrefs_max": 100000,
-            "topics_max": 25000,
+            "topics_max": 200_000,
+            "curated_topics_max": 200_000,
+            "large_scale_topics_max": 1_000_000,
             "maps_max": 100,
             "xrefs_max": 50000,
             "keydefs_max": 1000,

@@ -31,7 +31,18 @@ def test_recipe_catalog_endpoint(client, auth_headers):
     assert "xref_external_url" not in ids
 
     by_id = {entry["id"]: entry for entry in payload["entries"]}
-    assert by_id["bookmap_elements_reference"]["full_example_xml"].lstrip().startswith("<bookmap>")
+    bookmap_entry = by_id["bookmap_elements_reference"]
+    assert "<bookmap" in bookmap_entry["full_example_xml"]
+    curated = by_id["curated_realtime_corpus"]
+    assert "source:stackoverflow" in curated["full_example_xml"]
+    assert "source:blockchain" in curated["full_example_xml"]
+    assert "<title>Tags</title>" in curated["full_example_xml"]
+    assert "curated_root_sample.ditamap" in curated["full_example_xml"]
+    assert "topics/curated/" in curated["full_example_xml"]
+    audience = by_id["metadata.audience_platform_basic"]
+    assert 'audience="admin"' in audience["full_example_xml"]
+    assert "Representative output for this recipe" not in audience["full_example_xml"]
+    assert "metadata.audience_platform_basic" in audience["expected_result"]
     assert by_id["dita_conref_title_dataset_recipe"]["params_schema"]["variables"] == "list"
 
 

@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Filter, Loader2, Search, Sparkles, Zap } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 
-import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
-
+import { BuilderRecipePanel } from '@/components/Builder/BuilderRecipePanel';
 import { SchedulePicker } from '@/components/SchedulePicker';
 import { ValidationDisplay } from '@/components/ValidationDisplay';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useRecipeValidation } from '@/hooks/useRecipeValidation';
+import {
+  normalizeRecipeLimits,
+  topicCountCapForRecipe,
+  type RecipeLimits,
+} from '@/lib/recipeLimits';
 import { apiUrl, fetchJson } from '@/utils/api';
 
 type PrimitiveSchemaType = 'int' | 'float' | 'bool' | 'str' | 'list' | 'dict';
@@ -43,6 +46,8 @@ interface QuickWorkflow {
   category?: string;
   featured_track?: string;
   search_terms?: string[];
+  recipe_id?: string;
+  preset_params?: Record<string, unknown>;
 }
 
 interface RecipeCatalogResponse {
@@ -52,12 +57,7 @@ interface RecipeCatalogResponse {
   quick_workflows: QuickWorkflow[];
 }
 
-interface Limits {
-  topicrefs_per_map_max?: number;
-  total_topicrefs_max?: number;
-  topics_max?: number;
-  maps_max?: number;
-}
+interface Limits extends RecipeLimits {}
 
 function prettifyRecipeName(title: string, createdAt: string): string {
   const timestamp = new Date(createdAt);
@@ -213,11 +213,12 @@ export function Builder() {
       ]);
       if (!isMountedRef.current) return;
       setCatalog(catalogData);
-      setLimits(limitsData);
+      setLimits(normalizeRecipeLimits(limitsData));
       if (!selectedRecipeId && catalogData.entries.length > 0) {
-        const first = catalogData.entries[0];
-        setSelectedRecipeId(first.id);
-        setRecipeParams({ ...first.default_params });
+        const preferred =
+          catalogData.entries.find(entry => entry.id === 'curated_realtime_corpus') || catalogData.entries[0];
+        setSelectedRecipeId(preferred.id);
+        setRecipeParams({ ...preferred.default_params });
       }
     } catch (loadError) {
       if (!isMountedRef.current) return;
@@ -386,350 +387,214 @@ export function Builder() {
     return Array.from(keys).sort();
   }, [selectedRecipe]);
 
-  return (
-    <AppPageShell wide className="space-y-8">
-      <AppPageHeader
-        title="Dataset Builder"
-        description="Discover the full backend recipe catalog, filter by workflow tracks, inspect XML examples, and create dataset jobs."
-      />
+  const applyQuickPreset = useCallback(
+    (workflow: QuickWorkflow) => {
+      setActiveWorkflowId(workflow.id);
+      setSearch('');
+      setCategory('all');
+      setFeaturedTrack('all');
+      if (workflow.recipe_id) {
+        setSelectedRecipeId(workflow.recipe_id);
+        const entry = catalog?.entries.find(item => item.id === workflow.recipe_id);
+        if (entry) {
+          setRecipeParams({ ...entry.default_params, ...(workflow.preset_params || {}) });
+        }
+      } else if (workflow.search_terms?.length) {
+        setSearch(workflow.search_terms[0]);
+      }
+    },
+    [catalog]
+  );
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+  const handleQuickPresetById = useCallback(
+    (workflowId: string) => {
+      const workflow = catalog?.quick_workflows.find(item => item.id === workflowId);
+      if (workflow) applyQuickPreset(workflow);
+    },
+    [applyQuickPreset, catalog?.quick_workflows]
+  );
+
+  return (
+    <div className="builder-shell flex h-full min-h-0 flex-col">
+      {error ? (
+        <div className="shrink-0 border-b border-red-500/25 bg-red-500/5 px-4 py-2 text-[12px] text-red-600 dark:text-red-300">
           {error}
         </div>
-      )}
+      ) : null}
 
       {loading ? (
-        <Card>
-          <CardContent className="flex items-center gap-3 py-10 text-slate-600">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading dynamic recipe catalog...
-          </CardContent>
-        </Card>
+        <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading recipes…
+        </div>
       ) : null}
 
       {!loading && catalog ? (
-        <>
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <Card className="border-slate-200">
-              <CardHeader>
-                <CardTitle className="text-xl text-slate-900">Dynamic catalog</CardTitle>
-                <CardDescription>
-                  Search by recipe id, title, description, or tags. Filter by category or featured senior track.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                    <Input
-                      value={search}
-                      onChange={event => setSearch(event.target.value)}
-                      placeholder="Search by recipe id, title, tag, or description"
-                      className="pl-9"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearch('');
-                      setCategory('all');
-                      setFeaturedTrack('all');
-                      setActiveWorkflowId('');
-                    }}
-                  >
-                    Reset filters
-                  </Button>
+        <div className="flex min-h-0 flex-1">
+          <BuilderRecipePanel
+            recipes={filteredRecipes.map(entry => ({ id: entry.id, title: entry.title }))}
+            selectedRecipeId={selectedRecipeId}
+            onSelect={recipeId => {
+              handleRecipeSelect(recipeId);
+              setActiveWorkflowId('');
+            }}
+            search={search}
+            onSearchChange={setSearch}
+            quickWorkflows={catalog.quick_workflows}
+            activeWorkflowId={activeWorkflowId}
+            onQuickPreset={handleQuickPresetById}
+          />
+
+          <main className="cursor-chat-workspace flex min-w-0 flex-1 flex-col overflow-y-auto">
+            {selectedRecipe ? (
+              <div className="mx-auto w-full max-w-2xl space-y-4 px-6 py-8">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Dataset Builder</p>
+                  <h2 className="mt-2 text-[1.125rem] font-medium tracking-tight text-foreground">{selectedRecipe.title}</h2>
+                  <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{selectedRecipe.description}</p>
+                  <p className="mt-1 font-mono text-[10px] text-muted-foreground">{selectedRecipe.id}</p>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Filter className="h-4 w-4 text-slate-500" />
-                    Category filters
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant={category === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setCategory('all')}>
-                      All categories
-                    </Button>
-                    {catalog.categories.map(item => (
-                      <Button
-                        key={item.id}
-                        variant={category === item.id ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          setCategory(item.id);
-                          setActiveWorkflowId('');
-                        }}
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Sparkles className="h-4 w-4 text-slate-500" />
-                    Featured senior tracks
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant={featuredTrack === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedTrack('all')}>
-                      All tracks
-                    </Button>
-                    {catalog.featured_tracks.map(item => (
-                      <Button
-                        key={item.id}
-                        variant={featuredTrack === item.id ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          setFeaturedTrack(item.id);
-                          setActiveWorkflowId('');
-                        }}
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Zap className="h-4 w-4 text-slate-500" />
-                    Dataset quick cards
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {catalog.quick_workflows.map(workflow => (
-                      <button
-                        key={workflow.id}
-                        type="button"
-                        onClick={() => {
-                          const isActive = activeWorkflowId === workflow.id;
-                          setActiveWorkflowId(isActive ? '' : workflow.id);
-                          setCategory(isActive ? 'all' : workflow.category || 'all');
-                          setFeaturedTrack(isActive ? 'all' : workflow.featured_track || 'all');
-                        }}
-                        className={`rounded-lg border p-4 text-left transition ${
-                          activeWorkflowId === workflow.id
-                            ? 'border-teal-500 bg-teal-50 shadow-sm'
-                            : 'border-border bg-card hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="text-sm font-semibold text-slate-900">{workflow.title}</div>
-                        <p className="mt-2 text-xs leading-5 text-slate-600">{workflow.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold text-slate-900">
-                    Catalog results ({filteredRecipes.length})
-                  </div>
-                  <div className="grid max-h-[520px] gap-3 overflow-y-auto pr-1">
-                    {filteredRecipes.map(entry => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => handleRecipeSelect(entry.id)}
-                        className={`rounded-lg border p-4 text-left transition ${
-                          selectedRecipeId === entry.id
-                            ? 'border-teal-500 bg-teal-50 shadow-sm'
-                            : 'border-border bg-card hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">{entry.title}</div>
-                            <div className="mt-1 text-xs text-slate-500">{entry.id}</div>
-                          </div>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
-                            {entry.category_label}
-                          </span>
+                  {formKeys.map(key => {
+                    const type = schemaFieldTypeFromSchemaOrValue(selectedRecipe.params_schema[key], recipeParams[key]);
+                    const value = recipeParams[key];
+                    if (type === 'bool') {
+                      return (
+                        <div key={key} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                          <Label className="text-[12px]">{fieldLabel(key)}</Label>
+                          <Switch checked={Boolean(value)} onCheckedChange={checked => updateRecipeParam(key, checked)} />
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-slate-600">{entry.description}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {entry.featured_track_labels.slice(0, 3).map(label => (
-                            <span key={label} className="rounded-full bg-card px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200 dark:text-teal-300 dark:ring-teal-900">
-                              {label}
+                      );
+                    }
+                    if (type === 'list' || type === 'dict') {
+                      return (
+                        <JsonEditorField
+                          key={key}
+                          label={fieldLabel(key)}
+                          value={value ?? (type === 'list' ? [] : {})}
+                          emptyValue={type === 'list' ? [] : {}}
+                          onCommit={nextValue => updateRecipeParam(key, nextValue)}
+                        />
+                      );
+                    }
+                    if (key === 'topic_count' && selectedRecipe.id === 'curated_realtime_corpus') {
+                      const cap = topicCountCapForRecipe(selectedRecipe.id, limits ?? undefined);
+                      const numericValue = Number(value ?? 100_000);
+                      const presets = [100_000, 200_000];
+                      return (
+                        <div key={key} className="space-y-1.5">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <Label className="text-[12px]">{fieldLabel(key)}</Label>
+                            <span className="text-[10px] text-muted-foreground">
+                              1,000 – {cap.toLocaleString()}
                             </span>
-                          ))}
-                          {entry.tags.slice(0, 4).map(tag => (
-                            <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    ))}
-                    {filteredRecipes.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                        No recipes match the current filters.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-6">
-              <Card className="border-slate-200">
-                <CardHeader>
-                  <CardTitle className="text-xl text-slate-900">Selected recipe</CardTitle>
-                  <CardDescription>
-                    Configure the selected recipe using backend schema defaults. New recipes appear automatically when catalog metadata is valid.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  {selectedRecipe ? (
-                    <>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h2 className="text-lg font-semibold text-slate-900">{selectedRecipe.title}</h2>
-                            <p className="mt-1 text-sm text-slate-600">{selectedRecipe.description}</p>
-                            <p className="mt-2 text-xs text-slate-500">{selectedRecipe.id}</p>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedRecipe.featured_track_labels.map(label => (
-                              <span key={label} className="rounded-full bg-card px-2 py-1 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200 dark:text-teal-300 dark:ring-teal-900">
-                                {label}
-                              </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {presets.map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => updateRecipeParam(key, preset)}
+                                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                  numericValue === preset
+                                    ? 'border-foreground/30 bg-muted text-foreground'
+                                    : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                }`}
+                              >
+                                {preset === 100_000 ? '1 Lakh' : '2 Lakh'}
+                              </button>
                             ))}
                           </div>
+                          <Input
+                            type="number"
+                            min={1000}
+                            max={cap}
+                            step={1000}
+                            className="h-8 text-[12px]"
+                            value={value === undefined || value === null ? '' : String(value)}
+                            onChange={event => updateRecipeParam(key, coercePrimitiveValue('int', event.target.value))}
+                          />
                         </div>
+                      );
+                    }
+                    return (
+                      <div key={key} className="space-y-1">
+                        <Label className="text-[12px]">{fieldLabel(key)}</Label>
+                        <Input
+                          type={type === 'int' || type === 'float' ? 'number' : 'text'}
+                          step={type === 'float' ? '0.01' : undefined}
+                          className="h-8 text-[12px]"
+                          value={value === undefined || value === null ? '' : String(value)}
+                          onChange={event => updateRecipeParam(key, coercePrimitiveValue(type, event.target.value))}
+                        />
                       </div>
+                    );
+                  })}
+                </div>
 
-                      <div className="space-y-4">
-                        {formKeys.length > 0 ? (
-                          formKeys.map(key => {
-                            const type = schemaFieldTypeFromSchemaOrValue(selectedRecipe.params_schema[key], recipeParams[key]);
-                            const value = recipeParams[key];
-                            if (type === 'bool') {
-                              return (
-                                <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-                                  <div>
-                                    <Label className="text-sm font-semibold text-slate-900">{fieldLabel(key)}</Label>
-                                    <p className="text-xs text-slate-500">{fieldHelpText(type)}</p>
-                                  </div>
-                                  <Switch checked={Boolean(value)} onCheckedChange={checked => updateRecipeParam(key, checked)} />
-                                </div>
-                              );
-                            }
-                            if (type === 'list' || type === 'dict') {
-                              return (
-                                <JsonEditorField
-                                  key={key}
-                                  label={fieldLabel(key)}
-                                  value={value ?? (type === 'list' ? [] : {})}
-                                  emptyValue={type === 'list' ? [] : {}}
-                                  onCommit={nextValue => updateRecipeParam(key, nextValue)}
-                                />
-                              );
-                            }
-                            return (
-                              <div key={key} className="space-y-2">
-                                <Label className="text-sm font-semibold text-slate-900">{fieldLabel(key)}</Label>
-                                <Input
-                                  type={type === 'int' || type === 'float' ? 'number' : 'text'}
-                                  step={type === 'float' ? '0.01' : undefined}
-                                  value={value === undefined || value === null ? '' : String(value)}
-                                  onChange={event => updateRecipeParam(key, coercePrimitiveValue(type, event.target.value))}
-                                />
-                                <p className="text-xs text-slate-500">{fieldHelpText(type)}</p>
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                            This recipe uses catalog-driven defaults and does not expose additional parameters yet.
-                          </div>
-                        )}
-                      </div>
+                <ValidationDisplay errors={validation.errors} warnings={validation.warnings} />
 
-                      <ValidationDisplay errors={validation.errors} warnings={validation.warnings} />
+                <details className="rounded-md border border-border text-[12px]">
+                  <summary className="cursor-pointer px-3 py-2 text-muted-foreground hover:text-foreground">
+                    Sample output (from generator)
+                  </summary>
+                  {selectedRecipe.expected_result ? (
+                    <p className="border-t border-border/60 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                      {selectedRecipe.expected_result}
+                    </p>
+                  ) : null}
+                  <pre className="overflow-x-auto border-t border-border bg-[#1e1e1e] p-3 text-[11px] leading-5 text-slate-100">
+                    <code>{selectedRecipe.full_example_xml}</code>
+                  </pre>
+                </details>
 
-                      <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-900">Full example</h3>
-                          <p className="mt-1 text-xs text-slate-500">Curated XML when available, otherwise a safe backend fallback.</p>
-                        </div>
-                        <pre className="overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100">
-                          <code>{selectedRecipe.full_example_xml}</code>
-                        </pre>
-                        <div className="rounded-lg border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-900">
-                          <span className="font-semibold">Expected result:</span> {selectedRecipe.expected_result}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                      Select a recipe from the catalog to configure it.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200">
-                <CardHeader>
-                  <CardTitle className="text-xl text-slate-900">Create job</CardTitle>
-                  <CardDescription>
-                    Keep the same select → configure → validate → create flow, now powered by catalog-driven defaults.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                <div className="space-y-3 border-t border-border pt-3">
                   <SchedulePicker onScheduleChange={handleScheduleChange} />
-                  <Button onClick={handleCreateJob} disabled={creating || !selectedRecipe || !validation.isValid} className="w-full">
+                  <Button
+                    onClick={handleCreateJob}
+                    disabled={creating || !validation.isValid}
+                    className="w-full"
+                    size="sm"
+                  >
                     {creating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating job...
+                        Creating job…
                       </>
                     ) : (
                       'Create dataset job'
                     )}
                   </Button>
-                </CardContent>
-              </Card>
+                </div>
 
-              <Card className="border-slate-200">
-                <CardHeader>
-                  <CardTitle className="text-xl text-slate-900">Created jobs</CardTitle>
-                  <CardDescription>Download recent dataset outputs from this Builder session.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {createdJobs.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                      No jobs created in this session yet.
-                    </div>
-                  ) : (
-                    createdJobs.map(job => (
-                      <div key={job.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">{job.name}</div>
-                          <div className="text-xs text-slate-500">{job.id}</div>
+                {createdJobs.length > 0 ? (
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Session jobs</p>
+                    {createdJobs.map(job => (
+                      <div key={job.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-medium">{job.name}</div>
+                          <div className="truncate font-mono text-[10px] text-muted-foreground">{job.id}</div>
                         </div>
-                        <Button variant="outline" onClick={() => handleDownload(job.id, job.name)} disabled={downloadingJobId === job.id}>
-                          {downloadingJobId === job.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Downloading
-                            </>
-                          ) : (
-                            <>
-                              <Download className="mr-2 h-4 w-4" />
-                              Download
-                            </>
-                          )}
+                        <Button variant="outline" size="sm" onClick={() => handleDownload(job.id, job.name)} disabled={downloadingJobId === job.id}>
+                          {downloadingJobId === job.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                         </Button>
                       </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-6 py-10 text-center">
+                <p className="max-w-sm text-[12px] leading-relaxed text-muted-foreground">
+                  Select a recipe from the panel on the left to configure parameters and create a dataset job.
+                </p>
+              </div>
+            )}
+          </main>
+        </div>
       ) : null}
-    </AppPageShell>
+    </div>
   );
 }

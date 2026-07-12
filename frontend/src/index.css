@@ -427,6 +427,11 @@ body {
   transition: width 0.15s ease;
 }
 
+.builder-shell {
+  height: 100%;
+  min-height: 0;
+}
+
 /* Cursor-style chat shell */
 .cursor-chat-shell {
   height: var(--chat-immersive-height);

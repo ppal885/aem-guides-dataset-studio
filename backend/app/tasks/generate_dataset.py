@@ -606,6 +606,28 @@ def run_generate_dataset(
                     # Estimate based on topic_count
                     files_generated += estimated_files
                 update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "curated_realtime_corpus":
+                from app.generator.curated_realtime_corpus import generate_curated_realtime_corpus
+                estimated_files = recipe.topic_count if hasattr(recipe, "topic_count") else 100_000
+                recipe_files, _ = generate_curated_realtime_corpus(
+                    dataset_config,
+                    base,
+                    topic_count=recipe.topic_count if hasattr(recipe, "topic_count") else 100_000,
+                    data_sources=list(getattr(recipe, "data_sources", []) or []),
+                    batch_size=recipe.batch_size if hasattr(recipe, "batch_size") else 1000,
+                    fetch_live=bool(getattr(recipe, "fetch_live", True)),
+                    map_sample_size=recipe.map_sample_size if hasattr(recipe, "map_sample_size") else 2000,
+                    content_subject=getattr(recipe, "content_subject", "") or "",
+                    stream_callback=stream_cb,
+                    rand=rand,
+                )
+                if recipe_files:
+                    files.update(recipe_files)
+                    files_generated += len(recipe_files)
+                else:
+                    files_generated += estimated_files
+                update_progress(f"Completed {stage_name}")
             
             elif recipe_type == "deep_hierarchy":
                 from app.generator.performance_scale import generate_performance_test_dataset
