@@ -11,9 +11,18 @@ function isChatRoute(pathname: string): boolean {
   return pathname.startsWith('/chat') && !pathname.startsWith('/chat-eval');
 }
 
+function isFullHeightRoute(pathname: string): boolean {
+  return isChatRoute(pathname) || pathname.startsWith('/builder');
+}
+
+function usesCursorShell(pathname: string): boolean {
+  return isFullHeightRoute(pathname);
+}
+
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
-  const chatRoute = isChatRoute(location.pathname);
+  const fullHeight = isFullHeightRoute(location.pathname);
+  const cursorShell = usesCursorShell(location.pathname);
 
   return (
     <div className="app-shell flex h-dvh overflow-hidden bg-background text-foreground">
@@ -21,7 +30,8 @@ export function Layout({ children }: LayoutProps) {
       <main
         className={cn(
           'flex min-h-0 min-w-0 flex-1 flex-col',
-          chatRoute ? 'overflow-hidden cursor-chat-shell' : 'overflow-y-auto'
+          fullHeight ? 'overflow-hidden' : 'overflow-y-auto',
+          cursorShell && 'cursor-chat-shell'
         )}
       >
         {children}
