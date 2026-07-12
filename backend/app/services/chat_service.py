@@ -9725,7 +9725,19 @@ def _build_suggested_followups(
             else:
                 suggestions.append({"label": "Look up DITA spec", "text": "Look up the DITA spec for this element"})
         if any(k in text for k in ("aem", "guides", "publish", "output")):
-            suggestions.append({"label": "Search AEM docs", "text": "Search AEM Guides documentation for this topic"})
+            # "this topic" is a dangling reference once the suggestion becomes a standalone
+            # message — anchor to the resolved DITA subject, else to the user's own question,
+            # so the AEM docs search runs on real terms instead of the literal phrase.
+            if subject:
+                aem_text = f"Search the AEM Guides documentation for {subject}"
+            else:
+                topic = " ".join((user_content or "").split())[:160].rstrip("?.! ")
+                aem_text = (
+                    f"Search the AEM Guides documentation about: {topic}"
+                    if topic
+                    else "Search AEM Guides documentation for this topic"
+                )
+            suggestions.append({"label": "Search AEM docs", "text": aem_text})
         if not suggestions:
             suggestions.append({"label": "Generate DITA", "text": "Generate a DITA topic from this description"})
             suggestions.append({"label": "Find recipes", "text": "What dataset recipes are available?"})
