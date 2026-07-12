@@ -9617,6 +9617,29 @@ def _build_thinking_summary(user_content: str, context: Optional[dict] = None) -
     return " → ".join(parts)
 
 
+def _resolve_dita_subject_phrase(user_content: str, assistant_text: str) -> str:
+    """Resolve the concrete DITA subject of the just-answered turn as a self-contained
+    noun phrase, e.g. ``the @format attribute`` or ``the <topicref> element``.
+
+    Follow-up suggestions become standalone user messages, so a dangling pronoun like
+    "this element" loses all context and makes the next spec lookup run blind. Preferring
+    the attribute/element the turn was actually about keeps the follow-up answerable.
+    """
+    combined = f"{user_content or ''}\n{assistant_text or ''}"
+    attribute = _extract_requested_dita_attribute(user_content) or _extract_requested_dita_attribute(combined)
+    if attribute:
+        return f"the @{attribute} attribute"
+    try:
+        from app.services.dita_query_interpreter import extract_element_names
+
+        elements = extract_element_names(user_content) or extract_element_names(combined)
+        if elements:
+            return f"the <{str(elements[0]).strip().lstrip('<').rstrip('>')}> element"
+    except Exception:
+        pass
+    return ""
+
+
 def _build_suggested_followups(
     user_content: str,
     tool_results: dict[str, dict],
@@ -9625,6 +9648,7 @@ def _build_suggested_followups(
     """Generate 2-3 contextual follow-up suggestions based on what just happened."""
     suggestions: list[dict[str, str]] = []
     text = (user_content or "").lower()
+    subject = _resolve_dita_subject_phrase(user_content, assistant_text)
 
     # After DITA generation → suggest review, refine, download
     if "generate_dita" in tool_results:
@@ -9643,10 +9667,15 @@ def _build_suggested_followups(
             suggestions.append({"label": "Check job status", "text": f"What's the status of job {job_id}?"})
             suggestions.append({"label": "List all jobs", "text": "Show me all my recent dataset jobs"})
 
-    # After DITA spec lookup → suggest related lookups
+    # After DITA spec lookup → suggest related lookups, anchored to the actual subject so
+    # the clicked follow-up is a self-contained question rather than a context-free "this element".
     elif "lookup_dita_spec" in tool_results or "lookup_dita_attribute" in tool_results:
-        suggestions.append({"label": "Show XML example", "text": "Show me a complete XML example using this element"})
-        suggestions.append({"label": "Compare elements", "text": "What are the differences between similar elements?"})
+        if subject:
+            suggestions.append({"label": "Show XML example", "text": f"Show me a complete XML example using {subject}"})
+            suggestions.append({"label": "Compare related", "text": f"What is {subject} commonly confused with, and how do they differ?"})
+        else:
+            suggestions.append({"label": "Show XML example", "text": "Show me a complete XML example using this element"})
+            suggestions.append({"label": "Compare elements", "text": "What are the differences between similar elements?"})
 
     # After review → suggest fix
     elif "review_dita_xml" in tool_results:
@@ -9674,10 +9703,14 @@ def _build_suggested_followups(
     elif "lookup_aem_guides" in tool_results:
         suggestions.append({"label": "Show output presets", "text": "What output preset types are available in AEM Guides?"})
 
-    # Generic: if no tools were used, suggest based on content
+    # Generic: if no tools were used, suggest based on content. Anchor to the resolved
+    # subject when we have one so the clicked follow-up carries its own context.
     if not suggestions:
         if any(k in text for k in ("dita", "xml", "element", "attribute")):
-            suggestions.append({"label": "Look up DITA spec", "text": "Look up the DITA spec for this element"})
+            if subject:
+                suggestions.append({"label": "Look up DITA spec", "text": f"Look up the DITA spec for {subject}"})
+            else:
+                suggestions.append({"label": "Look up DITA spec", "text": "Look up the DITA spec for this element"})
         if any(k in text for k in ("aem", "guides", "publish", "output")):
             suggestions.append({"label": "Search AEM docs", "text": "Search AEM Guides documentation for this topic"})
         if not suggestions:
