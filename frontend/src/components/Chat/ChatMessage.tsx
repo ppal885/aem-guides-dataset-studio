@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Download, FileCode2, Image as ImageIcon, Pencil, RefreshCw, RotateCcw, ThumbsDown, ThumbsUp, UserRound, X } from 'lucide-react';
+import { Copy, Download, FileCode2, Image as ImageIcon, Pencil, RefreshCw, RotateCcw, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/utils/api';
@@ -15,7 +15,8 @@ import type {
   ChatLlmUsage,
 } from '@/api/chat';
 import { AssistantAvatar } from './AssistantAvatar';
-import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
+import { ChatMarkdown, CHAT_MARKDOWN_PROSE_CLASS, CURSOR_MARKDOWN_PROSE_CLASS } from './ChatMarkdown';
+import { CursorToolAccordion } from './CursorToolAccordion';
 import { DatasetJobStatusCard } from './DatasetJobStatusCard';
 import { extractToolDisplayMeta, KNOWN_FIRST_PARTY_TOOLS } from './toolResultUtils';
 import { sortToolResultEntries } from './toolResultOrder';
@@ -39,6 +40,7 @@ interface ChatMessageProps {
   onRetry?: () => void;
   /** Approval gate quick-reply clicked — sends text directly */
   onQuickReply?: (text: string) => void;
+  variant?: 'default' | 'cursor';
 }
 
 function verifiedBundleUrlFromTools(toolResults?: Record<string, unknown>): string {
@@ -255,8 +257,10 @@ export function ChatMessage({
   showRetry,
   onRetry,
   onQuickReply,
+  variant = 'cursor',
 }: ChatMessageProps) {
   const isUser = role === 'user';
+  const isCursor = variant === 'cursor';
   const verifiedUrl = verifiedBundleUrlFromTools(toolResults);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
@@ -307,44 +311,88 @@ export function ChatMessage({
   return (
     <div
       className={cn(
-        'group flex gap-3.5 animate-fadeIn',
-        isUser ? 'flex-row-reverse' : 'flex-row'
+        'group animate-fadeIn',
+        isCursor
+          ? cn('cursor-chat-turn', isUser && 'cursor-chat-turn-user')
+          : 'w-full'
       )}
     >
-      {isUser ? (
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground shadow-sm"
-          aria-hidden
-        >
-          <UserRound className="h-4 w-4" strokeWidth={2} />
-        </div>
-      ) : (
-        <AssistantAvatar />
-      )}
-
       <div
         className={cn(
-          'min-w-0 w-full max-w-full flex-1 rounded-xl px-5 py-3.5 transition-all duration-200',
-          isUser
-            ? 'border border-border bg-card text-foreground shadow-sm'
-            : 'border border-border bg-card text-foreground shadow-sm hover:shadow-md'
+          isCursor && 'cursor-chat-content w-full',
+          !isCursor && 'flex min-w-0 flex-1 gap-3.5',
+          !isCursor && (isUser ? 'flex-row-reverse' : 'flex-row')
         )}
       >
-        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
-          <span
-            className={cn(
-              'text-[10px] font-bold uppercase tracking-[0.14em]',
-              isUser ? 'text-muted-foreground' : 'text-teal-600 dark:text-teal-400'
+        {!isCursor && (
+          <>
+            {isUser ? (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground shadow-sm"
+                aria-hidden
+              >
+                <span className="text-xs font-semibold">You</span>
+              </div>
+            ) : (
+              <AssistantAvatar />
             )}
-          >
-            {isUser ? 'You' : 'Assistant'}
-          </span>
-          {createdAt && (
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+          </>
+        )}
+
+        <div
+          className={cn(
+            'min-w-0 flex-1',
+            !isCursor &&
+              'w-full max-w-full rounded-xl px-5 py-3.5 transition-all duration-200 border border-border bg-card text-foreground shadow-sm',
+            !isCursor && !isUser && 'hover:shadow-md',
+            isCursor && 'w-full'
           )}
-          <div className="flex items-center gap-0.5">
+        >
+          {isCursor && isUser && (
+            <div className="cursor-message-actions mb-1 flex items-center justify-end gap-0.5">
+              {onSaveEdit && !editing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground"
+                  onClick={startEdit}
+                  disabled={actionDisabled}
+                  title="Edit"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              )}
+              {onCopy && content && !editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground"
+                  onClick={onCopy}
+                  title="Copy"
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!isCursor && (
+              <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
+                <span
+                  className={cn(
+                    'text-[10px] font-bold uppercase tracking-[0.14em]',
+                    isUser ? 'text-muted-foreground' : 'text-teal-600 dark:text-teal-400'
+                  )}
+                >
+                  {isUser ? 'You' : 'Assistant'}
+                </span>
+                {createdAt && (
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+                <div className="flex items-center gap-0.5">
             {isUser && onSaveEdit && !editing && (
               <Button
                 type="button"
@@ -433,8 +481,9 @@ export function ChatMessage({
             )}
           </div>
         </div>
+            )}
 
-        <div className="text-base leading-relaxed">
+        <div className={cn('leading-relaxed', isCursor ? 'text-[13px]' : 'text-base')}>
           {isUser ? (
             editing ? (
               <div className="space-y-2">
@@ -447,7 +496,7 @@ export function ChatMessage({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={4}
-                  className="w-full resize-y rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-inner focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                  className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/25"
                   disabled={saving}
                 />
                 <div className="flex justify-end gap-2">
@@ -460,27 +509,99 @@ export function ChatMessage({
                   </Button>
                 </div>
               </div>
+            ) : isCursor ? (
+              <div className="cursor-chat-query">{content}</div>
             ) : (
               <div className="whitespace-pre-wrap break-words text-foreground">{content}</div>
             )
           ) : (
-            <div className={CHAT_MARKDOWN_PROSE_CLASS}>
-              <ChatMarkdown content={content} verifiedBundleUrl={verifiedUrl || undefined} />
-            </div>
+            <>
+              {isCursor && toolResults && Object.keys(toolResults).length > 0 && (
+                <div className="mb-2 space-y-0">
+                  {sortToolResultEntries(Object.entries(toolResults)).map(([name, result]) => (
+                    <CursorToolAccordion key={name} name={name} result={result}>
+                      <ToolResult name={name} result={result} onQuickReply={onQuickReply} />
+                    </CursorToolAccordion>
+                  ))}
+                </div>
+              )}
+              <div className={isCursor ? CURSOR_MARKDOWN_PROSE_CLASS : CHAT_MARKDOWN_PROSE_CLASS}>
+                <ChatMarkdown content={content} verifiedBundleUrl={verifiedUrl || undefined} variant={isCursor ? 'cursor' : 'default'} />
+              </div>
+            </>
           )}
         </div>
-        {toolResults && Object.keys(toolResults).length > 0 && (
+
+        {!isCursor && toolResults && Object.keys(toolResults).length > 0 && (
           <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
             {sortToolResultEntries(Object.entries(toolResults)).map(([name, result]) => (
-              <ToolResult
-                key={name}
-                name={name}
-                result={result}
-                onQuickReply={onQuickReply}
-              />
+              <ToolResult key={name} name={name} result={result} onQuickReply={onQuickReply} />
             ))}
           </div>
         )}
+
+        {isCursor && !isUser && (
+          <div className="cursor-message-actions mt-2 flex items-center gap-0.5">
+            {showRegenerate && onRegenerate && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-muted-foreground"
+                onClick={onRegenerate}
+                disabled={actionDisabled}
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                Retry
+              </Button>
+            )}
+            {showRetry && onRetry && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-muted-foreground"
+                onClick={onRetry}
+                disabled={actionDisabled}
+              >
+                <RotateCcw className="mr-1 h-3 w-3" />
+                Retry
+              </Button>
+            )}
+            {onCopy && content && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground"
+                onClick={onCopy}
+                title="Copy"
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            )}
+            {sessionId && content && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn('h-6 w-6 p-0', feedback === 'up' ? 'text-foreground' : 'text-muted-foreground')}
+                  onClick={() => submitFeedback('up')}
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn('h-6 w-6 p-0', feedback === 'down' ? 'text-destructive' : 'text-muted-foreground')}
+                  onClick={() => submitFeedback('down')}
+                >
+                  <ThumbsDown className="h-3 w-3" />
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+        </div>
       </div>
     </div>
   );

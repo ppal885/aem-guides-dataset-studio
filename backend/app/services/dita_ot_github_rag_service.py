@@ -66,6 +66,38 @@ _CURATED_REF_MIN_SIM: float = float(os.getenv("DITA_OT_GITHUB_REF_MIN_SIM", "0.5
 # In the no-Chroma fallback this cap is not applied (all relevant curated refs are returned).
 _CURATED_REF_MAX_SLOTS: int = int(os.getenv("DITA_OT_GITHUB_CURATED_MAX_SLOTS", "2"))
 
+# Max cosine distance for a Chroma issue to count as relevant. On-topic matches sit
+# around 0.44-0.55; beyond ~0.78 the issue is only loosely related and would be off-topic
+# filler (e.g. keyref issues for a copy-to query). Env-tunable.
+_CHROMA_MAX_DIST: float = float(os.getenv("DITA_OT_GITHUB_MAX_DIST", "0.78"))
+
+# Boilerplate/triage framing stripped before embedding so the query centers on the actual
+# DITA-OT topic. A verbose "…is this a known issue, and reported in our Jira?" sentence
+# otherwise drifts the embedding toward generic link/report issues instead of the topic.
+_DITA_OT_QUERY_NOISE = re.compile(
+    r"\bi'?m\s+hitting\b|\bi\s+am\s+hitting\b|"
+    r"\bis\s+this\s+(?:a\s+)?known(?:\s+dita-?ot)?(?:\s+(?:issue|behaviou?r|bug))?\b|"
+    r"\b(?:a\s+)?known\s+(?:dita-?ot\s+)?(?:issue|behaviou?r|bug)\b|"
+    r"\bhas\s+(?:it|this)\s+(?:already\s+)?been\s+reported\b|\balready\s+been\s+reported\b|"
+    r"\bbeen\s+reported\b|\breported\s+for\s+(?:it|this)\b|"
+    r"\bis\s+there\s+(?:a\s+)?jira(?:\s+reported)?\b|"
+    r"\bin\s+(?:our\s+)?(?:aem\s+guides\s+)?jira\b|"
+    r"\bin\s+the\s+(?:dita-?ot\s+)?(?:repo|repository|github)\b|"
+    r"\baem\s+guides\b",
+    re.IGNORECASE,
+)
+
+
+def _focus_dita_ot_query(query: str) -> str:
+    """Reduce a verbose cross-source/triage question to its DITA-OT topic for embedding."""
+    raw = (query or "").strip()
+    if not raw:
+        return raw
+    focused = _DITA_OT_QUERY_NOISE.sub(" ", raw)
+    focused = re.sub(r"\s+", " ", focused).strip(" ?.!,:;-")
+    # If stripping removed almost everything, fall back to the original query.
+    return focused if len(focused) >= 8 else raw
+
 # Patterns stripped from issue bodies before embedding and storage.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _CC_MENTION_LINE_RE = re.compile(r"^\s*(cc|ping|ref|/cc)\s+@\S.*$", re.MULTILINE | re.IGNORECASE)
@@ -412,6 +444,12 @@ def fetch_dita_ot_issues(
                         )
                         time.sleep(wait)
                         continue
+                    if resp.status_code == 401 and "Authorization" in headers:
+                        # An invalid/expired GITHUB_TOKEN causes 401; the dita-ot/dita-ot repo
+                        # is public, so drop auth and retry anonymously instead of failing.
+                        errors.append("GitHub token rejected (HTTP 401); retrying anonymously.")
+                        headers.pop("Authorization", None)
+                        continue
                     if resp.status_code == 422 and page > 1:
                         logger.info_structured(
                             "dita_ot_github_fetch_stopped_at_pagination_boundary",
@@ -714,8 +752,10 @@ def retrieve_dita_ot_github_for_query(query: str, k: int = 4) -> list[dict[str, 
             out.append(dict(ref))
         return out
 
-    # --- Embed query once; reuse for curated scoring AND Chroma lookup ---
-    emb = embed_query(str(query).strip()[:4000])
+    # --- Embed the FOCUSED topic (strip triage/jira boilerplate) so the embedding centers
+    #     on the DITA-OT topic instead of drifting to generic link/report issues ---
+    focused_query = _focus_dita_ot_query(str(query).strip())
+    emb = embed_query(focused_query[:4000])
     if emb is None:
         for ref in refs:
             if len(out) >= k:
@@ -736,29 +776,26 @@ def retrieve_dita_ot_github_for_query(query: str, k: int = 4) -> list[dict[str, 
         if isinstance(n, int):
             seen_nums.add(n)
 
-    # 2. Open issues — current known limitations most actionable for QA.
+    # 2. Corpus issues ranked by actual relevance across BOTH states. Rigidly preferring
+    #    open issues buried the most-relevant matches when they were closed (e.g. the real
+    #    copy-to issues), surfacing off-topic open issues instead. Rank by similarity, drop
+    #    weak matches beyond the distance threshold, and only prefer open as a tie-breaker
+    #    within a near-equal distance band.
     remaining = k - len(out)
     if remaining > 0:
-        fetch_n = min(remaining + len(seen_nums) + 4, 24)
-        open_rows = query_collection(
+        pool = query_collection(
             CHROMA_COLLECTION_DITA_OT_GITHUB,
             query_embedding=vec,
-            k=fetch_n,
-            where={"state": {"$eq": "open"}},
+            k=min(remaining + len(seen_nums) + 16, 40),
         )
-        out.extend(_chroma_rows_to_results(open_rows, seen_nums, remaining))
-
-    # 3. Closed issues fill remaining slots — historical fixes and root-cause context.
-    still_remaining = k - len(out)
-    if still_remaining > 0:
-        fetch_n2 = min(still_remaining + len(seen_nums) + 4, 24)
-        closed_rows = query_collection(
-            CHROMA_COLLECTION_DITA_OT_GITHUB,
-            query_embedding=vec,
-            k=fetch_n2,
-            where={"state": {"$eq": "closed"}},
+        relevant = [row for row in pool if float(row.get("distance") or 1.0) <= _CHROMA_MAX_DIST]
+        relevant.sort(
+            key=lambda row: (
+                round(float(row.get("distance") or 1.0), 2),
+                0 if str((row.get("metadata") or {}).get("state") or "") == "open" else 1,
+            )
         )
-        out.extend(_chroma_rows_to_results(closed_rows, seen_nums, still_remaining))
+        out.extend(_chroma_rows_to_results(relevant, seen_nums, remaining))
 
     return out[:k]
 

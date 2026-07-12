@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
 import { ArrowDown } from 'lucide-react';
 
-import { AssistantAvatar } from './AssistantAvatar';
+import { cn } from '@/lib/utils';
 
 import { ChatMessage } from './ChatMessage';
 
@@ -186,6 +186,12 @@ interface ChatMessageListProps {
 
   onQuickReply?: (text: string) => void;
 
+  variant?: 'default' | 'cursor';
+
+  composerSlot?: ReactNode;
+
+  inPanel?: boolean;
+
 }
 
 
@@ -270,6 +276,12 @@ export function ChatMessageList({
 
   onQuickReply,
 
+  variant = 'cursor',
+
+  composerSlot,
+
+  inPanel = false,
+
 }: ChatMessageListProps) {
 
   const endRef = useRef<HTMLDivElement>(null);
@@ -281,6 +293,8 @@ export function ChatMessageList({
   const lastIdx = messages.length - 1;
 
   const isEmpty = !messagesLoading && messages.length === 0 && streamingContent === null;
+
+  const isCursor = variant === 'cursor';
 
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
@@ -392,7 +406,7 @@ export function ChatMessageList({
 
   return (
 
-    <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto bg-background [scroll-behavior:auto]">
+    <div ref={scrollRef} className={cn('relative min-h-0 flex-1 overflow-y-auto [scroll-behavior:auto]', isCursor ? 'cursor-chat-thread bg-background' : 'bg-background')}>
 
       {messagesLoading && messages.length > 0 && (
 
@@ -432,9 +446,16 @@ export function ChatMessageList({
 
           isEmpty
 
-            ? 'mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-6 py-10 text-center'
+            ? cn(
+                'mx-auto flex min-h-full w-full flex-col items-center justify-center',
+                inPanel ? 'px-3 py-6' : 'px-4 py-8'
+              )
 
-            : 'mx-auto flex w-full max-w-[min(100%,72rem)] flex-col gap-6 px-4 py-6 sm:px-6'
+            : isCursor
+
+              ? 'flex w-full flex-col'
+
+              : 'mx-auto flex w-full max-w-[min(100%,72rem)] flex-col gap-6 px-4 py-6 sm:px-6'
 
         }
 
@@ -444,31 +465,25 @@ export function ChatMessageList({
 
         {isEmpty && (
 
-          <>
+          <div className={cn('flex w-full flex-col items-center', inPanel ? 'px-0' : 'max-w-[var(--cursor-composer-max)] px-4 py-8')}>
 
-            <AssistantAvatar size="lg" className="mb-5" />
+            <p className="cursor-empty-hero">What can I help you with?</p>
 
-            <p className="text-base font-semibold tracking-tight text-foreground">DITA Expert</p>
+            <p className="mt-2 max-w-md text-center text-[13px] leading-relaxed text-muted-foreground">
 
-            <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-
-              Ask about DITA structure, AEM Guides, maps and keys, validation, or output presets.
+              DITA structure, AEM Guides workflows, validation, maps, keys, and output presets.
 
             </p>
 
+            {composerSlot && <div className="mt-6 w-full">{composerSlot}</div>}
+
             {onExamplePromptSelect && (
 
-              <div className="mt-8 w-full">
-
-                <p className="mb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-
-                  Try one of these
-
-                </p>
+              <div className="mt-6 w-full">
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 
-                  {examplePrompts.slice(0, 6).map((ex) => (
+                  {examplePrompts.slice(0, 4).map((ex) => (
 
                     <button
 
@@ -478,17 +493,11 @@ export function ChatMessageList({
 
                       onClick={() => onExamplePromptSelect(ex.text)}
 
-                      className="group flex flex-col items-start rounded-lg border border-border bg-card p-3 text-left transition hover:bg-muted"
+                      className="cursor-prompt-chip"
 
                     >
 
-                      <span className="text-xs font-semibold text-foreground">{ex.label}</span>
-
-                      <span className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-
-                        {ex.text}
-
-                      </span>
+                      <span className="block font-medium text-foreground">{ex.label}</span>
 
                     </button>
 
@@ -500,7 +509,7 @@ export function ChatMessageList({
 
             )}
 
-          </>
+          </div>
 
         )}
 
@@ -552,6 +561,8 @@ export function ChatMessageList({
 
               onQuickReply={onQuickReply}
 
+              variant={variant}
+
             />
 
           );
@@ -576,6 +587,8 @@ export function ChatMessageList({
 
             jobProgress={streamingJobProgress}
 
+            variant={variant}
+
           />
 
         )}
@@ -592,7 +605,11 @@ export function ChatMessageList({
 
         {suggestedFollowups && suggestedFollowups.length > 0 && onFollowupSelect && !streamingContent && (
 
-          <SuggestedFollowups followups={suggestedFollowups} onSelect={onFollowupSelect} />
+          <div className={isCursor ? 'cursor-chat-content px-4 pb-4' : undefined}>
+
+            <SuggestedFollowups followups={suggestedFollowups} onSelect={onFollowupSelect} />
+
+          </div>
 
         )}
 

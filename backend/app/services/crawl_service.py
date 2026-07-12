@@ -12,6 +12,7 @@ Add or remove URLs in the config file without code changes.
 """
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -273,16 +274,31 @@ def crawl_and_index(
                 use_playwright = False
 
         if not use_playwright:
-            loader = WebBaseLoader(
-                urls,
-                requests_per_second=1.0 / RATE_LIMIT_SEC if RATE_LIMIT_SEC > 0 else 0.5,
-                header_template={"User-Agent": "AEM-Guides-Dataset-Studio/1.0 (documentation-indexer)"},
-            )
-            try:
-                docs = loader.load()
-            except Exception as e:
-                stats["errors"].append(str(e))
-                logger.warning_structured("Crawl load failed", extra_fields={"error": str(e)})
+            # Load per-URL with retry so one flaky page (e.g. a transient SSL EOF from
+            # dita-ot.org) doesn't abort the entire reindex — skip it and keep the rest.
+            _rps = 1.0 / RATE_LIMIT_SEC if RATE_LIMIT_SEC > 0 else 0.5
+            _headers = {"User-Agent": "AEM-Guides-Dataset-Studio/1.0 (documentation-indexer)"}
+            docs = []
+            for _url in urls:
+                loaded = None
+                for attempt in range(3):
+                    try:
+                        loaded = WebBaseLoader(
+                            [_url], requests_per_second=_rps, header_template=_headers
+                        ).load()
+                        break
+                    except Exception as e:
+                        if attempt < 2:
+                            time.sleep(1.5 * (attempt + 1))
+                            continue
+                        stats["errors"].append(f"{_url}: {e}")
+                        logger.warning_structured(
+                            "Crawl page failed (skipped)", extra_fields={"url": _url, "error": str(e)}
+                        )
+                if loaded:
+                    docs.extend(loaded)
+            if not docs:
+                logger.warning_structured("Crawl produced no pages", extra_fields={"errors": stats["errors"][:5]})
                 return stats
 
     stats["pages_crawled"] = len(docs)

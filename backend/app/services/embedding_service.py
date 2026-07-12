@@ -167,6 +167,9 @@ def embed_texts_batched(texts: list[str], batch_size: int = EMBED_BATCH_SIZE):
     model = _load_model()
     if not texts:
         return None
+    # Blank/None entries can make the local encoder or Azure reject the whole batch; replace
+    # them with a single space to keep index alignment (n_embeddings == n_texts) intact.
+    texts = [t if (isinstance(t, str) and t.strip()) else " " for t in texts]
     if model is not None:
         try:
             import numpy as np

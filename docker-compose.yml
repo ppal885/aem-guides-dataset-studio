@@ -8,11 +8,15 @@ services:
     environment:
       - PORT=8001
       - ALLOW_DEV_AUTH_BYPASS=${ALLOW_DEV_AUTH_BYPASS:-true}
+      # Pre-publish validation resolves maps by name from the mounted AEM Guides content.
+      - DITA_CONTENT_ROOT=${DITA_CONTENT_ROOT:-/content}
     ports:
       - "8001:8001"
     volumes:
       - backend_storage:/app/storage
       - backend_logs:/app/logs
+      # Mount the team's AEM Guides content checkout read-only (set DITA_CONTENT_HOST_PATH).
+      - ${DITA_CONTENT_HOST_PATH:-./sample-content}:/content:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s

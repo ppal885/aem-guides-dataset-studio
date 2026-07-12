@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { ChatWorkspacePanel } from '@/components/Chat/ChatWorkspacePanel';
+import { PanelResizeHandle } from '@/components/Chat/PanelResizeHandle';
+import { useHorizontalPanelResize } from '@/components/Chat/usePanelResize';
 import { ChatSidebar } from '@/components/Chat/ChatSidebar';
 import { ChatMessageList } from '@/components/Chat/ChatMessageList';
 import { ChatInput } from '@/components/Chat/ChatInput';
@@ -28,6 +31,10 @@ import { useAppFeedback } from '@/components/feedback/useAppFeedback';
 import { resolvePendingWorkflowGuideWithKey } from '@/components/Chat/pendingWorkflowUtils';
 
 const HUMAN_PROMPTS_STORAGE_KEY = 'chatHumanPrompts';
+const CHAT_PANEL_WIDTH_KEY = 'chatPanelWidth';
+const CHAT_PANEL_MIN = 300;
+const CHAT_PANEL_MAX = 760;
+const CHAT_PANEL_DEFAULT = 440;
 
 function readHumanPromptsDefault(): boolean {
   try {
@@ -70,7 +77,20 @@ export function ChatPage() {
   const [suggestedFollowups, setSuggestedFollowups] = useState<SuggestedFollowup[]>([]);
   const [humanPrompts, setHumanPrompts] = useState<boolean>(readHumanPromptsDefault);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  const {
+    width: chatPanelWidth,
+    dragging: chatPanelDragging,
+    onMouseDown: onChatPanelResize,
+    resetWidth: resetChatPanelWidth,
+  } = useHorizontalPanelResize({
+    storageKey: CHAT_PANEL_WIDTH_KEY,
+    defaultWidth: CHAT_PANEL_DEFAULT,
+    minWidth: CHAT_PANEL_MIN,
+    maxWidth: CHAT_PANEL_MAX,
+    invertDelta: true,
+  });
 
   const { guide: rawPendingWorkflowGuide, sourceKey: pendingWorkflowSourceKey } = useMemo(
     () => resolvePendingWorkflowGuideWithKey(messages, streamingToolResults),
@@ -104,6 +124,12 @@ export function ChatPage() {
       /* ignore */
     }
   }, [humanPrompts]);
+
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setSidebarOpen(false);
+    }
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -139,10 +165,8 @@ export function ChatPage() {
     }
   }, []);
 
-  /** Probe on mount; keep retrying every 4s until the API responds (covers slow backend / start order). */
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
-
     const tick = async () => {
       const ok = await checkBackend();
       if (ok && intervalId !== undefined) {
@@ -150,10 +174,8 @@ export function ChatPage() {
         intervalId = undefined;
       }
     };
-
     void tick();
     intervalId = setInterval(() => void tick(), 4000);
-
     return () => {
       if (intervalId !== undefined) clearInterval(intervalId);
     };
@@ -189,7 +211,6 @@ export function ChatPage() {
     }
   }, [loadSessions, loadSession]);
 
-  // Ctrl+Shift+N / Cmd+Shift+N → new chat
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'n') {
@@ -217,6 +238,9 @@ export function ChatPage() {
       setJobProgress(null);
       setLoading(false);
       void loadSession(id);
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        setSidebarOpen(false);
+      }
     },
     [loadSession]
   );
@@ -237,7 +261,6 @@ export function ChatPage() {
     setClearingAllChats(true);
     try {
       await deleteAllSessions();
-      // Clear UI immediately so the sidebar empties even if list refetch fails.
       setCurrentSession(null);
       setMessages([]);
       setSessions([]);
@@ -568,8 +591,6 @@ export function ChatPage() {
   const handleSaveUserMessage = useCallback(
     async (messageIndex: number, messageId: string, newContent: string) => {
       if (!currentSession) return;
-
-      // Always sync from server first: client-only rows (e.g. err-*) can desync indices/ids from DB.
       const { session: syncedSession, messages: fresh } = await getSession(currentSession.id);
       const serverSessionId = (syncedSession?.id || currentSession.id).trim();
       if (!serverSessionId) {
@@ -641,7 +662,6 @@ export function ChatPage() {
             created_at: new Date().toISOString(),
           },
         ]);
-        // Patch already applied; show error in-thread only — do not rethrow (closes edit UI).
       } finally {
         setLoading(false);
         setStreamingContent(null);
@@ -705,136 +725,142 @@ export function ChatPage() {
   }, [sessions, currentSession, loadSession, location.search]);
 
   const streaming = streamingContent !== null && loading;
+  const isEmptyThread =
+    Boolean(currentSession) &&
+    !messagesLoading &&
+    messages.length === 0 &&
+    streamingContent === null;
+
+  const composer = (
+    <ChatInput
+      value={input}
+      onChange={setInput}
+      onSend={handleSend}
+      onQuickReply={handleQuickReply}
+      onStop={handleStop}
+      pendingWorkflowGuide={pendingWorkflowGuide}
+      onDismissPendingWorkflowGuide={pendingWorkflowGuide ? dismissPendingWorkflowGuide : undefined}
+      humanPrompts={humanPrompts}
+      onHumanPromptsChange={setHumanPrompts}
+      disabled={loading}
+      loading={loading}
+      streaming={streaming}
+      showShortcutHint={!isEmptyThread}
+      variant="cursor"
+      centered={isEmptyThread}
+    />
+  );
 
   return (
-    <div className="flex h-[var(--chat-page-height)] min-h-[28rem] flex-col bg-background px-4 py-4 sm:px-5">
-      {backendReachable === false && (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
-          role="alert"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="min-w-0 flex-1">
-              <span className="font-semibold">{"Can't reach the API."}</span>{' '}
-              This page rechecks every few seconds. Start the backend from the repo root:{' '}
-              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
-                .\START_BACKEND_SIMPLE.ps1
-              </code>{' '}
-              or{' '}
-              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
-                .\RUN_BOTH.ps1
-              </code>
-              . If PowerShell blocks scripts, either run{' '}
-              <span className="font-mono text-xs">
-                powershell -ExecutionPolicy Bypass -File .\START_BACKEND_SIMPLE.ps1
-              </span>{' '}
-              or use the CMD launchers{' '}
-              <span className="font-mono text-xs">start_backend.cmd</span> /{' '}
-              <span className="font-mono text-xs">start_both.cmd</span>.
-              . Wrong port? Set{' '}
-              <code className="rounded border border-amber-200 bg-card px-1.5 py-0.5 font-mono text-xs dark:border-amber-800">
-                VITE_PROXY_TARGET
-              </code>{' '}
-              in <span className="font-mono text-xs">frontend/.env</span> and restart{' '}
-              <span className="font-mono text-xs">npm run dev</span>.
-            </p>
+    <div className="flex h-full min-h-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {backendReachable === false && (
+          <div
+            className="shrink-0 border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+            role="alert"
+          >
+            <span className="font-medium">API unreachable.</span> Start backend with{' '}
+            <code className="rounded bg-card px-1 py-0.5 font-mono">python run_local.py</code> in{' '}
+            <code className="rounded bg-card px-1 py-0.5 font-mono">backend/</code>.
             <button
               type="button"
-              className="shrink-0 rounded-md border border-amber-300 bg-card px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm hover:bg-amber-100 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/50"
+              className="ml-2 rounded border border-amber-300 px-2 py-0.5 hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/50"
               onClick={() => void checkBackend()}
             >
-              Check now
+              Retry
             </button>
           </div>
-        </div>
-      )}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-        <ChatSidebar
-          sessions={sessions}
-          currentId={currentSession?.id ?? null}
-          onSelect={handleSelectSession}
-          onNew={handleNewChat}
-          onDelete={handleDeleteSession}
-          onDeleteAll={handleDeleteAllChats}
-          onExport={handleExport}
-          onRenameSession={handleRenameSession}
-          creatingSession={creatingSession}
-          deletingId={deletingId}
-          clearingAll={clearingAllChats}
-        />
-        <div className="flex min-w-0 flex-1 flex-col bg-background">
-          {currentSession ? (
-            <>
-              <div className="flex shrink-0 items-center border-b border-border bg-card px-5 py-3">
-                <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-                  {currentSession.title?.trim() || 'New Chat'}
-                </h2>
-              </div>
-              <ChatMessageList
-                messages={messages}
-                sessionId={currentSession?.id}
-                streamingContent={streamingContent}
-                streamingToolResults={streamingToolResults}
-                streamingThinking={thinking}
-                streamingAgentState={agentState}
-                streamingAgentStateMessage={agentStateMessage}
-                streamingAgentStateInfo={agentStateInfo}
-                streamingJobProgress={jobProgress}
-                generationRunId={generationRunId}
-                messagesLoading={messagesLoading}
-                onGenerationComplete={handleGenerationComplete}
-                onCopyMessage={handleCopyMessage}
-                onExamplePromptSelect={(text) => setInput(text)}
-                onSaveUserMessage={handleSaveUserMessage}
-                actionDisabled={loading}
-                onRegenerate={handleRegenerate}
-                onRetry={handleRetry}
-                onQuickReply={handleQuickReply}
-                suggestedFollowups={suggestedFollowups}
-                onFollowupSelect={handleQuickReply}
-              />
-              <div className="shrink-0 bg-background px-4 pb-4 pt-2 sm:px-6">
-          <ChatInput
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            onQuickReply={handleQuickReply}
-            onStop={handleStop}
-            pendingWorkflowGuide={pendingWorkflowGuide}
-            onDismissPendingWorkflowGuide={pendingWorkflowGuide ? dismissPendingWorkflowGuide : undefined}
-            humanPrompts={humanPrompts}
-            onHumanPromptsChange={setHumanPrompts}
-            disabled={loading}
-            loading={loading}
-            streaming={streaming}
-            showShortcutHint
-            placeholder="Ask a DITA question, paste XML, or describe an AEM Guides workflow…"
-          />
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-muted-foreground">
-              {sessions.length === 0 ? (
-                <>
-                  <div className="rounded-lg border border-border bg-card px-8 py-8">
-                    <p className="text-sm font-medium text-foreground">No conversations yet</p>
-                    <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                      Start a chat to ask about DITA, AEM Guides, or DITA-OT.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleNewChat}
-                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-                  >
-                    New conversation
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">Select a conversation from the list or create a new one.</p>
-              )}
-            </div>
+        )}
+
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {sidebarOpen && (
+            <ChatSidebar
+              sessions={sessions}
+              currentId={currentSession?.id ?? null}
+              onSelect={handleSelectSession}
+              onNew={handleNewChat}
+              onDelete={handleDeleteSession}
+              onDeleteAll={handleDeleteAllChats}
+              onExport={handleExport}
+              onRenameSession={handleRenameSession}
+              creatingSession={creatingSession}
+              deletingId={deletingId}
+              clearingAll={clearingAllChats}
+              variant="cursor"
+              onClose={() => setSidebarOpen(false)}
+            />
           )}
+
+          <ChatWorkspacePanel
+            session={currentSession}
+            messageCount={messages.length}
+            historyOpen={sidebarOpen}
+            onToggleHistory={() => setSidebarOpen((v) => !v)}
+          />
+
+          <aside className="cursor-chat-panel min-h-0" style={{ width: chatPanelWidth }}>
+            <PanelResizeHandle
+              side="left"
+              dragging={chatPanelDragging}
+              onMouseDown={onChatPanelResize}
+              onDoubleClick={resetChatPanelWidth}
+              className="left-edge"
+              title="Resize chat panel"
+            />
+            {currentSession ? (
+              <>
+                <div className="shrink-0 border-b border-border/60 px-3 py-2.5">
+                  <p className="truncate text-[12px] font-medium text-foreground">
+                    {currentSession.title?.trim() || 'New Chat'}
+                  </p>
+                </div>
+                <ChatMessageList
+                  messages={messages}
+                  sessionId={currentSession.id}
+                  streamingContent={streamingContent}
+                  streamingToolResults={streamingToolResults}
+                  streamingThinking={thinking}
+                  streamingAgentState={agentState}
+                  streamingAgentStateMessage={agentStateMessage}
+                  streamingAgentStateInfo={agentStateInfo}
+                  streamingJobProgress={jobProgress}
+                  generationRunId={generationRunId}
+                  messagesLoading={messagesLoading}
+                  onGenerationComplete={handleGenerationComplete}
+                  onCopyMessage={handleCopyMessage}
+                  onExamplePromptSelect={(text) => setInput(text)}
+                  onSaveUserMessage={handleSaveUserMessage}
+                  actionDisabled={loading}
+                  onRegenerate={handleRegenerate}
+                  onRetry={handleRetry}
+                  onQuickReply={handleQuickReply}
+                  suggestedFollowups={suggestedFollowups}
+                  onFollowupSelect={handleQuickReply}
+                  variant="cursor"
+                  inPanel
+                  composerSlot={isEmptyThread ? <div className="cursor-composer-shell">{composer}</div> : undefined}
+                />
+                {!isEmptyThread && (
+                  <div className="shrink-0 px-3 pb-3 pt-1">
+                    <div className="cursor-composer-shell">{composer}</div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+                <p className="text-[12px] text-muted-foreground">
+                  {sessions.length === 0 ? 'Start your first chat.' : 'Pick a chat from history.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground hover:opacity-90"
+                >
+                  New chat
+                </button>
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </div>

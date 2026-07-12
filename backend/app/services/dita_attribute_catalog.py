@@ -403,6 +403,105 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
                 semantic_class="open_token",
                 syntax="one or more space-separated profiling tokens",
             ),
+            "format": _spec(
+                "format",
+                values=[
+                    "dita", "ditamap", "html", "pdf", "txt",
+                    "mdita", "hdita", "xdita", "markdown",
+                    "mditamap", "hditamap", "xditamap",
+                ],
+                elements=["topicref", "xref", "link", "keydef", "mapref", "navref"],
+                combinations=["scope", "href", "type", "keyref"],
+                contexts=[
+                    "Use @format to declare the format of the resource in @href so the processor knows how to handle a non-DITA target.",
+                    'To link a Markdown file from DITA, set format="mdita" (Lightweight DITA Markdown), for example <topicref href="notes.md" format="mdita"/>. Some AEM Guides / DITA-OT toolchains also accept format="markdown".',
+                    "Lightweight DITA values hdita, mdita, and xdita identify HTML, Markdown, and XDITA topic resources; hditamap, mditamap, and xditamap identify their map variants.",
+                    "When @format is omitted it cascades from the closest containing map element, then falls back to the @href file extension (for example .pdf resolves to pdf); .xml defaults to dita and absolute http(s) URLs default to html.",
+                ],
+                default_scenarios=[],
+                mistakes=[
+                    'Using format="xml" for a DITA file — a .xml extension defaults to "dita", not "xml".',
+                    'Linking a Markdown file without format="mdita" (or a processor-supported "markdown"), so the target is not recognized as Lightweight DITA content.',
+                    'Omitting scope="external" when format="html" points at an absolute http(s) URL.',
+                ],
+                example='<topicref href="release-notes.md" format="mdita"/>',
+                text=(
+                    "The @format attribute identifies the format of the resource referenced by @href so a "
+                    "processor can handle non-DITA targets. Common values are dita, ditamap, html, pdf, and "
+                    "txt. Lightweight DITA adds hdita (HTML), mdita (Markdown), and xdita (XDITA), plus the "
+                    "hditamap/mditamap/xditamap map variants. To reference a Markdown topic from DITA, use "
+                    'format="mdita" (some toolchains also accept "markdown"). When @format is omitted it '
+                    "cascades from the containing map element, then falls back to the @href file extension; "
+                    ".xml defaults to dita and absolute http(s) URLs default to html."
+                ),
+                source_url="https://dita-lang.org/1.3/dita/langref/attributes/theformatattribute.html",
+                semantic_class="open_token",
+                syntax="a format token such as dita, ditamap, html, pdf, or mdita (Markdown), or a file extension without the leading period",
+            ),
+            "audience": _spec(
+                "audience",
+                elements=["topic", "concept", "task", "reference", "topicref", "section", "p", "note", "step"],
+                combinations=["product", "platform", "props", "otherprops", "rev"],
+                contexts=[
+                    "Use @audience to profile content for a specific reader group (for example administrator, developer, or end-user) so a DITAVAL filter can include or exclude it.",
+                    "@audience answers WHO the content is for; combine it with a DITAVAL rule to conditionally publish per audience.",
+                ],
+                mistakes=[
+                    "Using @audience to describe a product or platform — use @product or @platform for those so filters stay meaningful.",
+                    "Expecting @audience alone to hide content: it only takes effect when a DITAVAL rule acts on that value.",
+                ],
+                example='<p audience="administrator">Run the installer as an administrator.</p>',
+                text=(
+                    "The @audience attribute is a base profiling (conditional-processing) attribute that marks "
+                    "content for a particular reader group, such as administrator, developer, or novice. It is "
+                    "used with a DITAVAL file to include or exclude content per audience during a build."
+                ),
+                source_url=METADATA_ATTRIBUTES_SOURCE_URL,
+                semantic_class="open_token",
+                syntax="one or more space-separated audience tokens",
+            ),
+            "product": _spec(
+                "product",
+                elements=["topic", "concept", "task", "reference", "topicref", "section", "p", "note", "step"],
+                combinations=["audience", "platform", "props", "otherprops", "rev"],
+                contexts=[
+                    "Use @product to profile content for a specific product or product variant so it can be filtered per product edition.",
+                    "@product answers WHICH product the content applies to; combine it with a DITAVAL rule for product-specific deliverables.",
+                ],
+                mistakes=[
+                    "Mixing audience and product values in one attribute — keep 'who' in @audience and 'which product' in @product.",
+                ],
+                example='<p product="enterprise">Enterprise edition supports SSO.</p>',
+                text=(
+                    "The @product attribute is a base profiling (conditional-processing) attribute that marks "
+                    "content as applying to a particular product or product variant. It is used with a DITAVAL "
+                    "file to include or exclude content per product during a build."
+                ),
+                source_url=METADATA_ATTRIBUTES_SOURCE_URL,
+                semantic_class="open_token",
+                syntax="one or more space-separated product tokens",
+            ),
+            "platform": _spec(
+                "platform",
+                elements=["topic", "concept", "task", "reference", "topicref", "section", "p", "note", "step"],
+                combinations=["audience", "product", "props", "otherprops", "rev"],
+                contexts=[
+                    "Use @platform to profile content for a specific operating system or hardware platform (for example windows, linux, macos).",
+                    "@platform answers WHERE (which platform) the content applies; combine it with a DITAVAL rule for platform-specific output.",
+                ],
+                mistakes=[
+                    "Using @platform for product editions — use @product for products and @platform for OS/hardware.",
+                ],
+                example='<p platform="linux">Set the LD_LIBRARY_PATH environment variable.</p>',
+                text=(
+                    "The @platform attribute is a base profiling (conditional-processing) attribute that marks "
+                    "content as applying to a particular operating system or hardware platform. It is used with "
+                    "a DITAVAL file to include or exclude content per platform during a build."
+                ),
+                source_url=METADATA_ATTRIBUTES_SOURCE_URL,
+                semantic_class="open_token",
+                syntax="one or more space-separated platform tokens",
+            ),
             "otherprops": _spec(
                 "otherprops",
                 elements=["topic", "concept", "task", "reference", "topicref", "section", "p"],
@@ -1059,9 +1158,11 @@ def get_attribute_spec(attr_name: str) -> AttributeSpec | None:
         [*resolved.combination_attributes, *supplemental.combination_attributes]
     )
     merged_default_scenarios = _dedupe([*resolved.default_scenarios, *supplemental.default_scenarios])
-    merged_usage_contexts = _dedupe([*resolved.usage_contexts, *supplemental.usage_contexts])
-    merged_common_mistakes = _dedupe([*resolved.common_mistakes, *supplemental.common_mistakes])
-    merged_correct_examples = _dedupe([*resolved.correct_examples, *supplemental.correct_examples])
+    # Curated supplemental overrides lead so hand-authored guidance/examples are not
+    # crowded out of the rendered top-N by prose-parsed seed items.
+    merged_usage_contexts = _dedupe([*supplemental.usage_contexts, *resolved.usage_contexts])
+    merged_common_mistakes = _dedupe([*supplemental.common_mistakes, *resolved.common_mistakes])
+    merged_correct_examples = _dedupe([*supplemental.correct_examples, *resolved.correct_examples])
     merged_text_content = resolved.text_content or supplemental.text_content
     authoritative_group_sources = {
         ID_ATTRIBUTES_SOURCE_URL,

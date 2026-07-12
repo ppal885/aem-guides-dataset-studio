@@ -224,6 +224,56 @@ def test_resource_only_toc_question_gets_resource_semantics_not_conref_definitio
     assert "`conref` is the dita-ot preprocess step" not in lowered
 
 
+@pytest.mark.parametrize(
+    ("prompt", "expected_terms"),
+    [
+        ("How does a relationship table generate related links? Explain relrow and relcell.", ["reltable", "relrow", "relcell", "expected result"]),
+        ("How does collection-type affect links generated from a relationship table?", ["collection-type", "sequence", "expected result"]),
+    ],
+)
+def test_reltable_questions_do_not_route_to_cals_table(prompt, expected_terms):
+    text = chat_service._build_reltable_senior_fallback_response(prompt)
+    lowered = text.lower()
+
+    assert text
+    assert "<table> is a formal cals table" not in lowered
+    for term in expected_terms:
+        assert term.lower() in lowered
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected_terms"),
+    [
+        ("How does DITA-OT treat Markdown input compared with normal DITA topics?", ["markdown", "dita-ot", "expected result"]),
+        ("How do DITA-OT PDF theme variables work? Give a practical example.", ["theme", "variable", "expected result"]),
+        ("How do I install a DITA-OT plugin and verify it is active?", ["plugin", "install", "expected result"]),
+        ("How does branch filtering keep generated URIs unique?", ["branch", "uri", "resourceprefix"]),
+    ],
+)
+def test_dita_ot_runtime_category_fallbacks(prompt, expected_terms):
+    text = chat_service._build_dita_ot_preprocess_runtime_fallback_response(prompt)
+    lowered = text.lower()
+
+    assert text
+    for term in expected_terms:
+        assert term.lower() in lowered
+
+
+def test_low_value_verification_notes_are_stripped():
+    text = (
+        "## Short answer\nGood answer.\n\n"
+        "## Verification notes\n"
+        "- Not verified: The term `when` was not directly verified in the retrieved evidence.\n"
+        "- Keep this real caution.\n\n"
+        "## Sources\n- E1"
+    )
+
+    cleaned = chat_service._strip_low_value_verification_notes(text)
+
+    assert "term `when`" not in cleaned
+    assert "Keep this real caution" in cleaned
+
+
 @pytest.mark.anyio
 async def test_local_fallback_prefers_learned_qa_over_dita_ot_toc_false_positive(monkeypatch):
     monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")

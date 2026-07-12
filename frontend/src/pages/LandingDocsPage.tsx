@@ -103,10 +103,10 @@ export function LandingDocsPage() {
   const showNextSlide = () => setActivePreview((current) => (current + 1) % previewSlides.length)
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-background text-foreground">
+    <div className="min-h-full bg-background text-foreground">
       <div className="mx-auto grid max-w-[1400px] grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_220px]">
         <aside className="hidden border-r border-border px-5 py-8 lg:block">
-          <div className="sticky top-[72px] space-y-7">
+          <div className="sticky top-6 space-y-7">
             <div>
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Walkthrough</p>
               <DocsVideoSidebarItems activeStep={activeVideoStep} onSelect={setActiveVideoStep} />

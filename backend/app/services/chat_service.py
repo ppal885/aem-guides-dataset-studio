@@ -45,7 +45,7 @@ from app.services.generate_dita_preview_service import (
     build_generate_dita_execution_contract,
     build_generate_dita_preview,
 )
-from app.services.prompt_router_service import route_prompt
+from app.services.prompt_router_service import is_dita_ot_internals_question, route_prompt
 from app.services.execution_policy_service import decide_execution_policy
 from app.services.chat_agent_service import (
     AGENT_EXECUTION_KEY,
@@ -119,6 +119,11 @@ HIERARCHICAL_RETRIEVAL_ENABLED = os.getenv("HIERARCHICAL_RETRIEVAL_ENABLED", "fa
 # D7: Tool result caching — avoids re-executing identical read-only tool calls
 CHAT_TOOL_CACHE_ENABLED = os.getenv("CHAT_TOOL_CACHE_ENABLED", "false").lower() == "true"
 CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES = os.getenv("CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES", "false").lower() in ("1", "true", "yes", "on")
+# When enabled, grounded DITA spec answers are always synthesized with the LLM
+# (grounded on the structured tool facts + dita_spec/aem_guides/dita_ot RAG evidence)
+# instead of emitting only the deterministic template. The deterministic answer is
+# still used as the offline fallback whenever the LLM is unavailable or errors.
+CHAT_ALWAYS_LLM_FOR_SPEC = os.getenv("CHAT_ALWAYS_LLM_FOR_SPEC", "true").lower() in ("1", "true", "yes", "on")
 _STALE_NO_VERIFIED_SNIPPET_WARNING = "No verified snippet was available for this construct, so the answer omits example XML."
 _EXAMPLE_INTENT_RE = re.compile(
     r"\b(example|snippet|show|sample|illustrat|demonstrate|give.*xml|xml.*example|code.*example)\b",
@@ -236,8 +241,10 @@ def _has_download_intent(text: str, *, session_aware: bool = False) -> bool:
     return bool(words & _DOWNLOAD_VERBS) and bool(words & _DOWNLOAD_NOUNS)
 
 _JIRA_SEARCH_PATTERN = re.compile(
-    r"\b(jira|jiras|issue|issues|ticket|tickets)\b.*\b(fetch|find|show|search|lookup|look up|get|list|related|similar|matching|relevant)\b|"
-    r"\b(fetch|find|show|search|lookup|look up|get|list)\b.*\b(jira|jiras|issue|issues|ticket|tickets)\b",
+    r"\b(jira|jiras|issue|issues|ticket|tickets|bug|bugs)\b.*\b(fetch|find|show|search|lookup|look up|get|list|related|similar|matching|relevant|reported|raised|logged|filed|existing|exist)\b|"
+    r"\b(fetch|find|show|search|lookup|look up|get|list|related|similar|matching|relevant|reported|raised|logged|filed|existing)\b.*\b(jira|jiras|issue|issues|ticket|tickets|bug|bugs)\b|"
+    r"\b(?:already|previously|been)\s+reported\b|"
+    r"\bknown\s+(?:issue|issues|bug|bugs|ticket|tickets)\b",
     re.IGNORECASE,
 )
 
@@ -478,6 +485,31 @@ def _is_dita_answer_request(question: str) -> bool:
     if _DITA_RELATED_LINKS_TOC_QUERY_PATTERN.search(text):
         return True
     return bool(_DITA_STRUCTURAL_QUERY_PATTERN.search(text) and _DITA_ANSWER_INTENT_PATTERN.search(text))
+
+
+_INSTRUCTIONAL_QUESTION_LEAD_RE = re.compile(
+    r"^\s*(how|where|why|when|which|what|explain|tell\s+me\s+about)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_instructional_question(text: str) -> bool:
+    """True for an interrogative how-to/explanatory question ("how do I create…",
+    "what is the difference…") as opposed to an imperative "generate/create X for me"
+    request. Keeps guidance questions out of the generate_dita preview flow — e.g.
+    "How do I create a two-way relationship between two topics?" wants an explanation,
+    not a generated bundle.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    # Pasted Jira content, an issue key, or an assistive "can you generate…" request
+    # are genuine generation triggers regardless of leading interrogative.
+    if _detect_jira_style_text(t) or extract_issue_key_from_generation_request(t):
+        return False
+    if _ASSISTIVE_DITA_GENERATION_REQUEST_PATTERN.search(t):
+        return False
+    return bool(_INSTRUCTIONAL_QUESTION_LEAD_RE.search(t))
 
 
 def _is_dita_construct_output_query(text: str) -> bool:
@@ -1243,7 +1275,7 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
         return "grounded_dita_answer"
     if _is_dita_answer_request(text):
         return "grounded_dita_answer"
-    if _DITA_GENERATION_PATTERN.search(text):
+    if _DITA_GENERATION_PATTERN.search(text) and not _is_instructional_question(text):
         return "generation_request"
     if _XML_REVIEW_PATTERN.search(text):
         return "xml_review_answer"
@@ -1382,6 +1414,31 @@ def _extract_requested_dita_attribute(user_content: str) -> str:
     return str(attributes[0]).strip().lower() if attributes else ""
 
 
+# Broader-intent DITA signals: the question mentions a construct but is really asking
+# about something wider than a single attribute/element — conref push semantics, subject
+# scheme maps, per-product/per-audience variation, DITAVAL flagging, or filtered-source
+# behavior. A narrow attribute/element lookup or a canned conref/profile primer answers the
+# wrong thing here, so these must be synthesized from RAG + LLM.
+_BROAD_INTENT_DITA_SIGNAL = re.compile(
+    r"\bconref[\s-]*push\b|\bconaction\b|\bpush(?:replace|before|after)\b|"
+    r"\bsubject[\s-]*scheme\b|\bsubjectscheme\b|"
+    r"\bper[\s-]product\b|\bper[\s-]audience\b|\bvary(?:ing|\s+it)?\s+(?:per|by)\b|"
+    r"\bflag(?:ging|ged)?\b|\bfiltered\s+out\b",
+    re.IGNORECASE,
+)
+
+
+def _is_broad_intent_dita_question(text: str) -> bool:
+    return bool(_BROAD_INTENT_DITA_SIGNAL.search(text or ""))
+
+
+def _prefer_rag_synthesis(text: str) -> bool:
+    """True when a question should be synthesized from RAG + LLM rather than answered by a
+    narrow deterministic template (single-attribute/element lookup or a canned DITA-OT
+    primer): DITA-OT internals, or a broader-intent DITA question."""
+    return is_dita_ot_internals_question(text) or _is_broad_intent_dita_question(text)
+
+
 def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[str, dict[str, Any]]]:
     requests: list[tuple[str, dict[str, Any]]] = []
     lowered = (user_content or "").strip().lower()
@@ -1395,7 +1452,11 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
         # Broad map-construct questions span multiple elements — skip single-attribute lookup
         is_broad_map = _needs_broad_map_construct_answer(user_content)
         is_behavior_question = _is_behavior_or_troubleshooting_question(user_content)
-        if not is_broad_map and not is_behavior_question:
+        # For DITA-OT internals questions, a construct word in the sentence (e.g. "role"
+        # in "role of OASIS catalogs", "toc" in "table of contents", "step" in "processing
+        # step") must NOT hijack routing into a single-attribute lookup. Use RAG instead.
+        is_ot_internals = _prefer_rag_synthesis(user_content)
+        if not is_broad_map and not is_behavior_question and not is_ot_internals:
             attribute_name = _extract_requested_dita_attribute(user_content)
             if attribute_name:
                 requests.append(("lookup_dita_attribute", {"attribute_name": attribute_name}))
@@ -2344,6 +2405,116 @@ _DEFINITION_STYLE_QUESTION_RE = re.compile(
 
 def _is_definition_style_question(question: str) -> bool:
     return bool(_DEFINITION_STYLE_QUESTION_RE.search(question or ""))
+
+
+# ── Interrogative intent (how / where / which-value / why) ──
+# The deterministic grounded renderer leads with a construct *definition* by
+# default. For genuinely intent-bearing questions that is the wrong shape: a
+# "how do I…" / "where does it go" / "which value…" question wants the actionable
+# fact first, not "here is what X is". These patterns let the renderer surface an
+# intent-focused lead sentence before the reference material.
+_HOW_TO_INTENT_RE = re.compile(r"^\s*how\s+(?:do|to|can|should|would|could)\b|\bhow\s+(?:do|to|can|should|would|could)\s+(?:i|you|we|one)\b", re.IGNORECASE)
+_WHERE_INTENT_RE = re.compile(r"^\s*where\b|\bon\s+which\s+elements?\b|\bwhich\s+elements?\b", re.IGNORECASE)
+_WHICH_VALUE_INTENT_RE = re.compile(r"\b(?:which|what)\s+(?:value|values|format|option|options|setting)\b", re.IGNORECASE)
+_WHY_INTENT_RE = re.compile(r"^\s*why\b|\bwhy\s+(?:does|is|do|are|would|should)\b", re.IGNORECASE)
+
+
+def _classify_question_intent(question: str) -> str:
+    """Classify the interrogative intent of a chat question.
+
+    Definition-style questions ("what is X", "how does X work", "explain X") are
+    reported as ``definition`` so the renderer keeps its definition-first shape.
+    """
+    q = (question or "").strip()
+    if not q:
+        return "generic"
+    if _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
+        return "compare"
+    # Definition-style takes precedence so "how does X work" stays explanatory.
+    if _is_definition_style_question(q):
+        return "definition"
+    if _HOW_TO_INTENT_RE.search(q):
+        return "how_to"
+    if _WHERE_INTENT_RE.search(q):
+        return "where"
+    if _WHICH_VALUE_INTENT_RE.search(q):
+        return "which_value"
+    if _WHY_INTENT_RE.search(q):
+        return "why"
+    return "generic"
+
+
+_INTENT_LEAD_SPEC_KINDS = {
+    "dita_attribute",
+    "dita_element",
+    "dita_map_construct",
+    "dita_content_model",
+    "dita_placement",
+    "dita_output_behavior",
+}
+
+
+def _facts_subject_label(facts: NormalizedGroundedFactSet) -> str:
+    """Best-effort construct name (``@attr`` or ``<element>``) for a lead sentence."""
+    for text in (facts.canonical_definition, facts.syntax):
+        source = str(text or "")
+        attr = re.search(r"@[\w.-]+", source)
+        if attr:
+            return attr.group(0)
+        elem = re.search(r"<[\w.-]+>", source)
+        if elem:
+            return elem.group(0)
+    return ""
+
+
+def _intent_focused_lead(facts: NormalizedGroundedFactSet, intent: str) -> str:
+    """Compose a one-sentence direct answer for an intent-bearing question.
+
+    Returns an empty string when the intent is definition/generic or the facts
+    cannot support a confident lead — the renderer then keeps its default
+    definition-first short answer.
+    """
+    if facts.answer_kind not in _INTENT_LEAD_SPEC_KINDS:
+        return ""
+    subject = _facts_subject_label(facts)
+    subj = f"`{subject}`" if subject else "it"
+
+    def _els(values: list[str]) -> str:
+        rendered = [f"`<{str(v).strip().strip('<>')}>`" for v in values[:6] if str(v).strip()]
+        return ", ".join(rendered)
+
+    def _vals(values: list[str]) -> str:
+        rendered = [f"`{str(v).strip()}`" for v in values[:8] if str(v).strip()]
+        return ", ".join(rendered)
+
+    if intent == "where":
+        if facts.supported_elements:
+            return f"You set {subj} on {_els(facts.supported_elements)}."
+        if facts.parent_elements:
+            return f"{subj} can appear inside {_els(facts.parent_elements)}."
+        return ""
+    if intent == "how_to":
+        bits: list[str] = []
+        if facts.valid_values:
+            bits.append(f"set {subj} to a value that matches your target, such as {_vals(facts.valid_values)}")
+        elif facts.syntax:
+            bits.append(f"set {subj} using `{facts.syntax}`")
+        else:
+            return ""
+        if facts.supported_elements:
+            bits.append(f"applied on {_els(facts.supported_elements)}")
+        return "To do that, " + ", ".join(bits) + "."
+    if intent == "which_value":
+        if facts.valid_values:
+            return f"Use one of these values for {subj}: {_vals(facts.valid_values)}."
+        return ""
+    if intent == "why":
+        for candidate in (*facts.default_behavior, *facts.placement_notes):
+            rendered = " ".join(str(candidate or "").split()).strip()
+            if rendered:
+                return rendered
+        return ""
+    return ""
 
 
 def _should_auto_include_verified_example(question: str, answer_kind: GroundedAnswerKind) -> bool:
@@ -3971,20 +4142,72 @@ def _grounded_example_expected_result(facts: NormalizedGroundedFactSet, *, snipp
     return ""
 
 
-def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> str:
+def _is_low_value_verification_note(note: str) -> bool:
+    text = str(note or "").strip().lower()
+    if not text:
+        return True
+    return bool(
+        re.fullmatch(r"not verified:\s+the term `?[\w.-]+`? was not directly verified in the retrieved evidence\.?", text)
+    )
+
+
+def _strip_low_value_verification_notes(text: str) -> str:
+    """Remove noisy token-level verification notes while preserving real cautions."""
+    content = str(text or "")
+    if "Verification notes" not in content and "Not verified:" not in content:
+        return content
+    lines = content.splitlines()
+    out: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if line.strip().lower() == "## verification notes":
+            kept_notes: list[str] = []
+            idx += 1
+            while idx < len(lines) and not lines[idx].startswith("## "):
+                raw = lines[idx]
+                normalized = raw.strip().lstrip("-").strip()
+                if raw.strip() and not _is_low_value_verification_note(normalized):
+                    kept_notes.append(raw)
+                idx += 1
+            if kept_notes:
+                out.append(line)
+                out.extend(kept_notes)
+            continue
+        out.append(line)
+        idx += 1
+    return "\n".join(out).strip()
+
+
+def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet, question: str = "") -> str:
     short_answer = _preferred_grounded_short_answer(facts)
     if not short_answer:
         return ""
     normalized_short_answer = _normalized_fact_text(short_answer)
-    usage_patterns = _unique_fact_points(facts.usage_patterns, exclude={normalized_short_answer})
+
+    # Intent-aware lead: for how/where/which-value/why questions, answer the
+    # question directly before the definition/reference dump. Definition-style
+    # and generic questions keep the default definition-first shape.
+    intent = _classify_question_intent(question)
+    intent_lead = _intent_focused_lead(facts, intent)
+    lead_norm = _normalized_fact_text(intent_lead) if intent_lead else ""
+    if lead_norm and lead_norm == normalized_short_answer:
+        intent_lead = ""
+        lead_norm = ""
+
+    lead_excludes = {value for value in (normalized_short_answer, lead_norm) if value}
+    usage_patterns = _unique_fact_points(facts.usage_patterns, exclude=lead_excludes)
     default_behavior = _unique_fact_points(
         facts.default_behavior,
-        exclude={normalized_short_answer, *[_normalized_fact_text(value) for value in usage_patterns]},
+        exclude={*lead_excludes, *[_normalized_fact_text(value) for value in usage_patterns]},
     )
 
     # AEM product guidance answers use "## At a glance"; DITA spec answers use "## Short answer"
     _first_heading = "## At a glance" if facts.answer_kind == "aem_guides_guidance" else "## Short answer"
-    sections: list[str] = [_first_heading, short_answer]
+    if intent_lead:
+        sections: list[str] = [_first_heading, intent_lead, short_answer]
+    else:
+        sections = [_first_heading, short_answer]
     quick_reference = _render_grounded_quick_reference_table(facts)
     if quick_reference:
         sections.extend(quick_reference)
@@ -4197,9 +4420,13 @@ def _render_normalized_grounded_fact_set(facts: NormalizedGroundedFactSet) -> st
 
     notes = []
     for item in facts.unsupported_points[:3]:
+        if _is_low_value_verification_note(item):
+            continue
         if item not in notes:
             notes.append(item)
     for item in facts.semantic_warnings[:3]:
+        if _is_low_value_verification_note(item):
+            continue
         if item not in notes:
             notes.append(item)
     if notes:
@@ -4324,7 +4551,32 @@ def _build_grounded_tool_draft_answer(
     )
     if facts is None:
         return "", None
-    return _render_normalized_grounded_fact_set(facts), facts
+    # For DITA-OT internals questions, a construct word in the sentence can make the spec
+    # tool mis-return an element/attribute comparison (e.g. "step"+"task" for "XSLT module
+    # vs Ant task", or conref/conkeyref/keyscope/keyref for a compound ordering question).
+    # That deterministic comparison table doesn't answer the question and anchors the LLM,
+    # so drop it and synthesize from RAG evidence instead.
+    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and is_dita_ot_internals_question(question):
+        return "", None
+    return _render_normalized_grounded_fact_set(facts, question=question), facts
+
+
+_GENERIC_FACT_MARKER = "construct-specific contexts"
+
+
+def _comparison_facts_are_thin(facts: NormalizedGroundedFactSet) -> bool:
+    """True when a comparison's structured rows lack real content (uncurated constructs),
+    so the deterministic table would show generic 'used in construct-specific contexts'
+    cells. Such comparisons should be synthesized by the LLM from RAG evidence instead.
+    """
+    rows = facts.comparison_rows or []
+    if len(rows) < 2:
+        return True
+    for row in rows:
+        definition = str(getattr(row, "definition", "") or "").strip()
+        if not definition or _GENERIC_FACT_MARKER in definition.lower():
+            return True
+    return False
 
 
 def _should_enrich_grounded_answer_with_llm(
@@ -4333,10 +4585,24 @@ def _should_enrich_grounded_answer_with_llm(
 ) -> bool:
     if facts is None:
         return False
+    # DITA-OT internals and broader-intent DITA questions are synthesized from RAG, never
+    # from a deterministic construct table/lookup (a "step vs task" table for "XSLT module
+    # vs Ant task", or a plain @conref lookup for a "conref push" question, is wrong).
+    if _prefer_rag_synthesis(question):
+        return True
     if facts.answer_kind == "dita_element_family_overview":
         return True
     if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"}:
-        return not bool(_EXPLICIT_COMPARISON_REQUEST_PATTERN.search(question or ""))
+        # An explicit "compare X vs Y" request keeps the deterministic comparison table —
+        # unless the table would be thin/generic (uncurated constructs), in which case the
+        # LLM should synthesize a real comparison from RAG evidence instead.
+        if _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(question or ""):
+            return _comparison_facts_are_thin(facts)
+        return True
+    # Always synthesize grounded spec answers with the LLM (RAG + structured facts),
+    # falling back to the deterministic template only when the LLM is unavailable.
+    if CHAT_ALWAYS_LLM_FOR_SPEC:
+        return True
     return False
 
 
@@ -4409,6 +4675,10 @@ def _is_direct_jira_search_request(user_content: str) -> bool:
     text = (user_content or "").strip()
     if not text:
         return False
+    # A conceptual DITA-OT internals question that merely says "issues" (e.g.
+    # "keyref vs conref issues") is not a Jira search.
+    if is_dita_ot_internals_question(text):
+        return False
     if _is_dita_ot_issue_request_without_explicit_jira(text):
         return False
     if not _JIRA_SEARCH_PATTERN.search(text):
@@ -4424,6 +4694,10 @@ def _is_dita_ot_issue_request_without_explicit_jira(text: str) -> bool:
     if not lowered:
         return False
     if re.search(r"\b(jira|jiras|guides-\d+|ticket|tickets)\b", lowered, re.IGNORECASE):
+        return False
+    # A conceptual DITA-OT internals question that merely mentions "issues" (e.g.
+    # "keyref vs conref issues") must not be treated as a GitHub-issue search.
+    if is_dita_ot_internals_question(text) and not re.search(r"\bgithub\b", lowered):
         return False
     return bool(
         re.search(r"\b(?:dita-ot|dita\s+ot|dita open toolkit)\b", lowered)
@@ -4821,7 +5095,9 @@ _DITA_AUTHORING_ONLY_PATTERN = re.compile(
 _DITA_OT_RUNTIME_SIGNAL_PATTERN = re.compile(
     r"\b(dita-ot|dita open toolkit|preprocess(?:ing)?|effective processed|intermediate/effective|"
     r"conrefpush|conkeyref|conkeyref push|copy-to preprocess|profile step|preprocess-profile|"
-    r"branch filtering|branch-filter|branch-filtering|ditavalref|filtered branch|filtered branches|"
+        r"branch filtering|branch-filter|branch-filtering|ditavalref|filtered branch|filtered branches|resourceprefix|resourcesuffix|generated uris?|unique uris?|"
+        r"markdown input|markdown file|lwdita|lightweight dita|pdf theme|theme variables?|"
+        r"plugin install|install.*plugin|dita-ot plugin|"
     r"dita command|--input|--format|--output|--filter|--parameter|-D\b|"
     r"temp(?:orary)? output|debugging checklist|xml i authored|source xml|"
     r"authored topic.*effective|html output differ|html.*pdf|pdf.*html|final pdf|junior dita author)\b",
@@ -4833,6 +5109,11 @@ def _should_try_dita_ot_runtime_fallback(user_content: str) -> bool:
     """Skip DITA-OT preprocess shortcuts for pure DITA authoring/map questions."""
     query = strip_humanized_chat_prefix(user_content)
     if not query.strip():
+        return False
+    # Deep DITA-OT internals AND broader-intent DITA questions (conref push, subject
+    # scheme, per-product variation, DITAVAL flagging, filtered-source behavior) must reach
+    # the grounded RAG+LLM path, not the shallow deterministic args/conref/profile primer.
+    if _prefer_rag_synthesis(query):
         return False
     requested_attribute = _extract_requested_dita_attribute(query)
     if requested_attribute and not _is_behavior_or_troubleshooting_question(query):
@@ -4870,6 +5151,138 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
     profile_url = "https://www.dita-ot.org/dev/reference/preprocess-profile"
     params_url = "https://www.dita-ot.org/dev/parameters/"
     command_args_url = "https://www.dita-ot.org/dev/parameters/dita-command-arguments"
+
+    if re.search(r"\b(markdown input|markdown file|markdown|lwdita|lightweight dita)\b", lowered) and re.search(
+        r"\b(dita-ot|input|topic|format|normal dita|use|treat|linked)\b",
+        lowered,
+    ):
+        markdown_input_url = "https://www.dita-ot.org/dev/topics/markdown-input"
+        markdown_syntax_url = "https://www.dita-ot.org/dev/reference/markdown/markdown-dita-syntax"
+        lwdita_url = "https://www.dita-ot.org/dev/topics/lwdita-input"
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT can process Markdown/LwDITA input as a lightweight authoring format, but it is not the same as a fully authored DITA XML topic. DITA-OT converts supported Markdown structures into DITA-like processing input, then runs the normal publishing pipeline.",
+            "",
+            "## How to use it",
+            "- Use Markdown input for simpler topic-style content, especially when authors prefer Markdown syntax.",
+            "- Use LwDITA when you want lightweight DITA authoring with a constrained DITA-compatible model.",
+            "- Use normal DITA XML when you need full DITA semantics, specialization, complex maps, precise reuse, or advanced metadata/control.",
+            "",
+            "## Example",
+            "```markdown",
+            "# Install the product",
+            "",
+            "Before installing, review the prerequisites.",
+            "",
+            "- Download the package.",
+            "- Run the installer.",
+            "```",
+            "",
+            "## Expected result",
+            "DITA-OT treats the Markdown heading and body content as publishable topic content for supported output formats. If the Markdown file is linked from DITA, set `format` appropriately, for example `format=\"markdown\"`, so processors do not assume a DITA XML topic.",
+            "",
+            "## Common mistakes",
+            "- Expecting every DITA feature to be available in Markdown syntax.",
+            "- Forgetting `format=\"markdown\"` when linking Markdown from DITA maps.",
+            "- Debugging Markdown as if it were identical to a normal DITA topic source file.",
+            "",
+            "## Sources",
+            f"- {markdown_input_url}",
+            f"- {markdown_syntax_url}",
+            f"- {lwdita_url}",
+        ])
+
+    if re.search(r"\b(pdf theme|theme variables?|sample pdf theme|extend(?:ing)? themes?)\b", lowered):
+        theme_sample_url = "https://www.dita-ot.org/dev/topics/sample-pdf-theme"
+        theme_vars_url = "https://www.dita-ot.org/dev/resources/theme/variables"
+        theme_extend_url = "https://www.dita-ot.org/dev/resources/theme/extending-themes"
+        return "\n".join([
+            "## Short answer",
+            "DITA-OT PDF themes let you configure PDF styling through theme files and variables instead of editing the base PDF plug-in directly. Theme variables control repeatable styling choices such as fonts, colors, spacing, headings, page layout, and related visual rules depending on the selected theme support.",
+            "",
+            "## Practical example",
+            "```yaml",
+            "extends: default",
+            "style:",
+            "  body:",
+            "    font-family: Adobe Clean",
+            "  h1:",
+            "    color: '#1473E6'",
+            "```",
+            "",
+            "## Expected result",
+            "The PDF transform uses the theme configuration to apply consistent visual styling. If a variable or selector is unsupported for your DITA-OT version/theme, the output may ignore it, so verify the generated PDF and build log.",
+            "",
+            "## Debugging checks",
+            "- Confirm the theme file is passed to the PDF transform correctly.",
+            "- Check whether the variable exists in the DITA-OT theme variable reference.",
+            "- Test one visual change at a time so you can isolate unsupported variables or CSS conflicts.",
+            "",
+            "## Sources",
+            f"- {theme_sample_url}",
+            f"- {theme_vars_url}",
+            f"- {theme_extend_url}",
+        ])
+
+    if re.search(r"\b(plugin install|install.*plugin|dita-ot plugin|verify.*plugin|plugin.*active)\b", lowered):
+        plugin_install_url = "https://www.dita-ot.org/dev/topics/plugins-installing"
+        return "\n".join([
+            "## Short answer",
+            "Install a DITA-OT plugin with the `dita install` command, then verify it by listing installed plugins or running a transform/transtype provided by that plugin.",
+            "",
+            "## Example",
+            "```bash",
+            "dita install path/to/com.example.plugin",
+            "dita plugins",
+            "dita transtypes",
+            "```",
+            "",
+            "## Expected result",
+            "The plugin appears in the installed plugin list. If it contributes a transtype, that transtype appears in `dita transtypes` and can be used with `dita --format=...`.",
+            "",
+            "## Deterministic checks",
+            "- Confirm the plugin has a valid `plugin.xml`.",
+            "- Re-run the integrator if your install flow requires it.",
+            "- Check the DITA-OT version compatibility of the plugin.",
+            "- Run a minimal sample transform before testing a full production map.",
+            "",
+            "## Sources",
+            f"- {plugin_install_url}",
+        ])
+
+    if re.search(r"\b(branch filtering|branch-filter|ditavalref)\b", lowered) and re.search(
+        r"\b(uri|uris|unique|collision|resourceprefix|resourcesuffix|generated)\b",
+        lowered,
+    ):
+        branch_filter_url = "https://www.dita-ot.org/dev/reference/preprocess-branch-filter"
+        return "\n".join([
+            "## Short answer",
+            "Branch filtering can create multiple effective copies of the same branch, so DITA-OT must keep generated URIs unique. Use branch-filtering rename controls such as `resourceprefix` and `resourcesuffix` to avoid output-name collisions.",
+            "",
+            "## Why this matters",
+            "If two filtered branches reuse the same source topic and produce the same effective output URI, links and generated files can collide. The output may overwrite files, point links at the wrong branch variant, or fail during preprocessing/output generation.",
+            "",
+            "## Example",
+            "```xml",
+            "<topicref href=\"install.dita\">",
+            "  <ditavalref href=\"cloud.ditaval\" resourceprefix=\"cloud-\"/>",
+            "</topicref>",
+            "<topicref href=\"install.dita\">",
+            "  <ditavalref href=\"onprem.ditaval\" resourceprefix=\"onprem-\"/>",
+            "</topicref>",
+            "```",
+            "",
+            "## Expected result",
+            "The cloud branch and on-prem branch generate distinct effective resources, so links can target the correct filtered copy instead of both branches competing for the same output URI.",
+            "",
+            "## Deterministic checks",
+            "- Inspect the temporary/effective map after `branch-filter`.",
+            "- Check generated resource names before debugging final HTML/PDF links.",
+            "- Add `resourceprefix` or `resourcesuffix` when branch variants reuse the same source topics.",
+            "",
+            "## Sources",
+            f"- {branch_filter_url}",
+        ])
 
     if re.search(r"\b(debug|troubleshoot|diagnos|fails?|failure|publishes?|works?)\b", lowered) and re.search(
         r"\bhtml(?:5)?\b.*\bpdf\b|\bpdf\b.*\bhtml(?:5)?\b",
@@ -5303,6 +5716,71 @@ def _build_dita_ot_preprocess_runtime_fallback_response(user_content: str) -> st
     return ""
 
 
+def _build_reltable_senior_fallback_response(user_content: str) -> str:
+    lowered = (user_content or "").strip().lower()
+    if not re.search(r"\b(reltable|relationship table|relrow|relcell|relheader|relcolspec|collection-type|related links?)\b", lowered):
+        return ""
+    if not re.search(r"\b(generate|links?|related|relrow|relcell|relheader|relcolspec|collection-type|how|effect|troubleshoot|one-way|two-way)\b", lowered):
+        return ""
+
+    if "collection-type" in lowered:
+        return "\n".join([
+            "## Short answer",
+            "`@collection-type` describes the relationship semantics among topic references, including relationships represented in maps and relationship tables. In reltables, it helps processors decide whether members should behave as unordered, sequence, choice, or family-style relationships.",
+            "",
+            "## Common values",
+            "| Value | Link behavior idea | Typical meaning |",
+            "|---|---|---|",
+            "| `unordered` | Peer links without sequence meaning | Related topics in no required order |",
+            "| `sequence` | Ordered previous/next-style relationship | Step-by-step or ordered reading flow |",
+            "| `choice` | Alternatives | Pick one of several related topics |",
+            "| `family` | Closely related group | Sibling topics in the same family |",
+            "",
+            "## Expected result",
+            "Processors can use the collection type to influence generated related links and navigation semantics. Exact rendering differs by output type, but the authored intent is clearer than a flat list of unrelated links.",
+            "",
+            "## Common mistakes",
+            "- Expecting `collection-type` alone to force identical related-link rendering in HTML and PDF.",
+            "- Forgetting that `linking` attributes can still restrict incoming or outgoing links.",
+            "- Treating reltable semantics as normal CALS table layout; reltables are relationship metadata, not presentation tables.",
+        ])
+
+    return "\n".join([
+        "## Short answer",
+        "A DITA relationship table (`<reltable>`) defines relationships among topics so processors can generate related links. A `<relrow>` represents one relationship set, and each `<relcell>` contains one or more topic references that participate in that relationship.",
+        "",
+        "## How link generation works",
+        "- `<relheader>` / `<relcolspec>` describe the columns and relationship roles.",
+        "- Each `<relrow>` groups topics that should be related.",
+        "- Each `<relcell>` holds the topic references for one column in that relationship row.",
+        "- Processors can generate related links between cells in the same row, subject to attributes such as `linking`, filtering, `scope`, `format`, and output-specific behavior.",
+        "",
+        "## Example",
+        "```xml",
+        "<reltable>",
+        "  <relheader>",
+        "    <relcolspec type=\"concept\"/>",
+        "    <relcolspec type=\"task\"/>",
+        "    <relcolspec type=\"reference\"/>",
+        "  </relheader>",
+        "  <relrow>",
+        "    <relcell><topicref href=\"concepts/install-overview.dita\"/></relcell>",
+        "    <relcell><topicref href=\"tasks/install-product.dita\"/></relcell>",
+        "    <relcell><topicref href=\"reference/install-options.dita\"/></relcell>",
+        "  </relrow>",
+        "</reltable>",
+        "```",
+        "",
+        "## Expected result",
+        "The concept, task, and reference topics in the same `relrow` can receive generated related links to each other, depending on the output format and link-control attributes. The reltable itself is not a visual table in the output.",
+        "",
+        "## Debugging checks",
+        "- Confirm filtered topics are still present in the effective map.",
+        "- Check `linking=\"sourceonly\"`, `targetonly`, or `none` if links are one-way or missing.",
+        "- Check key/scope resolution if reltable cells use `keyref` instead of direct `href`.",
+    ])
+
+
 async def _build_local_fallback_response(
     user_content: str,
     tenant_id: str,
@@ -5454,6 +5932,20 @@ def _build_compact_chat_system_prompt(
         "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
         "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
         "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
+        "# EXPERT DEPTH & SOURCE FUSION\n"
+        "- Answer as a senior DITA / AEM Guides consultant. Lead with a direct answer to exactly what was asked "
+        "(the how / where / why / which), then explain the underlying behavior, give a concrete spec-aligned XML "
+        "example, and finish with common mistakes when they help.\n"
+        "- Evidence may come from different sources — the DITA 1.2/1.3 specification, DITA-OT / Lightweight DITA "
+        "(LwDITA) toolchain docs, and AEM Guides product docs. Synthesize them into ONE coherent answer; do not "
+        "recite a single source or stop at the narrowest spec definition. When relevant, connect what the spec says "
+        "to how DITA-OT and AEM Guides actually process it.\n"
+        "- Be complete: cover the values/options that matter, defaults and cascading/inheritance, interactions with "
+        "related attributes or elements, and any toolchain or plugin prerequisite the behavior depends on.\n"
+        "- If retrieved evidence is thin, still give a genuinely useful, expert answer from well-established, standard "
+        "DITA knowledge — but never fabricate product-specific behavior, version claims, option names, or citations "
+        "that the context does not support. Note anything uncertain in a brief `## Verification notes` line instead of "
+        "omitting the answer.\n\n"
         "# ANSWER PATTERNS (choose what fits)\n"
         "- **Definitional**: Overview, content model, attributes, optional example, common mistakes.\n"
         "- **Comparison**: Short lead-in, **comparison table**, when to use each, optional examples.\n"
@@ -7126,7 +7618,7 @@ async def _synthesize_agent_answer(
 
 
 async def _emit_streamed_text(text: str) -> AsyncGenerator[dict, None]:
-    for chunk in _stream_text_chunks(text):
+    for chunk in _stream_text_chunks(_strip_low_value_verification_notes(text)):
         yield {"type": "chunk", "content": chunk}
 
 
@@ -7430,7 +7922,9 @@ async def _build_grounded_dita_answer_payload(
                 answer_shape_hint = "\n\n".join(part for part in [answer_shape_hint, thin_evidence_hint] if part)
             structured_answer_hint = (
                 draft_answer
-                if should_enrich_with_llm and evidence_pack.decision.status not in {"abstain", "conflict"}
+                if should_enrich_with_llm
+                and evidence_pack.decision.status not in {"abstain", "conflict"}
+                and not _prefer_rag_synthesis(question)
                 else ""
             )
             try:
@@ -7938,6 +8432,35 @@ async def _stream_assistant_reply(
                     yield event
                 return
 
+    if _wants_prepublish_fix(user_content):
+        async for event in _stream_prepublish_fix_reply(
+            session_id,
+            user_content=user_content,
+            assistant_msg_id=assistant_msg_id,
+        ):
+            yield event
+        return
+
+    if _wants_prepublish_validation(user_content):
+        async for event in _stream_prepublish_validation_reply(
+            session_id,
+            user_content=user_content,
+            assistant_msg_id=assistant_msg_id,
+        ):
+            yield event
+        return
+
+    if _wants_cross_source_issue_triage(user_content):
+        async for event in _stream_cross_source_issue_triage_reply(
+            session_id,
+            user_content=user_content,
+            assistant_msg_id=assistant_msg_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        ):
+            yield event
+        return
+
     if _is_dita_ot_issue_request_without_explicit_jira(user_content):
         resolved_dita_ot_issue_query = _resolve_vague_dita_ot_issue_query_from_context(session_id, user_content)
         async for event in _stream_dita_ot_github_issue_reply(
@@ -8071,6 +8594,15 @@ async def _stream_assistant_reply(
             tenant_id=tenant_id,
         ):
             yield event
+        return
+
+    reltable_fallback = _build_reltable_senior_fallback_response(user_content)
+    if reltable_fallback:
+        fallback_text = _repair_text_encoding_artifacts(reltable_fallback).strip()
+        _persist_assistant_message(session_id, assistant_msg_id, fallback_text)
+        async for event in _emit_streamed_text(fallback_text):
+            yield event
+        yield {"type": "done"}
         return
 
     if _should_use_tool_mode(user_content, session_id=session_id):
@@ -8220,7 +8752,9 @@ async def _stream_assistant_reply(
                 answer_shape_hint = "\n\n".join(part for part in [answer_shape_hint, thin_evidence_hint] if part)
             structured_answer_hint = (
                 draft_answer
-                if should_enrich_with_llm and evidence_pack.decision.status not in {"abstain", "conflict"}
+                if should_enrich_with_llm
+                and evidence_pack.decision.status not in {"abstain", "conflict"}
+                and not _prefer_rag_synthesis(user_content)
                 else ""
             )
             try:
@@ -8256,14 +8790,31 @@ async def _stream_assistant_reply(
             verified_examples=(
                 [item.to_dict() for item in (normalized_grounded_facts.verified_examples if normalized_grounded_facts else [])]
             ),
-            # For DITA-OT error queries the spec evidence is misleading — force pass-through
+            # For DITA-OT error queries AND DITA-OT internals questions the deterministic
+            # structured/spec answer is misleading (a mis-retrieved near-duplicate or a
+            # single-construct table for a compound question) — force the LLM synthesis
+            # through and do not fall back to the structured answer.
             structured_tool_answer=(
-                False if _DITA_OT_ERROR_PATTERN.search(user_content)
+                False if (_DITA_OT_ERROR_PATTERN.search(user_content) or is_dita_ot_internals_question(user_content))
                 else normalized_grounded_facts is not None and not llm_enriched
             ),
-            structured_fallback_answer=structured_fallback_answer if llm_enriched else "",
+            structured_fallback_answer=(
+                "" if is_dita_ot_internals_question(user_content)
+                else (structured_fallback_answer if llm_enriched else "")
+            ),
         )
-        if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"}:
+        # For DITA-OT internals questions where the LLM synthesized an answer, trust that
+        # synthesis directly instead of verify's grounded rewrite. Thin/absent indexed
+        # evidence makes verify demote well-established toolkit semantics into "Not
+        # verified" notes behind a canned "spec doesn't cover this" preamble — exactly the
+        # compound-question failure. The model's DITA-OT knowledge is reliable here.
+        if llm_enriched and is_dita_ot_internals_question(user_content) and str(draft_answer or "").strip():
+            grounded_answer = replace(
+                grounded_answer,
+                answer=str(draft_answer).strip(),
+                grounding_status=(grounded_answer.grounding_status if grounded_answer.grounding_status == "supported" else "partial"),
+            )
+        if _looks_like_retrieval_summary(grounded_answer.answer) and grounded_answer.grounding_status in {"partial", "abstain", "conflict"} and not is_dita_ot_internals_question(user_content):
             grounded_answer = replace(
                 grounded_answer,
                 answer=_build_thin_evidence_answer(
@@ -8278,7 +8829,11 @@ async def _stream_assistant_reply(
         if evidence_pack.decision.status in {"abstain", "conflict"}:
             # Skip replacement if verify_grounded_answer already returned a good LLM
             # answer (thin_evidence_override=False signals it passed through the draft).
-            if grounded_answer.thin_evidence_override is not False:
+            # Also skip for DITA-OT internals questions: standard toolkit semantics are
+            # well-established, so the model's own synthesis (with a verification note) is
+            # far better than a canned "indexed spec doesn't cover this" abstain — the
+            # canned override was clobbering good answers on compound internals questions.
+            if grounded_answer.thin_evidence_override is not False and not is_dita_ot_internals_question(user_content):
                 grounded_answer = replace(
                     grounded_answer,
                     answer=_build_thin_evidence_answer(
@@ -8347,6 +8902,9 @@ async def _stream_assistant_reply(
                 ),
             )
             grounding["answer_quality_gate"] = "definition_style_answer_replaced_for_behavior_intent"
+        stripped_grounded_answer = _strip_low_value_verification_notes(grounded_answer.answer)
+        if stripped_grounded_answer != grounded_answer.answer:
+            grounded_answer = replace(grounded_answer, answer=stripped_grounded_answer)
 
         yield {"type": "grounding", "grounding": grounding, "notice": grounding_to_notice(grounding)}
 
@@ -8501,6 +9059,374 @@ def _format_dita_ot_github_issue_matches(original_query: str, resolved_query: st
         "- If the issue is about your product workflow rather than upstream DITA-OT, search Jira separately with the resolved topic."
     )
     return "\n".join(lines)
+
+
+_CROSS_SOURCE_JIRA_SIGNAL = re.compile(r"\b(jira|reported|raised|logged|our\s+tracker|internally)\b", re.IGNORECASE)
+# A genuine "check the repo" signal — explicit repo/known/upstream reference, NOT the bare
+# word "issue" (which appears in plain "Jira issues" requests and would false-trigger).
+_CROSS_SOURCE_REPO_SIGNAL = re.compile(r"\b(known|repo|repository|github|upstream)\b", re.IGNORECASE)
+
+
+def _wants_cross_source_issue_triage(user_content: str) -> bool:
+    """True when a DITA-OT question also asks to check BOTH the upstream DITA-OT repo
+    (known issues) AND the AEM Guides Jira (already-reported issues) — the cross-source
+    triage scenario: "is this a known DITA-OT issue, and has it been reported in our Jira?".
+    """
+    text = (user_content or "").strip()
+    if not text:
+        return False
+    is_ot = bool(re.search(r"\bdita[-\s]?ot\b|dita\s+open\s+toolkit|open\s+toolkit", text, re.IGNORECASE)) or is_dita_ot_internals_question(text)
+    if not is_ot:
+        return False
+    return bool(_CROSS_SOURCE_JIRA_SIGNAL.search(text) and _CROSS_SOURCE_REPO_SIGNAL.search(text))
+
+
+_PREPUBLISH_SIGNAL = re.compile(
+    r"\bpre[-\s]?publish\b|\bpublish\s+check\b|\blink\s+check\b|"
+    r"\bvalidate\s+(?:my\s+|the\s+|this\s+)?(?:[\w-]+\s+){0,3}(?:map|maps|bundle|dita|ditamap|topics?|content|guide|guides)\b|"
+    r"\bcheck\s+(?:for\s+)?broken\s+(?:links?|refs?|references?|keyrefs?)\b|"
+    r"\bwill\s+(?:this|it|my\s+map)\s+publish\b",
+    re.IGNORECASE,
+)
+_VALIDATION_PATH_RE = re.compile(
+    r'"([^"]+)"|([A-Za-z]:\\[^\s"]+)|(/[^\s"]+)|([\w./\\-]+\.ditamap)\b',
+    re.IGNORECASE,
+)
+
+
+_PREPUBLISH_FIX_SIGNAL = re.compile(
+    r"\bauto[-\s]?fix\b|\bfix[-\s]?it\b|\bapply\s+(?:the\s+)?fix(?:es)?\b|"
+    r"\bfix\s+(?:the\s+|my\s+|these\s+|those\s+)?(?:[\w-]+\s+){0,3}"
+    r"(?:@?format|map|maps|bundle|guide|guides|issues?|warnings?|links?|references?|problems?)\b",
+    re.IGNORECASE,
+)
+
+
+def _wants_prepublish_fix(text: str) -> bool:
+    return bool(_PREPUBLISH_FIX_SIGNAL.search(text or ""))
+
+
+def _wants_prepublish_validation(text: str) -> bool:
+    return bool(_PREPUBLISH_SIGNAL.search(text or ""))
+
+
+def _extract_validation_path(text: str) -> str:
+    for match in _VALIDATION_PATH_RE.finditer(text or ""):
+        candidate = next((g for g in match.groups() if g), "")
+        if candidate and candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+_PREPUBLISH_STOPWORDS = {
+    "run", "a", "an", "the", "my", "our", "please", "pre", "prepublish", "pre-publish", "publish",
+    "check", "validate", "validation", "link", "links", "broken", "for", "on", "of",
+    "map", "maps", "ditamap", "bundle", "dita", "topics", "content", "will", "this", "it",
+    "and", "against", "guide", "fix", "fixes", "auto", "auto-fix", "autofix", "apply",
+    "these", "those", "issues", "issue", "warnings", "warning", "problems", "problem",
+}
+
+
+def _dita_content_root() -> "Path | None":
+    from pathlib import Path
+
+    root = (os.getenv("DITA_CONTENT_ROOT") or "").strip()
+    if not root:
+        return None
+    path = Path(root)
+    return path if path.exists() and path.is_dir() else None
+
+
+def _prepublish_reference(text: str) -> str:
+    """Extract the map name/topic the user referenced (minus pre-publish boilerplate)."""
+    tokens = [t for t in re.findall(r"[A-Za-z0-9][A-Za-z0-9-]+", text or "") if t.lower() not in _PREPUBLISH_STOPWORDS]
+    return " ".join(tokens).strip()
+
+
+def _map_title(path: "Path") -> str:
+    import xml.etree.ElementTree as ET
+
+    try:
+        for _event, elem in ET.iterparse(str(path), events=("end",)):
+            if (elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag) == "title":
+                return "".join(elem.itertext()).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _resolve_map_reference(reference: str) -> "tuple[Path | None, list[Path]]":
+    """Resolve a natural-language map reference against DITA_CONTENT_ROOT.
+
+    Returns (resolved_map, candidates). resolved_map is set only when a single best
+    match is found; otherwise candidates lists the plausible maps to disambiguate.
+    """
+    root = _dita_content_root()
+    if not root:
+        return None, []
+    maps = sorted(root.rglob("*.ditamap"))
+    if not maps:
+        return None, []
+    tokens = [t.lower() for t in re.findall(r"[a-z0-9]+", (reference or "").lower()) if len(t) > 2]
+    if not tokens:
+        return None, maps[:10]
+    scored: list[tuple[int, "Path"]] = []
+    for m in maps:
+        haystack = (m.stem + " " + _map_title(m)).lower()
+        score = sum(1 for t in tokens if t in haystack)
+        if score > 0:
+            scored.append((score, m))
+    if not scored:
+        return None, maps[:10]
+    scored.sort(key=lambda item: (-item[0], len(str(item[1]))))
+    top_score = scored[0][0]
+    top_matches = [m for s, m in scored if s == top_score]
+    if len(top_matches) == 1:
+        return top_matches[0], []
+    return None, top_matches
+
+
+def _path_within_content_root(target: "Path", root: "Path") -> bool:
+    try:
+        target.resolve().relative_to(root.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _resolve_prepublish_bundle(user_content: str) -> "tuple[Path | None, str, str]":
+    """Resolve the target bundle directory for a pre-publish request.
+
+    Returns (bundle_dir, note, error_text). Exactly one of bundle_dir / error_text is set.
+    Accepts an explicit `.ditamap`/folder path, or resolves a map by name from DITA_CONTENT_ROOT.
+
+    Path-access safety (important for a hosted/shared deployment): when DITA_CONTENT_ROOT is
+    configured, an explicit path is only honored if it resolves INSIDE that root — this blocks
+    path traversal to arbitrary server files. Set PREPUBLISH_RESTRICT_TO_CONTENT_ROOT=true to
+    reject explicit paths entirely (name-based resolution only) on locked-down deployments.
+    """
+    from pathlib import Path
+
+    path = _extract_validation_path(user_content)
+    if path:
+        target = Path(path)
+        root = _dita_content_root()
+        strict = (os.getenv("PREPUBLISH_RESTRICT_TO_CONTENT_ROOT") or "").lower() in ("1", "true", "yes", "on")
+        if root is not None:
+            if not _path_within_content_root(target, root):
+                return None, "", (
+                    f"For safety I only validate content inside the configured content repo, and `{path}` "
+                    "is outside it. Reference the map by name (e.g. `the install guide`) or give a path within the repo."
+                )
+        elif strict:
+            return None, "", (
+                "Explicit filesystem paths are disabled on this deployment. Reference a map by name instead "
+                "(the content repo resolves it)."
+            )
+        if not target.exists():
+            return None, "", f"I couldn't find `{path}`. Point me at an existing `.ditamap` file or the bundle folder."
+        return (target.parent if target.is_file() else target), "", ""
+
+    root = _dita_content_root()
+    reference = _prepublish_reference(user_content)
+    if root is None:
+        return None, "", (
+            "Either give me a `.ditamap`/bundle path, or set `DITA_CONTENT_ROOT` to your AEM Guides "
+            "content checkout so I can resolve maps by name (e.g. `the install guide`)."
+        )
+    resolved, candidates = _resolve_map_reference(reference)
+    if resolved is not None:
+        note = f"Resolved **{reference or 'map'}** → `{resolved.name}` in the content repo.\n\n"
+        return resolved.parent, note, ""
+    listing = "\n".join(f"- `{m.name}`" for m in candidates[:10]) or "- (no maps found)"
+    which = "Multiple maps match" if candidates else "I couldn't find a matching map"
+    return None, "", (
+        f"{which} `{reference}` in the content repo. Which one?\n\n{listing}\n\n"
+        "Reply with the map name, or give a full `.ditamap` path."
+    )
+
+
+async def _stream_prepublish_validation_reply(
+    session_id: str,
+    *,
+    user_content: str,
+    assistant_msg_id: str,
+) -> AsyncGenerator[dict, None]:
+    """Run a pre-publish link/reference/@format validation on a DITA map or bundle."""
+    from app.services.dita_link_validator_service import format_prepublish_report, validate_bundle
+
+    bundle_dir, note, error = _resolve_prepublish_bundle(user_content)
+    if bundle_dir is None:
+        _persist_assistant_message(session_id, assistant_msg_id, error)
+        yield {"type": "chunk", "content": error}
+        yield {"type": "done"}
+        return
+    try:
+        report = validate_bundle(bundle_dir)
+        text = note + format_prepublish_report(report)
+    except Exception as exc:
+        report = {"error": str(exc)}
+        text = f"Pre-publish validation could not complete: {exc}"
+    _persist_assistant_message(session_id, assistant_msg_id, text, tool_results={"prepublish_validation": report})
+    yield {"type": "tool", "name": "prepublish_validation", "result": report}
+    yield {"type": "chunk", "content": text}
+    yield {"type": "done"}
+
+
+async def _stream_prepublish_fix_reply(
+    session_id: str,
+    *,
+    user_content: str,
+    assistant_msg_id: str,
+) -> AsyncGenerator[dict, None]:
+    """Apply safe auto-fixes (missing @format) to a map/bundle, then re-validate and report
+    what was fixed and what still needs manual attention."""
+    from app.services.dita_auto_fix_service import fix_missing_format
+    from app.services.dita_link_validator_service import validate_bundle
+
+    bundle_dir, note, error = _resolve_prepublish_bundle(user_content)
+    if bundle_dir is None:
+        _persist_assistant_message(session_id, assistant_msg_id, error)
+        yield {"type": "chunk", "content": error}
+        yield {"type": "done"}
+        return
+
+    try:
+        fix_result = fix_missing_format(bundle_dir)
+        report = validate_bundle(bundle_dir)
+    except Exception as exc:
+        text = f"Auto-fix could not complete: {exc}"
+        _persist_assistant_message(session_id, assistant_msg_id, text)
+        yield {"type": "chunk", "content": text}
+        yield {"type": "done"}
+        return
+
+    changes = fix_result.get("changes") or []
+    lines = [note.rstrip() if note else "", ""]
+    if changes:
+        lines.append(f"## ✅ Applied {len(changes)} fix(es) to {fix_result.get('files_modified', 0)} file(s)")
+        lines.append("| File | Element | Target | Added |")
+        lines.append("|---|---|---|---|")
+        for c in changes[:40]:
+            lines.append(f"| `{c['file']}` | `{c['element']}` | `{c['href']}` | `format=\"{c['format']}\"` |")
+    else:
+        lines.append("## No auto-fixable issues found")
+        lines.append("No missing `@format` on inferable non-DITA targets (.md/.html/.pdf/.txt).")
+
+    # What remains after the safe fixes — these need manual attention.
+    remaining = [f for f in (report.get("broken_links") or []) if f.get("attribute") != "format" or f.get("severity") != "warning"]
+    if remaining:
+        lines.append("")
+        lines.append(f"## ⚠️ {len(remaining)} issue(s) still need manual fixes")
+        lines.append("| File | Attribute | Value | Problem |")
+        lines.append("|---|---|---|---|")
+        for f in remaining[:40]:
+            val = str(f.get("value") or "")[:50].replace("|", "\\|")
+            reason = str(f.get("reason") or "").replace("|", "\\|")
+            lines.append(f"| `{f.get('source_file','')}` | `@{f.get('attribute','')}` | `{val}` | {reason} |")
+        lines.append("")
+        lines.append("_These can't be auto-fixed safely (I'd be guessing the intended target/key) — fix in the editor, then re-run the pre-publish check._")
+    elif report.get("publish_ready"):
+        lines.append("")
+        lines.append("**Publish-ready** — no remaining errors or warnings.")
+
+    text = "\n".join(l for l in lines if l is not None).strip()
+    tool_results = {"prepublish_fix": fix_result, "prepublish_validation": report}
+    _persist_assistant_message(session_id, assistant_msg_id, text, tool_results=tool_results)
+    yield {"type": "tool", "name": "prepublish_fix", "result": fix_result}
+    yield {"type": "chunk", "content": text}
+    yield {"type": "done"}
+
+
+async def _stream_cross_source_issue_triage_reply(
+    session_id: str,
+    *,
+    user_content: str,
+    assistant_msg_id: str,
+    user_id: str = "chat-user",
+    tenant_id: str = "kone",
+) -> AsyncGenerator[dict, None]:
+    """Answer a "known upstream issue + already reported internally?" question by checking
+    both the DITA-OT GitHub corpus and the AEM Guides Jira index in one turn."""
+    from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
+
+    try:
+        ot_issues = retrieve_dita_ot_github_for_query(user_content, k=5) or []
+    except Exception:
+        ot_issues = []
+    jira_result = await run_tool(
+        "search_jira_issues",
+        {"query": user_content},
+        user_id=user_id,
+        session_id=session_id,
+        tenant_id=tenant_id,
+    )
+    jira_issues = jira_result.get("issues") or [] if isinstance(jira_result, dict) else []
+
+    lines: list[str] = [
+        "I checked both sources — the upstream **DITA-OT GitHub repo** for known issues and the "
+        "**AEM Guides Jira** for anything already reported.",
+        "",
+        "## Known DITA-OT issues (upstream repo)",
+    ]
+    if ot_issues:
+        for idx, issue in enumerate(ot_issues[:5], start=1):
+            title = str(issue.get("title") or "Untitled issue").strip()
+            number = issue.get("issue_number")
+            url = str(issue.get("url") or "").strip()
+            label = f"#{number} — {title}" if number else title
+            lines.append(f"{idx}. [{label}]({url})" if url else f"{idx}. {label}")
+            snippet = re.sub(r"\s+", " ", str(issue.get("snippet") or "")).strip()[:200]
+            if snippet:
+                lines.append(f"   - {snippet}")
+    else:
+        lines.append("- No close match in the indexed DITA-OT GitHub corpus. It may not be a tracked upstream issue (or needs a more specific topic).")
+
+    lines.extend(["", "## Related reports in AEM Guides Jira"])
+    if jira_issues:
+        for idx, issue in enumerate(jira_issues[:5], start=1):
+            key = str(issue.get("issue_key") or "").strip()
+            summary = str(issue.get("summary") or "").strip()
+            url = str(issue.get("url") or "").strip()
+            status = str(issue.get("status") or "").strip()
+            label = f"{key}: {summary}" if key else summary
+            suffix = f" _(status: {status})_" if status else ""
+            lines.append(f"{idx}. [{label}]({url}){suffix}" if url else f"{idx}. {label}{suffix}")
+    else:
+        lines.append("- No closely matching AEM Guides Jira issue found for this topic.")
+
+    lines.extend(["", "## How to read this"])
+    if ot_issues and jira_issues:
+        lines.append(
+            "- It looks like **known upstream DITA-OT behavior that is also tracked internally**. "
+            "Compare the issue symptoms and your DITA-OT version before filing a new ticket — link the existing Jira instead."
+        )
+    elif ot_issues:
+        lines.append(
+            "- There are **upstream DITA-OT issues but no clear internal Jira report**. If it affects your builds, "
+            "consider logging it in AEM Guides Jira and referencing the upstream issue."
+        )
+    elif jira_issues:
+        lines.append(
+            "- It's **tracked internally in Jira but no close upstream DITA-OT issue surfaced** — more likely a product/config "
+            "issue than an upstream toolkit bug."
+        )
+    else:
+        lines.append(
+            "- **Nothing matched in either source** — it may be new. Reproduce with `--keep-temp`, capture the effective files, "
+            "and report it in AEM Guides Jira with a minimal map."
+        )
+
+    response_text = "\n".join(lines)
+    tool_results = {
+        "search_dita_ot_github_issues": {"query": user_content, "source": "dita_ot_github", "issues": ot_issues},
+        "search_jira_issues": jira_result if isinstance(jira_result, dict) else {"issues": []},
+    }
+    _persist_assistant_message(session_id, assistant_msg_id, response_text, tool_results=tool_results)
+    yield {"type": "tool", "name": "search_dita_ot_github_issues", "result": tool_results["search_dita_ot_github_issues"]}
+    yield {"type": "tool", "name": "search_jira_issues", "result": tool_results["search_jira_issues"]}
+    yield {"type": "chunk", "content": response_text}
+    yield {"type": "done"}
 
 
 async def _stream_dita_ot_github_issue_reply(
@@ -9106,6 +10032,7 @@ async def _stream_tool_mode_reply(
             full_text = repaired_full_text
             correction_text = "\n\nCorrection: I replaced a definition-style answer with the troubleshooting workflow for this question.\n\n"
             yield {"type": "chunk", "content": correction_text + full_text}
+        full_text = _strip_low_value_verification_notes(full_text)
 
         _persist_assistant_message(
             session_id,

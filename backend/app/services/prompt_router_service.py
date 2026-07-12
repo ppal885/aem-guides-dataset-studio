@@ -136,6 +136,13 @@ _QUESTION_LED_PRODUCT_PATTERN = re.compile(
     r"^\s*(how|what|where|when|why|can|does|is|are|which|who)\b",
     re.IGNORECASE,
 )
+# Interrogative how-to/explanatory lead — "How do I create a two-way relationship…",
+# "What is the difference…". These are guidance questions, not "generate X for me"
+# requests, and must not route to the generate_dita preview flow.
+_INSTRUCTIONAL_QUESTION_LEAD_PATTERN = re.compile(
+    r"^\s*(how|where|why|when|which|what|explain|tell\s+me\s+about)\b",
+    re.IGNORECASE,
+)
 _NATIVE_PDF_PATTERN = re.compile(
     r"\b(native pdf|pdf output|pdf preset|output preset|toc styling|page layout|headers?|footers?|watermark)\b",
     re.IGNORECASE,
@@ -163,6 +170,43 @@ _DATASET_JOB_PATTERN = re.compile(
     r"\b(create|run|start|browse|list)\b.*\b(job|dataset|recipe)\b",
     re.IGNORECASE,
 )
+# DITA-OT / toolkit *internals* — plugin authoring, extension points, preprocessing
+# pipeline, XSL-FO/PDF2 customization, catalogs, Store API, custom transtypes, build
+# validation, version migration. These deep how/why questions must reach grounded
+# RAG+LLM synthesis rather than the canned args primer, a single-attribute lookup
+# (keyword collisions like "role"/"toc"/"step"), or a GitHub-issue search.
+_DITA_OT_INTERNALS_PATTERN = re.compile(
+    r"\b("
+    r"dita[-\s]?ot|dita\s+open\s+toolkit|open\s+toolkit|org\.dita\.[a-z0-9._]+|"
+    r"transtype|plugin\.xml|extension\s+point|integrator\b|"
+    r"preprocess(?:ing)?|gen-list|branch[-\s]?filter|topicpull|move-meta|mapref\s+stage|"
+    r"xsl[-\s]?fo|xslfo|fo\s+customization|cfg/fo|attribute[-\s]?set|page[-\s]?master|"
+    r"simple-page-master|page-sequence|insertbodystaticcontents|static-content|"
+    r"store\s+api|catalog-dita|oasis\s+(?:xml\s+)?catalog|"
+    r"\bpdf2\b|\bhtml5\b|xsltmodule|ant\s+task|depends\s+chain|unable\s+to\s+load\s+stylesheet"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_dita_ot_internals_question(text: str) -> bool:
+    """True for a conceptual/how-to question about DITA-OT toolkit internals.
+
+    Requires a toolkit-internals signal plus a question/how-to intent (not a
+    "generate a bundle" imperative), so it routes to grounded LLM synthesis.
+    """
+    trimmed = (text or "").strip()
+    if not trimmed:
+        return False
+    if not _DITA_OT_INTERNALS_PATTERN.search(trimmed):
+        return False
+    if _ASSISTIVE_GENERATION_REQUEST_PATTERN.search(trimmed):
+        return False
+    return bool(
+        _INSTRUCTIONAL_QUESTION_LEAD_PATTERN.search(trimmed)
+        or trimmed.endswith("?")
+        or _DITA_ANSWER_INTENT_PATTERN.search(trimmed)
+    )
 _SCREENSHOT_PATTERN = re.compile(
     r"\b(screenshot|image|screen grab|screen capture)\b",
     re.IGNORECASE,
@@ -344,6 +388,20 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             execution_hint="preview_first",
             legacy_answer_mode="default",
             reasoning_notes=["Detected screenshot/image authoring input."],
+        )
+
+    if is_dita_ot_internals_question(trimmed):
+        return PromptRouteDecision(
+            intent="dita_ot_build",
+            confidence=0.93,
+            supported=True,
+            execution_hint="answer_directly",
+            legacy_answer_mode="grounded_dita_answer",
+            reasoning_notes=[
+                "Detected a DITA-OT toolkit internals question (plugin/extension point/preprocessing/"
+                "XSL-FO/PDF2/catalog/Store API/transtype/build validation); route to grounded RAG+LLM "
+                "synthesis rather than a canned args primer, single-attribute lookup, or issue search."
+            ],
         )
 
     if is_native_pdf_dita_ot_argument_query(trimmed):
@@ -540,7 +598,13 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             },
         )
 
-    if _JIRA_STYLE_PATTERN.search(trimmed) or _DITA_GENERATION_PATTERN.search(trimmed):
+    _is_instructional_question = bool(
+        _INSTRUCTIONAL_QUESTION_LEAD_PATTERN.search(trimmed)
+        and not _ASSISTIVE_GENERATION_REQUEST_PATTERN.search(trimmed)
+    )
+    if _JIRA_STYLE_PATTERN.search(trimmed) or (
+        _DITA_GENERATION_PATTERN.search(trimmed) and not _is_instructional_question
+    ):
         preview = build_generate_dita_preview(text=trimmed, instructions=None)
         execution_contract = build_generate_dita_execution_contract(preview=preview)
         supported = str(preview.get("bundle_type") or "").strip().lower() != "unsupported"

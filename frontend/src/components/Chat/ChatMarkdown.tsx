@@ -4,7 +4,17 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { cn } from '@/lib/utils';
-import { normalizeCodeBlockText, repairTextEncodingArtifacts } from './chatMarkdownUtils';
+import { cursorVscodeDarkTheme } from './cursorPrismTheme';
+import {
+  classifyInlineCode,
+  highlightEvidenceCitations,
+  inlineCodeClassName,
+  normalizeCodeBlockText,
+  repairTextEncodingArtifacts,
+  resolvePrismLanguage,
+  resolveSectionHeadingClass,
+  containsHtmlBreakToken,
+} from './chatMarkdownUtils';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,21 +25,29 @@ import {
   Lightbulb,
 } from 'lucide-react';
 
+type MarkdownVariant = 'default' | 'cursor';
+
 type CalloutTone = {
   label: string;
   pattern: RegExp;
   container: string;
   badge: string;
   iconWrap: string;
+  cursorContainer: string;
+  cursorAccent: string;
   Icon: typeof Info;
 };
 
 interface ChatMarkdownProps {
   content: string;
   verifiedBundleUrl?: string;
+  variant?: MarkdownVariant;
 }
 
-/** Shared Tailwind Typography wrapper for chat markdown (ChatMessage + StreamingMessage). */
+/** Cursor-style prose wrapper — detailed colors live in index.css `.cursor-chat-prose` */
+export const CURSOR_MARKDOWN_PROSE_CLASS = 'cursor-chat-prose';
+
+/** Shared Tailwind Typography wrapper for legacy chat markdown */
 export const CHAT_MARKDOWN_PROSE_CLASS =
   'prose prose-base max-w-none ' +
   'prose-headings:text-slate-800 prose-headings:font-semibold prose-headings:mt-5 prose-headings:mb-2.5 ' +
@@ -51,6 +69,8 @@ const CALLOUT_TONES: CalloutTone[] = [
     container: 'border-teal-200 bg-[linear-gradient(135deg,#f0fdfa_0%,#f8fafc_100%)] text-teal-950',
     badge: 'border-teal-200 bg-white text-teal-800',
     iconWrap: 'bg-teal-600 text-white',
+    cursorContainer: 'border-l-sky-500/70 bg-sky-500/[0.06]',
+    cursorAccent: 'text-sky-600 dark:text-sky-400',
     Icon: CheckCircle2,
   },
   {
@@ -59,6 +79,8 @@ const CALLOUT_TONES: CalloutTone[] = [
     container: 'border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_100%)] text-slate-900',
     badge: 'border-slate-200 bg-white text-slate-700',
     iconWrap: 'bg-slate-800 text-white',
+    cursorContainer: 'border-l-border bg-muted/35',
+    cursorAccent: 'text-muted-foreground',
     Icon: Info,
   },
   {
@@ -67,6 +89,8 @@ const CALLOUT_TONES: CalloutTone[] = [
     container: 'border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f7fffb_100%)] text-emerald-950',
     badge: 'border-emerald-200 bg-white text-emerald-700',
     iconWrap: 'bg-emerald-600 text-white',
+    cursorContainer: 'border-l-emerald-500/70 bg-emerald-500/[0.06]',
+    cursorAccent: 'text-emerald-600 dark:text-emerald-400',
     Icon: Lightbulb,
   },
   {
@@ -75,7 +99,39 @@ const CALLOUT_TONES: CalloutTone[] = [
     container: 'border-amber-200 bg-[linear-gradient(135deg,#fffbeb_0%,#fffdf8_100%)] text-amber-950',
     badge: 'border-amber-200 bg-white text-amber-700',
     iconWrap: 'bg-amber-600 text-white',
+    cursorContainer: 'border-l-amber-500/75 bg-amber-500/[0.07]',
+    cursorAccent: 'text-amber-600 dark:text-amber-400',
     Icon: AlertTriangle,
+  },
+  {
+    label: 'Expected Result',
+    pattern: /^(expected result|expected outcome|what you should see|output):\s*/i,
+    container: 'border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f7fffb_100%)] text-emerald-950',
+    badge: 'border-emerald-200 bg-white text-emerald-700',
+    iconWrap: 'bg-emerald-600 text-white',
+    cursorContainer: 'border-l-emerald-500 bg-emerald-500/10',
+    cursorAccent: 'text-emerald-600 dark:text-emerald-400',
+    Icon: CheckCircle2,
+  },
+  {
+    label: 'Common Mistakes',
+    pattern: /^(common mistakes?|pitfalls?|watch out|gotchas?):\s*/i,
+    container: 'border-amber-200 bg-[linear-gradient(135deg,#fffbeb_0%,#fffdf8_100%)] text-amber-950',
+    badge: 'border-amber-200 bg-white text-amber-700',
+    iconWrap: 'bg-amber-600 text-white',
+    cursorContainer: 'border-l-orange-500 bg-orange-500/10',
+    cursorAccent: 'text-orange-600 dark:text-orange-400',
+    Icon: AlertTriangle,
+  },
+  {
+    label: 'Sources',
+    pattern: /^(sources?|references?|limits of evidence|evidence):\s*/i,
+    container: 'border-violet-200 bg-[linear-gradient(135deg,#f5f3ff_0%,#faf8ff_100%)] text-violet-950',
+    badge: 'border-violet-200 bg-white text-violet-700',
+    iconWrap: 'bg-violet-600 text-white',
+    cursorContainer: 'border-l-violet-500 bg-violet-500/10',
+    cursorAccent: 'text-violet-600 dark:text-violet-400',
+    Icon: Info,
   },
   {
     label: 'Next Steps',
@@ -83,6 +139,8 @@ const CALLOUT_TONES: CalloutTone[] = [
     container: 'border-violet-200 bg-[linear-gradient(135deg,#f5f3ff_0%,#faf8ff_100%)] text-violet-950',
     badge: 'border-violet-200 bg-white text-violet-700',
     iconWrap: 'bg-violet-600 text-white',
+    cursorContainer: 'border-l-violet-500/70 bg-violet-500/[0.06]',
+    cursorAccent: 'text-violet-600 dark:text-violet-400',
     Icon: ListChecks,
   },
 ];
@@ -144,10 +202,57 @@ function stripLeadingPattern(children: React.ReactNode, pattern: RegExp): React.
   return walk(children);
 }
 
-/** Fenced code block with syntax highlighting and one-click copy. */
-function CodeBlock({ className, children }: { className?: string; children: string }) {
+const HTML_BREAK_RE = /<\s*br\s*\/?>/gi;
+
+/** Render literal `<br>` tokens inside table cells as real line breaks. */
+function expandHtmlBreaksInNodes(node: React.ReactNode): React.ReactNode {
+  if (node == null || typeof node === 'boolean') {
+    return node;
+  }
+  if (typeof node === 'string') {
+    if (!containsHtmlBreakToken(node)) {
+      return node;
+    }
+    const parts = node.split(HTML_BREAK_RE);
+    return parts.map((part, index) => (
+      <React.Fragment key={`br-${index}`}>
+        {index > 0 ? <br /> : null}
+        {part}
+      </React.Fragment>
+    ));
+  }
+  if (typeof node === 'number') {
+    return node;
+  }
+  if (Array.isArray(node)) {
+    return node.map((child, index) => (
+      <React.Fragment key={`cell-${index}`}>{expandHtmlBreaksInNodes(child)}</React.Fragment>
+    ));
+  }
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    const nextChildren = expandHtmlBreaksInNodes(node.props.children);
+    return React.cloneElement(node, undefined, nextChildren);
+  }
+  return node;
+}
+
+function TableCell({ as: Tag, children }: { as: 'td' | 'th'; children: React.ReactNode }) {
+  return <Tag className="cursor-table-cell">{expandHtmlBreaksInNodes(children)}</Tag>;
+}
+
+function CodeBlock({
+  className,
+  children,
+  variant = 'default',
+}: {
+  className?: string;
+  children: string;
+  variant?: MarkdownVariant;
+}) {
   const [copied, setCopied] = useState(false);
-  const lang = className?.replace('language-', '') || 'text';
+  const rawLang = className?.replace('language-', '') || 'text';
+  const lang = resolvePrismLanguage(rawLang);
+  const displayLang = rawLang || 'text';
   const code = normalizeCodeBlockText(children, className);
 
   const handleCopy = () => {
@@ -156,19 +261,71 @@ function CodeBlock({ className, children }: { className?: string; children: stri
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (variant === 'cursor') {
+    const isMarkup = lang === 'markup' || ['xml', 'dita', 'ditamap', 'html'].includes(displayLang.toLowerCase());
+    return (
+      <div className={cn('chat-code-block my-3', isMarkup && 'chat-code-block-xml')}>
+        <div className="chat-code-block-header">
+          <span className={cn('font-mono text-[11px] uppercase tracking-wide', isMarkup && 'text-sky-400')}>
+            {displayLang}
+          </span>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-1 transition-colors hover:text-foreground"
+            title="Copy code"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                Copy
+              </>
+            )}
+          </button>
+        </div>
+        <SyntaxHighlighter
+          language={lang}
+          style={isMarkup ? cursorVscodeDarkTheme : oneDark}
+          customStyle={{
+            margin: 0,
+            borderRadius: 0,
+            fontSize: '0.78rem',
+            lineHeight: 1.55,
+            padding: '0.85rem 1rem',
+            background: '#1e1e1e',
+          }}
+          wrapLongLines
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+
   return (
     <div className="relative group my-3 rounded-lg overflow-hidden border border-slate-700/30">
       <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800 text-xs text-slate-400 border-b border-slate-700/40">
-        <span className="font-mono">{lang}</span>
+        <span className="font-mono">{displayLang}</span>
         <button
+          type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 hover:text-white transition-colors"
           title="Copy code"
         >
           {copied ? (
-            <><Check className="w-3.5 h-3.5 text-emerald-400" /> <span className="text-emerald-400">Copied</span></>
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-400" />{' '}
+              <span className="text-emerald-400">Copied</span>
+            </>
           ) : (
-            <><Copy className="w-3.5 h-3.5" /> Copy</>
+            <>
+              <Copy className="w-3.5 h-3.5" /> Copy
+            </>
           )}
         </button>
       </div>
@@ -187,10 +344,25 @@ function CodeBlock({ className, children }: { className?: string; children: stri
 function CalloutCard({
   tone,
   children,
+  variant = 'default',
 }: {
   tone: CalloutTone;
   children: React.ReactNode;
+  variant?: MarkdownVariant;
 }) {
+  if (variant === 'cursor') {
+    const Icon = tone.Icon;
+    return (
+      <div className={cn('cursor-callout my-3 border-l-[3px] rounded-r-md px-3.5 py-2.5', tone.cursorContainer)}>
+        <div className={cn('mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider', tone.cursorAccent)}>
+          <Icon className="h-3 w-3 shrink-0" aria-hidden />
+          {tone.label}
+        </div>
+        <div className="cursor-callout-body">{children}</div>
+      </div>
+    );
+  }
+
   const Icon = tone.Icon;
 
   return (
@@ -200,7 +372,9 @@ function CalloutCard({
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${tone.badge}`}>
+          <div
+            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${tone.badge}`}
+          >
             {tone.label}
           </div>
           <div className="mt-3">{children}</div>
@@ -210,9 +384,12 @@ function CalloutCard({
   );
 }
 
-
-export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownProps) {
-  const normalizedContent = repairTextEncodingArtifacts(content || '\u00A0');
+export function ChatMarkdown({ content, verifiedBundleUrl = '', variant = 'default' }: ChatMarkdownProps) {
+  const isCursor = variant === 'cursor';
+  let normalizedContent = repairTextEncodingArtifacts(content || '\u00A0');
+  if (isCursor) {
+    normalizedContent = highlightEvidenceCitations(normalizedContent);
+  }
 
   return (
     <ReactMarkdown
@@ -223,7 +400,7 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
           const allowLink = !verifiedBundleUrl || safeHref === verifiedBundleUrl;
           if (!allowLink) {
             return (
-              <span className="text-slate-700">
+              <span className={isCursor ? 'text-foreground/85' : 'text-slate-700'}>
                 {children} (Use the Download DITA Bundle action below.)
               </span>
             );
@@ -233,23 +410,38 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
               href={safeHref}
               target="_blank"
               rel="noreferrer"
-              className="font-semibold text-teal-700 no-underline hover:underline"
+              className={isCursor ? 'cursor-prose-link' : 'font-semibold text-teal-700 no-underline hover:underline'}
             >
               {children}
             </a>
           );
         },
-        table: ({ children }) => (
-          <div className="my-4 overflow-x-auto rounded-xl border border-slate-200/80 shadow-sm">
-            <table className="min-w-full divide-y divide-slate-200">{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => (
-          <thead className="bg-slate-50/80">{children}</thead>
-        ),
-        tr: ({ children }) => (
-          <tr className="transition-colors hover:bg-slate-50/50">{children}</tr>
-        ),
+        table: ({ children }) =>
+          isCursor ? (
+            <div className="cursor-prose-table-wrap">
+              <table>{children}</table>
+            </div>
+          ) : (
+            <div className="my-4 overflow-x-auto rounded-xl border border-slate-200/80 shadow-sm">
+              <table className="min-w-full divide-y divide-slate-200">{children}</table>
+            </div>
+          ),
+        thead: ({ children }) =>
+          isCursor ? <thead>{children}</thead> : <thead className="bg-slate-50/80">{children}</thead>,
+        tr: ({ children }) =>
+          isCursor ? <tr>{children}</tr> : <tr className="transition-colors hover:bg-slate-50/50">{children}</tr>,
+        th: ({ children }) =>
+          isCursor ? (
+            <TableCell as="th">{children}</TableCell>
+          ) : (
+            <th className="chat-table-cell">{expandHtmlBreaksInNodes(children)}</th>
+          ),
+        td: ({ children }) =>
+          isCursor ? (
+            <TableCell as="td">{children}</TableCell>
+          ) : (
+            <td className="chat-table-cell">{expandHtmlBreaksInNodes(children)}</td>
+          ),
         pre: ({ children }) => <>{children}</>,
         code: ({ className, children, ...rest }) => {
           const inlineFlag = (rest as { inline?: boolean }).inline;
@@ -259,41 +451,92 @@ export function ChatMarkdown({ content, verifiedBundleUrl = '' }: ChatMarkdownPr
           const isBlock =
             inlineFlag === false || hasLanguage || (inlineFlag === undefined && multiline);
           if (!isBlock) {
+            const kind = isCursor ? classifyInlineCode(text) : 'default';
             return (
-              <code className="break-words rounded-md border border-slate-200/80 bg-slate-100/80 px-1.5 py-0.5 font-mono text-[0.8125rem] font-normal text-slate-800">
-                {children}
-              </code>
+              <code className={isCursor ? inlineCodeClassName(kind) : undefined}>{children}</code>
             );
           }
-          return <CodeBlock className={className}>{text}</CodeBlock>;
+          return (
+            <CodeBlock className={className} variant={variant}>
+              {text}
+            </CodeBlock>
+          );
         },
-        h2: ({ children }) => (
-          <h2 className="flex items-center gap-2.5 mt-6 mb-3 text-base font-bold text-slate-800">
-            <span className="inline-block w-1 h-5 rounded-full bg-gradient-to-b from-teal-600 to-teal-500" />
-            <span>{children}</span>
-          </h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="flex items-center gap-2 mt-5 mb-2 text-[0.9375rem] font-semibold text-slate-700">
-            <span className="inline-block w-0.5 h-4 rounded-full bg-gradient-to-b from-slate-400 to-slate-300" />
-            <span>{children}</span>
-          </h3>
-        ),
+        h1: ({ children }) => {
+          if (!isCursor) return <h1>{children}</h1>;
+          const section = resolveSectionHeadingClass(getTextContent(children));
+          return <h1 className={cn('cursor-prose-h1', section)}>{children}</h1>;
+        },
+        h2: ({ children }) => {
+          if (!isCursor) {
+            return (
+              <h2 className="flex items-center gap-2.5 mt-6 mb-3 text-base font-bold text-slate-800">
+                <span className="inline-block w-1 h-5 rounded-full bg-gradient-to-b from-teal-600 to-teal-500" />
+                <span>{children}</span>
+              </h2>
+            );
+          }
+          const section = resolveSectionHeadingClass(getTextContent(children));
+          return <h2 className={cn('cursor-prose-h2', section)}>{children}</h2>;
+        },
+        h3: ({ children }) => {
+          if (!isCursor) {
+            return (
+              <h3 className="flex items-center gap-2 mt-5 mb-2 text-[0.9375rem] font-semibold text-slate-700">
+                <span className="inline-block w-0.5 h-4 rounded-full bg-gradient-to-b from-slate-400 to-slate-300" />
+                <span>{children}</span>
+              </h3>
+            );
+          }
+          const section = resolveSectionHeadingClass(getTextContent(children));
+          return <h3 className={cn('cursor-prose-h3', section)}>{children}</h3>;
+        },
+        h4: ({ children }) => (isCursor ? <h4 className="cursor-prose-h4">{children}</h4> : <h4>{children}</h4>),
         p: ({ children }) => {
           const text = getTextContent(children);
           const tone = findCalloutTone(text);
           if (!tone) {
-            return <p>{children}</p>;
+            return isCursor ? <p className="cursor-prose-p">{children}</p> : <p>{children}</p>;
           }
-          return <CalloutCard tone={tone}>{stripLeadingPattern(children, tone.pattern)}</CalloutCard>;
+          return (
+            <CalloutCard tone={tone} variant={variant}>
+              {stripLeadingPattern(children, tone.pattern)}
+            </CalloutCard>
+          );
         },
         blockquote: ({ children }) => {
           const text = getTextContent(children);
           const tone = findCalloutTone(text) || CALLOUT_TONES[1];
-          return <CalloutCard tone={tone}>{stripLeadingPattern(children, tone.pattern)}</CalloutCard>;
+          if (isCursor) {
+            return (
+              <blockquote className="cursor-prose-blockquote">
+                {stripLeadingPattern(children, tone.pattern)}
+              </blockquote>
+            );
+          }
+          return (
+            <CalloutCard tone={tone} variant={variant}>
+              {stripLeadingPattern(children, tone.pattern)}
+            </CalloutCard>
+          );
         },
-        ol: ({ children }) => <ol className="chat-step-list">{children}</ol>,
-        ul: ({ children }) => <ul className="chat-bullet-list">{children}</ul>,
+        hr: () => (isCursor ? <hr className="cursor-prose-hr" /> : <hr />),
+        strong: ({ children }) => {
+          if (!isCursor) return <strong>{children}</strong>;
+          const text = getTextContent(children);
+          const isLabel = /:\s*$/.test(text.trim());
+          return (
+            <strong className={cn('cursor-prose-strong', isLabel && 'cursor-prose-label')}>{children}</strong>
+          );
+        },
+        em: ({ children }) => (isCursor ? <em className="cursor-prose-em">{children}</em> : <em>{children}</em>),
+        ol: ({ children }) => (
+          <ol className={isCursor ? 'cursor-step-list' : 'chat-step-list'}>{children}</ol>
+        ),
+        ul: ({ children }) => (
+          <ul className={isCursor ? 'cursor-bullet-list' : 'chat-bullet-list'}>{children}</ul>
+        ),
+        li: ({ children }) => (isCursor ? <li className="cursor-prose-li">{children}</li> : <li>{children}</li>),
       }}
     >
       {normalizedContent}

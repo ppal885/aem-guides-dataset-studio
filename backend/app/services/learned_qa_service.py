@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,11 @@ _CHAT_HUMAN_PREFIX_PATTERNS = (
 )
 LEARNED_QA_ANSWER_STYLE = "senior_technical_docs"
 LEARNED_QA_NEAR_DUP_THRESHOLD = 0.72
+# Only inject a learned answer into the LLM prompt when it is a genuine near-duplicate
+# of the current question. A merely topical partial match (e.g. a single-aspect prompt
+# retrieved for a multi-part question) must NOT be dumped as an authoritative answer, or
+# the LLM parrots it instead of answering what was actually asked.
+LEARNED_QA_PROMPT_CONTEXT_MIN_SCORE = float(os.getenv("LEARNED_QA_PROMPT_CONTEXT_MIN_SCORE", "0.86"))
 LEARNED_QA_DEFAULT_K = 4
 _LEARNED_QA_SYNC_LOCK = Lock()
 
@@ -458,11 +464,14 @@ def upsert_learned_prompt_entry(
     previous_status = str(entry.status or "").strip()
     previous_priority = _status_priority(previous_status)
     next_priority = _status_priority(status)
+    # Coerce the stored value too: a DB datetime may be tz-aware while `accepted_at` is
+    # naive-UTC, which raises "can't compare offset-naive and offset-aware datetimes".
+    entry_accepted_at = _coerce_naive_utc(entry.accepted_at)
     accepted_is_newer = bool(
         accepted_at
         and (
-            entry.accepted_at is None
-            or accepted_at >= entry.accepted_at
+            entry_accepted_at is None
+            or accepted_at >= entry_accepted_at
         )
     )
     should_replace_answer = (
@@ -803,8 +812,13 @@ def format_learned_qa_for_prompt(query: str, k: int = 3) -> str:
     rows = retrieve_learned_qa(query, k=k)
     if not rows:
         return ""
+    # Only surface the full stored answer for near-duplicate matches; otherwise the LLM
+    # copies a related-but-different answer instead of addressing the actual question.
+    strong = [r for r in rows if float(r.get("score") or 0.0) >= LEARNED_QA_PROMPT_CONTEXT_MIN_SCORE]
+    if not strong:
+        return ""
     parts: list[str] = []
-    for index, row in enumerate(rows, 1):
+    for index, row in enumerate(strong, 1):
         tags = ", ".join(row.get("tags") or [])
         parts.append(
             f"[{index}] Prompt: {row.get('prompt')}\n"
@@ -813,7 +827,11 @@ def format_learned_qa_for_prompt(query: str, k: int = 3) -> str:
             f"Tags: {tags}\n"
             f"Score: {row.get('score')}"
         )
-    return "LEARNED PROMPT CORPUS:\n" + "\n\n".join(parts)
+    return (
+        "APPROVED ANSWERS FOR CLOSELY MATCHING QUESTIONS (reference — reuse only if the "
+        "user's question matches; otherwise answer the actual question in full):\n"
+        + "\n\n".join(parts)
+    )
 
 
 def capture_learned_candidate_from_chat_feedback(

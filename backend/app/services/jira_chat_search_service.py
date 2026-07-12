@@ -27,6 +27,16 @@ _SEARCH_NOISE_PATTERN = re.compile(
 )
 _JIRA_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 
+# Generic filler tokens excluded when deriving per-token strict-match terms from a
+# multi-word query, so matching keys on the distinctive terms rather than boilerplate.
+_STRICT_TERM_STOPWORDS = {
+    "aem", "guides", "guide", "jira", "jiras", "issue", "issues", "ticket", "tickets",
+    "bug", "bugs", "similar", "related", "relevant", "matching", "reported", "already",
+    "about", "with", "from", "that", "this", "these", "there", "been", "does", "doesnt",
+    "when", "what", "which", "have", "has", "the", "for", "and", "any", "please", "show",
+    "find", "fetch", "search", "list", "give", "some", "existing", "known",
+}
+
 _TOPIC_ALIASES: dict[str, list[str]] = {
     "reltable": ["reltable", "reltables", "relationship table", "relationship tables"],
     "reltables": ["reltable", "reltables", "relationship table", "relationship tables"],
@@ -131,6 +141,13 @@ def build_strict_match_terms(query: str) -> list[str]:
             add_term(compact)
         if len(cleaned) > 4 and cleaned.lower().endswith("s"):
             add_term(cleaned[:-1])
+        # For a descriptive multi-word query, no single issue contains the whole phrase
+        # verbatim (e.g. "baseline creation failing"). Add the distinctive content tokens
+        # so relevant issues match on the term that matters ("baseline") while a generic
+        # off-topic match (e.g. "table" for a "reltables" query) is still rejected.
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", cleaned):
+            if token.lower() not in _STRICT_TERM_STOPWORDS:
+                add_term(token)
     else:
         if len(cleaned) > 3 and cleaned.lower().endswith("s"):
             add_term(cleaned[:-1])
@@ -338,6 +355,59 @@ def _score_indexed_issue(issue: JiraIssue, terms: list[str]) -> float:
     return score
 
 
+def _search_chroma_jira(query: str, *, base_url: str, max_results: int) -> list[dict[str, Any]]:
+    """Semantic search over the indexed Jira QA corpus in ChromaDB.
+
+    The SQL ``JiraIssue`` table is often empty (indexing writes to the Chroma
+    ``jira_qa`` collection, not the relational table), so this is the real source of
+    indexed Jira issues for chat retrieval. Chunks are deduped to one row per ticket,
+    keeping the most-similar chunk.
+    """
+    try:
+        from app.services.embedding_service import embed_query, is_embedding_available
+        from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, query_collection
+    except Exception:
+        return []
+    if not is_embedding_available():
+        return []
+    try:
+        embedding = embed_query(query)
+        if embedding is None:
+            return []
+        # embed_query may return a numpy array; query_collection expects a list[float].
+        embedding = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+        if not embedding:
+            return []
+        rows = query_collection(CHROMA_COLLECTION_JIRA_QA, embedding, k=max(max_results * 4, 12)) or []
+    except Exception as exc:
+        logger.warning_structured("Chroma Jira search failed", extra_fields={"query": query[:120], "error": str(exc)})
+        return []
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        meta = row.get("metadata") or {}
+        key = str(meta.get("jira_key") or meta.get("issue_key") or "").strip()
+        if not key or key in by_key:
+            continue
+        document = str(row.get("document") or "")
+        by_key[key] = {
+            "issue_key": key,
+            "summary": str(meta.get("title") or meta.get("summary") or "").strip(),
+            "description": document[:500],
+            "status": str(meta.get("status") or ""),
+            "issue_type": str(meta.get("issue_type") or ""),
+            "priority": str(meta.get("priority") or ""),
+            "components": meta.get("components") or "",
+            "updated_at": str(meta.get("updated_at") or "") or None,
+            "url": _build_issue_url(base_url, key),
+            "source": "jira_index",
+            "text_for_search": document,
+        }
+        if len(by_key) >= max_results:
+            break
+    return list(by_key.values())
+
+
 def _search_indexed_jira(
     query: str,
     terms: list[str],
@@ -347,6 +417,12 @@ def _search_indexed_jira(
     strict_terms: list[str],
     max_results: int,
 ) -> list[dict[str, Any]]:
+    # ChromaDB jira_qa is the populated index; the SQL table is frequently empty.
+    chroma_issues = _search_chroma_jira(query, base_url=base_url, max_results=max_results)
+    if chroma_issues:
+        ranked = _filter_issues_for_query(chroma_issues, strict_terms)
+        if ranked:
+            return ranked[:max_results]
     similarity_query = " ".join(terms) if terms else query
     try:
         similar = find_similar_issues(

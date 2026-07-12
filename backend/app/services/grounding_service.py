@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
@@ -537,16 +538,70 @@ def _candidate_section(metadata: dict[str, Any]) -> str:
     return ""
 
 
+def _chunk_token_signature(text: str) -> frozenset[str]:
+    return frozenset(token for token in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(token) >= 4)
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    if not inter:
+        return 0.0
+    return inter / len(a | b)
+
+
+# Two chunks whose 4+ char token sets overlap this much are treated as the same
+# evidence, even across different source collections. Without this, an approved
+# learned answer and a near-identical spec/doc chunk both survive and the LLM copies
+# the dominant one verbatim (the Q19 "conkeyref after branch filtering" failure).
+_NEAR_DUP_THRESHOLD = float(os.getenv("GROUNDING_NEAR_DUP_THRESHOLD", "0.78"))
+
+
 def _dedupe_chunks(chunks: Iterable[EvidenceChunk]) -> list[EvidenceChunk]:
+    """Drop exact and near-duplicate chunks. Assumes ``chunks`` is sorted best-first, so
+    the highest-ranked instance of duplicated content is the one kept."""
     deduped: list[EvidenceChunk] = []
-    seen: set[str] = set()
+    seen_exact: set[str] = set()
+    signatures: list[frozenset[str]] = []
     for chunk in chunks:
         key = f"{chunk.source_kind}:{chunk.duplicate_group}"
-        if key in seen:
+        if key in seen_exact:
             continue
-        seen.add(key)
+        signature = _chunk_token_signature(chunk.content)
+        if any(_jaccard(signature, existing) >= _NEAR_DUP_THRESHOLD for existing in signatures):
+            continue
+        seen_exact.add(key)
+        signatures.append(signature)
         deduped.append(chunk)
     return deduped
+
+
+def _apply_source_diversity(chunks: list[EvidenceChunk], *, max_chunks: int) -> list[EvidenceChunk]:
+    """Prevent a single source collection from filling the evidence pack, so compound
+    questions get cross-source evidence to synthesize instead of one dominant source."""
+    if len(chunks) <= max_chunks:
+        return chunks[:max_chunks]
+    per_source_cap = max(2, (max_chunks + 1) // 2)
+    selected: list[EvidenceChunk] = []
+    counts: dict[str, int] = {}
+    for chunk in chunks:
+        if counts.get(chunk.source_kind, 0) >= per_source_cap:
+            continue
+        selected.append(chunk)
+        counts[chunk.source_kind] = counts.get(chunk.source_kind, 0) + 1
+        if len(selected) >= max_chunks:
+            return selected
+    # Backfill (in rank order) if the cap left the pack short.
+    if len(selected) < max_chunks:
+        chosen = set(id(c) for c in selected)
+        for chunk in chunks:
+            if id(chunk) in chosen:
+                continue
+            selected.append(chunk)
+            if len(selected) >= max_chunks:
+                break
+    return selected
 
 
 def _detect_conflicts(query: str, chunks: list[EvidenceChunk]) -> tuple[bool, str]:
@@ -600,12 +655,16 @@ def build_evidence_pack(
         semantic_score = max(0.0, float(getattr(candidate, "score", 0.0) or 0.0))
         coverage_score = min(1.0, lexical_score + _phrase_bonus(query_text, content))
         policy_bonus = _source_policy_bonus(source_kind, coverage_score, lexical_score)
+        # Weight query relevance (embedding + lexical + coverage) more heavily than raw
+        # source authority. Previously authority dominated (0.48) while embedding
+        # similarity was near-ignored (0.04), so a high-authority-but-off-topic chunk
+        # outranked the genuinely relevant one (the Q2 "module order" failure).
         rerank_score = min(
             1.0,
-            (authority_score * 0.48)
-            + (lexical_score * 0.24)
-            + (coverage_score * 0.16)
-            + (min(1.0, semantic_score) * 0.04)
+            (authority_score * 0.34)
+            + (lexical_score * 0.26)
+            + (coverage_score * 0.20)
+            + (min(1.0, semantic_score) * 0.20)
             + policy_bonus,
         )
         duplicate_group = re.sub(r"\W+", " ", content.lower())[:180]
@@ -640,7 +699,7 @@ def build_evidence_pack(
             _SOURCE_AUTHORITY.get(chunk.source_kind, _SOURCE_AUTHORITY["unknown"])[1] * -1,
         )
     )
-    deduped = _dedupe_chunks(normalized)[:max_chunks]
+    deduped = _apply_source_diversity(_dedupe_chunks(normalized), max_chunks=max_chunks)
     has_conflict, conflict_reason = _detect_conflicts(query_text, deduped)
     avg_score = (
         sum(chunk.rerank_score for chunk in deduped[:3]) / max(1, min(3, len(deduped)))

@@ -1,21 +1,20 @@
 import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type AssistantAvatarSize = 'md' | 'lg';
+type AssistantAvatarSize = 'sm' | 'md' | 'lg';
 
 const sizeClasses: Record<AssistantAvatarSize, string> = {
-  md: 'h-10 w-10',
-  lg: 'h-14 w-14',
+  sm: 'h-7 w-7 rounded-md',
+  md: 'h-9 w-9 rounded-lg',
+  lg: 'h-12 w-12 rounded-xl',
 };
 
 const iconClasses: Record<AssistantAvatarSize, string> = {
-  md: 'h-5 w-5',
-  lg: 'h-7 w-7',
+  sm: 'h-3.5 w-3.5',
+  md: 'h-4 w-4',
+  lg: 'h-6 w-6',
 };
 
-/**
- * Distinct assistant mark for chat — avoids generic “robot” silhouette; reads as AI / guidance.
- */
 export function AssistantAvatar({
   className,
   size = 'md',
@@ -26,25 +25,13 @@ export function AssistantAvatar({
   return (
     <div
       className={cn(
-        'relative flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-md ring-2 ring-background',
-        'bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white dark:from-stone-700 dark:via-stone-800 dark:to-stone-900',
+        'flex shrink-0 items-center justify-center bg-foreground text-background',
         sizeClasses[size],
         className
       )}
       aria-hidden
     >
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.35),transparent_55%)]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -right-1 -top-1 h-6 w-6 rounded-full bg-white/15 blur-md"
-        aria-hidden
-      />
-      <Sparkles
-        className={cn('relative drop-shadow-sm', iconClasses[size])}
-        strokeWidth={2.25}
-      />
+      <Sparkles className={iconClasses[size]} strokeWidth={2.25} />
     </div>
   );
 }
