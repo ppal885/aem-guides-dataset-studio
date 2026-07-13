@@ -35,6 +35,13 @@ _STRICT_TERM_STOPWORDS = {
     "about", "with", "from", "that", "this", "these", "there", "been", "does", "doesnt",
     "when", "what", "which", "have", "has", "the", "for", "and", "any", "please", "show",
     "find", "fetch", "search", "list", "give", "some", "existing", "known",
+    # Anaphora / scaffolding words that carry no topic on their own. Left in, they become
+    # literal match terms and surface unrelated tickets that merely contain the common word
+    # (e.g. "same" matching a random ticket's description). "the same"/"it" refer back to the
+    # conversation topic, not to text inside any issue.
+    "same", "it", "its", "them", "they", "we", "our", "ours", "us", "you", "your", "yours",
+    "above", "previous", "mentioned", "regarding", "concerning", "same", "one", "ones",
+    "thing", "things", "topic", "feature", "question", "same", "above",
 }
 
 _TOPIC_ALIASES: dict[str, list[str]] = {
@@ -131,8 +138,21 @@ def build_strict_match_terms(query: str) -> list[str]:
             seen.add(lowered)
             terms.append(normalized)
 
+    # A distinctive content token is the only thing that can safely match an issue. Without
+    # one (query is pure scaffolding/anaphora like "do we have reported same?"), matching on
+    # the full phrase or a stray common word only surfaces unrelated tickets, so we return no
+    # strict terms and let the caller honestly report "no matches" instead of guessing.
+    distinctive_tokens = [
+        token
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", cleaned)
+        if token.lower() not in _STRICT_TERM_STOPWORDS
+    ]
+    aliases = _TOPIC_ALIASES.get(cleaned.lower(), [])
+    if not distinctive_tokens and not aliases:
+        return []
+
     add_term(cleaned)
-    for alias in _TOPIC_ALIASES.get(cleaned.lower(), []):
+    for alias in aliases:
         add_term(alias)
 
     if " " in cleaned:
@@ -145,9 +165,8 @@ def build_strict_match_terms(query: str) -> list[str]:
         # verbatim (e.g. "baseline creation failing"). Add the distinctive content tokens
         # so relevant issues match on the term that matters ("baseline") while a generic
         # off-topic match (e.g. "table" for a "reltables" query) is still rejected.
-        for token in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", cleaned):
-            if token.lower() not in _STRICT_TERM_STOPWORDS:
-                add_term(token)
+        for token in distinctive_tokens:
+            add_term(token)
     else:
         if len(cleaned) > 3 and cleaned.lower().endswith("s"):
             add_term(cleaned[:-1])
