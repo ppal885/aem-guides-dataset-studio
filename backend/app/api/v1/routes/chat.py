@@ -14,6 +14,7 @@ from app.core.schemas_chat_authoring import (
     ChatDitaGenerationOptions,
 )
 from app.utils.api_rate_limit import check_chat_sessions_limit, check_chat_messages_limit
+from app.utils.http_headers import content_disposition
 from app.services.chat_service import (
     branch_session_from_message,
     create_session,
@@ -562,5 +563,5 @@ def get_chat_asset(asset_id: str, request: Request, user: UserIdentity = Current
     return Response(
         content=payload,
         media_type=mime_type,
-        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename, disposition=disposition)},
     )

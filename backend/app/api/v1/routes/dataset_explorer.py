@@ -1,16 +1,17 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from app.core.auth import UserIdentity, CurrentUser
+from app.core.structured_logging import get_structured_logger
 from app.db.session import Session, db_session
 from app.jobs import crud
 from app.storage import get_storage
+from app.utils.http_headers import content_disposition
 import zipfile
-import os
 from io import BytesIO
 from typing import Optional
-from pathlib import Path
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+logger = get_structured_logger(__name__)
 
 
 @router.get("/{job_id}/download")
@@ -20,81 +21,54 @@ def download_dataset(
     session: Session = Depends(db_session),
 ):
     """Download dataset as ZIP file."""
-    # #region agent log
-    import json
-    import os
-    with open(r'c:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio\.cursor\debug.log', 'a') as f:
-        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"dataset_explorer.py:15","message":"Download endpoint entry","data":{"job_id":job_id,"user_id":user.id if user else None}})+'\n')
-    # #endregion
-    
-    from app.core.structured_logging import get_structured_logger
-    logger = get_structured_logger(__name__)
-    
     job = crud.get_job(session, job_id)
     if not job:
-        # #region agent log
-        with open(r'c:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio\.cursor\debug.log', 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"dataset_explorer.py:25","message":"Job not found in DB","data":{"job_id":job_id}})+'\n')
-        # #endregion
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    # Check permissions
+
     if job.user_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Get dataset file
+
     storage = get_storage()
     storage_path = str(storage.get_job_path(job_id))
-    
-    # #region agent log
-    with open(r'c:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio\.cursor\debug.log', 'a') as f:
-        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"dataset_explorer.py:35","message":"Before storage.exists check","data":{"job_id":job_id,"storage_path":storage_path,"job_db_id":str(job.id),"job_db_user_id":job.user_id}})+'\n')
-    # #endregion
-    
-    # Check if dataset exists in storage
-    exists_result = storage.exists(job_id)
-    
-    # #region agent log
-    path_exists = os.path.exists(storage_path)
-    files_in_dir = list(Path(storage_path).iterdir()) if path_exists else []
-    with open(r'c:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio\.cursor\debug.log', 'a') as f:
-        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"dataset_explorer.py:40","message":"After storage.exists check","data":{"job_id":job_id,"exists_result":exists_result,"path_exists":path_exists,"files_count":len(files_in_dir),"files":[str(f.name) for f in files_in_dir[:10]]}})+'\n')
-    # #endregion
-    
-    if not exists_result:
+    download_name = f"{job.name or job_id}.zip"
+    disposition = content_disposition(download_name)
+
+    if not storage.exists(job_id):
         logger.warning_structured(
             "Download requested but dataset not found",
-            extra_fields={"job_id": job_id, "storage_path": storage_path}
+            extra_fields={"job_id": job_id, "storage_path": storage_path},
         )
-        raise HTTPException(status_code=404, detail="Dataset not found. Please ensure the job has completed successfully.")
-    
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found. Please ensure the job has completed successfully.",
+        )
+
     try:
-        # Try to get ZIP buffer for small datasets
         zip_buffer = storage.get_dataset_zip(job_id)
-        
+
         if zip_buffer:
-            # Small dataset - use in-memory buffer
             zip_buffer.seek(0)
             zip_content = zip_buffer.getvalue()
             zip_size = len(zip_content)
-            
+
             if zip_size == 0:
                 logger.warning_structured(
                     "Download requested but zip file is empty",
-                    extra_fields={"job_id": job_id}
+                    extra_fields={"job_id": job_id},
                 )
                 raise HTTPException(status_code=404, detail="Dataset zip file is empty")
-            
+
             logger.info_structured(
                 "Serving dataset download (in-memory)",
                 extra_fields={
                     "job_id": job_id,
                     "zip_size": zip_size,
-                    "filename": f"{job.name or job_id}.zip"
-                }
+                    "filename": download_name,
+                },
             )
-            
+
             zip_buffer.seek(0)
+
             def generate():
                 chunk_size = 8192 * 4
                 while True:
@@ -102,36 +76,30 @@ def download_dataset(
                     if not chunk:
                         break
                     yield chunk
-            
+
             return StreamingResponse(
                 generate(),
                 media_type="application/zip",
                 headers={
-                    "Content-Disposition": f'attachment; filename="{job.name or job_id}.zip"',
+                    "Content-Disposition": disposition,
                     "Content-Length": str(zip_size),
-                }
+                },
             )
-        else:
-            # Large dataset - use streaming ZIP creation
-            logger.info_structured(
-                "Serving dataset download (streaming)",
-                extra_fields={
-                    "job_id": job_id,
-                    "filename": f"{job.name or job_id}.zip"
-                }
-            )
-            
-            zip_generator = storage.get_dataset_zip_stream(job_id)
-            if not zip_generator:
-                raise HTTPException(status_code=404, detail="Dataset zip file could not be created")
-            
-            return StreamingResponse(
-                zip_generator,
-                media_type="application/zip",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{job.name or job_id}.zip"',
-                }
-            )
+
+        logger.info_structured(
+            "Serving dataset download (streaming)",
+            extra_fields={"job_id": job_id, "filename": download_name},
+        )
+
+        zip_generator = storage.get_dataset_zip_stream(job_id)
+        if not zip_generator:
+            raise HTTPException(status_code=404, detail="Dataset zip file could not be created")
+
+        return StreamingResponse(
+            zip_generator,
+            media_type="application/zip",
+            headers={"Content-Disposition": disposition},
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -140,9 +108,9 @@ def download_dataset(
             extra_fields={
                 "job_id": job_id,
                 "error_type": type(e).__name__,
-                "error_message": str(e)
+                "error_message": str(e),
             },
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to prepare download: {str(e)}")
 
@@ -220,7 +188,12 @@ def get_dataset_file(
     return StreamingResponse(
         BytesIO(file_content),
         media_type=content_type,
-        headers={"Content-Disposition": f'inline; filename="{file_path.split("/")[-1]}"'}
+        headers={
+            "Content-Disposition": content_disposition(
+                file_path.split("/")[-1],
+                disposition="inline",
+            )
+        },
     )
 
 @router.get("/{job_id}/search")
