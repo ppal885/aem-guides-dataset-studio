@@ -9128,10 +9128,34 @@ _PREPUBLISH_FIX_SIGNAL = re.compile(
     r"(?:@?format|map|maps|bundle|guide|guides|issues?|warnings?|links?|references?|problems?)\b",
     re.IGNORECASE,
 )
+# "fix it" alone is a legitimate short follow-up command after a validation report, but as a
+# bare substring it also matches inside long explanatory questions like "what does X error
+# mean and how do I fix it?" — those need a knowledge answer, not a bundle-fix workflow.
+_BARE_FIX_IT_PATTERN = re.compile(r"\bfix[-\s]?it\b", re.IGNORECASE)
+_QUESTION_WORD_PATTERN = re.compile(r"\b(what|why|explain|define|definition|meaning|mean)\b", re.IGNORECASE)
 
 
 def _wants_prepublish_fix(text: str) -> bool:
-    return bool(_PREPUBLISH_FIX_SIGNAL.search(text or ""))
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if _BARE_FIX_IT_PATTERN.fullmatch(stripped.rstrip("?.! ")) or (
+        len(stripped.split()) <= 6 and _BARE_FIX_IT_PATTERN.search(stripped)
+    ):
+        return True
+    if _QUESTION_WORD_PATTERN.search(stripped):
+        # Long explanatory question — only treat as a fix request via the structured
+        # "fix the map/bundle/issues" phrasing, not the bare "fix it" alternative.
+        return bool(
+            re.search(
+                r"\bauto[-\s]?fix\b|\bapply\s+(?:the\s+)?fix(?:es)?\b|"
+                r"\bfix\s+(?:the\s+|my\s+|these\s+|those\s+)?(?:[\w-]+\s+){0,3}"
+                r"(?:@?format|map|maps|bundle|guide|guides|issues?|warnings?|links?|references?|problems?)\b",
+                stripped,
+                re.IGNORECASE,
+            )
+        )
+    return bool(_PREPUBLISH_FIX_SIGNAL.search(stripped))
 
 
 def _wants_prepublish_validation(text: str) -> bool:
