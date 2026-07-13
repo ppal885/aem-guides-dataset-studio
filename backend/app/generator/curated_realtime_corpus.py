@@ -29,6 +29,28 @@ _SOURCE_STACKOVERFLOW = "stackoverflow"
 _SOURCE_BLOCKCHAIN = "blockchain"
 _SOURCE_CLOUD = "cloud_computing"
 
+# Minimal 1x1 PNG for shared image keydefs (valid binary, tiny footprint).
+_TINY_PNG_BYTES = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
+)
+
+_SHARED_VARS_REL = "../shared/curated_variables.dita"
+_SHARED_VARS_TOPIC_ID = "curated-vars"
+_CONREF_DISCLAIMER = f"{_SHARED_VARS_REL}#{_SHARED_VARS_TOPIC_ID}/curated-disclaimer"
+
+_EXTERNAL_DOCS = {
+    _SOURCE_STACKOVERFLOW: ("https://stackoverflow.com/tags/dita/info", "Stack Overflow DITA tag"),
+    _SOURCE_BLOCKCHAIN: ("https://docs.soliditylang.org/", "Solidity documentation"),
+    _SOURCE_CLOUD: ("https://kubernetes.io/docs/home/", "Kubernetes documentation"),
+}
+
+_CODE_SAMPLES = {
+    _SOURCE_STACKOVERFLOW: '<keyword keyref="product-term"/>',
+    _SOURCE_BLOCKCHAIN: "pragma solidity ^0.8.20;\ncontract CuratedSample {}",
+    _SOURCE_CLOUD: "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: curated-sample",
+}
+
 _BLOCKCHAIN_SEEDS: List[Tuple[str, List[str]]] = [
     ("Solidity reentrancy guards in smart contracts", ["solidity", "ethereum", "security", "smart-contract"]),
     ("Layer-2 rollups vs sidechains for throughput", ["layer2", "rollup", "blockchain", "scalability"]),
@@ -149,6 +171,44 @@ def _pick_entry(
     return title, shortdesc, merged_tags, source
 
 
+def _shared_variables_topic_xml(config) -> str:
+    """Reusable conref / keydef targets for the curated corpus."""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+{config.doctype_topic}
+<topic id="{_SHARED_VARS_TOPIC_ID}" xml:lang="{getattr(config, 'xml_lang', 'en') or 'en'}">
+  <title>Curated shared variables</title>
+  <shortdesc>Reusable snippets resolved by conref and keydef across the curated corpus.</shortdesc>
+  <body>
+    <p id="curated-disclaimer">This curated slice is generated for AEM Guides training and QA datasets.</p>
+    <p id="curated-license">Verify reuse rights before publishing to production environments.</p>
+    <ph id="product_label">AEM Guides</ph>
+  </body>
+</topic>"""
+
+
+def _emit_files(
+    target: Dict[str, bytes],
+    files: Dict[str, bytes],
+    stream_callback: Optional[Callable[[Dict[str, bytes]], None]],
+) -> None:
+    if stream_callback:
+        stream_callback(files)
+    else:
+        target.update(files)
+
+
+def _build_shared_assets(config, base: str) -> Dict[str, bytes]:
+    """Shared variables topic, icon PNGs, and keydef image targets."""
+    shared_dir = safe_join(base, "topics", "shared")
+    assets_dir = safe_join(base, "assets", "images")
+    return {
+        safe_join(shared_dir, "curated_variables.dita"): _shared_variables_topic_xml(config).encode("utf-8"),
+        safe_join(assets_dir, "curated-logo.png"): _TINY_PNG_BYTES,
+        safe_join(assets_dir, "domain-badge.png"): _TINY_PNG_BYTES,
+        safe_join(assets_dir, "source-icon.png"): _TINY_PNG_BYTES,
+    }
+
+
 def _topic_xml(
     config,
     topic_id: str,
@@ -157,24 +217,45 @@ def _topic_xml(
     tags: List[str],
     source: str,
     body_paragraph: str,
+    topic_index: int,
 ) -> str:
+    """AEM Guides topic DTD order: title, shortdesc, prolog, body, related-links."""
     keyword_xml = "\n".join(f'        <keyword>{_xml_text(tag)}</keyword>' for tag in tags)
     tag_list = "\n".join(f"        <li><ph>{_xml_text(tag)}</ph></li>" for tag in tags[:8])
+
+    ext_href, ext_label = _EXTERNAL_DOCS.get(source, ("https://www.oasis-open.org/dita/", "DITA specification"))
+    code_sample = _CODE_SAMPLES.get(source, "// curated external sample")
+    code_lang = {
+        _SOURCE_BLOCKCHAIN: "solidity",
+        _SOURCE_CLOUD: "yaml",
+        _SOURCE_STACKOVERFLOW: "xml",
+    }.get(source, "plaintext")
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 {config.doctype_topic}
 <topic id="{topic_id}" xml:lang="{getattr(config, 'xml_lang', 'en') or 'en'}">
   <title>{_xml_text(title)}</title>
+  <shortdesc>{_xml_text(shortdesc)}</shortdesc>
   <prolog>
     <metadata>
       <keywords>
         <keyword>source:{_xml_text(source)}</keyword>
+        <keyword keyref="curated-logo"/>
+        <keyword keyref="domain-badge"/>
+        <keyword keyref="product-term"/>
 {keyword_xml}
       </keywords>
     </metadata>
   </prolog>
-  <shortdesc>{_xml_text(shortdesc)}</shortdesc>
   <body>
     <p outputclass="curated-summary">{_xml_text(body_paragraph)}</p>
+    <p conref="{_CONREF_DISCLAIMER}"/>
+    <p>Product: <ph keyref="product-term"/> — curated slice #{topic_index + 1:06d}.</p>
+    <image keyref="curated-logo" placement="break" alt="{_xml_text(f'{source} curated icon')}"/>
+    <p>External reference:
+      <xref href="{_xml_text(ext_href)}" format="html" scope="external">{_xml_text(ext_label)}</xref>
+    </p>
+    <codeblock outputclass="language-{_xml_text(code_lang)} external-sample" xml:space="preserve">{_xml_text(code_sample)}</codeblock>
     <section>
       <title>Tags</title>
       <ul>
@@ -182,6 +263,11 @@ def _topic_xml(
       </ul>
     </section>
   </body>
+  <related-links>
+    <link href="{_xml_text(ext_href)}" format="html" scope="external">
+      <linktext>{_xml_text(ext_label)}</linktext>
+    </link>
+  </related-links>
 </topic>"""
 
 
@@ -212,6 +298,7 @@ def build_recipe_example_xml() -> str:
         so_tags_full,
         _SOURCE_STACKOVERFLOW,
         so_body,
+        0,
     )
 
     bc_title, bc_tags = _BLOCKCHAIN_SEEDS[1]
@@ -231,6 +318,7 @@ def build_recipe_example_xml() -> str:
         bc_tags_full,
         _SOURCE_BLOCKCHAIN,
         bc_body,
+        1,
     )
 
     map_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -244,6 +332,10 @@ def build_recipe_example_xml() -> str:
       <keyword>dita</keyword>
     </keywords>
   </topicmeta>
+  <keydef keys="curated-logo" href="../assets/images/curated-logo.png" format="png"/>
+  <keydef keys="domain-badge" href="../assets/images/domain-badge.png" format="png"/>
+  <keydef keys="product-term" href="../topics/shared/curated_variables.dita#curated-vars/product_label"/>
+  <topicref href="../topics/shared/curated_variables.dita" processing-role="resource-only"/>
   <topicref href="../topics/curated/curated_00000001.dita" format="dita"/>
   <topicref href="../topics/curated/curated_00000002.dita" format="dita"/>
 </map>"""
@@ -302,6 +394,9 @@ def generate_curated_realtime_corpus(  # noqa: PLR0913
     topic_paths: List[str] = []
     topic_dir = safe_join(base, "topics", "curated")
 
+    shared_assets = _build_shared_assets(config, base)
+    _emit_files(files, shared_assets, stream_callback)
+
     for batch_start in range(0, count, batch):
         batch_end = min(batch_start + batch, count)
         batch_files: Dict[str, bytes] = {}
@@ -320,7 +415,7 @@ def generate_curated_realtime_corpus(  # noqa: PLR0913
                 f"This curated topic synthesizes {source.replace('_', ' ')} patterns for AEM Guides training. "
                 f"It includes DITA 1.3 topic structure, prolog keywords, and outputclass metadata for retrieval."
             )
-            xml = _topic_xml(config, topic_id, title, shortdesc, tags, source, body)
+            xml = _topic_xml(config, topic_id, title, shortdesc, tags, source, body, i - 1)
             payload = xml.encode("utf-8")
 
             if stream_callback:
@@ -351,6 +446,10 @@ def generate_curated_realtime_corpus(  # noqa: PLR0913
       <keyword>dita</keyword>
     </keywords>
   </topicmeta>
+  <keydef keys="curated-logo" href="../assets/images/curated-logo.png" format="png"/>
+  <keydef keys="domain-badge" href="../assets/images/domain-badge.png" format="png"/>
+  <keydef keys="product-term" href="../topics/shared/curated_variables.dita#curated-vars/product_label"/>
+  <topicref href="../topics/shared/curated_variables.dita" processing-role="resource-only"/>
 {refs}
 </map>"""
         map_path = safe_join(base, "maps", "curated_root_sample.ditamap")
@@ -417,7 +516,7 @@ RECIPE_SPECS = [
             "content_subject": "",
         },
         stability="stable",
-        constructs=["topic", "prolog", "keywords", "map", "metadata"],
+        constructs=["topic", "prolog", "keywords", "keyref", "conref", "xref", "image", "codeblock", "map", "keydef", "related-links"],
         scenario_types=["LARGE_SCALE", "TRAINING_CORPUS"],
         use_when=[
             "need 1 lakh or 2 lakh curated training topics",

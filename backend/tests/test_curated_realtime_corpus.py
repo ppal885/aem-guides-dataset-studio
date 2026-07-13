@@ -40,13 +40,23 @@ def test_generate_small_curated_corpus():
         batch_size=10,
     )
     assert manifest["topic_count"] == 3
-    topic_files = [p for p in files if p.endswith(".dita")]
+    topic_files = [p for p in files if "/topics/curated/curated_" in p.replace("\\", "/")]
     assert len(topic_files) == 3
     sample = next(iter(topic_files))
     xml = files[sample].decode("utf-8")
+    assert xml.index("<shortdesc>") < xml.index("<prolog>")
     assert "<prolog>" in xml
-    assert "<keywords>" in xml
+    assert 'keyref="product-term"' in xml
+    assert 'conref="' in xml
+    assert 'scope="external"' in xml
+    assert "<codeblock" in xml
+    assert 'keyref="curated-logo"' in xml
+    assert "<related-links>" in xml
     assert "topic.dtd" in xml
+    assert any(p.endswith("curated_variables.dita") for p in files)
+    assert any(p.endswith(".png") for p in files)
+    map_xml = files[[p for p in files if p.endswith(".ditamap")][0]].decode("utf-8")
+    assert "<keydef" in map_xml
     assert any(p.endswith(".ditamap") for p in files)
 
 
@@ -54,8 +64,15 @@ def test_build_recipe_example_xml_matches_generator_shape():
     xml = build_recipe_example_xml()
     assert "source:stackoverflow" in xml
     assert "source:blockchain" in xml
+    assert xml.index("<shortdesc>") < xml.index("<prolog>")
+    assert 'keyref="curated-logo"' in xml
+    assert 'scope="external"' in xml
+    assert "<codeblock" in xml
+    assert 'conref="' in xml
+    assert "<related-links>" in xml
     assert "<section>" in xml and "<title>Tags</title>" in xml
     assert "curated_root_sample.ditamap" in xml
+    assert "<keydef" in xml
     assert "curated_corpus_manifest.json" in xml
 
 
