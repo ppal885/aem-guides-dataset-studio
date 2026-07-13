@@ -153,6 +153,17 @@ def reset_embedding_runtime_state() -> None:
 EMBED_BATCH_SIZE = 64
 
 
+def _azure_embedding_preferred() -> bool:
+    """True when Azure embeddings should be used ahead of the local model.
+
+    Needed when the Chroma collections were indexed with Azure embeddings
+    (1536-dim ``ada-002``): the query vector MUST come from the same backend or
+    the dimensions won't align (``shapes (n,1536) and (384,) not aligned``).
+    Set ``USE_AZURE_EMBEDDING=true`` to pin queries to Azure.
+    """
+    return _USE_AZURE_EMBEDDING and bool(_AZURE_EMBED_ENDPOINT and _AZURE_EMBED_KEY)
+
+
 def embed_texts(texts: list[str]):
     """
     Embed a batch of texts. Returns numpy array of shape (n, dim).
@@ -162,6 +173,12 @@ def embed_texts(texts: list[str]):
     model = _load_model()
     if not texts:
         return None
+    if _azure_embedding_preferred():
+        import numpy as np
+        azure_embs = _try_azure_embedding(list(texts))
+        if azure_embs:
+            return np.array(azure_embs)
+        logger.warning_structured("Azure embedding preferred but failed, falling back to local model")
     if model is not None:
         try:
             return model.encode(texts, convert_to_numpy=True)
@@ -187,6 +204,18 @@ def embed_texts_batched(texts: list[str], batch_size: int = EMBED_BATCH_SIZE):
     # Blank/None entries can make the local encoder or Azure reject the whole batch; replace
     # them with a single space to keep index alignment (n_embeddings == n_texts) intact.
     texts = [t if (isinstance(t, str) and t.strip()) else " " for t in texts]
+    if _azure_embedding_preferred():
+        import numpy as np
+        all_embs = []
+        for i in range(0, len(texts), 16):
+            azure_embs = _try_azure_embedding(texts[i:i + 16])
+            if not azure_embs:
+                all_embs = []
+                break
+            all_embs.extend(azure_embs)
+        if all_embs:
+            return np.array(all_embs)
+        logger.warning_structured("Azure embedding preferred but failed, falling back to local model")
     if model is not None:
         try:
             import numpy as np
