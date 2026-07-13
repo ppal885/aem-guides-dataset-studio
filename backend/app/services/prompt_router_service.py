@@ -472,6 +472,26 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
                     "answer with DITA spec grounding instead of editor toolbar configuration snippets."
                 ],
             )
+        # A question naming a specific DITA element/domain construct (e.g. "how do I add a
+        # draft comment in an AEM Guides topic") is a DITA-structure question even though it
+        # mentions AEM Guides — answer from DITA spec grounding, not AEM product/editor docs,
+        # which otherwise mis-route it to the deterministic product-guidance workflow.
+        if re.search(
+            r"\bdraft[\s-]*comments?\b|\brequired[\s-]*cleanup\b",
+            trimmed,
+            re.IGNORECASE,
+        ):
+            return PromptRouteDecision(
+                intent="dita_question",
+                confidence=0.9,
+                supported=True,
+                execution_hint="answer_directly",
+                legacy_answer_mode="grounded_dita_answer",
+                reasoning_notes=[
+                    "Question names a specific DITA element/construct; answer with DITA spec "
+                    "grounding even though AEM Guides is mentioned."
+                ],
+            )
         # Same utterance may need both DITA spec evidence and product/UI context (multi-tool agent plan).
         aem_legacy = "default" if _DITA_TERM_PATTERN.search(trimmed) else "grounded_aem_answer"
         return PromptRouteDecision(
