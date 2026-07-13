@@ -83,10 +83,10 @@ _CURATED_EXAMPLES: dict[str, dict[str, str]] = {
     },
     "curated_realtime_corpus": {
         "expected_result": (
-            "Writes topics/curated/curated_NNNNNNNN.dita files (100k-200k) rotated across Stack Overflow, "
-            "blockchain, and cloud computing seeds. Each topic has prolog source:* keywords, shortdesc, a "
-            "curated-summary paragraph, and a Tags section. Also emits maps/curated_root_sample.ditamap "
-            "(first map_sample_size topicrefs) and curated_corpus_manifest.json."
+            "Writes topics/curated/curated_NNNNNNNN.dita files (100k-200k) with DITA-valid element order "
+            "(title, shortdesc, prolog, body, related-links), conref to topics/shared/curated_variables.dita, "
+            "keyref keywords/images, external xrefs, domain codeblocks, shared PNG keydefs, and "
+            "maps/curated_root_sample.ditamap plus curated_corpus_manifest.json (corpus_schema_version=2)."
         ),
     },
     "conditionals.audience_filter": {

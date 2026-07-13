@@ -641,6 +641,11 @@ class CuratedRealtimeCorpusRecipe(BaseModel):
     fetch_live: bool = True
     map_sample_size: int = Field(default=2000, ge=0, le=10_000)
     content_subject: str = Field(default="", description="Optional domain prefix for titles and shortdesc.")
+    corpus_schema_version: int = Field(
+        default=2,
+        ge=1,
+        description="Generator schema revision; bumps artifact-reuse fingerprint when topic XML shape changes.",
+    )
 
 class DeepHierarchyRecipe(BaseModel):
     """

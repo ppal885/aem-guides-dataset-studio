@@ -84,6 +84,39 @@ def test_post_jobs_second_identical_config_reuses_zip(client, monkeypatch):
     assert download.headers.get("content-type", "").startswith("application/zip")
 
 
+def test_post_jobs_curated_corpus_never_uses_artifact_reuse(client, monkeypatch):
+    monkeypatch.setenv("ARTIFACT_REUSE_ENABLED", "true")
+    import app.services.dataset_job_service as djs
+
+    monkeypatch.setattr(djs, "is_artifact_reuse_enabled", lambda: True)
+
+    uid = uuid4().hex[:10]
+    config = {
+        **_BUILDER_LIKE,
+        "name": f"Curated no-cache {uid}",
+        "seed": f"curated-no-cache-{uid}",
+        "recipes": [
+            {
+                "type": "curated_realtime_corpus",
+                "topic_count": 1000,
+                "fetch_live": False,
+                "map_sample_size": 5,
+                "batch_size": 100,
+            }
+        ],
+    }
+    r1 = client.post("/api/v1/jobs", json={"config": config}, headers=_AUTH_HEADERS)
+    assert r1.status_code == 200, r1.text
+    d1 = r1.json()
+    assert not d1.get("cache_hit")
+
+    r2 = client.post("/api/v1/jobs", json={"config": config}, headers=_AUTH_HEADERS)
+    assert r2.status_code == 200, r2.text
+    d2 = r2.json()
+    assert not d2.get("cache_hit")
+    assert d2["id"] != d1["id"]
+
+
 def test_post_jobs_no_reuse_when_disabled(client, monkeypatch):
     monkeypatch.setenv("ARTIFACT_REUSE_ENABLED", "false")
     import app.services.dataset_job_service as djs

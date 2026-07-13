@@ -29,13 +29,55 @@ class ConcurrentJobLimitError(RuntimeError):
 
 def validate_dataset_job_config(config_dict: dict) -> DatasetConfig:
     """Validate a dataset config and return the parsed model."""
-    return DatasetConfig.model_validate(config_dict)
+    return DatasetConfig.model_validate(apply_dataset_generation_defaults(config_dict))
 
 
 def normalize_dataset_job_config(config_dict: dict) -> dict[str, Any]:
     """Return a JSON-safe, validated dataset config."""
-    dataset_config = validate_dataset_job_config(config_dict)
+    prepared = apply_dataset_generation_defaults(config_dict)
+    dataset_config = validate_dataset_job_config(prepared)
     return dataset_config.model_dump(mode="json")
+
+
+def apply_dataset_generation_defaults(config_dict: dict) -> dict[str, Any]:
+    """
+    Inject generation-time defaults before validation, fingerprinting, or job execution.
+
+    Curated corpus jobs always receive the current ``corpus_schema_version`` so
+    artifact reuse does not serve stale topic XML after generator upgrades.
+    """
+    from app.generator.curated_realtime_corpus import CORPUS_SCHEMA_VERSION
+
+    config = dict(config_dict)
+    recipes = config.get("recipes")
+    if not isinstance(recipes, list):
+        return config
+
+    updated_recipes: list[Any] = []
+    for recipe in recipes:
+        if not isinstance(recipe, dict):
+            updated_recipes.append(recipe)
+            continue
+        if recipe.get("type") != "curated_realtime_corpus":
+            updated_recipes.append(recipe)
+            continue
+        merged = dict(recipe)
+        merged["corpus_schema_version"] = CORPUS_SCHEMA_VERSION
+        updated_recipes.append(merged)
+
+    config["recipes"] = updated_recipes
+    return config
+
+
+def config_skips_artifact_reuse(config_dict: dict) -> bool:
+    """Large curated corpora must always regenerate — never reuse cached alias jobs."""
+    recipes = config_dict.get("recipes")
+    if not isinstance(recipes, list):
+        return False
+    return any(
+        isinstance(recipe, dict) and recipe.get("type") == "curated_realtime_corpus"
+        for recipe in recipes
+    )
 
 
 def build_dataset_job_urls(job_id: str) -> dict[str, str]:

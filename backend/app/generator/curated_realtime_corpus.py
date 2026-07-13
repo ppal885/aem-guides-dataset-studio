@@ -23,6 +23,9 @@ from app.generator.recipe_manifest import RecipeSpec
 
 logger = logging.getLogger(__name__)
 
+# Bump when topic XML shape changes (invalidates artifact-reuse fingerprints).
+CORPUS_SCHEMA_VERSION = 2
+
 _ALLOWED_FETCH_HOSTS = frozenset({"api.stackexchange.com"})
 
 _SOURCE_STACKOVERFLOW = "stackoverflow"
@@ -465,6 +468,7 @@ def generate_curated_realtime_corpus(  # noqa: PLR0913
         "fetch_live": fetch_live,
         "map_sample_size": len(topic_paths),
         "subject": subject,
+        "corpus_schema_version": CORPUS_SCHEMA_VERSION,
     }
     manifest_path = safe_join(base, "curated_corpus_manifest.json")
     manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
@@ -506,6 +510,7 @@ RECIPE_SPECS = [
             "fetch_live": "bool",
             "map_sample_size": "int",
             "content_subject": "str",
+            "corpus_schema_version": "int",
         },
         default_params={
             "topic_count": 100_000,
@@ -514,6 +519,7 @@ RECIPE_SPECS = [
             "fetch_live": True,
             "map_sample_size": 2000,
             "content_subject": "",
+            "corpus_schema_version": CORPUS_SCHEMA_VERSION,
         },
         stability="stable",
         constructs=["topic", "prolog", "keywords", "keyref", "conref", "xref", "image", "codeblock", "map", "keydef", "related-links"],

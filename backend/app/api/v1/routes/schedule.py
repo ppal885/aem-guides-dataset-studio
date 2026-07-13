@@ -379,6 +379,10 @@ async def create_job(
         if not isinstance(config_dict, dict):
             return JSONResponse(status_code=422, content={"detail": "'config' must be a dictionary"})
 
+        from app.services.dataset_job_service import apply_dataset_generation_defaults, config_skips_artifact_reuse
+
+        config_dict = apply_dataset_generation_defaults(config_dict)
+
         recipes = config_dict.get("recipes", [])
         if recipes and not isinstance(recipes, list):
             return JSONResponse(status_code=400, content={"detail": "Recipes must be a list"})
@@ -396,7 +400,7 @@ async def create_job(
         enforce_concurrent_job_limit(user.id)
 
         # ── Artifact reuse: return cached ZIP if same config was run before ──
-        if is_artifact_reuse_enabled():
+        if is_artifact_reuse_enabled() and not config_skips_artifact_reuse(config_dict):
             from app.services.artifact_fingerprint_service import fingerprint_dataset_config_dict
             from app.services.artifact_registry_service import (
                 lookup_completed_artifact,
