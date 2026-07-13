@@ -655,16 +655,19 @@ def build_evidence_pack(
         semantic_score = max(0.0, float(getattr(candidate, "score", 0.0) or 0.0))
         coverage_score = min(1.0, lexical_score + _phrase_bonus(query_text, content))
         policy_bonus = _source_policy_bonus(source_kind, coverage_score, lexical_score)
-        # Weight query relevance (embedding + lexical + coverage) more heavily than raw
-        # source authority. Previously authority dominated (0.48) while embedding
-        # similarity was near-ignored (0.04), so a high-authority-but-off-topic chunk
-        # outranked the genuinely relevant one (the Q2 "module order" failure).
+        # Authority-dominant ranking: an authoritative spec chunk must outrank a
+        # semantically-close but lower-authority product/how-to chunk. A prior rebalance
+        # (authority 0.34 / semantic 0.20) let embedding similarity promote off-topic AEM
+        # how-to docs above the authoritative dita_spec content, so e.g. a "draft-comment"
+        # question retrieved "review comments" / "annotations" docs and rendered the wrong
+        # (deterministic AEM-guidance) answer. Near-dup dedup + source diversity (below)
+        # handle cross-source balance without letting raw similarity override authority.
         rerank_score = min(
             1.0,
-            (authority_score * 0.34)
-            + (lexical_score * 0.26)
-            + (coverage_score * 0.20)
-            + (min(1.0, semantic_score) * 0.20)
+            (authority_score * 0.48)
+            + (lexical_score * 0.24)
+            + (coverage_score * 0.16)
+            + (min(1.0, semantic_score) * 0.04)
             + policy_bonus,
         )
         duplicate_group = re.sub(r"\W+", " ", content.lower())[:180]
