@@ -43,6 +43,9 @@ def test_recipe_catalog_endpoint(client, auth_headers):
     assert 'audience="admin"' in audience["full_example_xml"]
     assert "Representative output for this recipe" not in audience["full_example_xml"]
     assert "metadata.audience_platform_basic" in audience["expected_result"]
+    choicetable = by_id["choicetable_tasks"]
+    assert "choicetable" in choicetable["full_example_xml"]
+    assert "Representative output for this recipe" not in choicetable["full_example_xml"]
     assert by_id["dita_conref_title_dataset_recipe"]["params_schema"]["variables"] == "list"
 
 

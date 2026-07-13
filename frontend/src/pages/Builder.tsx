@@ -194,6 +194,8 @@ export function Builder() {
   const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null);
   const [createdJobs, setCreatedJobs] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [recipeSample, setRecipeSample] = useState<{ full_example_xml: string; expected_result: string } | null>(null);
+  const [sampleLoading, setSampleLoading] = useState(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -245,6 +247,39 @@ export function Builder() {
     }
   }, [selectedRecipe?.id]);
 
+  useEffect(() => {
+    if (!selectedRecipeId) {
+      setRecipeSample(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSampleLoading(true);
+
+    fetchJson<{ full_example_xml: string; expected_result: string }>(
+      apiUrl(`/api/v1/recipes/catalog/samples/${encodeURIComponent(selectedRecipeId)}`)
+    )
+      .then(sample => {
+        if (!cancelled && isMountedRef.current) {
+          setRecipeSample(sample);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && isMountedRef.current) {
+          setRecipeSample(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled && isMountedRef.current) {
+          setSampleLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRecipeId]);
+
   const activeWorkflow = useMemo(
     () => catalog?.quick_workflows.find(item => item.id === activeWorkflowId) || null,
     [catalog?.quick_workflows, activeWorkflowId]
@@ -283,6 +318,9 @@ export function Builder() {
   );
 
   const validation = useRecipeValidation(currentRecipe, limits || undefined);
+
+  const sampleExpectedResult = recipeSample?.expected_result ?? selectedRecipe?.expected_result ?? '';
+  const sampleXml = recipeSample?.full_example_xml ?? selectedRecipe?.full_example_xml ?? '';
 
   const handleScheduleChange = useCallback((nextScheduledAt: Date | null, nextTimezone: string) => {
     setScheduledAt(nextScheduledAt);
@@ -539,13 +577,17 @@ export function Builder() {
                   <summary className="cursor-pointer px-3 py-2 text-muted-foreground hover:text-foreground">
                     Sample output (from generator)
                   </summary>
-                  {selectedRecipe.expected_result ? (
+                  {sampleLoading ? (
+                    <p className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+                      Loading generator sample…
+                    </p>
+                  ) : sampleExpectedResult ? (
                     <p className="border-t border-border/60 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                      {selectedRecipe.expected_result}
+                      {sampleExpectedResult}
                     </p>
                   ) : null}
                   <pre className="overflow-x-auto border-t border-border bg-[#1e1e1e] p-3 text-[11px] leading-5 text-slate-100">
-                    <code>{selectedRecipe.full_example_xml}</code>
+                    <code>{sampleXml}</code>
                   </pre>
                 </details>
 

@@ -35,25 +35,26 @@
   }
 
   .dark {
-    --background: 20 14.3% 4.1%;
-    --foreground: 60 9.1% 97.8%;
-    --card: 24 9.8% 10%;
-    --card-foreground: 60 9.1% 97.8%;
-    --popover: 24 9.8% 10%;
-    --popover-foreground: 60 9.1% 97.8%;
-    --primary: 60 9.1% 97.8%;
-    --primary-foreground: 20 14.3% 4.1%;
-    --secondary: 24 5.7% 15.9%;
-    --secondary-foreground: 60 9.1% 97.8%;
-    --muted: 24 5.7% 15.9%;
-    --muted-foreground: 24 5.4% 63.9%;
-    --accent: 24 5.7% 15.9%;
-    --accent-foreground: 60 9.1% 97.8%;
+    --background: 240 6% 6%;
+    --foreground: 0 0% 93%;
+    --card: 240 5% 9%;
+    --card-foreground: 0 0% 93%;
+    --popover: 240 5% 9%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 240 6% 5%;
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 240 4% 13%;
+    --muted-foreground: 240 4% 58%;
+    --accent: 240 4% 13%;
+    --accent-foreground: 0 0% 93%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 60 9.1% 97.8%;
-    --border: 24 5.7% 25.9%;
-    --input: 24 5.7% 25.9%;
-    --ring: 24 5.4% 63.9%;
+    --destructive-foreground: 0 0% 93%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 4% 58%;
+    --app-rail: 240 6% 4%;
   }
 
   @media (max-width: 767px) {
@@ -416,7 +417,7 @@ body {
 }
 
 .dark .app-shell {
-  --app-rail: 240 6% 8%;
+  --app-rail: 240 6% 4%;
 }
 
 .app-sidebar {
@@ -445,17 +446,17 @@ body {
 }
 
 .dark .cursor-chat-shell {
-  --background: 240 6% 10%;
-  --foreground: 0 0% 93%;
-  --card: 240 4% 14%;
-  --card-foreground: 0 0% 93%;
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 64%;
-  --border: 240 4% 22%;
-  --input: 240 4% 22%;
-  --ring: 240 5% 64%;
-  --cursor-rail: 240 6% 8%;
-  --cursor-workspace: 240 6% 9%;
+  --background: 240 6% 7%;
+  --foreground: 0 0% 92%;
+  --card: 240 5% 10%;
+  --card-foreground: 0 0% 92%;
+  --muted: 240 4% 14%;
+  --muted-foreground: 240 4% 56%;
+  --border: 240 4% 17%;
+  --input: 240 4% 14%;
+  --ring: 240 4% 58%;
+  --cursor-rail: 240 6% 4%;
+  --cursor-workspace: 240 6% 7%;
 }
 
 :root:not(.dark) .cursor-chat-shell {
@@ -589,8 +590,41 @@ body {
 }
 
 .cursor-sidebar {
-  background: hsl(var(--card));
+  background: hsl(var(--cursor-rail));
   border-right: 1px solid hsl(var(--border));
+}
+
+/* Secondary panel list rows — matches AppSidebar / Cursor history selection */
+.cursor-list-item {
+  border-radius: 0.5rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.cursor-list-item:hover {
+  background: hsl(var(--muted) / 0.55);
+  color: hsl(var(--foreground));
+}
+
+.cursor-list-item[data-selected] {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.dark .cursor-list-item:hover {
+  background: hsl(var(--muted) / 0.65);
+}
+
+.dark .cursor-list-item[data-selected] {
+  background: hsl(240 4% 16%);
+  color: hsl(0 0% 95%);
+}
+
+.dark .cursor-sidebar {
+  border-right-color: hsl(var(--border) / 0.9);
+}
+
+.dark .app-sidebar {
+  border-right-color: hsl(var(--border) / 0.9);
 }
 
 .cursor-message-actions {

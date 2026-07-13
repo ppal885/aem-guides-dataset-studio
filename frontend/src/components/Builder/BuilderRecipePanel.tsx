@@ -4,9 +4,12 @@ import { PanelResizeHandle } from '@/components/Chat/PanelResizeHandle';
 import { useHorizontalPanelResize } from '@/components/Chat/usePanelResize';
 
 const MIN_WIDTH = 200;
-const MAX_WIDTH = 420;
+const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 260;
 const STORAGE_KEY = 'builderRecipePanelWidth';
+
+const searchInputClass =
+  'w-full rounded-lg border border-border/70 bg-background/80 py-1.5 pl-8 pr-2 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-ring/50 focus:outline-none focus:ring-1 focus:ring-ring/20';
 
 export interface BuilderRecipeListEntry {
   id: string;
@@ -47,7 +50,7 @@ export function BuilderRecipePanel({
   });
 
   return (
-    <aside className="cursor-sidebar relative flex shrink-0 flex-col" style={{ width }}>
+    <aside className="cursor-sidebar relative flex shrink-0 flex-col" style={{ width }} aria-label="Recipe library">
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Recipes</p>
       </div>
@@ -60,27 +63,32 @@ export function BuilderRecipePanel({
             value={search}
             onChange={event => onSearchChange(event.target.value)}
             placeholder="Search recipes"
-            className="w-full rounded-lg border border-border/70 bg-background/80 py-1.5 pl-8 pr-2 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-ring/50 focus:outline-none focus:ring-1 focus:ring-ring/20"
+            className={searchInputClass}
+            aria-label="Search recipes"
           />
         </div>
 
         {quickWorkflows.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
-            {quickWorkflows.map(workflow => (
-              <button
-                key={workflow.id}
-                type="button"
-                onClick={() => onQuickPreset?.(workflow.id)}
-                className={cn(
-                  'rounded-lg border px-2 py-1 text-[11px] font-medium transition',
-                  activeWorkflowId === workflow.id
-                    ? 'border-border bg-muted text-foreground'
-                    : 'border-border/70 bg-background/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                )}
-              >
-                {workflow.title}
-              </button>
-            ))}
+            {quickWorkflows.map(workflow => {
+              const active = activeWorkflowId === workflow.id;
+              return (
+                <button
+                  key={workflow.id}
+                  type="button"
+                  onClick={() => onQuickPreset?.(workflow.id)}
+                  className={cn(
+                    'cursor-list-item rounded-lg border px-2 py-1 text-[11px] font-medium',
+                    active
+                      ? 'border-border bg-muted text-foreground'
+                      : 'border-border/70 bg-background/60 text-muted-foreground'
+                  )}
+                  data-selected={active ? '' : undefined}
+                >
+                  {workflow.title}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -91,23 +99,26 @@ export function BuilderRecipePanel({
             {search.trim() ? 'No matching recipes.' : 'No recipes available.'}
           </p>
         ) : (
-          recipes.map(entry => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => onSelect(entry.id)}
-              title={entry.title}
-              className={cn(
-                'mb-0.5 flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition-colors',
-                selectedRecipeId === entry.id
-                  ? 'bg-muted/80 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-              )}
-            >
-              <span className="truncate text-[12px] leading-5">{entry.title}</span>
-              <span className="truncate font-mono text-[10px] opacity-70">{entry.id}</span>
-            </button>
-          ))
+          recipes.map(entry => {
+            const selected = selectedRecipeId === entry.id;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onSelect(entry.id)}
+                title={entry.title}
+                aria-current={selected ? 'true' : undefined}
+                data-selected={selected ? '' : undefined}
+                className={cn(
+                  'cursor-list-item mb-0.5 flex w-full flex-col rounded-lg px-2.5 py-2 text-left',
+                  selected ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                <span className="truncate text-[12px] font-medium leading-5">{entry.title}</span>
+                <span className="truncate font-mono text-[10px] text-muted-foreground">{entry.id}</span>
+              </button>
+            );
+          })
         )}
       </div>
 

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "technicalContent/dtd/topic.dtd">
+<topic id="topic_3ced27a7" xml:lang="en"><title>Resetting a Locked-Out Linux User Account from Single-User Mode</title><shortdesc>Use single-user mode to regain access by remounting the root filesystem, resetting the password, and restoring normal boot settings.</shortdesc><prolog><metadata><othermeta name="author" content="AEM Guides Dataset Studio" /><othermeta name="created" content="2026-07-12" /></metadata></prolog><body><p>Explain prerequisites: console access (physical or out-of-band), authorization to perform recovery, and awareness of full-disk encryption constraints.
+
+Outline the high-level flow: interrupt bootloader, enter single-user/emergency shell, remount root read-write, reset credentials, verify account state, and reboot.
+
+Include safety notes: avoid changing unrelated system files, document actions for audit, and ensure you can revert boot parameter changes.</p><section id="section_topic_3ced27a7_1"><title>Resetting a Locked-Out Linux User Account from Single-User Mode detail 1</title><p>Explain prerequisites: console access (physical or out-of-band), authorization to perform recovery, and awareness of full-disk encryption constraints.
+
+Outline the high-level flow: interrupt bootloader, enter single-user/emergency shell, remount root read-write, reset credentials, verify account state, and reboot.
+
+Include safety notes: avoid changing unrelated system files, document actions for audit, and ensure you can revert boot parameter changes. This section expands on detail 1 for resetting a locked-out linux user account from single-user mode.</p></section><section id="section_topic_3ced27a7_2"><title>Resetting a Locked-Out Linux User Account from Single-User Mode detail 2</title><p>Explain prerequisites: console access (physical or out-of-band), authorization to perform recovery, and awareness of full-disk encryption constraints.
+
+Outline the high-level flow: interrupt bootloader, enter single-user/emergency shell, remount root read-write, reset credentials, verify account state, and reboot.
+
+Include safety notes: avoid changing unrelated system files, document actions for audit, and ensure you can revert boot parameter changes. This section expands on detail 2 for resetting a locked-out linux user account from single-user mode.</p></section><section id="section_topic_3ced27a7_3"><title>Resetting a Locked-Out Linux User Account from Single-User Mode detail 3</title><p>Explain prerequisites: console access (physical or out-of-band), authorization to perform recovery, and awareness of full-disk encryption constraints.
+
+Outline the high-level flow: interrupt bootloader, enter single-user/emergency shell, remount root read-write, reset credentials, verify account state, and reboot.
+
+Include safety notes: avoid changing unrelated system files, document actions for audit, and ensure you can revert boot parameter changes. This section expands on detail 3 for resetting a locked-out linux user account from single-user mode.</p></section><section id="section_topic_3ced27a7_4"><title>Resetting a Locked-Out Linux User Account from Single-User Mode detail 4</title><p>Explain prerequisites: console access (physical or out-of-band), authorization to perform recovery, and awareness of full-disk encryption constraints.
+
+Outline the high-level flow: interrupt bootloader, enter single-user/emergency shell, remount root read-write, reset credentials, verify account state, and reboot.
+
+Include safety notes: avoid changing unrelated system files, document actions for audit, and ensure you can revert boot parameter changes. This section expands on detail 4 for resetting a locked-out linux user account from single-user mode.</p></section></body></topic>

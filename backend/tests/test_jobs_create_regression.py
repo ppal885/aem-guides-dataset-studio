@@ -66,6 +66,32 @@ def test_post_jobs_create_regression(client: TestClient, recipe: dict) -> None:
     assert data.get("status") == "completed", data
 
 
+def test_validate_config_accepts_curated_realtime_corpus(client: TestClient) -> None:
+    """curated_realtime_corpus must be a registered Recipe discriminator tag."""
+    config = {
+        **BUILDER_LIKE_BASE_CONFIG,
+        "recipes": [
+            {
+                "type": "curated_realtime_corpus",
+                "topic_count": 1000,
+                "data_sources": ["stackoverflow", "blockchain", "cloud_computing"],
+                "fetch_live": False,
+                "map_sample_size": 10,
+                "batch_size": 100,
+            }
+        ],
+    }
+    response = client.post(
+        "/api/v1/jobs/validate-config",
+        json={"config": config},
+        headers=_AUTH_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data.get("valid") is True
+    assert data["config"]["recipes"][0]["type"] == "curated_realtime_corpus"
+
+
 def test_post_jobs_invalid_config_returns_structured_422(client: TestClient) -> None:
     """Invalid recipe type yields 422 with detail + errors[] (not a stringified Python list)."""
     config = {

@@ -24,6 +24,10 @@ _DEFAULT_DOCTYPE_TASK = (
 _DEFAULT_DOCTYPE_GLOSSENTRY = DITA_DOCTYPES["glossentry"]
 
 
+def _config_xml_lang(config) -> str:
+    return getattr(config, "xml_lang", None) or "en"
+
+
 def _append_prolog_metadata(root: ET.Element, metadata: Optional[dict]) -> None:
     if not metadata:
         return
@@ -1149,7 +1153,7 @@ def generate_syntax_diagram_reference_dataset(
         path = safe_join(topic_dir, filename)
         topic_id = stable_id(config.seed, "syntax_diagram_ref", str(i), used_ids)
 
-        reference = ET.Element("reference", {"id": topic_id, "xml:lang": self._xml_lang})
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": _config_xml_lang(config)})
         title_elem = ET.SubElement(reference, "title")
         title_elem.text = xml_escape_text(f"Syntax diagram reference {i:05d}")
 
@@ -1596,7 +1600,7 @@ def generate_choicetable_task_topics_dataset(
         topic_id = stable_id(config.seed, "ct_task", str(i), used_ids)
 
         # Build the task topic with an explicit rich choicetable
-        task = ET.Element("task", {"id": topic_id, "xml:lang": self._xml_lang})
+        task = ET.Element("task", {"id": topic_id, "xml:lang": _config_xml_lang(config)})
         title_elem = ET.SubElement(task, "title")
         title_elem.text = xml_escape_text(f"{domain['title']} - Task {i:05d}")
 
@@ -1696,7 +1700,7 @@ def generate_choicetable_reference_dataset(
         topic_id = stable_id(config.seed, "ct_ref", str(i), used_ids)
 
         # Build a reference topic with a simpletable in refbody
-        reference = ET.Element("reference", {"id": topic_id, "xml:lang": self._xml_lang})
+        reference = ET.Element("reference", {"id": topic_id, "xml:lang": _config_xml_lang(config)})
         title_elem = ET.SubElement(reference, "title")
         title_elem.text = xml_escape_text(f"{domain['title']} - Reference {i:05d}")
 

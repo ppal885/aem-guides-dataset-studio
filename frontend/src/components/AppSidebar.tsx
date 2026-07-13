@@ -114,12 +114,11 @@ export function AppSidebar() {
               key={item.path}
               to={item.path}
               title={item.label}
+              data-selected={active ? '' : undefined}
               className={cn(
-                'flex items-center rounded-md transition',
-                expanded ? 'gap-2.5 px-2.5 py-2 text-[13px]' : 'justify-center p-2',
-                active
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                'cursor-list-item flex items-center',
+                expanded ? 'gap-2.5 px-2.5 py-2 text-[13px]' : 'justify-center rounded-md p-2',
+                active ? 'text-foreground' : 'text-muted-foreground'
               )}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden />

@@ -165,6 +165,8 @@ def generate_recipe_sample_preview(spec: RecipeSpec) -> RecipeSamplePreview | No
 
         merged = dict(spec.default_params or {})
         params = sanitize_params_for_recipe(spec, merged)
+        allowed_keys = set(spec.params_schema or {}) | set(spec.default_params or {})
+        params = {key: value for key, value in params.items() if key in allowed_keys}
         params = _apply_sample_overrides(spec, params)
         params = _accepted_params(fn, params)
 
@@ -190,7 +192,7 @@ def generate_recipe_sample_preview(spec: RecipeSpec) -> RecipeSamplePreview | No
             file_count=len(result),
         )
     except Exception as exc:
-        logger.debug("Recipe sample preview failed for %s: %s", spec.id, exc)
+        logger.warning("Recipe sample preview failed for %s: %s", spec.id, exc)
         return None
 
 

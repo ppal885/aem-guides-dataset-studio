@@ -165,9 +165,10 @@ export function ChatSidebar({
         {filteredSessions.map((s) => (
           <div
             key={s.id}
+            data-selected={currentId === s.id ? '' : undefined}
             className={cn(
-              'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 transition-colors',
-              currentId === s.id ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+              'cursor-list-item group mb-0.5 flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5',
+              currentId === s.id ? 'text-foreground' : 'text-muted-foreground'
             )}
           >
             {editingId === s.id ? (

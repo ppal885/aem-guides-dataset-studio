@@ -19,6 +19,13 @@ def test_audience_platform_basic_sample_has_real_attributes():
     assert "Representative output for this recipe" not in preview.xml
 
 
+def test_choicetable_tasks_sample_has_choicetable():
+    preview = generate_recipe_sample_preview(_spec_by_id("choicetable_tasks"))
+    assert preview is not None
+    assert "choicetable" in preview.xml
+    assert "Representative output for this recipe" not in preview.xml
+
+
 def test_get_recipe_sample_preview_cached_for_audience_platform():
     sample = get_recipe_sample_preview("metadata.audience_platform_basic")
     assert sample is not None

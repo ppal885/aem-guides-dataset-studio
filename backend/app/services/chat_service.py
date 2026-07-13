@@ -1216,6 +1216,14 @@ def _determine_answer_mode(user_content: str, session_id: str | None = None) -> 
     text = (user_content or "").strip()
     if not text:
         return "default"
+    # Definition/explanation questions about errors, elements, or concepts should be
+    # answered from DITA/spec knowledge, not routed to generation or other special modes.
+    lowered = text.lower()
+    if re.search(
+        r"\b(what|what's|what is|explain|define|definition|meaning|mean|why|how does|how do)\b",
+        lowered,
+    ) and re.search(r"\b(error|element|attribute|concept|work|resolve|dita|ot)\b", lowered):
+        return "grounded_dita_answer"
     requested_attribute = _extract_requested_dita_attribute(text)
     if _detect_jira_style_text(text):
         return "generation_request"
@@ -8474,7 +8482,14 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if _is_dita_ot_issue_request_without_explicit_jira(user_content):
+    # Definition/educational questions about DITA-OT errors (e.g. "What does X error mean?")
+    # should not route to GitHub issue search — they need synthesis from knowledge, not
+    # issue lookup. Only route actual troubleshooting requests ("I'm getting X").
+    _looks_like_definition = re.search(
+        r"\b(what|what's|what is|explain|define|definition|meaning|mean|why)\b.*\b(error|issue|exception|fail)\b",
+        (user_content or "").lower(),
+    )
+    if _is_dita_ot_issue_request_without_explicit_jira(user_content) and not _looks_like_definition:
         resolved_dita_ot_issue_query = _resolve_vague_dita_ot_issue_query_from_context(session_id, user_content)
         async for event in _stream_dita_ot_github_issue_reply(
             session_id,

@@ -81,16 +81,19 @@ function VideoStepPanel({ stepIndex }: { stepIndex: number }) {
 
   if (stepIndex === 0 && 'tags' in step) {
     return (
-      <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-teal-200/80">Classification</p>
+      <div className="rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-500">Classification</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {step.tags.map((tag) => (
-            <span key={tag} className="rounded-full border border-teal-400/25 bg-teal-400/10 px-2 py-0.5 text-[11px] text-teal-100">
+            <span
+              key={tag}
+              className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[11px] text-stone-300"
+            >
               {tag}
             </span>
           ))}
         </div>
-        <p className="mt-3 text-[12px] leading-5 text-stone-300">
+        <p className="mt-3 text-[12px] leading-5 text-stone-400">
           The bot separates keyref troubleshooting from generic XML validation or authoring mistakes.
         </p>
       </div>
@@ -99,12 +102,12 @@ function VideoStepPanel({ stepIndex }: { stepIndex: number }) {
 
   if (stepIndex === 1 && 'sources' in step) {
     return (
-      <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-teal-200/80">Retrieved sources</p>
+      <div className="rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-500">Retrieved sources</p>
         <ul className="mt-2 space-y-1.5">
           {step.sources.map((source) => (
-            <li key={source} className="flex items-center gap-2 text-[12px] text-stone-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
+            <li key={source} className="flex items-center gap-2 text-[12px] text-stone-300">
+              <span className="h-1 w-1 rounded-full bg-stone-500" />
               {source}
             </li>
           ))}
@@ -115,12 +118,12 @@ function VideoStepPanel({ stepIndex }: { stepIndex: number }) {
 
   if (stepIndex === 2 && 'checks' in step) {
     return (
-      <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-teal-200/80">Deterministic checks</p>
+      <div className="rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-500">Deterministic checks</p>
         <ol className="mt-2 space-y-1.5">
           {step.checks.map((check, index) => (
-            <li key={check} className="flex gap-2 text-[12px] leading-5 text-stone-200">
-              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/15 text-[10px] text-stone-400">
+            <li key={check} className="flex gap-2 text-[12px] leading-5 text-stone-300">
+              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/[0.1] text-[10px] text-stone-500">
                 {index + 1}
               </span>
               {check}
@@ -134,15 +137,15 @@ function VideoStepPanel({ stepIndex }: { stepIndex: number }) {
   if (stepIndex === 3 && 'answer' in step) {
     return (
       <div className="space-y-2">
-        <div className="rounded-md border border-white/10 bg-teal-400/10 p-3">
-          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-teal-100/90">Senior answer</p>
-          <p className="mt-2 text-[12px] leading-5 text-stone-100">{step.answer}</p>
+        <div className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-500">Senior answer</p>
+          <p className="mt-2 text-[12px] leading-5 text-stone-200">{step.answer}</p>
         </div>
-        <pre className="overflow-x-auto rounded-md border border-white/10 bg-black/40 p-2.5 text-[10px] leading-4 text-teal-100">
+        <pre className="overflow-x-auto rounded-md border border-white/[0.06] bg-black/40 p-2.5 text-[10px] leading-4 text-teal-100/90">
           {step.xml}
         </pre>
-        <p className="text-[11px] leading-5 text-stone-300">
-          <span className="font-medium text-white">Expected:</span> {step.expected}
+        <p className="text-[11px] leading-5 text-stone-400">
+          <span className="font-medium text-stone-200">Expected:</span> {step.expected}
         </p>
       </div>
     )
@@ -347,76 +350,99 @@ export function DocsVideoDemo({ activeStep, onStepChange }: DocsVideoDemoProps) 
 
   return (
     <section id="qa-video" className="mx-auto max-w-3xl">
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-black">
-        <div className="relative aspect-video bg-stone-900">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(45,212,191,0.12),transparent_40%),linear-gradient(180deg,#111827_0%,#09090b_100%)]" />
+      <div className="overflow-hidden rounded-lg border border-border bg-stone-950 shadow-sm">
+        {/* Window chrome — matches Example answer frame */}
+        <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-red-400" />
+            <span className="h-3 w-3 rounded-full bg-amber-300" />
+            <span className="h-3 w-3 rounded-full bg-emerald-400" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-stone-500">DITA Expert Bot</span>
+            <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-stone-300">
+              Step {activeVideoStep + 1} · {activeVideo.label}
+            </span>
+          </div>
+        </div>
 
-          <div className="absolute inset-0 flex flex-col p-4 pb-12">
-            <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-500/20 text-teal-200">
-                  <Bot className="h-3.5 w-3.5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium text-white">DITA Expert Bot</p>
-                  <p className="text-[10px] text-stone-400">Senior Q&amp;A walkthrough</p>
-                </div>
+        <div className="relative aspect-[16/10] bg-[#0c0c0e]">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.03),transparent_55%)]" />
+
+          <div className="absolute inset-0 flex flex-col p-4 pb-14">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-stone-300">
+                <Bot className="h-3.5 w-3.5" />
               </div>
-              <span className="rounded-md border border-white/10 px-2 py-0.5 text-[10px] font-medium text-stone-300">
-                Step {activeVideoStep + 1} · {activeVideo.label}
-              </span>
+              <div>
+                <p className="text-[11px] font-medium text-stone-200">Senior Q&amp;A walkthrough</p>
+                <p className="text-[10px] text-stone-500">Voice + step sync</p>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden">
-              <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
-                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-400">Prompt</p>
-                <p className="mt-1.5 text-[13px] leading-5 text-white">{demoPrompt}</p>
+              <div className="rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-stone-500">Prompt</p>
+                <p className="mt-1.5 text-[13px] leading-5 text-stone-100">{demoPrompt}</p>
               </div>
 
               <VideoStepPanel stepIndex={activeVideoStep} />
             </div>
 
             {(isVideoPlaying || activeVideo.voiceover) && (
-              <div className="absolute inset-x-4 bottom-12 rounded-md border border-white/10 bg-black/55 px-3 py-2 backdrop-blur-sm">
-                <p className="line-clamp-2 text-[11px] leading-4 text-white/85">{activeVideo.voiceover}</p>
+              <div className="absolute inset-x-4 bottom-14 rounded-md border border-white/[0.08] bg-[#0c0c0e]/90 px-3 py-2 backdrop-blur-sm">
+                <p className="line-clamp-2 text-[11px] leading-4 text-stone-400">{activeVideo.voiceover}</p>
               </div>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center gap-3 border-t border-stone-800 bg-[#1a1a1a] px-3 py-2">
-          <button
-            type="button"
-            onClick={togglePlayback}
-            aria-label={isVideoPlaying ? 'Pause' : 'Play'}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-white/90 transition hover:text-white"
-          >
-            {isVideoPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
-          </button>
-          <span className="shrink-0 text-[12px] tabular-nums text-white/70">
-            {formatTimestamp(elapsedSeconds)}
-          </span>
-          <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-white/15">
-            <div className="h-full rounded-full bg-white/80" style={{ width: `${progressPercent}%` }} />
+          {/* Minimal Cursor-style transport bar */}
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2.5 border-t border-white/[0.06] bg-[#0c0c0e]/95 px-3 py-2 backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={isVideoPlaying ? 'Pause' : 'Play'}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-stone-300 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              {isVideoPlaying ? (
+                <Pause className="h-3.5 w-3.5 fill-current" />
+              ) : (
+                <Play className="h-3.5 w-3.5 fill-current" />
+              )}
+            </button>
+
+            <span className="shrink-0 text-[11px] tabular-nums text-stone-500">
+              {formatTimestamp(elapsedSeconds)}
+            </span>
+
+            <div className="h-[2px] min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+              <div
+                className="h-full rounded-full bg-stone-300 transition-[width] duration-100 ease-linear"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            <span className="shrink-0 text-[11px] tabular-nums text-stone-500">
+              {formatTimestamp(totalDurationSeconds)}
+            </span>
+
+            <button
+              type="button"
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
+              onClick={toggleMute}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-stone-500 transition hover:bg-white/[0.06] hover:text-stone-200"
+            >
+              {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
+
+            <button
+              type="button"
+              aria-label="Fullscreen"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-stone-500 transition hover:bg-white/[0.06] hover:text-stone-200"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <span className="shrink-0 text-[12px] tabular-nums text-white/70">
-            {formatTimestamp(totalDurationSeconds)}
-          </span>
-          <button
-            type="button"
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            onClick={toggleMute}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-white/70 transition hover:text-white"
-          >
-            {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-          </button>
-          <button
-            type="button"
-            aria-label="Fullscreen"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-white/70 transition hover:text-white"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
 
@@ -429,16 +455,16 @@ export function DocsVideoDemo({ activeStep, onStepChange }: DocsVideoDemoProps) 
         source retrieval through senior reasoning to a complete, source-grounded answer with XML and expected results.
       </p>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-6 flex flex-wrap gap-1.5">
         {videoSteps.map((step, index) => (
           <button
             key={step.label}
             type="button"
             onClick={() => jumpToStep(index)}
-            className={`rounded-md border px-2.5 py-1 text-[12px] transition ${
+            className={`rounded-md px-2.5 py-1 text-[12px] transition ${
               index === activeVideoStep
-                ? 'border-stone-900 bg-stone-900 text-white'
-                : 'border-stone-200 text-stone-600 hover:border-stone-300 hover:text-stone-900'
+                ? 'bg-stone-900 text-white'
+                : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'
             }`}
           >
             {step.label}
@@ -470,9 +496,10 @@ export function DocsVideoSidebarItems({
           key={step.label}
           type="button"
           onClick={() => onSelect(index)}
-          className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition ${
-            index === activeStep ? 'bg-stone-100 text-stone-950' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-950'
+          className={`cursor-list-item flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition ${
+            index === activeStep ? 'text-stone-950' : 'text-stone-600 hover:text-stone-950'
           }`}
+          data-selected={index === activeStep ? '' : undefined}
         >
           <span
             className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px] font-medium ${

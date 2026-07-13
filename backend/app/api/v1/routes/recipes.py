@@ -14,6 +14,7 @@ from app.jobs.crud_recipes import (
     increment_recipe_usage,
 )
 from app.services.recipe_catalog_service import get_recipe_catalog
+from app.services.recipe_sample_preview_service import get_recipe_sample_preview
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -70,6 +71,17 @@ def recipe_catalog(
     payload["entries"] = entries
     payload["total_count"] = len(entries)
     return payload
+
+
+@router.get("/catalog/samples/{recipe_id}")
+def recipe_catalog_sample(recipe_id: str, user: UserIdentity = CurrentUser):
+    del user
+    sample = get_recipe_sample_preview(recipe_id)
+    if not sample:
+        raise HTTPException(status_code=404, detail=f"No sample preview available for recipe '{recipe_id}'")
+    xml, summary = sample
+    return {"recipe_id": recipe_id, "full_example_xml": xml, "expected_result": summary}
+
 
 @router.post("/save")
 def save_recipe(
