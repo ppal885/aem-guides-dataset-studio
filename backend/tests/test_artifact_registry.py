@@ -79,6 +79,10 @@ def test_post_jobs_second_identical_config_reuses_zip(client, monkeypatch):
     assert d2["id"] != d1["id"]
     assert d2.get("status") == "completed"
 
+    download = client.get(f"/api/v1/datasets/{d2['id']}/download", headers=_AUTH_HEADERS)
+    assert download.status_code == 200, download.text
+    assert download.headers.get("content-type", "").startswith("application/zip")
+
 
 def test_post_jobs_no_reuse_when_disabled(client, monkeypatch):
     monkeypatch.setenv("ARTIFACT_REUSE_ENABLED", "false")

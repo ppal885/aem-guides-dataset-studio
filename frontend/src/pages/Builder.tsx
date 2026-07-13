@@ -14,7 +14,7 @@ import {
   topicCountCapForRecipe,
   type RecipeLimits,
 } from '@/lib/recipeLimits';
-import { apiUrl, fetchJson } from '@/utils/api';
+import { apiUrl, fetchJson, fetchWithRetry } from '@/utils/api';
 
 type PrimitiveSchemaType = 'int' | 'float' | 'bool' | 'str' | 'list' | 'dict';
 
@@ -395,10 +395,30 @@ export function Builder() {
     async (jobId: string, jobName: string) => {
       if (downloadingJobId === jobId) return;
       setDownloadingJobId(jobId);
+      setError(null);
       try {
-        const response = await fetch(apiUrl(`/api/v1/datasets/${jobId}/download`));
+        const status = await fetchJson<{ status?: string; error_message?: string }>(
+          apiUrl(`/api/v1/jobs/${jobId}`)
+        );
+        if (status.status && status.status !== 'completed') {
+          throw new Error(
+            status.status === 'running' || status.status === 'pending'
+              ? 'Job is still running. Wait for generation to finish before downloading.'
+              : status.error_message || `Job status is ${status.status}.`
+          );
+        }
+
+        const response = await fetchWithRetry(apiUrl(`/api/v1/datasets/${jobId}/download`));
         if (!response.ok) {
-          throw new Error(await response.text().catch(() => 'Download failed'));
+          const errorText = await response.text().catch(() => 'Download failed');
+          let message = errorText;
+          try {
+            const parsed = JSON.parse(errorText) as { detail?: string };
+            if (parsed.detail) message = parsed.detail;
+          } catch {
+            /* keep raw text */
+          }
+          throw new Error(message);
         }
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

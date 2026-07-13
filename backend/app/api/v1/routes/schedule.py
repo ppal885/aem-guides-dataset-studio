@@ -417,10 +417,25 @@ async def create_job(
                 from app.jobs import crud as _crud
                 _s = _SessionLocal()
                 try:
-                    _j = _crud.get_job(_s, alias_id)
-                    if _j:
-                        _j.status = "completed"
-                        _s.commit()
+                    source_job = _crud.get_job(_s, cached.source_job_id)
+                    source_result = source_job.result if source_job and isinstance(source_job.result, dict) else {}
+                    _crud.update_job_status(
+                        _s,
+                        alias_id,
+                        status="completed",
+                        result={
+                            "cache_hit": True,
+                            "reused_from_job_id": cached.source_job_id,
+                            **(source_result or {}),
+                        },
+                    )
+                    alias_job = _crud.get_job(_s, alias_id)
+                    if alias_job and source_job:
+                        alias_job.files_generated = source_job.files_generated
+                        alias_job.total_files_estimated = source_job.total_files_estimated
+                        alias_job.progress_percent = 100
+                        alias_job.current_stage = "Reused completed artifact"
+                    _s.commit()
                 finally:
                     _s.close()
                 return JSONResponse(content={

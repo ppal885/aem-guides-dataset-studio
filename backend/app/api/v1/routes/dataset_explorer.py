@@ -5,6 +5,7 @@ from app.core.structured_logging import get_structured_logger
 from app.db.session import Session, db_session
 from app.jobs import crud
 from app.storage import get_storage
+from app.services.dataset_job_service import resolve_dataset_storage_job_id
 from app.utils.http_headers import content_disposition
 import zipfile
 from io import BytesIO
@@ -12,6 +13,21 @@ from typing import Optional
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 logger = get_structured_logger(__name__)
+
+
+def _dataset_not_found_response(job) -> HTTPException:
+    if job.status in ("pending", "running"):
+        return HTTPException(
+            status_code=409,
+            detail="Job is still running. Wait for generation to complete before downloading.",
+        )
+    if job.status == "failed":
+        message = (job.error_message or "Generation did not complete.").strip()
+        return HTTPException(status_code=404, detail=f"Job failed: {message}")
+    return HTTPException(
+        status_code=404,
+        detail="Dataset not found. Please ensure the job has completed successfully.",
+    )
 
 
 @router.get("/{job_id}/download")
@@ -29,22 +45,20 @@ def download_dataset(
         raise HTTPException(status_code=403, detail="Access denied")
 
     storage = get_storage()
-    storage_path = str(storage.get_job_path(job_id))
+    storage_job_id = resolve_dataset_storage_job_id(job_id, job=job, storage=storage)
+    storage_path = str(storage.get_job_path(storage_job_id or job_id))
     download_name = f"{job.name or job_id}.zip"
     disposition = content_disposition(download_name)
 
-    if not storage.exists(job_id):
+    if not storage_job_id:
         logger.warning_structured(
             "Download requested but dataset not found",
-            extra_fields={"job_id": job_id, "storage_path": storage_path},
+            extra_fields={"job_id": job_id, "storage_path": storage_path, "job_status": job.status},
         )
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset not found. Please ensure the job has completed successfully.",
-        )
+        raise _dataset_not_found_response(job)
 
     try:
-        zip_buffer = storage.get_dataset_zip(job_id)
+        zip_buffer = storage.get_dataset_zip(storage_job_id)
 
         if zip_buffer:
             zip_buffer.seek(0)
@@ -91,7 +105,7 @@ def download_dataset(
             extra_fields={"job_id": job_id, "filename": download_name},
         )
 
-        zip_generator = storage.get_dataset_zip_stream(job_id)
+        zip_generator = storage.get_dataset_zip_stream(storage_job_id)
         if not zip_generator:
             raise HTTPException(status_code=404, detail="Dataset zip file could not be created")
 
@@ -131,13 +145,11 @@ def get_dataset_structure(
     
     # Get dataset file
     storage = get_storage()
-    
-    # Check if dataset exists in storage
-    if not storage.exists(job_id):
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    
-    # Use optimized filesystem-based structure loading
-    structure = storage.get_dataset_structure(job_id)
+    storage_job_id = resolve_dataset_storage_job_id(job_id, job=job, storage=storage)
+    if not storage_job_id:
+        raise _dataset_not_found_response(job)
+
+    structure = storage.get_dataset_structure(storage_job_id)
     if not structure:
         raise HTTPException(status_code=404, detail="Dataset structure could not be loaded")
     
@@ -165,16 +177,19 @@ def get_dataset_file(
     
     # Get dataset file
     storage = get_storage()
-    
-    if not storage.exists(job_id):
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    
-    zip_bytes = storage.get_dataset_zip(job_id)
-    if not zip_bytes:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    
-    # Extract file
-    file_content = _extract_file(zip_bytes.getvalue() if hasattr(zip_bytes, 'getvalue') else zip_bytes, file_path)
+    storage_job_id = resolve_dataset_storage_job_id(job_id, job=job, storage=storage)
+    if not storage_job_id:
+        raise _dataset_not_found_response(job)
+
+    file_content = storage.get_file(storage_job_id, file_path)
+    if file_content is None:
+        zip_bytes = storage.get_dataset_zip(storage_job_id)
+        if not zip_bytes:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        file_content = _extract_file(
+            zip_bytes.getvalue() if hasattr(zip_bytes, "getvalue") else zip_bytes,
+            file_path,
+        )
     if file_content is None:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -214,12 +229,11 @@ def search_dataset(
     
     # Get dataset file
     storage = get_storage()
-    
-    if not storage.exists(job_id):
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    
-    # Search files directly from filesystem
-    results = _search_files_filesystem(storage, job_id, query, file_type)
+    storage_job_id = resolve_dataset_storage_job_id(job_id, job=job, storage=storage)
+    if not storage_job_id:
+        raise _dataset_not_found_response(job)
+
+    results = _search_files_filesystem(storage, storage_job_id, query, file_type)
     
     return {
         "job_id": job_id,

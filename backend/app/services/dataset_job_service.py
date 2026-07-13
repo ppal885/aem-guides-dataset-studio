@@ -20,7 +20,7 @@ _MISSING = object()
 
 
 # Re-export so callers (and tests) can patch via dataset_job_service module
-from app.services.artifact_registry_service import is_artifact_reuse_enabled  # noqa: E402
+from app.services.artifact_registry_service import is_artifact_reuse_enabled, lookup_completed_artifact  # noqa: E402
 
 
 class ConcurrentJobLimitError(RuntimeError):
@@ -120,6 +120,50 @@ def get_dataset_job_summary(job_id: str) -> dict[str, Any] | None:
         }
     finally:
         session.close()
+
+
+def resolve_dataset_storage_job_id(
+    job_id: str,
+    *,
+    job: Any | None = None,
+    storage: Any | None = None,
+) -> str | None:
+    """
+    Return the storage directory key that holds dataset files for a job.
+
+    Cache-hit alias jobs are marked completed in the DB but reuse the canonical
+    job's on-disk bundle via ``reused_from_job_id`` in ``job.result``.
+    """
+    storage = storage or get_storage()
+    primary = str(job_id).strip()
+    if not primary:
+        return None
+    if storage.exists(primary):
+        return primary
+
+    session = SessionLocal()
+    try:
+        row = job if job is not None else crud.get_job(session, primary)
+        if not row:
+            return None
+        result = row.result if isinstance(row.result, dict) else {}
+        reused = str(result.get("reused_from_job_id") or "").strip()
+        if reused and storage.exists(reused):
+            return reused
+
+        # Back-compat for cache-hit alias jobs created before reused_from_job_id was stored.
+        if is_artifact_reuse_enabled() and isinstance(row.config, dict):
+            from app.services.artifact_fingerprint_service import fingerprint_dataset_config_dict
+
+            artifact_key = fingerprint_dataset_config_dict(row.config)
+            cached = lookup_completed_artifact("default", artifact_key)
+            if cached:
+                source_id = str(cached.source_job_id or "").strip()
+                if source_id and source_id != primary and storage.exists(source_id):
+                    return source_id
+    finally:
+        session.close()
+    return None
 
 
 def _estimate_total_topics(dataset_config: DatasetConfig) -> int:
