@@ -23,6 +23,8 @@ _ELEMENT_PHRASE_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bchoice\s+table\b", re.IGNORECASE), "choicetable"),
     (re.compile(r"\bgloss\s+entry\b", re.IGNORECASE), "glossentry"),
     (re.compile(r"\btask\s+body\b", re.IGNORECASE), "taskbody"),
+    (re.compile(r"\bdraft\s+comments?\b", re.IGNORECASE), "draft-comment"),
+    (re.compile(r"\brequired\s+cleanup\b", re.IGNORECASE), "required-cleanup"),
 )
 _CONTEXTUAL_ATTRIBUTE_NAMES = frozenset(
     {
