@@ -212,6 +212,51 @@ def _registry_overrides() -> dict[str, dict[str, Any]]:
                 "<map>\n  <title>Operations Guide</title>\n  <topichead navtitle=\"Cluster operations\">\n    <topicref href=\"start-cluster.dita\"/>\n    <topicref href=\"stop-cluster.dita\"/>\n  </topichead>\n</map>",
             ],
         },
+        "indextermref": {
+            "name": "indextermref",
+            "description": (
+                "<indextermref> is an empty (content-free) element used to add a page-number reference to an "
+                "existing index entry elsewhere in the document, without generating a new, separate index entry "
+                "at the point of reference. It targets an index term via @keyref rather than duplicating the term.\n\n"
+                "Status varies by DITA version and is not fully consistent: the DITA 1.0 language specification "
+                "documents this purpose explicitly but simultaneously states @keyref on <indextermref> is 'not "
+                "currently implemented' and the element is 'not currently supported in DITA processing', flagging "
+                "possible future deprecation. Later element-reference pages describe it with a reserved/placeholder "
+                "status rather than a fully worked-out content model. Separately, the general DITA 1.2 key-reference "
+                "processing architecture (which governs @keyref resolution broadly) lists <indextermref> alongside "
+                "<indexterm> as one of the elements without @href, whose matching content — when it does carry a "
+                "@keyref — is taken from <keyword>/<term> inside <keywords> inside the referenced key definition's "
+                "<topicmeta>.\n\n"
+                "Practical guidance: <indextermref> is rarely used in practice; most authors use <indexterm> "
+                "directly for index entries. Actual support in DITA-OT or other specific processors was not "
+                "verified in this session — treat runtime/processing behavior as unconfirmed rather than assumed."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.0/langspec/indextermref.html",
+            "parent_element": "",
+            "allowed_children": [],
+            "supported_attributes": ["keyref"],
+            "attribute_usage": {
+                "keyref": (
+                    "Identifies the index term/key that should receive the page-number reference. "
+                    "Documented in the DITA 1.0 spec as 'not currently implemented' at that time; "
+                    "current processor support is unverified."
+                ),
+            },
+            "usage_contexts": [
+                "Use <indextermref> only when you specifically want to add a page number to an existing index "
+                "entry without creating a second, separate index entry at the reference point.",
+                "For ordinary indexing, use <indexterm> directly rather than <indextermref>.",
+            ],
+            "common_mistakes": [
+                "Expecting <indextermref> to create a new visible index entry — it does not; it only contributes "
+                "a page reference to an entry defined elsewhere.",
+                "Assuming @keyref on <indextermref> is universally supported by all DITA processors — support has "
+                "historically been inconsistent and should be verified against the specific toolchain in use.",
+            ],
+            "correct_examples": [
+                "<p>Use <indextermref keyref=\"yellow\"/> lemon zest to add a tangy citrus flavor to the cake icing.</p>",
+            ],
+        },
         "topicgroup": {
             "name": "topicgroup",
             "description": (
