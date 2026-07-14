@@ -6026,27 +6026,41 @@ _FOLLOW_UP_ANAPHORA = re.compile(
 )
 
 
+_NAMED_SUBJECT_QUESTION_PATTERN = re.compile(
+    r"\bwhat\s+(?:is|are|does)\b.{0,60}?\b(?:attribute|element|construct)\b|"
+    r"\b(?:explain|define|describe)\s+(?:the\s+)?[@\w.:-]+\s*(?:attribute|element)?\b",
+    re.IGNORECASE,
+)
+
+
 def _is_follow_up_question(text: str) -> bool:
     """Return True if the question is likely a follow-up referencing prior context."""
     t = (text or "").strip()
     if not t:
         return False
+    # A question naming its own subject by grammatical shape ("What is @remap attribute?",
+    # "Explain the conref attribute") is self-contained even when short and even when the
+    # named term isn't in our DITA catalog — expanding it with a prior unrelated question
+    # (e.g. a DITA-OT build-error follow-up) pollutes retrieval with the wrong topic.
+    if _NAMED_SUBJECT_QUESTION_PATTERN.search(t):
+        return False
+    # "what about X?" is an idiom meaning "does the same apply to X [as what we just
+    # discussed]?" — inherently a follow-up even when X is a known DITA construct, unlike
+    # a genuine definition request ("what is X?").
+    _is_what_about_idiom = bool(re.match(r"^\s*what\s+about\b", t, re.IGNORECASE))
+    if not _is_what_about_idiom:
+        try:
+            from app.services.dita_query_interpreter import extract_attribute_names, extract_element_names
+
+            if extract_attribute_names(t) or extract_element_names(t):
+                return False
+        except Exception:
+            pass
     word_count = len(t.split())
     if word_count <= 5:
         return True   # "what about conref?" "give me an example"
     if not _FOLLOW_UP_ANAPHORA.search(t):
         return False
-    # A longer question can contain a pronoun ("...will it appear in published output?")
-    # whose antecedent is inside the same sentence, not a prior turn. If the question
-    # already names its own concrete DITA construct, it is self-contained — expanding it
-    # with the previous message pollutes retrieval (e.g. dragging in "create a new topic").
-    try:
-        from app.services.dita_query_interpreter import extract_attribute_names, extract_element_names
-
-        if extract_attribute_names(t) or extract_element_names(t):
-            return False
-    except Exception:
-        pass
     return True
 
 
