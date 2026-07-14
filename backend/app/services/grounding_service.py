@@ -34,8 +34,22 @@ _PROMPT_SHAPE_TERMS = {
     "please",
 }
 
-_NEGATION_TERMS = {"not", "never", "without", "unsupported", "disabled", "disable", "cannot", "can't"}
-_AFFIRMATION_TERMS = {"supported", "enabled", "enable", "can", "works", "allowed"}
+# Phrase-level (not bare-word) support/non-support signals. Bare words like "not", "can",
+# "without" appear in nearly all natural technical writing (e.g. an honestly-hedged
+# description of one DITA element's historical implementation status vs. a plain
+# affirmative description of a *different* element), so single-word matching produced
+# false-positive "conflict" verdicts that discarded good comparison answers (e.g.
+# "indexterm vs indextermref" — one element's real caveat about @keyref support was
+# misread as contradicting an unrelated statement about the other element).
+_NEGATION_PHRASES = (
+    "not supported", "not currently supported", "no longer supported", "not available",
+    "does not support", "doesn't support", "is not enabled", "not enabled by default",
+    "cannot be used", "can't be used", "not allowed", "is unsupported", "unsupported by",
+)
+_AFFIRMATION_PHRASES = (
+    "is supported", "fully supported", "is enabled by default", "can be used",
+    "is allowed", "works as expected", "is available",
+)
 _INTERNAL_WORKSPACE_REF_RE = re.compile(
     r"^(?:[a-z]:[\\/]|/|\.{1,2}[\\/]|file://)|"
     r"(?:^|[\\/])(?:frontend|backend|src|app|components|\.claude|\.git)(?:[\\/]|$)|"
@@ -538,8 +552,17 @@ def _candidate_section(metadata: dict[str, Any]) -> str:
     return ""
 
 
+# Short negation words are excluded by the 4+ char filter below, but dropping them makes
+# two directly-contradictory sentences ("X is supported" vs "X is not supported") produce
+# IDENTICAL token signatures (Jaccard=1.0), so near-dup dedup silently discarded one of them
+# before conflict detection ever saw both — masking exactly the support/non-support
+# contradictions this system is meant to catch. Always keep these regardless of length.
+_SIGNATURE_NEGATION_TOKENS = frozenset({"not", "no", "non", "never"})
+
+
 def _chunk_token_signature(text: str) -> frozenset[str]:
-    return frozenset(token for token in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(token) >= 4)
+    tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return frozenset(token for token in tokens if len(token) >= 4 or token in _SIGNATURE_NEGATION_TOKENS)
 
 
 def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
@@ -558,6 +581,10 @@ def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
 _NEAR_DUP_THRESHOLD = float(os.getenv("GROUNDING_NEAR_DUP_THRESHOLD", "0.78"))
 
 
+def _has_negation_signature(signature: frozenset[str]) -> bool:
+    return bool(signature & _SIGNATURE_NEGATION_TOKENS)
+
+
 def _dedupe_chunks(chunks: Iterable[EvidenceChunk]) -> list[EvidenceChunk]:
     """Drop exact and near-duplicate chunks. Assumes ``chunks`` is sorted best-first, so
     the highest-ranked instance of duplicated content is the one kept."""
@@ -569,7 +596,17 @@ def _dedupe_chunks(chunks: Iterable[EvidenceChunk]) -> list[EvidenceChunk]:
         if key in seen_exact:
             continue
         signature = _chunk_token_signature(chunk.content)
-        if any(_jaccard(signature, existing) >= _NEAR_DUP_THRESHOLD for existing in signatures):
+        chunk_has_negation = _has_negation_signature(signature)
+        # High token overlap alone isn't enough — "X is supported" and "X is not supported"
+        # share nearly every content word, but one negates the other. Never treat chunks as
+        # duplicates when exactly one of the pair carries a negation word the other lacks;
+        # that's a potential contradiction, not restated evidence.
+        is_duplicate = any(
+            _jaccard(signature, existing) >= _NEAR_DUP_THRESHOLD
+            and chunk_has_negation == _has_negation_signature(existing)
+            for existing in signatures
+        )
+        if is_duplicate:
             continue
         seen_exact.add(key)
         signatures.append(signature)
@@ -619,8 +656,8 @@ def _detect_conflicts(query: str, chunks: list[EvidenceChunk]) -> tuple[bool, st
     aff_only_chunks: set[int] = set()
     for idx, chunk in enumerate(chunks[:3]):
         text = chunk.content.lower()
-        has_neg = any(term in text for term in _NEGATION_TERMS)
-        has_aff = any(term in text for term in _AFFIRMATION_TERMS)
+        has_neg = any(phrase in text for phrase in _NEGATION_PHRASES)
+        has_aff = any(phrase in text for phrase in _AFFIRMATION_PHRASES)
         if has_neg:
             neg_only_chunks.add(idx)
         elif has_aff:
