@@ -42,6 +42,13 @@ _STRICT_TERM_STOPWORDS = {
     "same", "it", "its", "them", "they", "we", "our", "ours", "us", "you", "your", "yours",
     "above", "previous", "mentioned", "regarding", "concerning", "same", "one", "ones",
     "thing", "things", "topic", "feature", "question", "same", "above",
+    # Generic domain nouns that appear across many unrelated tickets on their own (e.g. any
+    # review/annotation ticket contains "comment(s)"), so standalone they produce false
+    # positives (a "draft comments not rendering" query matching an unrelated "review comments
+    # not syncing" ticket). Compound phrases like "draft comment"/"required-cleanup" are still
+    # captured via the full cleaned phrase and compact concatenation, and more distinctive
+    # co-occurring tokens (e.g. "draft", "rendering") remain as terms.
+    "comment", "comments",
 }
 
 _TOPIC_ALIASES: dict[str, list[str]] = {
