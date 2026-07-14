@@ -5621,5 +5621,13 @@
       "subcategory": "attribute_group",
       "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/attributes/calsTableAttributes.html"
     }
+  },
+  {
+    "element_name": "remap",
+    "content_type": "attribute",
+    "text_content": "@remap is an attribute on <required-cleanup> that indicates the element the wrapped content was mapped from, giving reviewers an idea of what the new (correct) element should eventually be.\n\nUsage: it is used during migration when content from a non-DITA source (or legacy DITA) cannot be automatically converted into the correct DITA element, so it is wrapped in <required-cleanup> with @remap recording the origin so an author can later restructure it properly.\n\nExample — migrating from an HTML <center> tag with no clean DITA equivalent:\n```xml\n<section>\n  <title>Some section title</title>\n  <required-cleanup remap=\"center\">Some original content migrated\n  from a &lt;center&gt; tag.</required-cleanup>\n</section>\n```\n\nHere remap=\"center\" records that the content originally lived inside an HTML <center> element, so the author knows what it needs to be re-tagged as (e.g. <p> with an @outputclass, or a proper DITA construct) once reviewed.\n\nCommon mistake: confusing @remap with @conref or @keyref — it does not resolve or reference anything; it is purely a human-readable provenance hint for cleanup, with no processing behavior.",
+    "parent_element": null,
+    "children_elements": null,
+    "attributes": "{\"values\": \"any CDATA (typically the source element/tag name)\", \"default\": \"none\", \"used_on\": \"required-cleanup\"}"
   }
 ]
