@@ -302,6 +302,130 @@ def _registry_overrides() -> dict[str, dict[str, Any]]:
                 "<bookmap>\n  <backmatter>\n    <booklists>\n      <indexlist/>\n    </booklists>\n  </backmatter>\n</bookmap>",
             ],
         },
+        "toc": {
+            "name": "toc",
+            "description": (
+                "<toc> is an empty marker element inside <booklists> telling the processor the author wants "
+                "a table of contents generated at this location. If @href is omitted, the processor generates "
+                "the TOC automatically from the bookmap's topicref structure. If @href references a topic or "
+                "map, that becomes a manually-authored TOC substitute instead of auto-generation — the same "
+                "auto-vs-manual pattern used by every other <booklists> child (<indexlist>, <tablelist>, etc.)."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/toc.html",
+            "parent_element": "booklists",
+            "allowed_children": [],
+            "supported_attributes": ["navtitle", "href"],
+            "attribute_usage": {
+                "href": (
+                    "Points to a topic/map containing a manually-authored TOC. Omit it (use <toc/>) for "
+                    "processor auto-generation from the bookmap's topicref structure — the normal usage."
+                ),
+                "navtitle": "Title for the generated TOC as it appears in navigation.",
+            },
+            "usage_contexts": [
+                "Place <toc/> inside <booklists> (commonly in <frontmatter>) for an auto-generated table of "
+                "contents in Native PDF / DITA-OT PDF bookmap output.",
+            ],
+            "common_mistakes": [
+                "Confusing this bookmap <toc> marker element with the map-level @toc attribute (which "
+                "controls whether an individual topicref appears in the generated TOC) — they are unrelated.",
+            ],
+            "correct_examples": [
+                "<bookmap>\n  <frontmatter>\n    <booklists>\n      <toc/>\n    </booklists>\n  </frontmatter>\n</bookmap>",
+            ],
+        },
+        "tablelist": {
+            "name": "tablelist",
+            "description": (
+                "<tablelist> is an empty marker element inside <booklists> telling the processor the author "
+                "wants a list of tables generated at this location, compiled from <table>/<simpletable> "
+                "titles across the bookmap's referenced topics. Same auto-vs-manual @href pattern as its "
+                "<booklists> siblings (<toc>, <indexlist>, <figurelist>, etc.)."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/tablelist.html",
+            "parent_element": "booklists",
+            "allowed_children": [],
+            "supported_attributes": ["navtitle", "href"],
+            "attribute_usage": {
+                "href": "Points to a manually-authored list-of-tables topic; omit for auto-generation.",
+                "navtitle": "Title for the generated list as it appears in navigation.",
+            },
+            "usage_contexts": [
+                "Place <tablelist/> inside <booklists> (commonly in <backmatter>) to generate a list of "
+                "tables in Native PDF / DITA-OT PDF bookmap output.",
+            ],
+            "common_mistakes": [
+                "Expecting <tablelist> to produce entries for tables that have no <title> — only titled "
+                "tables/simpletables typically appear in the generated listing.",
+            ],
+            "correct_examples": [
+                "<bookmap>\n  <backmatter>\n    <booklists>\n      <tablelist/>\n    </booklists>\n  </backmatter>\n</bookmap>",
+            ],
+        },
+        "glossarylist": {
+            "name": "glossarylist",
+            "description": (
+                "<glossarylist> is an empty marker element inside <booklists> telling the processor the "
+                "author wants a list of glossary entries generated at this location, compiled from "
+                "<glossentry>/<glossgroup> content referenced by the bookmap. Same auto-vs-manual @href "
+                "pattern as its <booklists> siblings."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/glossarylist.html",
+            "parent_element": "booklists",
+            "allowed_children": [],
+            "supported_attributes": ["navtitle", "href"],
+            "attribute_usage": {
+                "href": "Points to a manually-authored glossary list topic; omit for auto-generation.",
+                "navtitle": "Title for the generated glossary list as it appears in navigation.",
+            },
+            "usage_contexts": [
+                "Place <glossarylist/> inside <booklists> (commonly in <backmatter>) to generate a glossary "
+                "list in Native PDF / DITA-OT PDF bookmap output, alongside referenced <glossentry> topics.",
+            ],
+            "common_mistakes": [
+                "Adding <glossarylist> without actually referencing any <glossentry>/<glossgroup> topics in "
+                "the bookmap — the generated list will be empty.",
+            ],
+            "correct_examples": [
+                "<bookmap>\n  <backmatter>\n    <booklists>\n      <glossarylist/>\n    </booklists>\n  </backmatter>\n</bookmap>",
+            ],
+        },
+        "trademarklist": {
+            "name": "trademarklist",
+            "description": (
+                "<trademarklist> is an empty marker element inside <booklists> telling the processor the "
+                "author wants a list of trademarks generated at this location. Unlike most <booklists> "
+                "siblings, auto-generation from <tm> markup is less commonly implemented — @href pointing "
+                "to a manually-authored trademark listing is the more typical/reliable usage."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/trademarklist.html",
+            "parent_element": "booklists",
+            "allowed_children": [],
+            "supported_attributes": ["navtitle", "href"],
+            "attribute_usage": {
+                "href": (
+                    "Points to a manually-authored list-of-trademarks topic. If specified, an external "
+                    "processor may generate the list at this location; auto-generation without @href is "
+                    "less reliably supported than for siblings like <toc>/<indexlist> — verify against the "
+                    "actual product/processor rather than assuming parity."
+                ),
+                "navtitle": "Title for the generated trademark list as it appears in navigation.",
+            },
+            "usage_contexts": [
+                "Place <trademarklist href=\"listoftrademarks.dita\"/> inside <booklists> (commonly in "
+                "<backmatter>) alongside <indexlist/> for a manually-authored trademark list — the spec's "
+                "own worked example pairs these two directly.",
+            ],
+            "common_mistakes": [
+                "Assuming <trademarklist/> (no @href) auto-generates reliably the same way <toc/> or "
+                "<indexlist/> do — trademark-list auto-generation support is less consistent; validate "
+                "actual product behavior against the applicable DITA specification and supported AEM "
+                "Guides implementation.",
+            ],
+            "correct_examples": [
+                "<bookmap>\n  <backmatter>\n    <booklists>\n      <trademarklist href=\"listoftrademarks.dita\"/>\n      <indexlist/>\n    </booklists>\n  </backmatter>\n</bookmap>",
+            ],
+        },
         "topicgroup": {
             "name": "topicgroup",
             "description": (
