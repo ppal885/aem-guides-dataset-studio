@@ -257,6 +257,51 @@ def _registry_overrides() -> dict[str, dict[str, Any]]:
                 "<p>Use <indextermref keyref=\"yellow\"/> lemon zest to add a tangy citrus flavor to the cake icing.</p>",
             ],
         },
+        "indexlist": {
+            "name": "indexlist",
+            "description": (
+                "<indexlist> is an empty marker element placed inside <booklists> (which itself sits in "
+                "<frontmatter> or <backmatter> of a <bookmap>) telling the publishing processor to generate "
+                "a back-of-book index at this location, built from the <indexterm> entries collected across "
+                "all topics referenced by the bookmap.\n\n"
+                "It is one of several sibling marker elements inside <booklists> — <toc>, <indexlist>, "
+                "<figurelist>, <tablelist>, <glossarylist>, <bibliolist>, <booklist>, <trademarklist>, "
+                "<abbrevlist> — each triggering generation of a different auto-compiled list/index.\n\n"
+                "If @href is omitted, the processor generates the index content automatically (this is the "
+                "normal usage — <indexlist/> as a self-closing empty element). @href instead points to a "
+                "manually-authored listing topic, overriding auto-generation."
+            ),
+            "source_url": "https://docs.oasis-open.org/dita/v1.2/os/spec/langref/indexlist.html",
+            "parent_element": "booklists",
+            "allowed_children": [],
+            "supported_attributes": ["navtitle", "href"],
+            "attribute_usage": {
+                "navtitle": (
+                    "Title for the generated index as it appears in navigation/TOC. DITA 1.2+ prefers "
+                    "specifying this via <navtitle> inside <topicmeta> instead of the @navtitle attribute."
+                ),
+                "href": (
+                    "Points to a manually-authored index listing topic. If omitted, the processor "
+                    "auto-generates the index from <indexterm> entries collected across the bookmap "
+                    "(the normal, most common usage)."
+                ),
+            },
+            "usage_contexts": [
+                "Place <indexlist/> inside <booklists> under <backmatter> to generate a traditional "
+                "back-of-book index in Native PDF / DITA-OT PDF bookmap output.",
+                "Leave @href unset for auto-generation from <indexterm> entries; only set @href when "
+                "substituting a manually-authored index listing.",
+            ],
+            "common_mistakes": [
+                "Expecting <indexlist> alone (without any <indexterm> entries in the referenced topics) "
+                "to produce a non-empty index — it only compiles what indexterm entries actually exist.",
+                "Placing <indexlist> directly under <backmatter> instead of inside <booklists> — it is "
+                "only a valid child of <booklists>, not of <frontmatter>/<backmatter> directly.",
+            ],
+            "correct_examples": [
+                "<bookmap>\n  <backmatter>\n    <booklists>\n      <indexlist/>\n    </booklists>\n  </backmatter>\n</bookmap>",
+            ],
+        },
         "topicgroup": {
             "name": "topicgroup",
             "description": (
