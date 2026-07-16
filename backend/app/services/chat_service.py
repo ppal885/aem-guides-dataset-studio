@@ -4616,26 +4616,62 @@ def _should_enrich_grounded_answer_with_llm(
     return False
 
 
+_PROCESSING_BEHAVIOR_ANSWER_KINDS = frozenset(
+    {
+        "dita_element",
+        "dita_attribute",
+        "dita_map_construct",
+        "dita_content_model",
+        "dita_placement",
+    }
+)
+
+
+def _processing_behavior_hint(facts: NormalizedGroundedFactSet | None) -> str:
+    """Require every element/attribute answer to explain how the processor actually
+    handles the construct at publish time (preprocessing-resolved vs. carried through
+    literally, content-inclusion vs. cosmetic, Native PDF vs. DITA-OT parity) -- not just
+    what values/children are valid. Mirrors the same requirement added to the
+    aem-guides-test-scenario-generator skill's Attribute Coverage section."""
+    if facts is None or facts.answer_kind not in _PROCESSING_BEHAVIOR_ANSWER_KINDS:
+        return ""
+    return (
+        "Include a short '## Processing behavior' section explaining how DITA-OT / Native PDF "
+        "actually handles this construct at publish time -- e.g. is it resolved at preprocessing "
+        "(like @conref/@keyref) or carried through literally to output (like @outputclass); does it "
+        "affect content inclusion/exclusion, navigation/linking, or is it purely cosmetic; and note "
+        "explicitly if Native PDF and DITA-OT are not known to process it identically. If the "
+        "grounded evidence doesn't establish this, say the processing behavior is unverified rather "
+        "than guessing."
+    )
+
+
 def _grounded_answer_shape_hint(
     question: str,
     facts: NormalizedGroundedFactSet | None,
 ) -> str:
     q = (question or "").strip()
+    processing_hint = _processing_behavior_hint(facts)
+
     if facts is None:
         # Even without tool facts, inject shape guidance based on question form
         return _question_shape_hint(q)
 
+    base_hint = ""
     if facts.answer_kind == "dita_element_family_overview":
-        return (
+        base_hint = (
             "Answer as an overview of the main DITA table types and when to use each one. "
             "Do not force a comparison table unless the user explicitly asked to compare."
         )
-    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and not _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
-        return (
+    elif facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"} and not _EXPLICIT_COMPARISON_REQUEST_PATTERN.search(q):
+        base_hint = (
             "The user did not explicitly ask for a comparison table. Prefer a natural overview that explains each item "
             "and when to use it, using a comparison table only if it genuinely improves clarity."
         )
-    return _question_shape_hint(q)
+    else:
+        base_hint = _question_shape_hint(q)
+
+    return "\n\n".join(part for part in [base_hint, processing_hint] if part)
 
 
 def _question_shape_hint(question: str) -> str:
