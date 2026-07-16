@@ -2809,6 +2809,200 @@ def show_rag_index_status() -> str:
     return "\n".join(lines)
 
 
+# =============================================================================
+# SECTION — DITA EXPERT: GROUNDED Q&A, CONSTRUCT LOOKUP, DITA-OT/JIRA BUG SEARCH
+# =============================================================================
+# These tools expose the DITA Expert chatbot's own grounded-answer pipeline and
+# the aem-guides-test-scenario-generator skill's core facts/bug-lookup so team
+# members can use them directly from any MCP-enabled Claude client, not only
+# through the DITA Expert web UI or a Claude Code session in this repo.
+
+@mcp.tool()
+async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
+    """
+    Ask the DITA Expert chatbot's own grounded-answer pipeline a question about a
+    DITA element, attribute, DITA-OT behavior, or AEM Guides feature. Answers are
+    grounded in this project's DITA spec registry / attribute catalog (never
+    invented), and for element/attribute questions automatically include a
+    "Processing behavior" section explaining how DITA-OT/Native PDF actually
+    handles the construct at publish time.
+
+    Example: ask_dita_expert("What does @cascade do?")
+    Example: ask_dita_expert("What is tablelist used for?")
+    """
+    try:
+        from app.services import chat_service as cs
+    except Exception as e:
+        return f"Error loading chat_service: {e}"
+
+    try:
+        session_id = cs.create_session()
+    except Exception as e:
+        return f"Error creating chat session: {e}"
+
+    try:
+        parts: list[str] = []
+        async for event in cs.chat_turn(session_id, question, tenant_id=tenant_id, human_prompts=True):
+            if isinstance(event, dict) and event.get("type") == "chunk":
+                parts.append(str(event.get("content") or ""))
+        answer = "".join(parts).strip()
+        return answer or "No answer was returned for this question."
+    except Exception as e:
+        return f"Error generating answer: {e}"
+    finally:
+        try:
+            cs.delete_session(session_id)
+        except Exception:
+            pass
+
+
+@mcp.tool()
+def lookup_dita_construct(tag: str) -> str:
+    """
+    Look up grounded facts for a DITA element or attribute name (e.g. "indexterm",
+    "conkeyref", "@cascade" -- the leading @ is optional). Returns real spec-grounded
+    facts (description, parent/children, supported attributes, common mistakes,
+    valid values) from this project's DITA spec registry and attribute catalog --
+    never invents facts for an unrecognized tag.
+
+    Use this to ground a test-scenario document or answer before writing it, per
+    the aem-guides-test-scenario-generator skill (see claude-skills/
+    aem-guides-test-scenario-generator/SKILL.md for the full scenario-generation
+    workflow this tool is designed to feed).
+    """
+    clean_tag = (tag or "").strip().lstrip("@").strip("<>/")
+    if not clean_tag:
+        return "Provide a DITA element or attribute name to look up."
+
+    try:
+        from app.services.dita_spec_registry_service import get_element_spec
+        from app.services.dita_attribute_catalog import get_attribute_spec
+    except Exception as e:
+        return f"Error loading DITA registries: {e}"
+
+    element_spec = None
+    attr_spec = None
+    try:
+        element_spec = get_element_spec(clean_tag)
+    except Exception:
+        pass
+    try:
+        attr_spec = get_attribute_spec(clean_tag)
+    except Exception:
+        pass
+
+    if element_spec is None and attr_spec is None:
+        return (
+            f"`{clean_tag}` is not recognized as a known DITA element or attribute in "
+            "this project's registry (checked both dita_spec_registry_service and "
+            "dita_attribute_catalog). Confirm the exact tag name, or note explicitly "
+            "that any answer about it would be unverified/ungrounded rather than "
+            "presenting it as a confirmed DITA construct."
+        )
+
+    sections: list[str] = [f"# `{clean_tag}`"]
+
+    if element_spec is not None:
+        sections.append("\n## As an element\n")
+        sections.append(element_spec.description or "(no description in registry)")
+        if element_spec.parent_element:
+            sections.append(f"\n**Parent element:** `{element_spec.parent_element}`")
+        if element_spec.allowed_children:
+            sections.append(f"\n**Allowed children:** {', '.join(element_spec.allowed_children[:12])}")
+        if element_spec.allowed_parents:
+            sections.append(f"\n**Allowed parents:** {', '.join(element_spec.allowed_parents[:12])}")
+        if element_spec.supported_attributes:
+            sections.append(f"\n**Supported attributes:** {', '.join(element_spec.supported_attributes[:12])}")
+        if element_spec.common_mistakes:
+            sections.append("\n**Common mistakes:**")
+            for m in element_spec.common_mistakes[:5]:
+                sections.append(f"- {m}")
+        if element_spec.correct_examples:
+            sections.append(f"\n**Example:**\n```xml\n{element_spec.correct_examples[0]}\n```")
+
+    if attr_spec is not None:
+        sections.append("\n## As an attribute\n")
+        sections.append(attr_spec.text_content or "(no description in registry)")
+        if attr_spec.all_valid_values:
+            sections.append(f"\n**Valid values:** {', '.join(attr_spec.all_valid_values[:12])}")
+        if attr_spec.supported_elements:
+            sections.append(f"\n**Supported elements:** {', '.join(attr_spec.supported_elements[:12])}")
+        if attr_spec.combination_attributes:
+            sections.append(f"\n**Combination attributes:** {', '.join(attr_spec.combination_attributes[:8])}")
+        if attr_spec.common_mistakes:
+            sections.append("\n**Common mistakes:**")
+            for m in attr_spec.common_mistakes[:5]:
+                sections.append(f"- {m}")
+        if attr_spec.correct_examples:
+            sections.append(f"\n**Example:**\n```xml\n{attr_spec.correct_examples[0]}\n```")
+
+    return "\n".join(sections)
+
+
+@mcp.tool()
+def find_dita_ot_and_jira_issues(tag: str, tenant_id: str = "kone", max_results: int = 5) -> str:
+    """
+    Search for known DITA-OT GitHub issues and AEM Guides Jira issues related to a
+    specific DITA element or attribute (e.g. "indexterm", "conkeyref"). Reports
+    genuinely found, cited issues (with URLs/keys) or an explicit "none found" --
+    never fabricates a plausible-sounding bug. A bare tag name is wrapped into a
+    short sentence before the DITA-OT GitHub search, since that search gates on
+    "is this about DITA-OT" and a bare tag name alone may not pass that gate.
+    """
+    clean_tag = (tag or "").strip().lstrip("@").strip("<>/")
+    if not clean_tag:
+        return "Provide a DITA element or attribute name to search for."
+
+    lines: list[str] = [f"# Known issues for `{clean_tag}`"]
+
+    try:
+        from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
+        github_issues = retrieve_dita_ot_github_for_query(
+            f"DITA-OT known issues with {clean_tag}", k=max_results
+        )
+    except Exception as e:
+        github_issues = None
+        github_error = str(e)
+
+    lines.append("\n## DITA-OT GitHub\n")
+    if github_issues is None:
+        lines.append(f"(lookup failed: {github_error})")
+    elif not github_issues:
+        lines.append(f"No known DITA-OT GitHub issues found for `{clean_tag}`.")
+    else:
+        for issue in github_issues[:max_results]:
+            title = issue.get("title") or "(untitled)"
+            url = issue.get("url") or ""
+            num = issue.get("issue_number")
+            prefix = f"#{num} — " if num else ""
+            lines.append(f"- {prefix}[{title}]({url})")
+
+    try:
+        from app.services.jira_chat_search_service import search_related_jira_issues
+        jira_result = search_related_jira_issues(
+            f"known issue with {clean_tag}", tenant_id=tenant_id, max_results=max_results
+        )
+    except Exception as e:
+        jira_result = None
+        jira_error = str(e)
+
+    lines.append("\n## AEM Guides Jira\n")
+    if jira_result is None:
+        lines.append(f"(lookup failed: {jira_error})")
+    else:
+        issues = jira_result.get("issues") or []
+        if not issues:
+            lines.append(jira_result.get("message") or f"No matching Jira issues found for `{clean_tag}`.")
+        else:
+            for issue in issues[:max_results]:
+                key = issue.get("issue_key") or "?"
+                summary = issue.get("summary") or ""
+                status = issue.get("status") or ""
+                url = issue.get("url") or ""
+                lines.append(f"- [{key}]({url}) — {summary} ({status})" if url else f"- {key} — {summary} ({status})")
+
+    return "\n".join(lines)
+
 
 if __name__ == "__main__":
     mcp.run()

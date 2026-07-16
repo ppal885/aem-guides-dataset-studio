@@ -118,3 +118,6 @@ backend/storage/knowledge_source_state/
 backend/storage/ai_flow_intelligence.json
 backend/storage/corrective_rag_traces.jsonl
 backend/storage/**/failure_log.jsonl
+
+# Machine-specific MCP client config (local absolute paths) -- .mcp.json.example is the template.
+.mcp.json

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "aem-dataset-studio": {
+      "command": "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio\\backend\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio\\mcp_server.py"
+      ]
+    }
+  }
+}
