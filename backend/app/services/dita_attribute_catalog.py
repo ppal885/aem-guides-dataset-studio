@@ -800,6 +800,53 @@ def _supplemental_attribute_specs() -> dict[str, AttributeSpec]:
                 semantic_class="open_token",
                 syntax="non-negative integer row-span count",
             ),
+            "cascade": _spec(
+                "cascade",
+                values=["merge", "nomerge"],
+                elements=["topicref", "map"],
+                combinations=["audience", "platform", "product", "otherprops", "props"],
+                contexts=[
+                    "Use cascade to fine-tune how conditional/metadata attributes (@audience, @platform, "
+                    "@product, @otherprops, @props) accumulate as they cascade from an ancestor map/topicref "
+                    "down to a descendant topicref.",
+                    "cascade=\"merge\" (the default, and the only defined behavior in DITA 1.2 and earlier): "
+                    "metadata attribute values are additive as they cascade -- a descendant's own value is "
+                    "added to whatever cascaded down from ancestors, not replaced.",
+                    "cascade=\"nomerge\": for a descendant topicref that specifies its own value for a given "
+                    "metadata attribute, that value replaces (is not additive with) whatever value cascaded "
+                    "down from ancestors for that same attribute.",
+                ],
+                default_scenarios=[
+                    "Default behavior when @cascade is omitted is cascade=\"merge\" (additive) -- this was the "
+                    "only defined behavior prior to the @cascade attribute being introduced.",
+                ],
+                mistakes=[
+                    "Assuming cascade=\"nomerge\" turns off cascading entirely -- it does not; ancestor values "
+                    "still cascade down, nomerge only stops them being additive with a descendant's own "
+                    "explicit value for that same attribute.",
+                    "Setting @cascade expecting it to affect @class or content cascading -- it only affects "
+                    "the additive/non-additive merging of conditional metadata attributes.",
+                ],
+                example=(
+                    '<map product="PuffinTracker" platform="win linux mac" cascade="nomerge">\n'
+                    '  <topicref href="linux-instructions.dita" navtitle="Linux instructions" platform="linux"/>\n'
+                    "</map>"
+                ),
+                text=(
+                    "@cascade controls whether conditional/metadata attributes (@audience, @platform, "
+                    "@product, @otherprops, @props) are additive as they cascade from an ancestor map/topicref "
+                    "down to a descendant.\n\n"
+                    "Syntax: \"merge\" (default -- additive) or \"nomerge\" (a descendant's own explicit value "
+                    "for an attribute replaces, rather than adds to, the cascaded ancestor value for that same "
+                    "attribute).\n\n"
+                    "Example: with cascade=\"nomerge\" on the map and platform=\"win linux mac\" at the map "
+                    "level, a topicref setting platform=\"linux\" resolves to just \"linux\" for that topic "
+                    "(replaced), not \"win linux mac linux\" (merged)."
+                ),
+                source_url="https://docs.oasis-open.org/dita/v1.3/os/part2-tech-content/langref/attributes/attributes.html",
+                semantic_class="conditional_processing_modifier",
+                syntax='"merge" (default) or "nomerge"',
+            ),
         }
     )
     return specs
