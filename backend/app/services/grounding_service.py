@@ -1264,6 +1264,67 @@ def _build_evidence_only_answer(
     return answer
 
 
+def _repair_malformed_markdown_tables(text: str) -> str:
+    """Repair LLM-authored markdown tables whose cell content contains embedded
+    newlines/blank lines, which splits what should be one table row across multiple
+    physical lines and breaks GFM table rendering (e.g. a comparison-table cell
+    copied verbatim from multi-sentence spec text with paragraph breaks still intact).
+
+    A prompt-level instruction telling the LLM to keep cells single-line does not
+    reliably prevent this, so this repairs it deterministically after the fact:
+    within a detected table block (header row + `|---|` divider), merge any row
+    that doesn't yet have the header's column count with the following line(s)
+    until it does, collapsing embedded blank lines into single spaces.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        is_header = line.strip().startswith("|") and line.strip().endswith("|")
+        next_is_divider = (
+            i + 1 < n
+            and re.fullmatch(r"\s*\|(?:\s*:?-+:?\s*\|)+\s*", lines[i + 1] or "") is not None
+        )
+        if not (is_header and next_is_divider):
+            out.append(line)
+            i += 1
+            continue
+
+        expected_pipes = line.count("|")
+        out.append(line)
+        out.append(lines[i + 1])
+        i += 2
+
+        while i < n:
+            row_line = lines[i]
+            stripped = row_line.strip()
+            if not stripped:
+                # Blank line: only consumable if we're mid-row (buffer already started
+                # below) or if the next line still looks like a table continuation.
+                if i + 1 < n and (lines[i + 1] or "").strip().startswith("|"):
+                    i += 1
+                    continue
+                break
+            if not stripped.startswith("|"):
+                break
+
+            buffer = row_line
+            j = i + 1
+            while buffer.count("|") < expected_pipes and j < n:
+                cont = lines[j]
+                if cont.strip() == "" or not cont.strip().startswith("##"):
+                    buffer = buffer.rstrip() + " " + cont.strip()
+                    j += 1
+                else:
+                    break
+            out.append(buffer)
+            i = j
+
+    return "\n".join(out)
+
+
 async def verify_grounded_answer(
     *,
     question: str,
@@ -1275,6 +1336,7 @@ async def verify_grounded_answer(
     structured_fallback_answer: str = "",
 ) -> GroundedAnswer:
     draft_answer = _coerce_llm_text_response(draft_answer)
+    draft_answer = _repair_malformed_markdown_tables(draft_answer)
     structured_fallback_answer = _coerce_llm_text_response(structured_fallback_answer)
     verified_examples = [item for item in (verified_examples or []) if isinstance(item, dict)]
 

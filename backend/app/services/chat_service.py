@@ -4671,7 +4671,21 @@ def _grounded_answer_shape_hint(
     else:
         base_hint = _question_shape_hint(q)
 
-    return "\n\n".join(part for part in [base_hint, processing_hint] if part)
+    table_formatting_hint = ""
+    if facts.answer_kind in {"dita_element_comparison", "dita_attribute_comparison"}:
+        # The LLM sometimes includes a table even when not explicitly asked to (e.g. a
+        # question implying a relationship between two constructs, not a direct "compare"
+        # request) -- if it does, every cell must stay single-line or the markdown table
+        # breaks. Applies regardless of which branch above chose the table, since the
+        # LLM can add one on its own initiative either way.
+        table_formatting_hint = (
+            "If you include any markdown table, every cell's content must be a single line "
+            "with no embedded blank lines or line breaks -- join multi-sentence cell content "
+            "with spaces, or use `<br>` between short bullet points within a cell, never a "
+            "literal newline."
+        )
+
+    return "\n\n".join(part for part in [base_hint, processing_hint, table_formatting_hint] if part)
 
 
 def _question_shape_hint(question: str) -> str:
@@ -6234,11 +6248,31 @@ def _stream_text_chunks(text: str) -> list[str]:
     cleaned = _repair_text_encoding_artifacts(_coerce_llm_text_response(text)).strip()
     if not cleaned:
         return []
+    if "|" in cleaned:
+        # An LLM-authored markdown table cell can retain an embedded blank line from
+        # source text, splitting one row across two lines. Repair it here too (as a
+        # defense-in-depth backstop for call sites that don't already repair their
+        # input before calling this function) since splitting on "\n\n" as a paragraph
+        # boundary just below would otherwise fragment that row into two separate chunks.
+        from app.services.grounding_service import _repair_malformed_markdown_tables
+
+        cleaned = _repair_malformed_markdown_tables(cleaned)
     paragraphs = [part.strip() for part in cleaned.split("\n\n") if part.strip()]
     chunks: list[str] = []
     for paragraph in paragraphs:
         if len(paragraph) <= 500:
             chunks.append(paragraph + "\n\n")
+            continue
+        # A markdown table block (multiple "|"-led lines) is a single logical unit --
+        # the sentence-splitter below has no concept of table syntax, and a long table
+        # row legitimately exceeding 500 chars would otherwise get split mid-row at a
+        # sentence-ending period inside a cell, inserting a "\n\n" that fragments the
+        # row across two chunks and corrupts the table once the client reassembles them.
+        table_lines = [ln for ln in paragraph.split("\n") if ln.strip()]
+        if len(table_lines) > 1 and sum(1 for ln in table_lines if ln.strip().startswith("|")) >= len(table_lines) - 1:
+            for ln in table_lines:
+                chunks.append(ln + "\n")
+            chunks.append("\n")
             continue
         sentences = re.split(r"(?<=[.!?])\s+", paragraph)
         current = ""
@@ -8985,6 +9019,18 @@ async def _stream_assistant_reply(
         stripped_grounded_answer = _strip_low_value_verification_notes(grounded_answer.answer)
         if stripped_grounded_answer != grounded_answer.answer:
             grounded_answer = replace(grounded_answer, answer=stripped_grounded_answer)
+
+        if "|" in grounded_answer.answer:
+            # Repair any LLM-authored markdown table here, on the guaranteed-complete
+            # final answer, before _stream_text_chunks does its own paragraph-splitting
+            # pass -- fixing it inside _stream_text_chunks alone is not reliable since
+            # that function can be invoked more than once per turn on text that does not
+            # yet contain the full malformed row.
+            from app.services.grounding_service import _repair_malformed_markdown_tables
+
+            repaired_tables_answer = _repair_malformed_markdown_tables(grounded_answer.answer)
+            if repaired_tables_answer != grounded_answer.answer:
+                grounded_answer = replace(grounded_answer, answer=repaired_tables_answer)
 
         yield {"type": "grounding", "grounding": grounding, "notice": grounding_to_notice(grounding)}
 
