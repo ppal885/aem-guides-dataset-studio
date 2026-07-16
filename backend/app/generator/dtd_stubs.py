@@ -263,22 +263,49 @@ GLOSENTRY_DTD = """<!-- Minimal DITA glossentry DTD stub -->
 
 BOOKMAP_DTD = """<!-- Minimal DITA bookmap DTD stub -->
 <!ENTITY % bookmap "bookmap">
-<!ELEMENT bookmap (title, bookmeta?, frontmatter?, chapter*, backmatter?)>
+<!ELEMENT bookmap (booktitle?, bookmeta?, frontmatter?, chapter*, backmatter?)>
 <!ATTLIST bookmap id CDATA #REQUIRED xml:lang CDATA #IMPLIED>
-<!ELEMENT title (#PCDATA)>
-<!ELEMENT bookmeta (booktitle?, bookabstract?)>
 <!ELEMENT booktitle (mainbooktitle)>
 <!ELEMENT mainbooktitle (#PCDATA)>
+<!ELEMENT bookmeta (booktitle?, bookabstract?)>
 <!ELEMENT bookabstract (p+)>
-<!ELEMENT frontmatter (notices?, preface?)>
+<!-- frontmatter/backmatter allow booklists per the real DITA bookmap spec (see the
+     indexlist/toc/tablelist/glossarylist/trademarklist entries added to the DITA spec
+     registry this session); a prior version of this stub omitted booklists entirely. -->
+<!ELEMENT frontmatter (booklists?, notices?, preface?)>
 <!ELEMENT notices (topicref)>
 <!ELEMENT preface (topicref)>
-<!ELEMENT chapter (topicref+)>
-<!ELEMENT backmatter (appendix?, indexlist?)>
+<!ELEMENT chapter (topicmeta?, (topicref|topichead|topicgroup)*)>
+<!ATTLIST chapter href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT topicmeta (navtitle?, shortdesc?)>
+<!ELEMENT navtitle (#PCDATA)>
+<!ELEMENT shortdesc (#PCDATA)>
+<!ELEMENT backmatter (booklists?, appendix?)>
 <!ELEMENT appendix (topicref)>
-<!ELEMENT indexlist (topicref)>
+<!ELEMENT booklists (toc?, indexlist?, figurelist?, tablelist?, glossarylist?, bibliolist?, booklist?, trademarklist?, abbrevlist?)>
+<!ELEMENT toc EMPTY>
+<!ATTLIST toc href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT indexlist EMPTY>
+<!ATTLIST indexlist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT figurelist EMPTY>
+<!ATTLIST figurelist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT tablelist EMPTY>
+<!ATTLIST tablelist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT glossarylist EMPTY>
+<!ATTLIST glossarylist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT bibliolist EMPTY>
+<!ATTLIST bibliolist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT booklist EMPTY>
+<!ATTLIST booklist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT trademarklist EMPTY>
+<!ATTLIST trademarklist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT abbrevlist EMPTY>
+<!ATTLIST abbrevlist href CDATA #IMPLIED navtitle CDATA #IMPLIED>
 <!ELEMENT topicref EMPTY>
 <!ATTLIST topicref href CDATA #IMPLIED type CDATA #IMPLIED navtitle CDATA #IMPLIED>
+<!ELEMENT topichead (topicmeta?, (topicref|topichead|topicgroup)*)>
+<!ATTLIST topichead navtitle CDATA #IMPLIED>
+<!ELEMENT topicgroup (topicref|topichead|topicgroup)*>
 <!ELEMENT p (#PCDATA)>
 """
 
