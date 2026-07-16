@@ -2830,6 +2830,9 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
     Example: ask_dita_expert("What does @cascade do?")
     Example: ask_dita_expert("What is tablelist used for?")
     """
+    if not (question or "").strip():
+        return "Provide a question to ask."
+
     try:
         from app.services import chat_service as cs
     except Exception as e:
@@ -2900,7 +2903,14 @@ def lookup_dita_construct(tag: str) -> str:
             "presenting it as a confirmed DITA construct."
         )
 
-    sections: list[str] = [f"# `{clean_tag}`"]
+    # Use the registry's own canonical/normalized name for the header (e.g. input "INDEXTERM"
+    # or "Cascade" should display as "indexterm"/"cascade") rather than echoing raw user casing.
+    canonical_name = (
+        getattr(element_spec, "name", None)
+        or getattr(attr_spec, "attribute_name", None)
+        or clean_tag
+    )
+    sections: list[str] = [f"# `{canonical_name}`"]
 
     if element_spec is not None:
         sections.append("\n## As an element\n")
@@ -2955,6 +2965,25 @@ def find_dita_ot_and_jira_issues(tag: str, tenant_id: str = "kone", max_results:
 
     lines: list[str] = [f"# Known issues for `{clean_tag}`"]
 
+    # This is a text/semantic search, not a construct validator -- it can return results
+    # that merely share generic "DITA-OT" wording with a made-up or misspelled tag. Warn
+    # explicitly when the tag isn't a recognized DITA construct at all, so results below
+    # aren't mistaken for confirmed matches (mirrors lookup_dita_construct's honesty check).
+    try:
+        from app.services.dita_spec_registry_service import get_element_spec
+        from app.services.dita_attribute_catalog import get_attribute_spec
+        is_known = get_element_spec(clean_tag) is not None or get_attribute_spec(clean_tag) is not None
+    except Exception:
+        is_known = True  # don't block the search on a registry-check failure
+    if not is_known:
+        lines.append(
+            f"\n**Note:** `{clean_tag}` is not a recognized DITA element or attribute in this "
+            "project's registry. Any results below may only share generic wording, not a "
+            "genuine connection to this tag -- verify carefully before treating them as real matches.\n"
+        )
+
+    github_issues = None
+    github_error = "unknown error (no result returned)"
     try:
         from app.services.dita_ot_github_rag_service import retrieve_dita_ot_github_for_query
         github_issues = retrieve_dita_ot_github_for_query(
@@ -2977,6 +3006,8 @@ def find_dita_ot_and_jira_issues(tag: str, tenant_id: str = "kone", max_results:
             prefix = f"#{num} — " if num else ""
             lines.append(f"- {prefix}[{title}]({url})")
 
+    jira_result = None
+    jira_error = "unknown error (no result returned)"
     try:
         from app.services.jira_chat_search_service import search_related_jira_issues
         jira_result = search_related_jira_issues(
