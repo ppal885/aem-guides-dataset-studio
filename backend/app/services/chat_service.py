@@ -296,6 +296,8 @@ _DITA_STRUCTURAL_QUERY_PATTERN = re.compile(
     r"</?[A-Za-z][A-Za-z0-9._:-]*>|"
     r"\b(dita|ditamap|xml|doctype|element|attribute|topicref|topichead|topicgroup|mapref|navref|"
     r"keydef|keyref|conref|conkeyref|href|reltable|bookmap|glossentry|subject scheme|"
+    r"booklists|indexlist|tablelist|glossarylist|trademarklist|toc\b|abbrevlist|bibliolist|booklist|figurelist|"
+    r"frontmatter|backmatter|indextermref|sectiondiv|"
     # topic structure
     r"shortdesc|abstract|prolog|taskbody|conbody|refbody|troublebody|"
     r"prereq|context|steps|step|cmd|info|substeps|substep|choices?|choicetables?|"

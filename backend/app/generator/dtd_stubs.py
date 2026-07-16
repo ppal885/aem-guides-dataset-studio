@@ -53,38 +53,56 @@ STANDARD_TOPIC_DTD = """<!-- Minimal DITA Topic DTD stub (general topics) -->
 <!ELEMENT publisher (#PCDATA)>
 <!ELEMENT data EMPTY>
 <!ATTLIST data name CDATA #IMPLIED value CDATA #IMPLIED>
-<!ELEMENT body (section*|p*|table*|simpletable*|codeblock*|note*|example*|ul*|ol*|dl*|image*|xref*|draft-comment*|foreign*)>
+<!ELEMENT body (section|p|table|simpletable|codeblock|note|example|ul|ol|dl|image|xref|draft-comment|foreign|ph|sectiondiv)*>
+<!ELEMENT sectiondiv ANY>
+<!ATTLIST sectiondiv conref CDATA #IMPLIED conrefend CDATA #IMPLIED>
 <!ELEMENT foreign ANY>
 <!ATTLIST foreign xmlns CDATA #IMPLIED>
 <!ELEMENT related-links (link*|linklist*)>
-<!ELEMENT link EMPTY>
-<!ATTLIST link href CDATA #IMPLIED keyref CDATA #IMPLIED type CDATA #IMPLIED format CDATA #IMPLIED scope CDATA #IMPLIED>
+<!ELEMENT link (linktext?, desc?)>
+<!ATTLIST link href CDATA #IMPLIED keyref CDATA #IMPLIED conref CDATA #IMPLIED type CDATA #IMPLIED format CDATA #IMPLIED scope CDATA #IMPLIED>
+<!ELEMENT linktext (#PCDATA)>
+<!ELEMENT desc (#PCDATA)>
 <!ELEMENT linklist ANY>
-<!ELEMENT section (title?, (p|table|simpletable|codeblock|note|example|ul|ol|dl|section)*)>
-<!ATTLIST section id CDATA #IMPLIED>
+<!ELEMENT section (title?, (p|table|simpletable|codeblock|note|example|ul|ol|dl|image|xref|draft-comment|foreign|section)*)>
+<!ATTLIST section id CDATA #IMPLIED audience CDATA #IMPLIED platform CDATA #IMPLIED product CDATA #IMPLIED otherprops CDATA #IMPLIED>
 <!ELEMENT p (#PCDATA|xref|ph|b|i|u|codeph|tm|keyword|image|foreign)*>
-<!ELEMENT table ANY>
+<!ATTLIST p id CDATA #IMPLIED conref CDATA #IMPLIED outputclass CDATA #IMPLIED keyref CDATA #IMPLIED audience CDATA #IMPLIED platform CDATA #IMPLIED product CDATA #IMPLIED otherprops CDATA #IMPLIED>
+<!ELEMENT table (title?, tgroup)>
+<!ATTLIST table frame CDATA #IMPLIED rowsep CDATA #IMPLIED colsep CDATA #IMPLIED audience CDATA #IMPLIED platform CDATA #IMPLIED otherprops CDATA #IMPLIED>
+<!ELEMENT tgroup (colspec*, thead?, tbody)>
+<!ATTLIST tgroup cols CDATA #IMPLIED colsep CDATA #IMPLIED rowsep CDATA #IMPLIED>
+<!ELEMENT colspec EMPTY>
+<!ATTLIST colspec colname CDATA #IMPLIED colwidth CDATA #IMPLIED align CDATA #IMPLIED colnum CDATA #IMPLIED>
+<!ELEMENT thead (row+)>
+<!ELEMENT tbody (row+)>
+<!ELEMENT row (entry+)>
+<!ELEMENT entry (#PCDATA|xref|ph|b|i|u|codeph|tm|keyword|image|foreign)*>
+<!ATTLIST entry colname CDATA #IMPLIED align CDATA #IMPLIED audience CDATA #IMPLIED platform CDATA #IMPLIED otherprops CDATA #IMPLIED>
 <!ELEMENT simpletable (sthead?, stbody)>
 <!ELEMENT sthead (strow)>
 <!ELEMENT stbody (strow+)>
 <!ELEMENT strow (stentry+)>
 <!ELEMENT stentry (#PCDATA)>
 <!ELEMENT codeblock (#PCDATA)>
-<!ATTLIST codeblock outputclass CDATA #IMPLIED>
+<!ATTLIST codeblock outputclass CDATA #IMPLIED xml:space CDATA #IMPLIED>
 <!ELEMENT note ANY>
 <!ELEMENT example ANY>
 <!ELEMENT ul (li+)>
+<!ATTLIST ul audience CDATA #IMPLIED platform CDATA #IMPLIED otherprops CDATA #IMPLIED>
 <!ELEMENT li ANY>
+<!ATTLIST li audience CDATA #IMPLIED platform CDATA #IMPLIED otherprops CDATA #IMPLIED>
 <!ELEMENT ol (li+)>
 <!ELEMENT dl (dlentry+)>
 <!ELEMENT dlentry (dt, dd)>
 <!ELEMENT dt (#PCDATA)>
 <!ELEMENT dd ANY>
 <!ELEMENT image EMPTY>
-<!ATTLIST image href CDATA #IMPLIED placement CDATA #IMPLIED format CDATA #IMPLIED>
-<!ELEMENT xref EMPTY>
-<!ATTLIST xref href CDATA #IMPLIED keyref CDATA #IMPLIED>
+<!ATTLIST image href CDATA #IMPLIED placement CDATA #IMPLIED format CDATA #IMPLIED alt CDATA #IMPLIED keyref CDATA #IMPLIED audience CDATA #IMPLIED platform CDATA #IMPLIED otherprops CDATA #IMPLIED>
+<!ELEMENT xref (#PCDATA|ph|b|i|u|codeph|tm|keyword|image)*>
+<!ATTLIST xref href CDATA #IMPLIED keyref CDATA #IMPLIED conref CDATA #IMPLIED format CDATA #IMPLIED scope CDATA #IMPLIED type CDATA #IMPLIED>
 <!ELEMENT ph (#PCDATA)>
+<!ATTLIST ph keyref CDATA #IMPLIED conref CDATA #IMPLIED outputclass CDATA #IMPLIED>
 <!ELEMENT b (#PCDATA|i|u)*>
 <!ELEMENT i (#PCDATA|b|u)*>
 <!ELEMENT u (#PCDATA|b|i)*>
@@ -98,7 +116,9 @@ STANDARD_MAP_DTD = """<!-- Minimal DITA Map DTD stub (general maps) -->
 <!ELEMENT map (title?, topicmeta?, (topicref|keydef|topichead|topicgroup|navref|anchor|reltable|mapref)*)>
 <!ATTLIST map
   id CDATA #IMPLIED
-  xml:lang CDATA #IMPLIED>
+  xml:lang CDATA #IMPLIED
+  xmlns CDATA #IMPLIED
+  xmlns:ditaarch CDATA #IMPLIED>
 <!ELEMENT title (#PCDATA)>
 <!ELEMENT topicmeta (navtitle?, shortdesc?, data*, keywords?)>
 <!ELEMENT navtitle (#PCDATA)>
@@ -118,7 +138,7 @@ STANDARD_MAP_DTD = """<!-- Minimal DITA Map DTD stub (general maps) -->
   type CDATA #IMPLIED
   keyscope CDATA #IMPLIED>
 <!ELEMENT keydef EMPTY>
-<!ATTLIST keydef keys CDATA #REQUIRED href CDATA #IMPLIED>
+<!ATTLIST keydef keys CDATA #REQUIRED href CDATA #IMPLIED format CDATA #IMPLIED>
 <!ELEMENT topichead EMPTY>
 <!ATTLIST topichead navtitle CDATA #IMPLIED>
 <!ELEMENT topicgroup (topicref|topicgroup)*>
@@ -147,7 +167,7 @@ TASK_TOPIC_DTD = """<!-- Minimal DITA Task DTD stub -->
 <!ELEMENT context (p+)>
 <!ELEMENT steps (step+)>
 <!ATTLIST steps unordered CDATA #IMPLIED>
-<!ELEMENT step (cmd, info?, substeps?)>
+<!ELEMENT step (cmd, info?, choicetable?, substeps?)>
 <!ATTLIST step importance CDATA #IMPLIED>
 <!ELEMENT cmd (#PCDATA)>
 <!ELEMENT info (p+)>
@@ -155,8 +175,11 @@ TASK_TOPIC_DTD = """<!-- Minimal DITA Task DTD stub -->
 <!ELEMENT substep (cmd)>
 <!ELEMENT result (p+)>
 <!ELEMENT example (p+)>
-<!ELEMENT choicetable (chrow+)>
+<!ELEMENT choicetable (chhead?, chrow+)>
 <!ATTLIST choicetable id CDATA #IMPLIED>
+<!ELEMENT chhead (choptionhd?, chdeschd?)>
+<!ELEMENT choptionhd (#PCDATA)>
+<!ELEMENT chdeschd (#PCDATA)>
 <!ELEMENT chrow (choption, chdesc)>
 <!ELEMENT choption (#PCDATA)>
 <!ELEMENT chdesc (p+)>
@@ -212,8 +235,11 @@ REFERENCE_TOPIC_DTD = """<!-- Minimal DITA Reference DTD stub (properties align 
 <!ELEMENT foreign (p+)>
 <!ELEMENT section (title?, p+)>
 <!ATTLIST section id CDATA #IMPLIED>
-<!ELEMENT choicetable (chrow+)>
+<!ELEMENT choicetable (chhead?, chrow+)>
 <!ATTLIST choicetable id CDATA #IMPLIED>
+<!ELEMENT chhead (choptionhd?, chdeschd?)>
+<!ELEMENT choptionhd (#PCDATA)>
+<!ELEMENT chdeschd (#PCDATA)>
 <!ELEMENT chrow (choption, chdesc)>
 <!ELEMENT choption (#PCDATA)>
 <!ELEMENT chdesc (p+)>
