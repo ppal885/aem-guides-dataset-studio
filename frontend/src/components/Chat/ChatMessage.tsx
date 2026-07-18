@@ -161,6 +161,38 @@ function ToolLead({
   );
 }
 
+function coerceStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return [value.trim()];
+  }
+  return [];
+}
+
+function CompactToolList({
+  title,
+  items,
+  limit = 5,
+}: {
+  title: string;
+  items: string[];
+  limit?: number;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="rounded-lg border border-white/80 bg-white/75 p-2">
+      <p className="font-semibold text-slate-900">{title}</p>
+      <ul className="mt-1 list-disc space-y-1 pl-4 text-slate-700">
+        {items.slice(0, limit).map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function friendlyLlmPath(path?: string): string {
   switch (String(path || '').trim().toLowerCase()) {
     case 'tool_only':
@@ -696,10 +728,18 @@ export function ToolResult({
     const firstPublish = publish.pdf || publish.xhtml || publish.html5 || {};
     const stderr = String(firstPublish.stderr || '').trim();
     const command = String(firstPublish.command || '').trim();
+    const generationSummary = (r.generation_summary as Record<string, unknown> | undefined) || {};
+    const generationTitle = String(generationSummary.title || '').trim();
+    const whatWasGenerated = coerceStringList(r.what_was_generated || generationSummary.what_was_generated);
+    const expectedBehavior = coerceStringList(r.expected_behavior || generationSummary.expected_behavior);
+    const qaChecklist = coerceStringList(r.qa_checklist || generationSummary.qa_checklist);
+    const pdfReviewAreas = coerceStringList(r.expected_pdf_review_areas || generationSummary.expected_pdf_review_areas);
+    const htmlReviewAreas = coerceStringList(r.expected_html_review_areas || generationSummary.expected_html_review_areas);
+    const nextStep = String(r.recommended_user_next_step || generationSummary.recommended_user_next_step || '').trim();
     return (
       <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3 text-xs shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <p className="font-semibold text-indigo-950">DITA-OT publish</p>
+          <p className="font-semibold text-indigo-950">{generationTitle || 'DITA-OT publish'}</p>
           <span className={cn(
             'rounded-full px-2 py-0.5 text-[11px] font-medium',
             status === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
@@ -729,6 +769,18 @@ export function ToolResult({
           ) : artifactZip && <p><span className="font-semibold text-slate-900">Artifact ZIP:</span> <code>{artifactZip}</code></p>}
           {command && <p><span className="font-semibold text-slate-900">Command:</span> <code>{command}</code></p>}
         </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <CompactToolList title="What was generated" items={whatWasGenerated} />
+          <CompactToolList title="Expected behavior" items={expectedBehavior} />
+          <CompactToolList title="QA checklist" items={qaChecklist} />
+          <CompactToolList title="Inspect in PDF" items={pdfReviewAreas} />
+          <CompactToolList title="Inspect in HTML/HTML5" items={htmlReviewAreas} />
+        </div>
+        {nextStep && (
+          <p className="mt-2 rounded-lg border border-indigo-100 bg-white/70 p-2 text-slate-700">
+            <span className="font-semibold text-slate-900">Next:</span> {nextStep}
+          </p>
+        )}
         {stderr && (
           <details className="mt-2 rounded-lg border border-amber-200 bg-amber-50/80 p-2">
             <summary className="cursor-pointer font-medium text-amber-900">stderr</summary>

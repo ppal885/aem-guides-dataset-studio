@@ -261,6 +261,89 @@ def _write_sample_dataset(work_dir: Path, title: str) -> Path:
     return map_path
 
 
+def _build_generation_summary(
+    *,
+    prompt: str,
+    input_map: Path,
+    work_dir: Path,
+    formats: list[str],
+) -> dict[str, Any]:
+    source_files = sorted(
+        path.relative_to(work_dir).as_posix()
+        for path in work_dir.rglob("*")
+        if path.is_file()
+    )
+    if _looks_like_xml_lang_chunk_request(prompt):
+        return {
+            "title": "xml:lang + chunk DITA-OT publishing dataset",
+            "what_was_generated": [
+                "One DITA map with root `xml:lang=\"en-US\"`.",
+                "Four concept topics covering language inheritance, topic-level override, topicref-level override, and branch chunking.",
+                "A selected publishing branch using `chunk=\"select-branch to-content\"`.",
+                "PDF2, classic XHTML, and/or HTML5 outputs depending on the selected transformation.",
+            ],
+            "source_files": source_files,
+            "expected_behavior": [
+                "Topics without their own `xml:lang` inherit the root map language context.",
+                "A topic with `xml:lang=\"fr-FR\"` keeps French language context despite the English root map.",
+                "A topicref-level `xml:lang=\"fr-FR\"` override remains meaningful when the referenced topic is chunked into output.",
+                "Only valid DITA chunk tokens are used: `by-topic`, `to-content`, and `select-branch`.",
+            ],
+            "qa_checklist": [
+                "Confirm DITA-OT exits with code 0 for every requested format.",
+                "Open the ZIP and verify the source map plus all four topic files are present.",
+                "Inspect the map for `xml:lang=\"en-US\"`, `xml:lang=\"fr-FR\"`, `chunk=\"by-topic\"`, `chunk=\"to-content\"`, and `chunk=\"select-branch to-content\"`.",
+                "Verify no invalid chunk values such as `split` or `to-navigation` appear in the generated source.",
+                "Compare PDF and HTML5 navigation/content to ensure selected branch topics are not dropped.",
+            ],
+            "expected_pdf_review_areas": [
+                "PDF title/TOC should include `How xml:lang and chunk are tested together`.",
+                "PDF should include `PDF2 publishing oracle` and selected branch content.",
+                "PDF should include the French HTML5-oracle topic content when the branch is selected.",
+                "PDF should not show processor errors or warnings caused by invalid chunk values.",
+                "PDF file should be non-empty and readable from the Download PDF link.",
+            ],
+            "expected_html_review_areas": [
+                "HTML5 output should contain separate generated pages for chunked topics.",
+                "Generated links should navigate between the overview, branch, PDF oracle, HTML5 oracle, and mixed-language topics.",
+                "French content should remain present in the HTML5 page for the `fr-FR` topic.",
+            ],
+            "recommended_user_next_step": "Download the ZIP first to inspect the source corpus, then open the PDF and HTML5 files to verify navigation, language overrides, and branch inclusion.",
+            "formats_requested": formats,
+            "input_map": str(input_map),
+        }
+
+    return {
+        "title": "DITA-OT publishing smoke dataset",
+        "what_was_generated": [
+            "One DITA map and one topic generated from the prompt.",
+            "Requested DITA-OT transformation outputs were produced from that map.",
+        ],
+        "source_files": source_files,
+        "expected_behavior": [
+            "DITA-OT should publish the generated map without fatal errors.",
+            "Requested output files should be non-empty and downloadable.",
+        ],
+        "qa_checklist": [
+            "Confirm DITA-OT exits with code 0 for every requested format.",
+            "Open the source map and topic from the ZIP.",
+            "Open the generated output and verify the topic title/body appear.",
+        ],
+        "expected_pdf_review_areas": [
+            "PDF should open successfully from the Download PDF link.",
+            "PDF should contain the generated topic title and expected-oracle section.",
+            "PDF should be non-empty and readable.",
+        ],
+        "expected_html_review_areas": [
+            "HTML output should open successfully.",
+            "Generated page should contain the topic title and body.",
+        ],
+        "recommended_user_next_step": "Download the ZIP to inspect source plus generated outputs.",
+        "formats_requested": formats,
+        "input_map": str(input_map),
+    }
+
+
 def _run_dita(input_map: Path, fmt: str, output_dir: Path, timeout_seconds: int) -> dict[str, Any]:
     cli = _dita_ot_cli_path()
     if cli is None:
@@ -345,6 +428,12 @@ async def publish_with_dita_ot(
     pdf_files = sorted((publish_dir / "pdf").glob("*.pdf")) if (publish_dir / "pdf").exists() else []
     xhtml_files = sorted((publish_dir / "xhtml").rglob("*.html")) if (publish_dir / "xhtml").exists() else []
     html_files = sorted((publish_dir / "html5").rglob("*.html")) if (publish_dir / "html5").exists() else []
+    generation_summary = _build_generation_summary(
+        prompt=prompt,
+        input_map=input_for_build,
+        work_dir=work_dir,
+        formats=formats,
+    )
     zip_path = OUTPUT_ROOT / run_id / f"{slug}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for base in (work_dir, publish_dir):
@@ -365,6 +454,7 @@ async def publish_with_dita_ot(
                     "pdf_files": [str(path) for path in pdf_files],
                     "xhtml_files": [str(path) for path in xhtml_files],
                     "html_files": [str(path) for path in html_files],
+                    "generation_summary": generation_summary,
                 },
                 indent=2,
             ),
@@ -374,6 +464,13 @@ async def publish_with_dita_ot(
     return {
         "status": "success" if ok else "error",
         "summary": "DITA-OT publish completed." if ok else "DITA-OT publish failed; inspect stderr.",
+        "generation_summary": generation_summary,
+        "what_was_generated": generation_summary["what_was_generated"],
+        "expected_behavior": generation_summary["expected_behavior"],
+        "qa_checklist": generation_summary["qa_checklist"],
+        "expected_pdf_review_areas": generation_summary["expected_pdf_review_areas"],
+        "expected_html_review_areas": generation_summary["expected_html_review_areas"],
+        "recommended_user_next_step": generation_summary["recommended_user_next_step"],
         "run_id": run_id,
         "input_map": str(input_for_build),
         "output_format": requested,

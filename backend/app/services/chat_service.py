@@ -7510,7 +7510,37 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
         html_files = [str(item) for item in (result.get("html_files") or []) if str(item).strip()]
         zip_url = str(result.get("artifact_zip_download_url") or "").strip()
         if status == "success":
-            parts = ["I ran DITA-OT successfully."]
+            generation_summary = result.get("generation_summary") if isinstance(result.get("generation_summary"), dict) else {}
+            title = str((generation_summary or {}).get("title") or "DITA-OT output").strip()
+            what_was_generated = [
+                str(item).strip()
+                for item in (result.get("what_was_generated") or (generation_summary or {}).get("what_was_generated") or [])
+                if str(item).strip()
+            ]
+            qa_checklist = [
+                str(item).strip()
+                for item in (result.get("qa_checklist") or (generation_summary or {}).get("qa_checklist") or [])
+                if str(item).strip()
+            ]
+            pdf_review_areas = [
+                str(item).strip()
+                for item in (result.get("expected_pdf_review_areas") or (generation_summary or {}).get("expected_pdf_review_areas") or [])
+                if str(item).strip()
+            ]
+            lines = [f"I ran DITA-OT successfully for **{title}**."]
+            if what_was_generated:
+                lines.append("")
+                lines.append("**What was generated**")
+                lines.extend(f"- {item}" for item in what_was_generated[:5])
+            if qa_checklist:
+                lines.append("")
+                lines.append("**QA checklist**")
+                lines.extend(f"- {item}" for item in qa_checklist[:5])
+            if pdf_review_areas and (pdf_urls or pdf_files):
+                lines.append("")
+                lines.append("**Expected areas to inspect in PDF**")
+                lines.extend(f"- {item}" for item in pdf_review_areas[:5])
+            parts = []
             if pdf_urls:
                 parts.append(f"Download PDF: {pdf_urls[0]}")
             elif pdf_files:
@@ -7521,7 +7551,11 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
                 parts.append(f"HTML5 files: {len(html_files)}")
             if zip_url:
                 parts.append(f"Download ZIP: {zip_url}")
-            return " ".join(parts)
+            if parts:
+                lines.append("")
+                lines.append("**Artifacts**")
+                lines.extend(f"- {part}" for part in parts)
+            return "\n".join(lines)
         return "I ran DITA-OT, but publishing failed. The result card includes stderr, command, and oracle details."
     if name == "list_indexed_pdfs":
         return str(result.get("message") or "I listed the indexed PDFs in your knowledge base.")
