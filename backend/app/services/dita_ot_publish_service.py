@@ -31,7 +31,9 @@ def _dita_ot_cli_path() -> Path | None:
             return path
     for candidate in (
         PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita",
         PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita",
         PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita.bat",
         PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita",
     ):
