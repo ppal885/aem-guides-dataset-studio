@@ -687,12 +687,24 @@ export async function regenerateAssistant(
 }
 
 /** Fetch suggested prompts from backend (if available). */
+function suggestedPromptToString(item: unknown): string {
+  if (typeof item === 'string') return item.trim();
+  if (!item || typeof item !== 'object') return '';
+  const record = item as Record<string, unknown>;
+  for (const key of ['text', 'prompt', 'sentence', 'label', 'title']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 export async function getSuggestedPrompts(): Promise<string[]> {
   try {
     const res = await fetch(apiUrl('/api/v1/chat/suggested-prompts'));
     if (!res.ok) return [];
     const data = await res.json();
-    return data.prompts || data || [];
+    const prompts = Array.isArray(data?.prompts) ? data.prompts : Array.isArray(data) ? data : [];
+    return prompts.map(suggestedPromptToString).filter(Boolean);
   } catch {
     return [];
   }

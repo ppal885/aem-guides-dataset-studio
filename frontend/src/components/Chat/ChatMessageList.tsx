@@ -116,9 +116,10 @@ const EXAMPLE_PROMPTS: { label: string; text: string }[] = [
 
 
 
-function promptLabel(text: string): string {
+function promptLabel(text: unknown): string {
 
-  const firstLine = text.split('\n')[0]?.trim() || text;
+  const value = typeof text === 'string' ? text : String(text ?? '');
+  const firstLine = value.split('\n')[0]?.trim() || value;
 
   if (firstLine.length <= 40) return firstLine;
 
