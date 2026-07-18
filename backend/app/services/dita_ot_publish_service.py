@@ -29,14 +29,18 @@ def _dita_ot_cli_path() -> Path | None:
         path = Path(configured)
         if path.exists():
             return path
-    for candidate in (
-        PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita.bat",
+    unix_candidates = (
         PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita",
-        PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita.bat",
         PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita",
-        PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita.bat",
         PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita",
-    ):
+    )
+    windows_candidates = (
+        PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita.bat",
+    )
+    candidates = windows_candidates + unix_candidates if os.name == "nt" else unix_candidates + windows_candidates
+    for candidate in candidates:
         if candidate.exists():
             return candidate
     return None
