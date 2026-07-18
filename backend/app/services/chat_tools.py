@@ -3267,6 +3267,12 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
             args["output_format"] = "all"
         elif alias.endswith("_pdf"):
             args["output_format"] = "pdf"
+        prompt_text = "\n".join(body_lines).strip() or inline_primary
+        if (
+            args.get("output_format") == "pdf"
+            and re.search(r"\bhtml5?\b|\bxhtml\b|classic\s+html", prompt_text, re.IGNORECASE)
+        ):
+            args["output_format"] = "all"
 
     if primary_arg and primary_arg in properties:
         primary_value = "\n".join(body_lines).strip() or inline_primary

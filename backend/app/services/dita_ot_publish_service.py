@@ -69,7 +69,166 @@ def _artifact_download_url(run_id: str, artifact_type: str, filename: str) -> st
     return f"/api/v1/chat/dita-ot-artifacts/{run_id}/{artifact_type}/{safe_filename}?download=1"
 
 
+def _looks_like_xml_lang_chunk_request(value: str) -> bool:
+    text = (value or "").lower()
+    return (
+        ("xml:lang" in text or "xml lang" in text or "language" in text)
+        and ("chunk" in text or "chunking" in text)
+    )
+
+
+def _write_xml_lang_chunk_dataset(work_dir: Path, title: str) -> Path:
+    """Write a focused DITA-OT publishing dataset for xml:lang + chunk behavior."""
+    slug = _safe_slug(title, fallback="xml-lang-chunk-publishing")
+    topics_dir = work_dir / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
+    map_path = work_dir / f"{slug}.ditamap"
+
+    map_path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="xml-lang-chunk-publishing" xml:lang="en-US">
+  <title>{title}</title>
+  <topicref href="topics/overview.dita" chunk="by-topic"/>
+  <topicref href="topics/publishing-branch.dita" chunk="select-branch to-content">
+    <topicref href="topics/pdf-oracles.dita" chunk="by-topic"/>
+    <topicref href="topics/html5-oracles.dita" xml:lang="fr-FR" chunk="by-topic"/>
+  </topicref>
+  <topicref href="topics/mixed-language.dita" xml:lang="fr-FR" chunk="to-content"/>
+</map>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "overview.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="overview" xml:lang="en-US">
+  <title>How xml:lang and chunk are tested together</title>
+  <shortdesc>This topic defines the publishing behavior that the dataset is intended to verify.</shortdesc>
+  <conbody>
+    <section id="behavior"><title>Behavior under test</title>
+      <p>The root map declares <codeph>xml:lang="en-US"</codeph>, so topics without an overriding language inherit English language context through the publishing pipeline.</p>
+      <p>The map also applies valid DITA chunk tokens on topic references: <codeph>by-topic</codeph>, <codeph>to-content</codeph>, and <codeph>select-branch</codeph>.</p>
+    </section>
+    <section id="invalid-tokens"><title>Invalid tokens guarded by this dataset</title>
+      <p>The dataset intentionally avoids non-standard tokens such as <codeph>split</codeph> and <codeph>to-navigation</codeph>.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "publishing-branch.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="publishing-branch">
+  <title>Publishing branch with selected content</title>
+  <shortdesc>This parent topic inherits English from the map and owns a branch selected for publishing.</shortdesc>
+  <conbody>
+    <section id="branch"><title>Branch selection</title>
+      <p>The parent topicref uses <codeph>chunk="select-branch to-content"</codeph> so the selected branch contributes content to the generated result while preserving predictable child-topic behavior.</p>
+      <p>This catches regressions where a processor ignores branch selection, drops descendants, or treats chunk values as a single unsupported token.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "pdf-oracles.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="pdf-oracles" xml:lang="en-US">
+  <title>PDF2 publishing oracle</title>
+  <shortdesc>PDF output should preserve the selected branch and language-sensitive generated text.</shortdesc>
+  <conbody>
+    <section id="pdf-checks"><title>PDF checks</title>
+      <ul>
+        <li>DITA-OT exits with code 0 for the <codeph>pdf</codeph> transtype.</li>
+        <li>The generated PDF is non-empty and includes this topic title.</li>
+        <li>English topics remain in the English language context inherited from the map.</li>
+        <li>The table of contents or bookmarks include selected branch topics rather than omitting descendants.</li>
+      </ul>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "html5-oracles.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="html5-oracles" xml:lang="fr-FR">
+  <title>Oracle de publication HTML5</title>
+  <shortdesc>Ce sujet vérifie que la langue française peut remplacer la langue héritée de la carte.</shortdesc>
+  <conbody>
+    <section id="html5-checks"><title>Vérifications HTML5</title>
+      <ul>
+        <li>La transformation <codeph>html5</codeph> se termine avec le code 0.</li>
+        <li>La page générée conserve le contenu français et les liens vers les sujets du même embranchement.</li>
+        <li>Le contexte de langue du sujet est <codeph>fr-FR</codeph>, même si la carte racine utilise <codeph>en-US</codeph>.</li>
+      </ul>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "mixed-language.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="mixed-language">
+  <title>Mixed language inheritance checkpoint</title>
+  <shortdesc>This topic has no topic-level xml:lang and relies on the map topicref override.</shortdesc>
+  <conbody>
+    <section id="topicref-override"><title>Topicref language override</title>
+      <p>The map references this topic with <codeph>xml:lang="fr-FR"</codeph> and <codeph>chunk="to-content"</codeph>.</p>
+      <p>Publishing should keep the topic included in output and should not lose the language context when the content is chunked into the output.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (work_dir / "README.md").write_text(
+        f"""# {title}
+
+This generated corpus is for DITA-OT publishing validation of `xml:lang` and `chunk`.
+
+## What it covers
+
+- Map-level `xml:lang="en-US"` inheritance.
+- Topic-level `xml:lang="fr-FR"` override.
+- Topicref-level `xml:lang="fr-FR"` override.
+- Valid chunk tokens only: `by-topic`, `to-content`, and `select-branch`.
+- PDF, classic XHTML, and HTML5 publishing oracles.
+
+## Explicit guardrail
+
+Do not use invalid chunk values such as `split` or `to-navigation`.
+
+## Useful commands
+
+```bash
+dita --input={map_path.name} --format=pdf --output=publish/pdf
+dita --input={map_path.name} --format=xhtml --output=publish/xhtml
+dita --input={map_path.name} --format=html5 --output=publish/html5
+```
+""",
+        encoding="utf-8",
+    )
+    return map_path
+
+
 def _write_sample_dataset(work_dir: Path, title: str) -> Path:
+    if _looks_like_xml_lang_chunk_request(title):
+        return _write_xml_lang_chunk_dataset(work_dir, title)
+
     slug = _safe_slug(title)
     map_path = work_dir / f"{slug}.ditamap"
     topic_path = work_dir / f"{slug}-topic.dita"

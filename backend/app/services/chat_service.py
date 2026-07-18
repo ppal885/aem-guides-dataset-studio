@@ -1172,6 +1172,42 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
     )
 
 
+def _publishing_dataset_tool_intent(user_content: str) -> dict[str, Any] | None:
+    text = (user_content or "").strip()
+    if not text or text.startswith("/"):
+        return None
+    lowered = text.lower()
+    wants_generation = bool(re.search(r"\b(generate|create|build|make|produce|prepare)\b", lowered))
+    wants_dataset = bool(re.search(r"\b(dataset|test\s+data|sample|corpus|bundle)\b", lowered))
+    wants_dita_ot = bool(_DITA_OT_PATTERN.search(text) or re.search(r"\bpdf2\b|\bhtml5\b|\bxhtml\b|classic\s+html", lowered))
+    wants_publish_output = bool(re.search(r"\b(pdf|pdf2|html5|xhtml|classic\s+html|transform|transformation|publish|publishing|output)\b", lowered))
+    if not (wants_generation and wants_dataset and wants_dita_ot and wants_publish_output):
+        return None
+
+    output_format = "pdf"
+    if re.search(r"\b(pdf|pdf2)\b", lowered) and re.search(r"\b(html5|html|xhtml|classic\s+html)\b", lowered):
+        output_format = "all"
+    elif re.search(r"\bhtml5\b", lowered):
+        output_format = "html5"
+    elif re.search(r"\b(html|xhtml|classic\s+html)\b", lowered):
+        output_format = "html"
+
+    return {
+        "name": "generate_dita_ot_pdf",
+        "args": {
+            "prompt": text,
+            "output_format": output_format,
+            "package_name": _safe_title_fragment(text, max_chars=60),
+        },
+        "source": "auto_publishing_dataset",
+    }
+
+
+def _safe_title_fragment(value: str, max_chars: int = 60) -> str:
+    fragment = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip()).strip("-")
+    return (fragment or "dita-ot-publishing-dataset")[:max_chars]
+
+
 def _looks_like_generate_dita_clarification_response(
     user_content: str,
     *,
@@ -8510,7 +8546,7 @@ async def _stream_assistant_reply(
     elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
-    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
+    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content) or _publishing_dataset_tool_intent(user_content)
     if parsed_tool_intent:
         async for event in _stream_tool_intent_reply(
             session_id,
