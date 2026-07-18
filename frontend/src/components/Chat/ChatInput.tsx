@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, AtSign, ChevronDown, FileCode2, ImagePlus, Loader2, Square, X } from 'lucide-react';
+import { getChatTools } from '@/api/chat';
 import type { PendingWorkflowGuide } from '@/components/Chat/pendingWorkflowUtils';
 import {
   getActiveAuthoringMention,
@@ -9,6 +10,7 @@ import {
 import {
   CHAT_MENTION_ITEMS,
   CHAT_SLASH_ITEMS,
+  chatToolsToSlashItems,
   filterChatMentionItems,
   getActiveSlashCommand,
   type ChatMentionItem,
@@ -64,6 +66,7 @@ export function ChatInput({
   const mode: ChatComposerMode = humanPrompts ? 'ask' : 'agent';
   const [caret, setCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [catalogSlashItems, setCatalogSlashItems] = useState<ChatMentionItem[]>([]);
   const [showModelMenu, setShowModelMenu] = useState(false);
 
   const activeMention = useMemo(
@@ -79,9 +82,19 @@ export function ChatInput({
     () => getActiveSlashCommand(value, caret),
     [value, caret]
   );
+  const slashCatalog = useMemo(() => {
+    const merged = [...catalogSlashItems, ...CHAT_SLASH_ITEMS];
+    const seen = new Set<string>();
+    return merged.filter((item) => {
+      const key = item.label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [catalogSlashItems]);
   const slashItems = useMemo(
-    () => (activeSlash ? filterChatMentionItems(CHAT_SLASH_ITEMS, activeSlash.query) : []),
-    [activeSlash]
+    () => (activeSlash ? filterChatMentionItems(slashCatalog, activeSlash.query) : []),
+    [activeSlash, slashCatalog]
   );
 
   const menuItems = activeMention ? mentionItems : activeSlash ? slashItems : [];
@@ -90,6 +103,17 @@ export function ChatInput({
   useEffect(() => {
     setMentionIndex(0);
   }, [activeMention?.query, activeSlash?.query, menuItems.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getChatTools().then((tools) => {
+      if (cancelled) return;
+      setCatalogSlashItems(chatToolsToSlashItems(tools));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const ta = textareaRef.current;

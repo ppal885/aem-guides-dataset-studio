@@ -698,6 +698,28 @@ export async function getSuggestedPrompts(): Promise<string[]> {
   }
 }
 
+export interface ChatToolCatalogItem {
+  name: string;
+  slash_alias: string;
+  slash_aliases?: string[];
+  title: string;
+  description?: string;
+  category?: string;
+  primary_arg?: string;
+  enabled?: boolean;
+}
+
+export async function getChatTools(): Promise<ChatToolCatalogItem[]> {
+  try {
+    const res = await fetch(apiUrl('/api/v1/chat/tools'));
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.tools) ? data.tools : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Dataset job polling (create_job tool) — GET /api/v1/jobs/{id} */
 export interface DatasetJobStatus {
   id: string;

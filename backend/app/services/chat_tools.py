@@ -214,6 +214,12 @@ _TOOL_UI_META: dict[str, dict[str, Any]] = {
     },
     "generate_dita_ot_pdf": {
         "slash_alias": "generate_dita_ot_pdf",
+        "slash_aliases": [
+            "generate_dita_ot_pdf",
+            "generate_dita_ot_html",
+            "generate_dita_ot_html5",
+            "generate_dita_ot_all",
+        ],
         "title": "Generate DITA-OT Output",
         "category": "Publishing",
         "primary_arg": "prompt",
@@ -3185,6 +3191,7 @@ def get_tool_catalog() -> list[dict[str, Any]]:
             {
                 "name": name,
                 "slash_alias": meta.get("slash_alias") or name,
+                "slash_aliases": meta.get("slash_aliases") or [meta.get("slash_alias") or name],
                 "title": meta.get("title") or _tool_title_from_name(name),
                 "description": tool.get("description") or "",
                 "category": meta.get("category") or "General",
@@ -3213,7 +3220,13 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
         return None
 
     catalog = get_tool_catalog()
-    by_alias = {str(tool["slash_alias"]).lower(): tool for tool in catalog}
+    by_alias: dict[str, dict[str, Any]] = {}
+    for catalog_tool in catalog:
+        aliases = catalog_tool.get("slash_aliases") or [catalog_tool.get("slash_alias")]
+        for item in aliases:
+            alias_key = str(item or "").strip().lower()
+            if alias_key:
+                by_alias[alias_key] = catalog_tool
     tool = by_alias.get(alias)
     if not tool:
         return None
@@ -3244,6 +3257,16 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
         key = key.strip()
         if key in properties:
             args[key] = value.strip()
+
+    if tool["name"] == "generate_dita_ot_pdf" and "output_format" not in args:
+        if alias.endswith("_html"):
+            args["output_format"] = "html"
+        elif alias.endswith("_html5"):
+            args["output_format"] = "html5"
+        elif alias.endswith("_all"):
+            args["output_format"] = "all"
+        elif alias.endswith("_pdf"):
+            args["output_format"] = "pdf"
 
     if primary_arg and primary_arg in properties:
         primary_value = "\n".join(body_lines).strip() or inline_primary

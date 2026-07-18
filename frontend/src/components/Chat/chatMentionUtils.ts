@@ -145,6 +145,51 @@ export function filterChatMentionItems(items: ChatMentionItem[], query: string):
   });
 }
 
+export interface ChatToolCatalogLike {
+  name: string;
+  slash_alias: string;
+  slash_aliases?: string[];
+  title?: string;
+  description?: string;
+  category?: string;
+  primary_arg?: string;
+  enabled?: boolean;
+}
+
+function slashInsertText(alias: string, tool: ChatToolCatalogLike): string {
+  const command = `/${alias}`;
+  if (tool.name === 'generate_dita_ot_pdf') {
+    if (alias.endsWith('_html')) return `${command}\n\nDITA-OT HTML smoke test`;
+    if (alias.endsWith('_html5')) return `${command}\n\nDITA-OT HTML5 smoke test`;
+    if (alias.endsWith('_all')) return `${command}\n\nDITA-OT PDF + HTML + HTML5 smoke test`;
+    return `${command}\n\nDITA-OT PDF smoke test`;
+  }
+  const primary = String(tool.primary_arg || '').trim();
+  return primary ? `${command} ` : `${command}\n`;
+}
+
+export function chatToolsToSlashItems(tools: ChatToolCatalogLike[]): ChatMentionItem[] {
+  const items: ChatMentionItem[] = [];
+  const seen = new Set<string>();
+  for (const tool of tools) {
+    if (tool.enabled === false) continue;
+    const aliases = tool.slash_aliases?.length ? tool.slash_aliases : [tool.slash_alias || tool.name];
+    for (const rawAlias of aliases) {
+      const alias = String(rawAlias || '').trim().replace(/^\//, '');
+      if (!alias || seen.has(alias)) continue;
+      seen.add(alias);
+      items.push({
+        type: 'insert',
+        id: `catalog-${alias}`,
+        label: `/${alias}`,
+        description: String(tool.description || tool.title || tool.name || 'Run tool'),
+        insertText: slashInsertText(alias, tool),
+      });
+    }
+  }
+  return items;
+}
+
 export interface ActiveSlashCommand {
   start: number;
   query: string;
