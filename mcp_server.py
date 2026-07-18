@@ -2,7 +2,12 @@
 # Place at: C:\Users\prashantp\Videos\aem-guides-dataset-studio\mcp_server.py
 import os
 import sys
+import re
+import json
+import zipfile
+import subprocess
 from pathlib import Path
+from datetime import datetime
 
 # ── Resolve both import styles used across your codebase ─────────────────────
 # Some files use `from app.xxx`, others use `from backend.app.xxx`
@@ -1048,6 +1053,241 @@ def bundle_dita_package(
 Files included:
 {chr(10).join('  ' + f for f in manifest['files'])}
 """
+
+
+def _safe_artifact_slug(value: str, fallback: str = "mcp-generated") -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip()).strip("-")
+    return (slug or fallback)[:80]
+
+
+def _dita_ot_cli_path() -> Path | None:
+    configured = (os.getenv("DITA_OT_CLI") or "").strip()
+    if configured:
+        path = Path(configured)
+        if path.exists():
+            return path
+
+    candidates = [
+        PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita.bat",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
+def _run_dita_publish(input_map: Path, fmt: str, output_dir: Path, timeout_seconds: int = 180) -> dict:
+    dita_cli = _dita_ot_cli_path()
+    if dita_cli is None:
+        return {
+            "ok": False,
+            "format": fmt,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "DITA-OT CLI not found. Set DITA_OT_CLI or install tools/dita-ot-4.4-runtime.",
+            "output_dir": str(output_dir),
+        }
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        str(dita_cli),
+        "-i",
+        str(input_map),
+        "-f",
+        fmt,
+        "-o",
+        str(output_dir),
+        "--processing-mode=strict",
+    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+    )
+    return {
+        "ok": proc.returncode == 0,
+        "format": fmt,
+        "exit_code": proc.returncode,
+        "stdout": proc.stdout[-4000:],
+        "stderr": proc.stderr[-4000:],
+        "output_dir": str(output_dir),
+    }
+
+
+@mcp.tool()
+def generate_publish_compare(
+    prompt: str,
+    outputs: list | None = None,
+    package_name: str = "",
+    include_pdf2: bool = True,
+    include_html5: bool = True,
+) -> str:
+    """
+    Generate a focused DITA QA dataset on the VM, publish it to HTML5/PDF2 with
+    local DITA-OT, and return deterministic comparison/oracle results.
+
+    Intended Claude Code flow:
+    - Claude Code uses its own model to understand the user request.
+    - This MCP tool runs on the VM as the QA factory: data, validation, publish, compare.
+    - The tool returns artifacts and pass/fail evidence for Claude Code to explain.
+
+    prompt: QA topic to generate data for, e.g. "xml:lang and chunking".
+    outputs: optional list such as ["html5", "pdf2"]. Overrides include_* flags.
+    package_name: optional stable artifact prefix. If omitted, a timestamped name is used.
+    """
+    try:
+        requested = {str(item).lower() for item in (outputs or [])}
+        run_html5 = include_html5 if not requested else "html5" in requested
+        run_pdf2 = include_pdf2 if not requested else "pdf2" in requested
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        base_slug = _safe_artifact_slug(package_name or prompt or "dita-qa")
+        prefix = f"{base_slug}-{timestamp}"
+
+        output_dir = PROJECT_ROOT / "output" / "dita"
+        package_dir = PROJECT_ROOT / "output" / "packages"
+        publish_base = PROJECT_ROOT / "output" / "publish" / prefix
+        output_dir.mkdir(parents=True, exist_ok=True)
+        package_dir.mkdir(parents=True, exist_ok=True)
+
+        map_name = f"{prefix}.ditamap"
+        overview_name = f"{prefix}-overview.dita"
+        procedure_name = f"{prefix}-procedure.dita"
+        mixed_name = f"{prefix}-mixed-language.dita"
+
+        map_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="{prefix.lower()}" xml:lang="en-US">
+  <title>{prompt}</title>
+  <topicref href="{overview_name}" chunk="to-content"/>
+  <topicref href="{procedure_name}" type="task" chunk="to-content"/>
+  <topicref href="{mixed_name}" chunk="by-topic"/>
+</map>
+'''
+        overview_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="overview" xml:lang="en-US" outputclass="qa-language-chunk-overview">
+  <title>Understanding {prompt}</title>
+  <shortdesc>Use this topic to verify language metadata when DITA topics are merged or split during publishing.</shortdesc>
+  <prolog><metadata><keywords><keyword>xml:lang</keyword><keyword>chunking</keyword><keyword>publishing QA</keyword></keywords></metadata></prolog>
+  <conbody>
+    <section id="why"><title>Why it matters</title>
+      <p><xmlatt>xml:lang</xmlatt> identifies the language of content, while <xmlatt>chunk</xmlatt> on map references controls output file boundaries.</p>
+      <p>QA should verify that publishing does not drop or overwrite language metadata when topics are chunked.</p>
+    </section>
+  </conbody>
+</concept>
+'''
+        procedure_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE task PUBLIC "-//OASIS//DTD DITA Task//EN" "task.dtd">
+<task id="validate-language-chunking" xml:lang="en-US" outputclass="qa-language-chunk-procedure">
+  <title>Validate language metadata in chunked output</title>
+  <shortdesc>Publish the map to HTML5 and PDF2, then inspect output language behavior.</shortdesc>
+  <prolog><metadata><keywords><keyword>HTML5</keyword><keyword>PDF2</keyword><keyword>language metadata</keyword></keywords></metadata></prolog>
+  <taskbody>
+    <context><p>This task validates chunking and language inheritance risks for AEM Guides publishing.</p></context>
+    <steps>
+      <step><cmd>Publish the map to HTML5.</cmd><info><p>Check generated page boundaries and language attributes.</p></info></step>
+      <step><cmd>Publish the map to PDF2.</cmd><info><p>Check generated labels, TOC entries, hyphenation, and accessibility metadata.</p></info></step>
+      <step><cmd>Compare source topic languages with generated output.</cmd><stepresult><p>No chunked output should silently lose <xmlatt>xml:lang</xmlatt>.</p></stepresult></step>
+    </steps>
+    <result><p>The dataset passes when HTML5 and PDF2 outputs preserve expected language semantics.</p></result>
+  </taskbody>
+</task>
+'''
+        mixed_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="mixed-language" xml:lang="en-US" outputclass="qa-language-chunk-mixed">
+  <title>Mixed-language chunk boundary sample</title>
+  <shortdesc>Mixed-language paragraphs test nested language preservation in generated output.</shortdesc>
+  <prolog><metadata><keywords><keyword>mixed language</keyword><keyword>chunk boundary</keyword><keyword>locale preservation</keyword></keywords></metadata></prolog>
+  <body>
+    <p>This English paragraph should remain marked as English.</p>
+    <p xml:lang="fr-FR">Ce paragraphe français doit conserver son attribut de langue.</p>
+    <p xml:lang="de-DE">Dieser deutsche Absatz muss seine Sprachmarkierung behalten.</p>
+    <section id="oracle"><title>Expected publishing oracle</title>
+      <ul>
+        <li>HTML5 output preserves page-level and nested language metadata.</li>
+        <li>PDF2 output uses correct locale-sensitive generated text and accessibility language.</li>
+        <li>Chunking does not rewrite all content to the map language.</li>
+      </ul>
+    </section>
+  </body>
+</topic>
+'''
+        files = {
+            map_name: map_xml,
+            overview_name: overview_xml,
+            procedure_name: procedure_xml,
+            mixed_name: mixed_xml,
+        }
+        for filename, content in files.items():
+            (output_dir / filename).write_text(content, encoding="utf-8")
+
+        validation = {}
+        for filename in files:
+            validation[filename] = validate_dita_file(filename)
+
+        zip_path = package_dir / f"{prefix}.zip"
+        manifest = {
+            "package_name": prefix,
+            "prompt": prompt,
+            "created": datetime.now().isoformat(),
+            "files": list(files.keys()),
+        }
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for filename in files:
+                archive.write(output_dir / filename, filename)
+            archive.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+        publish = {}
+        if run_html5:
+            publish["html5"] = _run_dita_publish(output_dir / map_name, "html5", publish_base / "html5")
+        if run_pdf2:
+            publish["pdf2"] = _run_dita_publish(output_dir / map_name, "pdf2", publish_base / "pdf2")
+
+        html_mixed = publish_base / "html5" / f"{prefix}-mixed-language.html"
+        html_text = html_mixed.read_text(encoding="utf-8") if html_mixed.exists() else ""
+        pdf_files = sorted((publish_base / "pdf2").glob("*.pdf")) if (publish_base / "pdf2").exists() else []
+        comparisons = {
+            "source_files_created": all((output_dir / name).exists() for name in files),
+            "topic_validation_passed": all("Valid DITA" in validation[name] for name in [overview_name, procedure_name, mixed_name]),
+            "html5_published": bool(publish.get("html5", {}).get("ok")) if run_html5 else None,
+            "pdf2_published": bool(publish.get("pdf2", {}).get("ok")) if run_pdf2 else None,
+            "html5_fr_lang_preserved": ('lang="fr-FR"' in html_text and "français" in html_text) if run_html5 else None,
+            "html5_de_lang_preserved": ('lang="de-DE"' in html_text and "deutsche" in html_text) if run_html5 else None,
+            "html5_chunk_outputs_created": len(list((publish_base / "html5").glob("*.html"))) >= 3 if run_html5 else None,
+            "pdf2_file_created": bool(pdf_files and pdf_files[0].stat().st_size > 0) if run_pdf2 else None,
+        }
+
+        status = "success" if all(v is not False for v in comparisons.values()) else "partial"
+        response = {
+            "status": status,
+            "prompt": prompt,
+            "package_name": prefix,
+            "source_files": [str(output_dir / name) for name in files],
+            "package_zip": str(zip_path),
+            "html5_output_dir": str(publish_base / "html5") if run_html5 else None,
+            "pdf2_output_dir": str(publish_base / "pdf2") if run_pdf2 else None,
+            "pdf2_files": [str(path) for path in pdf_files],
+            "validation": validation,
+            "publish": publish,
+            "comparisons": comparisons,
+            "qa_summary": (
+                "PASS: generated DITA, validation, HTML5/PDF2 publishing, and language/chunking comparisons completed."
+                if status == "success"
+                else "PARTIAL: inspect failed comparison or publish details."
+            ),
+        }
+        return json.dumps(response, indent=2, ensure_ascii=False)
+    except subprocess.TimeoutExpired as exc:
+        return f"generate_publish_compare timed out while running DITA-OT: {exc}"
+    except Exception as e:
+        return f"Error in generate_publish_compare: {e}"
 
 
 @mcp.tool()
@@ -2845,11 +3085,49 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
 
     try:
         parts: list[str] = []
+        grounding: dict | None = None
         async for event in cs.chat_turn(session_id, question, tenant_id=tenant_id, human_prompts=True):
-            if isinstance(event, dict) and event.get("type") == "chunk":
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") == "grounding":
+                grounding = event.get("grounding") or {}
+            elif event.get("type") == "chunk":
                 parts.append(str(event.get("content") or ""))
         answer = "".join(parts).strip()
-        return answer or "No answer was returned for this question."
+        if not answer:
+            return "No answer was returned for this question."
+
+        if not grounding:
+            return answer
+
+        citations = grounding.get("citations") or []
+        source_lines = []
+        for citation in citations[:6]:
+            if not isinstance(citation, dict):
+                continue
+            label = citation.get("label") or citation.get("title") or citation.get("id") or "Evidence"
+            uri = citation.get("uri") or ""
+            source_lines.append(f"- {label}{f' — {uri}' if uri else ''}")
+
+        status = grounding.get("status") or "partial"
+        confidence = grounding.get("confidence")
+        reason = grounding.get("reason") or ""
+        evidence_count = grounding.get("evidence_count")
+        grounding_lines = [
+            "## Grounding",
+            f"- Status: {status}",
+        ]
+        if confidence is not None:
+            grounding_lines.append(f"- Confidence: {confidence}")
+        if evidence_count is not None:
+            grounding_lines.append(f"- Evidence chunks: {evidence_count}")
+        if reason:
+            grounding_lines.append(f"- Reason: {reason}")
+        if source_lines:
+            grounding_lines.append("- Sources:")
+            grounding_lines.extend(source_lines)
+
+        return answer.rstrip() + "\n\n" + "\n".join(grounding_lines)
     except Exception as e:
         return f"Error generating answer: {e}"
     finally:
@@ -3033,6 +3311,387 @@ def find_dita_ot_and_jira_issues(tag: str, tenant_id: str = "kone", max_results:
                 lines.append(f"- [{key}]({url}) — {summary} ({status})" if url else f"- {key} — {summary} ({status})")
 
     return "\n".join(lines)
+
+
+def _run_local_python_script(args: list[str], timeout_sec: int = 1800) -> tuple[int, str, str]:
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, *args],
+        cwd=str(PROJECT_ROOT),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=timeout_sec,
+    )
+    return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def _read_json_file(path: Path):
+    import json
+
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _resolve_project_path(user_path: str) -> Path:
+    raw = Path((user_path or "").strip())
+    path = raw if raw.is_absolute() else PROJECT_ROOT / raw
+    resolved = path.resolve()
+    allowed_roots = [
+        PROJECT_ROOT.resolve(),
+        (PROJECT_ROOT / "output").resolve(),
+        (PROJECT_ROOT / "incoming_archives").resolve(),
+        (PROJECT_ROOT / "tmp").resolve(),
+    ]
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        raise ValueError(f"Refusing path outside allowed project roots: {resolved}")
+    return resolved
+
+
+def _find_generated_zip(*, source_path: str = "", job_id: str = "", latest: bool = False) -> Path:
+    if source_path:
+        return _resolve_project_path(source_path)
+
+    candidates: list[Path] = []
+    search_roots = [
+        PROJECT_ROOT / "output",
+        PROJECT_ROOT / "backend" / "storage" / "zips",
+        PROJECT_ROOT / "backend" / "storage",
+        PROJECT_ROOT / "tmp",
+    ]
+    clean_job = (job_id or "").strip()
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.zip"):
+            if clean_job and clean_job not in str(path):
+                continue
+            candidates.append(path)
+
+    if not candidates:
+        qualifier = f" for job_id={clean_job}" if clean_job else ""
+        raise FileNotFoundError(f"No generated ZIP found{qualifier}. Pass source_path explicitly.")
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    if latest or clean_job:
+        return candidates[0].resolve()
+    raise ValueError("Pass source_path, job_id, or latest=True to choose which generated ZIP to upload.")
+
+
+def _extract_zip_for_aem_upload(source: Path) -> Path:
+    import hashlib
+    import shutil
+    import zipfile
+
+    short_name = f"{source.stem[:24]}-{hashlib.sha256(str(source).encode('utf-8')).hexdigest()[:10]}"
+    extract_root = PROJECT_ROOT / "tmp" / "aem_upload_extract" / short_name
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True, exist_ok=True)
+    root_resolved = extract_root.resolve()
+    with zipfile.ZipFile(source, "r") as archive:
+        for member in archive.infolist():
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Refusing unsafe ZIP entry: {member.filename}")
+            destination = (extract_root / member_path).resolve()
+            if destination != root_resolved and root_resolved not in destination.parents:
+                raise ValueError(f"Refusing unsafe ZIP entry: {member.filename}")
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member, "r") as src, destination.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+    children = [child for child in extract_root.iterdir()]
+    return children[0] if len(children) == 1 and children[0].is_dir() else extract_root
+
+
+@mcp.tool()
+def upload_dataset_to_aem(
+    source_path: str,
+    target_path: str,
+    aem_base_url: str = "",
+    username: str = "",
+    password: str = "",
+    access_token: str = "",
+    max_concurrent: int = 20,
+    max_upload_files: int = 70000,
+) -> str:
+    """
+    Upload a generated DITA dataset/package to an AEM server under /content/dam.
+
+    source_path must be a project-local directory or ZIP. ZIP files are extracted
+    to tmp/aem_upload_extract/<zip-name> before upload. Credentials can be passed
+    directly, but the preferred Claude MCP flow is env vars:
+    AEM_BASE_URL, AEM_USERNAME, AEM_PASSWORD, or AEM_ACCESS_TOKEN.
+    """
+    import json
+
+    try:
+        source = _resolve_project_path(source_path)
+        if not source.exists():
+            return f"Source path does not exist: {source}"
+        target = (target_path or "").strip()
+        if not target.startswith("/content/dam/") and not target.startswith("content/dam/"):
+            return "Refusing upload: target_path must start with /content/dam/."
+
+        upload_source = source
+        if source.is_file():
+            if source.suffix.lower() != ".zip":
+                return "source_path must be a directory or .zip file."
+            upload_source = _extract_zip_for_aem_upload(source)
+
+        base_url = (aem_base_url or os.getenv("AEM_BASE_URL") or os.getenv("AEM_AUTHOR_URL") or "").strip()
+        user = username or os.getenv("AEM_USERNAME") or ""
+        pwd = password or os.getenv("AEM_PASSWORD") or ""
+        token = access_token or os.getenv("AEM_ACCESS_TOKEN") or ""
+        if not base_url:
+            return "Missing AEM base URL. Pass aem_base_url or set AEM_BASE_URL/AEM_AUTHOR_URL."
+        if not token and not (user and pwd):
+            return "Missing AEM auth. Pass access_token or username/password, or set AEM_ACCESS_TOKEN or AEM_USERNAME/AEM_PASSWORD."
+
+        from app.services.aem_upload_service import get_upload_service
+
+        result = get_upload_service().upload_dataset(
+            source_path=str(upload_source),
+            aem_base_url=base_url,
+            target_path=target,
+            username=user,
+            password=pwd,
+            access_token=token,
+            max_concurrent=max(1, min(int(max_concurrent), 100)),
+            max_upload_files=max(1, int(max_upload_files)),
+        )
+        safe_result = dict(result)
+        for secret_key in ("password", "accessToken", "access_token", "token"):
+            if secret_key in safe_result:
+                safe_result[secret_key] = "***"
+        return json.dumps(safe_result, ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        return f"AEM upload failed: {e}"
+
+
+@mcp.tool()
+def upload_mcp_generated_data_to_aem(
+    target_path: str,
+    source_path: str = "",
+    job_id: str = "",
+    latest: bool = False,
+    aem_base_url: str = "",
+    username: str = "",
+    password: str = "",
+    access_token: str = "",
+    max_concurrent: int = 20,
+    max_upload_files: int = 70000,
+) -> str:
+    """
+    Upload data generated by MCP to AEM Assets.
+
+    Choose the generated package by source_path, job_id, or latest=True. This is
+    a convenience wrapper over upload_dataset_to_aem for the normal Claude flow:
+    generate data with MCP, then upload the produced ZIP/folder to /content/dam.
+    """
+    try:
+        generated = _find_generated_zip(source_path=source_path, job_id=job_id, latest=latest)
+    except Exception as exc:
+        return f"Could not resolve generated MCP data: {exc}"
+
+    return upload_dataset_to_aem(
+        source_path=str(generated),
+        target_path=target_path,
+        aem_base_url=aem_base_url,
+        username=username,
+        password=password,
+        access_token=access_token,
+        max_concurrent=max_concurrent,
+        max_upload_files=max_upload_files,
+    )
+
+
+@mcp.tool()
+def build_dita_ot_issue_corpus(
+    input_url: str = "https://github.com/dita-ot/dita-ot/issues?q=is%3Aissue%20state%3Aclosed",
+    output_dir: str = "dita-ot-closed-issue-corpus",
+    max_pages: int = 0,
+    include_comments: bool = False,
+) -> str:
+    """
+    Build a DITA topic corpus from DITA-OT GitHub issues.
+
+    Uses scripts/convert_dita_ot_issues_to_dita.py. If GITHUB_TOKEN is available,
+    the converter uses GitHub GraphQL cursor pagination for large issue sets.
+    This writes local DITA topics + map + manifest, but does not mutate Chroma.
+    """
+    safe_output = (output_dir or "dita-ot-closed-issue-corpus").strip()
+    if Path(safe_output).is_absolute() or ".." in Path(safe_output).parts:
+        return "Refusing unsafe output_dir. Use a relative folder name inside the project."
+
+    script_args = [
+        "scripts/convert_dita_ot_issues_to_dita.py",
+        "--input",
+        input_url,
+        "--output-dir",
+        safe_output,
+        "--reset",
+    ]
+    if max_pages > 0:
+        script_args.extend(["--max-pages", str(max_pages)])
+    if include_comments:
+        script_args.append("--include-comments-from-github")
+
+    code, stdout, stderr = _run_local_python_script(script_args)
+    if code != 0:
+        return f"DITA-OT issue corpus build failed (exit {code}).\n\nSTDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
+    return f"DITA-OT issue corpus built successfully.\n\n{stdout}"
+
+
+@mcp.tool()
+def index_dita_ot_issue_corpus(
+    corpus_root: str = "dita-ot-closed-issue-corpus/topics",
+    output_json: str = "backend/storage/dita_ot_issue_behavior_chunks.json",
+    upsert_chroma: bool = False,
+    batch_size: int = 64,
+) -> str:
+    """
+    Index converted DITA-OT issue topics into retrieval JSON and optionally Chroma.
+
+    Default output is backend/storage/dita_ot_issue_behavior_chunks.json, which
+    doc_retriever_service loads as a JSON fallback for MCP/test-plan evidence.
+    """
+    corpus_path = PROJECT_ROOT / corpus_root
+    output_path = PROJECT_ROOT / output_json
+    if not corpus_path.exists():
+        return f"Corpus root does not exist: {corpus_path}. Run build_dita_ot_issue_corpus first."
+    if PROJECT_ROOT not in output_path.resolve().parents:
+        return "Refusing unsafe output_json outside the project."
+
+    script_args = [
+        "scripts/index_dita_behavior_corpus.py",
+        "--corpus-root",
+        str(corpus_path),
+        "--output",
+        str(output_path),
+        "--batch-size",
+        str(max(1, min(int(batch_size), 512))),
+    ]
+    if upsert_chroma:
+        script_args.append("--upsert-chroma")
+
+    code, stdout, stderr = _run_local_python_script(script_args)
+    if code != 0:
+        return f"DITA-OT issue corpus indexing failed (exit {code}).\n\nSTDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
+    return f"DITA-OT issue corpus indexed successfully.\n\n{stdout}"
+
+
+@mcp.tool()
+def show_mcp_rag_corpus_status() -> str:
+    """
+    Show local JSON corpus readiness for MCP/test-plan retrieval.
+
+    Reports AEM Guides behavior chunks, DITA-OT issue chunks, manual chunks,
+    and converted DITA-OT issue topic counts.
+    """
+    import json
+
+    checks = [
+        ("AEM Guides behavior chunks", PROJECT_ROOT / "backend/storage/aem_guides_behavior_chunks.json"),
+        ("DITA-OT issue behavior chunks", PROJECT_ROOT / "backend/storage/dita_ot_issue_behavior_chunks.json"),
+        ("Manual AEM Guides chunks", PROJECT_ROOT / "backend/storage/manual_aem_guides_doc_chunks.json"),
+        ("Primary AEM Guides chunks", PROJECT_ROOT / "backend/storage/aem_guides_doc_chunks.json"),
+    ]
+    lines = ["# MCP RAG Corpus Status", ""]
+    for label, path in checks:
+        if not path.exists():
+            lines.append(f"- {label}: missing ({path})")
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            count = len(data) if isinstance(data, list) else "non-list"
+            size = path.stat().st_size
+            lines.append(f"- {label}: {count} records, {size} bytes")
+        except Exception as exc:
+            lines.append(f"- {label}: unreadable ({exc})")
+
+    issue_topics = PROJECT_ROOT / "dita-ot-closed-issue-corpus/topics"
+    if issue_topics.exists():
+        lines.append(f"- Converted DITA-OT issue topics: {len(list(issue_topics.glob('*.dita')))} files")
+    else:
+        lines.append("- Converted DITA-OT issue topics: missing")
+
+    try:
+        from app.services.doc_retriever_service import check_rag_readiness
+        lines.append("")
+        lines.append("## Backend readiness")
+        lines.append("```json")
+        lines.append(json.dumps(check_rag_readiness(), ensure_ascii=False, indent=2, default=str))
+        lines.append("```")
+    except Exception as exc:
+        lines.append(f"- Backend readiness unavailable: {exc}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def guides_test_plan_generator(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+    """
+    Build the evidence packet for the Claude Code slash command:
+
+        /guides-test-plan-generator GUIDES-12345
+
+    The packet combines Jira lookup, Experience League RAG evidence, DITA/spec
+    evidence, and QA Studio preview data. It is read-only: it does not crawl,
+    reindex, delete, or mutate production vector indexes.
+    """
+    try:
+        from app.services.guides_test_plan_generator_service import (
+            build_guides_test_plan_packet,
+            render_guides_test_plan_packet_markdown,
+        )
+
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=max(3, min(int(evidence_k), 12)),
+        )
+        return render_guides_test_plan_packet_markdown(packet)
+    except Exception as e:
+        return f"Error building Guides test-plan evidence packet: {e}"
+
+
+@mcp.tool()
+def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+    """
+    Claude MCP-only helper for publishing/PDF2/HTML/HTML5 transformation Jira tickets.
+
+    It refuses non-publishing tickets, and for matching Jira labels/text returns the
+    Guides test-plan packet with DITA-OT GitHub evidence integrated for QA risk analysis.
+    """
+    try:
+        from app.services.guides_test_plan_generator_service import (
+            build_guides_test_plan_packet,
+            is_publishing_transform_ticket,
+            render_guides_test_plan_packet_markdown,
+        )
+
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=max(3, min(int(evidence_k), 12)),
+        )
+        issue = packet.get("issue") or {}
+        if not is_publishing_transform_ticket(issue):
+            labels = issue.get("labels") or issue.get("label_names") or []
+            return (
+                "Refused: this MCP tool is only for publishing/PDF2/HTML/HTML5/"
+                f"DITA-OT transformation Jira tickets.\nJira: {packet.get('jira_key')}\n"
+                f"Detected labels: {labels}\nUse guides_test_plan_generator for non-publishing tickets."
+            )
+        return render_guides_test_plan_packet_markdown(packet)
+    except Exception as e:
+        return f"Error building publishing DITA QA packet: {e}"
 
 
 if __name__ == "__main__":
