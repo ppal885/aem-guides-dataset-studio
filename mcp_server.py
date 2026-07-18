@@ -1117,8 +1117,10 @@ def _run_dita_publish(input_map: Path, fmt: str, output_dir: Path, timeout_secon
         errors="replace",
         timeout=timeout_seconds,
     )
+    combined_output = f"{proc.stdout}\n{proc.stderr}"
+    has_build_failure = "BUILD FAILED" in combined_output or "[ERROR]" in combined_output
     return {
-        "ok": proc.returncode == 0,
+        "ok": proc.returncode == 0 and not has_build_failure,
         "format": fmt,
         "dita_ot_format": cli_format,
         "exit_code": proc.returncode,
@@ -1187,7 +1189,7 @@ def _mcp_publish_generation_guidance(
 
 
 @mcp.tool()
-def generate_publish_compare(
+async def generate_publish_compare(
     prompt: str,
     outputs: list | None = None,
     package_name: str = "",
@@ -1207,6 +1209,40 @@ def generate_publish_compare(
     outputs: optional list such as ["html5", "pdf2"]. Overrides include_* flags.
     package_name: optional stable artifact prefix. If omitted, a timestamped name is used.
     """
+    try:
+        from app.services.dita_ot_publish_service import publish_with_dita_ot
+
+        requested = {str(item).lower() for item in (outputs or [])}
+        if requested:
+            if {"pdf", "pdf2"} & requested and {"html", "xhtml", "html5"} & requested:
+                output_format = "all"
+            elif "html5" in requested:
+                output_format = "html5"
+            elif {"html", "xhtml"} & requested:
+                output_format = "html"
+            elif {"pdf", "pdf2"} & requested:
+                output_format = "pdf"
+            else:
+                output_format = "all"
+        elif include_pdf2 and include_html5:
+            output_format = "all"
+        elif include_html5:
+            output_format = "html5"
+        elif include_pdf2:
+            output_format = "pdf"
+        else:
+            output_format = "all"
+
+        result = await publish_with_dita_ot(
+            prompt=prompt,
+            output_format=output_format,
+            package_name=package_name,
+        )
+        result["deprecated_tool"] = "generate_publish_compare delegates to generate_dita_ot_output/publish_with_dita_ot."
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
     try:
         requested = {str(item).lower() for item in (outputs or [])}
         run_html5 = include_html5 if not requested else "html5" in requested

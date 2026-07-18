@@ -3330,6 +3330,8 @@ def get_tool_definitions() -> list[dict]:
             "description": (
                 "Prepare a single DITA topic from pasted text or Jira content, then show a review-first preview. "
                 "Use ONLY for single-topic authoring or when the user pastes raw Jira/document text and wants ONE topic reviewed. "
+                "Do NOT use when the user asks for DITA-OT, PDF, PDF2, HTML, HTML5, publishing, transformation, "
+                "output behavior, or generated publishing evidence; use generate_dita_ot_pdf for those. "
                 "Do NOT use for dataset, multi-topic, or bulk generation requests — use create_job for those. "
                 "CRITICAL — do NOT call generate_dita when the user mentions ANY of these keywords; use create_job(recipe_type='freeform') instead: "
                 "conref, conkeyref, keydef, keyref, keyscope, nested map, mapref, "
@@ -3728,7 +3730,9 @@ def get_tool_definitions() -> list[dict]:
                 "Run the local DITA-OT CLI to publish a DITA map to PDF, classic HTML/xhtml, HTML5, or all. "
                 "Use when the user explicitly asks to call DITA-OT, generate DITA-OT PDF, "
                 "generate classic HTML, generate HTML5 output, or verify publishing output. If input_map is omitted, "
-                "the tool creates a small smoke-test DITA map and publishes it. For PDF, it uses "
+                "the tool creates a deterministic map+topics QA corpus from detected DITA constructs and publishes it. "
+                "Return expected behavior, QA checklist, PDF/HTML review areas, negative/risk cases, validation oracles, "
+                "and confidence contract so users know what was generated and what to verify. For PDF, it uses "
                 "the DITA-OT CLI format `pdf` because that invokes the built-in PDF/pdf2 pipeline."
             ),
             "input_schema": {

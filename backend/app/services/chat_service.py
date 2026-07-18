@@ -90,6 +90,10 @@ from app.services.tenant_service import retrieve_tenant_context, retrieve_tenant
 from app.core.prompt_interface import PromptBuilder, load_prompt_spec
 from app.core.structured_logging import get_structured_logger
 from app.services.llm_service import _get_prompt_versions
+from app.services.dita_publishing_construct_registry import (
+    detect_output_format as detect_publishing_output_format,
+    detect_publishing_constructs,
+)
 
 logger = get_structured_logger(__name__)
 
@@ -1172,25 +1176,25 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
     )
 
 
-def _publishing_dataset_tool_intent(user_content: str) -> dict[str, Any] | None:
+def detect_publishing_dataset_intent(user_content: str) -> dict[str, Any] | None:
     text = (user_content or "").strip()
     if not text or text.startswith("/"):
         return None
     lowered = text.lower()
     wants_generation = bool(re.search(r"\b(generate|create|build|make|produce|prepare)\b", lowered))
-    wants_dataset = bool(re.search(r"\b(dataset|test\s+data|sample|corpus|bundle)\b", lowered))
+    wants_dataset = bool(
+        re.search(
+            r"\b(dataset|test\s+data|sample|corpus|bundle|same|above|combination|scenario|evidence|oracle|oracles|review|qa)\b",
+            lowered,
+        )
+    )
     wants_dita_ot = bool(_DITA_OT_PATTERN.search(text) or re.search(r"\bpdf2\b|\bhtml5\b|\bxhtml\b|classic\s+html", lowered))
     wants_publish_output = bool(re.search(r"\b(pdf|pdf2|html5|xhtml|classic\s+html|transform|transformation|publish|publishing|output)\b", lowered))
+    constructs = detect_publishing_constructs(text)
     if not (wants_generation and wants_dataset and wants_dita_ot and wants_publish_output):
         return None
 
-    output_format = "pdf"
-    if re.search(r"\b(pdf|pdf2)\b", lowered) and re.search(r"\b(html5|html|xhtml|classic\s+html)\b", lowered):
-        output_format = "all"
-    elif re.search(r"\bhtml5\b", lowered):
-        output_format = "html5"
-    elif re.search(r"\b(html|xhtml|classic\s+html)\b", lowered):
-        output_format = "html"
+    output_format = detect_publishing_output_format(text, default="pdf")
 
     return {
         "name": "generate_dita_ot_pdf",
@@ -1198,9 +1202,13 @@ def _publishing_dataset_tool_intent(user_content: str) -> dict[str, Any] | None:
             "prompt": text,
             "output_format": output_format,
             "package_name": _safe_title_fragment(text, max_chars=60),
+            "detected_constructs": constructs,
         },
         "source": "auto_publishing_dataset",
     }
+
+
+_publishing_dataset_tool_intent = detect_publishing_dataset_intent
 
 
 def _safe_title_fragment(value: str, max_chars: int = 60) -> str:
@@ -7557,6 +7565,26 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
                 for item in (result.get("expected_pdf_review_areas") or (generation_summary or {}).get("expected_pdf_review_areas") or [])
                 if str(item).strip()
             ]
+            html_review_areas = [
+                str(item).strip()
+                for item in (result.get("expected_html_review_areas") or (generation_summary or {}).get("expected_html_review_areas") or [])
+                if str(item).strip()
+            ]
+            risk_cases = [
+                str(item).strip()
+                for item in (result.get("negative_or_risk_cases") or (generation_summary or {}).get("negative_or_risk_cases") or [])
+                if str(item).strip()
+            ]
+            validation_oracles = [
+                str(item).strip()
+                for item in (result.get("validation_oracles") or (generation_summary or {}).get("validation_oracles") or [])
+                if str(item).strip()
+            ]
+            confidence_contract = [
+                str(item).strip()
+                for item in (result.get("confidence_contract") or (generation_summary or {}).get("confidence_contract") or [])
+                if str(item).strip()
+            ]
             lines = [f"I ran DITA-OT successfully for **{title}**."]
             if what_was_generated:
                 lines.append("")
@@ -7570,6 +7598,22 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
                 lines.append("")
                 lines.append("**Expected areas to inspect in PDF**")
                 lines.extend(f"- {item}" for item in pdf_review_areas[:5])
+            if html_review_areas and (xhtml_files or html_files):
+                lines.append("")
+                lines.append("**Expected areas to inspect in HTML/HTML5**")
+                lines.extend(f"- {item}" for item in html_review_areas[:5])
+            if risk_cases:
+                lines.append("")
+                lines.append("**Negative / risk cases**")
+                lines.extend(f"- {item}" for item in risk_cases[:5])
+            if validation_oracles:
+                lines.append("")
+                lines.append("**Validation oracles**")
+                lines.extend(f"- {item}" for item in validation_oracles[:5])
+            if confidence_contract:
+                lines.append("")
+                lines.append("**Confidence contract**")
+                lines.extend(f"- {item}" for item in confidence_contract[:3])
             parts = []
             if pdf_urls:
                 parts.append(f"Download PDF: {pdf_urls[0]}")

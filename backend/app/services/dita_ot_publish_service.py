@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.services.dita_publishing_construct_registry import (
+    SUMMARY_FILENAME,
+    build_publishing_corpus,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_ROOT = PROJECT_ROOT / "output" / "dita-ot-chat"
@@ -376,7 +381,11 @@ dita --input={map_path.name} --format=html5 --output=publish/html5
     return map_path
 
 
-def _write_sample_dataset(work_dir: Path, title: str) -> Path:
+def _write_sample_dataset(work_dir: Path, title: str, output_format: str = "pdf") -> Path:
+    registry_result = build_publishing_corpus(work_dir, title, output_format=output_format)
+    if registry_result:
+        return Path(registry_result["map_path"])
+
     if _looks_like_copy_to_chunk_lang_request(title):
         return _write_copy_to_chunk_lang_dataset(work_dir, title)
     if _looks_like_xml_lang_chunk_request(title):
@@ -426,6 +435,18 @@ def _build_generation_summary(
         for path in work_dir.rglob("*")
         if path.is_file()
     )
+    registry_summary_path = work_dir / SUMMARY_FILENAME
+    if registry_summary_path.exists():
+        try:
+            registry_summary = json.loads(registry_summary_path.read_text(encoding="utf-8"))
+            if isinstance(registry_summary, dict):
+                registry_summary["source_files"] = source_files
+                registry_summary["formats_requested"] = formats
+                registry_summary["input_map"] = str(input_map)
+                return registry_summary
+        except Exception:
+            pass
+
     if _looks_like_copy_to_chunk_lang_request(prompt):
         return {
             "title": "copy-to + chunk + xml:lang DITA-OT publishing dataset",
@@ -560,8 +581,10 @@ def _run_dita(input_map: Path, fmt: str, output_dir: Path, timeout_seconds: int)
         errors="replace",
         timeout=timeout_seconds,
     )
+    combined_output = f"{proc.stdout}\n{proc.stderr}"
+    has_build_failure = "BUILD FAILED" in combined_output or "[ERROR]" in combined_output
     return {
-        "ok": proc.returncode == 0,
+        "ok": proc.returncode == 0 and not has_build_failure,
         "format": fmt,
         "exit_code": proc.returncode,
         "command": " ".join(cmd),
@@ -607,7 +630,7 @@ async def publish_with_dita_ot(
                     shutil.copytree(item, target, dirs_exist_ok=True)
         input_for_build = source_map if source_map.exists() else resolved_map
     else:
-        input_for_build = _write_sample_dataset(work_dir, prompt or slug)
+        input_for_build = _write_sample_dataset(work_dir, prompt or slug, output_format=requested)
 
     if requested == "both":
         formats = ["pdf", "html5"]
@@ -659,12 +682,17 @@ async def publish_with_dita_ot(
         "status": "success" if ok else "error",
         "summary": "DITA-OT publish completed." if ok else "DITA-OT publish failed; inspect stderr.",
         "generation_summary": generation_summary,
+        "detected_constructs": generation_summary.get("detected_constructs", []),
+        "source_files": generation_summary.get("source_files", []),
         "what_was_generated": generation_summary["what_was_generated"],
         "expected_behavior": generation_summary["expected_behavior"],
         "qa_checklist": generation_summary["qa_checklist"],
         "expected_pdf_review_areas": generation_summary["expected_pdf_review_areas"],
         "expected_html_review_areas": generation_summary["expected_html_review_areas"],
+        "negative_or_risk_cases": generation_summary.get("negative_or_risk_cases", []),
+        "validation_oracles": generation_summary.get("validation_oracles", []),
         "recommended_user_next_step": generation_summary["recommended_user_next_step"],
+        "confidence_contract": generation_summary.get("confidence_contract", []),
         "run_id": run_id,
         "input_map": str(input_for_build),
         "output_format": requested,

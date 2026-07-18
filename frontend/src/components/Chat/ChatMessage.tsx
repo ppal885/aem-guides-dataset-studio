@@ -735,6 +735,9 @@ export function ToolResult({
     const qaChecklist = coerceStringList(r.qa_checklist || generationSummary.qa_checklist);
     const pdfReviewAreas = coerceStringList(r.expected_pdf_review_areas || generationSummary.expected_pdf_review_areas);
     const htmlReviewAreas = coerceStringList(r.expected_html_review_areas || generationSummary.expected_html_review_areas);
+    const riskCases = coerceStringList(r.negative_or_risk_cases || generationSummary.negative_or_risk_cases);
+    const validationOracles = coerceStringList(r.validation_oracles || generationSummary.validation_oracles);
+    const confidenceContract = coerceStringList(r.confidence_contract || generationSummary.confidence_contract);
     const nextStep = String(r.recommended_user_next_step || generationSummary.recommended_user_next_step || '').trim();
     return (
       <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3 text-xs shadow-sm">
@@ -775,6 +778,9 @@ export function ToolResult({
           <CompactToolList title="QA checklist" items={qaChecklist} />
           <CompactToolList title="Inspect in PDF" items={pdfReviewAreas} />
           <CompactToolList title="Inspect in HTML/HTML5" items={htmlReviewAreas} />
+          <CompactToolList title="Risk cases" items={riskCases} />
+          <CompactToolList title="Validation oracles" items={validationOracles} />
+          <CompactToolList title="Confidence contract" items={confidenceContract} />
         </div>
         {nextStep && (
           <p className="mt-2 rounded-lg border border-indigo-100 bg-white/70 p-2 text-slate-700">

@@ -47,14 +47,14 @@ export const CHAT_MENTION_ITEMS: ChatMentionItem[] = [
     id: 'dita-ot-pdf',
     label: 'DITA-OT PDF',
     description: 'Run local DITA-OT and generate PDF output',
-    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'insert',
     id: 'dita-ot-all',
     label: 'DITA-OT all',
     description: 'Run local DITA-OT and generate PDF, HTML/xhtml, and HTML5',
-    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nDITA-OT PDF + HTML + HTML5 smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'action',
@@ -76,28 +76,28 @@ export const CHAT_SLASH_ITEMS: ChatMentionItem[] = [
     id: 'slash-generate-dita-ot-pdf',
     label: '/generate_dita_ot_pdf',
     description: 'Run local DITA-OT and generate PDF output',
-    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'insert',
     id: 'slash-generate-dita-ot-html',
     label: '/generate_dita_ot_html',
     description: 'Run local DITA-OT and generate classic HTML/xhtml output',
-    insertText: '/generate_dita_ot_pdf\noutput_format: html\n\nDITA-OT HTML smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: html\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'insert',
     id: 'slash-generate-dita-ot-html5',
     label: '/generate_dita_ot_html5',
     description: 'Run local DITA-OT and generate HTML5 output',
-    insertText: '/generate_dita_ot_pdf\noutput_format: html5\n\nDITA-OT HTML5 smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: html5\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'insert',
     id: 'slash-generate-dita-ot-all',
     label: '/generate_dita_ot_all',
     description: 'Run local DITA-OT and generate PDF, HTML/xhtml, and HTML5',
-    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nDITA-OT PDF + HTML + HTML5 smoke test',
+    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.',
   },
   {
     type: 'insert',
@@ -159,10 +159,7 @@ export interface ChatToolCatalogLike {
 function slashInsertText(alias: string, tool: ChatToolCatalogLike): string {
   const command = `/${alias}`;
   if (tool.name === 'generate_dita_ot_pdf') {
-    if (alias.endsWith('_html')) return `${command}\n\nDITA-OT HTML smoke test`;
-    if (alias.endsWith('_html5')) return `${command}\n\nDITA-OT HTML5 smoke test`;
-    if (alias.endsWith('_all')) return `${command}\n\nDITA-OT PDF + HTML + HTML5 smoke test`;
-    return `${command}\n\nDITA-OT PDF smoke test`;
+    return `${command}\n\nGenerate a DITA-OT publishing QA corpus for the current DITA construct question.`;
   }
   const primary = String(tool.primary_arg || '').trim();
   return primary ? `${command} ` : `${command}\n`;
