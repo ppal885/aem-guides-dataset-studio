@@ -738,6 +738,30 @@ export function ToolResult({
     const riskCases = coerceStringList(r.negative_or_risk_cases || generationSummary.negative_or_risk_cases);
     const validationOracles = coerceStringList(r.validation_oracles || generationSummary.validation_oracles);
     const confidenceContract = coerceStringList(r.confidence_contract || generationSummary.confidence_contract);
+    const failureEvidence = (r.failure_evidence as Record<string, unknown> | undefined) || {};
+    const githubIssueItems = Array.isArray(failureEvidence.dita_ot_github_issues)
+      ? failureEvidence.dita_ot_github_issues
+        .map((item) => {
+          const issue = item as Record<string, unknown>;
+          const number = issue.issue_number ? `#${String(issue.issue_number)} — ` : '';
+          const title = String(issue.title || '').trim();
+          const url = String(issue.url || '').trim();
+          return title ? `${number}${title}${url ? ` (${url})` : ''}` : '';
+        })
+        .filter(Boolean)
+      : [];
+    const jiraIssueItems = Array.isArray(failureEvidence.jira_issues)
+      ? failureEvidence.jira_issues
+        .map((item) => {
+          const issue = item as Record<string, unknown>;
+          const key = String(issue.issue_key || issue.key || '').trim();
+          const summary = String(issue.summary || '').trim();
+          const statusText = String(issue.status || '').trim();
+          const label = [key, summary].filter(Boolean).join(': ');
+          return label ? `${label}${statusText ? ` (${statusText})` : ''}` : '';
+        })
+        .filter(Boolean)
+      : [];
     const nextStep = String(r.recommended_user_next_step || generationSummary.recommended_user_next_step || '').trim();
     return (
       <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3 text-xs shadow-sm">
@@ -781,6 +805,8 @@ export function ToolResult({
           <CompactToolList title="Risk cases" items={riskCases} />
           <CompactToolList title="Validation oracles" items={validationOracles} />
           <CompactToolList title="Confidence contract" items={confidenceContract} />
+          <CompactToolList title="Related DITA-OT issues" items={githubIssueItems} />
+          <CompactToolList title="Related Jira signals" items={jiraIssueItems} />
         </div>
         {nextStep && (
           <p className="mt-2 rounded-lg border border-indigo-100 bg-white/70 p-2 text-slate-700">

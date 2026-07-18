@@ -7630,7 +7630,18 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
                 lines.append("**Artifacts**")
                 lines.extend(f"- {part}" for part in parts)
             return "\n".join(lines)
-        return "I ran DITA-OT, but publishing failed. The result card includes stderr, command, and oracle details."
+        failure_evidence = result.get("failure_evidence") if isinstance(result.get("failure_evidence"), dict) else {}
+        github_count = len((failure_evidence or {}).get("dita_ot_github_issues") or [])
+        jira_count = len((failure_evidence or {}).get("jira_issues") or [])
+        evidence_note = (
+            f" I also searched related DITA-OT GitHub issues ({github_count}) and AEM Guides Jira signals ({jira_count})."
+            if failure_evidence
+            else ""
+        )
+        return (
+            "I ran DITA-OT, but publishing failed. The result card includes stderr, command, oracle details, "
+            f"and related issue evidence.{evidence_note}"
+        )
     if name == "list_indexed_pdfs":
         return str(result.get("message") or "I listed the indexed PDFs in your knowledge base.")
     if name == "list_jobs":

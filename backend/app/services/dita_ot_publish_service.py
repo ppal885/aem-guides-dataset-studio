@@ -18,6 +18,7 @@ from app.services.dita_publishing_construct_registry import (
     SUMMARY_FILENAME,
     build_publishing_corpus,
 )
+from app.services.dita_ot_failure_evidence_service import lookup_dita_ot_failure_evidence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -678,9 +679,21 @@ async def publish_with_dita_ot(
         )
 
     ok = all(bool(item.get("ok")) for item in publish.values()) if publish else False
+    failure_evidence = None
+    if not ok:
+        failure_evidence = lookup_dita_ot_failure_evidence(
+            prompt=prompt,
+            formats=formats,
+            detected_constructs=[str(item) for item in generation_summary.get("detected_constructs", [])],
+            publish=publish,
+        )
     return {
         "status": "success" if ok else "error",
-        "summary": "DITA-OT publish completed." if ok else "DITA-OT publish failed; inspect stderr.",
+        "summary": (
+            "DITA-OT publish completed."
+            if ok
+            else "DITA-OT publish failed; inspect stderr and related DITA-OT/Jira issue evidence."
+        ),
         "generation_summary": generation_summary,
         "detected_constructs": generation_summary.get("detected_constructs", []),
         "source_files": generation_summary.get("source_files", []),
@@ -693,6 +706,7 @@ async def publish_with_dita_ot(
         "validation_oracles": generation_summary.get("validation_oracles", []),
         "recommended_user_next_step": generation_summary["recommended_user_next_step"],
         "confidence_contract": generation_summary.get("confidence_contract", []),
+        "failure_evidence": failure_evidence,
         "run_id": run_id,
         "input_map": str(input_for_build),
         "output_format": requested,

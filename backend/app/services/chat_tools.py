@@ -3732,7 +3732,8 @@ def get_tool_definitions() -> list[dict]:
                 "generate classic HTML, generate HTML5 output, or verify publishing output. If input_map is omitted, "
                 "the tool creates a deterministic map+topics QA corpus from detected DITA constructs and publishes it. "
                 "Return expected behavior, QA checklist, PDF/HTML review areas, negative/risk cases, validation oracles, "
-                "and confidence contract so users know what was generated and what to verify. For PDF, it uses "
+                "and confidence contract so users know what was generated and what to verify. If publishing fails, "
+                "the result includes related upstream DITA-OT GitHub issues and AEM Guides Jira signals from stderr/stdout. For PDF, it uses "
                 "the DITA-OT CLI format `pdf` because that invokes the built-in PDF/pdf2 pipeline."
             ),
             "input_schema": {

@@ -276,6 +276,9 @@ async def generate_dita_ot_output(
     This REST-adapter MCP tool intentionally reuses the backend publishing
     service so teammates see the same dataset summary, expected behavior,
     QA checklist, and PDF/HTML inspection areas as the chatbot UI.
+    If PDF/HTML/HTML5 publishing fails, the shared service includes related
+    upstream DITA-OT GitHub issues and AEM Guides Jira signals in
+    `failure_evidence`.
     """
     try:
         from app.services.dita_ot_publish_service import publish_with_dita_ot

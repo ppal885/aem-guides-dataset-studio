@@ -1428,6 +1428,9 @@ async def generate_dita_ot_output(
     Use this MCP tool when a teammate asks for generated DITA-OT PDF, HTML,
     HTML5, or all outputs and needs the dataset summary, expected behavior,
     QA checklist, and PDF/HTML inspection areas in the MCP response.
+    If any requested transform fails, the response also includes related
+    upstream DITA-OT GitHub issues and AEM Guides Jira signals derived from
+    stderr/stdout, requested formats, detected constructs, and map context.
 
     output_format: pdf, html, xhtml, html5, both, or all.
     """
