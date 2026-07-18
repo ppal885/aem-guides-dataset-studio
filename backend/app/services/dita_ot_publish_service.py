@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import zipfile
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -75,6 +76,156 @@ def _looks_like_xml_lang_chunk_request(value: str) -> bool:
         ("xml:lang" in text or "xml lang" in text or "language" in text)
         and ("chunk" in text or "chunking" in text)
     )
+
+
+def _looks_like_copy_to_chunk_lang_request(value: str) -> bool:
+    text = (value or "").lower()
+    return (
+        ("copy-to" in text or "copy to" in text or "copyto" in text)
+        and ("chunk" in text or "chunking" in text)
+        and ("xml:lang" in text or "xml lang" in text or "language" in text)
+    )
+
+
+def _xml_text(value: str) -> str:
+    return escape(value or "", quote=False)
+
+
+def _write_copy_to_chunk_lang_dataset(work_dir: Path, title: str) -> Path:
+    """Write a focused DITA-OT publishing dataset for copy-to + chunk + xml:lang."""
+    slug = _safe_slug(title, fallback="copy-to-chunk-lang-publishing")
+    safe_title = _xml_text(title)
+    topics_dir = work_dir / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
+    map_path = work_dir / f"{slug}.ditamap"
+
+    map_path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
+<map id="copy-to-chunk-lang-publishing" xml:lang="en-US">
+  <title>{safe_title}</title>
+  <topicref href="topics/intro.dita" chunk="by-topic"/>
+  <topicref href="topics/reused-source.dita" copy-to="topics/reused-copy-a.dita" chunk="by-topic">
+    <topicmeta><navtitle>Reuse instance A via copy-to</navtitle></topicmeta>
+  </topicref>
+  <topicref href="topics/reused-source.dita" copy-to="topics/reused-copy-b.dita" chunk="by-topic">
+    <topicmeta><navtitle>Reuse instance B via copy-to</navtitle></topicmeta>
+  </topicref>
+  <topicref href="topics/french-overview.dita" copy-to="topics/fr-copy-target.dita" xml:lang="fr-FR" chunk="by-topic"/>
+  <topicref href="topics/pdf-html5-oracles.dita" chunk="to-content"/>
+</map>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "intro.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="intro" xml:lang="en-US">
+  <title>copy-to, chunk, and xml:lang publishing behavior</title>
+  <shortdesc>This topic introduces the behavior verified by the publishing corpus.</shortdesc>
+  <conbody>
+    <section id="behavior"><title>Behavior under test</title>
+      <p><xmlatt>copy-to</xmlatt> gives a topic reference a distinct effective target URI for publishing while the source content remains at the original <xmlatt>href</xmlatt>.</p>
+      <p><xmlatt>chunk</xmlatt> controls output boundaries, so the copied effective targets can become distinct HTML5 pages and distinct PDF navigation entries.</p>
+      <p><xmlatt>xml:lang</xmlatt> controls language context and should not be changed just because a topicref uses <xmlatt>copy-to</xmlatt>.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "reused-source.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="reused-source" xml:lang="en-US">
+  <title>Reusable source topic</title>
+  <shortdesc>The map references this same physical topic twice with different copy-to targets.</shortdesc>
+  <conbody>
+    <section id="copy-to"><title>Expected copy-to effect</title>
+      <p>This topic should publish once as <filepath>reused-copy-a</filepath> and once as <filepath>reused-copy-b</filepath> when chunked by topic.</p>
+      <p>The source file remains <filepath>reused-source.dita</filepath>; <xmlatt>copy-to</xmlatt> does not rename or move the authored file.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "french-overview.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="french-overview" xml:lang="fr-FR">
+  <title>Exemple français avec copy-to</title>
+  <shortdesc>Ce sujet vérifie que la langue française reste associée au contenu publié.</shortdesc>
+  <conbody>
+    <section id="lang"><title>Contrôle de langue</title>
+      <p>Le topicref de la carte utilise <codeph>copy-to="topics/fr-copy-target.dita"</codeph> et <codeph>xml:lang="fr-FR"</codeph>.</p>
+      <p>La transformation ne doit pas convertir ce contenu en contexte anglais simplement parce que la carte racine utilise <codeph>en-US</codeph>.</p>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (topics_dir / "pdf-html5-oracles.dita").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE concept PUBLIC "-//OASIS//DTD DITA Concept//EN" "concept.dtd">
+<concept id="pdf-html5-oracles" xml:lang="en-US">
+  <title>PDF and HTML5 oracle for copy-to publishing</title>
+  <shortdesc>These are the observable checks for generated PDF and HTML5 output.</shortdesc>
+  <conbody>
+    <section id="html5"><title>HTML5 checks</title>
+      <ul>
+        <li>HTML5 output should include pages named from the copy-to targets, such as <filepath>reused-copy-a.html</filepath> and <filepath>reused-copy-b.html</filepath>.</li>
+        <li>Both copied pages should contain the same reusable source topic content.</li>
+        <li>The French copy target should preserve French text and language context.</li>
+      </ul>
+    </section>
+    <section id="pdf"><title>PDF checks</title>
+      <ul>
+        <li>PDF output should contain navigation entries for both copy-to instances.</li>
+        <li>Internal links and TOC entries should resolve to distinct effective targets rather than collapsing both references into one ambiguous instance.</li>
+        <li>PDF publishing should not report duplicate effective URI collisions for the unique copy-to targets.</li>
+      </ul>
+    </section>
+  </conbody>
+</concept>
+""",
+        encoding="utf-8",
+    )
+
+    (work_dir / "README.md").write_text(
+        f"""# {safe_title}
+
+This generated corpus validates DITA-OT publishing behavior for `copy-to`, `chunk`, and `xml:lang`.
+
+## What it covers
+
+- Same source topic reused twice with unique `copy-to` targets.
+- `chunk="by-topic"` on copied topic references to force distinct output boundaries.
+- Root map language `xml:lang="en-US"`.
+- French topic/topicref override using `xml:lang="fr-FR"`.
+- PDF and HTML5 observable oracles.
+
+## Expected output
+
+- HTML5 should create distinct copy-to target pages such as `reused-copy-a.html` and `reused-copy-b.html`.
+- PDF should include both copy-to instances in TOC/navigation when included by the transform.
+- The authored source remains `topics/reused-source.dita`; `copy-to` changes the effective publishing URI, not the physical source.
+
+## Useful commands
+
+```bash
+dita --input={map_path.name} --format=pdf --output=publish/pdf
+dita --input={map_path.name} --format=html5 --output=publish/html5
+```
+""",
+        encoding="utf-8",
+    )
+    return map_path
 
 
 def _write_xml_lang_chunk_dataset(work_dir: Path, title: str) -> Path:
@@ -226,6 +377,8 @@ dita --input={map_path.name} --format=html5 --output=publish/html5
 
 
 def _write_sample_dataset(work_dir: Path, title: str) -> Path:
+    if _looks_like_copy_to_chunk_lang_request(title):
+        return _write_copy_to_chunk_lang_dataset(work_dir, title)
     if _looks_like_xml_lang_chunk_request(title):
         return _write_xml_lang_chunk_dataset(work_dir, title)
 
@@ -273,6 +426,47 @@ def _build_generation_summary(
         for path in work_dir.rglob("*")
         if path.is_file()
     )
+    if _looks_like_copy_to_chunk_lang_request(prompt):
+        return {
+            "title": "copy-to + chunk + xml:lang DITA-OT publishing dataset",
+            "what_was_generated": [
+                "One DITA map with root `xml:lang=\"en-US\"`.",
+                "A reusable source topic referenced twice with unique `copy-to` targets.",
+                "A French topic referenced with `copy-to`, `xml:lang=\"fr-FR\"`, and `chunk=\"by-topic\"`.",
+                "An oracle topic describing PDF and HTML5 checks.",
+                "PDF, classic XHTML, and/or HTML5 outputs depending on the selected transformation.",
+            ],
+            "source_files": source_files,
+            "expected_behavior": [
+                "`copy-to` changes the effective publishing URI/output target; it does not rename the physical source file.",
+                "The same source topic can publish as two distinct outputs when each topicref has a unique `copy-to` value.",
+                "`chunk=\"by-topic\"` should create distinct HTML5 output pages for copied topicrefs.",
+                "`xml:lang` should remain a language/locale signal and should not be changed by `copy-to`.",
+            ],
+            "qa_checklist": [
+                "Confirm DITA-OT exits with code 0 for every requested format.",
+                "Open the ZIP and verify the map, reusable source topic, French topic, and oracle topic are present.",
+                "Inspect the map for unique `copy-to` targets: `reused-copy-a.dita`, `reused-copy-b.dita`, and `fr-copy-target.dita`.",
+                "Verify the authored source remains `topics/reused-source.dita` and is not physically renamed by generation.",
+                "Compare PDF and HTML5 outputs to ensure copied topicrefs remain distinct and language context is preserved.",
+            ],
+            "expected_pdf_review_areas": [
+                "PDF title/TOC should include both copy-to instances: `Reuse instance A via copy-to` and `Reuse instance B via copy-to`.",
+                "PDF should include the reusable source topic content for both effective references.",
+                "PDF should include the French topic content without treating `copy-to` as a language override.",
+                "PDF should not report duplicate effective URI collisions for the unique copy-to targets.",
+                "PDF file should be non-empty and readable from the Download PDF link.",
+            ],
+            "expected_html_review_areas": [
+                "HTML5 output should include distinct pages for copy-to targets, especially `reused-copy-a.html` and `reused-copy-b.html`.",
+                "Both copied HTML5 pages should contain the reusable source topic content.",
+                "French HTML5 output should preserve French text and language context.",
+                "Generated navigation should point to copy-to target filenames rather than only the original source filename.",
+            ],
+            "recommended_user_next_step": "Download the ZIP, inspect the map copy-to targets, then open HTML5 pages and PDF TOC/navigation to verify distinct copied instances.",
+            "formats_requested": formats,
+            "input_map": str(input_map),
+        }
     if _looks_like_xml_lang_chunk_request(prompt):
         return {
             "title": "xml:lang + chunk DITA-OT publishing dataset",

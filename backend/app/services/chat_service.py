@@ -1208,6 +1208,36 @@ def _safe_title_fragment(value: str, max_chars: int = 60) -> str:
     return (fragment or "dita-ot-publishing-dataset")[:max_chars]
 
 
+def _expand_dita_ot_publish_tool_args(
+    session_id: str,
+    user_content: str,
+    tool_args: dict[str, Any],
+) -> dict[str, Any]:
+    prompt = str(tool_args.get("prompt") or user_content or "").strip()
+    lowered = prompt.lower()
+    references_prior_context = bool(
+        re.search(r"\b(above|same|this|that|previous|earlier|combination|scenario|case)\b", lowered)
+    )
+    has_behavior_terms = bool(
+        re.search(r"\b(copy-to|copy\s+to|copyto|xml:lang|xml\s+lang|chunk|chunking|conref|keyref|baseline)\b", lowered)
+    )
+    if not references_prior_context or has_behavior_terms:
+        return tool_args
+
+    prior = _recent_user_messages_before_latest(session_id, user_content, limit=4)
+    prior_context = "\n\n".join(item for item in prior if item.strip())
+    if not prior_context:
+        return tool_args
+
+    expanded = copy.deepcopy(tool_args)
+    expanded["prompt"] = (
+        f"{prompt}\n\nPrevious user context to preserve for dataset generation:\n{prior_context[-4000:]}"
+    ).strip()
+    if not str(expanded.get("package_name") or "").strip():
+        expanded["package_name"] = _safe_title_fragment(prior_context or prompt, max_chars=60)
+    return expanded
+
+
 def _looks_like_generate_dita_clarification_response(
     user_content: str,
     *,
@@ -8361,9 +8391,13 @@ async def _stream_tool_intent_reply(
     if run_id:
         yield {"type": "tool_start", "name": tool_name, "run_id": run_id}
 
+    tool_args_for_run = copy.deepcopy(tool_intent.get("args") or {})
+    if tool_name == "generate_dita_ot_pdf":
+        tool_args_for_run = _expand_dita_ot_publish_tool_args(session_id, user_content, tool_args_for_run)
+
     result = await run_tool(
         tool_name,
-        tool_intent.get("args") or {},
+        tool_args_for_run,
         user_id=user_id,
         session_id=session_id,
         run_id=run_id,
