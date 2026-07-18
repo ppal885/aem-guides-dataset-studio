@@ -7,6 +7,7 @@ interface ChatMentionMenuProps {
   activeIndex: number;
   onSelect: (item: ChatMentionItem) => void;
   onHover: (index: number) => void;
+  title?: string;
   className?: string;
 }
 
@@ -26,6 +27,7 @@ export function ChatMentionMenu({
   activeIndex,
   onSelect,
   onHover,
+  title = 'Add context',
   className,
 }: ChatMentionMenuProps) {
   if (items.length === 0) return null;
@@ -39,7 +41,7 @@ export function ChatMentionMenu({
       role="listbox"
     >
       <p className="border-b border-border/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        Add context
+        {title}
       </p>
       <ul className="max-h-52 overflow-y-auto py-1">
         {items.map((item, index) => (

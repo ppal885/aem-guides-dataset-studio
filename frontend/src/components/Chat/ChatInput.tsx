@@ -6,7 +6,13 @@ import {
   mentionTokenForFileName,
   replaceAuthoringMentionInValue,
 } from '@/components/Chat/authoringMentionUtils';
-import { CHAT_MENTION_ITEMS, filterChatMentionItems, type ChatMentionItem } from '@/components/Chat/chatMentionUtils';
+import {
+  CHAT_MENTION_ITEMS,
+  CHAT_SLASH_ITEMS,
+  filterChatMentionItems,
+  getActiveSlashCommand,
+  type ChatMentionItem,
+} from '@/components/Chat/chatMentionUtils';
 import { ChatMentionMenu } from '@/components/Chat/ChatMentionMenu';
 import { cn } from '@/lib/utils';
 
@@ -69,12 +75,21 @@ export function ChatInput({
     () => (activeMention ? filterChatMentionItems(CHAT_MENTION_ITEMS, activeMention.query) : []),
     [activeMention]
   );
+  const activeSlash = useMemo(
+    () => getActiveSlashCommand(value, caret),
+    [value, caret]
+  );
+  const slashItems = useMemo(
+    () => (activeSlash ? filterChatMentionItems(CHAT_SLASH_ITEMS, activeSlash.query) : []),
+    [activeSlash]
+  );
 
-  const showMentionMenu = Boolean(activeMention && mentionItems.length > 0);
+  const menuItems = activeMention ? mentionItems : activeSlash ? slashItems : [];
+  const showMentionMenu = menuItems.length > 0;
 
   useEffect(() => {
     setMentionIndex(0);
-  }, [activeMention?.query, mentionItems.length]);
+  }, [activeMention?.query, activeSlash?.query, menuItems.length]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -103,8 +118,9 @@ export function ChatInput({
 
   const applyMentionInsert = useCallback(
     (text: string) => {
-      if (!activeMention) return;
-      const range = { start: activeMention.start, end: caret };
+      const activeRange = activeMention || activeSlash;
+      if (!activeRange) return;
+      const range = { start: activeRange.start, end: caret };
       const next = value.slice(0, range.start) + text + value.slice(range.end);
       onChange(next);
       requestAnimationFrame(() => {
@@ -116,7 +132,7 @@ export function ChatInput({
         setCaret(pos);
       });
     },
-    [activeMention, caret, onChange, value]
+    [activeMention, activeSlash, caret, onChange, value]
   );
 
   const handleMentionSelect = useCallback(
@@ -295,10 +311,11 @@ export function ChatInput({
       <div className="relative">
         {showMentionMenu && (
           <ChatMentionMenu
-            items={mentionItems}
+            items={menuItems}
             activeIndex={mentionIndex}
             onSelect={handleMentionSelect}
             onHover={setMentionIndex}
+            title={activeSlash ? 'Run tool' : 'Add context'}
           />
         )}
 
@@ -323,17 +340,17 @@ export function ChatInput({
               if (showMentionMenu) {
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();
-                  setMentionIndex((i) => (i + 1) % mentionItems.length);
+                  setMentionIndex((i) => (i + 1) % menuItems.length);
                   return;
                 }
                 if (e.key === 'ArrowUp') {
                   e.preventDefault();
-                  setMentionIndex((i) => (i - 1 + mentionItems.length) % mentionItems.length);
+                  setMentionIndex((i) => (i - 1 + menuItems.length) % menuItems.length);
                   return;
                 }
                 if (e.key === 'Enter' || e.key === 'Tab') {
                   e.preventDefault();
-                  const item = mentionItems[mentionIndex];
+                  const item = menuItems[mentionIndex];
                   if (item) handleMentionSelect(item);
                   return;
                 }

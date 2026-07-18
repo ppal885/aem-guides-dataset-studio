@@ -63,6 +63,51 @@ export const CHAT_MENTION_ITEMS: ChatMentionItem[] = [
   },
 ];
 
+export const CHAT_SLASH_ITEMS: ChatMentionItem[] = [
+  {
+    type: 'insert',
+    id: 'slash-generate-dita-ot-pdf',
+    label: '/generate_dita_ot_pdf',
+    description: 'Run local DITA-OT and generate PDF output',
+    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
+  },
+  {
+    type: 'insert',
+    id: 'slash-generate-dita',
+    label: '/generate_dita',
+    description: 'Generate a reviewed DITA topic',
+    insertText: '/generate_dita\n\n',
+  },
+  {
+    type: 'insert',
+    id: 'slash-create-job',
+    label: '/create_job',
+    description: 'Create a DITA dataset generation job',
+    insertText: '/create_job\nrecipe_type: freeform\n\n',
+  },
+  {
+    type: 'insert',
+    id: 'slash-lookup-aem-guides',
+    label: '/lookup_aem_guides',
+    description: 'Search Experience League / AEM Guides docs',
+    insertText: '/lookup_aem_guides ',
+  },
+  {
+    type: 'insert',
+    id: 'slash-lookup-dita-spec',
+    label: '/lookup_dita_spec',
+    description: 'Look up DITA spec elements and attributes',
+    insertText: '/lookup_dita_spec ',
+  },
+  {
+    type: 'insert',
+    id: 'slash-review-dita-xml',
+    label: '/review_dita_xml',
+    description: 'Validate pasted DITA XML',
+    insertText: '/review_dita_xml\n\n',
+  },
+];
+
 export function filterChatMentionItems(items: ChatMentionItem[], query: string): ChatMentionItem[] {
   const q = query.trim().toLowerCase();
   if (!q) return items;
@@ -70,4 +115,18 @@ export function filterChatMentionItems(items: ChatMentionItem[], query: string):
     const hay = `${item.label} ${item.description}`.toLowerCase();
     return hay.includes(q);
   });
+}
+
+export interface ActiveSlashCommand {
+  start: number;
+  query: string;
+}
+
+export function getActiveSlashCommand(value: string, caret: number): ActiveSlashCommand | null {
+  const before = value.slice(0, caret);
+  const lineStart = Math.max(before.lastIndexOf('\n') + 1, 0);
+  const linePrefix = before.slice(lineStart);
+  if (!linePrefix.startsWith('/')) return null;
+  if (/\s/.test(linePrefix)) return null;
+  return { start: lineStart, query: linePrefix.slice(1) };
 }
