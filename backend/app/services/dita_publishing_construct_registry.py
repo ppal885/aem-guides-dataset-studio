@@ -214,6 +214,36 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         validation_oracles=("DITA-OT exits successfully with the key definition map context.",),
     ),
     ConstructSpec(
+        key="conkeyref",
+        labels=("conkeyref",),
+        aliases=("conkeyref", "conkeyrefs", "conkey reference"),
+        map_entries=(
+            '  <keydef keys="reuse-key" href="topics/conkeyref-source.dita"/>',
+            '  <topicref href="topics/conkeyref-consumer.dita" chunk="by-topic"/>',
+        ),
+        files={
+            "topics/conkeyref-source.dita": _concept(
+                "conkeyref-source",
+                "Conkeyref source topic",
+                "This topic provides a keyed reusable element.",
+                '    <section id="reuse"><title>Reusable keyed content</title><p id="reuse-para">Reusable paragraph resolved through conkeyref.</p></section>',
+            ),
+            "topics/conkeyref-consumer.dita": _concept(
+                "conkeyref-consumer",
+                "Conkeyref consumer topic",
+                "This topic resolves reusable content through the map key context.",
+                '    <section id="consumer"><title>Conkeyref resolution</title><p conkeyref="reuse-key/reuse-para">fallback conkeyref paragraph</p></section>',
+            ),
+        },
+        what_was_generated=("A keyed reusable source and a consumer using `conkeyref=\"reuse-key/reuse-para\"`.",),
+        expected_behavior=("`conkeyref` resolves reusable content through the effective map key space, so map context matters.",),
+        qa_checklist=("Verify the key definition and `conkeyref` target ID agree before blaming PDF/HTML transforms.",),
+        expected_pdf_review_areas=("PDF should show the keyed reusable paragraph in the consumer topic.",),
+        expected_html_review_areas=("HTML5 should show the keyed reusable paragraph in the consumer page.",),
+        negative_or_risk_cases=("Missing keys, wrong element IDs, or changed key scopes can make conkeyref fail only in specific map contexts.",),
+        validation_oracles=("Generated output contains `Reusable paragraph resolved through conkeyref`.",),
+    ),
+    ConstructSpec(
         key="conref",
         labels=("conref", "conkeyref"),
         aliases=("conref", "conkeyref", "content reference"),
@@ -245,6 +275,103 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         validation_oracles=("Generated output contains `Reusable paragraph resolved through conref`.",),
     ),
     ConstructSpec(
+        key="conref-range",
+        labels=("conrefend", "conref range"),
+        aliases=("conrefend", "conref range", "range conref", "range reference"),
+        map_entries=('  <topicref href="topics/conref-range-consumer.dita" chunk="by-topic"/>',),
+        files={
+            "topics/conref-range-consumer.dita": _concept(
+                "conref-range-consumer",
+                "Conref range consumer topic",
+                "This topic includes source range markers and a range conref control.",
+                """    <section id="range-source"><title>Range source</title>
+      <p id="range-start">Range start paragraph for conrefend checks.</p>
+      <p id="range-middle">Range middle paragraph for conrefend checks.</p>
+      <p id="range-end">Range end paragraph for conrefend checks.</p>
+    </section>
+    <section id="range-consumer"><title>Range consumer</title>
+      <p conref="#conref-range-consumer/range-start" conrefend="#conref-range-consumer/range-end">fallback range conref paragraph</p>
+    </section>""",
+            ),
+        },
+        what_was_generated=("A same-topic range conref using both `conref` and `conrefend`.",),
+        expected_behavior=("`conrefend` extends a conref to an inclusive range; target ordering and element compatibility are critical.",),
+        qa_checklist=("Verify range start/end IDs are ordered and compatible before treating output differences as renderer bugs.",),
+        expected_pdf_review_areas=("PDF should show the range content or expose a clear DITA-OT range-resolution diagnostic if the transform rejects it.",),
+        expected_html_review_areas=("HTML5 should preserve resolved range content or expose the same range-resolution diagnostic.",),
+        negative_or_risk_cases=("Crossing structural boundaries or using incompatible start/end elements can create invalid effective content.",),
+        validation_oracles=("Source contains both `conref=` and `conrefend=` on the same control element.",),
+    ),
+    ConstructSpec(
+        key="conrefpush",
+        labels=("conrefpush", "conaction"),
+        aliases=("conrefpush", "conref push", "conaction", "pushbefore", "pushafter", "pushreplace"),
+        map_entries=(
+            '  <topicref href="topics/conrefpush-target.dita" chunk="by-topic"/>',
+            '  <topicref href="topics/conrefpush-source.dita" processing-role="resource-only"/>',
+        ),
+        files={
+            "topics/conrefpush-target.dita": _concept(
+                "conrefpush-target",
+                "Conrefpush target topic",
+                "This topic owns the target element that pushed content addresses.",
+                '    <section id="target"><title>Push target</title><p id="push-target">Original target paragraph for conrefpush.</p></section>',
+            ),
+            "topics/conrefpush-source.dita": _concept(
+                "conrefpush-source",
+                "Conrefpush source topic",
+                "This resource-only topic carries push actions for preprocess inspection.",
+                """    <section id="push-source"><title>Push source</title>
+      <p conaction="pushbefore" conref="conrefpush-target.dita#conrefpush-target/push-target">Pushed paragraph before target.</p>
+      <p conaction="mark" conref="conrefpush-target.dita#conrefpush-target/push-target"/>
+    </section>""",
+            ),
+        },
+        what_was_generated=("A `conrefpush` control pair using `conaction=\"pushbefore\"` and `conaction=\"mark\"`.",),
+        expected_behavior=("Conref push changes effective processed content during preprocessing, not the authored target file.",),
+        qa_checklist=("Inspect DITA-OT temp/effective content when pushed content is missing or appears in the wrong place.",),
+        expected_pdf_review_areas=("PDF should be checked for pushed content placement near the original target paragraph.",),
+        expected_html_review_areas=("HTML5 should be checked for pushed content placement near the original target paragraph.",),
+        negative_or_risk_cases=("Push actions can be silently confusing when target IDs move, map context filters resources, or push order changes.",),
+        validation_oracles=("Source contains `conaction=\"pushbefore\"`, `conaction=\"mark\"`, and a concrete target `conref`.",),
+    ),
+    ConstructSpec(
+        key="xref",
+        labels=("xref", "cross reference"),
+        aliases=("xref", "xrefs", "cross reference", "cross-reference", "href link"),
+        map_entries=(
+            '  <keydef keys="xref-product-name" href="topics/xref-target.dita"/>',
+            '  <topicref href="topics/xref-target.dita" chunk="by-topic"/>',
+            '  <topicref href="topics/xref-consumer.dita" chunk="by-topic"/>',
+        ),
+        files={
+            "topics/xref-target.dita": _concept(
+                "xref-target",
+                "Xref target topic",
+                "This topic provides topic and section targets for xref checks.",
+                '    <section id="target-section"><title>Target section</title><p>Xref target section marker.</p></section>',
+            ),
+            "topics/xref-consumer.dita": _concept(
+                "xref-consumer",
+                "Xref consumer topic",
+                "This topic contains local, section, external, and keyed cross references.",
+                """    <section id="links"><title>Xref link controls</title>
+      <p><xref href="xref-target.dita">Local topic xref</xref></p>
+      <p><xref href="xref-target.dita#xref-target/target-section">Local section xref</xref></p>
+      <p><xref href="https://www.dita-ot.org/" scope="external" format="html">External HTML xref</xref></p>
+      <p><xref keyref="xref-product-name">Keyed xref text</xref></p>
+    </section>""",
+            ),
+        },
+        what_was_generated=("Local topic, local section, external, and keyed `xref` controls.",),
+        expected_behavior=("Xrefs resolve against the effective output location; copy-to, chunking, keys, scope, and format can change final link targets.",),
+        qa_checklist=("Verify local, section, external, and keyed links separately in generated HTML5 and PDF.",),
+        expected_pdf_review_areas=("PDF should show link text and preserve clickable/link semantics where supported by the renderer.",),
+        expected_html_review_areas=("HTML5 should generate correct relative links for local and section xrefs, plus external URL behavior.",),
+        negative_or_risk_cases=("Broken href fragments, wrong scope/format, and copy-to relocation can produce links that look correct in source but fail after preprocessing.",),
+        validation_oracles=("Generated source includes `href`, section fragment, `scope=\"external\" format=\"html\"`, and `keyref` xref variants.",),
+    ),
+    ConstructSpec(
         key="scope-format",
         labels=("scope", "format"),
         aliases=("scope", "format", "external link", "external links"),
@@ -267,6 +394,41 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         expected_html_review_areas=("HTML5 should preserve external URL behavior and local link navigation.",),
         negative_or_risk_cases=("Incorrect scope/format can create broken links or wrong output assumptions.",),
         validation_oracles=("Generated source includes both `scope=\"external\" format=\"html\"` and `scope=\"local\" format=\"dita\"`.",),
+    ),
+    ConstructSpec(
+        key="map-attributes",
+        labels=("map attributes", "topicref attributes"),
+        aliases=(
+            "map attributes",
+            "map attrs",
+            "topicref attributes",
+            "topicref attrs",
+            "navtitle",
+            "locktitle",
+            "toc",
+            "linking",
+            "collection-type",
+            "print",
+            "type attribute",
+        ),
+        map_entries=(
+            '  <topicref href="topics/map-attribute-topic.dita" navtitle="Locked map title" locktitle="yes" toc="yes" linking="normal" print="yes" collection-type="sequence" type="concept" format="dita" scope="local" processing-role="normal"/>',
+        ),
+        files={
+            "topics/map-attribute-topic.dita": _concept(
+                "map-attribute-topic",
+                "Topic title overridden by map attributes",
+                "This topic validates common map and topicref publishing attributes.",
+                '    <section id="map-attrs"><title>Map attribute marker</title><p>Map attributes control navigation, linking, print inclusion, type hints, and title locking.</p></section>',
+            ),
+        },
+        what_was_generated=("A topicref using common map attributes: `navtitle`, `locktitle`, `toc`, `linking`, `print`, `collection-type`, `type`, `format`, `scope`, and `processing-role`.",),
+        expected_behavior=("Map/topicref attributes influence navigation, linking, print inclusion, collection semantics, and output titles from the map context.",),
+        qa_checklist=("Inspect TOC/bookmarks/navigation for locked navtitle and verify the topic remains publishable.",),
+        expected_pdf_review_areas=("PDF TOC/bookmarks should prefer locked map title where the transform honors `locktitle`.",),
+        expected_html_review_areas=("HTML5 navigation should include the topic and preserve expected map-driven title/link behavior.",),
+        negative_or_risk_cases=("Wrong `format`, `scope`, `processing-role`, or `locktitle` assumptions can make content appear missing or mislabeled only after publish.",),
+        validation_oracles=("Root map contains a single topicref with the common map attribute matrix.",),
     ),
     ConstructSpec(
         key="processing-role",
@@ -297,6 +459,55 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         expected_html_review_areas=("HTML5 navigation should include the consumer topic and avoid normal navigation for resource-only content.",),
         negative_or_risk_cases=("Resource-only content accidentally appearing in navigation is a regression risk.",),
         validation_oracles=("Generated source includes exactly one `processing-role=\"resource-only\"` topicref.",),
+    ),
+    ConstructSpec(
+        key="conditional-processing",
+        labels=("conditional processing", "DITAVAL attributes"),
+        aliases=(
+            "conditional processing",
+            "conditional attributes",
+            "profiling",
+            "profile",
+            "ditaval",
+            "audience",
+            "@audience",
+            "platform",
+            "@platform",
+            "product",
+            "@product",
+            "props",
+            "@props",
+            "otherprops",
+            "@otherprops",
+            "rev",
+            "@rev",
+        ),
+        map_entries=('  <topicref href="topics/conditional-processing.dita" audience="admin" platform="windows" product="aem-guides" chunk="by-topic"/>',),
+        files={
+            "topics/conditional-processing.dita": _concept(
+                "conditional-processing",
+                "Conditional processing topic",
+                "This topic exercises common profiling attributes used with DITAVAL.",
+                """    <section id="profiled"><title>Profiled content</title>
+      <p audience="admin" platform="windows" product="aem-guides" props="publishing" otherprops="dita-ot" rev="r1">Admin Windows AEM Guides publishing marker.</p>
+      <p audience="author" platform="linux" product="dita-ot" props="authoring" otherprops="html5" rev="r2">Author Linux DITA-OT HTML5 marker.</p>
+    </section>""",
+            ),
+            "filters/admin-windows.ditaval": """<?xml version="1.0" encoding="UTF-8"?>
+<val>
+  <prop att="audience" val="author" action="exclude"/>
+  <prop att="platform" val="linux" action="exclude"/>
+  <prop att="product" val="dita-ot" action="exclude"/>
+</val>
+""",
+        },
+        what_was_generated=("A profiled topic plus a sample DITAVAL filter for `audience`, `platform`, and `product`.",),
+        expected_behavior=("Conditional processing filters profiled content during preprocessing when a DITAVAL filter is passed to DITA-OT.",),
+        qa_checklist=("Run with and without `filters/admin-windows.ditaval` when testing actual filtering behavior.",),
+        expected_pdf_review_areas=("PDF should be reviewed for included/excluded profiled paragraphs when a filter is used.",),
+        expected_html_review_areas=("HTML5 should be reviewed for included/excluded profiled paragraphs when a filter is used.",),
+        negative_or_risk_cases=("Missing filter arguments, inherited map profiling attrs, or conflicting props can make filtered content look like a transform bug.",),
+        validation_oracles=("Source contains `audience`, `platform`, `product`, `props`, `otherprops`, `rev`, and a DITAVAL filter file.",),
     ),
     ConstructSpec(
         key="mapref",
