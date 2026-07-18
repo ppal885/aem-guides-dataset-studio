@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, AtSign, ChevronDown, ImagePlus, Loader2, Square, X } from 'lucide-react';
+import { ArrowUp, AtSign, ChevronDown, FileCode2, ImagePlus, Loader2, Square, X } from 'lucide-react';
 import type { PendingWorkflowGuide } from '@/components/Chat/pendingWorkflowUtils';
 import {
   getActiveAuthoringMention,
@@ -150,6 +150,16 @@ export function ChatInput({
   const handleSendClick = () => {
     if (!canSend) return;
     onSend();
+  };
+
+  const runDitaOtPdf = () => {
+    const command = '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test';
+    if (onQuickReply && !disabled && !loading && !showStop) {
+      onQuickReply(command);
+      return;
+    }
+    onChange(command);
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const setMode = (next: ChatComposerMode) => {
@@ -430,6 +440,15 @@ export function ChatInput({
                     title="Attach screenshot"
                   >
                     <ImagePlus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={runDitaOtPdf}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    title="Generate PDF with local DITA-OT"
+                  >
+                    <FileCode2 className="h-3.5 w-3.5" />
+                    DITA-OT PDF
                   </button>
                 </>
               )}

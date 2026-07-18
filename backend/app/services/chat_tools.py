@@ -212,6 +212,12 @@ _TOOL_UI_META: dict[str, dict[str, Any]] = {
         "category": "Creation",
         "primary_arg": "query",
     },
+    "generate_dita_ot_pdf": {
+        "slash_alias": "generate_dita_ot_pdf",
+        "title": "Generate DITA-OT PDF",
+        "category": "Publishing",
+        "primary_arg": "prompt",
+    },
     "browse_dataset": {
         "slash_alias": "browse_dataset",
         "title": "Browse Dataset",
@@ -249,6 +255,7 @@ _TOOL_KIND_BY_NAME: dict[str, str] = {
     "lookup_dita_attribute": "guidance",
     "list_indexed_pdfs": "browse",
     "generate_native_pdf_config": "guidance",
+    "generate_dita_ot_pdf": "artifact",
     "browse_dataset": "browse",
     "generate_xml_flowchart": "artifact",
     "generate_image": "artifact",
@@ -2568,6 +2575,31 @@ async def execute_generate_native_pdf_config(
         return {"error": str(e)}
 
 
+async def execute_generate_dita_ot_pdf(
+    *,
+    prompt: str = "",
+    input_map: str | None = None,
+    output_format: str = "pdf",
+    package_name: str = "",
+) -> dict[str, Any]:
+    """Run local DITA-OT publishing for chat-triggered PDF/HTML5 generation."""
+    try:
+        from app.services.dita_ot_publish_service import publish_with_dita_ot
+
+        return await publish_with_dita_ot(
+            input_map=input_map,
+            prompt=(prompt or "DITA-OT PDF smoke test").strip(),
+            output_format=(output_format or "pdf").strip(),
+            package_name=(package_name or "").strip(),
+        )
+    except Exception as e:
+        logger.warning_structured(
+            "generate_dita_ot_pdf tool failed",
+            extra_fields={"input_map": input_map, "output_format": output_format, "error": str(e)},
+        )
+        return {"error": str(e), "input_map": input_map, "output_format": output_format}
+
+
 async def execute_browse_dataset(
     job_id: str,
     file_path: str | None = None,
@@ -3071,6 +3103,13 @@ def _tool_result_summary(name: str, result: dict[str, Any]) -> str:
             return _clean_summary_text(short_answer)
         query = str(result.get("query") or "the request").strip()
         return f"Generated Native PDF configuration guidance for `{query}`."
+    if name == "generate_dita_ot_pdf":
+        counts = result.get("artifact_counts") or {}
+        pdf_count = int(counts.get("pdf_files") or 0) if isinstance(counts, dict) else len(result.get("pdf_files") or [])
+        html_count = int(counts.get("html_files") or 0) if isinstance(counts, dict) else len(result.get("html_files") or [])
+        if str(result.get("status") or "").strip().lower() == "success":
+            return f"Generated DITA-OT output successfully: {pdf_count} PDF file(s), {html_count} HTML file(s)."
+        return "DITA-OT publish attempted but did not complete successfully; inspect stderr and oracle details."
     if name == "browse_dataset":
         if result.get("file_path"):
             return f"Opened `{result.get('file_path')}` from the generated dataset."
@@ -3655,6 +3694,39 @@ def get_tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "generate_dita_ot_pdf",
+            "description": (
+                "Run the local DITA-OT CLI to publish a DITA map to PDF, HTML5, or both. "
+                "Use when the user explicitly asks to call DITA-OT, generate DITA-OT PDF, "
+                "generate html5 output, or verify publishing output. If input_map is omitted, "
+                "the tool creates a small smoke-test DITA map and publishes it. For PDF, it uses "
+                "the DITA-OT CLI format `pdf` because that invokes the built-in PDF/pdf2 pipeline."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Short title or QA purpose for generated sample content when input_map is omitted.",
+                    },
+                    "input_map": {
+                        "type": "string",
+                        "description": "Optional workspace-relative or absolute path to a .ditamap inside this project.",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["pdf", "html5", "both"],
+                        "description": "Output format to generate. Use pdf for the DITA-OT PDF/pdf2 pipeline.",
+                    },
+                    "package_name": {
+                        "type": "string",
+                        "description": "Optional stable artifact name prefix.",
+                    },
+                },
+                "required": [],
+            },
+        },
+        {
             "name": "browse_dataset",
             "description": (
                 "Browse a generated dataset — view its file/directory structure or read a specific file. "
@@ -3842,6 +3914,13 @@ async def run_tool(
         result = await execute_generate_native_pdf_config(
             query=params.get("query", ""),
             config_type=params.get("config_type", "template"),
+        )
+    elif name == "generate_dita_ot_pdf":
+        result = await execute_generate_dita_ot_pdf(
+            prompt=params.get("prompt", ""),
+            input_map=params.get("input_map"),
+            output_format=params.get("output_format", "pdf"),
+            package_name=params.get("package_name", ""),
         )
     elif name == "browse_dataset":
         result = await execute_browse_dataset(

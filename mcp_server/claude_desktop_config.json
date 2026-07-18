@@ -1,11 +1,13 @@
 {
   "mcpServers": {
     "aem-guides-dataset-studio": {
-      "command": "python",
-      "args": ["C:/Users/prashantp/Videos/aem-guides-dataset-studio/mcp_server/server.py"],
+      "command": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/venv/Scripts/python.exe",
+      "args": ["C:/Users/prashantp/Videos/aem-guides-dataset-studio/mcp_server.py"],
+      "cwd": "C:/Users/prashantp/Videos/aem-guides-dataset-studio",
       "env": {
         "AEM_STUDIO_URL": "http://127.0.0.1:8001",
-        "AEM_STUDIO_TOKEN": "dev-bypass"
+        "AEM_STUDIO_TOKEN": "dev-bypass",
+        "PYTHONUTF8": "1"
       }
     }
   }

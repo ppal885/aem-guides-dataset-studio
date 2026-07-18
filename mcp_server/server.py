@@ -259,6 +259,35 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["query"],
             },
         ),
+        types.Tool(
+            name="guides_test_plan_generator",
+            description=(
+                "Build the evidence packet for the Claude Code slash command "
+                "`/guides-test-plan-generator GUIDES-12345`. Retrieves Jira, "
+                "Experience League RAG, DITA/spec evidence, and QA Studio preview "
+                "without mutating indexes."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "jira_key": {
+                        "type": "string",
+                        "description": "AEM Guides Jira key, e.g. GUIDES-12345",
+                    },
+                    "tenant_id": {
+                        "type": "string",
+                        "description": "Jira tenant id; defaults to kone",
+                        "default": "kone",
+                    },
+                    "evidence_k": {
+                        "type": "integer",
+                        "description": "Number of AEM Guides evidence chunks to retrieve",
+                        "default": 8,
+                    },
+                },
+                "required": ["jira_key"],
+            },
+        ),
     ]
 
 
@@ -324,6 +353,13 @@ async def _dispatch(name: str, args: dict) -> Any:
         return await _post("/api/v1/mcp/search-jira", {
             "query": args["query"],
             "limit": args.get("limit", 5),
+        })
+
+    if name == "guides_test_plan_generator":
+        return await _post("/api/v1/mcp/guides-test-plan-generator", {
+            "jira_key": args["jira_key"],
+            "tenant_id": args.get("tenant_id", "kone"),
+            "evidence_k": args.get("evidence_k", 8),
         })
 
     raise ValueError(f"Unknown tool: {name}")

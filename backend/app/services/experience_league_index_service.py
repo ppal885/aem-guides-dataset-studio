@@ -44,6 +44,9 @@ DEFAULT_PATH_PREFIXES = (
 )
 RATE_LIMIT_SEC = 1.0
 USER_AGENT = "AEM-Guides-Dataset-Studio/1.0 (experience-league-indexer)"
+SOURCE_TYPE = "official-experience-league"
+CORPUS_NAME = "aem_guides"
+PARSER_VERSION = "experience-league-index-service/2.0"
 
 
 def _normalize_url(url: str) -> str:
@@ -92,6 +95,10 @@ def filter_allowed_urls(urls: Iterable[str]) -> list[str]:
 def stable_chunk_id(url: str, chunk_index: int) -> str:
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
     return f"aem_el_{digest}_{chunk_index}"
+
+
+def _content_hash(text: str) -> str:
+    return "sha256:" + hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
 def discover_urls_recursive(
@@ -245,12 +252,20 @@ def documents_to_chunk_records(
         chunk_index = per_url_index.get(url, 0)
         per_url_index[url] = chunk_index + 1
         content = (chunk.page_content or "")[:MAX_CONTENT_CHARS]
+        page_hash = _content_hash(str(metadata.get("source", "")) + "\n" + str(chunk.page_content or ""))
         records.append(
             {
                 "id": stable_chunk_id(url, chunk_index),
                 "url": url,
+                "source_url": url,
+                "canonical_url": url,
+                "source_type": SOURCE_TYPE,
+                "corpus": CORPUS_NAME,
+                "parser_version": PARSER_VERSION,
                 "title": metadata.get("title", ""),
                 "content": content,
+                "content_hash": page_hash,
+                "chunk_content_hash": _content_hash(content),
                 "chunk_index": chunk_index,
                 "paragraphs": metadata.get("paragraphs", []),
                 "list_items": metadata.get("list_items", []),
@@ -302,7 +317,21 @@ def upsert_records_to_chroma(records: list[dict], *, batch_size: int = 64) -> in
         if embeddings is None:
             continue
         ids = [r["id"] for r in batch]
-        metadatas = [{"url": r.get("url", ""), "title": r.get("title", "")} for r in batch]
+        metadatas = [
+            {
+                "url": r.get("url", ""),
+                "source_url": r.get("source_url", r.get("url", "")),
+                "canonical_url": r.get("canonical_url", r.get("url", "")),
+                "source_type": r.get("source_type", SOURCE_TYPE),
+                "corpus": r.get("corpus", CORPUS_NAME),
+                "title": r.get("title", ""),
+                "chunk_index": int(r.get("chunk_index") or 0),
+                "content_hash": r.get("content_hash", ""),
+                "chunk_content_hash": r.get("chunk_content_hash", ""),
+                "parser_version": r.get("parser_version", PARSER_VERSION),
+            }
+            for r in batch
+        ]
         emb_list = [embeddings[i].tolist() for i in range(len(batch))]
         if add_documents(
             CHROMA_COLLECTION_AEM_GUIDES,

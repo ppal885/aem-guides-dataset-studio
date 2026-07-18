@@ -10,6 +10,7 @@ from app.api.v1.routes import (
     chat,
     dataset_explorer,
     doc_pdf,
+    evidence_mcp,
     jira_rag,
     kb_search,
     limits,
@@ -109,3 +110,4 @@ api_router.include_router(uac_copilot.router)
 api_router.include_router(qa_studio.router, prefix="/qa-studio", tags=["qa-studio"])
 api_router.include_router(recorder.router, prefix="/recorder", tags=["recorder"])
 api_router.include_router(recorder.evidence_router, prefix="/evidence", tags=["evidence"])
+api_router.include_router(evidence_mcp.router)

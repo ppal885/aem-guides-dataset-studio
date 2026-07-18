@@ -1135,14 +1135,14 @@ def _build_thin_evidence_answer(
             "Based on DITA-OT knowledge:",
         ]
         if "pdf2" in q_lower or "pdf" in q_lower:
-            lines.append("- `pdf2` is the built-in PDF transform that uses XSL-FO (Apache FOP or Antenna House).")
-            lines.append("- Run: `dita --input=mymap.ditamap --format=pdf2 --output=out/`")
+            lines.append("- `pdf` invokes the DITA-OT PDF pipeline that uses XSL-FO (Apache FOP or Antenna House).")
+            lines.append("- Run: `dita --input=mymap.ditamap --format=pdf --output=out/`")
             lines.append("- Customise via `--args.xsl.pdf` (XSL override) or `--customization.dir`.")
         if "html5" in q_lower:
             lines.append("- `html5` is the modern web output transtype.")
             lines.append("- Run: `dita --input=mymap.ditamap --format=html5 --output=out/`")
         if "transtype" in q_lower:
-            lines.append("- Built-in transtypes: `pdf2`, `html5`, `xhtml`, `htmlhelp`, `eclipsehelp`, `markdown` (3.x+).")
+            lines.append("- Built-in transtypes include `pdf`, `html5`, `xhtml`, `htmlhelp`, `eclipsehelp`, and `markdown` (3.x+).")
         if "plugin" in q_lower:
             lines.append("- Install a plugin: `dita install com.example.myplugin/`")
             lines.append("- Plugins extend transforms via extension points in `plugin.xml`.")

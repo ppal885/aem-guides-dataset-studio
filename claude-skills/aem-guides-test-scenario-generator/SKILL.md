@@ -1,25 +1,20 @@
 ---
 name: aem-guides-test-scenario-generator
 description: >
-  Generate a comprehensive, spec-grounded QA test-scenario document for ANY DITA element or
-  attribute (e.g. indexterm, conref, @keyref, @collection-type, required-cleanup), plus a
-  related-known-bugs section pulled from the DITA-OT GitHub RAG and AEM Guides Jira index. Use
-  this skill whenever the user asks for test scenarios, QA scenarios, test coverage, a test
-  matrix, or a testing plan for a DITA element/attribute/tag — "give me test scenarios for
-  <indexterm>", "what should I test for the conkeyref attribute", "test coverage for topicref",
-  "QA scenarios for @keyscope", "generate a test matrix for choicetable" — and ALSO when the
-  user just asks about known DITA-OT bugs or Jira issues for a specific DITA construct even
-  without the word "scenario" ("any known DITA-OT bugs with conkeyref", "has this been reported
-  in Jira for indexterm"). This skill is specific to the aem-guides-dataset-studio backend and
-  its DITA spec/attribute registries, DITA-OT GitHub issue RAG, and Jira search — do not use it
-  for generic testing requests unrelated to DITA/AEM Guides.
+  Generate bug-discovery-first Adobe AEM Guides QA test plans and DITA construct test scenarios using
+  JIRA evidence, VM RAG/documentation/spec evidence, repository evidence, DITA registries, DITA-OT
+  GitHub RAG, and AEM Guides Jira index. Use this skill when the user asks for a test plan, QA
+  scenarios, bug discovery, regression prevention, test coverage, test matrix, blast-radius/risk analysis, automation strategy, or known
+  bugs for AEM Guides work or any DITA element/attribute/tag such as <indexterm>, conref, @keyref,
+  @collection-type, required-cleanup, topicref, @keyscope, or choicetable. The skill requires
+  mandatory blast-radius, bug-hypothesis, kill-the-fix, oracle, historical-regression, and residual-risk analysis before scenario generation for every JIRA/bug/enhancement/
+  regression/refactor/configuration/infrastructure change; do not use it for generic testing
+  requests unrelated to DITA/AEM Guides.
 ---
 
 # AEM Guides Test Scenario Generator
 
-This skill turns any DITA element or attribute name into the same depth of structured,
-implementation-aware QA coverage that was manually produced and validated for `<indexterm>` —
-grounded in this project's real spec registries and RAG indexes, not invented from memory.
+This skill's primary objective is bug discovery and regression prevention. Test cases are the output format, not the goal. For JIRA-driven work, preserve the evidence ledger, JIRA MCP workflow, central VM RAG retrieval, repository analysis, blast-radius analysis, regression rings, automation mapping, and Markdown validation. For standalone DITA construct requests, remain grounded in this project's real spec registries and RAG indexes, not invented memory.
 
 Everything here runs as short Python snippets against the backend's own services (the same
 mechanism used throughout this project's development), from `backend/`:
@@ -34,6 +29,32 @@ PY
 ```
 
 (On a non-Windows checkout, use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.)
+
+---
+
+
+## Mandatory workflow for JIRA-driven plans
+
+For every JIRA, do not move directly from issue analysis to test-case generation. Use this blocking
+sequence:
+
+1. JIRA intake from Adobe JIRA MCP.
+2. Evidence collection from the central VM MCP/RAG and repository tools.
+3. RAG retrieval for AEM Guides docs, DITA 1.2/1.3, DITA-OT, and explicitly allowlisted corpora.
+4. Implementation, diff, and automation repository inspection.
+5. **Blast-radius analysis gate**.
+6. **Bug Hypothesis Register** from `references/bug-discovery-heuristics.md`.
+7. **Kill the Fix** analysis when a diff exists.
+8. Historical regression analysis from `references/historical-regression-analysis.md`.
+9. Interaction matrix, failure injection, and multi-layer oracles from `references/test-oracles-and-fault-injection.md`.
+10. Scenario design, automation-strength classification, regression pack split, exploratory charters, residual risk, and validation.
+
+Before risk/scenario selection for any bug, enhancement, regression, behavior change, refactor, dependency update, configuration change, or infrastructure JIRA, read `references/blast-radius-analysis.md`, `references/bug-discovery-heuristics.md`, `references/historical-regression-analysis.md`, `references/test-oracles-and-fault-injection.md`, and `references/output-template.md`. Produce `## 4. Blast radius and risk analysis` first, then the Bug Hypothesis Register and related sections using the exact table structures in `references/output-template.md`.
+
+If blast-radius, bug-hypothesis, kill-the-fix applicability, historical-regression search, multi-layer oracle, automation-strength, or residual-risk analysis is missing or incomplete, keep the plan in **Draft** and do not call it review-ready.
+
+For DITA construct-only requests without a JIRA, still use the original tag workflow below; if the
+user also asks for a test plan tied to product/code change, apply the blast-radius gate.
 
 ---
 
@@ -158,6 +179,44 @@ Add a `## Related Known Issues` section to the scenario document with two subsec
 honest "none found" line.
 
 ---
+
+
+---
+
+## 3A. JIRA test-plan output requirements
+
+For JIRA-driven plans, use `references/output-template.md` as the governing structure. The plan must
+include the exact heading:
+
+```markdown
+## 4. Blast radius and risk analysis
+```
+
+The blast-radius section must come before scenario selection/generation. Every Direct, Shared-path,
+Downstream, Compatibility, or Observability/Recovery risk that is critical/high priority must map to
+a scenario or an explicit evidence-backed exclusion.
+
+Final quality gates must fail or mark the plan Draft when:
+
+- blast-radius section is absent;
+- Bug Hypothesis Register is absent;
+- direct or shared-path impact is not covered or excluded;
+- changed/shared path was not investigated;
+- critical downstream consumers are missing;
+- existing unchanged behavior has no R0 control test;
+- bug plans lack reproduction, negative, or recovery coverage;
+- critical/high impact has no scenario or exclusion;
+- scenarios do not trace back to risk, hypothesis, interaction, or evidence IDs;
+- Kill the Fix coverage is missing when a diff was inspected;
+- scenario oracles are vague (`no error`, `works correctly`) or single-layer where multi-layer evidence is needed;
+- automation strength is not classified;
+- exclusions have no reason/evidence;
+- historical Jira search is missing or treated as specification;
+- residual risk and release confidence are absent;
+- suspected impact is presented as confirmed;
+- unavailable code/RAG/JIRA evidence is silently replaced with assumptions or Review-ready status.
+
+Run `scripts/validate_test_plan.py <plan.md>` before calling a JIRA-driven plan review-ready.
 
 ## 4. Optional: generate an actual downloadable test-data bundle
 

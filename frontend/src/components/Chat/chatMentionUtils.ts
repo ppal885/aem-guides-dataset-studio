@@ -43,6 +43,13 @@ export const CHAT_MENTION_ITEMS: ChatMentionItem[] = [
     insertText: 'Review this DITA XML and list validation issues:\n\n',
   },
   {
+    type: 'insert',
+    id: 'dita-ot-pdf',
+    label: 'DITA-OT PDF',
+    description: 'Run local DITA-OT and generate PDF output',
+    insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
+  },
+  {
     type: 'action',
     id: 'pick-image',
     label: 'Attach screenshot…',

@@ -43,6 +43,7 @@ from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.api.v1.router import api_router as v1_router
+from app.api.v1.routes.evidence_mcp import router as evidence_mcp_router
 from app.core.runtime_safety import validate_runtime_safety
 from app.core.structured_logging import get_structured_logger, LoggingContext
 from app.services.cleaning_service import clean_old_data
@@ -347,6 +348,7 @@ try:
 except Exception:
     print("Registering API routes...")
 app.include_router(v1_router, prefix="/api/v1")
+app.include_router(evidence_mcp_router)
 
 from app.api.chat_upload_router import router as chat_upload_router
 app.include_router(chat_upload_router)

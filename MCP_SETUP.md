@@ -82,6 +82,19 @@ Run any client's tool-listing command (or just ask Claude "what MCP tools do
 you have from aem-dataset-studio?") to see the full live list — this table may
 drift as tools are added.
 
+
+## Claude Code slash command
+
+Authorized Adobe team members can run:
+
+```text
+/guides-test-plan-generator GUIDES-12345
+```
+
+The command file is `.claude/commands/guides-test-plan-generator.md`. It calls the MCP `guides_test_plan_generator(jira_key, tenant_id="kone", evidence_k=8)` tool, then uses `claude-skills/aem-guides-test-scenario-generator/SKILL.md` to produce the final plan with the mandatory `## 4. Blast radius and risk analysis` section.
+
+The MCP tool is read-only: it builds a Jira + Experience League RAG + DITA/spec + QA Studio preview evidence packet and does not crawl, reindex, delete, or mutate production vector indexes.
+
 ## Notes
 
 - **Read-mostly, opt-in writes**: most tools are read/query only. File-writing

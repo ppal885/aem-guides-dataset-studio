@@ -47,6 +47,12 @@ class JiraSearchRequest(BaseModel):
     limit: int = 5
 
 
+class GuidesTestPlanRequest(BaseModel):
+    jira_key: str
+    tenant_id: str = "kone"
+    evidence_k: int = 8
+
+
 # ---------------------------------------------------------------------------
 # find-recipes
 # ---------------------------------------------------------------------------
@@ -255,6 +261,22 @@ def search_jira(body: JiraSearchRequest, user: UserIdentity = CurrentUser):
         max_results=body.limit,
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# guides-test-plan-generator
+# ---------------------------------------------------------------------------
+
+@router.post("/guides-test-plan-generator")
+def guides_test_plan_generator(body: GuidesTestPlanRequest, user: UserIdentity = CurrentUser):
+    """Build the evidence packet for `/guides-test-plan-generator GUIDES-12345`."""
+    from app.services.guides_test_plan_generator_service import build_guides_test_plan_packet
+
+    return build_guides_test_plan_packet(
+        body.jira_key,
+        tenant_id=body.tenant_id,
+        evidence_k=max(3, min(body.evidence_k, 12)),
+    )
 
 
 # ---------------------------------------------------------------------------

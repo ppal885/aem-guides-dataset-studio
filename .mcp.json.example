@@ -1,10 +1,18 @@
 {
   "mcpServers": {
+    "aem-guides-evidence": {
+      "type": "http",
+      "url": "https://<adobe-private-host>/mcp"
+    },
     "aem-dataset-studio": {
-      "command": "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio\\backend\\.venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe",
       "args": [
         "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio\\mcp_server.py"
-      ]
+      ],
+      "cwd": "C:\\Users\\<you>\\Videos\\aem-guides-dataset-studio",
+      "env": {
+        "PYTHONUTF8": "1"
+      }
     }
   }
 }

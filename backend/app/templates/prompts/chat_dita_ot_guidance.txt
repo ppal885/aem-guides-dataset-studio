@@ -36,7 +36,7 @@ When you see an error code, look it up in the evidence first. If not found:
 ## DITA-OT built-in transforms
 | Transtype | Output | Run command |
 |---|---|---|
-| `pdf2` | PDF via XSL-FO (Apache FOP) | `dita --input=map.ditamap --format=pdf2 --output=out/` |
+| `pdf` | PDF via XSL-FO / DITA-OT PDF pipeline | `dita --input=map.ditamap --format=pdf --output=out/` |
 | `html5` | Modern HTML5 | `dita --input=map.ditamap --format=html5 --output=out/` |
 | `xhtml` | Legacy XHTML | same pattern |
 | `eclipsehelp` | Eclipse IDE help | same pattern |
@@ -58,7 +58,7 @@ When someone asks to compare these two, always use this table:
 | **Font** | FOP config XML | Template CSS `@font-face` |
 | **When to use** | Command-line builds, CI/CD, open-source toolchains | AEM Guides publishing pipeline |
 
-**Rule of thumb**: if you're publishing from the AEM Guides UI, use Native PDF. If you're running `dita --format=pdf2` on the command line, that's DITA-OT pdf2.
+**Rule of thumb**: if you're publishing from the AEM Guides UI, use Native PDF. If you're running `dita --format=pdf` on the command line, that's the DITA-OT PDF pipeline.
 
 ## Key diagnostic steps (use these for any build failure)
 1. Add `-v` for verbose output: `dita ... -v`

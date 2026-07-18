@@ -17,6 +17,7 @@ For setup (Cursor, Claude Code, Codex), see [Client configuration samples](#clie
 | `preview_conref_recipe` | POST | `/api/v1/aem-recipes/conref/preview` | |
 | `preview_glossary_recipe` | POST | `/api/v1/specialized/glossary/preview` | |
 | `get_rag_status` | GET | `/api/v1/ai/rag-status` | Query `tenant_id` (default `default`) |
+| `guides_test_plan_generator` | POST | `/api/v1/mcp/guides-test-plan-generator` | Read-only evidence packet for `/guides-test-plan-generator GUIDES-12345` |
 | `generate_from_text` | POST | `/api/v1/ai/generate-from-text` | Query `async`, `skip_rag_check` |
 | `create_chat_session` | POST | `/api/v1/chat/sessions` | |
 | `send_chat_message` | POST | `/api/v1/chat/sessions/{session_id}/messages` | SSE aggregated to JSON |

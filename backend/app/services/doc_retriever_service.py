@@ -27,6 +27,8 @@ from app.core.structured_logging import get_structured_logger
 logger = get_structured_logger(__name__)
 
 DOC_CHUNKS_FILENAME = "aem_guides_doc_chunks.json"
+BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_behavior_chunks.json"
+DITA_OT_ISSUE_DOC_CHUNKS_FILENAME = "dita_ot_issue_behavior_chunks.json"
 MANUAL_DOC_CHUNKS_FILENAME = "manual_aem_guides_doc_chunks.json"
 MAX_SNIPPET_CHARS = 1500
 
@@ -39,6 +41,16 @@ def _get_doc_chunks_path() -> Path:
 def _get_manual_doc_chunks_path() -> Path:
     storage = get_storage()
     return storage.base_path / MANUAL_DOC_CHUNKS_FILENAME
+
+
+def _get_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / BEHAVIOR_DOC_CHUNKS_FILENAME
+
+
+def _get_dita_ot_issue_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / DITA_OT_ISSUE_DOC_CHUNKS_FILENAME
 
 
 def _load_chunk_file(path: Path) -> list[dict]:
@@ -55,10 +67,10 @@ def _load_chunk_file(path: Path) -> list[dict]:
 def _load_chunks() -> list[dict]:
     """Load doc chunks from JSON, including manual fallback chunks."""
     primary = _load_chunk_file(_get_doc_chunks_path())
+    behavior = _load_chunk_file(_get_behavior_doc_chunks_path())
+    dita_ot_issues = _load_chunk_file(_get_dita_ot_issue_doc_chunks_path())
     manual = _load_chunk_file(_get_manual_doc_chunks_path())
-    if not manual:
-        return primary
-    return [*manual, *primary]
+    return [*manual, *dita_ot_issues, *behavior, *primary]
 
 
 def check_rag_readiness() -> dict:
@@ -155,8 +167,15 @@ def _phrase_candidates(query: str) -> list[str]:
 
 def _classify_aem_query_intent(query: str) -> str:
     lowered = str(query or "").lower()
+    if re.search(
+        r"\b(configmgr|osgi|web console|configmanager|enable\.baseline\.v2)\b",
+        lowered,
+    ):
+        return "configuration"
     if re.search(r"\bbaselines?\b", lowered):
         return "baseline"
+    if re.search(r"\bmap collections?\b", lowered):
+        return "publishing"
     # DITA-OT parameter/argument questions — prioritise dita-ot.org docs
     if re.search(r"\b(dita.?ot|dita open toolkit)\b", lowered) and re.search(
         r"\b(arg[a-z]*|param(?:eter)?s?|flag[s]?|option[s]?|command.?line|draft.comment|args?\.\w+|"
@@ -206,12 +225,58 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
                 r"\b(profile|profiling|ditaval|conditional processing|filter content|filters content|print rules?|exclude content)\b",
             ),
         ]
+        suppress_dita_ot_profile_boost = bool(
+            re.search(r"\b(aem guides|folder profile|conditional attribute|condition presets?)\b", lowered_query)
+        )
         for url_fragment, pattern in preprocess_targets:
+            if suppress_dita_ot_profile_boost and url_fragment == "/reference/preprocess-profile":
+                continue
             if url_fragment in lowered_url and re.search(pattern, lowered_query):
                 bonus += 4.40
                 break
         if "/parameters/" in lowered_url and re.search(r"\b(parameters?|command arguments?|dita command|--input|--format|--output|--filter|--args)\b", lowered_query):
             bonus += 1.60
+
+    if "generate-output-conditional-attribute-profiling" in lowered_url and re.search(
+        r"\b(condition(?:al)?\s+attributes?|conditional\s+attribute\s+profiling|folder\s+profile|name\s+value\s+label)\b",
+        lowered_query,
+    ):
+        bonus += 2.40
+    if "generate-output-conditional-attribute-profiling" in lowered_url and re.search(
+        r"\b(output\s+presets?|global|add to folder profile|default pdf|view log|related maps)\b",
+        lowered_query,
+    ):
+        bonus -= 2.10
+    if "web-editor-manage-output-presets" in lowered_url and re.search(
+        r"\b(global|folder profile|add to folder profile|default pdf|view log|related maps|folder-level administrative)\b",
+        lowered_query,
+    ):
+        bonus += 3.0
+    if "generate-output-use-map-collection-output-generation" in lowered_url and re.search(
+        r"\b(map collections?|generate selected|generate all|modified|remove from collection|configure metadata|asset metadata|enable all|enable folder profile presets)\b",
+        lowered_query,
+    ):
+        bonus += 3.2
+    if "generate-output-use-new-map-collection-output-generation" in lowered_url and re.search(
+        r"\b(new map collections?|beta|generated history|published history|fetch presets|select available translations|publish to|preview|publish instance|modified since generation|modified since published)\b",
+        lowered_query,
+    ):
+        bonus += 3.4
+    if "generate-output-use-map-collection-output-generation" in lowered_url and re.search(
+        r"\b(new map collections?|beta|generated history|published history|fetch presets|select available translations|publish to|preview|publish instance)\b",
+        lowered_query,
+    ):
+        bonus -= 1.2
+    if "/install-conf-guide/output-gen-config/" in lowered_url and re.search(
+        r"\b(map collections?|generate selected|generate all|remove from collection|configure metadata)\b",
+        lowered_query,
+    ):
+        bonus -= 1.6
+    if "generate-output-use-condition-presets" in lowered_url and re.search(
+        r"\b(condition(?:al)?\s+presets?|include|exclude|passthrough|flag)\b",
+        lowered_query,
+    ):
+        bonus += 1.20
 
     if intent == "dita_ot_params":
         # Boost dita-ot.org parameter/argument documentation pages
@@ -292,12 +357,21 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     elif intent == "configuration":
         if "/install-conf-guide/" in lowered_url:
             bonus += 0.45
+        if "conf-new-baseline-on-prem" in lowered_url and re.search(
+            r"\b(new baseline|on-premise|on-prem|enable faster baseline|baseline v2|configmanager|configmgr|web console|enable\.baseline\.v2|osgi)\b",
+            lowered_query,
+        ):
+            bonus += 2.2
         if re.search(r"\b(configure|settings?|profile|filter|mapping|indexing|search|workspace)\b", lowered_title):
             bonus += 0.28
         if "/output-gen/" in lowered_url and "output" not in str(query or "").lower():
             bonus -= 0.22
 
     elif intent == "publishing":
+        if "generate-output-create-edit-preset" in lowered_url and re.search(
+            r"\b(output\s+)?presets?\b", lowered_query
+        ) and re.search(r"\b(edit|duplicate|delete|remove|manage|options?|dropdown|top\s+bar|settings?)\b", lowered_query):
+            bonus += 1.25
         if "/map-management-publishing/" in lowered_url or "/output-gen/" in lowered_url:
             bonus += 0.45
         if re.search(r"\b(output|publish|preset|aem sites|pdf)\b", lowered_title):
@@ -312,6 +386,71 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
             bonus += 0.75
         if "web-editor-baseline" in lowered_url or "generate-output-use-baseline-for-publishing" in lowered_url:
             bonus += 0.35
+        if "generate-output-use-baseline-for-publishing" in lowered_url and re.search(
+            r"\b(map dashboard|assets ui|baselines page|browse topic|browse all topics|add labels|translated baseline|overwrite existing baseline)\b",
+            lowered_query + " " + lowered_title + " " + lowered_content,
+        ):
+            bonus += 0.75
+        if "#create-a-baseline" in lowered_url and re.search(
+            r"\b(create a baseline|baseline name|set the version based on|version on|assets ui|save)\b",
+            lowered_query,
+        ):
+            bonus += 0.85
+        if (
+            lowered_url.endswith("generate-output-use-baseline-for-publishing")
+            and re.search(r"\b(create a baseline|baseline name|set the version based on)\b", lowered_query)
+        ):
+            bonus -= 0.35
+        if lowered_url.endswith("generate-output-use-baseline-for-publishing") and re.search(
+            r"\b(browse all topics|add labels|translated baseline|overwrite existing baseline|export translated baseline)\b",
+            lowered_query,
+        ):
+            bonus += 0.75
+        if "#create-a-baseline" in lowered_url and re.search(
+            r"\b(browse all topics|add labels|translated baseline|overwrite existing baseline|export translated baseline)\b",
+            lowered_query,
+        ):
+            bonus -= 0.55
+        if lowered_url.endswith("web-editor-baseline") and re.search(
+            r"\b(map dashboard|assets ui|baselines page|browse topic|browse all topics|add labels|translated baseline|overwrite existing baseline)\b",
+            lowered_query,
+        ):
+            bonus -= 0.45
+        if "web-editor-baseline-v2" in lowered_url and re.search(
+            r"\b(new baseline|beta|2026\.04\.0|bulk processor|migration|migrate|rebuild|download|guid|dependency preview|graph-based|rest api|java sdk)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
+        if "#key-enhancements-introduced-in-the-new-baseline" in lowered_url and re.search(
+            r"\b(key enhancements?|incremental loading|streamlined data|guid search|dependency impact|row-level|deterministic|rest api|java sdk|pagination|backend validation)\b",
+            lowered_query,
+        ):
+            bonus += 1.25
+        if lowered_url.endswith("web-editor-baseline-v2") and re.search(
+            r"\b(key enhancements?|incremental loading|streamlined data|guid search|dependency impact|row-level|deterministic)\b",
+            lowered_query,
+        ):
+            bonus -= 0.35
+        if "new-baseline-migration-faq" in lowered_url and re.search(
+            r"\b(faq|invalid references?|reltable|direct references?|scope\s*=?\"?peer|rollback|old baselines?|working copy|prerequisites?|on-premise 5\.2|cloud service 2026\.05\.0|migration time|backup)\b",
+            lowered_query,
+        ):
+            bonus += 1.45
+        if lowered_url.endswith("web-editor-baseline-v2") and re.search(
+            r"\b(faq|invalid references?|reltable|direct references?|scope\s*=?\"?peer|rollback|old baselines?|working copy|prerequisites?|migration time|backup)\b",
+            lowered_query,
+        ):
+            bonus -= 0.45
+        if "generate-output-use-baseline-for-publishing" in lowered_url and re.search(
+            r"\b(new baseline|beta|2026\.04\.0|bulk processor|migration|migrate|rebuild|download|guid|dependency preview|graph-based|rest api|java sdk)\b",
+            lowered_query,
+        ):
+            bonus -= 0.65
+        if lowered_url.endswith("web-editor-baseline") and re.search(
+            r"\b(map console|manual update|automatic update|static baseline|dynamic baseline|baseline filters|export baseline exact copy)\b",
+            lowered_query,
+        ):
+            bonus += 0.45
         if re.search(r"\b(manual update|automatic update|static baseline|dynamic baseline|date\s*:|label\s*:|labels\s*:)\b", lowered_content):
             bonus += 0.55
         if re.search(r"\b(create and manage baselines?|new baseline|baseline tab|baseline panel|new baseline dialog)\b", lowered_content):
@@ -506,7 +645,11 @@ def retrieve_relevant_docs_with_diagnostics(
                     doc = row.get("document") or ""
                     snippet = doc[:max_snippet_chars]
                     result.append({
-                        "url": meta.get("url", ""),
+                        "chunk_id": row.get("id", ""),
+                        "url": meta.get("source_url") or meta.get("canonical_url") or meta.get("url", ""),
+                        "source_url": meta.get("source_url") or meta.get("url", ""),
+                        "canonical_url": meta.get("canonical_url") or meta.get("url", ""),
+                        "corpus": meta.get("corpus", "aem_guides"),
                         "title": meta.get("title", ""),
                         "snippet": snippet,
                     })
@@ -546,7 +689,11 @@ def retrieve_relevant_docs_with_diagnostics(
                         c = indexed[idx][1]
                         snippet = (c.get("content") or "")[:max_snippet_chars]
                         result.append({
-                            "url": c.get("url", ""),
+                            "chunk_id": c.get("id", ""),
+                            "url": c.get("source_url") or c.get("canonical_url") or c.get("url", ""),
+                            "source_url": c.get("source_url") or c.get("url", ""),
+                            "canonical_url": c.get("canonical_url") or c.get("url", ""),
+                            "corpus": c.get("corpus", "aem_guides"),
                             "title": c.get("title", ""),
                             "snippet": snippet,
                         })
@@ -612,7 +759,11 @@ def retrieve_relevant_docs_with_diagnostics(
             (
                 score,
                 {
-                    "url": c.get("url", ""),
+                    "chunk_id": c.get("id", ""),
+                    "url": c.get("source_url") or c.get("canonical_url") or c.get("url", ""),
+                    "source_url": c.get("source_url") or c.get("url", ""),
+                    "canonical_url": c.get("canonical_url") or c.get("url", ""),
+                    "corpus": c.get("corpus", "aem_guides"),
                     "title": c.get("title", ""),
                     "snippet": snippet,
                 },

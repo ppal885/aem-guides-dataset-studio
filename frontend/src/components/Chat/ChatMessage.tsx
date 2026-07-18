@@ -684,6 +684,42 @@ export function ToolResult({
   if (name === 'generate_image') {
     return <ImageGenerationPanel result={r} />;
   }
+  if (name === 'generate_dita_ot_pdf') {
+    const status = String(r.status || '').toLowerCase();
+    const pdfFiles = Array.isArray(r.pdf_files) ? r.pdf_files.map(String).filter(Boolean) : [];
+    const htmlFiles = Array.isArray(r.html_files) ? r.html_files.map(String).filter(Boolean) : [];
+    const artifactZip = String(r.artifact_zip || '').trim();
+    const publish = (r.publish as Record<string, Record<string, unknown>> | undefined) || {};
+    const firstPublish = publish.pdf || publish.html5 || {};
+    const stderr = String(firstPublish.stderr || '').trim();
+    const command = String(firstPublish.command || '').trim();
+    return (
+      <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3 text-xs shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-semibold text-indigo-950">DITA-OT publish</p>
+          <span className={cn(
+            'rounded-full px-2 py-0.5 text-[11px] font-medium',
+            status === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+          )}>
+            {status || 'unknown'}
+          </span>
+        </div>
+        <ToolLead result={r} />
+        <div className="mt-2 space-y-1 text-slate-700">
+          {pdfFiles[0] && <p><span className="font-semibold text-slate-900">PDF:</span> <code>{pdfFiles[0]}</code></p>}
+          {htmlFiles.length > 0 && <p><span className="font-semibold text-slate-900">HTML5 files:</span> {htmlFiles.length}</p>}
+          {artifactZip && <p><span className="font-semibold text-slate-900">Artifact ZIP:</span> <code>{artifactZip}</code></p>}
+          {command && <p><span className="font-semibold text-slate-900">Command:</span> <code>{command}</code></p>}
+        </div>
+        {stderr && (
+          <details className="mt-2 rounded-lg border border-amber-200 bg-amber-50/80 p-2">
+            <summary className="cursor-pointer font-medium text-amber-900">stderr</summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-amber-950">{stderr}</pre>
+          </details>
+        )}
+      </div>
+    );
+  }
   if (name === 'generate_dita_from_attachments') {
     return <LegacyAttachmentAuthoringPanel result={r as unknown as ChatDitaAuthoringResult} />;
   }
