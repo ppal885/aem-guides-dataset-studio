@@ -214,7 +214,7 @@ _TOOL_UI_META: dict[str, dict[str, Any]] = {
     },
     "generate_dita_ot_pdf": {
         "slash_alias": "generate_dita_ot_pdf",
-        "title": "Generate DITA-OT PDF",
+        "title": "Generate DITA-OT Output",
         "category": "Publishing",
         "primary_arg": "prompt",
     },
@@ -3696,9 +3696,9 @@ def get_tool_definitions() -> list[dict]:
         {
             "name": "generate_dita_ot_pdf",
             "description": (
-                "Run the local DITA-OT CLI to publish a DITA map to PDF, HTML5, or both. "
+                "Run the local DITA-OT CLI to publish a DITA map to PDF, classic HTML/xhtml, HTML5, or all. "
                 "Use when the user explicitly asks to call DITA-OT, generate DITA-OT PDF, "
-                "generate html5 output, or verify publishing output. If input_map is omitted, "
+                "generate classic HTML, generate HTML5 output, or verify publishing output. If input_map is omitted, "
                 "the tool creates a small smoke-test DITA map and publishes it. For PDF, it uses "
                 "the DITA-OT CLI format `pdf` because that invokes the built-in PDF/pdf2 pipeline."
             ),
@@ -3715,8 +3715,8 @@ def get_tool_definitions() -> list[dict]:
                     },
                     "output_format": {
                         "type": "string",
-                        "enum": ["pdf", "html5", "both"],
-                        "description": "Output format to generate. Use pdf for the DITA-OT PDF/pdf2 pipeline.",
+                        "enum": ["pdf", "html", "xhtml", "html5", "both", "all"],
+                        "description": "Output format to generate. Use pdf for the DITA-OT PDF/pdf2 pipeline, html/xhtml for classic HTML, html5 for HTML5, both for pdf+html5, or all for pdf+xhtml+html5.",
                     },
                     "package_name": {
                         "type": "string",

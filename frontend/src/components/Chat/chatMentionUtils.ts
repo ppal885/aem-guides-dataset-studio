@@ -50,6 +50,13 @@ export const CHAT_MENTION_ITEMS: ChatMentionItem[] = [
     insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
   },
   {
+    type: 'insert',
+    id: 'dita-ot-all',
+    label: 'DITA-OT all',
+    description: 'Run local DITA-OT and generate PDF, HTML/xhtml, and HTML5',
+    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nDITA-OT PDF + HTML + HTML5 smoke test',
+  },
+  {
     type: 'action',
     id: 'pick-image',
     label: 'Attach screenshot…',
@@ -70,6 +77,27 @@ export const CHAT_SLASH_ITEMS: ChatMentionItem[] = [
     label: '/generate_dita_ot_pdf',
     description: 'Run local DITA-OT and generate PDF output',
     insertText: '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test',
+  },
+  {
+    type: 'insert',
+    id: 'slash-generate-dita-ot-html',
+    label: '/generate_dita_ot_html',
+    description: 'Run local DITA-OT and generate classic HTML/xhtml output',
+    insertText: '/generate_dita_ot_pdf\noutput_format: html\n\nDITA-OT HTML smoke test',
+  },
+  {
+    type: 'insert',
+    id: 'slash-generate-dita-ot-html5',
+    label: '/generate_dita_ot_html5',
+    description: 'Run local DITA-OT and generate HTML5 output',
+    insertText: '/generate_dita_ot_pdf\noutput_format: html5\n\nDITA-OT HTML5 smoke test',
+  },
+  {
+    type: 'insert',
+    id: 'slash-generate-dita-ot-all',
+    label: '/generate_dita_ot_all',
+    description: 'Run local DITA-OT and generate PDF, HTML/xhtml, and HTML5',
+    insertText: '/generate_dita_ot_pdf\noutput_format: all\n\nDITA-OT PDF + HTML + HTML5 smoke test',
   },
   {
     type: 'insert',

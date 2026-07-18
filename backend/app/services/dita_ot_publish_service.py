@@ -136,8 +136,10 @@ async def publish_with_dita_ot(
     requested = (output_format or "pdf").strip().lower()
     if requested == "pdf2":
         requested = "pdf"
-    if requested not in {"pdf", "html5", "both"}:
-        raise ValueError("output_format must be one of: pdf, html5, both")
+    if requested == "html":
+        requested = "xhtml"
+    if requested not in {"pdf", "xhtml", "html5", "both", "all"}:
+        raise ValueError("output_format must be one of: pdf, html, xhtml, html5, both, all")
 
     run_id = str(uuid4())
     slug = _safe_slug(package_name or prompt)
@@ -160,13 +162,19 @@ async def publish_with_dita_ot(
     else:
         input_for_build = _write_sample_dataset(work_dir, prompt or slug)
 
-    formats = ["pdf", "html5"] if requested == "both" else [requested]
+    if requested == "both":
+        formats = ["pdf", "html5"]
+    elif requested == "all":
+        formats = ["pdf", "xhtml", "html5"]
+    else:
+        formats = [requested]
     publish: dict[str, Any] = {}
     for fmt in formats:
         publish[fmt] = _run_dita(input_for_build, fmt, publish_dir / fmt, timeout_seconds)
 
     pdf_files = sorted((publish_dir / "pdf").glob("*.pdf")) if (publish_dir / "pdf").exists() else []
-    html_files = sorted((publish_dir / "html5").glob("*.html")) if (publish_dir / "html5").exists() else []
+    xhtml_files = sorted((publish_dir / "xhtml").rglob("*.html")) if (publish_dir / "xhtml").exists() else []
+    html_files = sorted((publish_dir / "html5").rglob("*.html")) if (publish_dir / "html5").exists() else []
     zip_path = OUTPUT_ROOT / run_id / f"{slug}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for base in (work_dir, publish_dir):
@@ -185,6 +193,7 @@ async def publish_with_dita_ot(
                     "output_format": requested,
                     "created_at": datetime.now().isoformat(),
                     "pdf_files": [str(path) for path in pdf_files],
+                    "xhtml_files": [str(path) for path in xhtml_files],
                     "html_files": [str(path) for path in html_files],
                 },
                 indent=2,
@@ -200,15 +209,18 @@ async def publish_with_dita_ot(
         "output_format": requested,
         "publish": publish,
         "pdf_files": [str(path) for path in pdf_files],
+        "xhtml_files": [str(path) for path in xhtml_files],
         "html_files": [str(path) for path in html_files],
         "artifact_zip": str(zip_path),
         "artifact_counts": {
             "pdf_files": len(pdf_files),
+            "xhtml_files": len(xhtml_files),
             "html_files": len(html_files),
         },
         "oracle": {
             "dita_ot_exit_zero": ok,
             "pdf_created": bool(pdf_files and pdf_files[0].stat().st_size > 0) if "pdf" in formats else None,
+            "xhtml_created": bool(xhtml_files) if "xhtml" in formats else None,
             "html_created": bool(html_files) if "html5" in formats else None,
         },
     }

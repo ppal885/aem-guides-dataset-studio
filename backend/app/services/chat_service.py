@@ -7469,11 +7469,14 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
     if name == "generate_dita_ot_pdf":
         status = str(result.get("status") or "").strip().lower()
         pdf_files = [str(item) for item in (result.get("pdf_files") or []) if str(item).strip()]
+        xhtml_files = [str(item) for item in (result.get("xhtml_files") or []) if str(item).strip()]
         html_files = [str(item) for item in (result.get("html_files") or []) if str(item).strip()]
         if status == "success":
             parts = ["I ran DITA-OT successfully."]
             if pdf_files:
                 parts.append(f"PDF: `{pdf_files[0]}`")
+            if xhtml_files:
+                parts.append(f"HTML/xhtml files: {len(xhtml_files)}")
             if html_files:
                 parts.append(f"HTML5 files: {len(html_files)}")
             return " ".join(parts)

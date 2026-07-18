@@ -168,8 +168,8 @@ export function ChatInput({
     onSend();
   };
 
-  const runDitaOtPdf = () => {
-    const command = '/generate_dita_ot_pdf\noutput_format: pdf\n\nDITA-OT PDF smoke test';
+  const runDitaOtPublish = () => {
+    const command = '/generate_dita_ot_pdf\noutput_format: all\n\nDITA-OT PDF + HTML + HTML5 smoke test';
     if (onQuickReply && !disabled && !loading && !showStop) {
       onQuickReply(command);
       return;
@@ -460,12 +460,12 @@ export function ChatInput({
                   </button>
                   <button
                     type="button"
-                    onClick={runDitaOtPdf}
+                    onClick={runDitaOtPublish}
                     className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                    title="Generate PDF with local DITA-OT"
+                    title="Generate PDF, HTML, and HTML5 with local DITA-OT"
                   >
                     <FileCode2 className="h-3.5 w-3.5" />
-                    DITA-OT PDF
+                    DITA-OT
                   </button>
                 </>
               )}
