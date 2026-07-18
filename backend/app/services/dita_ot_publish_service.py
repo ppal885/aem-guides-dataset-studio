@@ -64,6 +64,11 @@ def _resolve_workspace_path(value: str | None) -> Path | None:
     return resolved
 
 
+def _artifact_download_url(run_id: str, artifact_type: str, filename: str) -> str:
+    safe_filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    return f"/api/v1/chat/dita-ot-artifacts/{run_id}/{artifact_type}/{safe_filename}?download=1"
+
+
 def _write_sample_dataset(work_dir: Path, title: str) -> Path:
     slug = _safe_slug(title)
     map_path = work_dir / f"{slug}.ditamap"
@@ -215,9 +220,11 @@ async def publish_with_dita_ot(
         "output_format": requested,
         "publish": publish,
         "pdf_files": [str(path) for path in pdf_files],
+        "pdf_download_urls": [_artifact_download_url(run_id, "pdf", path.name) for path in pdf_files],
         "xhtml_files": [str(path) for path in xhtml_files],
         "html_files": [str(path) for path in html_files],
         "artifact_zip": str(zip_path),
+        "artifact_zip_download_url": _artifact_download_url(run_id, "zip", zip_path.name),
         "artifact_counts": {
             "pdf_files": len(pdf_files),
             "xhtml_files": len(xhtml_files),

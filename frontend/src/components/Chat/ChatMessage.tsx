@@ -687,9 +687,11 @@ export function ToolResult({
   if (name === 'generate_dita_ot_pdf') {
     const status = String(r.status || '').toLowerCase();
     const pdfFiles = Array.isArray(r.pdf_files) ? r.pdf_files.map(String).filter(Boolean) : [];
+    const pdfDownloadUrls = Array.isArray(r.pdf_download_urls) ? r.pdf_download_urls.map(String).filter(Boolean) : [];
     const xhtmlFiles = Array.isArray(r.xhtml_files) ? r.xhtml_files.map(String).filter(Boolean) : [];
     const htmlFiles = Array.isArray(r.html_files) ? r.html_files.map(String).filter(Boolean) : [];
     const artifactZip = String(r.artifact_zip || '').trim();
+    const artifactZipDownloadUrl = String(r.artifact_zip_download_url || '').trim();
     const publish = (r.publish as Record<string, Record<string, unknown>> | undefined) || {};
     const firstPublish = publish.pdf || publish.xhtml || publish.html5 || {};
     const stderr = String(firstPublish.stderr || '').trim();
@@ -707,10 +709,24 @@ export function ToolResult({
         </div>
         <ToolLead result={r} />
         <div className="mt-2 space-y-1 text-slate-700">
-          {pdfFiles[0] && <p><span className="font-semibold text-slate-900">PDF:</span> <code>{pdfFiles[0]}</code></p>}
+          {pdfDownloadUrls[0] ? (
+            <p>
+              <span className="font-semibold text-slate-900">PDF:</span>{' '}
+              <a className="font-medium text-indigo-700 underline" href={apiUrl(pdfDownloadUrls[0])} target="_blank" rel="noreferrer">
+                Download PDF
+              </a>
+            </p>
+          ) : pdfFiles[0] && <p><span className="font-semibold text-slate-900">PDF:</span> <code>{pdfFiles[0]}</code></p>}
           {xhtmlFiles.length > 0 && <p><span className="font-semibold text-slate-900">HTML/xhtml files:</span> {xhtmlFiles.length}</p>}
           {htmlFiles.length > 0 && <p><span className="font-semibold text-slate-900">HTML5 files:</span> {htmlFiles.length}</p>}
-          {artifactZip && <p><span className="font-semibold text-slate-900">Artifact ZIP:</span> <code>{artifactZip}</code></p>}
+          {artifactZipDownloadUrl ? (
+            <p>
+              <span className="font-semibold text-slate-900">Artifact ZIP:</span>{' '}
+              <a className="font-medium text-indigo-700 underline" href={apiUrl(artifactZipDownloadUrl)} target="_blank" rel="noreferrer">
+                Download ZIP
+              </a>
+            </p>
+          ) : artifactZip && <p><span className="font-semibold text-slate-900">Artifact ZIP:</span> <code>{artifactZip}</code></p>}
           {command && <p><span className="font-semibold text-slate-900">Command:</span> <code>{command}</code></p>}
         </div>
         {stderr && (

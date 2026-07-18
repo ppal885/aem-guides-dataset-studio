@@ -1,7 +1,8 @@
 """Chat API routes - sessions, messages, streaming."""
 import json
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,7 @@ from app.services.chat_service import (
 )
 from app.services.chat_asset_service import ensure_user_can_access_asset, read_asset_bytes
 from app.services.chat_tools import get_tool_catalog
+from app.services.dita_ot_publish_service import OUTPUT_ROOT as DITA_OT_OUTPUT_ROOT
 from app.services.tenant_service import get_authorized_tenant_id
 from app.services.llm_service import format_llm_error_for_user
 from app.db.session import get_db
@@ -564,4 +566,56 @@ def get_chat_asset(asset_id: str, request: Request, user: UserIdentity = Current
         content=payload,
         media_type=mime_type,
         headers={"Content-Disposition": content_disposition(filename, disposition=disposition)},
+    )
+
+
+@router.get("/dita-ot-artifacts/{run_id}/{artifact_type}/{filename}")
+def get_dita_ot_artifact(
+    run_id: str,
+    artifact_type: str,
+    filename: str,
+    request: Request,
+    user: UserIdentity = CurrentUser,
+):
+    """Serve DITA-OT generated PDF/HTML/ZIP artifacts from the project output tree."""
+    safe_run_id = run_id.strip()
+    safe_type = artifact_type.strip().lower()
+    safe_filename = Path(filename).name
+    if not safe_run_id or safe_run_id in {".", ".."} or "/" in safe_run_id or "\\" in safe_run_id:
+        raise HTTPException(status_code=400, detail="Invalid run id")
+    if safe_type not in {"pdf", "xhtml", "html5", "zip"}:
+        raise HTTPException(status_code=400, detail="Invalid DITA-OT artifact type")
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid artifact filename")
+
+    run_root = (DITA_OT_OUTPUT_ROOT / safe_run_id).resolve()
+    output_root = DITA_OT_OUTPUT_ROOT.resolve()
+    if run_root != output_root and output_root not in run_root.parents:
+        raise HTTPException(status_code=400, detail="Invalid DITA-OT artifact path")
+
+    if safe_type == "zip":
+        candidate = run_root / safe_filename
+    else:
+        publish_root = run_root / "publish" / safe_type
+        matches = [path for path in publish_root.rglob(safe_filename) if path.is_file()] if publish_root.exists() else []
+        candidate = matches[0] if matches else publish_root / safe_filename
+
+    resolved = candidate.resolve()
+    if run_root != resolved and run_root not in resolved.parents:
+        raise HTTPException(status_code=400, detail="Invalid DITA-OT artifact path")
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="DITA-OT artifact not found")
+
+    media_type = {
+        ".pdf": "application/pdf",
+        ".zip": "application/zip",
+        ".html": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+    }.get(resolved.suffix.lower(), "application/octet-stream")
+    download = _parse_form_bool(request.query_params.get("download"), default=False)
+    disposition = "attachment" if download else "inline"
+    return FileResponse(
+        resolved,
+        media_type=media_type,
+        headers={"Content-Disposition": content_disposition(resolved.name, disposition=disposition)},
     )

@@ -7469,16 +7469,22 @@ def _build_direct_tool_response(name: str, result: dict[str, Any]) -> str:
     if name == "generate_dita_ot_pdf":
         status = str(result.get("status") or "").strip().lower()
         pdf_files = [str(item) for item in (result.get("pdf_files") or []) if str(item).strip()]
+        pdf_urls = [str(item) for item in (result.get("pdf_download_urls") or []) if str(item).strip()]
         xhtml_files = [str(item) for item in (result.get("xhtml_files") or []) if str(item).strip()]
         html_files = [str(item) for item in (result.get("html_files") or []) if str(item).strip()]
+        zip_url = str(result.get("artifact_zip_download_url") or "").strip()
         if status == "success":
             parts = ["I ran DITA-OT successfully."]
-            if pdf_files:
+            if pdf_urls:
+                parts.append(f"Download PDF: {pdf_urls[0]}")
+            elif pdf_files:
                 parts.append(f"PDF: `{pdf_files[0]}`")
             if xhtml_files:
                 parts.append(f"HTML/xhtml files: {len(xhtml_files)}")
             if html_files:
                 parts.append(f"HTML5 files: {len(html_files)}")
+            if zip_url:
+                parts.append(f"Download ZIP: {zip_url}")
             return " ".join(parts)
         return "I ran DITA-OT, but publishing failed. The result card includes stderr, command, and oracle details."
     if name == "list_indexed_pdfs":
