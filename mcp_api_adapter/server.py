@@ -263,6 +263,36 @@ def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evi
 
 
 @mcp.tool()
+async def generate_dita_ot_output(
+    prompt: str = "DITA-OT PDF smoke test",
+    input_map: str = "",
+    output_format: str = "pdf",
+    package_name: str = "",
+    timeout_seconds: int = 180,
+) -> str:
+    """
+    Generate or publish DITA content with DITA-OT and return rich QA guidance.
+
+    This REST-adapter MCP tool intentionally reuses the backend publishing
+    service so teammates see the same dataset summary, expected behavior,
+    QA checklist, and PDF/HTML inspection areas as the chatbot UI.
+    """
+    try:
+        from app.services.dita_ot_publish_service import publish_with_dita_ot
+
+        result = await publish_with_dita_ot(
+            input_map=input_map or None,
+            prompt=prompt,
+            output_format=output_format,
+            package_name=package_name,
+            timeout_seconds=max(1, int(timeout_seconds)),
+        )
+        return _dump(result)
+    except Exception as exc:
+        return f"DITA-OT output generation failed: {exc}"
+
+
+@mcp.tool()
 def upload_dataset_to_aem(
     source_path: str,
     target_path: str,

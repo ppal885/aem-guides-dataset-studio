@@ -1067,10 +1067,17 @@ def _dita_ot_cli_path() -> Path | None:
         if path.exists():
             return path
 
-    candidates = [
+    unix_candidates = [
+        PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita",
+        PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita",
+        PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita",
+    ]
+    windows_candidates = [
         PROJECT_ROOT / "tools" / "dita-ot-4.4-runtime" / "dita-ot-4.4" / "bin" / "dita.bat",
         PROJECT_ROOT / "tools" / "dita-ot-4.4" / "bin" / "dita.bat",
+        PROJECT_ROOT / "tools" / "dita-ot" / "bin" / "dita.bat",
     ]
+    candidates = windows_candidates + unix_candidates if os.name == "nt" else unix_candidates + windows_candidates
     for path in candidates:
         if path.exists():
             return path
@@ -1090,12 +1097,13 @@ def _run_dita_publish(input_map: Path, fmt: str, output_dir: Path, timeout_secon
         }
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    cli_format = "pdf" if fmt == "pdf2" else fmt
     cmd = [
         str(dita_cli),
         "-i",
         str(input_map),
         "-f",
-        fmt,
+        cli_format,
         "-o",
         str(output_dir),
         "--processing-mode=strict",
@@ -1112,10 +1120,69 @@ def _run_dita_publish(input_map: Path, fmt: str, output_dir: Path, timeout_secon
     return {
         "ok": proc.returncode == 0,
         "format": fmt,
+        "dita_ot_format": cli_format,
         "exit_code": proc.returncode,
+        "command": " ".join(cmd),
         "stdout": proc.stdout[-4000:],
         "stderr": proc.stderr[-4000:],
         "output_dir": str(output_dir),
+    }
+
+
+def _mcp_publish_generation_guidance(
+    *,
+    prompt: str,
+    files: list[str],
+    outputs: list[str],
+    map_name: str,
+) -> dict:
+    return {
+        "title": "MCP DITA-OT publishing QA dataset",
+        "what_was_generated": [
+            f"One DITA map `{map_name}` with root `xml:lang=\"en-US\"`.",
+            "One English concept topic explaining the language/chunking risk.",
+            "One task topic describing the publishing validation procedure.",
+            "One mixed-language topic containing English, French, and German text for output comparison.",
+            f"Requested publishing outputs: {', '.join(outputs) or 'none'}.",
+        ],
+        "source_files": files,
+        "expected_behavior": [
+            "`xml:lang` identifies content language and must not be silently lost during publishing.",
+            "`chunk` controls output boundaries from the map without rewriting all content to the root map language.",
+            "HTML5 output should preserve nested `fr-FR` and `de-DE` language markers where DITA-OT emits them.",
+            "PDF2 is invoked through DITA-OT format `pdf`; `pdf2` is treated as the pipeline name, not the CLI transtype.",
+        ],
+        "qa_checklist": [
+            "Confirm every generated source file validates as DITA.",
+            "Confirm DITA-OT exits with code 0 for each requested output.",
+            "Open the generated ZIP and verify the map plus topic files are present.",
+            "Inspect HTML5 output for generated page boundaries and nested language text.",
+            "Inspect PDF output for selected topics, TOC/bookmarks, language-sensitive text, and non-empty file size.",
+        ],
+        "expected_pdf_review_areas": [
+            "PDF opens successfully and is non-empty.",
+            "PDF title/TOC includes the generated overview, procedure, and mixed-language sample.",
+            "The mixed-language sample text appears in output.",
+            "No DITA-OT error indicates unsupported chunk or invalid transform selection.",
+            "Generated labels/TOC/bookmarks look consistent with the content language and map structure.",
+        ],
+        "expected_html_review_areas": [
+            "HTML5 output contains multiple generated `.html` pages for chunked topics.",
+            "The mixed-language HTML page contains French and German text.",
+            "Generated links between chunked topics work from the output directory.",
+            "Nested language attributes are preserved where DITA-OT emits them.",
+        ],
+        "team_usage_note": (
+            "When Claude/Cursor/Codex calls this MCP tool, the assistant should summarize these sections first, "
+            "then cite artifact paths and comparison booleans. Do not make the user infer QA scope from raw JSON."
+        ),
+        "recommended_user_next_step": (
+            "Open the ZIP for source review, then inspect PDF and HTML5 output areas listed above before deciding pass/fail."
+        ),
+        "confidence_contract": [
+            "Status `success` means source creation, validation, requested publish commands, and deterministic comparisons did not fail.",
+            "Status `partial` means at least one validation, publish, or comparison check needs manual inspection.",
+        ],
     }
 
 
@@ -1239,6 +1306,18 @@ def generate_publish_compare(
             "created": datetime.now().isoformat(),
             "files": list(files.keys()),
         }
+        requested_outputs = []
+        if run_html5:
+            requested_outputs.append("html5")
+        if run_pdf2:
+            requested_outputs.append("pdf2")
+        generation_guidance = _mcp_publish_generation_guidance(
+            prompt=prompt,
+            files=list(files.keys()),
+            outputs=requested_outputs,
+            map_name=map_name,
+        )
+        manifest["generation_guidance"] = generation_guidance
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
             for filename in files:
                 archive.write(output_dir / filename, filename)
@@ -1269,6 +1348,15 @@ def generate_publish_compare(
             "status": status,
             "prompt": prompt,
             "package_name": prefix,
+            "generation_guidance": generation_guidance,
+            "what_was_generated": generation_guidance["what_was_generated"],
+            "expected_behavior": generation_guidance["expected_behavior"],
+            "qa_checklist": generation_guidance["qa_checklist"],
+            "expected_pdf_review_areas": generation_guidance["expected_pdf_review_areas"],
+            "expected_html_review_areas": generation_guidance["expected_html_review_areas"],
+            "team_usage_note": generation_guidance["team_usage_note"],
+            "recommended_user_next_step": generation_guidance["recommended_user_next_step"],
+            "confidence_contract": generation_guidance["confidence_contract"],
             "source_files": [str(output_dir / name) for name in files],
             "package_zip": str(zip_path),
             "html5_output_dir": str(publish_base / "html5") if run_html5 else None,
@@ -1288,6 +1376,38 @@ def generate_publish_compare(
         return f"generate_publish_compare timed out while running DITA-OT: {exc}"
     except Exception as e:
         return f"Error in generate_publish_compare: {e}"
+
+
+@mcp.tool()
+async def generate_dita_ot_output(
+    prompt: str = "DITA-OT PDF smoke test",
+    input_map: str = "",
+    output_format: str = "pdf",
+    package_name: str = "",
+    timeout_seconds: int = 180,
+) -> str:
+    """
+    Generate or publish DITA content with DITA-OT and return rich QA guidance.
+
+    Use this MCP tool when a teammate asks for generated DITA-OT PDF, HTML,
+    HTML5, or all outputs and needs the dataset summary, expected behavior,
+    QA checklist, and PDF/HTML inspection areas in the MCP response.
+
+    output_format: pdf, html, xhtml, html5, both, or all.
+    """
+    try:
+        from app.services.dita_ot_publish_service import publish_with_dita_ot
+
+        result = await publish_with_dita_ot(
+            input_map=input_map or None,
+            prompt=prompt,
+            output_format=output_format,
+            package_name=package_name,
+            timeout_seconds=max(1, int(timeout_seconds)),
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        return f"Error in generate_dita_ot_output: {exc}"
 
 
 @mcp.tool()
