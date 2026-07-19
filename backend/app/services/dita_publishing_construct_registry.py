@@ -466,6 +466,8 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         aliases=(
             "conditional processing",
             "conditional attributes",
+            "branch filtering",
+            "branch filter",
             "profiling",
             "profile",
             "ditaval",
@@ -584,6 +586,13 @@ def detect_publishing_constructs(prompt: str) -> list[str]:
             detected.append(spec.key)
     if "keyref" in text and "keys" not in detected:
         detected.append("keys")
+    if (
+        re.search(r"\b(branch[-\s]?filter(?:ing)?|profil(?:e|ing)|ditaval|conditional\s+processing)\b", text)
+        and re.search(r"\b(all|every)\s+(?:the\s+)?attributes?\b", text)
+    ):
+        for key in ("conditional-processing", "map-attributes", "chunk", "xml:lang"):
+            if key not in detected:
+                detected.append(key)
     return detected
 
 

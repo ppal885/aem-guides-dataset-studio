@@ -1211,6 +1211,7 @@ async def generate_publish_compare(
     """
     try:
         from app.services.dita_ot_publish_service import publish_with_dita_ot
+        from app.services.publishing_dataset_intent_service import normalize_publishing_request
 
         requested = {str(item).lower() for item in (outputs or [])}
         if requested:
@@ -1233,12 +1234,18 @@ async def generate_publish_compare(
         else:
             output_format = "all"
 
-        result = await publish_with_dita_ot(
+        normalized = normalize_publishing_request(
             prompt=prompt,
             output_format=output_format,
             package_name=package_name,
         )
+        result = await publish_with_dita_ot(
+            prompt=normalized["prompt"],
+            output_format=normalized["output_format"],
+            package_name=normalized["package_name"],
+        )
         result["deprecated_tool"] = "generate_publish_compare delegates to generate_dita_ot_output/publish_with_dita_ot."
+        result["publishing_intent"] = normalized
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -1436,14 +1443,21 @@ async def generate_dita_ot_output(
     """
     try:
         from app.services.dita_ot_publish_service import publish_with_dita_ot
+        from app.services.publishing_dataset_intent_service import normalize_publishing_request
 
-        result = await publish_with_dita_ot(
-            input_map=input_map or None,
+        normalized = normalize_publishing_request(
             prompt=prompt,
             output_format=output_format,
             package_name=package_name,
+        )
+        result = await publish_with_dita_ot(
+            input_map=input_map or None,
+            prompt=normalized["prompt"],
+            output_format=normalized["output_format"],
+            package_name=normalized["package_name"],
             timeout_seconds=max(1, int(timeout_seconds)),
         )
+        result["publishing_intent"] = normalized
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as exc:
         return f"Error in generate_dita_ot_output: {exc}"

@@ -282,14 +282,21 @@ async def generate_dita_ot_output(
     """
     try:
         from app.services.dita_ot_publish_service import publish_with_dita_ot
+        from app.services.publishing_dataset_intent_service import normalize_publishing_request
 
-        result = await publish_with_dita_ot(
-            input_map=input_map or None,
+        normalized = normalize_publishing_request(
             prompt=prompt,
             output_format=output_format,
             package_name=package_name,
+        )
+        result = await publish_with_dita_ot(
+            input_map=input_map or None,
+            prompt=normalized["prompt"],
+            output_format=normalized["output_format"],
+            package_name=normalized["package_name"],
             timeout_seconds=max(1, int(timeout_seconds)),
         )
+        result["publishing_intent"] = normalized
         return _dump(result)
     except Exception as exc:
         return f"DITA-OT output generation failed: {exc}"

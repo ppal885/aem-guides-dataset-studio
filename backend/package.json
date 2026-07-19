@@ -1,0 +1,15 @@
+{
+  "name": "aem-guides-dataset-studio-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node helper dependencies for AEM Guides Dataset Studio backend services.",
+  "scripts": {
+    "aem:upload": "node scripts/aem_upload.js"
+  },
+  "dependencies": {
+    "@adobe/aem-upload": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

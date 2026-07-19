@@ -1,12 +1,29 @@
 #!/usr/bin/env node
 
-const {
-    FileSystemUploadOptions,
-    FileSystemUpload,
-    DirectBinaryUploadOptions
-} = require('@adobe/aem-upload');
+const fs = require('fs');
+
+function loadConfigFromArgs(args) {
+    if (args.length === 0) {
+        throw new Error('Usage: node aem_upload.js <config_json> OR node aem_upload.js --config-file <path>');
+    }
+
+    if (args[0] === '--config-file') {
+        const configPath = args[1];
+        if (!configPath) {
+            throw new Error('Missing --config-file path');
+        }
+        return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+
+    return JSON.parse(args[0]);
+}
 
 async function uploadToAem(config) {
+    const {
+        FileSystemUploadOptions,
+        FileSystemUpload
+    } = require('@adobe/aem-upload');
+
     const {
         sourcePath,
         aemBaseUrl,
@@ -109,14 +126,9 @@ async function uploadToAem(config) {
 
 if (require.main === module) {
     const args = process.argv.slice(2);
-    
-    if (args.length === 0) {
-        console.error('Usage: node aem_upload.js <config_json>');
-        process.exit(1);
-    }
 
     try {
-        const config = JSON.parse(args[0]);
+        const config = loadConfigFromArgs(args);
         uploadToAem(config)
             .then(result => {
                 console.log(JSON.stringify(result));
@@ -142,4 +154,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { uploadToAem };
+module.exports = { uploadToAem, loadConfigFromArgs };

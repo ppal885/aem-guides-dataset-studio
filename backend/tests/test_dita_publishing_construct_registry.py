@@ -1,10 +1,14 @@
 import json
 
-from app.services.chat_service import detect_publishing_dataset_intent
 from app.services.dita_publishing_construct_registry import (
     SUMMARY_FILENAME,
     build_publishing_corpus,
     detect_publishing_constructs,
+)
+from app.services.publishing_dataset_intent_service import (
+    detect_publishing_dataset_intent,
+    expand_publishing_tool_args_with_context,
+    normalize_publishing_request,
 )
 
 
@@ -46,6 +50,54 @@ def test_publishing_dataset_intent_routes_to_dita_ot_not_generate_dita():
     assert intent["name"] == "generate_dita_ot_pdf"
     assert intent["args"]["output_format"] == "all"
     assert "copy-to" in intent["args"]["detected_constructs"]
+
+
+def test_publishing_dataset_intent_routes_above_combination_pdf_to_dita_ot():
+    intent = detect_publishing_dataset_intent("I want a DITA-OT PDF for the above combination")
+
+    assert intent is not None
+    assert intent["name"] == "generate_dita_ot_pdf"
+    assert intent["args"]["output_format"] == "pdf"
+    assert intent["source"] == "auto_publishing_dataset"
+
+
+def test_branch_filtering_all_attributes_expands_to_publishable_constructs():
+    constructs = detect_publishing_constructs(
+        "Generate DITA-OT PDF and HTML5 for how branch filtering behaves in case of all the attributes added"
+    )
+
+    assert "conditional-processing" in constructs
+    assert "map-attributes" in constructs
+    assert "chunk" in constructs
+    assert "xml:lang" in constructs
+
+
+def test_shared_intent_expands_above_context_before_generation():
+    args = {"prompt": "I want a DITA-OT PDF for the above combination", "output_format": "pdf"}
+    expanded = expand_publishing_tool_args_with_context(
+        args,
+        user_content=args["prompt"],
+        prior_messages=[
+            "How branch filtering behaves in case of all the attributes added: audience, platform, product, props, otherprops, rev, print, chunk, xml:lang, map attributes.",
+        ],
+    )
+
+    assert "Previous user context" in expanded["prompt"]
+    assert "conditional-processing" in expanded["detected_constructs"]
+    assert "map-attributes" in expanded["detected_constructs"]
+    assert "chunk" in expanded["detected_constructs"]
+    assert "xml:lang" in expanded["detected_constructs"]
+
+
+def test_mcp_normalization_uses_same_publishing_intent_rules():
+    normalized = normalize_publishing_request(
+        prompt="Generate DITA-OT PDF and HTML5 for branch filtering with all attributes",
+        output_format="pdf",
+    )
+
+    assert normalized["output_format"] == "all"
+    assert "conditional-processing" in normalized["detected_constructs"]
+    assert "map-attributes" in normalized["detected_constructs"]
 
 
 def test_plain_single_topic_generation_does_not_route_to_publishing():

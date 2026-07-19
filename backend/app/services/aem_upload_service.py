@@ -2,6 +2,7 @@
 import json
 import subprocess
 import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional
 from app.core.structured_logging import get_structured_logger
@@ -293,11 +294,40 @@ class AemUploadService:
                 "maxUploadFiles": max_upload_files
             }
             
-            config_json = json.dumps(config)
             script_path_str = str(self.script_path)
-            
-            node_command = ["node", script_path_str, config_json]
-            
+            config_file_path = None
+
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".json",
+                prefix="aem-upload-",
+                dir=str(self.backend_dir),
+                delete=False,
+            ) as config_file:
+                json.dump(config, config_file)
+                config_file_path = config_file.name
+            try:
+                os.chmod(config_file_path, 0o600)
+            except Exception:
+                logger.debug_structured(
+                    "Could not restrict temporary upload config permissions",
+                    extra_fields={"config_file": config_file_path},
+                )
+
+            node_command = ["node", script_path_str, "--config-file", config_file_path]
+
+            def cleanup_config_file() -> None:
+                try:
+                    os.remove(config_file_path)
+                except FileNotFoundError:
+                    pass
+                except Exception as cleanup_error:
+                    logger.warning_structured(
+                        "Failed to delete temporary upload config",
+                        extra_fields={"error": str(cleanup_error)},
+                    )
+
             logger.info_structured(
                 "Executing Node.js upload script",
                 extra_fields={
@@ -305,15 +335,18 @@ class AemUploadService:
                     "source_path": source_path
                 }
             )
-            
-            result = subprocess.run(
-                node_command,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-                check=False,
-                cwd=str(self.backend_dir)
-            )
+
+            try:
+                result = subprocess.run(
+                    node_command,
+                    capture_output=True,
+                    text=True,
+                    timeout=3600,
+                    check=False,
+                    cwd=str(self.backend_dir)
+                )
+            finally:
+                cleanup_config_file()
             
             output = result.stdout.strip() if result.stdout else ""
             error_output = result.stderr.strip() if result.stderr else ""

@@ -90,9 +90,9 @@ from app.services.tenant_service import retrieve_tenant_context, retrieve_tenant
 from app.core.prompt_interface import PromptBuilder, load_prompt_spec
 from app.core.structured_logging import get_structured_logger
 from app.services.llm_service import _get_prompt_versions
-from app.services.dita_publishing_construct_registry import (
-    detect_output_format as detect_publishing_output_format,
-    detect_publishing_constructs,
+from app.services.publishing_dataset_intent_service import (
+    detect_publishing_dataset_intent,
+    expand_publishing_tool_args_with_context,
 )
 
 logger = get_structured_logger(__name__)
@@ -1176,44 +1176,7 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
     )
 
 
-def detect_publishing_dataset_intent(user_content: str) -> dict[str, Any] | None:
-    text = (user_content or "").strip()
-    if not text or text.startswith("/"):
-        return None
-    lowered = text.lower()
-    wants_generation = bool(re.search(r"\b(generate|create|build|make|produce|prepare)\b", lowered))
-    wants_dataset = bool(
-        re.search(
-            r"\b(dataset|test\s+data|sample|corpus|bundle|same|above|combination|scenario|evidence|oracle|oracles|review|qa)\b",
-            lowered,
-        )
-    )
-    wants_dita_ot = bool(_DITA_OT_PATTERN.search(text) or re.search(r"\bpdf2\b|\bhtml5\b|\bxhtml\b|classic\s+html", lowered))
-    wants_publish_output = bool(re.search(r"\b(pdf|pdf2|html5|xhtml|classic\s+html|transform|transformation|publish|publishing|output)\b", lowered))
-    constructs = detect_publishing_constructs(text)
-    if not (wants_generation and wants_dataset and wants_dita_ot and wants_publish_output):
-        return None
-
-    output_format = detect_publishing_output_format(text, default="pdf")
-
-    return {
-        "name": "generate_dita_ot_pdf",
-        "args": {
-            "prompt": text,
-            "output_format": output_format,
-            "package_name": _safe_title_fragment(text, max_chars=60),
-            "detected_constructs": constructs,
-        },
-        "source": "auto_publishing_dataset",
-    }
-
-
 _publishing_dataset_tool_intent = detect_publishing_dataset_intent
-
-
-def _safe_title_fragment(value: str, max_chars: int = 60) -> str:
-    fragment = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip()).strip("-")
-    return (fragment or "dita-ot-publishing-dataset")[:max_chars]
 
 
 def _expand_dita_ot_publish_tool_args(
@@ -1221,29 +1184,12 @@ def _expand_dita_ot_publish_tool_args(
     user_content: str,
     tool_args: dict[str, Any],
 ) -> dict[str, Any]:
-    prompt = str(tool_args.get("prompt") or user_content or "").strip()
-    lowered = prompt.lower()
-    references_prior_context = bool(
-        re.search(r"\b(above|same|this|that|previous|earlier|combination|scenario|case)\b", lowered)
-    )
-    has_behavior_terms = bool(
-        re.search(r"\b(copy-to|copy\s+to|copyto|xml:lang|xml\s+lang|chunk|chunking|conref|keyref|baseline)\b", lowered)
-    )
-    if not references_prior_context or has_behavior_terms:
-        return tool_args
-
     prior = _recent_user_messages_before_latest(session_id, user_content, limit=4)
-    prior_context = "\n\n".join(item for item in prior if item.strip())
-    if not prior_context:
-        return tool_args
-
-    expanded = copy.deepcopy(tool_args)
-    expanded["prompt"] = (
-        f"{prompt}\n\nPrevious user context to preserve for dataset generation:\n{prior_context[-4000:]}"
-    ).strip()
-    if not str(expanded.get("package_name") or "").strip():
-        expanded["package_name"] = _safe_title_fragment(prior_context or prompt, max_chars=60)
-    return expanded
+    return expand_publishing_tool_args_with_context(
+        tool_args,
+        user_content=user_content,
+        prior_messages=prior,
+    )
 
 
 def _looks_like_generate_dita_clarification_response(
