@@ -18,7 +18,10 @@ Steps:
    - `jira_key`: the extracted key
    - `tenant_id`: `kone` unless the user provided another tenant
    - `evidence_k`: `8`
-3. Use the returned MCP evidence packet plus `claude-skills/aem-guides-test-scenario-generator/SKILL.md`.
+3. Use the returned MCP evidence packet plus the installed Claude skill `aem-guides-test-scenario-generator`.
+   - Preferred: load it from the user's Claude skills directory, for example `~/.claude/skills/aem-guides-test-scenario-generator/SKILL.md`.
+   - Repo fallback: if the current checkout contains `claude-skills/aem-guides-test-scenario-generator/SKILL.md`, use that file.
+   - If neither location exists, stop and tell the user to install the skill with `python scripts/install_claude_test_plan_generator.py`.
 4. Generate the final test plan in this chat. Do not merely dump the packet.
 5. Mandatory output requirements:
    - Include `## 4. Blast radius and risk analysis` exactly.

@@ -4,19 +4,48 @@ These skills extend Claude Code's behavior for DITA authoring, dataset generatio
 
 ## Installation
 
-Copy skills into your Claude Code skills directory:
+Claude only auto-discovers skills from a Claude skills directory. A skill can live anywhere for
+source control, but team members must copy or install it into one of these locations before Claude
+can reliably use it:
 
-**Windows:**
+| Scope | Windows | macOS / Linux |
+|---|---|---|
+| User-wide skill | `%USERPROFILE%\.claude\skills\<skill-name>\SKILL.md` | `~/.claude/skills/<skill-name>/SKILL.md` |
+| User-wide slash command | `%USERPROFILE%\.claude\commands\<command>.md` | `~/.claude/commands/<command>.md` |
+| Repo source copy | `claude-skills\<skill-name>\SKILL.md` | `claude-skills/<skill-name>/SKILL.md` |
+
+Do not install skills into Claude plugin cache paths; those paths are implementation details and can
+change. Keep this repository's `claude-skills/` directory as the source copy, then install to the
+user-wide Claude directory.
+
+Install only the AEM Guides test-plan workflow:
+
+**Windows PowerShell:**
 ```powershell
-$dest = "$env:USERPROFILE\.claude\plugins\cache\claude-plugins-official\skill-creator\unknown\skills"
-Get-ChildItem -Directory . | ForEach-Object { Copy-Item $_.FullName $dest -Recurse -Force }
+python scripts\install_claude_test_plan_generator.py
 ```
 
 **macOS / Linux:**
 ```bash
-dest="$HOME/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown/skills"
-for skill in */; do cp -r "$skill" "$dest/"; done
+python3 scripts/install_claude_test_plan_generator.py
 ```
+
+Then restart Claude Code and run:
+
+```text
+/guides-test-plan-generator GUIDES-12345
+```
+
+If a user keeps the skill in a custom local folder, install with explicit destinations:
+
+```bash
+python3 scripts/install_claude_test_plan_generator.py \
+  --dest-skill-dir "$HOME/.claude/skills" \
+  --dest-command-dir "$HOME/.claude/commands"
+```
+
+The slash command still requires the MCP gateway/tool `guides_test_plan_generator` to be registered
+in that user's Claude Code environment.
 
 ## Skills
 
@@ -29,6 +58,7 @@ for skill in */; do cp -r "$skill" "$dest/"; done
 | `dita-element-qa` | "what is `<shortdesc>`", "how does `@conref` work" | `lookup_dita_spec` |
 | `dita-ot-publishing` | "DITA-OT transforms", "PDF not rendering", "how to publish" | `lookup_aem_guides` |
 | `dita-authoring-advisor` | "concept vs task", "how do I reuse content", best practices | `lookup_dita_spec` + `lookup_aem_guides` |
+| `aem-guides-test-scenario-generator` | `/guides-test-plan-generator GUIDES-12345`, AEM Guides test plans, bug discovery, regression prevention | `guides_test_plan_generator` MCP + RAG/Jira/code evidence |
 
 ## Chat UI integration
 
