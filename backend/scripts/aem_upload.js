@@ -12,7 +12,7 @@ function loadConfigFromArgs(args) {
         if (!configPath) {
             throw new Error('Missing --config-file path');
         }
-        return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        return JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
     }
 
     return JSON.parse(args[0]);
