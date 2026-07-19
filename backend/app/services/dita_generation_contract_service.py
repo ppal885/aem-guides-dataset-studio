@@ -30,6 +30,10 @@ from app.services.dita_construct_semantics_service import (
 from app.services.dita_query_interpreter import extract_attribute_names, extract_element_names
 from app.services.dita_spec_registry_service import get_element_spec
 from app.services.dita_xml_headers import has_expected_dita_header
+from app.services.prompt_data_generation_planner import (
+    build_prompt_generation_plan,
+    render_prompt_generation_plan,
+)
 from app.generator.generate import sanitize_filename
 
 _NON_DITA_OUTPUT_PATTERN = re.compile(
@@ -1919,6 +1923,10 @@ def build_dita_generation_contract(
         )
     if wants_map:
         generation_instructions_parts.append("Include a DITA map when generating the bundle.")
+    prompt_generation_plan = build_prompt_generation_plan(source_text, instructions=clean_instructions)
+    rendered_prompt_plan = render_prompt_generation_plan(prompt_generation_plan)
+    if rendered_prompt_plan:
+        generation_instructions_parts.append(rendered_prompt_plan)
 
     _strip_redundant_generic_topic_required_elements(required_elements, topic_family)
 
@@ -1960,6 +1968,7 @@ def build_dita_generation_contract(
         forbidden_structures=[],
         influence_inputs=[name for name, enabled in (("screenshot", screenshot_attached), ("reference_dita", reference_attached)) if enabled],
         family_decision=family_decision,
+        prompt_generation_plan=prompt_generation_plan,
         execution_text=source_text,
         execution_instructions="\n".join(part for part in generation_instructions_parts if part).strip() or None,
     )

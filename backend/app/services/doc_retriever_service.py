@@ -134,6 +134,17 @@ def _lexical_score(query_tokens: set[str], content: str) -> float:
     return matches / len(query_tokens) if query_tokens else 0.0
 
 
+def _infer_evidence_type(value: str, explicit: str = "") -> str:
+    if explicit:
+        return explicit
+    text = str(value or "").lstrip().lower()
+    if text.startswith("qa oracle for"):
+        return "generation_oracle"
+    if text.startswith("feature area:") and "use this as grounded behavior context" in text:
+        return "learned_behavior_profile"
+    return ""
+
+
 def _matches_allowed_hosts(url: str, allowed_host_suffixes: tuple[str, ...] | None) -> bool:
     if not allowed_host_suffixes:
         return True
@@ -469,6 +480,7 @@ def _document_relevance_score(
     title: str,
     url: str,
     content: str,
+    evidence_type: str = "",
     allowed_host_suffixes: tuple[str, ...] | None,
 ) -> float:
     query_tokens = _tokenize(query)
@@ -489,6 +501,13 @@ def _document_relevance_score(
             phrase_bonus += 0.14
 
     host_bonus = 0.12 if _matches_allowed_hosts(url, allowed_host_suffixes) else 0.0
+    evidence_bonus = 0.0
+    lowered_evidence_type = str(evidence_type or "").lower()
+    if re.search(r"\b(generate|generation|dataset|test data|qa|oracle|evidence|expected|review|mcp)\b", str(query or "").lower()):
+        if lowered_evidence_type == "learned_behavior_profile":
+            evidence_bonus += 0.45
+        elif lowered_evidence_type == "generation_oracle":
+            evidence_bonus += 0.35
     return (
         (content_score * 0.45)
         + (title_score * 0.35)
@@ -496,6 +515,7 @@ def _document_relevance_score(
         + min(0.4, phrase_bonus)
         + _aem_intent_bonus(query, title=title, url=url, content=content)
         + host_bonus
+        + evidence_bonus
     )
 
 
@@ -650,6 +670,7 @@ def retrieve_relevant_docs_with_diagnostics(
                         "source_url": meta.get("source_url") or meta.get("url", ""),
                         "canonical_url": meta.get("canonical_url") or meta.get("url", ""),
                         "corpus": meta.get("corpus", "aem_guides"),
+                        "evidence_type": _infer_evidence_type(snippet, str(meta.get("evidence_type") or "")),
                         "title": meta.get("title", ""),
                         "snippet": snippet,
                     })
@@ -694,6 +715,7 @@ def retrieve_relevant_docs_with_diagnostics(
                             "source_url": c.get("source_url") or c.get("url", ""),
                             "canonical_url": c.get("canonical_url") or c.get("url", ""),
                             "corpus": c.get("corpus", "aem_guides"),
+                            "evidence_type": _infer_evidence_type(snippet, str(c.get("evidence_type") or "")),
                             "title": c.get("title", ""),
                             "snippet": snippet,
                         })
@@ -751,6 +773,7 @@ def retrieve_relevant_docs_with_diagnostics(
             title=str(c.get("title") or ""),
             url=str(c.get("url") or ""),
             content=snippet,
+            evidence_type=str(c.get("evidence_type") or ""),
             allowed_host_suffixes=allowed_hosts,
         )
         if score <= 0:
@@ -764,6 +787,7 @@ def retrieve_relevant_docs_with_diagnostics(
                     "source_url": c.get("source_url") or c.get("url", ""),
                     "canonical_url": c.get("canonical_url") or c.get("url", ""),
                     "corpus": c.get("corpus", "aem_guides"),
+                    "evidence_type": c.get("evidence_type", ""),
                     "title": c.get("title", ""),
                     "snippet": snippet,
                 },

@@ -215,6 +215,19 @@ def topic_to_behavior_records(
                 metadata=meta,
             )
         )
+    records.extend(
+        make_learned_behavior_records(
+            relpath=relpath,
+            source_url=source_url,
+            canonical_url=canonical_url,
+            title=title,
+            shortdesc=shortdesc,
+            blocks=grouped,
+            metadata=meta,
+            start_ordinal=len(records) + 1,
+            min_chars=min_chars,
+        )
+    )
     return records
 
 
@@ -342,6 +355,137 @@ def make_record(
         "neighbor_prev_id": "",
         "neighbor_next_id": "",
     }
+
+
+def make_learned_behavior_records(
+    *,
+    relpath: str,
+    source_url: str,
+    canonical_url: str,
+    title: str,
+    shortdesc: str,
+    blocks: list[CandidateBlock],
+    metadata: dict[str, str],
+    start_ordinal: int,
+    min_chars: int,
+) -> list[dict[str, Any]]:
+    """Create higher-signal learned chunks for generation and QA retrieval."""
+    combined = clean_text("\n".join([title, shortdesc, *[block.text for block in blocks[:12]]]))
+    if len(combined) < min_chars:
+        return []
+
+    feature_area = infer_feature_area(canonical_url or source_url, title, shortdesc, combined)
+    constructs = infer_dita_construct_signals(combined, source_url, title)
+    workflow_steps = extract_workflow_steps(blocks)
+    output_terms = infer_output_terms(combined, canonical_url or source_url)
+    records: list[dict[str, Any]] = []
+
+    behavior_lines = [
+        f"Feature area: {feature_area}.",
+        f"Source page: {title}.",
+    ]
+    if shortdesc:
+        behavior_lines.append(f"Summary: {shortdesc}")
+    if constructs:
+        behavior_lines.append("DITA/AEM Guides constructs signaled by this page: " + ", ".join(constructs) + ".")
+    if output_terms:
+        behavior_lines.append("Publishing/output contexts signaled: " + ", ".join(output_terms) + ".")
+    if workflow_steps:
+        behavior_lines.append("Observed workflow cues:")
+        behavior_lines.extend(f"- {step}" for step in workflow_steps[:8])
+    behavior_lines.append(
+        "Use this as grounded behavior context when generating DITA QA data; create source files that exercise the workflow and include an observable oracle."
+    )
+    behavior_content = "\n".join(behavior_lines)
+    if len(behavior_content) >= min_chars:
+        records.append(
+            make_record(
+                relpath=relpath,
+                source_url=source_url,
+                canonical_url=canonical_url,
+                title=title,
+                section_path=["Learned behavior"],
+                content=behavior_content,
+                evidence_type="learned_behavior_profile",
+                ordinal=start_ordinal,
+                metadata=metadata,
+            )
+        )
+
+    oracle_lines = [
+        f"QA oracle for {title}:",
+        "- Verify the generated data includes source files matching the documented workflow, not generic placeholder topics.",
+        "- Verify expected behavior is observable in the generated map/topic structure or published output.",
+    ]
+    if output_terms:
+        oracle_lines.append("- Review output-specific areas: " + ", ".join(output_terms) + ".")
+    if constructs:
+        oracle_lines.append("- Check construct-specific source markers: " + ", ".join(constructs) + ".")
+    oracle_lines.append("- Record unknowns separately; do not claim confidence when source evidence does not cover an output path.")
+    records.append(
+        make_record(
+            relpath=relpath,
+            source_url=source_url,
+            canonical_url=canonical_url,
+            title=title,
+            section_path=["Generation oracle"],
+            content="\n".join(oracle_lines),
+            evidence_type="generation_oracle",
+            ordinal=start_ordinal + 1,
+            metadata=metadata,
+        )
+    )
+
+    return records
+
+
+def infer_dita_construct_signals(*parts: str) -> list[str]:
+    text = " ".join(parts).lower()
+    signals = [
+        ("copy-to", ("copy-to", "copy to")),
+        ("chunk", ("chunk", "chunking")),
+        ("xml:lang", ("xml:lang", "language", "locale")),
+        ("keyref/keys", ("keyref", "keydef", "keys", "keyscope", "key scope")),
+        ("conref/conkeyref", ("conref", "conkeyref", "content reference")),
+        ("xref", ("xref", "xrefs", "cross reference", "cross-reference", "link")),
+        ("ditaval/conditional processing", ("ditaval", "conditional processing", "profiling", "audience", "platform", "product")),
+        ("map/topicref", ("ditamap", "map console", "topicref", "mapref", "map collection")),
+        ("baseline", ("baseline", "version", "label")),
+        ("output preset", ("output preset", "preset", "native pdf", "dita-ot pdf", "html5")),
+        ("translation", ("translation", "translate", "language copy")),
+        ("metadata", ("metadata", "properties", "smart tagging", "tags")),
+        ("reports", ("report", "reports", "content reuse report", "topic list")),
+    ]
+    return [label for label, needles in signals if any(needle in text for needle in needles)]
+
+
+def infer_output_terms(text: str, url: str) -> list[str]:
+    lowered = f"{text} {url}".lower()
+    candidates = [
+        ("PDF", ("pdf", "native pdf", "dita-ot pdf")),
+        ("HTML5", ("html5", "site output", "aem sites")),
+        ("DITA-OT", ("dita-ot", "dita ot")),
+        ("Map Console", ("map console",)),
+        ("Translation", ("translation", "translate")),
+        ("Baseline", ("baseline",)),
+        ("Metadata", ("metadata", "properties")),
+    ]
+    return [label for label, needles in candidates if any(needle in lowered for needle in needles)]
+
+
+def extract_workflow_steps(blocks: list[CandidateBlock]) -> list[str]:
+    steps: list[str] = []
+    step_signal = re.compile(r"\b(open|select|click|choose|create|save|generate|publish|configure|upload|translate|review)\b", re.I)
+    for block in blocks:
+        for line in re.split(r"(?<=[.!?])\s+|\n+", block.text):
+            cleaned = clean_text(line)
+            if len(cleaned) < 24 or len(cleaned) > 240:
+                continue
+            if step_signal.search(cleaned):
+                steps.append(cleaned)
+            if len(steps) >= 12:
+                return list(dict.fromkeys(steps))
+    return list(dict.fromkeys(steps))
 
 
 def dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:

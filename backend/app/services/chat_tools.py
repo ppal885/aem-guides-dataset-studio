@@ -23,6 +23,10 @@ from app.services.jira_generate_resolve import (
     extract_issue_key_from_generation_request,
     extract_issue_key_from_shortcut,
 )
+from app.services.prompt_data_generation_planner import (
+    build_prompt_generation_plan,
+    render_prompt_generation_plan,
+)
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -1289,6 +1293,10 @@ async def execute_create_job(
         freeform_prompt = safe_prompt_text or safe_subject
         if not freeform_prompt:
             return {"error": "subject or prompt_text is required for freeform generation"}
+        prompt_plan = build_prompt_generation_plan(freeform_prompt)
+        rendered_prompt_plan = render_prompt_generation_plan(prompt_plan)
+        if rendered_prompt_plan and rendered_prompt_plan not in freeform_prompt:
+            freeform_prompt = f"{freeform_prompt}\n\n{rendered_prompt_plan}"[:5000]
         try:
             from uuid import uuid4 as _uuid4
             from app.services.generate_from_text_service import run_generate_from_text as _run_gft

@@ -232,5 +232,6 @@ class DitaGenerationContract(BaseModel):
     artifact_drafts: list[ArtifactDraft] = Field(default_factory=list)
     map_draft: MapDraft | None = None
     build_validation: BuildValidationOutcome = Field(default_factory=BuildValidationOutcome)
+    prompt_generation_plan: dict[str, Any] = Field(default_factory=dict)
     execution_text: str | None = None
     execution_instructions: str | None = None
