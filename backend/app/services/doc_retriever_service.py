@@ -28,6 +28,7 @@ logger = get_structured_logger(__name__)
 
 DOC_CHUNKS_FILENAME = "aem_guides_doc_chunks.json"
 BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_behavior_chunks.json"
+ENRICHED_BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_enriched_behavior_chunks.json"
 DITA_OT_ISSUE_DOC_CHUNKS_FILENAME = "dita_ot_issue_behavior_chunks.json"
 MANUAL_DOC_CHUNKS_FILENAME = "manual_aem_guides_doc_chunks.json"
 MAX_SNIPPET_CHARS = 1500
@@ -46,6 +47,11 @@ def _get_manual_doc_chunks_path() -> Path:
 def _get_behavior_doc_chunks_path() -> Path:
     storage = get_storage()
     return storage.base_path / BEHAVIOR_DOC_CHUNKS_FILENAME
+
+
+def _get_enriched_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / ENRICHED_BEHAVIOR_DOC_CHUNKS_FILENAME
 
 
 def _get_dita_ot_issue_doc_chunks_path() -> Path:
@@ -67,10 +73,11 @@ def _load_chunk_file(path: Path) -> list[dict]:
 def _load_chunks() -> list[dict]:
     """Load doc chunks from JSON, including manual fallback chunks."""
     primary = _load_chunk_file(_get_doc_chunks_path())
+    enriched_behavior = _load_chunk_file(_get_enriched_behavior_doc_chunks_path())
     behavior = _load_chunk_file(_get_behavior_doc_chunks_path())
     dita_ot_issues = _load_chunk_file(_get_dita_ot_issue_doc_chunks_path())
     manual = _load_chunk_file(_get_manual_doc_chunks_path())
-    return [*manual, *dita_ot_issues, *behavior, *primary]
+    return [*manual, *dita_ot_issues, *enriched_behavior, *behavior, *primary]
 
 
 def check_rag_readiness() -> dict:
@@ -503,11 +510,31 @@ def _document_relevance_score(
     host_bonus = 0.12 if _matches_allowed_hosts(url, allowed_host_suffixes) else 0.0
     evidence_bonus = 0.0
     lowered_evidence_type = str(evidence_type or "").lower()
+    is_enriched_behavior = lowered_evidence_type.startswith("enriched_")
+    asks_dita_publishing_behavior = bool(
+        re.search(
+            r"\b(xml:lang|chunk|copy-to|conref|conkeyref|keyref|keys?|xref|ditaval|conditional|profile|"
+            r"pdf2?|html5?|dita-ot|publishing|output|generated?\s+data)\b",
+            str(query or "").lower(),
+        )
+    )
+    if is_enriched_behavior:
+        evidence_bonus += 0.28
+        if asks_dita_publishing_behavior:
+            evidence_bonus += 0.42
+    if asks_dita_publishing_behavior and "experience-manager-guides" in lowered_url:
+        evidence_bonus += 0.25
+    if asks_dita_publishing_behavior and "experienceleague.adobe.com/en/docs/workfront/" in lowered_url:
+        evidence_bonus -= 0.35
     if re.search(r"\b(generate|generation|dataset|test data|qa|oracle|evidence|expected|review|mcp)\b", str(query or "").lower()):
         if lowered_evidence_type == "learned_behavior_profile":
             evidence_bonus += 0.45
         elif lowered_evidence_type == "generation_oracle":
             evidence_bonus += 0.35
+        elif lowered_evidence_type == "enriched_learned_behavior":
+            evidence_bonus += 0.55
+        elif lowered_evidence_type == "enriched_generation_oracle":
+            evidence_bonus += 0.50
     return (
         (content_score * 0.45)
         + (title_score * 0.35)
@@ -540,6 +567,7 @@ def _filter_and_rank_docs(
                     title=str(doc.get("title") or ""),
                     url=str(doc.get("url") or ""),
                     content=str(doc.get("snippet") or doc.get("content") or ""),
+                    evidence_type=str(doc.get("evidence_type") or ""),
                     allowed_host_suffixes=allowed_host_suffixes,
                 ),
                 doc,
@@ -656,7 +684,7 @@ def retrieve_relevant_docs_with_diagnostics(
             rows = query_collection(
                 CHROMA_COLLECTION_AEM_GUIDES,
                 query_embedding=query_emb.tolist() if hasattr(query_emb, "tolist") else list(query_emb),
-                k=k,
+                k=max(k * 12, 50),
             )
             if rows:
                 result = []
@@ -704,7 +732,7 @@ def retrieve_relevant_docs_with_diagnostics(
                     emb_list = [x[2] for x in indexed]
                     chunk_arr = np.array(emb_list)
                     scores = np.dot(chunk_arr, query_arr)
-                    order = np.argsort(scores)[::-1][:k]
+                    order = np.argsort(scores)[::-1][: max(k * 12, 50)]
                     result = []
                     for idx in order:
                         c = indexed[idx][1]
