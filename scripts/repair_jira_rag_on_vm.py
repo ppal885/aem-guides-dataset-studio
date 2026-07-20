@@ -115,6 +115,8 @@ def readiness() -> dict[str, Any]:
                 "JIRA_PASSWORD",
                 "JIRA_EMAIL",
                 "JIRA_API_TOKEN",
+                "JIRA_PAT",
+                "JIRA_BEARER_TOKEN",
                 "JIRA_PROJECT_KEY",
                 "JIRA_QA_RAG_PROJECT_KEY",
                 "JIRA_API_VERSION",
@@ -127,6 +129,7 @@ def readiness() -> dict[str, Any]:
         "jira_configured": bool(_jira_configured(client)),
         "jira_base_url": client.base_url,
         "jira_user": client.username or client.email,
+        "jira_auth_mode": getattr(client, "auth_mode", "unknown"),
         "resolved_project": resolve_jira_qa_project_key(),
         "chroma_available": chroma_ok,
         "embedding_available": embedding_ok,
@@ -192,6 +195,25 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
 
+def safe_jira_error(exc: Exception) -> dict[str, Any]:
+    message = str(exc)
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    guidance = []
+    if status_code == 401 or "401" in message:
+        guidance = [
+            "Jira rejected authentication. Network and Chroma are OK; fix credentials/token.",
+            "For Jira Data Center/corp SSO, prefer a PAT: set JIRA_PAT or JIRA_BEARER_TOKEN in .env.docker.",
+            "If using basic auth, verify JIRA_USERNAME/JIRA_PASSWORD by logging in with the same account and ensure special characters are quoted in .env.docker.",
+            "After editing .env.docker, run: sudo systemctl restart aem-backend.service",
+        ]
+    elif status_code == 403 or "403" in message:
+        guidance = [
+            "Jira authentication succeeded but the user cannot browse this issue/project.",
+            "Grant Browse Project permission or use a Jira account/token with GUIDES access.",
+        ]
+    return {"error": message, "status_code": status_code, "guidance": guidance}
+
+
 def main() -> int:
     args = parse_args()
     load_env_file(args.env_file)
@@ -206,7 +228,7 @@ def main() -> int:
         try:
             print_json({"phase": "jira_smoke", "issue": smoke_jira(args.issue.strip().upper())})
         except Exception as exc:
-            print_json({"phase": "jira_smoke_failed", "error": str(exc)})
+            print_json({"phase": "jira_smoke_failed", **safe_jira_error(exc)})
             return 2
 
     if args.check:

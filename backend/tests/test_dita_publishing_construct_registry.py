@@ -14,7 +14,7 @@ from app.services.publishing_dataset_intent_service import (
 
 def test_detects_common_publishing_constructs():
     constructs = detect_publishing_constructs(
-        "Generate DITA-OT PDF and HTML5 data for copy-to, chunk, xml:lang, keyref, conref, scope and reltable"
+        "Generate DITA-OT PDF and HTML5 data for copy-to, chunk, xml:lang, keyref, conref, scope, reltable, and search title"
     )
 
     assert "copy-to" in constructs
@@ -24,6 +24,7 @@ def test_detects_common_publishing_constructs():
     assert "conref" in constructs
     assert "scope-format" in constructs
     assert "reltable" in constructs
+    assert "searchtitle" in constructs
 
 
 def test_detects_attribute_family_constructs():
@@ -87,6 +88,22 @@ def test_shared_intent_expands_above_context_before_generation():
     assert "map-attributes" in expanded["detected_constructs"]
     assert "chunk" in expanded["detected_constructs"]
     assert "xml:lang" in expanded["detected_constructs"]
+
+
+def test_shared_intent_preserves_searchtitle_context_for_html5_generation():
+    args = {"prompt": "generate a HTML5 for the same containing the tag", "output_format": "html5"}
+    expanded = expand_publishing_tool_args_with_context(
+        args,
+        user_content=args["prompt"],
+        prior_messages=[
+            "what is search title and how it is used in dita",
+            "how it works in AEM Sites or pdf",
+        ],
+    )
+
+    assert "Previous user context" in expanded["prompt"]
+    assert expanded["output_format"] == "html5"
+    assert "searchtitle" in expanded["detected_constructs"]
 
 
 def test_mcp_normalization_uses_same_publishing_intent_rules():
@@ -159,3 +176,26 @@ def test_registry_corpus_contains_requested_attribute_families(tmp_path):
     assert "conditional-processing" in summary["detected_constructs"]
     assert summary["negative_or_risk_cases"]
     assert summary["validation_oracles"]
+
+
+def test_registry_corpus_contains_searchtitle_topic_and_oracles(tmp_path):
+    result = build_publishing_corpus(
+        tmp_path,
+        "generate a HTML5 for the same containing the tag\n\n"
+        "Previous user context to preserve for DITA-OT publishing dataset generation:\n"
+        "what is search title and how it is used in dita\n\n"
+        "how it works in AEM Sites or pdf",
+        output_format="html5",
+    )
+
+    assert result is not None
+    map_text = result["map_path"].read_text(encoding="utf-8")
+    topic_text = (tmp_path / "topics" / "searchtitle-topic.dita").read_text(encoding="utf-8")
+    summary = json.loads((tmp_path / SUMMARY_FILENAME).read_text(encoding="utf-8"))
+
+    assert "<title>DITA-OT publishing dataset for searchtitle</title>" in map_text
+    assert "<titlealts>" in topic_text
+    assert "<searchtitle>AEM Guides search-title publishing oracle</searchtitle>" in topic_text
+    assert "generate a HTML5 for the same" not in topic_text
+    assert "searchtitle" in summary["detected_constructs"]
+    assert any("AEM Sites" in item or "HTML5" in item for item in summary["expected_html_review_areas"])

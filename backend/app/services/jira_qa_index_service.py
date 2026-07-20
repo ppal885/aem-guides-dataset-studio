@@ -46,7 +46,7 @@ def _format_jira_index_search_error(exc: Exception) -> str:
         if code == 401:
             return (
                 "HTTP 401 — Jira rejected credentials. For Jira Cloud use email + API token; "
-                "for corp/on-prem check JIRA_USERNAME/JIRA_PASSWORD and VPN."
+                "for corp/on-prem check JIRA_USERNAME/JIRA_PASSWORD and VPN, or set JIRA_PAT/JIRA_BEARER_TOKEN."
             )
         if code == 403:
             return (
@@ -203,6 +203,8 @@ JIRA_QA_ISSUE_FIELDS = os.getenv(
 
 
 def _jira_configured(client: JiraClient) -> bool:
+    if hasattr(client, "is_configured"):
+        return bool(client.is_configured())
     has_auth = (client.username and client.password) or (client.email and client.api_token)
     return bool(client.base_url and has_auth)
 

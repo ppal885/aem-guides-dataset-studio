@@ -59,6 +59,34 @@ def _concept(topic_id: str, title: str, shortdesc: str, body: str, *, lang: str 
 """
 
 
+def _searchtitle_topic() -> str:
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="searchtitle-topic" xml:lang="en-US">
+  <title>Primary topic title shown in authored navigation</title>
+  <titlealts>
+    <searchtitle>AEM Guides search-title publishing oracle</searchtitle>
+  </titlealts>
+  <shortdesc>This topic intentionally uses a search title that differs from the primary title.</shortdesc>
+  <body>
+    <section id="searchtitle-positive"><title>Positive publishing behavior</title>
+      <p>The authored <xmlelement>title</xmlelement> remains the visible topic title, while <xmlelement>searchtitle</xmlelement> provides alternate title metadata for search-oriented consumers and integrations.</p>
+      <p>Review HTML5 and AEM Sites output for title/search metadata and review PDF output separately; PDF body navigation should not silently replace the primary title unless a custom transform is configured to do so.</p>
+    </section>
+    <section id="searchtitle-risk"><title>Risk behavior</title>
+      <p>An empty, misplaced, or stale <xmlelement>searchtitle</xmlelement> can make search results disagree with authored topic titles even when publishing succeeds.</p>
+    </section>
+  </body>
+</topic>
+"""
+
+
+def _dataset_display_title(intent: PublishingDatasetIntent) -> str:
+    if intent.detected_constructs:
+        return "DITA-OT publishing dataset for " + ", ".join(intent.detected_constructs)
+    return "DITA-OT publishing smoke test"
+
+
 INTRO_TOPIC = _concept(
     "publishing-dataset-overview",
     "Publishing behavior dataset overview",
@@ -182,6 +210,44 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         expected_html_review_areas=("HTML5 should preserve French text and language context where emitted by DITA-OT.",),
         negative_or_risk_cases=("Root map language should not incorrectly overwrite explicit topic language.",),
         validation_oracles=("Generated source includes both `en-US` root context and `fr-FR` override.",),
+    ),
+    ConstructSpec(
+        key="searchtitle",
+        labels=("searchtitle", "search title", "titlealts"),
+        aliases=("searchtitle", "search title", "search-title", "titlealts", "titlealt", "title alternative"),
+        map_entries=(
+            '  <topicref href="topics/searchtitle-topic.dita" chunk="by-topic"><topicmeta><navtitle>Navigation title for searchtitle check</navtitle></topicmeta></topicref>',
+        ),
+        files={
+            "topics/searchtitle-topic.dita": _searchtitle_topic(),
+        },
+        what_was_generated=(
+            "A topic with a primary `<title>`, a distinct `<titlealts>/<searchtitle>`, and map-level `navtitle` context.",
+        ),
+        expected_behavior=(
+            "`searchtitle` is alternate title metadata for search-oriented consumers; it should not be treated as the authored body title.",
+            "AEM Sites/HTML5 metadata can expose search-title behavior, while PDF visible headings commonly continue to use the primary topic title unless customized.",
+        ),
+        qa_checklist=(
+            "Verify the source topic contains `<titlealts><searchtitle>...` immediately after the primary title.",
+            "Compare primary title, navtitle, and searchtitle so search metadata does not mask the authored title.",
+        ),
+        expected_pdf_review_areas=(
+            "PDF visible topic heading/TOC should be checked against the primary title and navtitle, not assumed to use searchtitle.",
+            "If PDF metadata or bookmarks use searchtitle in a customized pipeline, record that as transform-specific evidence.",
+        ),
+        expected_html_review_areas=(
+            "HTML5/AEM Sites output should be inspected for page title, search metadata, and rendered heading differences.",
+            "Generated HTML should still contain the topic body marker from the searchtitle test topic.",
+        ),
+        negative_or_risk_cases=(
+            "Empty or stale search titles can make search results disagree with authored topic titles.",
+            "Misplacing `<searchtitle>` outside `<titlealts>` should be treated as invalid source, not a publishing success case.",
+        ),
+        validation_oracles=(
+            "Generated source contains `<titlealts>` and `<searchtitle>` with a value different from the primary `<title>`.",
+            "QA compares generated HTML/AEM Sites search metadata separately from PDF visible-title behavior.",
+        ),
     ),
     ConstructSpec(
         key="keys",
@@ -630,7 +696,8 @@ def build_publishing_corpus(work_dir: Path, title: str, output_format: str = "pd
     if not specs:
         return None
 
-    safe_title = _xml_text(title)
+    display_title = _dataset_display_title(intent)
+    safe_title = _xml_text(display_title)
     topics_dir = work_dir / "topics"
     topics_dir.mkdir(parents=True, exist_ok=True)
 

@@ -392,14 +392,16 @@ def _write_sample_dataset(work_dir: Path, title: str, output_format: str = "pdf"
     if _looks_like_xml_lang_chunk_request(title):
         return _write_xml_lang_chunk_dataset(work_dir, title)
 
-    slug = _safe_slug(title)
+    fallback_title = "DITA-OT publishing smoke test"
+    safe_title = _xml_text(fallback_title)
+    slug = _safe_slug(fallback_title)
     map_path = work_dir / f"{slug}.ditamap"
     topic_path = work_dir / f"{slug}-topic.dita"
     map_path.write_text(
         f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map id="{slug}" xml:lang="en-US">
-  <title>{title}</title>
+  <title>{safe_title}</title>
   <topicref href="{topic_path.name}"/>
 </map>
 """,
@@ -409,7 +411,7 @@ def _write_sample_dataset(work_dir: Path, title: str, output_format: str = "pdf"
         f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
 <topic id="{slug}-topic" xml:lang="en-US">
-  <title>{title}</title>
+  <title>{safe_title}</title>
   <shortdesc>DITA-OT publish smoke test generated from the chatbot.</shortdesc>
   <body>
     <p>This topic verifies that the local DITA-OT CLI can publish a DITA map to PDF.</p>

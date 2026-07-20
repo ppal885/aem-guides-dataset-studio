@@ -33,6 +33,10 @@ _PUBLISH_OUTPUT_SIGNAL = re.compile(
     r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|transform|transformation|publish|publishing|output)\b",
     re.IGNORECASE,
 )
+_EXPLICIT_FORMAT_SIGNAL = re.compile(
+    r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|all)\b",
+    re.IGNORECASE,
+)
 _PRIOR_CONTEXT_SIGNAL = re.compile(
     r"\b(above|same|this|that|previous|earlier|combination|scenario|case)\b",
     re.IGNORECASE,
@@ -41,7 +45,8 @@ _PUBLISHING_BEHAVIOR_SIGNAL = re.compile(
     r"\b(branch[-\s]?filter(?:ing)?|profil(?:e|ing)|ditaval|conditional\s+processing|"
     r"copy-to|copy\s+to|copyto|xml:lang|xml\s+lang|chunk|chunking|conref|conkeyref|"
     r"conrefpush|conrefend|keyref|keys|xref|topicref|mapref|reltable|scope|format|"
-    r"processing-role|resource-only|map\s+attributes?|all\s+(?:the\s+)?attributes?)\b",
+    r"processing-role|resource-only|search\s+title|searchtitle|titlealts?|titlealt|"
+    r"map\s+attributes?|all\s+(?:the\s+)?attributes?)\b",
     re.IGNORECASE,
 )
 
@@ -58,6 +63,17 @@ def references_prior_context(prompt: str) -> bool:
 def has_publishing_behavior_terms(prompt: str) -> bool:
     text = prompt or ""
     return bool(detect_publishing_constructs(text) or _PUBLISHING_BEHAVIOR_SIGNAL.search(text))
+
+
+def _detect_format_with_current_prompt_precedence(
+    prompt: str,
+    expanded_prompt: str,
+    *,
+    default: str,
+) -> str:
+    if _EXPLICIT_FORMAT_SIGNAL.search(prompt or ""):
+        return detect_output_format(prompt, default=default)
+    return detect_output_format(expanded_prompt, default=default)
 
 
 def is_publishing_dataset_request(prompt: str) -> bool:
@@ -135,7 +151,8 @@ def expand_publishing_tool_args_with_context(
     expanded = copy.deepcopy(tool_args)
     expanded["prompt"] = expanded_prompt
     expanded["detected_constructs"] = detect_publishing_constructs(expanded_prompt)
-    expanded["output_format"] = detect_output_format(
+    expanded["output_format"] = _detect_format_with_current_prompt_precedence(
+        prompt,
         expanded_prompt,
         default=str(expanded.get("output_format") or "pdf"),
     )
@@ -152,7 +169,11 @@ def normalize_publishing_request(
     prior_messages: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     expanded_prompt = expand_prompt_with_prior_context(prompt, prior_messages=prior_messages)
-    normalized_format = detect_output_format(expanded_prompt, default=output_format or "pdf")
+    normalized_format = _detect_format_with_current_prompt_precedence(
+        prompt,
+        expanded_prompt,
+        default=output_format or "pdf",
+    )
     return {
         "prompt": expanded_prompt or "DITA-OT PDF smoke test",
         "output_format": normalized_format,

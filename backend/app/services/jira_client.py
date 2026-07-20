@@ -44,12 +44,43 @@ class JiraClient:
         self.password = password or os.getenv("JIRA_PASSWORD", "")
         self.email = email or os.getenv("JIRA_EMAIL", "")
         self.api_token = api_token or os.getenv("JIRA_API_TOKEN", "")
+        self.bearer_token = os.getenv("JIRA_BEARER_TOKEN", "") or os.getenv("JIRA_PAT", "")
         self._api = _api_version()
         self._auth = None
-        if self.username and self.password:
+        if self.bearer_token:
+            self.auth_mode = "bearer_token"
+        elif self.username and self.password:
             self._auth = httpx.BasicAuth(self.username, self.password)
+            self.auth_mode = "username_password"
+        elif self.username and self.api_token:
+            self._auth = httpx.BasicAuth(self.username, self.api_token)
+            self.auth_mode = "username_api_token"
         elif self.email and self.api_token:
             self._auth = httpx.BasicAuth(self.email, self.api_token)
+            self.auth_mode = "email_api_token"
+        else:
+            self.auth_mode = "none"
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "cache-control": "no-cache",
+        }
+        if self.bearer_token:
+            headers["Authorization"] = f"Bearer {self.bearer_token}"
+        return headers
+
+    def has_auth(self) -> bool:
+        return bool(
+            self.bearer_token
+            or (self.username and self.password)
+            or (self.username and self.api_token)
+            or (self.email and self.api_token)
+        )
+
+    def is_configured(self) -> bool:
+        return bool(self.base_url and self.has_auth())
 
     def _request(
         self,
@@ -61,18 +92,13 @@ class JiraClient:
         """Make HTTP request to Jira API."""
         get_jira_limiter().acquire()
         url = f"{self.base_url}{path}"
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "cache-control": "no-cache",
-        }
         with httpx.Client(auth=self._auth, timeout=_timeout(), verify=_ssl_verify()) as client:
             response = client.request(
                 method,
                 url,
                 params=params,
                 json=json_data,
-                headers=headers,
+                headers=self._headers(),
             )
             response.raise_for_status()
             return response.json() if response.content else {}
@@ -81,7 +107,7 @@ class JiraClient:
         """Download attachment content. Jira requires same auth for content URLs."""
         get_jira_limiter().acquire()
         with httpx.Client(auth=self._auth, timeout=max(60.0, _timeout()), follow_redirects=True, verify=_ssl_verify()) as client:
-            response = client.get(content_url)
+            response = client.get(content_url, headers=self._headers())
             response.raise_for_status()
             return response.content
 
