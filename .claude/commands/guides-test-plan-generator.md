@@ -27,10 +27,12 @@ Steps:
    - Include `## 4. Blast radius and risk analysis` exactly.
    - Perform blast-radius analysis before scenario design.
    - Cite official Experience League `source_url` or `canonical_url` values from the MCP packet.
+   - Use `learned_behavior_evidence` from scraped Experience League DITA to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, negative/risk cases, and validation oracles.
    - Separate confirmed evidence from unknowns and assumptions.
    - Include R0 unchanged-behavior controls plus R1/R2/R3/R4 coverage where evidence supports it.
    - Cover or explicitly exclude every high/critical Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.
    - Mark the plan `Draft` unless evidence, traceability, and blast-radius gates are complete.
+   - Mark the plan `Draft` if `learned_behavior_evidence` is unavailable or unrelated for behavior-sensitive AEM Guides changes.
 6. If a local plan file is written, validate it with `claude-skills/aem-guides-test-scenario-generator/scripts/validate_test_plan.py` before calling it review-ready.
 
 Final answer should be the test plan, not setup instructions.

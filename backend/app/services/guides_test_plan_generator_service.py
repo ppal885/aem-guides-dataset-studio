@@ -55,6 +55,7 @@ def build_guides_test_plan_packet(
     issue = _lookup_issue(key, tenant_id=tenant_id)
     query_text = _issue_query_text(key, issue)
     docs = _retrieve_aem_docs(query_text, k=evidence_k)
+    learned_behavior = _retrieve_learned_behavior_evidence(query_text, k=evidence_k)
     dita_chunks = _retrieve_dita_chunks(query_text, k=min(5, evidence_k))
     publishing_context = _build_publishing_transform_context(issue, query_text, k=min(6, evidence_k))
     qa_preview = _qa_preview(key, issue)
@@ -65,6 +66,7 @@ def build_guides_test_plan_packet(
         "tenant_id": tenant_id,
         "issue": issue,
         "experience_league_evidence": docs,
+        "learned_behavior_evidence": learned_behavior,
         "dita_spec_evidence": dita_chunks,
         "publishing_transform_context": publishing_context,
         "qa_studio_preview": qa_preview,
@@ -74,6 +76,7 @@ def build_guides_test_plan_packet(
             "Use the existing aem-guides-test-scenario-generator skill.",
             "Do not generate scenarios before blast-radius analysis.",
             "Cite official Experience League source_url/canonical_url values.",
+            "Use learned_behavior_evidence from scraped Experience League DITA as product-behavior evidence, not as Jira facts.",
             "For publishing/PDF2/HTML/HTML5/DITA-OT tickets, use publishing_transform_context and DITA-OT evidence.",
             "Use JIRA facts only from the returned issue/evidence packet.",
             "Mark the plan Draft if Jira, RAG, repository, or blast-radius evidence is incomplete.",
@@ -107,6 +110,10 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
             "## Experience League evidence",
             "",
             _json_block(packet.get("experience_league_evidence") or []),
+            "",
+            "## Learned behavior evidence from scraped DITA",
+            "",
+            _json_block(packet.get("learned_behavior_evidence") or {}),
             "",
             "## DITA/spec evidence",
             "",
@@ -258,9 +265,87 @@ def _retrieve_aem_docs(query: str, *, k: int) -> list[dict[str, Any]]:
             "canonical_url": doc.get("canonical_url") or doc.get("url", ""),
             "snippet": doc.get("snippet", ""),
             "corpus": doc.get("corpus", "aem_guides"),
+            "evidence_type": doc.get("evidence_type", ""),
         }
         for doc in docs
     ]
+
+
+def _retrieve_learned_behavior_evidence(query: str, *, k: int) -> dict[str, Any]:
+    behavior_query = "\n".join(
+        part
+        for part in [
+            query,
+            "Learned feature behavior from scraped Experience League DITA. "
+            "Prefer chunks with Generation requirement, QA checklist, PDF review areas, HTML5 review areas, "
+            "negative/risk cases, output preset, publishing, workflow, metadata, baseline, translation, reports.",
+        ]
+        if part.strip()
+    )
+    try:
+        from app.services.doc_retriever_service import retrieve_relevant_docs_with_diagnostics
+
+        payload = retrieve_relevant_docs_with_diagnostics(
+            behavior_query,
+            k=max(k * 2, 8),
+            allowed_host_suffixes=("experienceleague.adobe.com",),
+        )
+    except Exception as exc:
+        return {
+            "available": False,
+            "error": str(exc),
+            "results": [],
+            "expected_planner_use": [
+                "Keep the plan Draft if scraped Experience League behavior evidence is unavailable.",
+            ],
+        }
+
+    raw_results = list(payload.get("results") or [])
+    behavior_results = [
+        doc
+        for doc in raw_results
+        if _is_learned_behavior_doc(doc)
+    ]
+    selected = behavior_results[:k] if behavior_results else raw_results[:k]
+    return {
+        "available": bool(selected),
+        "retrieval_mode": payload.get("retrieval_mode", "unknown"),
+        "semantic_required": payload.get("semantic_required", False),
+        "warnings": payload.get("warnings", []),
+        "source": "scraped_experienceleague_dita_behavior_chunks",
+        "result_count": len(selected),
+        "results": [_normalize_behavior_doc(doc) for doc in selected],
+        "expected_planner_use": [
+            "Use these chunks to summarize expected AEM Guides behavior before scenario design.",
+            "Convert generation requirements into test data, QA checklist items, PDF review areas, HTML5 review areas, negative/risk cases, and validation oracles.",
+            "Trace scenarios and residual risks to source_url/canonical_url; do not treat scraped docs as Jira facts.",
+            "If this section is unavailable or weak, mark the test plan Draft due to missing RAG behavior evidence.",
+        ],
+    }
+
+
+def _is_learned_behavior_doc(doc: dict[str, Any]) -> bool:
+    evidence_type = str(doc.get("evidence_type") or "").lower()
+    snippet = str(doc.get("snippet") or "").lower()
+    return bool(
+        "learned_behavior" in evidence_type
+        or "enriched_" in evidence_type
+        or "learned feature behavior:" in snippet
+        or "generation requirement:" in snippet
+        or "how to use this in rag:" in snippet
+    )
+
+
+def _normalize_behavior_doc(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "chunk_id": doc.get("chunk_id", ""),
+        "title": doc.get("title", ""),
+        "source_url": doc.get("source_url") or doc.get("url", ""),
+        "canonical_url": doc.get("canonical_url") or doc.get("url", ""),
+        "corpus": doc.get("corpus", "aem_guides"),
+        "evidence_type": doc.get("evidence_type", ""),
+        "snippet": doc.get("snippet", ""),
+    }
 
 
 def _retrieve_dita_chunks(query: str, *, k: int) -> list[dict[str, Any]]:
@@ -309,6 +394,7 @@ Mandatory:
 - Include the exact heading `## 4. Blast radius and risk analysis`.
 - Do blast-radius analysis before scenario design.
 - Cite Experience League `source_url` / `canonical_url` from the MCP packet.
+- Use `learned_behavior_evidence` to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, and validation oracles from scraped DITA docs.
 - If `publishing_transform_context.enabled=true`, include DITA-OT publishing/PDF2/HTML5 evidence and map related risks/tests to it.
 - Separate confirmed evidence from unknowns.
 - Cover or explicitly exclude every P0/P1 Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.

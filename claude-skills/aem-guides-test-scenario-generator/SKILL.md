@@ -14,7 +14,7 @@ description: >
 
 # AEM Guides Test Scenario Generator
 
-This skill's primary objective is bug discovery and regression prevention. Test cases are the output format, not the goal. For JIRA-driven work, preserve the evidence ledger, JIRA MCP workflow, central VM RAG retrieval, repository analysis, blast-radius analysis, regression rings, automation mapping, and Markdown validation. For standalone DITA construct requests, remain grounded in this project's real spec registries and RAG indexes, not invented memory.
+This skill's primary objective is bug discovery and regression prevention. Test cases are the output format, not the goal. For JIRA-driven work, preserve the evidence ledger, JIRA MCP workflow, central VM RAG retrieval, scraped Experience League DITA learned-behavior evidence, repository analysis, blast-radius analysis, regression rings, automation mapping, and Markdown validation. For standalone DITA construct requests, remain grounded in this project's real spec registries and RAG indexes, not invented memory.
 
 Everything here runs as short Python snippets against the backend's own services (the same
 mechanism used throughout this project's development), from `backend/`:
@@ -40,7 +40,7 @@ sequence:
 
 1. JIRA intake from Adobe JIRA MCP.
 2. Evidence collection from the central VM MCP/RAG and repository tools.
-3. RAG retrieval for AEM Guides docs, DITA 1.2/1.3, DITA-OT, and explicitly allowlisted corpora.
+3. RAG retrieval for AEM Guides docs, scraped Experience League DITA learned-behavior chunks, DITA 1.2/1.3, DITA-OT, and explicitly allowlisted corpora.
 4. Implementation, diff, and automation repository inspection.
 5. **Blast-radius analysis gate**.
 6. **Bug Hypothesis Register** from `references/bug-discovery-heuristics.md`.
@@ -52,6 +52,17 @@ sequence:
 Before risk/scenario selection for any bug, enhancement, regression, behavior change, refactor, dependency update, configuration change, or infrastructure JIRA, read `references/blast-radius-analysis.md`, `references/bug-discovery-heuristics.md`, `references/historical-regression-analysis.md`, `references/test-oracles-and-fault-injection.md`, and `references/output-template.md`. Produce `## 4. Blast radius and risk analysis` first, then the Bug Hypothesis Register and related sections using the exact table structures in `references/output-template.md`.
 
 If blast-radius, bug-hypothesis, kill-the-fix applicability, historical-regression search, multi-layer oracle, automation-strength, or residual-risk analysis is missing or incomplete, keep the plan in **Draft** and do not call it review-ready.
+
+### Scraped Experience League DITA behavior evidence
+
+When the MCP packet contains `learned_behavior_evidence`, treat it as the product-behavior bridge between documentation and QA design:
+
+- Use it to write the Requirement and behavior summary before selecting scenarios.
+- Extract documented feature behavior, detected DITA constructs/attributes, publishing/output contexts, generation requirements, QA checklist items, PDF review areas, HTML5 review areas, negative/risk cases, and validation oracles.
+- Cite `source_url` or `canonical_url` from each chunk in the Evidence map.
+- Convert behavior chunks into test-data and oracle requirements; do not merely list them as sources.
+- If scraped behavior evidence is unavailable, weak, or unrelated, mark the plan **Draft** and list the missing evidence under Residual Risk.
+- Do not treat scraped docs as Jira facts or implementation diffs; use them as expected behavior/product documentation evidence only.
 
 For DITA construct-only requests without a JIRA, still use the original tag workflow below; if the
 user also asks for a test plan tied to product/code change, apply the blast-radius gate.
