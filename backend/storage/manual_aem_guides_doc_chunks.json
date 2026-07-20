@@ -1331,11 +1331,23 @@
     "tables": [
       {
         "caption": "Approximate On-Premise migration duration",
-        "headers": ["Migration Scope", "Typical Duration"],
+        "headers": [
+          "Migration Scope",
+          "Typical Duration"
+        ],
         "rows": [
-          ["Single baseline", "A few seconds"],
-          ["10-15 baselines", "A few tens of seconds"],
-          ["25-50 baselines", "Approximately 1-2 minutes"]
+          [
+            "Single baseline",
+            "A few seconds"
+          ],
+          [
+            "10-15 baselines",
+            "A few tens of seconds"
+          ],
+          [
+            "25-50 baselines",
+            "Approximately 1-2 minutes"
+          ]
         ]
       }
     ]
@@ -1427,17 +1439,47 @@
     "tables": [
       {
         "caption": "AEM Guides output variables",
-        "headers": ["Variable", "Use"],
+        "headers": [
+          "Variable",
+          "Use"
+        ],
         "rows": [
-          ["${map_filename}", "DITA map file name"],
-          ["${map_title}", "DITA map title"],
-          ["${preset_name}", "Output preset name"],
-          ["${language_code}", "Language code where the map is located"],
-          ["${map_parentpath}", "Complete map file path; not for AEM Site Name or PDF File Name"],
-          ["${path_after_langfolder}", "Path after language folder; not for AEM Site Name or PDF File Name"],
-          ["${system_date}", "Current server date"],
-          ["${system_time}", "Current server time"],
-          ["${dc:title}", "Example metadata property from /jcr:content/metadata"]
+          [
+            "${map_filename}",
+            "DITA map file name"
+          ],
+          [
+            "${map_title}",
+            "DITA map title"
+          ],
+          [
+            "${preset_name}",
+            "Output preset name"
+          ],
+          [
+            "${language_code}",
+            "Language code where the map is located"
+          ],
+          [
+            "${map_parentpath}",
+            "Complete map file path; not for AEM Site Name or PDF File Name"
+          ],
+          [
+            "${path_after_langfolder}",
+            "Path after language folder; not for AEM Site Name or PDF File Name"
+          ],
+          [
+            "${system_date}",
+            "Current server date"
+          ],
+          [
+            "${system_time}",
+            "Current server time"
+          ],
+          [
+            "${dc:title}",
+            "Example metadata property from /jcr:content/metadata"
+          ]
         ]
       }
     ]
@@ -1571,6 +1613,26 @@
       "Preview",
       "Publish instance",
       "Configure Metadata"
+    ],
+    "codeblocks": [],
+    "tables": []
+  },
+  {
+    "url": "internal://aem-guides-test-plan-claude-skill-package",
+    "title": "AEM Guides test-plan Claude skill package setup",
+    "content": "AEM Guides test-plan Claude skill package setup\n\nTeam members do not need to clone the full repository. The central VM hosts the backend, MCP gateway, Jira/RAG retrieval, enriched AEM Guides behavior chunks, DITA/DITA-OT indexes, and repository evidence. Team members only install the small Claude skill package locally and configure Claude Code MCP to point at the VM backend.\n\nDownload/package artifact in the repository: release-artifacts/aem-guides-test-plan-claude-skill.zip\n\nThe ZIP contains: skills/aem-guides-test-scenario-generator/, commands/guides-test-plan-generator.md, install.ps1, install.sh, README.md, and manifest.json.\n\nInstall on Windows: extract the ZIP and run install.ps1, or copy skills/aem-guides-test-scenario-generator/ to %USERPROFILE%\\.claude\\skills\\aem-guides-test-scenario-generator\\ and commands/guides-test-plan-generator.md to %USERPROFILE%\\.claude\\commands\\guides-test-plan-generator.md.\n\nInstall on macOS/Linux: extract the ZIP and run ./install.sh, or copy skills/aem-guides-test-scenario-generator/ to ~/.claude/skills/aem-guides-test-scenario-generator/ and commands/guides-test-plan-generator.md to ~/.claude/commands/guides-test-plan-generator.md.\n\nAfter installation, restart Claude Code and run /guides-test-plan-generator GUIDES-12345. The slash command requires the MCP tool guides_test_plan_generator. The local skill supplies workflow and quality gates; evidence comes from the VM RAG/MCP backend.",
+    "chunk_index": 0,
+    "paragraphs": [],
+    "list_items": [
+      "Download artifact: release-artifacts/aem-guides-test-plan-claude-skill.zip",
+      "Required MCP tool: guides_test_plan_generator",
+      "Windows skill path: %USERPROFILE%\\.claude\\skills\\aem-guides-test-scenario-generator\\SKILL.md",
+      "Linux/macOS skill path: ~/.claude/skills/aem-guides-test-scenario-generator/SKILL.md",
+      "Command: /guides-test-plan-generator GUIDES-12345"
+    ],
+    "codeph": [
+      "guides_test_plan_generator",
+      "/guides-test-plan-generator GUIDES-12345"
     ],
     "codeblocks": [],
     "tables": []

@@ -526,6 +526,11 @@ def _document_relevance_score(
         evidence_bonus += 0.25
     if asks_dita_publishing_behavior and "experienceleague.adobe.com/en/docs/workfront/" in lowered_url:
         evidence_bonus -= 0.35
+    if lowered_evidence_type == "team_setup_package" and re.search(
+        r"\b(claude|skill|slash\s*command|setup|install|download|package|zip|team|mcp|rag)\b",
+        str(query or "").lower(),
+    ):
+        evidence_bonus += 2.0
     if re.search(r"\b(generate|generation|dataset|test data|qa|oracle|evidence|expected|review|mcp)\b", str(query or "").lower()):
         if lowered_evidence_type == "learned_behavior_profile":
             evidence_bonus += 0.45
