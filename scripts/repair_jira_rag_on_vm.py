@@ -141,12 +141,20 @@ def smoke_jira(issue_key: str) -> dict[str, Any]:
     from app.services.jira_client import JiraClient
 
     client = JiraClient()
-    issue = client.get_issue(issue_key, fields="summary,status,issuetype,updated")
+    fetch_mode = "filtered_fields"
+    try:
+        issue = client.get_issue(issue_key, fields="summary,status,issuetype,updated")
+    except Exception as exc:
+        if getattr(getattr(exc, "response", None), "status_code", None) != 403:
+            raise
+        issue = client.get_issue_legacy(issue_key)
+        fetch_mode = "legacy_full_issue_fallback"
     fields = issue.get("fields") or {}
     status = fields.get("status") or {}
     issue_type = fields.get("issuetype") or {}
     return {
         "key": issue.get("key") or issue_key,
+        "fetch_mode": fetch_mode,
         "summary": str(fields.get("summary") or "")[:240],
         "status": status.get("name") if isinstance(status, dict) else "",
         "issue_type": issue_type.get("name") if isinstance(issue_type, dict) else "",

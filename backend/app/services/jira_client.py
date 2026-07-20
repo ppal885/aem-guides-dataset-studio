@@ -117,6 +117,10 @@ class JiraClient:
         params = {"fields": fields} if fields else None
         return self._request("GET", path, params=params)
 
+    def get_issue_legacy(self, issue_key: str) -> dict:
+        """Fetch a full issue without a fields filter, matching legacy automation utilities."""
+        return self.get_issue(issue_key, fields=None)
+
     def search_issues(self, jql: str, max_results: int = 500) -> list[dict]:
         """Search issues by JQL. Uses minimal fields for faster response."""
         all_issues = []
