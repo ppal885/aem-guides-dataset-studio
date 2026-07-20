@@ -1620,17 +1620,54 @@ Suggestions for Cursor to fix:
 async def generate_dita(
         text: str,
         instructions: str = "",
+        prior_context: str = "",
 ) -> str:
     """
     Generate a DITA bundle from free-text instructions.
 
     text: freeform prompt describing the desired DITA output
     instructions: optional refinements such as topic family, constructs, or formatting constraints
+    prior_context: optional previous user question/answer context when text says "above", "same", or "this"
 
     This is the standalone text-based generation entry point for Cursor MCP use.
     """
     try:
-        from app.services.chat_tools import execute_generate_dita
+        from app.services.chat_tools import execute_create_job, execute_generate_dita, execute_generate_dita_ot_pdf
+        from app.services.generation_intent_router_service import route_generation_intent
+
+        prior_messages = [prior_context] if (prior_context or "").strip() else []
+        routed_intent = route_generation_intent(
+            text,
+            prior_messages=prior_messages,
+            requested_tool="generate_dita",
+            source="mcp_generate_dita",
+            tool_args={"text": text, "instructions": instructions},
+        )
+        if routed_intent and routed_intent.get("name") == "generate_dita_ot_pdf":
+            args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
+            result = await execute_generate_dita_ot_pdf(
+                prompt=str(args.get("prompt") or text).strip(),
+                output_format=str(args.get("output_format") or "pdf").strip(),
+                package_name=str(args.get("package_name") or "").strip(),
+            )
+            return _format_mcp_generation_redirect_result(
+                "generate_dita was routed to DITA-OT publishing corpus generation.",
+                result,
+            )
+
+        if routed_intent and routed_intent.get("name") == "create_job":
+            args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
+            result = await execute_create_job(
+                recipe_type=str(args.get("recipe_type") or "freeform"),
+                config=args.get("config") if isinstance(args.get("config"), dict) else None,
+                user_id="mcp-user",
+                subject=str(args.get("subject") or "DITA construct behavior dataset"),
+                prompt_text=str(args.get("prompt_text") or text),
+            )
+            return _format_mcp_generation_redirect_result(
+                "generate_dita was routed to DITA behavior dataset generation.",
+                result,
+            )
 
         result = await execute_generate_dita(
             text=text,
@@ -1680,6 +1717,36 @@ async def generate_dita(
         return "\n".join(lines)
     except Exception as e:
         return f"Error generating DITA from text: {e}"
+
+
+def _format_mcp_generation_redirect_result(title: str, result: dict) -> str:
+    status = result.get("status") or ("error" if result.get("error") else "success")
+    lines = [
+        title,
+        "",
+        f"Status: {status}",
+    ]
+    for key in (
+        "summary",
+        "message",
+        "download_url",
+        "artifact_url",
+        "artifact_zip",
+        "pdf_url",
+        "html5_url",
+        "job_id",
+        "run_id",
+        "redirect_reason",
+    ):
+        value = result.get(key)
+        if value:
+            lines.append(f"{key}: {value}")
+    if result.get("error"):
+        lines.extend(["", f"Error: {result['error']}"])
+    guidance = result.get("qa_checklist") or result.get("expected_behavior") or result.get("validation_oracles")
+    if guidance:
+        lines.extend(["", "Guidance:", json.dumps(guidance, ensure_ascii=False, indent=2)[:4000]])
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -3808,7 +3875,13 @@ def show_mcp_rag_corpus_status() -> str:
 
 
 @mcp.tool()
-def guides_test_plan_generator(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+def guides_test_plan_generator(
+    jira_key: str,
+    tenant_id: str = "kone",
+    evidence_k: int = 8,
+    include_repository_evidence: bool = True,
+    max_repo_matches: int = 30,
+) -> str:
     """
     Build the evidence packet for the Claude Code slash command:
 
@@ -3828,6 +3901,8 @@ def guides_test_plan_generator(jira_key: str, tenant_id: str = "kone", evidence_
             jira_key,
             tenant_id=tenant_id,
             evidence_k=max(3, min(int(evidence_k), 12)),
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
         )
         return render_guides_test_plan_packet_markdown(packet)
     except Exception as e:
@@ -3835,7 +3910,13 @@ def guides_test_plan_generator(jira_key: str, tenant_id: str = "kone", evidence_
 
 
 @mcp.tool()
-def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+def publishing_ticket_dita_qa_packet(
+    jira_key: str,
+    tenant_id: str = "kone",
+    evidence_k: int = 8,
+    include_repository_evidence: bool = True,
+    max_repo_matches: int = 30,
+) -> str:
     """
     Claude MCP-only helper for publishing/PDF2/HTML/HTML5 transformation Jira tickets.
 
@@ -3853,6 +3934,8 @@ def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evi
             jira_key,
             tenant_id=tenant_id,
             evidence_k=max(3, min(int(evidence_k), 12)),
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
         )
         issue = packet.get("issue") or {}
         if not is_publishing_transform_ticket(issue):

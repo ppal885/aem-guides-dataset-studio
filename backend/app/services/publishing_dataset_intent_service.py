@@ -22,7 +22,7 @@ _GENERATION_SIGNAL = re.compile(
     re.IGNORECASE,
 )
 _DATASET_SIGNAL = re.compile(
-    r"\b(dataset|test\s+data|sample|corpus|bundle|same|above|combination|scenario|evidence|oracle|oracles|review|qa)\b",
+    r"\b(dataset|data|test\s+data|sample|corpus|bundle|same|above|combination|scenario|evidence|oracle|oracles|review|qa)\b",
     re.IGNORECASE,
 )
 _DITA_OT_SIGNAL = re.compile(
@@ -46,6 +46,7 @@ _PUBLISHING_BEHAVIOR_SIGNAL = re.compile(
     r"copy-to|copy\s+to|copyto|xml:lang|xml\s+lang|chunk|chunking|conref|conkeyref|"
     r"conrefpush|conrefend|keyref|keys|xref|topicref|mapref|reltable|scope|format|"
     r"processing-role|resource-only|search\s+title|searchtitle|titlealts?|titlealt|"
+    r"metadata\s+cascad(?:e|ing)|cascad(?:e|ing)|topicmeta|lockmeta|metadata|"
     r"map\s+attributes?|all\s+(?:the\s+)?attributes?)\b",
     re.IGNORECASE,
 )
@@ -89,10 +90,9 @@ def is_publishing_dataset_request(prompt: str) -> bool:
 
     return bool(
         wants_generation
-        and wants_dataset_or_context
-        and wants_dita_ot
         and wants_publish_output
         and has_construct_or_context
+        and (wants_dita_ot or wants_dataset_or_context or "publishing" in text.lower())
     )
 
 
@@ -111,7 +111,7 @@ def expand_prompt_with_prior_context(
         return base
 
     return (
-        f"{base}\n\nPrevious user context to preserve for DITA-OT publishing dataset generation:\n"
+        f"{base}\n\nPrevious user context to preserve for DITA generation:\n"
         f"{prior_context[-max_chars:]}"
     ).strip()
 

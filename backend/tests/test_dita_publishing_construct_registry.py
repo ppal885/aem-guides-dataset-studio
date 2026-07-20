@@ -10,6 +10,8 @@ from app.services.publishing_dataset_intent_service import (
     expand_publishing_tool_args_with_context,
     normalize_publishing_request,
 )
+from app.services import chat_service
+from app.services.chat_tools import parse_tool_intent_from_content
 
 
 def test_detects_common_publishing_constructs():
@@ -119,6 +121,73 @@ def test_mcp_normalization_uses_same_publishing_intent_rules():
 
 def test_plain_single_topic_generation_does_not_route_to_publishing():
     assert detect_publishing_dataset_intent("Write a concept topic about reusable content") is None
+
+
+def test_generate_dita_slash_redirects_publishing_to_dita_ot():
+    intent = parse_tool_intent_from_content(
+        "/generate_dita Generate DITA-OT PDF and HTML5 data for copy-to with chunk and xml:lang"
+    )
+
+    assert intent is not None
+    assert intent["name"] == "generate_dita_ot_pdf"
+    assert intent["args"]["output_format"] == "all"
+
+
+def test_generate_dita_tool_intent_redirects_to_dita_ot():
+    intent = chat_service._normalize_generation_tool_intent(
+        "session-id",
+        "Generate DITA-OT PDF data for copy-to with chunk and xml:lang",
+        {
+            "name": "generate_dita",
+            "args": {"text": "Generate DITA-OT PDF data for copy-to with chunk and xml:lang"},
+            "source": "llm",
+        },
+    )
+
+    assert intent is not None
+    assert intent["name"] == "generate_dita_ot_pdf"
+    assert intent["source"] == "llm_redirected_to_dita_ot"
+
+
+def test_contextual_same_generation_routes_to_freeform_dataset(monkeypatch):
+    monkeypatch.setattr(
+        chat_service,
+        "_recent_user_messages_before_latest",
+        lambda session_id, user_content, limit=4: [
+            "How does conref and keyref behave together in a DITA map?"
+        ],
+    )
+
+    intent = chat_service._contextual_dita_dataset_tool_intent(
+        "session-id",
+        "generate DITA data for the same",
+    )
+
+    assert intent is not None
+    assert intent["name"] == "create_job"
+    assert intent["args"]["recipe_type"] == "freeform"
+    assert "conref" in intent["args"]["prompt_text"]
+
+
+def test_contextual_example_above_metadata_cascading_routes_to_dataset(monkeypatch):
+    monkeypatch.setattr(
+        chat_service,
+        "_recent_user_messages_before_latest",
+        lambda session_id, user_content, limit=4: [
+            "What is metadata cascading?",
+            "How cascade will behave in publishing",
+        ],
+    )
+
+    intent = chat_service._contextual_dita_dataset_tool_intent(
+        "session-id",
+        "show me an example of above",
+    )
+
+    assert intent is not None
+    assert intent["name"] == "generate_dita_ot_pdf"
+    assert "metadata cascading" in intent["args"]["prompt"].lower()
+    assert "metadata-cascade" in intent["args"]["detected_constructs"]
 
 
 def test_registry_corpus_contains_constructs_and_oracles(tmp_path):

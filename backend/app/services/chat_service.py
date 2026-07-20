@@ -94,6 +94,10 @@ from app.services.publishing_dataset_intent_service import (
     detect_publishing_dataset_intent,
     expand_publishing_tool_args_with_context,
 )
+from app.services.generation_intent_router_service import (
+    normalize_generation_tool_intent,
+    route_generation_intent,
+)
 
 logger = get_structured_logger(__name__)
 
@@ -1157,6 +1161,8 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
     text = (user_content or "").strip()
     if not text:
         return False
+    if detect_publishing_dataset_intent(text):
+        return False
     if text.startswith("/"):
         return False
     if _looks_like_dita_xml(text):
@@ -1177,6 +1183,34 @@ def _is_plain_generate_dita_request(user_content: str) -> bool:
 
 
 _publishing_dataset_tool_intent = detect_publishing_dataset_intent
+
+def _contextual_dita_dataset_tool_intent(session_id: str, user_content: str) -> dict[str, Any] | None:
+    text = (user_content or "").strip()
+    if not text:
+        return None
+    prior = _recent_user_messages_before_latest(session_id, text, limit=4)
+    return route_generation_intent(
+        text,
+        prior_messages=prior,
+        requested_tool="",
+        source="auto_contextual_dita_dataset",
+    )
+
+
+def _normalize_generation_tool_intent(
+    session_id: str,
+    user_content: str,
+    tool_intent: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not tool_intent:
+        return None
+    prior = _recent_user_messages_before_latest(session_id, user_content, limit=4)
+    return normalize_generation_tool_intent(
+        tool_intent,
+        user_content=user_content,
+        prior_messages=prior,
+        source=str(tool_intent.get("source") or "tool"),
+    )
 
 
 def _expand_dita_ot_publish_tool_args(
@@ -7319,6 +7353,9 @@ def _refresh_generate_dita_plan_for_execution(plan: dict[str, Any]) -> dict[str,
         or refreshed_plan.get("user_request")
         or ""
     ).strip()
+    publishing_intent = detect_publishing_dataset_intent(text)
+    if publishing_intent:
+        return _build_tool_intent_plan(str(refreshed_plan.get("user_request") or text), publishing_intent)
     instructions = str(
         preview.get("execution_instructions")
         or request.get("instructions")
@@ -8357,6 +8394,19 @@ async def _stream_tool_intent_reply(
         yield {"type": "error", "message": "Tool intent is missing a tool name."}
         return
 
+    normalized_intent = _normalize_generation_tool_intent(session_id, user_content, tool_intent)
+    if normalized_intent is not tool_intent:
+        async for event in _stream_tool_intent_reply(
+            session_id,
+            user_content=user_content,
+            assistant_msg_id=assistant_msg_id,
+            tool_intent=normalized_intent or tool_intent,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        ):
+            yield event
+        return
+
     if tool_name == "generate_dita":
         tool_args = copy.deepcopy(tool_intent.get("args") or {})
         preview = build_generate_dita_preview(
@@ -8615,7 +8665,10 @@ async def _stream_assistant_reply(
     elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
-    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content) or _publishing_dataset_tool_intent(user_content)
+    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
+    parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
+    if parsed_tool_intent is None:
+        parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)
     if parsed_tool_intent:
         async for event in _stream_tool_intent_reply(
             session_id,

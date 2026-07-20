@@ -81,6 +81,33 @@ def _searchtitle_topic() -> str:
 """
 
 
+def _metadata_cascade_topic() -> str:
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
+<topic id="metadata-cascade-topic" xml:lang="en-US">
+  <title>Topic-level metadata cascade target</title>
+  <prolog>
+    <metadata>
+      <keywords>
+        <keyword>topic-keyword</keyword>
+      </keywords>
+      <audience type="writer"/>
+    </metadata>
+  </prolog>
+  <shortdesc>This topic contains topic-level metadata that is combined with map-level topicmeta during processing.</shortdesc>
+  <body>
+    <section id="metadata-cascade-positive"><title>Metadata cascade behavior</title>
+      <p>The map contributes <xmlelement>topicmeta</xmlelement> such as navigation title, search title, and keywords. The topic contributes <xmlelement>prolog</xmlelement> metadata.</p>
+      <p>The QA oracle is to compare source map metadata, topic metadata, generated HTML metadata, and any PDF bookmarks/metadata emitted by the active transform.</p>
+    </section>
+    <section id="metadata-cascade-risk"><title>Risk behavior</title>
+      <p>Incorrect cascade handling can drop map metadata, overwrite topic metadata unexpectedly, or use stale navigation/search titles after map context changes.</p>
+    </section>
+  </body>
+</topic>
+"""
+
+
 def _dataset_display_title(intent: PublishingDatasetIntent) -> str:
     if intent.detected_constructs:
         return "DITA-OT publishing dataset for " + ", ".join(intent.detected_constructs)
@@ -185,7 +212,7 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         expected_pdf_review_areas=("PDF should include selected branch content from chunk child topics.",),
         expected_html_review_areas=("HTML5 should generate/link chunked child-topic pages according to map boundaries.",),
         negative_or_risk_cases=("Invalid chunk tokens are a known generation risk and must be absent.",),
-        validation_oracles=("Source grep for `split` and `to-navigation` returns no matches.",),
+        validation_oracles=("Generated map/topicref `chunk` attributes never use invalid values such as `split` or `to-navigation`.",),
     ),
     ConstructSpec(
         key="xml:lang",
@@ -247,6 +274,58 @@ CONSTRUCT_REGISTRY: tuple[ConstructSpec, ...] = (
         validation_oracles=(
             "Generated source contains `<titlealts>` and `<searchtitle>` with a value different from the primary `<title>`.",
             "QA compares generated HTML/AEM Sites search metadata separately from PDF visible-title behavior.",
+        ),
+    ),
+    ConstructSpec(
+        key="metadata-cascade",
+        labels=("metadata cascading", "topicmeta", "metadata"),
+        aliases=(
+            "metadata cascading",
+            "metadata cascade",
+            "cascade",
+            "cascading",
+            "topicmeta",
+            "lockmeta",
+            "metadata",
+            "prolog",
+        ),
+        map_entries=(
+            '  <topicref href="topics/metadata-cascade-topic.dita" locktitle="yes" chunk="by-topic">',
+            "    <topicmeta>",
+            "      <navtitle>Map navtitle used for cascade oracle</navtitle>",
+            "      <searchtitle>Map searchtitle used for metadata oracle</searchtitle>",
+            "      <keywords><keyword>map-keyword</keyword></keywords>",
+            "    </topicmeta>",
+            "  </topicref>",
+        ),
+        files={
+            "topics/metadata-cascade-topic.dita": _metadata_cascade_topic(),
+        },
+        what_was_generated=(
+            "A topic with topic-level `<prolog>/<metadata>` plus a map `topicref` with `<topicmeta>`, `navtitle`, `searchtitle`, keywords, and `locktitle`.",
+        ),
+        expected_behavior=(
+            "Metadata cascading must preserve the effective map context while keeping topic-authored metadata available to output transforms.",
+            "`locktitle=\"yes\"` makes the map navigation title authoritative for navigation contexts without rewriting the topic source title.",
+        ),
+        qa_checklist=(
+            "Inspect root map `topicmeta`, topic `prolog`, and generated output metadata together.",
+            "Confirm map navigation/search metadata does not silently replace the visible topic title unless the transform explicitly does so.",
+        ),
+        expected_pdf_review_areas=(
+            "PDF TOC/bookmarks should be reviewed for map navtitle behavior and visible body title behavior.",
+            "PDF document metadata should be checked only if the active DITA-OT/AEM transform maps DITA metadata into PDF properties.",
+        ),
+        expected_html_review_areas=(
+            "HTML5 page title, navigation text, and metadata/search fields should be compared against map `topicmeta` and topic `prolog`.",
+            "Generated HTML should include the metadata cascade body marker topic.",
+        ),
+        negative_or_risk_cases=(
+            "Missing `topicmeta`, stale `searchtitle`, or incorrect `locktitle` handling can create mismatches between navigation, search, and visible title.",
+        ),
+        validation_oracles=(
+            "Generated source contains both map-level `<topicmeta>` and topic-level `<prolog>/<metadata>`.",
+            "QA records separate PDF and HTML5 observations for navtitle, searchtitle, keywords, and visible title.",
         ),
     ),
     ConstructSpec(
@@ -677,11 +756,23 @@ def detect_output_format(prompt: str, default: str = "pdf") -> str:
     return default
 
 
-def build_publishing_intent(prompt: str, output_format: str = "pdf") -> PublishingDatasetIntent:
+def _canonical_output_format(output_format: str | None) -> str | None:
+    value = (output_format or "").strip().lower()
+    if value in {"both", "all"}:
+        return "all"
+    if value in {"pdf", "pdf2"}:
+        return "pdf"
+    if value in {"html5", "html", "xhtml"}:
+        return value
+    return None
+
+
+def build_publishing_intent(prompt: str, output_format: str = "auto") -> PublishingDatasetIntent:
+    requested_output = _canonical_output_format(output_format)
     return PublishingDatasetIntent(
         prompt=prompt or "DITA-OT publishing dataset",
         detected_constructs=detect_publishing_constructs(prompt),
-        output_format=detect_output_format(prompt, default=output_format or "pdf"),
+        output_format=requested_output or detect_output_format(prompt, default="pdf"),
     )
 
 
@@ -690,7 +781,7 @@ def _unique_specs(constructs: list[str]) -> list[ConstructSpec]:
     return [by_key[key] for key in constructs if key in by_key]
 
 
-def build_publishing_corpus(work_dir: Path, title: str, output_format: str = "pdf") -> dict[str, Any] | None:
+def build_publishing_corpus(work_dir: Path, title: str, output_format: str = "auto") -> dict[str, Any] | None:
     intent = build_publishing_intent(title, output_format=output_format)
     specs = _unique_specs(intent.detected_constructs)
     if not specs:

@@ -27,6 +27,7 @@ from app.services.prompt_data_generation_planner import (
     build_prompt_generation_plan,
     render_prompt_generation_plan,
 )
+from app.services.generation_intent_router_service import route_generation_intent
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -919,6 +920,25 @@ async def execute_generate_dita(
     source_text = (text or "").strip()
     if not source_text:
         return {"error": "Text is required for DITA generation"}
+    try:
+        routed_intent = route_generation_intent(
+            source_text,
+            requested_tool="generate_dita",
+            source="execute_generate_dita",
+            tool_args={"text": source_text},
+        )
+        if routed_intent and routed_intent.get("name") == "generate_dita_ot_pdf":
+            args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
+            redirected = await execute_generate_dita_ot_pdf(
+                prompt=str(args.get("prompt") or source_text).strip(),
+                output_format=str(args.get("output_format") or "pdf").strip(),
+                package_name=str(args.get("package_name") or "").strip(),
+            )
+            redirected["redirected_from"] = "generate_dita"
+            redirected["redirect_reason"] = "Publishing/PDF/HTML5 dataset requests must use DITA-OT corpus generation, not single-topic authoring."
+            return redirected
+    except Exception:
+        pass
     extracted_jira_id = extract_issue_key_from_generation_request(source_text)
 
     # Detect freeform-mode keywords in the ORIGINAL user request only.
@@ -3327,6 +3347,19 @@ def parse_tool_intent_from_content(content: str) -> dict[str, Any] | None:
 
     if required and not required.issubset(args.keys()):
         return None
+    if tool["name"] == "generate_dita":
+        try:
+            generation_text = str(args.get("text") or inline_primary or "\n".join(body_lines) or content or "").strip()
+            routed_intent = route_generation_intent(
+                generation_text,
+                requested_tool="generate_dita",
+                source="slash_generate_dita",
+                tool_args=args,
+            )
+            if routed_intent:
+                return routed_intent
+        except Exception:
+            pass
     return {"name": tool["name"], "args": args, "source": "slash"}
 
 
