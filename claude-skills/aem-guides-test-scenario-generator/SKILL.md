@@ -64,6 +64,15 @@ When the MCP packet contains `learned_behavior_evidence`, treat it as the produc
 - If scraped behavior evidence is unavailable, weak, or unrelated, mark the plan **Draft** and list the missing evidence under Residual Risk.
 - Do not treat scraped docs as Jira facts or implementation diffs; use them as expected behavior/product documentation evidence only.
 
+When the MCP packet contains `planning_seeds`, it is not optional guidance. Use the four seed lists as mandatory inputs:
+
+- `blast_radius_seed` → populate `## 4. Blast radius and risk analysis` before scenario design.
+- `bug_hypothesis_seed` → populate `## 5. Bug hypothesis register` and negative/failure-injection scenarios.
+- `test_area_seed` → drive `## 9. Prioritized scenarios` and `## 10. Detailed test scenarios`.
+- `regression_risk_seed` → drive regression ring/pack split and residual risk.
+
+Every P0/P1 seed must map to a scenario ID or an evidence-backed exclusion. If a seed cannot be used because repository/Jira/RAG evidence is missing, keep the plan **Draft** and list the exact missing evidence.
+
 For DITA construct-only requests without a JIRA, still use the original tag workflow below; if the
 user also asks for a test plan tied to product/code change, apply the blast-radius gate.
 

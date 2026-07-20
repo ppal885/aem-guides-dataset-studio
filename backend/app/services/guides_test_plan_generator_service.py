@@ -56,6 +56,7 @@ def build_guides_test_plan_packet(
     query_text = _issue_query_text(key, issue)
     docs = _retrieve_aem_docs(query_text, k=evidence_k)
     learned_behavior = _retrieve_learned_behavior_evidence(query_text, k=evidence_k)
+    planning_seeds = _derive_planning_seeds(issue, learned_behavior)
     dita_chunks = _retrieve_dita_chunks(query_text, k=min(5, evidence_k))
     publishing_context = _build_publishing_transform_context(issue, query_text, k=min(6, evidence_k))
     qa_preview = _qa_preview(key, issue)
@@ -67,6 +68,7 @@ def build_guides_test_plan_packet(
         "issue": issue,
         "experience_league_evidence": docs,
         "learned_behavior_evidence": learned_behavior,
+        "planning_seeds": planning_seeds,
         "dita_spec_evidence": dita_chunks,
         "publishing_transform_context": publishing_context,
         "qa_studio_preview": qa_preview,
@@ -77,6 +79,7 @@ def build_guides_test_plan_packet(
             "Do not generate scenarios before blast-radius analysis.",
             "Cite official Experience League source_url/canonical_url values.",
             "Use learned_behavior_evidence from scraped Experience League DITA as product-behavior evidence, not as Jira facts.",
+            "Use planning_seeds as mandatory inputs for blast radius, bug hypotheses, areas to test, and regression risks.",
             "For publishing/PDF2/HTML/HTML5/DITA-OT tickets, use publishing_transform_context and DITA-OT evidence.",
             "Use JIRA facts only from the returned issue/evidence packet.",
             "Mark the plan Draft if Jira, RAG, repository, or blast-radius evidence is incomplete.",
@@ -114,6 +117,10 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
             "## Learned behavior evidence from scraped DITA",
             "",
             _json_block(packet.get("learned_behavior_evidence") or {}),
+            "",
+            "## Derived planning seeds",
+            "",
+            _json_block(packet.get("planning_seeds") or {}),
             "",
             "## DITA/spec evidence",
             "",
@@ -348,6 +355,200 @@ def _normalize_behavior_doc(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _derive_planning_seeds(issue: dict[str, Any], learned_behavior: dict[str, Any]) -> dict[str, Any]:
+    results = list(learned_behavior.get("results") or []) if isinstance(learned_behavior, dict) else []
+    snippets = "\n\n".join(str(item.get("snippet") or "") for item in results if isinstance(item, dict))
+    lowered = snippets.lower()
+    source_ids = [
+        str(item.get("chunk_id") or item.get("source_url") or item.get("canonical_url") or "").strip()
+        for item in results
+        if isinstance(item, dict) and str(item.get("chunk_id") or item.get("source_url") or item.get("canonical_url") or "").strip()
+    ][:8]
+
+    features = _extract_seed_values(snippets, "Learned feature behavior")
+    constructs = _extract_seed_values(snippets, "Detected DITA constructs and attributes")
+    outputs = _extract_seed_values(snippets, "Publishing/output contexts")
+    evidence = source_ids or ["learned_behavior_evidence"]
+
+    blast_radius = _build_blast_radius_seed(features, constructs, outputs, lowered, evidence)
+    bug_hypotheses = _build_bug_hypothesis_seed(constructs, outputs, lowered, evidence)
+    test_areas = _build_test_area_seed(features, constructs, outputs, lowered, evidence)
+    regression_risks = _build_regression_risk_seed(features, constructs, outputs, lowered, evidence)
+
+    if not results:
+        missing_reason = "No scraped Experience League learned-behavior chunks were retrieved for this Jira/query."
+        blast_radius.append(_seed("BR-MISSING-BEHAVIOR", "Observability/Recovery", "High", missing_reason, evidence))
+        bug_hypotheses.append(_seed("BH-MISSING-BEHAVIOR", "Evidence gap", "P1", missing_reason, evidence))
+        test_areas.append(_seed("TA-MISSING-BEHAVIOR", "Evidence intake", "P1", missing_reason, evidence))
+        regression_risks.append(_seed("RR-MISSING-BEHAVIOR", "Release confidence", "P1", missing_reason, evidence))
+
+    return {
+        "source": "derived_from_learned_behavior_evidence",
+        "evidence_ids": evidence,
+        "features": features,
+        "constructs": constructs,
+        "outputs": outputs,
+        "blast_radius_seed": blast_radius,
+        "bug_hypothesis_seed": bug_hypotheses,
+        "test_area_seed": test_areas,
+        "regression_risk_seed": regression_risks,
+        "planner_contract": [
+            "Each P0/P1 seed must map to a scenario or evidence-backed exclusion.",
+            "Blast-radius seeds must appear before scenario design.",
+            "Bug hypotheses must influence negative, recovery, or failure-injection coverage.",
+            "Regression risks must be split across PR Gate, Component Regression, Nightly, Release Regression, or Exploratory packs.",
+            "If learned_behavior_evidence is missing or unrelated, keep Review status as Draft.",
+        ],
+    }
+
+
+def _extract_seed_values(text: str, label: str) -> list[str]:
+    boundary_labels = (
+        "Source page",
+        "URL",
+        "Documented purpose",
+        "Learned feature behavior",
+        "Detected DITA constructs and attributes",
+        "Publishing/output contexts",
+        "How to use this in RAG",
+        "Generation requirement",
+    )
+    values: list[str] = []
+    boundary = "|".join(re.escape(item) for item in boundary_labels if item.lower() != label.lower())
+    pattern = re.compile(rf"{re.escape(label)}:\s*(.+?)(?=\s+(?:{boundary}):|\Z)", re.IGNORECASE | re.DOTALL)
+    for match in pattern.finditer(text or ""):
+        raw = re.sub(r"\s+", " ", match.group(1)).strip().strip(".")
+        for part in re.split(r"[,;]", raw):
+            value = part.strip(" .`")
+            if value and value.lower() not in {"not explicit in this page", "not output-specific"}:
+                values.append(value)
+    return _dedupe(values)[:12]
+
+
+def _build_blast_radius_seed(
+    features: list[str],
+    constructs: list[str],
+    outputs: list[str],
+    lowered: str,
+    evidence: list[str],
+) -> list[dict[str, Any]]:
+    seeds = [
+        _seed("BR-ENTRYPOINT", "Direct", "High", "Validate the documented user entry point and workflow touched by the Jira.", evidence),
+        _seed("BR-ERROR-CONTRACT", "Observability/Recovery", "High", "Verify user-facing error message, network/API response, logs/jobs, and recovery path.", evidence),
+    ]
+    for feature in features[:4]:
+        seeds.append(_seed(f"BR-FEATURE-{_seed_slug(feature)}", "Shared-path", "Medium", f"Shared feature behavior may regress: {feature}.", evidence))
+    for construct in constructs[:5]:
+        seeds.append(_seed(f"BR-CONSTRUCT-{_seed_slug(construct)}", "Compatibility", "Medium", f"DITA construct/attribute interaction may affect parsing, validation, publishing, or persistence: {construct}.", evidence))
+    for output in outputs[:4]:
+        seeds.append(_seed(f"BR-OUTPUT-{_seed_slug(output)}", "Downstream", "High", f"Downstream output context must be verified: {output}.", evidence))
+    if "workspace" in lowered or "settings" in lowered:
+        seeds.append(_seed("BR-CONFIG-INHERITANCE", "Shared-path", "High", "Workspace/folder/profile configuration inheritance can change the effective validation or publishing context.", evidence))
+    if "publish" in lowered or "output" in lowered or outputs:
+        seeds.append(_seed("BR-PUBLISHING-PIPELINE", "Downstream", "High", "Publishing pipeline behavior can diverge across Native PDF, DITA-OT PDF, HTML/HTML5, and AEM Sites.", evidence))
+    return _dedupe_seed_dicts(seeds)
+
+
+def _build_bug_hypothesis_seed(constructs: list[str], outputs: list[str], lowered: str, evidence: list[str]) -> list[dict[str, Any]]:
+    seeds = [
+        _seed("BH-NULL-EMPTY-MISSING", "Null/empty/missing input", "P1", "Null, empty, missing, or malformed input may be mapped to a misleading generic error.", evidence),
+        _seed("BH-PARTIAL-FAILURE", "Partial failure", "P1", "One failing config/resource may block valid sibling resources or hide useful findings.", evidence),
+        _seed("BH-RECOVERY-STALE-STATE", "Recovery/cache", "P1", "After correcting the input/config, stale cache or persisted state may keep the failure visible.", evidence),
+    ]
+    if any("schematron" in item.lower() for item in constructs) or "schematron" in lowered:
+        seeds.append(_seed("BH-SCHEMATRON-XSLT-EXCEPTION", "Exception mapping", "P0", "Schematron/XSLT transform failure may surface as a misleading topic-content error instead of a configuration error.", evidence))
+    if any(item for item in outputs) or re.search(r"\b(pdf|html5|output|publishing)\b", lowered):
+        seeds.append(_seed("BH-OUTPUT-DIVERGENCE", "Backend/UI/output mismatch", "P1", "Backend preprocessing can succeed or fail differently from final PDF/HTML5/AEM Sites output review.", evidence))
+    for construct in constructs[:5]:
+        seeds.append(_seed(f"BH-CONSTRUCT-{_seed_slug(construct)}", "Construct interaction", "P2", f"{construct} can interact with adjacent branches, inherited config, or output transforms in non-obvious ways.", evidence))
+    return _dedupe_seed_dicts(seeds)
+
+
+def _build_test_area_seed(
+    features: list[str],
+    constructs: list[str],
+    outputs: list[str],
+    lowered: str,
+    evidence: list[str],
+) -> list[dict[str, Any]]:
+    seeds = [
+        _seed("TA-REPRODUCTION", "Reproduction", "P0", "Reproduce the reported behavior with minimal controlled data.", evidence),
+        _seed("TA-CONTROL", "R0 control", "P0", "Verify unchanged valid behavior still passes with known-good data.", evidence),
+        _seed("TA-NEGATIVE", "Negative/error handling", "P1", "Exercise invalid, empty, missing, malformed, and mixed valid/invalid inputs.", evidence),
+        _seed("TA-RECOVERY", "Recovery", "P1", "Verify correction/removal/retry restores expected behavior without stale state.", evidence),
+    ]
+    for feature in features[:4]:
+        seeds.append(_seed(f"TA-FEATURE-{_seed_slug(feature)}", "Feature workflow", "P1", f"Cover documented feature workflow: {feature}.", evidence))
+    for construct in constructs[:6]:
+        seeds.append(_seed(f"TA-CONSTRUCT-{_seed_slug(construct)}", "DITA construct data", "P1", f"Generate focused data for construct/attribute: {construct}.", evidence))
+    for output in outputs[:4]:
+        seeds.append(_seed(f"TA-OUTPUT-{_seed_slug(output)}", "Output review", "P1", f"Review generated output context: {output}.", evidence))
+    if "qa checklist" in lowered:
+        seeds.append(_seed("TA-DOC-QA-CHECKLIST", "Documentation-derived QA", "P1", "Convert scraped QA checklist guidance into explicit scenario oracles.", evidence))
+    return _dedupe_seed_dicts(seeds)
+
+
+def _build_regression_risk_seed(
+    features: list[str],
+    constructs: list[str],
+    outputs: list[str],
+    lowered: str,
+    evidence: list[str],
+) -> list[dict[str, Any]]:
+    seeds = [
+        _seed("RR-R0-CONTROL", "PR Gate", "P0", "Known-good unchanged behavior must remain green.", evidence),
+        _seed("RR-DIRECT-FIX", "Component Regression", "P1", "Direct fix path must reject the original failure and preserve clear error contracts.", evidence),
+        _seed("RR-RECOVERY", "Nightly", "P1", "Recovery after bad data/config is removed must not require server restart or cache clearing unless documented.", evidence),
+    ]
+    if outputs or re.search(r"\b(pdf|html5|aem sites|output|publishing)\b", lowered):
+        seeds.append(_seed("RR-PUBLISHING-OUTPUTS", "Release Regression", "P1", "PDF/HTML5/AEM Sites output behavior can regress even when editor/API behavior passes.", evidence))
+    if constructs:
+        seeds.append(_seed("RR-CONSTRUCT-MATRIX", "Component Regression", "P1", "Construct/attribute combinations need targeted pairwise coverage instead of one happy path.", evidence))
+    if features:
+        seeds.append(_seed("RR-FEATURE-ADJACENCY", "Exploratory", "P2", "Adjacent documented feature workflows may share services, configuration, or output processors.", evidence))
+    return _dedupe_seed_dicts(seeds)
+
+
+def _seed(seed_id: str, category: str, priority: str, rationale: str, evidence: list[str]) -> dict[str, Any]:
+    return {
+        "id": seed_id,
+        "category": category,
+        "priority": priority,
+        "rationale": rationale,
+        "evidence": evidence[:5],
+        "required_mapping": "scenario_or_evidence_backed_exclusion",
+    }
+
+
+def _seed_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "").strip()).strip("-").upper()
+    return (slug or "GENERAL")[:36]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
+def _dedupe_seed_dicts(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for value in values:
+        key = str(value.get("id") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
 def _retrieve_dita_chunks(query: str, *, k: int) -> list[dict[str, Any]]:
     try:
         from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
@@ -395,6 +596,7 @@ Mandatory:
 - Do blast-radius analysis before scenario design.
 - Cite Experience League `source_url` / `canonical_url` from the MCP packet.
 - Use `learned_behavior_evidence` to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, and validation oracles from scraped DITA docs.
+- Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, and `regression_risk_seed` as mandatory inputs; map each P0/P1 seed to a scenario or evidence-backed exclusion.
 - If `publishing_transform_context.enabled=true`, include DITA-OT publishing/PDF2/HTML5 evidence and map related risks/tests to it.
 - Separate confirmed evidence from unknowns.
 - Cover or explicitly exclude every P0/P1 Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.

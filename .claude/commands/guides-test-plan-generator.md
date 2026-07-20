@@ -28,6 +28,7 @@ Steps:
    - Perform blast-radius analysis before scenario design.
    - Cite official Experience League `source_url` or `canonical_url` values from the MCP packet.
    - Use `learned_behavior_evidence` from scraped Experience League DITA to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, negative/risk cases, and validation oracles.
+   - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, and `regression_risk_seed`; every P0/P1 seed must map to a scenario or evidence-backed exclusion.
    - Separate confirmed evidence from unknowns and assumptions.
    - Include R0 unchanged-behavior controls plus R1/R2/R3/R4 coverage where evidence supports it.
    - Cover or explicitly exclude every high/critical Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.
