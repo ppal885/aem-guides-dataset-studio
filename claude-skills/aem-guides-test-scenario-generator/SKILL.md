@@ -41,7 +41,7 @@ sequence:
 1. JIRA intake from Adobe JIRA MCP.
 2. Evidence collection from the central VM MCP/RAG and repository tools.
 3. RAG retrieval for AEM Guides docs, scraped Experience League DITA learned-behavior chunks, DITA 1.2/1.3, DITA-OT, and explicitly allowlisted corpora.
-4. Implementation, diff, and automation repository inspection.
+4. Implementation, diff, and automation repository inspection from local clones.
 5. **Blast-radius analysis gate**.
 6. **Bug Hypothesis Register** from `references/bug-discovery-heuristics.md`.
 7. **Kill the Fix** analysis when a diff exists.
@@ -64,14 +64,31 @@ When the MCP packet contains `learned_behavior_evidence`, treat it as the produc
 - If scraped behavior evidence is unavailable, weak, or unrelated, mark the plan **Draft** and list the missing evidence under Residual Risk.
 - Do not treat scraped docs as Jira facts or implementation diffs; use them as expected behavior/product documentation evidence only.
 
-When the MCP packet contains `planning_seeds`, it is not optional guidance. Use the four seed lists as mandatory inputs:
+When the MCP packet contains `planning_seeds`, it is not optional guidance. Use the seed lists as mandatory inputs:
 
 - `blast_radius_seed` → populate `## 4. Blast radius and risk analysis` before scenario design.
 - `bug_hypothesis_seed` → populate `## 5. Bug hypothesis register` and negative/failure-injection scenarios.
 - `test_area_seed` → drive `## 9. Prioritized scenarios` and `## 10. Detailed test scenarios`.
 - `regression_risk_seed` → drive regression ring/pack split and residual risk.
+- `repository_evidence_seed` → drive owner-specific blast radius, automation-strength rows, and Draft gating from local clone evidence.
 
 Every P0/P1 seed must map to a scenario ID or an evidence-backed exclusion. If a seed cannot be used because repository/Jira/RAG evidence is missing, keep the plan **Draft** and list the exact missing evidence.
+
+### Local repository evidence is mandatory
+
+The central VM RAG cannot replace current local code evidence. When the MCP packet contains `repository_evidence`, use it as the authoritative local clone scan and cite its file paths/line numbers in the Evidence map. When it contains only `repository_evidence_contract`, treat that as the required scan checklist and keep the plan Draft until local clones are inspected.
+
+- Use `repository_evidence.repositories[*].matches` for exact product/test file paths, line numbers, symbols, and snippets.
+- Use `repository_evidence.owner_gates` to decide whether frontend, backend, cross-layer, and automation evidence is complete.
+- Inspect product code in `xmleditor` and/or `starling` using the provided `path_env` values or nearby clone hints when the scan is missing or weak.
+- Inspect automation coverage in `guides-ui-tests` and/or `dxml-it-tests` when the scan is missing or weak.
+- For frontend-owned work, require `xmleditor` evidence plus matching `guides-ui-tests` coverage or a Draft-status gap.
+- For backend-owned work, require `starling` evidence plus matching `dxml-it-tests` coverage or a Draft-status gap.
+- For cross-layer work, require both `xmleditor` and `starling` evidence and map UI/API assertions to the same oracle.
+- Use the packet `focus_queries` and `repository_evidence.queries_used` to search code, tests, page objects, API clients, fixtures, and historical automation.
+- Add exact file paths/functions/classes/test names to the Evidence map.
+- Classify existing automation as Exact and strong, Exact but weak oracle, Partial, Obsolete, Mocked-path only, or Missing.
+- Keep the plan **Draft** if `repository_evidence.repo_evidence_status` is `missing` or `partial`, unless every missing owner gate is explicitly evidence-backed as not applicable.
 
 For DITA construct-only requests without a JIRA, still use the original tag workflow below; if the
 user also asks for a test plan tied to product/code change, apply the blast-radius gate.

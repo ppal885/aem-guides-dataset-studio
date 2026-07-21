@@ -511,7 +511,7 @@ def _build_generation_summary(
                 "Confirm DITA-OT exits with code 0 for every requested format.",
                 "Open the ZIP and verify the source map plus all four topic files are present.",
                 "Inspect the map for `xml:lang=\"en-US\"`, `xml:lang=\"fr-FR\"`, `chunk=\"by-topic\"`, `chunk=\"to-content\"`, and `chunk=\"select-branch to-content\"`.",
-                "Verify no invalid chunk values such as `split` or `to-navigation` appear in the generated source.",
+                "Verify generated map/topicref `chunk` attributes never use invalid values such as `split` or `to-navigation`.",
                 "Compare PDF and HTML5 navigation/content to ensure selected branch topics are not dropped.",
             ],
             "expected_pdf_review_areas": [
@@ -575,15 +575,37 @@ def _run_dita(input_map: Path, fmt: str, output_dir: Path, timeout_seconds: int)
         }
     output_dir.mkdir(parents=True, exist_ok=True)
     cmd = [str(cli), "--input", str(input_map), "--format", fmt, "--output", str(output_dir)]
-    proc = subprocess.run(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout_seconds,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return {
+            "ok": False,
+            "format": fmt,
+            "exit_code": None,
+            "command": " ".join(cmd),
+            "stdout": str(stdout)[-4000:],
+            "stderr": (
+                f"DITA-OT transform timed out after {timeout_seconds} seconds. "
+                "Increase timeout_seconds or inspect generated source for a stuck transform.\n"
+                f"{str(stderr)[-3500:]}"
+            ).strip(),
+            "output_dir": str(output_dir),
+            "timed_out": True,
+        }
     combined_output = f"{proc.stdout}\n{proc.stderr}"
     has_build_failure = "BUILD FAILED" in combined_output or "[ERROR]" in combined_output
     return {

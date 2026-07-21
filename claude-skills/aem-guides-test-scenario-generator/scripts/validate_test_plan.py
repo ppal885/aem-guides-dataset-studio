@@ -20,6 +20,10 @@ SCENARIO_TABLE = "| Scenario ID | Ring | Pack | Priority | Title | Trace to risk
 AUTOMATION_TABLE = "| Existing / proposed check | Layer | Strength classification | Why | Gap / action |"
 EXCLUSION_TABLE = "| Area / component | Reason excluded | Evidence |"
 EVIDENCE_TABLE = "| Evidence ID | Source | What it proves | Link / path |"
+LOCAL_REPO_PATH_RE = re.compile(
+    r"(?:xmleditor|starling|guides-ui-tests|dxml-it-tests).*[\\/].+|\b[A-Za-z]:[\\/].+|/[A-Za-z0-9_.-]+/.+",
+    re.I,
+)
 
 VALID_IMPACT_LEVELS = {
     "Direct",
@@ -120,6 +124,7 @@ def validate_text(text: str) -> list[str]:
     _validate_interactions(errors, interaction_rows, scenario_ids)
     _validate_scenarios(errors, text, scenario_rows, risk_ids, hypothesis_ids, interaction_ids, evidence_ids)
     _validate_automation(errors, automation_rows)
+    _validate_repository_evidence(errors, text, evidence_rows, automation_rows)
     _validate_exclusions(errors, exclusion_rows)
     _validate_bug_plan_coverage(errors, text, scenario_rows)
     _validate_draft_gating(errors, text)
@@ -250,6 +255,32 @@ def _validate_automation(errors: list[str], rows: list[str]) -> None:
         strength = _cell(row, 2)
         if strength not in VALID_AUTOMATION_STRENGTHS:
             errors.append(f"Invalid automation strength classification: {strength or '(blank)'}")
+
+
+def _validate_repository_evidence(errors: list[str], text: str, evidence_rows: list[str], automation_rows: list[str]) -> None:
+    if not READY_STATUS.search(text):
+        return
+
+    repo_rows = [
+        row
+        for row in evidence_rows
+        if re.search(r"\b(xmleditor|starling|guides-ui-tests|dxml-it-tests|repository_evidence|local repo)\b", row, re.I)
+    ]
+    product_rows = [
+        row
+        for row in repo_rows
+        if re.search(r"\b(xmleditor|starling)\b", row, re.I) and LOCAL_REPO_PATH_RE.search(_cell(row, 3))
+    ]
+    if not product_rows:
+        errors.append("Review-ready plan requires local product repo evidence with exact xmleditor/starling file paths.")
+
+    for row in automation_rows:
+        strength = _cell(row, 2)
+        if strength == "Missing":
+            continue
+        row_text = row.lower()
+        if not re.search(r"\b(guides-ui-tests|dxml-it-tests)\b", row_text):
+            errors.append("Non-missing automation strength must cite guides-ui-tests or dxml-it-tests evidence.")
 
 
 def _validate_exclusions(errors: list[str], rows: list[str]) -> None:

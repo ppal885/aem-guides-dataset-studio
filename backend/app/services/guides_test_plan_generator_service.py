@@ -49,6 +49,8 @@ def build_guides_test_plan_packet(
     *,
     tenant_id: str = "kone",
     evidence_k: int = 8,
+    include_repository_evidence: bool = True,
+    max_repo_matches: int = 30,
 ) -> dict[str, Any]:
     """Return a complete MCP evidence packet for Claude Code plan generation."""
     key = normalize_jira_key(jira_key)
@@ -59,6 +61,13 @@ def build_guides_test_plan_packet(
     planning_seeds = _derive_planning_seeds(issue, learned_behavior)
     dita_chunks = _retrieve_dita_chunks(query_text, k=min(5, evidence_k))
     publishing_context = _build_publishing_transform_context(issue, query_text, k=min(6, evidence_k))
+    repo_contract = _build_repository_evidence_contract(issue, planning_seeds)
+    repository_evidence = (
+        _collect_repository_evidence(issue, planning_seeds, repo_contract, max_matches=max_repo_matches)
+        if include_repository_evidence
+        else _repository_evidence_disabled()
+    )
+    planning_seeds = _add_repository_evidence_seeds(planning_seeds, repository_evidence)
     qa_preview = _qa_preview(key, issue)
 
     packet = {
@@ -69,6 +78,9 @@ def build_guides_test_plan_packet(
         "experience_league_evidence": docs,
         "learned_behavior_evidence": learned_behavior,
         "planning_seeds": planning_seeds,
+        "repository_evidence_contract": repo_contract,
+        "repository_evidence": repository_evidence,
+        "repo_evidence_status": repository_evidence.get("repo_evidence_status") or repository_evidence.get("status"),
         "dita_spec_evidence": dita_chunks,
         "publishing_transform_context": publishing_context,
         "qa_studio_preview": qa_preview,
@@ -79,7 +91,8 @@ def build_guides_test_plan_packet(
             "Do not generate scenarios before blast-radius analysis.",
             "Cite official Experience League source_url/canonical_url values.",
             "Use learned_behavior_evidence from scraped Experience League DITA as product-behavior evidence, not as Jira facts.",
-            "Use planning_seeds as mandatory inputs for blast radius, bug hypotheses, areas to test, and regression risks.",
+            "Use planning_seeds, including repository_evidence_seed, as mandatory inputs for blast radius, bug hypotheses, areas to test, automation strength, and regression risks.",
+            "Use repository_evidence from local clone scanning; if unavailable, keep the plan Draft and list missing repo evidence.",
             "For publishing/PDF2/HTML/HTML5/DITA-OT tickets, use publishing_transform_context and DITA-OT evidence.",
             "Use JIRA facts only from the returned issue/evidence packet.",
             "Mark the plan Draft if Jira, RAG, repository, or blast-radius evidence is incomplete.",
@@ -121,6 +134,14 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
             "## Derived planning seeds",
             "",
             _json_block(packet.get("planning_seeds") or {}),
+            "",
+            "## Local repository evidence scan",
+            "",
+            _json_block(packet.get("repository_evidence") or {}),
+            "",
+            "## Local repository evidence contract",
+            "",
+            _json_block(packet.get("repository_evidence_contract") or {}),
             "",
             "## DITA/spec evidence",
             "",
@@ -358,16 +379,21 @@ def _normalize_behavior_doc(doc: dict[str, Any]) -> dict[str, Any]:
 def _derive_planning_seeds(issue: dict[str, Any], learned_behavior: dict[str, Any]) -> dict[str, Any]:
     results = list(learned_behavior.get("results") or []) if isinstance(learned_behavior, dict) else []
     snippets = "\n\n".join(str(item.get("snippet") or "") for item in results if isinstance(item, dict))
-    lowered = snippets.lower()
+    issue_text = "\n".join(
+        str(issue.get(key) or "")
+        for key in ("issue_key", "summary", "title", "description", "snippet", "status")
+    )
+    combined_text = "\n\n".join(part for part in (issue_text, snippets) if part.strip())
+    lowered = combined_text.lower()
     source_ids = [
         str(item.get("chunk_id") or item.get("source_url") or item.get("canonical_url") or "").strip()
         for item in results
         if isinstance(item, dict) and str(item.get("chunk_id") or item.get("source_url") or item.get("canonical_url") or "").strip()
     ][:8]
 
-    features = _extract_seed_values(snippets, "Learned feature behavior")
-    constructs = _extract_seed_values(snippets, "Detected DITA constructs and attributes")
-    outputs = _extract_seed_values(snippets, "Publishing/output contexts")
+    features = _augment_features_from_issue(_extract_seed_values(snippets, "Learned feature behavior"), lowered)
+    constructs = _augment_constructs_from_issue(_extract_seed_values(snippets, "Detected DITA constructs and attributes"), lowered)
+    outputs = _augment_outputs_from_issue(_extract_seed_values(snippets, "Publishing/output contexts"), lowered)
     evidence = source_ids or ["learned_behavior_evidence"]
 
     blast_radius = _build_blast_radius_seed(features, constructs, outputs, lowered, evidence)
@@ -400,6 +426,177 @@ def _derive_planning_seeds(issue: dict[str, Any], learned_behavior: dict[str, An
             "If learned_behavior_evidence is missing or unrelated, keep Review status as Draft.",
         ],
     }
+
+
+def _build_repository_evidence_contract(issue: dict[str, Any], planning_seeds: dict[str, Any]) -> dict[str, Any]:
+    issue_text = "\n".join(
+        str(issue.get(key) or "")
+        for key in ("issue_key", "summary", "title", "description", "snippet")
+    )
+    seed_text = json.dumps(planning_seeds, ensure_ascii=False, default=str)
+    lowered = f"{issue_text}\n{seed_text}".lower()
+
+    repos = [
+        {
+            "id": "xmleditor",
+            "owner_role": "frontend",
+            "purpose": "AEM Guides XML Editor product code; inspect UI entry points, service calls, state management, error rendering, and editor/report integration.",
+            "path_env": "XML_EDITOR_REPO_PATH",
+            "fallback_path_hints": ["../xmleditor", "../xml-editor", "../guides-ui"],
+            "evidence_to_collect": [
+                "Changed files or suspected owners for the feature entry point.",
+                "Frontend/backend API call path and request/response contract.",
+                "Error handling, loading states, pagination/lazy loading, cache/state cleanup.",
+            ],
+        },
+        {
+            "id": "starling",
+            "owner_role": "backend",
+            "purpose": "Starling/AEM Guides service code; inspect backend endpoints, report/snippet services, persistence, async jobs, and exception mapping.",
+            "path_env": "STARLING_REPO_PATH",
+            "fallback_path_hints": ["../starling", "../guides-starling", "../dxml"],
+            "evidence_to_collect": [
+                "Servlet/API endpoint implementation and validators.",
+                "Shared callers and downstream services.",
+                "Server-side limits, batching, retries, logging, and exception contracts.",
+            ],
+        },
+        {
+            "id": "guides-ui-tests",
+            "owner_role": "frontend_qa_automation",
+            "purpose": "UI automation coverage; inspect existing Playwright/Selenium/Behave/Page Object tests and selectors.",
+            "path_env": "GUIDES_UI_TESTS_REPO_PATH",
+            "fallback_path_hints": ["../guides-ui-tests", "../ui-tests"],
+            "evidence_to_collect": [
+                "Existing tests covering the feature or adjacent workflows.",
+                "Reusable page objects/selectors and gaps.",
+                "Automation strength classification: Exact and strong, weak oracle, partial, obsolete, mocked-only, or missing.",
+            ],
+        },
+        {
+            "id": "dxml-it-tests",
+            "owner_role": "backend_qa_automation",
+            "purpose": "Integration/API test coverage; inspect endpoint, persistence, publishing/report, and regression tests.",
+            "path_env": "DXML_IT_TESTS_REPO_PATH",
+            "fallback_path_hints": ["../dxml-it-tests", "../dxml-it", "../integration-tests"],
+            "evidence_to_collect": [
+                "Existing API/integration tests for the affected endpoint or shared service.",
+                "Test data builders and environment assumptions.",
+                "Regression gaps for negative, recovery, scale, and compatibility coverage.",
+            ],
+        },
+    ]
+
+    focus_queries = [
+        str(issue.get("issue_key") or ""),
+        str(issue.get("summary") or issue.get("title") or ""),
+    ]
+    if "snippet" in lowered:
+        focus_queries.extend(["/bin/fmdita/config/snippets", "snippets", "colwidth", "URLDecoder", "application/x-www-form-urlencoded"])
+    if "broken links" in lowered or "report" in lowered:
+        focus_queries.extend(["Broken Links Report", "Fetching details for broken links", "reports", "large map", "pagination", "lazy loading"])
+    if "schematron" in lowered:
+        focus_queries.extend(["schematron", "/bin/dxml/schematron", "Workspace Settings", "validate on save", "XSLT"])
+    if "publishing" in lowered or "html5" in lowered or "pdf" in lowered:
+        focus_queries.extend(["output preset", "DITA-OT", "Native PDF", "HTML5", "publishing"])
+
+    return {
+        "source": "local_clone_required",
+        "why_required": (
+            "The central VM MCP/RAG can provide Jira and documentation evidence, but it cannot inspect a developer or QA engineer's local cloned product/test repositories unless those paths are mounted or the MCP runs locally."
+        ),
+        "required_repositories": repos,
+        "focus_queries": _dedupe([item for item in focus_queries if item.strip()])[:16],
+        "role_based_evidence_gates": [
+            {
+                "owner_role": "frontend",
+                "primary_repo": "xmleditor",
+                "must_answer": [
+                    "Which UI route/component invokes the affected feature?",
+                    "What API payload, loading state, pagination/lazy loading, and error UI behavior changes?",
+                    "Which UI automation or page-object coverage proves the user-visible contract?",
+                ],
+                "automation_repo": "guides-ui-tests",
+            },
+            {
+                "owner_role": "backend",
+                "primary_repo": "starling",
+                "must_answer": [
+                    "Which servlet/service/parser/validator endpoint owns the request?",
+                    "What validation, exception mapping, persistence, logging, and scalability contracts change?",
+                    "Which API/integration test proves backend behavior and recovery?",
+                ],
+                "automation_repo": "dxml-it-tests",
+            },
+            {
+                "owner_role": "qa_or_release_owner",
+                "primary_repo": "guides-ui-tests + dxml-it-tests",
+                "must_answer": [
+                    "Do frontend and backend tests assert the same observable oracle?",
+                    "Are exact, weak, partial, obsolete, mocked-only, and missing automation paths classified?",
+                    "Which risks stay Draft because xmleditor/starling evidence is unavailable?",
+                ],
+                "automation_repo": "guides-ui-tests + dxml-it-tests",
+            },
+        ],
+        "minimum_evidence_before_review_ready": [
+            "Frontend-impacting changes inspect xmleditor and guides-ui-tests, or include an evidence-backed reason they are unavailable.",
+            "Backend-impacting changes inspect starling and dxml-it-tests, or include an evidence-backed reason they are unavailable.",
+            "Cross-layer changes inspect both xmleditor and starling, plus at least one UI and one API/integration automation path.",
+            "Existing coverage classified for each affected direct/shared path.",
+            "Missing repo evidence forces Review status: Draft.",
+        ],
+        "expected_plan_sections_to_update": [
+            "Evidence intake",
+            "Evidence map",
+            "Blast radius and risk analysis",
+            "Kill the Fix analysis",
+            "Automation strength assessment",
+            "Residual Risk and Release Confidence",
+        ],
+    }
+
+
+def _augment_features_from_issue(values: list[str], lowered: str) -> list[str]:
+    additions: list[str] = []
+    if "/bin/fmdita/config/snippets" in lowered or "snippet" in lowered:
+        additions.append("snippet-management")
+    if "application/x-www-form-urlencoded" in lowered or "urlencoded" in lowered or "url-encoded" in lowered:
+        additions.append("form-urlencoded-api")
+    if "urldecoder" in lowered or "illegal hex" in lowered or "%" in lowered:
+        additions.append("request-decoding")
+    if "api endpoint" in lowered or re.search(r"\bpost\b", lowered):
+        additions.append("api-workflow")
+    return _dedupe([*values, *additions])
+
+
+def _augment_constructs_from_issue(values: list[str], lowered: str) -> list[str]:
+    additions: list[str] = []
+    for token, label in (
+        ("colwidth", "colwidth"),
+        ("colspec", "colspec"),
+        ("tgroup", "tgroup"),
+        ("<table", "table"),
+        (" table ", "table"),
+    ):
+        if token in lowered:
+            additions.append(label)
+    if "%" in lowered or "percentage" in lowered:
+        additions.append("percent-character")
+    if "xml" in lowered:
+        additions.append("embedded-xml-payload")
+    return _dedupe([*values, *additions])
+
+
+def _augment_outputs_from_issue(values: list[str], lowered: str) -> list[str]:
+    additions: list[str] = []
+    if "cloud" in lowered:
+        additions.append("Cloud")
+    if "on-prem" in lowered or "on prem" in lowered or "onprem" in lowered:
+        additions.append("On-prem")
+    if "snippet" in lowered:
+        additions.append("Snippet API")
+    return _dedupe([*values, *additions])
 
 
 def _extract_seed_values(text: str, label: str) -> list[str]:
@@ -446,6 +643,10 @@ def _build_blast_radius_seed(
         seeds.append(_seed("BR-CONFIG-INHERITANCE", "Shared-path", "High", "Workspace/folder/profile configuration inheritance can change the effective validation or publishing context.", evidence))
     if "publish" in lowered or "output" in lowered or outputs:
         seeds.append(_seed("BR-PUBLISHING-PIPELINE", "Downstream", "High", "Publishing pipeline behavior can diverge across Native PDF, DITA-OT PDF, HTML/HTML5, and AEM Sites.", evidence))
+    if "/bin/fmdita/config/snippets" in lowered or "snippet" in lowered:
+        seeds.append(_seed("BR-SNIPPET-API", "Direct", "High", "Snippet create/read/update path can fail before DITA validation when request decoding or persistence changes.", evidence))
+    if "application/x-www-form-urlencoded" in lowered or "urldecoder" in lowered or "illegal hex" in lowered or "%" in lowered:
+        seeds.append(_seed("BR-FORM-DECODING", "Shared-path", "High", "Form-urlencoded request decoding is a shared boundary for raw percent characters, encoded values, and malformed escape sequences.", evidence))
     return _dedupe_seed_dicts(seeds)
 
 
@@ -457,6 +658,11 @@ def _build_bug_hypothesis_seed(constructs: list[str], outputs: list[str], lowere
     ]
     if any("schematron" in item.lower() for item in constructs) or "schematron" in lowered:
         seeds.append(_seed("BH-SCHEMATRON-XSLT-EXCEPTION", "Exception mapping", "P0", "Schematron/XSLT transform failure may surface as a misleading topic-content error instead of a configuration error.", evidence))
+    if "urldecoder" in lowered or "illegal hex" in lowered or "application/x-www-form-urlencoded" in lowered or "%" in lowered:
+        seeds.append(_seed("BH-PERCENT-DECODE-ESCAPE", "Encoding/decoding", "P0", "Raw `%` inside form-urlencoded embedded XML may be interpreted as an incomplete URL escape and fail before snippet creation.", evidence))
+        seeds.append(_seed("BH-DOUBLE-DECODE", "Encoding/decoding", "P1", "A fix may double-decode `%25`, store `%25` instead of `%`, or corrupt valid encoded XML payloads.", evidence))
+    if "snippet" in lowered:
+        seeds.append(_seed("BH-SNIPPET-PERSISTENCE-CORRUPTION", "Persistence", "P1", "Snippet creation may report success while storing modified or truncated embedded XML.", evidence))
     if any(item for item in outputs) or re.search(r"\b(pdf|html5|output|publishing)\b", lowered):
         seeds.append(_seed("BH-OUTPUT-DIVERGENCE", "Backend/UI/output mismatch", "P1", "Backend preprocessing can succeed or fail differently from final PDF/HTML5/AEM Sites output review.", evidence))
     for construct in constructs[:5]:
@@ -485,6 +691,12 @@ def _build_test_area_seed(
         seeds.append(_seed(f"TA-OUTPUT-{_seed_slug(output)}", "Output review", "P1", f"Review generated output context: {output}.", evidence))
     if "qa checklist" in lowered:
         seeds.append(_seed("TA-DOC-QA-CHECKLIST", "Documentation-derived QA", "P1", "Convert scraped QA checklist guidance into explicit scenario oracles.", evidence))
+    if "urldecoder" in lowered or "illegal hex" in lowered or "%" in lowered:
+        seeds.append(_seed("TA-ENCODING-MATRIX", "API encoding matrix", "P0", "Test raw `%`, encoded `%25`, malformed `%ZZ`, percent in adjacent fields, and normal no-percent controls.", evidence))
+    if "snippet" in lowered:
+        seeds.append(_seed("TA-SNIPPET-ROUNDTRIP", "Persistence round trip", "P1", "Create, retrieve/list, and use the snippet to prove embedded XML is preserved exactly.", evidence))
+    if "colwidth" in lowered or "colspec" in lowered:
+        seeds.append(_seed("TA-TABLE-COLWIDTH-DATA", "DITA table data", "P1", "Generate table snippets with `colspec/@colwidth` percentage, proportional, absolute, and malformed variants.", evidence))
     return _dedupe_seed_dicts(seeds)
 
 
@@ -504,6 +716,10 @@ def _build_regression_risk_seed(
         seeds.append(_seed("RR-PUBLISHING-OUTPUTS", "Release Regression", "P1", "PDF/HTML5/AEM Sites output behavior can regress even when editor/API behavior passes.", evidence))
     if constructs:
         seeds.append(_seed("RR-CONSTRUCT-MATRIX", "Component Regression", "P1", "Construct/attribute combinations need targeted pairwise coverage instead of one happy path.", evidence))
+    if "snippet" in lowered:
+        seeds.append(_seed("RR-SNIPPET-API-UI-PARITY", "Component Regression", "P1", "Snippet API, snippet listing, and editor insertion must remain consistent after the fix.", evidence))
+    if "application/x-www-form-urlencoded" in lowered or "%" in lowered:
+        seeds.append(_seed("RR-ENCODING-BACKWARD-COMPAT", "PR Gate", "P1", "Existing clients that send encoded form data must not regress while raw percent payloads are handled safely.", evidence))
     if features:
         seeds.append(_seed("RR-FEATURE-ADJACENCY", "Exploratory", "P2", "Adjacent documented feature workflows may share services, configuration, or output processors.", evidence))
     return _dedupe_seed_dicts(seeds)
@@ -586,6 +802,98 @@ def _qa_preview(jira_key: str, issue: dict[str, Any]) -> dict[str, Any]:
         return {"preview_unavailable": str(exc)}
 
 
+def _collect_repository_evidence(
+    issue: dict[str, Any],
+    planning_seeds: dict[str, Any],
+    repo_contract: dict[str, Any],
+    *,
+    max_matches: int,
+) -> dict[str, Any]:
+    try:
+        from app.services.repository_evidence_service import collect_repository_evidence
+
+        return collect_repository_evidence(
+            issue=issue,
+            planning_seeds=planning_seeds,
+            repo_contract=repo_contract,
+            max_matches=max(1, min(int(max_matches), 100)),
+        )
+    except Exception as exc:
+        return {
+            "source": "local_repository_scan",
+            "status": "missing",
+            "repo_evidence_status": "missing",
+            "scan_error": str(exc),
+            "repositories": [],
+            "owner_gates": [],
+            "missing_evidence": ["Repository evidence scan failed."],
+            "planner_instruction": "Keep Review status: Draft until local repository evidence is available.",
+        }
+
+
+def _repository_evidence_disabled() -> dict[str, Any]:
+    return {
+        "source": "local_repository_scan",
+        "status": "missing",
+        "repo_evidence_status": "missing",
+        "disabled": True,
+        "repositories": [],
+        "owner_gates": [],
+        "missing_evidence": ["Repository evidence scan disabled by MCP caller."],
+        "planner_instruction": "Keep Review status: Draft because repository evidence was not collected.",
+    }
+
+
+def _add_repository_evidence_seeds(
+    planning_seeds: dict[str, Any],
+    repository_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    enriched = dict(planning_seeds)
+    repo_seeds: list[dict[str, Any]] = []
+    for repo in repository_evidence.get("repositories") or []:
+        repo_id = str(repo.get("id") or "")
+        matches = repo.get("matches") or []
+        if matches:
+            repo_seeds.append(
+                _seed(
+                    f"REPO-{_seed_slug(repo_id)}",
+                    str(repo.get("owner_role") or repo.get("evidence_type") or "repository"),
+                    "P1",
+                    (
+                        f"{repo_id} has {len(matches)} local evidence match(es); cite file paths in "
+                        "blast radius, automation strength, and scenario traceability."
+                    ),
+                    [
+                        f"{match.get('relative_path')}:{match.get('line')} matched {match.get('matched_query')}"
+                        for match in matches[:5]
+                    ],
+                )
+            )
+        else:
+            repo_seeds.append(
+                _seed(
+                    f"REPO-MISSING-{_seed_slug(repo_id)}",
+                    str(repo.get("owner_role") or "repository"),
+                    "P1",
+                    f"{repo_id} evidence is missing or weak; keep the plan Draft unless this owner gate is evidence-backed as not applicable.",
+                    [str(repo.get("missing_reason") or "No repository evidence found.")],
+                )
+            )
+    for gate in repository_evidence.get("owner_gates") or []:
+        if gate.get("status") != "complete":
+            repo_seeds.append(
+                _seed(
+                    f"REPO-GATE-{_seed_slug(str(gate.get('owner_role') or 'OWNER'))}",
+                    "Repository owner gate",
+                    "P0",
+                    f"Owner gate {gate.get('owner_role')} is {gate.get('status')}; missing evidence must map to Residual Risk and Draft status.",
+                    [str(item) for item in gate.get("missing_evidence") or []],
+                )
+            )
+    enriched["repository_evidence_seed"] = _dedupe_seed_dicts(repo_seeds)
+    return enriched
+
+
 def _render_prompt(packet: dict[str, Any]) -> str:
     key = packet.get("jira_key", "")
     return f"""Generate an evidence-grounded AEM Guides test plan for `{key}`.
@@ -597,6 +905,8 @@ Mandatory:
 - Cite Experience League `source_url` / `canonical_url` from the MCP packet.
 - Use `learned_behavior_evidence` to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, and validation oracles from scraped DITA docs.
 - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, and `regression_risk_seed` as mandatory inputs; map each P0/P1 seed to a scenario or evidence-backed exclusion.
+- Use `repository_evidence` from local clone scanning. Cite exact paths/lines from `xmleditor`, `starling`, `guides-ui-tests`, and `dxml-it-tests`; missing or weak repo evidence means Draft.
+- Apply owner gates: frontend requires `xmleditor` + `guides-ui-tests`, backend requires `starling` + `dxml-it-tests`, and cross-layer changes require both.
 - If `publishing_transform_context.enabled=true`, include DITA-OT publishing/PDF2/HTML5 evidence and map related risks/tests to it.
 - Separate confirmed evidence from unknowns.
 - Cover or explicitly exclude every P0/P1 Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.

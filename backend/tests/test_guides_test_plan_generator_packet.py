@@ -76,3 +76,75 @@ def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
     assert any(seed["id"] == "BH-SCHEMATRON-XSLT-EXCEPTION" for seed in packet["planning_seeds"]["bug_hypothesis_seed"])
     assert "planning_seeds" in packet["prompt"]
     assert any("planning_seeds" in item for item in packet["instructions"])
+    repo_ids = {repo["id"] for repo in packet["repository_evidence_contract"]["required_repositories"]}
+    assert {"xmleditor", "starling", "guides-ui-tests", "dxml-it-tests"} <= repo_ids
+    repo_roles = {
+        repo["id"]: repo["owner_role"]
+        for repo in packet["repository_evidence_contract"]["required_repositories"]
+    }
+    assert repo_roles["xmleditor"] == "frontend"
+    assert repo_roles["starling"] == "backend"
+    gates = {
+        gate["owner_role"]: gate
+        for gate in packet["repository_evidence_contract"]["role_based_evidence_gates"]
+    }
+    assert gates["frontend"]["primary_repo"] == "xmleditor"
+    assert gates["frontend"]["automation_repo"] == "guides-ui-tests"
+    assert gates["backend"]["primary_repo"] == "starling"
+    assert gates["backend"]["automation_repo"] == "dxml-it-tests"
+    assert "repository_evidence_contract" in packet["prompt"]
+    assert any("repository_evidence_contract" in item for item in packet["instructions"])
+    assert packet["repository_evidence"]["source"] == "local_repository_scan"
+    assert packet["repo_evidence_status"] in {"complete", "partial", "missing"}
+    assert "repository_evidence_seed" in packet["planning_seeds"]
+    assert "repository_evidence" in packet["prompt"]
+    assert any("repository_evidence" in item for item in packet["instructions"])
+
+
+def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "_lookup_issue",
+        lambda jira_key, tenant_id: {
+            "issue_key": jira_key,
+            "summary": "Unable to Create Snippet When colwidth Contains Percentage Value (%)",
+            "description": (
+                "POST /bin/fmdita/config/snippets with Content-Type application/x-www-form-urlencoded "
+                "fails when embedded table XML contains colspec colwidth=\"369.50%\". "
+                "Error: URLDecoder Illegal hex characters in escape (%) pattern."
+            ),
+            "labels": ["api"],
+        },
+    )
+    monkeypatch.setattr(service, "_retrieve_aem_docs", lambda query, k: [])
+    monkeypatch.setattr(
+        service,
+        "_retrieve_learned_behavior_evidence",
+        lambda query, k: {
+            "available": False,
+            "source": "scraped_experienceleague_dita_behavior_chunks",
+            "results": [],
+            "expected_planner_use": [],
+        },
+    )
+    monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
+    monkeypatch.setattr(service, "_build_publishing_transform_context", lambda issue, query, k: {"enabled": False})
+    monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
+
+    packet = service.build_guides_test_plan_packet("DXML-45678", evidence_k=3)
+    seeds = packet["planning_seeds"]
+
+    assert "snippet-management" in seeds["features"]
+    assert "form-urlencoded-api" in seeds["features"]
+    assert "request-decoding" in seeds["features"]
+    assert "colwidth" in seeds["constructs"]
+    assert "percent-character" in seeds["constructs"]
+    assert "Snippet API" in seeds["outputs"]
+    assert any(seed["id"] == "BR-FORM-DECODING" for seed in seeds["blast_radius_seed"])
+    assert any(seed["id"] == "BH-PERCENT-DECODE-ESCAPE" for seed in seeds["bug_hypothesis_seed"])
+    assert any(seed["id"] == "TA-ENCODING-MATRIX" for seed in seeds["test_area_seed"])
+    assert any(seed["id"] == "RR-ENCODING-BACKWARD-COMPAT" for seed in seeds["regression_risk_seed"])
+    assert "/bin/fmdita/config/snippets" in packet["repository_evidence_contract"]["focus_queries"]
+    assert "guides-ui-tests" in {
+        repo["id"] for repo in packet["repository_evidence_contract"]["required_repositories"]
+    }

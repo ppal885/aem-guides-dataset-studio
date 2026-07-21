@@ -225,18 +225,32 @@ def get_rag_status(tenant_id: str = "default") -> str:
 
 
 @mcp.tool()
-def guides_test_plan_generator(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+def guides_test_plan_generator(
+    jira_key: str,
+    tenant_id: str = "kone",
+    evidence_k: int = 8,
+    include_repository_evidence: bool = True,
+    max_repo_matches: int = 30,
+) -> str:
     """Build the evidence packet for `/guides-test-plan-generator GUIDES-12345`."""
     body = {
         "jira_key": jira_key,
         "tenant_id": tenant_id,
         "evidence_k": evidence_k,
+        "include_repository_evidence": include_repository_evidence,
+        "max_repo_matches": max_repo_matches,
     }
     return _dump(_api().request_json("POST", "/api/v1/mcp/guides-test-plan-generator", json_body=body))
 
 
 @mcp.tool()
-def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evidence_k: int = 8) -> str:
+def publishing_ticket_dita_qa_packet(
+    jira_key: str,
+    tenant_id: str = "kone",
+    evidence_k: int = 8,
+    include_repository_evidence: bool = True,
+    max_repo_matches: int = 30,
+) -> str:
     """Claude MCP-only helper for publishing/PDF2/HTML/HTML5 Jira tickets with DITA-OT evidence."""
     try:
         from app.services.guides_test_plan_generator_service import (
@@ -245,7 +259,13 @@ def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evi
             render_guides_test_plan_packet_markdown,
         )
 
-        packet = build_guides_test_plan_packet(jira_key, tenant_id=tenant_id, evidence_k=evidence_k)
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=evidence_k,
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
+        )
         if not is_publishing_transform_ticket(packet.get("issue") or {}):
             return _dump(
                 {
@@ -258,7 +278,13 @@ def publishing_ticket_dita_qa_packet(jira_key: str, tenant_id: str = "kone", evi
             )
         return render_guides_test_plan_packet_markdown(packet)
     except Exception:
-        body = {"jira_key": jira_key, "tenant_id": tenant_id, "evidence_k": evidence_k}
+        body = {
+            "jira_key": jira_key,
+            "tenant_id": tenant_id,
+            "evidence_k": evidence_k,
+            "include_repository_evidence": include_repository_evidence,
+            "max_repo_matches": max_repo_matches,
+        }
         return _dump(_api().request_json("POST", "/api/v1/mcp/guides-test-plan-generator", json_body=body))
 
 

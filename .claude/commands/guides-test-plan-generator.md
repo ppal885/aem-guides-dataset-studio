@@ -18,6 +18,8 @@ Steps:
    - `jira_key`: the extracted key
    - `tenant_id`: `kone` unless the user provided another tenant
    - `evidence_k`: `8`
+   - `include_repository_evidence`: `true`
+   - `max_repo_matches`: `30`
 3. Use the returned MCP evidence packet plus the installed Claude skill `aem-guides-test-scenario-generator`.
    - Preferred: load it from the user's Claude skills directory, for example `~/.claude/skills/aem-guides-test-scenario-generator/SKILL.md`.
    - Repo fallback: if the current checkout contains `claude-skills/aem-guides-test-scenario-generator/SKILL.md`, use that file.
@@ -28,7 +30,11 @@ Steps:
    - Perform blast-radius analysis before scenario design.
    - Cite official Experience League `source_url` or `canonical_url` values from the MCP packet.
    - Use `learned_behavior_evidence` from scraped Experience League DITA to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, negative/risk cases, and validation oracles.
-   - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, and `regression_risk_seed`; every P0/P1 seed must map to a scenario or evidence-backed exclusion.
+   - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, `regression_risk_seed`, and `repository_evidence_seed`; every P0/P1 seed must map to a scenario or evidence-backed exclusion.
+   - Use `repository_evidence` local clone scan results and cite exact files/lines/tests; if unavailable or weak, keep the plan `Draft`.
+   - For frontend-owned areas, inspect `xmleditor` plus matching `guides-ui-tests` coverage.
+   - For backend-owned areas, inspect `starling` plus matching `dxml-it-tests` coverage.
+   - For cross-layer fixes, inspect both `xmleditor` and `starling`, then map UI/API automation to the same observable oracle.
    - Separate confirmed evidence from unknowns and assumptions.
    - Include R0 unchanged-behavior controls plus R1/R2/R3/R4 coverage where evidence supports it.
    - Cover or explicitly exclude every high/critical Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.

@@ -51,6 +51,8 @@ class GuidesTestPlanRequest(BaseModel):
     jira_key: str
     tenant_id: str = "kone"
     evidence_k: int = 8
+    include_repository_evidence: bool = True
+    max_repo_matches: int = 30
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +278,8 @@ def guides_test_plan_generator(body: GuidesTestPlanRequest, user: UserIdentity =
         body.jira_key,
         tenant_id=body.tenant_id,
         evidence_k=max(3, min(body.evidence_k, 12)),
+        include_repository_evidence=body.include_repository_evidence,
+        max_repo_matches=body.max_repo_matches,
     )
 
 
