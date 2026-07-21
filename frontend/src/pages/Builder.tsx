@@ -576,6 +576,43 @@ export function Builder() {
                         </div>
                       );
                     }
+                    if (key === 'key_count' && selectedRecipe.id === 'large_map_key_resolution') {
+                      const numericValue = Number(value ?? 500);
+                      const presets = [100, 500, 1000, 2000];
+                      return (
+                        <div key={key} className="space-y-1.5">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <Label className="text-[12px]">{fieldLabel(key)}</Label>
+                            <span className="text-[10px] text-muted-foreground">1 – 10,000</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {presets.map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => updateRecipeParam(key, preset)}
+                                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                  numericValue === preset
+                                    ? 'border-foreground/30 bg-muted text-foreground'
+                                    : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                }`}
+                              >
+                                {preset.toLocaleString()}
+                              </button>
+                            ))}
+                          </div>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={10000}
+                            step={1}
+                            className="h-8 text-[12px]"
+                            value={value === undefined || value === null ? '' : String(value)}
+                            onChange={event => updateRecipeParam(key, coercePrimitiveValue('int', event.target.value))}
+                          />
+                        </div>
+                      );
+                    }
                     return (
                       <div key={key} className="space-y-1">
                         <Label className="text-[12px]">{fieldLabel(key)}</Label>

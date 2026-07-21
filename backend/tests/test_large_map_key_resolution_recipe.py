@@ -141,11 +141,17 @@ def test_large_key_resolution_zip_contents():
 
 def test_large_key_resolution_recipe_registration_and_catalog_availability():
     specs = {spec.id: spec for spec in discover_recipe_specs()}
-    catalog_ids = {entry["id"] for entry in get_recipe_catalog()["entries"]}
+    catalog = get_recipe_catalog()
+    catalog_ids = {entry["id"] for entry in catalog["entries"]}
+    entry = next(item for item in catalog["entries"] if item["id"] == "large_map_key_resolution")
+    workflow_ids = {workflow["id"] for workflow in catalog["quick_workflows"]}
 
     assert "large_map_key_resolution" in specs
     assert specs["large_map_key_resolution"].title == "Large Map Key Resolution"
     assert "large_map_key_resolution" in catalog_ids
+    assert "product-key-001" in entry["full_example_xml"]
+    assert "expected-values CSV" in entry["expected_result"]
+    assert {"large_key_resolution_500", "large_key_resolution_2000"}.issubset(workflow_ids)
 
 
 def test_existing_keydef_heavy_recipe_still_generates():
