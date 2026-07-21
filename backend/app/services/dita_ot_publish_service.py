@@ -19,6 +19,7 @@ from app.services.dita_publishing_construct_registry import (
     build_publishing_corpus,
 )
 from app.services.dita_ot_failure_evidence_service import lookup_dita_ot_failure_evidence
+from app.services.dita_map_closure_service import copy_map_closure_to_dir
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -645,15 +646,10 @@ async def publish_with_dita_ot(
 
     resolved_map = _resolve_workspace_path(input_map)
     if resolved_map:
-        source_map = work_dir / resolved_map.name
-        if resolved_map.parent != work_dir:
-            for item in resolved_map.parent.iterdir():
-                target = work_dir / item.name
-                if item.is_file():
-                    shutil.copy2(item, target)
-                elif item.is_dir():
-                    shutil.copytree(item, target, dirs_exist_ok=True)
-        input_for_build = source_map if source_map.exists() else resolved_map
+        copy_map_closure_to_dir(resolved_map, work_dir)
+        input_for_build = work_dir / resolved_map.name
+        if not input_for_build.exists():
+            shutil.copy2(resolved_map, input_for_build)
     else:
         input_for_build = _write_sample_dataset(work_dir, prompt or slug, output_format=requested)
 

@@ -101,6 +101,48 @@ def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
     assert any("repository_evidence" in item for item in packet["instructions"])
 
 
+def test_lookup_issue_uses_direct_jira_fetch(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        base_url = "https://jira.corp.adobe.com"
+
+        def is_configured(self):
+            return True
+
+        def get_issue(self, issue_key):
+            captured["issue_key"] = issue_key
+            return {
+                "key": issue_key,
+                "fields": {
+                    "summary": "Broken Links Report hangs",
+                    "description": "Map with 600 topics hangs in browser.",
+                    "status": {"name": "Open"},
+                    "issuetype": {"name": "Bug"},
+                    "priority": {"name": "Critical"},
+                    "labels": ["sla3"],
+                    "components": [{"name": "Reports"}],
+                },
+            }
+
+    monkeypatch.setattr(
+        "app.services.tenant_service.build_jira_client",
+        lambda tenant_id: FakeClient(),
+    )
+    monkeypatch.setattr(
+        "app.services.jira_client.extract_description_from_issue",
+        lambda issue: issue.get("fields", {}).get("description", ""),
+    )
+
+    issue = service._fetch_issue_direct("GUIDES-37845", tenant_id="kone")
+
+    assert captured["issue_key"] == "GUIDES-37845"
+    assert issue["source"] == "jira_api"
+    assert issue["lookup_source"] == "jira_api_direct"
+    assert issue["summary"] == "Broken Links Report hangs"
+    assert issue["components"] == ["Reports"]
+
+
 def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
     monkeypatch.setattr(
         service,

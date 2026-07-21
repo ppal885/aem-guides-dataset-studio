@@ -164,6 +164,10 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
 
 
 def _lookup_issue(jira_key: str, *, tenant_id: str) -> dict[str, Any]:
+    direct = _fetch_issue_direct(jira_key, tenant_id=tenant_id)
+    if direct:
+        return direct
+
     try:
         from app.services.jira_chat_search_service import search_related_jira_issues
 
@@ -195,6 +199,73 @@ def _lookup_issue(jira_key: str, *, tenant_id: str) -> dict[str, Any]:
     issue["lookup_source"] = result.get("source", "")
     issue["lookup_message"] = result.get("message", "")
     return issue
+
+
+def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | None:
+    """Fetch explicit Jira keys via REST API (supports JIRA_PAT bearer auth)."""
+    if not _JIRA_KEY_RE.fullmatch((jira_key or "").strip().upper()):
+        return None
+    try:
+        from app.services.jira_client import JiraClient, extract_description_from_issue
+        from app.services.tenant_service import build_jira_client
+
+        client = build_jira_client(tenant_id)
+        if not client.is_configured():
+            client = JiraClient()
+        if not client.is_configured():
+            return None
+
+        raw = client.get_issue(jira_key)
+        fields = raw.get("fields") or {}
+        components = [
+            str(item.get("name") or "")
+            for item in (fields.get("components") or [])
+            if isinstance(item, dict) and item.get("name")
+        ]
+        return {
+            "issue_key": raw.get("key", jira_key),
+            "summary": fields.get("summary", ""),
+            "description": extract_description_from_issue(raw),
+            "status": (fields.get("status") or {}).get("name", ""),
+            "issue_type": (fields.get("issuetype") or {}).get("name", ""),
+            "priority": (fields.get("priority") or {}).get("name", ""),
+            "labels": fields.get("labels") or [],
+            "components": components,
+            "source": "jira_api",
+            "lookup_source": "jira_api_direct",
+            "lookup_message": f"Fetched `{raw.get('key', jira_key)}` directly from Jira API.",
+            "url": f"{client.base_url.rstrip('/')}/browse/{raw.get('key', jira_key)}" if client.base_url else "",
+        }
+    except Exception as exc:
+        indexed = _fetch_issue_indexed_by_key(jira_key, tenant_id=tenant_id)
+        if indexed:
+            indexed["lookup_message"] = (
+                f"Live Jira API unavailable ({exc}); using indexed cache for `{jira_key}`."
+            )
+            return indexed
+        return None
+
+
+def _fetch_issue_indexed_by_key(jira_key: str, *, tenant_id: str) -> dict[str, Any] | None:
+    """Exact-key lookup from indexed Jira cache when live REST is unavailable."""
+    key = (jira_key or "").strip().upper()
+    if not _JIRA_KEY_RE.fullmatch(key):
+        return None
+    try:
+        from app.services.jira_chat_search_service import search_related_jira_issues
+
+        result = search_related_jira_issues(key, tenant_id=tenant_id, max_results=5)
+        for issue in result.get("issues") or []:
+            issue_key = str(issue.get("issue_key") or issue.get("key") or "").upper()
+            if issue_key == key:
+                normalized = dict(issue)
+                normalized.setdefault("issue_key", key)
+                normalized["lookup_source"] = result.get("source", "jira_index")
+                normalized.setdefault("source", normalized["lookup_source"])
+                return normalized
+    except Exception:
+        return None
+    return None
 
 
 def _issue_query_text(jira_key: str, issue: dict[str, Any]) -> str:

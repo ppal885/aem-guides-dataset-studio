@@ -1009,6 +1009,60 @@ def save_prompt_template(name: str, content: str) -> str:
 
 
 @mcp.tool()
+def stage_dita_upload_package(package_name: str, filenames: str) -> str:
+    """
+    Stage a scoped DITA upload folder with only the listed files from output/dita/.
+
+    filenames: comma- or newline-separated basenames, e.g.
+      'GUIDES-37845-map.ditamap,GUIDES-37845-topic-a.dita,README-GUIDES-37845.txt'
+
+    Creates output/packages/<package_name>/ ready for upload_dataset_to_aem.
+    """
+    import json
+    import shutil
+    from datetime import datetime
+
+    output_dir = PROJECT_ROOT / "output" / "dita"
+    stage_dir = PROJECT_ROOT / "output" / "packages" / package_name
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    names = [part.strip() for part in re.split(r"[\n,]+", filenames or "") if part.strip()]
+    if not names:
+        return "Provide at least one filename to stage (comma- or newline-separated basenames)."
+
+    copied: list[str] = []
+    missing: list[str] = []
+    for name in names:
+        src = output_dir / name
+        if not src.is_file():
+            missing.append(name)
+            continue
+        shutil.copy2(src, stage_dir / name)
+        copied.append(name)
+
+    manifest = {
+        "package_name": package_name,
+        "created": datetime.utcnow().isoformat(),
+        "files": copied,
+        "missing": missing,
+    }
+    (stage_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    lines = [
+        f"Staged upload package: {stage_dir}",
+        f"Files copied: {len(copied)}",
+    ]
+    for item in copied:
+        lines.append(f"  - {item}")
+    if missing:
+        lines.append(f"Missing in output/dita/: {', '.join(missing)}")
+    lines.append(f"Upload with: upload_dataset_to_aem(source_path='output/packages/{package_name}', target_path='/content/dam/guides-qa/{package_name}')")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def bundle_dita_package(
         package_name: str,
         include_subfolders: bool = True
@@ -1750,193 +1804,109 @@ def _format_mcp_generation_redirect_result(title: str, result: dict) -> str:
 
 
 @mcp.tool()
-def generate_dita_from_jira(
+async def generate_dita_from_jira(
         issue_key: str,
         dita_type: str = "auto",
 ) -> str:
     """
     THE MAIN TOOL — Give a Jira issue key, get DITA automatically.
-    Handles everything: fetch → RAG → examples → generate → validate → enrich → score → log.
+    Runs the full MCP pipeline: fetch Jira → LLM generate → sync to output/dita → enrich → log.
 
-    issue_key: e.g. 'AEM-123'
+    issue_key: e.g. 'GUIDES-36430'
     dita_type: 'auto' (recommended) or force 'task' / 'concept' / 'reference'
-
-    Just call this and follow the instructions it returns.
     """
     try:
-        steps_log = []
-
-        # ── Step 1: Fetch issue + comments ────────────────────────────────
-        from backend.app.services.jira_client import JiraClient, extract_description_from_issue
-        jira = JiraClient()
-        issue = jira.get_issue(issue_key)
-        fields = issue.get("fields", {})
-        description = extract_description_from_issue(issue)
-        comments = jira.get_issue_comments(issue_key)
-        summary = fields.get("summary", "")
-        issue_type = fields.get("issuetype", {}).get("name", "").lower()
-        labels = fields.get("labels", [])
-        priority = fields.get("priority", {}).get("name", "")
-        status = fields.get("status", {}).get("name", "")
-        steps_log.append(f"✅ Fetched: {issue_key} — {summary[:60]}")
-
-        # ── Step 2: Auto-detect DITA type ─────────────────────────────────
-        if dita_type == "auto":
-            if any(x in issue_type for x in ["bug", "task", "subtask"]):
-                dita_type = "task"
-            elif any(x in issue_type for x in ["story", "epic", "feature"]):
-                dita_type = "concept"
-            elif any(x in issue_type for x in ["doc", "ref", "reference"]):
-                dita_type = "reference"
-            elif any(x in " ".join(labels).lower() for x in ["howto", "procedure", "steps"]):
-                dita_type = "task"
-            else:
-                dita_type = "concept"
-        steps_log.append(f"✅ DITA type detected: {dita_type}")
-
-        # ── Step 3: Load RAG context ──────────────────────────────────────
-        from backend.app.services.doc_retriever_service import (
-            retrieve_relevant_docs, format_docs_for_prompt
+        from backend.app.services.jira_generate_resolve import (
+            enrich_jira_text_with_analysis,
+            fetch_issue_text_for_generate,
         )
-        from backend.app.services.dita_knowledge_retriever import (
-            retrieve_dita_knowledge, retrieve_dita_graph_knowledge
+        from app.services.chat_tools import execute_generate_dita
+        from app.services.mcp_jira_dita_pipeline_service import (
+            build_jira_generation_request,
+            finalize_mcp_dita_output,
+            mark_issue_generated_local,
+            sync_bundle_to_output_dita,
         )
 
-        el_docs = retrieve_relevant_docs(query=summary, k=2)
-        el_text = format_docs_for_prompt(el_docs) if el_docs else "Not indexed yet."
+        key = (issue_key or "").strip().upper()
+        if not key:
+            return "Error: issue_key is required."
 
-        spec_chunks = retrieve_dita_knowledge(query_text=summary, k=2)
-        spec_text = "\n---\n".join(
-            (c.get("text_content") or "")[:600]
-            for c in spec_chunks
-        ) if spec_chunks else "Not indexed yet."
+        formatted, err = fetch_issue_text_for_generate(key)
+        if not formatted:
+            return f"Error fetching {key}: {err or 'Jira issue unavailable'}"
 
-        graph_text = retrieve_dita_graph_knowledge(
-            element_hint=f"{dita_type} {summary}"
-        ) or "Not available."
-        steps_log.append("✅ RAG context loaded")
+        enriched = enrich_jira_text_with_analysis(formatted, issue_key=key)
+        generation_request = build_jira_generation_request(key, dita_type=dita_type)
+        text = f"{enriched}\n\n## Generation Request\n{generation_request}"
 
-        # ── Step 4: Find closest expert DITA example ──────────────────────
-        example_text = ""
-        try:
-            from backend.app.services.embedding_service import embed_query, is_embedding_available
-            from backend.app.services.vector_store_service import query_collection, is_chroma_available
+        instructions = None
+        if dita_type != "auto":
+            instructions = f"Force primary topic type: {dita_type}"
 
-            if is_chroma_available() and is_embedding_available():
-                q_emb = embed_query(f"{dita_type} {summary}")
-                if q_emb is not None:
-                    rows = query_collection(
-                        "dita_examples",
-                        query_embedding=q_emb.tolist(),
-                        k=1,
-                        where={"topic_type": {"$eq": dita_type}},
-                    )
-                    if rows:
-                        example_text = (rows[0].get("document") or "")[:2000]
-                        steps_log.append("✅ Expert example found")
-                    else:
-                        steps_log.append("⚠️ No expert example found — run index_dita_example_repos")
-        except Exception:
-            steps_log.append("⚠️ Expert examples not available")
+        result = await execute_generate_dita(
+            text=text,
+            instructions=instructions,
+            bundle_contract=None,
+            run_id=None,
+            session_id=None,
+            user_id="mcp-user",
+            tenant_id="kone",
+        )
 
-        # ── Step 5: Format comments ───────────────────────────────────────
-        comment_lines = []
-        for c in comments[:5]:
-            body = (c.get("body_text") or "")[:300]
-            if body:
-                comment_lines.append(f"{c.get('author', 'Unknown')}: {body}")
-        comment_text = "\n".join(comment_lines) if comment_lines else "No comments."
+        if result.get("error"):
+            return f"generate_dita_from_jira failed for {key}: {result['error']}"
 
-        # ── Step 6: Build output filename ─────────────────────────────────
-        filename = f"{issue_key}-{dita_type}.dita"
-        root_id = issue_key.lower().replace("-", "_")
+        jira_id = str(result.get("jira_id") or key)
+        saved_files = sync_bundle_to_output_dita(jira_id)
+        if not saved_files:
+            saved_files = [
+                name
+                for name in (result.get("representative_files") or [])
+                if isinstance(name, str) and name.strip()
+            ]
 
-        # ── Step 7: Return complete generation package ────────────────────
-        return f"""
-GENERATION PACKAGE FOR {issue_key}
-{'=' * 60}
-{chr(10).join(steps_log)}
+        finalize = finalize_mcp_dita_output(saved_files)
+        mark_issue_generated_local(
+            key,
+            saved_files,
+            notes="Generated via MCP generate_dita_from_jira pipeline",
+        )
 
-TARGET FILE: output/dita/{filename}
-{'=' * 60}
+        validation_lines = [
+            f"  - {name}: {status}"
+            for name, status in (finalize.get("validation") or {}).items()
+        ] or ["  - none"]
+        file_lines = [f"  - {name}" for name in saved_files] or ["  - none"]
 
-JIRA DATA:
-  Key:         {issue_key}
-  Summary:     {summary}
-  Type:        {fields.get('issuetype', {}).get('name', '')}
-  Status:      {status}
-  Priority:    {priority}
-  Labels:      {', '.join(labels) or 'None'}
-
-  Description:
-  {description[:2000]}
-
-  Comments:
-  {comment_text}
-
-{'=' * 60}
-AEM GUIDES CONTEXT (Experience League):
-{el_text[:1000]}
-
-{'=' * 60}
-DITA SPEC RULES (1.2 / 1.3):
-{spec_text[:800]}
-
-{'=' * 60}
-ELEMENT NESTING RULES:
-{graph_text[:600]}
-
-{'=' * 60}
-EXPERT EXAMPLE (mirror this structure):
-{example_text if example_text else 'No example available — use spec rules above.'}
-
-{'=' * 60}
-YOUR TASK — GENERATE THIS FILE:
-{'=' * 60}
-
-Generate a complete DITA 1.3 {dita_type} topic XML using ALL context above.
-
-REQUIREMENTS:
-1. Start with: <?xml version="1.0" encoding="UTF-8"?>
-2. Include correct DOCTYPE for {dita_type}
-3. Root <{dita_type}> must have: id="{root_id}"
-4. Include <title> reflecting the issue summary
-5. Include <shortdesc> — one sentence summarizing the issue
-6. Include <prolog><metadata> with author and created date
-7. Use correct body element:
-   - task      → <taskbody> with <prereq>, <context>, <steps>, <result>
-   - concept   → <conbody> with <p>, <section>
-   - reference → <refbody> with <section>, <properties>
-8. Every <step> must have <cmd> as first child
-9. Content must reflect the ACTUAL Jira issue — not generic
-10. Follow nesting rules from element graph above
-11. Mirror structure from expert example above
-
-SCENARIO FIDELITY (mandatory — not a Jira field dump):
-12. Do NOT treat the topic as finished if you only paraphrased the description into <p>
-    blocks and added a metadata <simpletable> (issue key, status, labels). That is
-    insufficient for editor, table, layout, or publishing defects.
-13. Encode the reporter's STRUCTURE in DITA: if they describe a table with dimensions,
-    include a real content <table> with <tgroup cols="N">, <colspec> per column,
-    <thead>/<tbody>, and enough <row>/<entry> cells to match the described grid (pick a
-    clear interpretation when Jira wording is ambiguous, e.g. "6 rows and 5 rows" → state
-    5 columns × 6 rows in a short <p> or <note>).
-14. UI actions (right-click, menu paths): use <menucascade> with <uicontrol> for each
-    level (e.g. Delete → Columns). Order must match the Jira reproduction.
-15. Every URL in description or comments: add <xref href="..." format="html" scope="external">.
-16. Distinctive reporter wording that carries reproduction detail: preserve in a <note> or
-    <lq> (verbatim or near-verbatim), then explain interpretation in following <p> if needed.
-17. Procedural reproduction in a concept topic: add a dedicated <section> (e.g. reproduction)
-    with <ol> or numbered steps; if dita_type is task, use <steps>/<step>/<cmd> instead.
-
-AFTER GENERATING, EXECUTE IN ORDER:
-1. save_dita_file('{filename}', generated_xml)
-2. validate_and_fix_dita('{filename}')
-3. enrich_dita_output()
-4. score_dita_quality('{filename}')
-5. mark_issue_generated('{issue_key}', ['{filename}'])
-{'=' * 60}
-"""
+        lines = [
+            f"✅ generate_dita_from_jira completed for {key}",
+            "",
+            f"Jira ID / bundle: {jira_id}",
+            f"Run ID: {result.get('run_id', 'unknown')}",
+            f"Download URL: {result.get('download_url', 'Not available')}",
+            "",
+            "Synced to output/dita/:",
+            *file_lines,
+            "",
+            "Validation:",
+            *validation_lines,
+            "",
+            f"Enrichment: {finalize.get('enrich', {})}",
+        ]
+        if result.get("resolution_warning"):
+            lines.extend(["", f"Resolution warning: {result['resolution_warning']}"])
+        if result.get("rag_warning"):
+            lines.extend(["", f"RAG warning: {result['rag_warning']}"])
+        lines.extend(
+            [
+                "",
+                "Next steps:",
+                f"1. stage_dita_upload_package(package_name='{key}-qa', filenames='<comma-separated basenames>')",
+                f"2. upload_dataset_to_aem(source_path='output/packages/{key}-qa', target_path='/content/dam/guides-qa/{key}')",
+            ]
+        )
+        return "\n".join(lines)
 
     except Exception as e:
         return f"Error generating for {issue_key}: {e}"
