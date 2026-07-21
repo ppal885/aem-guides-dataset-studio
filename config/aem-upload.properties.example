@@ -1,0 +1,11 @@
+# AEM Upload config — copy to aem-upload.properties and fill in your values.
+# File location: config/aem-upload.properties
+#
+# Use either username/password OR access token (leave the other blank).
+
+aem.base.url=https://author-p12345-e67890.adobeaemcloud.com
+aem.username=your-username
+aem.password=your-password
+
+# Optional: AEM Cloud bearer token (use instead of username/password)
+aem.access.token=

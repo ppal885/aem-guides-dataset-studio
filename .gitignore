@@ -104,6 +104,9 @@ build/
 # Sync scripts config (keep template, ignore user-specific)
 sync-config.local.json
 
+# AEM upload credentials (template: config/aem-upload.properties.example)
+config/aem-upload.properties
+
 # Local/generated AI indexes and machine-specific settings
 backend/storage/chroma_db/
 .run-local/

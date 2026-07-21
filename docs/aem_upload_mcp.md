@@ -18,9 +18,30 @@ If `npm ci` is not available for your environment, use:
 npm install
 ```
 
-## Environment
+## Config file (recommended)
 
-Preferred auth is environment-based so credentials are not pasted into chat:
+Fill this simple properties file — no need to edit `.env`:
+
+`config/aem-upload.properties`
+
+```properties
+aem.base.url=https://author-p12345-e67890.adobeaemcloud.com
+aem.username=your-username
+aem.password=your-password
+
+# Optional: use token instead of username/password on AEM Cloud
+aem.access.token=
+```
+
+Template: `config/aem-upload.properties.example`
+
+After saving, restart the `aem-guides-dataset-studio` MCP server so it reloads the file.
+
+Priority order: tool arguments > `config/aem-upload.properties` > environment variables.
+
+## Environment (optional fallback)
+
+You can still use environment variables if you prefer:
 
 Linux/macOS:
 

@@ -3665,8 +3665,8 @@ def upload_dataset_to_aem(
 
     source_path must be a project-local directory or ZIP. ZIP files are extracted
     to tmp/aem_upload_extract/<zip-name> before upload. Credentials can be passed
-    directly, but the preferred Claude MCP flow is env vars:
-    AEM_BASE_URL, AEM_USERNAME, AEM_PASSWORD, or AEM_ACCESS_TOKEN.
+    directly, but the preferred Claude MCP flow is config/aem-upload.properties
+    (aem.base.url, aem.username, aem.password, or aem.access.token).
     """
     import json
 
@@ -3684,14 +3684,29 @@ def upload_dataset_to_aem(
                 return "source_path must be a directory or .zip file."
             upload_source = _extract_zip_for_aem_upload(source)
 
-        base_url = (aem_base_url or os.getenv("AEM_BASE_URL") or os.getenv("AEM_AUTHOR_URL") or "").strip()
-        user = username or os.getenv("AEM_USERNAME") or ""
-        pwd = password or os.getenv("AEM_PASSWORD") or ""
-        token = access_token or os.getenv("AEM_ACCESS_TOKEN") or ""
+        from app.core.aem_upload_config import get_config_path, resolve_aem_upload_credentials
+
+        creds = resolve_aem_upload_credentials(
+            aem_base_url=aem_base_url,
+            username=username,
+            password=password,
+            access_token=access_token,
+        )
+        base_url = creds["base_url"]
+        user = creds["username"]
+        pwd = creds["password"]
+        token = creds["access_token"]
+        config_hint = get_config_path()
         if not base_url:
-            return "Missing AEM base URL. Pass aem_base_url or set AEM_BASE_URL/AEM_AUTHOR_URL."
+            return (
+                f"Missing AEM base URL. Fill {config_hint} (aem.base.url) "
+                "or pass aem_base_url / set AEM_BASE_URL."
+            )
         if not token and not (user and pwd):
-            return "Missing AEM auth. Pass access_token or username/password, or set AEM_ACCESS_TOKEN or AEM_USERNAME/AEM_PASSWORD."
+            return (
+                f"Missing AEM auth. Fill {config_hint} (aem.username/aem.password "
+                "or aem.access.token) or pass credentials to the tool."
+            )
 
         from app.services.aem_upload_service import get_upload_service
 
