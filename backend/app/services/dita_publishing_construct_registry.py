@@ -86,15 +86,15 @@ def _metadata_cascade_topic() -> str:
 <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
 <topic id="metadata-cascade-topic" xml:lang="en-US">
   <title>Topic-level metadata cascade target</title>
+  <shortdesc>This topic contains topic-level metadata that is combined with map-level topicmeta during processing.</shortdesc>
   <prolog>
     <metadata>
+      <audience type="writer"/>
       <keywords>
         <keyword>topic-keyword</keyword>
       </keywords>
-      <audience type="writer"/>
     </metadata>
   </prolog>
-  <shortdesc>This topic contains topic-level metadata that is combined with map-level topicmeta during processing.</shortdesc>
   <body>
     <section id="metadata-cascade-positive"><title>Metadata cascade behavior</title>
       <p>The map contributes <xmlelement>topicmeta</xmlelement> such as navigation title, search title, and keywords. The topic contributes <xmlelement>prolog</xmlelement> metadata.</p>

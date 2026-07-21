@@ -121,6 +121,8 @@ def run_generate_dataset(
             total_files_estimated += 3  # 1 topic, 1 ditaval, 1 manifest
         elif recipe_type == "keyref_nested_keydef_chain_map_to_map_to_topic":
             total_files_estimated += 6  # 2 maps, 2 topics, README, manifest
+        elif recipe_type == "large_map_key_resolution":
+            total_files_estimated += 5  # map, topic, CSV, README, optional ZIP
         elif recipe_type == "table_semantics_reference":
             total_files_estimated += 2  # map + topic
         elif recipe_type == "inline_formatting_nested":
@@ -830,6 +832,23 @@ def run_generate_dataset(
                     keydef_count=recipe.keydef_count if hasattr(recipe, 'keydef_count') else 100,
                     include_map=recipe.include_map if hasattr(recipe, 'include_map') else True,
                     rand=rand
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
+            elif recipe_type == "large_map_key_resolution":
+                from app.generator.large_key_resolution import generate_large_map_key_resolution_dataset
+                recipe_files = generate_large_map_key_resolution_dataset(
+                    dataset_config,
+                    base,
+                    key_count=getattr(recipe, "key_count", 500),
+                    keys_per_section=getattr(recipe, "keys_per_section", 25),
+                    key_prefix=getattr(recipe, "key_prefix", "product-key"),
+                    map_title=getattr(recipe, "map_title", "Large Key Resolution Performance Map"),
+                    topic_title=getattr(recipe, "topic_title", "Large Topic Resolving Map-Defined Keys"),
+                    include_expected_values=getattr(recipe, "include_expected_values", True),
+                    create_zip=getattr(recipe, "create_zip", True),
                 )
                 files.update(recipe_files)
                 files_generated += len(recipe_files)
