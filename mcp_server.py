@@ -144,25 +144,6 @@ def search_jira_issues(jql: str, max_results: int = 20) -> str:
         from backend.app.services.jira_dita_fetch_service import fetch_jira_issues
         issues = fetch_jira_issues(jql, max_results=max_results, fetch_comments=False)
         if not issues:
-            import re
-            key_match = re.search(r"key\s*=\s*([A-Z][A-Z0-9]+-\d+)", jql or "", re.IGNORECASE)
-            if key_match:
-                from backend.app.services.jira_client import JiraClient, extract_description_from_issue
-
-                issue_key = key_match.group(1).upper()
-                jira = JiraClient()
-                if jira.is_configured():
-                    raw = jira.get_issue(issue_key)
-                    fields = raw.get("fields", {}) or {}
-                    issues = [{
-                        "issue_key": raw.get("key", issue_key),
-                        "summary": fields.get("summary", ""),
-                        "description": extract_description_from_issue(raw),
-                        "labels": fields.get("labels") or [],
-                        "priority": (fields.get("priority") or {}).get("name", ""),
-                        "status": (fields.get("status") or {}).get("name", ""),
-                    }]
-        if not issues:
             return "No issues found for the given JQL."
 
         lines = []
@@ -1858,14 +1839,10 @@ async def generate_dita_from_jira(
             fetch_issue_text_for_generate,
         )
         from app.services.chat_tools import execute_generate_dita
-        from app.services.guides_test_plan_generator_service import build_guides_test_plan_packet
         from app.services.mcp_jira_dita_pipeline_service import (
             build_jira_generation_request,
             finalize_mcp_dita_output,
-            is_map_deep_reprocess_scenario,
             mark_issue_generated_local,
-            materialize_map_deep_reprocess_qa_pack,
-            summarize_plan_for_generation,
             sync_bundle_to_output_dita,
         )
 
@@ -1877,81 +1854,8 @@ async def generate_dita_from_jira(
         if not formatted:
             return f"Error fetching {key}: {err or 'Jira issue unavailable'}"
 
-        plan_packet = build_guides_test_plan_packet(
-            key,
-            tenant_id="kone",
-            evidence_k=6,
-            include_repository_evidence=True,
-            max_repo_matches=20,
-        )
-        plan_summary = summarize_plan_for_generation(plan_packet)
-        issue = plan_packet.get("issue") or {}
-        scenario_text = "\n".join(
-            str(part or "")
-            for part in (
-                formatted,
-                issue.get("summary"),
-                issue.get("description"),
-                issue.get("title"),
-            )
-        )
-
-        if is_map_deep_reprocess_scenario(scenario_text, key):
-            bundle_dir, manifest_files = materialize_map_deep_reprocess_qa_pack(key)
-            saved_files = sync_bundle_to_output_dita(
-                key,
-                issue_key=key,
-                bundle_dir=bundle_dir,
-            )
-            finalize = finalize_mcp_dita_output(saved_files or manifest_files)
-            mark_issue_generated_local(
-                key,
-                saved_files or manifest_files,
-                notes="Plan-informed deterministic map-deep-reprocess QA pack",
-            )
-            validation_lines = [
-                f"  - {name}: {status}"
-                for name, status in (finalize.get("validation") or {}).items()
-            ] or ["  - none"]
-            file_lines = [f"  - {name}" for name in (saved_files or manifest_files)] or ["  - none"]
-            lines = [
-                f"✅ generate_dita_from_jira completed for {key}",
-                "",
-                "Mode: plan → deterministic QA pack (Editor deep map reprocess)",
-                "",
-                "## What the QA user sees in AEM Guides Editor",
-                "- Open root map in Map Editor/Dashboard",
-                "- DITA Map (...) menu → **Reprocess asset**",
-                "- Dialog: radio **Only map** vs **Map with dependents**",
-                "- Dependents list must include nested map topics + reltable topics",
-                "- scope=peer and scope=external refs must be excluded from dependents",
-                "",
-                "## Test plan seeds used",
-                plan_summary,
-                "",
-                f"Primary map: {key}-root.ditamap",
-                f"Bundle: {key}",
-                "",
-                "Synced to output/dita/:",
-                *file_lines,
-                "",
-                "Validation:",
-                *validation_lines,
-                "",
-                f"Enrichment: {finalize.get('enrich', {})}",
-                "",
-                "Next steps:",
-                f"1. stage_dita_upload_package(package_name='{key}-qa', filenames='<comma-separated basenames>')",
-                f"2. upload_dataset_to_aem(source_path='output/packages/{key}-qa', target_path='/content/dam/guides-qa/{key}')",
-            ]
-            return "\n".join(lines)
-
         enriched = enrich_jira_text_with_analysis(formatted, issue_key=key)
-        generation_request = build_jira_generation_request(
-            key,
-            dita_type=dita_type,
-            plan_packet=plan_packet,
-        )
+        generation_request = build_jira_generation_request(key, dita_type=dita_type)
         text = f"{enriched}\n\n## Generation Request\n{generation_request}"
 
         instructions = None
@@ -1966,18 +1870,13 @@ async def generate_dita_from_jira(
             session_id=None,
             user_id="mcp-user",
             tenant_id="kone",
-            forced_jira_id=key,
         )
 
         if result.get("error"):
             return f"generate_dita_from_jira failed for {key}: {result['error']}"
 
         jira_id = str(result.get("jira_id") or key)
-        saved_files = sync_bundle_to_output_dita(
-            jira_id,
-            issue_key=key,
-            bundle_dir=result.get("bundle_dir"),
-        )
+        saved_files = sync_bundle_to_output_dita(jira_id)
         if not saved_files:
             saved_files = [
                 name
@@ -2000,11 +1899,6 @@ async def generate_dita_from_jira(
 
         lines = [
             f"✅ generate_dita_from_jira completed for {key}",
-            "",
-            "Mode: plan → LLM generate",
-            "",
-            "## Test plan seeds used",
-            plan_summary,
             "",
             f"Jira ID / bundle: {jira_id}",
             f"Run ID: {result.get('run_id', 'unknown')}",
@@ -2491,10 +2385,9 @@ DITA_TRUSTED_SOURCES = [
 ]
 
 
-def _get_tavily_client(api_key: str | None = None):
+def _get_tavily_client(TAVILY_API_KEY):
     """Get Tavily client. Raises clear error if not configured."""
-    key = (api_key or TAVILY_API_KEY or "").strip()
-    if not key:
+    if not TAVILY_API_KEY:
         raise ValueError(
             "TAVILY_API_KEY not set in .env\n"
             "Get free key at: https://tavily.com\n"
@@ -2502,7 +2395,7 @@ def _get_tavily_client(api_key: str | None = None):
         )
     try:
         from tavily import TavilyClient
-        return TavilyClient(api_key=key)
+        return TavilyClient(api_key=TAVILY_API_KEY)
     except ImportError:
         raise ImportError(
             "tavily-python not installed.\n"
@@ -2635,16 +2528,12 @@ def research_for_jira_issue(issue_key: str, custom_query: str = "") -> str:
             include_answer=True,
         )
 
-        output = [
-            f"Research for {issue_key}: {summary[:60]}",
-            f"Search query: {query[:100]}",
-            "=" * 60,
-            _format_research_result(
-                result,
-                title=f"Web Research for {issue_key}",
-                source_type="DITA/AEM Sources",
-            ),
-        ]
+        output = ["Research for {issue_key}: {summary[:60]}", f"Search query: {query[:100]}", "=" * 60,
+                  _format_research_result(
+                      result,
+                      title="Web Research for {issue_key}",
+                      source_type="DITA/AEM Sources",
+                  )]
 
         # Suggest indexing if useful content found
         if result.get("results"):
@@ -4093,70 +3982,22 @@ def guides_test_plan_generator(
     evidence, and QA Studio preview data. It is read-only: it does not crawl,
     reindex, delete, or mutate production vector indexes.
     """
-    with _tool_stdout_guard():
-        try:
-            from app.services.guides_test_plan_generator_service import (
-                build_guides_test_plan_packet,
-                render_guides_test_plan_packet_markdown,
-            )
-
-            packet = build_guides_test_plan_packet(
-                jira_key,
-                tenant_id=tenant_id,
-                evidence_k=max(3, min(int(evidence_k), 12)),
-                include_repository_evidence=include_repository_evidence,
-                max_repo_matches=max_repo_matches,
-            )
-            return render_guides_test_plan_packet_markdown(packet)
-        except Exception as e:
-            return f"Error building Guides test-plan evidence packet: {e}"
-
-
-@mcp.tool()
-def publish_test_plan(jira_key: str, markdown: str) -> str:
-    """
-    Publish the final markdown test plan to shared team storage.
-
-    After Claude generates the validated plan from /guides-test-plan-generator,
-    call this tool so every teammate can open it in Dataset Studio at /test-plans.
-    """
     try:
-        from app.services.test_plan_artifact_service import save_test_plan, validate_saved_test_plan
+        from app.services.guides_test_plan_generator_service import (
+            build_guides_test_plan_packet,
+            render_guides_test_plan_packet_markdown,
+        )
 
-        saved = save_test_plan(jira_key, markdown)
-        validation = validate_saved_test_plan(saved["jira_key"])
-        status = "valid" if validation.get("valid") else "invalid"
-        errors = validation.get("errors") or []
-        lines = [
-            f"Published shared test plan for {saved['jira_key']}.",
-            f"Team UI: /test-plans?jira={saved['jira_key']}",
-            f"Validator: {status}",
-        ]
-        if errors:
-            lines.append("Validation errors:")
-            lines.extend(f"- {item}" for item in errors[:10])
-        return "\n".join(lines)
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=max(3, min(int(evidence_k), 12)),
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
+        )
+        return render_guides_test_plan_packet_markdown(packet)
     except Exception as e:
-        return f"Error publishing test plan: {e}"
-
-
-@mcp.tool()
-def list_published_test_plans() -> str:
-    """List shared test plans visible to the whole team in Dataset Studio."""
-    try:
-        from app.services.test_plan_artifact_service import list_test_plans
-
-        plans = list_test_plans()
-        if not plans:
-            return "No shared test plans published yet."
-        lines = ["Shared test plans:"]
-        for plan in plans:
-            lines.append(
-                f"- {plan['jira_key']} | {plan.get('review_status', 'Unknown')} | /test-plans?jira={plan['jira_key']}"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Error listing test plans: {e}"
+        return f"Error building Guides test-plan evidence packet: {e}"
 
 
 @mcp.tool()
