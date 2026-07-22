@@ -82,6 +82,7 @@ async def run(args: argparse.Namespace) -> int:
             tool_names = sorted(tool.name for tool in tools.tools)
             print(f"Connected MCP server. tools={len(tool_names)}")
             required = {
+                "ask_dita_expert",
                 "lookup_dita_construct",
                 "generate_dita",
                 "generate_dita_ot_output",
@@ -93,6 +94,19 @@ async def run(args: argparse.Namespace) -> int:
                 print("FAIL missing tools:", ", ".join(missing))
                 return 1
             print("Required tools present:", ", ".join(sorted(required)))
+
+            if args.call in {"ask", "all"}:
+                ok, text = await _call_tool(
+                    session,
+                    "ask_dita_expert",
+                    {"question": "What is searchtitle in DITA?"},
+                    timeout_seconds=args.tool_timeout,
+                )
+                print("\n--- ask_dita_expert(searchtitle) ---")
+                print(text[:3000])
+                if not ok or "search" not in text.lower():
+                    print("FAIL ask_dita_expert smoke did not return expected content")
+                    return 1
 
             if args.call in {"lookup", "all"}:
                 ok, text = await _call_tool(
@@ -154,7 +168,7 @@ def main() -> int:
     parser.add_argument("--python", default=str(DEFAULT_PYTHON), help="Python executable used by Cursor MCP config")
     parser.add_argument(
         "--call",
-        choices=("lookup", "generate-router", "dita-ot", "all", "none"),
+        choices=("ask", "lookup", "generate-router", "dita-ot", "all", "none"),
         default="all",
         help="Which real tool call to execute after list_tools",
     )

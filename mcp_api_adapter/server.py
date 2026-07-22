@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -13,13 +14,18 @@ from mcp.server.fastmcp import FastMCP
 
 from mcp_api_adapter.http_client import DatasetStudioApiClient
 
-mcp = FastMCP("dataset-studio-api")
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = PROJECT_ROOT / "backend"
 for candidate in (PROJECT_ROOT, BACKEND_DIR):
     value = str(candidate)
     if value not in sys.path:
         sys.path.insert(0, value)
+
+from app.core.mcp_stdio import configure_mcp_stdio_runtime
+
+configure_mcp_stdio_runtime()
+
+mcp = FastMCP("dataset-studio-api")
 
 _client: DatasetStudioApiClient | None = None
 

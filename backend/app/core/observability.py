@@ -7,6 +7,7 @@ Usage:
     log.info("dita_generation_started", run_id=run_id, session_id=session_id, topic_count=n)
 """
 import logging
+import os
 import sys
 from typing import Any, Optional
 
@@ -43,6 +44,21 @@ _observability_formatter = structlog.stdlib.ProcessorFormatter(
 _observability_handler_configured = False
 
 
+def _observability_log_stream():
+    if os.getenv("AEM_DATASET_STUDIO_MCP_STDIO", "").lower() in {"1", "true", "yes"}:
+        return sys.stderr
+    return sys.stdout
+
+
+def reset_observability_handler_for_mcp_stdio() -> None:
+    """Rebind observability logging after MCP stdio env is forced."""
+    global _observability_handler_configured
+    obs_logger = logging.getLogger("app.observability")
+    obs_logger.handlers.clear()
+    _observability_handler_configured = False
+    _ensure_observability_handler()
+
+
 def _ensure_observability_handler() -> None:
     """Ensure app.observability logger has JSON handler."""
     global _observability_handler_configured
@@ -50,12 +66,12 @@ def _ensure_observability_handler() -> None:
         return
     _observability_handler_configured = True
     obs_logger = logging.getLogger("app.observability")
-    if not obs_logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(_observability_formatter)
-        obs_logger.addHandler(handler)
-        obs_logger.setLevel(logging.INFO)
-        obs_logger.propagate = False
+    stream = _observability_log_stream()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(_observability_formatter)
+    obs_logger.addHandler(handler)
+    obs_logger.setLevel(logging.INFO)
+    obs_logger.propagate = False
 
 
 def get_observability_logger(name: str = "observability") -> structlog.stdlib.BoundLogger:
