@@ -44,16 +44,22 @@ def setup_logging(log_level: str = "INFO", structured: bool = None) -> logging.L
     # Remove existing handlers to avoid duplicates
     logger.handlers.clear()
     
-    console_stream = sys.stderr if os.getenv("AEM_DATASET_STUDIO_MCP_STDIO", "").lower() in {"1", "true", "yes"} else sys.stdout
+    mcp_stdio = os.getenv("AEM_DATASET_STUDIO_MCP_STDIO", "").lower() in {"1", "true", "yes"}
+    suppress_console = (
+        mcp_stdio
+        and os.getenv("AEM_DATASET_STUDIO_MCP_SUPPRESS_CONSOLE_LOGS", "1").lower() in {"1", "true", "yes"}
+    )
+    console_stream = sys.stderr if mcp_stdio else sys.stdout
 
     if structured:
         json_formatter = StructuredJSONFormatter()
         
-        # Console handler with JSON output
-        console_handler = logging.StreamHandler(console_stream)
-        console_handler.setLevel(numeric_level)
-        console_handler.setFormatter(json_formatter)
-        logger.addHandler(console_handler)
+        if not suppress_console:
+            # Console handler with JSON output
+            console_handler = logging.StreamHandler(console_stream)
+            console_handler.setLevel(numeric_level)
+            console_handler.setFormatter(json_formatter)
+            logger.addHandler(console_handler)
         
         # Structured JSON file handler for all logs
         structured_file_handler = RotatingFileHandler(
@@ -79,12 +85,13 @@ def setup_logging(log_level: str = "INFO", structured: bool = None) -> logging.L
         
         log_files = f"{STRUCTURED_LOG_FILE}, {STRUCTURED_ERROR_LOG_FILE}"
     else:
-        # Console handler with formatted output
-        console_handler = logging.StreamHandler(console_stream)
-        console_handler.setLevel(numeric_level)
         console_formatter = logging.Formatter(LOG_FORMAT, DATE_FORMAT)
-        console_handler.setFormatter(console_formatter)
-        logger.addHandler(console_handler)
+        if not suppress_console:
+            # Console handler with formatted output
+            console_handler = logging.StreamHandler(console_stream)
+            console_handler.setLevel(numeric_level)
+            console_handler.setFormatter(console_formatter)
+            logger.addHandler(console_handler)
         
         # File handler for all logs
         file_handler = RotatingFileHandler(

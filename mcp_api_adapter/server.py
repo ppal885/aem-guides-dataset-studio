@@ -21,11 +21,12 @@ for candidate in (PROJECT_ROOT, BACKEND_DIR):
     if value not in sys.path:
         sys.path.insert(0, value)
 
-from app.core.mcp_stdio import configure_mcp_stdio_runtime
+from app.core.mcp_stdio import configure_mcp_stdio_runtime, strip_stdio_log_handlers
 
 configure_mcp_stdio_runtime()
 
 mcp = FastMCP("dataset-studio-api")
+strip_stdio_log_handlers()
 
 _client: DatasetStudioApiClient | None = None
 

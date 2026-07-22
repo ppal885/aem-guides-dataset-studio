@@ -21,6 +21,7 @@ def is_mcp_stdio_mode() -> bool:
 def _force_mcp_stdio_env() -> None:
     """Force MCP-safe env after dotenv — do not let .env re-enable stdout noise."""
     os.environ["AEM_DATASET_STUDIO_MCP_STDIO"] = "1"
+    os.environ["AEM_DATASET_STUDIO_MCP_SUPPRESS_CONSOLE_LOGS"] = "1"
     os.environ["TQDM_DISABLE"] = "1"
     os.environ["LANGSMITH_TRACING"] = "false"
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -33,17 +34,37 @@ def _iter_loggers() -> list[logging.Logger]:
     return [logging.getLogger(name) for name in logging.root.manager.loggerDict]
 
 
-def strip_stdout_log_handlers() -> int:
-    """Remove StreamHandlers bound to stdout so logs cannot corrupt MCP JSON-RPC."""
+def strip_stdio_log_handlers() -> int:
+    """Remove stdout/stderr StreamHandlers so Cursor MCP stdio stays quiet."""
     removed = 0
     candidates = [logging.getLogger()] + _iter_loggers()
     for logger in candidates:
         for handler in list(logger.handlers):
             stream = getattr(handler, "stream", None)
-            if isinstance(handler, logging.StreamHandler) and stream is sys.stdout:
+            if isinstance(handler, logging.StreamHandler) and stream in {sys.stdout, sys.stderr}:
                 logger.removeHandler(handler)
                 removed += 1
     return removed
+
+
+def silence_noisy_stdio_loggers() -> None:
+    """Keep third-party MCP/tooling loggers from emitting INFO lines to Cursor."""
+    for name in (
+        "",
+        "app",
+        "mcp",
+        "mcp.server",
+        "mcp.server.lowlevel",
+        "mcp.server.lowlevel.server",
+        "httpx",
+        "httpcore",
+        "langsmith",
+        "openai",
+        "azure",
+    ):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False if name in {"mcp", "mcp.server", "mcp.server.lowlevel.server"} else logger.propagate
 
 
 def configure_mcp_stdio_runtime(*, log_level: str | None = None) -> None:
@@ -55,21 +76,19 @@ def configure_mcp_stdio_runtime(*, log_level: str | None = None) -> None:
 
     # Plain text to stderr keeps Rich/JSON logs off stdout and is easier to read in MCP logs.
     setup_logging(level, structured=False)
-    strip_stdout_log_handlers()
+    strip_stdio_log_handlers()
+    silence_noisy_stdio_loggers()
 
     from app.core.observability import reset_observability_handler_for_mcp_stdio
 
     reset_observability_handler_for_mcp_stdio()
-    strip_stdout_log_handlers()
+    strip_stdio_log_handlers()
+    silence_noisy_stdio_loggers()
 
     warnings.showwarning = _warn_to_stderr
 
     root = logging.getLogger()
-    if not root.handlers:
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-        root.addHandler(handler)
-        root.setLevel(getattr(logging, level, logging.INFO))
+    root.setLevel(logging.WARNING)
 
 
 def _warn_to_stderr(message, category, filename, lineno, file=None, line=None):
