@@ -53,6 +53,24 @@ class GuidesTestPlanRequest(BaseModel):
     evidence_k: int = 8
     include_repository_evidence: bool = True
     max_repo_matches: int = 30
+    skip_uac_label_gate: bool = False
+    full_rag: bool = False
+
+
+class TestPlanPipelineBridgeRequest(BaseModel):
+    jira_key: str
+    tenant_id: str = "kone"
+    evidence_k: int = 8
+    include_repository_evidence: bool = True
+    max_repo_matches: int = 30
+    skip_uac_label_gate: bool = False
+    full_rag: bool = True
+    include_uac_intelligence: bool = True
+    compose_draft_plan: bool = True
+    write_starling_artifacts: bool = False
+    starling_repo_path: str | None = None
+    publish_to_team_ui: bool = False
+    human_review_threshold: int = 50
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +298,37 @@ def guides_test_plan_generator(body: GuidesTestPlanRequest, user: UserIdentity =
         evidence_k=max(3, min(body.evidence_k, 12)),
         include_repository_evidence=body.include_repository_evidence,
         max_repo_matches=body.max_repo_matches,
+        skip_uac_label_gate=body.skip_uac_label_gate,
+        full_rag=body.full_rag,
     )
+
+
+# ---------------------------------------------------------------------------
+# test-plan-pipeline (full orchestrator — HTTP preferred over MCP stdio)
+# ---------------------------------------------------------------------------
+
+@router.post("/test-plan-pipeline")
+def test_plan_pipeline(body: TestPlanPipelineBridgeRequest, user: UserIdentity = CurrentUser):
+    """Run the unified test-plan pipeline (RAG + UAC + score + draft plan + QE handoff)."""
+    from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
+    from app.services.test_plan_pipeline_service import run_test_plan_pipeline
+
+    request = TestPlanPipelineRequest(
+        jira_key=body.jira_key,
+        tenant_id=body.tenant_id,
+        evidence_k=max(3, min(body.evidence_k, 12)),
+        include_repository_evidence=body.include_repository_evidence,
+        max_repo_matches=body.max_repo_matches,
+        skip_uac_label_gate=body.skip_uac_label_gate,
+        full_rag=body.full_rag,
+        include_uac_intelligence=body.include_uac_intelligence,
+        compose_draft_plan=body.compose_draft_plan,
+        write_starling_artifacts=body.write_starling_artifacts,
+        starling_repo_path=body.starling_repo_path,
+        publish_to_team_ui=body.publish_to_team_ui,
+        human_review_threshold=max(0, min(body.human_review_threshold, 100)),
+    )
+    return run_test_plan_pipeline(request)
 
 
 # ---------------------------------------------------------------------------

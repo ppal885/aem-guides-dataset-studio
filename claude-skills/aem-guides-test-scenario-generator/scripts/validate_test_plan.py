@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate AEM Guides test plans for blast-radius and bug-discovery quality gates."""
+"""Validate AEM Guides test plans (compact 3-section template, plain-English friendly)."""
 
 from __future__ import annotations
 
@@ -9,17 +9,75 @@ import sys
 from pathlib import Path
 
 
-BLAST_HEADING = "## 4. Blast radius and risk analysis"
-CLASSIFICATION_TABLE = "| Area / component | Impact level | Why affected | Evidence | Regression action |"
-RISK_TABLE = "| Risk ID | Surface / failure mode | User/business impact | Likelihood | Priority | Evidence | Scenario / exclusion |"
-BUG_HYPOTHESIS_TABLE = "| Hypothesis ID | Rank | Trigger / heuristic | Suspected bug | Evidence / signal | Confidence | Scenario / exclusion |"
-KILL_FIX_TABLE = "| Changed branch / contract | Escape mode | Test to kill incomplete fix | Evidence | Scenario / exclusion |"
-HISTORICAL_TABLE = "| Historical Jira | Signal type | Why it matters | Risk / hypothesis influenced | Automation lesson |"
-INTERACTION_TABLE = "| Interaction ID | Selected combination | Why this can exercise changed path | Risk / hypothesis | Scenario |"
-SCENARIO_TABLE = "| Scenario ID | Ring | Pack | Priority | Title | Trace to risk / hypothesis / evidence | Automation layer | Oracle summary |"
-AUTOMATION_TABLE = "| Existing / proposed check | Layer | Strength classification | Why | Gap / action |"
-EXCLUSION_TABLE = "| Area / component | Reason excluded | Evidence |"
-EVIDENCE_TABLE = "| Evidence ID | Source | What it proves | Link / path |"
+ACTION_HEADINGS = (
+    "## 1. Action items (QA — start here)",
+    "## 1. Action items",
+)
+SUPPLEMENTARY_HEADINGS = (
+    "## 2. Supplementary — context, risks & traceability",
+    "## 2. Supplementary",
+)
+SUMMARY_HEADINGS = (
+    "## 1. Summary & expected behaviour",
+    "## 1. Summary & what should happen",
+)
+BLAST_HEADINGS = (
+    "## 2. Blast radius & risks",
+    "## 2. What can break & risks",
+)
+SCENARIOS_HEADINGS = (
+    "## 3. Scenarios & release",
+    "## 3. Test scenarios & release",
+)
+
+CHANGE_PATH_HEADINGS = ("### Change path", "### Code path (where the fix lives)")
+MUST_NOT_REGRESS_HEADINGS = (
+    "### Must not regress (R0)",
+    "### Must not break (regression checks)",
+)
+HYPOTHESIS_HEADINGS = (
+    "### Bug hypotheses (top 3 only)",
+    "### Likely bugs to watch (top 3)",
+)
+HISTORICAL_HEADINGS = (
+    "### Related past Jiras (historical regression)",
+    "### Related past Jiras",
+)
+RESIDUAL_HEADINGS = (
+    "### Residual risk & sign-off",
+    "### What's left & sign-off",
+)
+EVIDENCE_HEADINGS = (
+    "### Key evidence (inline)",
+    "### Where we got the facts (evidence)",
+)
+ACCEPTANCE_HEADINGS = (
+    "### Acceptance criteria (UAC)",
+    "### Sign-off checks (minimum before release)",
+    "### Sign-off checks (acceptance from Jira)",
+)
+
+IMPACT_TABLES = (
+    "| Area | Impact | Why | Scenario / exclusion |",
+    "| Area | Impact | Why | Test / skip |",
+)
+RISK_TABLES = (
+    "| Risk ID | Priority | Failure mode | Scenario / exclusion |",
+    "| Risk ID | Priority | What goes wrong | Test / skip |",
+)
+SCENARIO_TABLES = (
+    "| Scenario ID | Priority | Title | Trace (EB / risk) | Oracle summary |",
+    "| Scenario ID | Priority | Title | Links to | How to verify |",
+)
+AUTOMATION_TABLE = "| Check | Layer | Strength | Gap |"
+AUTOMATION_TABLE_ALT = "| Check | Where | Coverage | Gap |"
+HYPOTHESIS_TABLE = "| ID | Suspected bug | Signal | Scenario |"
+HYPOTHESIS_TABLE_ALT = "| ID | What we suspect | How you'd notice | Test |"
+HISTORICAL_TABLE = "| Jira | Signal | Why it matters for this ticket | Scenario influenced |"
+HISTORICAL_TABLE_ALT = "| Jira | What happened | Why it matters here | Test |"
+EVIDENCE_TABLE = "| Evidence ID | Source | Classification | What it proves | Link / path |"
+CONFIDENCE_TABLE = "| Dimension | Score | Evidence / deduction |"
+
 LOCAL_REPO_PATH_RE = re.compile(
     r"(?:xmleditor|starling|guides-ui-tests|dxml-it-tests).*[\\/].+|\b[A-Za-z]:[\\/].+|/[A-Za-z0-9_.-]+/.+",
     re.I,
@@ -30,7 +88,6 @@ VALID_IMPACT_LEVELS = {
     "Shared-path",
     "Downstream",
     "Compatibility",
-    "Observability/Recovery",
     "Not impacted",
     "Unknown",
 }
@@ -38,99 +95,156 @@ VALID_IMPACT_LEVELS = {
 VALID_AUTOMATION_STRENGTHS = {
     "Exact and strong",
     "Exact but weak oracle",
+    "Exact but weak check",
     "Partial",
     "Obsolete",
     "Mocked-path only",
     "Missing",
+    "Best match for this bug",
+}
+VALID_CLASSIFICATIONS = {
+    "ticket-confirmed",
+    "documentation-confirmed",
+    "specification-confirmed",
+    "implementation-derived",
+    "previous-JIRA-derived",
+    "assumption",
+    "human-clarification-required",
 }
 
-REQUIRED_HEADINGS = [
-    BLAST_HEADING,
-    "## 5. Bug hypothesis register",
-    "## 6. Kill the Fix analysis",
-    "## 7. Historical regression signals",
-    "## 8. Interaction matrix",
-    "## 9. Prioritized scenarios",
-    "## 10. Detailed test scenarios",
-    "## 11. Automation strength assessment",
-    "## 12. Regression pack split",
-    "## 13. Focused exploratory charters",
-    "## 14. Residual Risk and Release Confidence",
-    "## 15. Traceability and quality gates",
-]
-
-REQUIRED_BLAST_CONTENT = [
-    "### Execution/change-path narrative",
-    CLASSIFICATION_TABLE,
-    RISK_TABLE,
-    "### Existing behavior that must remain unchanged",
-    "### Minimum direct regression",
-    "### Shared-path regression",
-    "### Downstream regression",
-    "### Conditional regression",
-    "### Explicit exclusions",
-    "### Unknowns that can expand the scope",
-]
-
-VAGUE_ORACLE_PATTERNS = re.compile(
+VAGUE_CHECK_PATTERNS = re.compile(
     r"\b(no error|no errors|works correctly|works as expected|verify behavior|should work|successfully works)\b",
     re.I,
 )
-DRAFT_STATUS = re.compile(r"Review status:\s*Draft\b", re.I)
-READY_STATUS = re.compile(r"Review status:\s*Review-ready\b", re.I)
+DRAFT_STATUS = re.compile(r"Review status:\*{0,2}\s*Draft\b", re.I)
+READY_STATUS = re.compile(r"Review status:\*{0,2}\s*Review-ready\b", re.I)
+ROUTING_STATUS = re.compile(r"\b(QE_REVIEW_READY|QE_REVIEW_WITH_FLAGS|Draft-human-clarification|HUMAN_INPUT_REQUIRED)\b")
+SCORE_LINE = re.compile(r"\bScore:\*{0,2}\s*(\d{1,3})\b", re.I)
+QE_REQUIRED = re.compile(r"\bQE review:\*{0,2}\s*Required\b|\bQE review package\b", re.I)
 MISSING_EVIDENCE = re.compile(r"\b(missing|unavailable|not inspected|not available|unknown|not configured)\b", re.I)
-SCENARIO_REF = re.compile(r"\b(?:SC|TC|S)-\d{2,4}\b", re.I)
-RISK_REF = re.compile(r"\b(?:BR|RISK)-\d{1,4}\b", re.I)
-HYP_REF = re.compile(r"\bBH-\d{1,4}\b", re.I)
-EVIDENCE_REF = re.compile(r"\bE\d{1,4}\b")
-EXCLUSION_WORD = re.compile(r"\b(excluded|exclusion|not impacted|exclude)\b", re.I)
+EXCLUSION_WORD = re.compile(r"\b(excluded|exclusion|not impacted|exclude|skip)\b", re.I)
+EB_BULLET = re.compile(r"\*\*EB-\d+:\*\*", re.I)
+EVIDENCE_MAP_FORBIDDEN = re.compile(r"^##\s+3\.\s+Evidence map\b", re.M | re.I)
+HOW_TO_CHECK = re.compile(r"\b(Multi-layer oracle|How to check)\b", re.I)
+
+
+def _is_action_first_layout(text: str) -> bool:
+    return any(h in text for h in ACTION_HEADINGS)
 
 
 def validate_text(text: str) -> list[str]:
     errors: list[str] = []
 
-    for heading in REQUIRED_HEADINGS:
-        if heading not in text:
-            errors.append(f"Missing required heading: {heading}")
-    if BLAST_HEADING not in text:
-        return errors
+    if EVIDENCE_MAP_FORBIDDEN.search(text):
+        errors.append("Remove deprecated '## 3. Evidence map' section; use inline evidence in section 1.")
 
-    blast = _section(text, BLAST_HEADING)
-    for required in REQUIRED_BLAST_CONTENT:
-        if required not in blast:
-            errors.append(f"Missing required blast-radius content: {required}")
+    if len(text.splitlines()) > 195:
+        errors.append("Plan exceeds ~3-page limit (>195 lines); trim tables and prose.")
 
-    evidence_ids = _collect_ids(_table_rows(text, EVIDENCE_TABLE), 0)
-    impact_rows = _table_rows(blast, CLASSIFICATION_TABLE)
-    risk_rows = _table_rows(blast, RISK_TABLE)
-    hypothesis_rows = _table_rows(text, BUG_HYPOTHESIS_TABLE)
-    kill_rows = _table_rows(text, KILL_FIX_TABLE)
-    historical_rows = _table_rows(text, HISTORICAL_TABLE)
-    interaction_rows = _table_rows(text, INTERACTION_TABLE)
-    scenario_rows = _table_rows(text, SCENARIO_TABLE)
-    automation_rows = _table_rows(text, AUTOMATION_TABLE)
-    exclusion_rows = _table_rows(blast, EXCLUSION_TABLE)
+    action_first = _is_action_first_layout(text)
+
+    if action_first:
+        _require_one_of(errors, text, ACTION_HEADINGS, "Action items section")
+        _require_one_of(errors, text, SUPPLEMENTARY_HEADINGS, "Supplementary section")
+        _require_one_of(errors, text, ("### Summary & expected behaviour",), "Summary subsection")
+        _require_one_of(errors, text, ("### What can break & risks",), "Risks subsection")
+        _require_one_of(
+            errors,
+            text,
+            EVIDENCE_HEADINGS
+            + (
+                "### Evidence & release status",
+                "### Where we got the facts (evidence)",
+            ),
+            "Evidence subsection",
+        )
+        _require_one_of(errors, text, ("**Code path:**", "### Change path", "### Code path (where the fix lives)"), "Code path hint")
+        _require_one_of(errors, text, IMPACT_TABLES, "Impact table")
+        _require_one_of(errors, text, RISK_TABLES, "Risk table")
+        if not any(h in text for h in MUST_NOT_REGRESS_HEADINGS) and "regression" not in text.lower():
+            errors.append("Missing regression coverage (Must not break subsection or regression mention in risks).")
+        _require_one_of(
+            errors,
+            text,
+            HYPOTHESIS_HEADINGS
+            + ("**Likely bugs to watch:**", "### Likely bugs to watch"),
+            "Likely bugs subsection",
+        )
+        _require_one_of(errors, text, HISTORICAL_HEADINGS, "Related past Jiras subsection")
+        _require_one_of(errors, text, (HISTORICAL_TABLE, HISTORICAL_TABLE_ALT), "Historical Jiras table header")
+        _require_one_of(errors, text, ("### Test list (priority order)", "### Prioritized scenarios"), "Scenario list subsection")
+        _require_one_of(errors, text, SCENARIO_TABLES, "Scenario table")
+        _require_one_of(errors, text, ("### Steps for P0 / P1 tests", "### Scenario details (P0/P1 only)"), "Scenario steps subsection")
+        _require_one_of(errors, text, ACCEPTANCE_HEADINGS, "Sign-off / acceptance subsection")
+        _require_one_of(errors, text, ("### Automation coverage", "### Automation"), "Automation subsection")
+        _require_one_of(errors, text, (AUTOMATION_TABLE, AUTOMATION_TABLE_ALT), "Automation table")
+        _require_one_of(errors, text, (EVIDENCE_TABLE,), "Evidence classification table")
+        _require_one_of(errors, text, (CONFIDENCE_TABLE,), "Confidence breakdown table")
+        _require_one_of(errors, text, ("### QE review package",), "QE review package")
+        _require_one_of(errors, text, ("### Evidence & release status", "### Residual risk & sign-off", "### What's left & sign-off"), "Release status subsection")
+    else:
+        _require_one_of(errors, text, SUMMARY_HEADINGS, "Summary section")
+        _require_one_of(errors, text, ("### Expected behaviour",), "Expected behaviour")
+        _require_one_of(errors, text, EVIDENCE_HEADINGS, "Evidence subsection")
+        _require_one_of(errors, text, BLAST_HEADINGS, "Impact / risks section")
+        _require_one_of(errors, text, CHANGE_PATH_HEADINGS, "Code path subsection")
+        _require_one_of(errors, text, IMPACT_TABLES, "Impact table")
+        _require_one_of(errors, text, RISK_TABLES, "Risk table")
+        _require_one_of(errors, text, MUST_NOT_REGRESS_HEADINGS, "Regression checks subsection")
+        _require_one_of(errors, text, HYPOTHESIS_HEADINGS, "Likely bugs subsection")
+        _require_one_of(errors, text, HISTORICAL_HEADINGS, "Related past Jiras subsection")
+        _require_one_of(errors, text, (HISTORICAL_TABLE, HISTORICAL_TABLE_ALT), "Historical Jiras table header")
+        _require_one_of(errors, text, SCENARIOS_HEADINGS, "Scenarios section")
+        _require_one_of(errors, text, ("### Prioritized scenarios", "### Test list (priority order)"), "Scenario list subsection")
+        _require_one_of(errors, text, SCENARIO_TABLES, "Scenario table")
+        _require_one_of(errors, text, ("### Scenario details (P0/P1 only)", "### Steps for P0 / P1 tests"), "Scenario steps subsection")
+        _require_one_of(errors, text, ("### Automation", "### Automation coverage"), "Automation subsection")
+        _require_one_of(errors, text, (AUTOMATION_TABLE, AUTOMATION_TABLE_ALT), "Automation table")
+        _require_one_of(errors, text, (EVIDENCE_TABLE,), "Evidence classification table")
+        _require_one_of(errors, text, (CONFIDENCE_TABLE,), "Confidence breakdown table")
+        _require_one_of(errors, text, ("### QE review package",), "QE review package")
+        _require_one_of(errors, text, RESIDUAL_HEADINGS, "Sign-off subsection")
+
+    impact_header = _first_present(text, IMPACT_TABLES)
+    risk_header = _first_present(text, RISK_TABLES)
+    hypothesis_header = _first_present(text, (HYPOTHESIS_TABLE, HYPOTHESIS_TABLE_ALT))
+    scenario_header = _first_present(text, SCENARIO_TABLES)
+    automation_header = _first_present(text, (AUTOMATION_TABLE, AUTOMATION_TABLE_ALT))
+    historical_header = _first_present(text, (HISTORICAL_TABLE, HISTORICAL_TABLE_ALT))
+    evidence_header = _first_present(text, (EVIDENCE_TABLE,))
+    confidence_header = _first_present(text, (CONFIDENCE_TABLE,))
+
+    impact_rows = _table_rows(text, impact_header) if impact_header else []
+    risk_rows = _table_rows(text, risk_header) if risk_header else []
+    hypothesis_rows = _table_rows(text, hypothesis_header) if hypothesis_header else []
+    scenario_rows = _table_rows(text, scenario_header) if scenario_header else []
+    automation_rows = _table_rows(text, automation_header) if automation_header else []
+    evidence_rows = _table_rows(text, evidence_header) if evidence_header else []
+    confidence_rows = _table_rows(text, confidence_header) if confidence_header else []
 
     scenario_ids = _collect_ids(scenario_rows, 0)
     risk_ids = _collect_ids(risk_rows, 0)
-    hypothesis_ids = _collect_ids(hypothesis_rows, 0)
-    interaction_ids = _collect_ids(interaction_rows, 0)
+
+    eb_count = len(EB_BULLET.findall(text))
+    if eb_count < 3:
+        errors.append("Expected behaviour needs at least 3 numbered EB-* bullets.")
+    if eb_count > 10:
+        errors.append("Expected behaviour has too many EB-* bullets (>10); keep 5–7.")
 
     _validate_impact_rows(errors, impact_rows, scenario_ids)
     _validate_risk_rows(errors, risk_rows, scenario_ids)
     _validate_hypotheses(errors, hypothesis_rows, scenario_ids)
-    _validate_kill_fix(errors, text, kill_rows, scenario_ids)
-    _validate_historical(errors, historical_rows)
-    _validate_interactions(errors, interaction_rows, scenario_ids)
-    _validate_scenarios(errors, text, scenario_rows, risk_ids, hypothesis_ids, interaction_ids, evidence_ids)
+    _validate_historical(errors, text, _table_rows(text, historical_header) if historical_header else [])
+    _validate_scenarios(errors, text, scenario_rows, risk_ids)
     _validate_automation(errors, automation_rows)
+    _validate_evidence_table(errors, evidence_rows)
     _validate_repository_evidence(errors, text, evidence_rows, automation_rows)
-    _validate_exclusions(errors, exclusion_rows)
-    _validate_bug_plan_coverage(errors, text, scenario_rows)
+    _validate_confidence_and_qe(errors, text, confidence_rows)
+    _validate_inline_evidence(errors, text)
     _validate_draft_gating(errors, text)
 
     if re.search(r"\bprobably impacted\b|\bmaybe impacted\b|\bassume(?:d)? impacted\b", text, re.I):
-        errors.append("Suspected impact appears to be presented without confirmed evidence; label as Unknown/provisional.")
+        errors.append("Label suspected impact as Unknown/provisional, not confirmed.")
 
     if READY_STATUS.search(text) and errors:
         errors.append("Plan cannot be Review-ready while semantic validation errors exist.")
@@ -138,194 +252,206 @@ def validate_text(text: str) -> list[str]:
     return errors
 
 
+def _require_one_of(errors: list[str], text: str, options: tuple[str, ...], label: str) -> None:
+    if not any(option in text for option in options):
+        errors.append(f"Missing required content: {label} (expected one of: {options[0]}…)")
+
+
+def _first_present(text: str, options: tuple[str, ...]) -> str | None:
+    for option in options:
+        if option in text:
+            return option
+    return None
+
+
 def _validate_impact_rows(errors: list[str], rows: list[str], scenario_ids: set[str]) -> None:
     if not rows:
-        errors.append("Blast-radius classification table has no data rows.")
+        errors.append("Impact table has no data rows.")
         return
     levels = {_cell(row, 1) for row in rows}
     if "Direct" not in levels:
-        errors.append("Blast-radius classification table must identify at least one Direct impact.")
+        errors.append("Impact table must include at least one Direct item.")
     unknown_levels = sorted(level for level in levels if level and level not in VALID_IMPACT_LEVELS)
     if unknown_levels:
         errors.append(f"Invalid impact level(s): {', '.join(unknown_levels)}")
     for row in rows:
         level = _cell(row, 1)
-        action = _cell(row, 4)
+        action = _cell(row, 3)
         area = _cell(row, 0)
         if level in {"Direct", "Shared-path"} and not (_has_existing_ref(action, scenario_ids) or EXCLUSION_WORD.search(action)):
-            errors.append(f"{level} blast-radius item lacks scenario/exclusion mapping: {area}")
+            errors.append(f"{level} impact lacks scenario/exclusion mapping: {area}")
 
 
 def _validate_risk_rows(errors: list[str], rows: list[str], scenario_ids: set[str]) -> None:
     if not rows:
-        errors.append("Failure/risk register has no data rows.")
+        errors.append("Risk table has no data rows.")
         return
     for row in rows:
         risk_id = _cell(row, 0)
-        priority = _cell(row, 4).upper()
-        mapping = _cell(row, 6)
+        priority = _cell(row, 1).upper()
+        mapping = _cell(row, 3)
         if priority in {"P0", "P1", "HIGH", "CRITICAL"} and not (_has_existing_ref(mapping, scenario_ids) or EXCLUSION_WORD.search(mapping)):
             errors.append(f"P0/P1 risk missing scenario or exclusion: {risk_id}")
 
 
 def _validate_hypotheses(errors: list[str], rows: list[str], scenario_ids: set[str]) -> None:
-    if not rows:
-        errors.append("Bug Hypothesis Register has no data rows.")
-        return
+    if len(rows) > 3:
+        errors.append("Likely bugs table has more than 3 rows; keep top 3 only.")
     for row in rows:
         hyp_id = _cell(row, 0)
-        mapping = _cell(row, 6)
+        mapping = _cell(row, 3)
         if not (_has_existing_ref(mapping, scenario_ids) or EXCLUSION_WORD.search(mapping)):
-            errors.append(f"Bug hypothesis missing scenario/exclusion mapping: {hyp_id}")
+            errors.append(f"Likely bug row missing test/exclusion mapping: {hyp_id}")
 
 
-def _validate_kill_fix(errors: list[str], text: str, rows: list[str], scenario_ids: set[str]) -> None:
-    diff_available = re.search(r"Diff evidence:\s*(available|yes|inspected)", text, re.I)
-    diff_not_inspected = "Diff not inspected" in text
-    if diff_available and not rows:
-        errors.append("Fix diff was inspected but Kill the Fix table has no rows.")
-        return
-    if diff_available:
+def _validate_historical(errors: list[str], text: str, rows: list[str]) -> None:
+    if rows:
+        if len(rows) > 5:
+            errors.append("Related past Jiras table has more than 5 rows; keep max 5.")
         for row in rows:
-            contract = _cell(row, 0)
-            mapping = _cell(row, 4)
-            if not (_has_existing_ref(mapping, scenario_ids) or EXCLUSION_WORD.search(mapping)):
-                errors.append(f"Kill-the-fix item missing scenario/exclusion mapping: {contract}")
-    elif not diff_not_inspected:
-        errors.append("Kill the Fix section must state diff not inspected or provide changed-branch coverage.")
-
-
-def _validate_historical(errors: list[str], rows: list[str]) -> None:
-    if not rows:
-        errors.append("Historical Jira search/signals are missing.")
+            jira = _cell(row, 0)
+            signal = _cell(row, 1)
+            if not jira or not signal:
+                errors.append(f"Historical Jira row missing Jira key or description: {jira or '(blank)'}")
         return
-    if not any(_cell(row, 1).strip() for row in rows):
-        errors.append("Historical Jira rows must include signal types; treat history as risk signals, not specs.")
+    if "Historical search:" not in text and "no related Jiras found" not in text.lower():
+        errors.append("Related past Jiras section must have data rows or a 'Historical search: no related Jiras found' line.")
 
 
-def _validate_interactions(errors: list[str], rows: list[str], scenario_ids: set[str]) -> None:
+def _validate_scenarios(errors: list[str], text: str, rows: list[str], risk_ids: set[str]) -> None:
     if not rows:
-        errors.append("Interaction matrix has no selected targeted/pairwise interactions.")
+        errors.append("Scenario table has no rows.")
         return
-    for row in rows:
-        interaction_id = _cell(row, 0)
-        why = _cell(row, 2)
-        scenario = _cell(row, 4)
-        if len(why) < 12:
-            errors.append(f"Interaction lacks explanation of changed-path exercise: {interaction_id}")
-        if not _has_existing_ref(scenario, scenario_ids):
-            errors.append(f"Interaction missing scenario mapping: {interaction_id}")
-
-
-def _validate_scenarios(
-    errors: list[str],
-    text: str,
-    rows: list[str],
-    risk_ids: set[str],
-    hypothesis_ids: set[str],
-    interaction_ids: set[str],
-    evidence_ids: set[str],
-) -> None:
-    if not rows:
-        errors.append("Prioritized scenario table has no scenario rows.")
-        return
-    if not any(_cell(row, 1).startswith("R0") for row in rows):
-        errors.append("At least one R0 control scenario is required.")
-    packs = {_cell(row, 2) for row in rows}
-    if "PR Gate" not in packs:
-        errors.append("Regression pack split must include PR Gate scenario coverage.")
+    if len(rows) > 10:
+        errors.append("Scenario table exceeds 10 rows.")
+    if not any(re.search(r"\bR0\b", _cell(row, 0) + _cell(row, 1), re.I) for row in rows):
+        errors.append("At least one R0 regression scenario is required.")
     for row in rows:
         scenario_id = _cell(row, 0)
-        trace = _cell(row, 5)
-        oracle = _cell(row, 7)
-        if not oracle or VAGUE_ORACLE_PATTERNS.search(oracle):
-            errors.append(f"Scenario has missing/vague observable oracle: {scenario_id}")
-        if not _references_any_known_id(trace, risk_ids, hypothesis_ids, interaction_ids, evidence_ids):
-            errors.append(f"Scenario trace references no known risk/hypothesis/interaction/evidence ID: {scenario_id}")
+        trace = _cell(row, 3)
+        check_col = _cell(row, 4)
+        if not check_col or VAGUE_CHECK_PATTERNS.search(check_col):
+            errors.append(f"Scenario has missing/vague pass criteria: {scenario_id}")
+        if not (re.search(r"\bEB-\d+\b", trace, re.I) or _has_existing_ref(trace, risk_ids) or EXCLUSION_WORD.search(trace)):
+            errors.append(f"Scenario must link to EB-* or risk ID: {scenario_id}")
         detail = _scenario_detail(text, scenario_id)
-        if detail and "Multi-layer oracle" not in detail:
-            errors.append(f"Detailed scenario missing Multi-layer oracle field: {scenario_id}")
+        if _cell(row, 1).upper() in {"P0", "P1"} and detail and not HOW_TO_CHECK.search(detail):
+            errors.append(f"P0/P1 scenario missing 'How to check' steps: {scenario_id}")
 
 
 def _validate_automation(errors: list[str], rows: list[str]) -> None:
     if not rows:
-        errors.append("Automation strength assessment has no rows.")
+        errors.append("Automation table has no rows.")
         return
     for row in rows:
         strength = _cell(row, 2)
         if strength not in VALID_AUTOMATION_STRENGTHS:
-            errors.append(f"Invalid automation strength classification: {strength or '(blank)'}")
+            errors.append(f"Invalid automation coverage label: {strength or '(blank)'}")
 
 
-def _validate_repository_evidence(errors: list[str], text: str, evidence_rows: list[str], automation_rows: list[str]) -> None:
-    if not READY_STATUS.search(text):
+def _validate_evidence_table(errors: list[str], rows: list[str]) -> None:
+    if not rows:
+        errors.append("Evidence table has no data rows.")
         return
+    if len(rows) > 10:
+        errors.append("Evidence table has more than 10 rows; keep it compact.")
+    seen_classifications: set[str] = set()
+    for row in rows:
+        evidence_id = _cell(row, 0)
+        classification = _cell(row, 2)
+        proof = _cell(row, 3)
+        link = _cell(row, 4)
+        if not evidence_id:
+            errors.append("Evidence row missing Evidence ID.")
+        if classification not in VALID_CLASSIFICATIONS:
+            errors.append(f"Invalid evidence classification: {classification or '(blank)'}")
+        else:
+            seen_classifications.add(classification)
+        if not proof:
+            errors.append(f"Evidence row missing what it proves: {evidence_id or '(blank)'}")
+        if not link:
+            errors.append(f"Evidence row missing link/path: {evidence_id or '(blank)'}")
+    if "ticket-confirmed" not in seen_classifications:
+        errors.append("Evidence table must include at least one ticket-confirmed row.")
 
-    repo_rows = [
-        row
-        for row in evidence_rows
-        if re.search(r"\b(xmleditor|starling|guides-ui-tests|dxml-it-tests|repository_evidence|local repo)\b", row, re.I)
-    ]
-    product_rows = [
-        row
-        for row in repo_rows
-        if re.search(r"\b(xmleditor|starling)\b", row, re.I) and LOCAL_REPO_PATH_RE.search(_cell(row, 3))
-    ]
-    if not product_rows:
-        errors.append("Review-ready plan requires local product repo evidence with exact xmleditor/starling file paths.")
 
+def _validate_repository_evidence(
+    errors: list[str],
+    text: str,
+    evidence_rows: list[str],
+    automation_rows: list[str],
+) -> None:
+    """Enforce local repo evidence for Review-ready plans and strong automation claims."""
+    evidence_blob = "\n".join(evidence_rows)
+    automation_blob = "\n".join(automation_rows)
+    review_ready = bool(READY_STATUS.search(text) or "QE_REVIEW_READY" in text)
+    product_repo = re.search(r"\b(xmleditor|starling)\b.*[\\/].+:\d+|[\\/](xmleditor|starling)[\\/].+:\d+", evidence_blob, re.I)
+    test_repo = re.search(r"\b(guides-ui-tests|dxml-it-tests)\b.*[\\/].+:\d+|[\\/](guides-ui-tests|dxml-it-tests)[\\/].+:\d+", evidence_blob + "\n" + automation_blob, re.I)
+    if review_ready and not product_repo:
+        errors.append("Review-ready plan requires local product repo evidence with xmleditor/starling path:line.")
     for row in automation_rows:
         strength = _cell(row, 2)
-        if strength == "Missing":
-            continue
-        row_text = row.lower()
-        if not re.search(r"\b(guides-ui-tests|dxml-it-tests)\b", row_text):
-            errors.append("Non-missing automation strength must cite guides-ui-tests or dxml-it-tests evidence.")
+        if strength and strength not in {"Missing", "Partial"} and not test_repo:
+            errors.append("Non-missing strong automation coverage requires guides-ui-tests or dxml-it-tests path:line evidence.")
+            break
 
 
-def _validate_exclusions(errors: list[str], rows: list[str]) -> None:
-    for row in rows:
-        area = _cell(row, 0)
-        reason = _cell(row, 1)
-        evidence = _cell(row, 2)
-        if not reason or not evidence:
-            errors.append(f"Exclusion lacks reason/evidence: {area}")
-
-
-def _validate_bug_plan_coverage(errors: list[str], text: str, scenario_rows: list[str]) -> None:
-    is_bug = re.search(r"\b(bug|regression|defect|reopened|customer reproduction|reproduction)\b", text, re.I)
-    if not is_bug:
+def _validate_confidence_and_qe(errors: list[str], text: str, rows: list[str]) -> None:
+    if not rows:
+        errors.append("Confidence breakdown table has no data rows.")
         return
-    combined = "\n".join(_cell(row, 4) + " " + _cell(row, 5) + " " + _cell(row, 7) for row in scenario_rows) + "\n" + text
+    dimensions = {_cell(row, 0).lower() for row in rows}
     required = {
-        "reproduction": r"\brepro(?:duction)?\b|customer reproduction|minimal reproduction",
-        "control": r"\bR0\b|control",
-        "negative": r"\bnegative\b|invalid|malformed|empty|missing",
-        "recovery": r"\brecover(?:y)?\b|rollback|retry|reopen|state/recovery",
+        "ticket completeness",
+        "retrieval quality",
+        "evidence coverage",
+        "source consistency",
+        "sign-off testability",
+        "requirement traceability",
     }
-    for name, pattern in required.items():
-        if not re.search(pattern, combined, re.I):
-            errors.append(f"Bug plan lacks required {name} coverage.")
+    missing = sorted(required - dimensions)
+    if missing:
+        errors.append(f"Confidence breakdown missing dimension(s): {', '.join(missing)}")
+    for row in rows:
+        dimension = _cell(row, 0)
+        score = _cell(row, 1)
+        if not re.fullmatch(r"\d{1,3}", score):
+            errors.append(f"Confidence row has non-numeric score: {dimension or '(blank)'}")
+            continue
+        value = int(score)
+        if value < 0 or value > 100:
+            errors.append(f"Confidence row score out of range 0-100: {dimension}")
+    score_match = SCORE_LINE.search(text)
+    if not score_match:
+        errors.append("Plan header must include deterministic Score: <0-100>.")
+    elif int(score_match.group(1)) > 100:
+        errors.append("Plan score must be in range 0-100.")
+    if not ROUTING_STATUS.search(text):
+        errors.append("Plan must include routing status: QE_REVIEW_READY, QE_REVIEW_WITH_FLAGS, or Draft-human-clarification.")
+    if not QE_REQUIRED.search(text):
+        errors.append("QE review must be explicitly required; high score must not auto-approve.")
+
+
+def _validate_inline_evidence(errors: list[str], text: str) -> None:
+    if not READY_STATUS.search(text):
+        return
+    if not LOCAL_REPO_PATH_RE.search(text):
+        errors.append("Review-ready plan requires code/repo path in section 1.")
 
 
 def _validate_draft_gating(errors: list[str], text: str) -> None:
-    missing_evidence_lines = [
-        line
-        for line in text.splitlines()
-        if MISSING_EVIDENCE.search(line)
-        and not re.search(r":\s*(none|not applicable|n/a|yes)\.?\s*$", line, re.I)
-        and not re.match(r"\|\s*Unknown\s*\|", line)
-    ]
-    if missing_evidence_lines and READY_STATUS.search(text) and not DRAFT_STATUS.search(text):
-        errors.append("Missing Jira/RAG/code/diff evidence requires Draft status, not Review-ready.")
     if "Release confidence:" not in text:
-        errors.append("Residual Risk and Release Confidence section must include Release confidence.")
+        errors.append("Sign-off section must include Release confidence.")
+    if MISSING_EVIDENCE.search(text) and READY_STATUS.search(text) and not DRAFT_STATUS.search(text):
+        errors.append("Missing evidence requires Draft status, not Review-ready.")
 
 
-def _section(text: str, heading: str) -> str:
-    start = text.index(heading)
-    match = re.search(r"^##\s+\d+\.", text[start + len(heading) :], re.M)
-    end = start + len(heading) + match.start() if match else len(text)
+def _section(text: str, start_heading: str, end_heading: str) -> str:
+    start = text.index(start_heading)
+    try:
+        end = text.index(end_heading, start + len(start_heading))
+    except ValueError:
+        end = len(text)
     return text[start:end]
 
 
@@ -358,12 +484,11 @@ def _has_existing_ref(text: str, known_ids: set[str]) -> bool:
     return any(identifier and identifier in text for identifier in known_ids)
 
 
-def _references_any_known_id(text: str, *known_sets: set[str]) -> bool:
-    return any(_has_existing_ref(text, known) for known in known_sets)
-
-
 def _scenario_detail(text: str, scenario_id: str) -> str:
-    pattern = re.compile(rf"Scenario ID:\s*{re.escape(scenario_id)}\b(.*?)(?=\n\s*-\s*Scenario ID:|\n##\s+\d+\.|\Z)", re.S | re.I)
+    pattern = re.compile(
+        rf"-\s*\*\*{re.escape(scenario_id)}\*\*(.*?)(?=\n-\s*\*\*S-|\n###\s+|\n##\s+\d+\.|\Z)",
+        re.S | re.I,
+    )
     match = pattern.search(text)
     return match.group(0) if match else ""
 
@@ -378,7 +503,7 @@ def main(argv: list[str]) -> int:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    print("OK: test plan satisfies blast-radius and bug-discovery validation gates.")
+    print("OK: test plan satisfies compact template validation gates.")
     return 0
 
 

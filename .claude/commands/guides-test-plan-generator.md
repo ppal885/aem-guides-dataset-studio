@@ -14,32 +14,16 @@ $ARGUMENTS
 Steps:
 
 1. Extract exactly one Jira key from `$ARGUMENTS`, for example `GUIDES-12345`. If no key is present, ask for one and stop.
-2. Call the MCP tool `guides_test_plan_generator` with:
-   - `jira_key`: the extracted key
-   - `tenant_id`: `kone` unless the user provided another tenant
-   - `evidence_k`: `8`
-   - `include_repository_evidence`: `true`
-   - `max_repo_matches`: `30`
-3. Use the returned MCP evidence packet plus the installed Claude skill `aem-guides-test-scenario-generator`.
-   - Preferred: load it from the user's Claude skills directory, for example `~/.claude/skills/aem-guides-test-scenario-generator/SKILL.md`.
-   - Repo fallback: if the current checkout contains `claude-skills/aem-guides-test-scenario-generator/SKILL.md`, use that file.
-   - If neither location exists, stop and tell the user to install the skill with `python scripts/install_claude_test_plan_generator.py`.
-4. Generate the final test plan in this chat. Do not merely dump the packet.
-5. Mandatory output requirements:
-   - Include `## 4. Blast radius and risk analysis` exactly.
-   - Perform blast-radius analysis before scenario design.
-   - Cite official Experience League `source_url` or `canonical_url` values from the MCP packet.
-   - Use `learned_behavior_evidence` from scraped Experience League DITA to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, negative/risk cases, and validation oracles.
-   - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, `regression_risk_seed`, and `repository_evidence_seed`; every P0/P1 seed must map to a scenario or evidence-backed exclusion.
-   - Use `repository_evidence` local clone scan results and cite exact files/lines/tests; if unavailable or weak, keep the plan `Draft`.
-   - For frontend-owned areas, inspect `xmleditor` plus matching `guides-ui-tests` coverage.
-   - For backend-owned areas, inspect `starling` plus matching `dxml-it-tests` coverage.
-   - For cross-layer fixes, inspect both `xmleditor` and `starling`, then map UI/API automation to the same observable oracle.
-   - Separate confirmed evidence from unknowns and assumptions.
-   - Include R0 unchanged-behavior controls plus R1/R2/R3/R4 coverage where evidence supports it.
-   - Cover or explicitly exclude every high/critical Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.
-   - Mark the plan `Draft` unless evidence, traceability, and blast-radius gates are complete.
-   - Mark the plan `Draft` if `learned_behavior_evidence` is unavailable or unrelated for behavior-sensitive AEM Guides changes.
-6. If a local plan file is written, validate it with `claude-skills/aem-guides-test-scenario-generator/scripts/validate_test_plan.py` before calling it review-ready.
+2. Load skill `aem-guides-test-scenario-generator` from `claude-skills/aem-guides-test-scenario-generator/SKILL.md`.
+3. Use Adobe Jira MCP to fetch the complete ticket: summary, description, labels, components, issue type, priority, comments, attachments metadata, linked issues, and acceptance criteria fields.
+4. Normalize ticket facts: current behaviour, expected behaviour/requested enhancement, business impact, customer context, acceptance criteria, and missing information.
+5. Inspect local cloned repos before conclusions: `xmleditor`, `starling`, `guides-ui-tests`, `dxml-it-tests`. Cite file paths/line numbers for implementation and automation evidence.
+6. Query the existing VM RAG/MCP only; do not create new RAG/vector DB/client code. Use `guides_test_plan_generator`, `find_similar_jira_issues`, and DITA/AEM Guides lookup tools as available.
+7. If `test_plan_pipeline` is already registered, use it only as an existing deterministic evidence/scoring helper, not as a new app to build.
+8. Generate evidence-grounded UACs and classify every conclusion with one of: ticket-confirmed, documentation-confirmed, specification-confirmed, implementation-derived, previous-JIRA-derived, assumption, human-clarification-required.
+9. Score deterministically: ticket completeness, retrieval quality, evidence coverage, source consistency, UAC testability, requirement traceability.
+10. Route by score: `>=85` -> `QE_REVIEW_READY`; `70-84` -> `QE_REVIEW_WITH_FLAGS`; `<70` -> ask focused human clarification questions before final plan.
+11. Always require QE review; never auto-approve.
+12. Write `docs/qa/test-plans/{JIRA-KEY}-test-plan.md`, validate with `scripts/validate_test_plan.py`, update registry.
 
-Final answer should be the test plan, not setup instructions.
+Final answer: give the exact repo path to the saved `.md` file, routing status, score, and unresolved questions. Chat-only dumps are not the test plan.

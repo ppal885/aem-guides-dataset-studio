@@ -26,8 +26,10 @@ from app.api.v1.routes import (
     specialized,
     storage,
     tenants,
+    test_plans,
     uac_copilot,
 )
+from app.api.v1.routes import mcp_bridge
 from app.core.auth import CurrentUser, UserIdentity
 
 api_router = APIRouter()
@@ -111,3 +113,5 @@ api_router.include_router(qa_studio.router, prefix="/qa-studio", tags=["qa-studi
 api_router.include_router(recorder.router, prefix="/recorder", tags=["recorder"])
 api_router.include_router(recorder.evidence_router, prefix="/evidence", tags=["evidence"])
 api_router.include_router(evidence_mcp.router)
+api_router.include_router(mcp_bridge.router)
+api_router.include_router(test_plans.router)

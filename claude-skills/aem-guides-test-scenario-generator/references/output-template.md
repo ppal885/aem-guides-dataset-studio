@@ -1,152 +1,137 @@
-# Output Template
+﻿# Output Template
 
-Use this structure for JIRA-driven AEM Guides test plans. Bug discovery and regression prevention are the primary objectives.
+Use **plain English** a tester can read without jargon. Avoid: *oracle*, *blast radius*, *UAC*, *residual risk*, *failure mode*. Use **how to verify**, **what can break**, **sign-off checks**, **what's left**, and **what goes wrong**.
+
+Keep the final plan **<=3 pages** (~195 lines). Short bullets and small tables beat long prose.
+
+Do not include a large standalone `## 3. Evidence map`; include the compact evidence table in section 1.
 
 # Test Plan: <JIRA key or title>
 
-## 1. Evidence intake
+**Jira:** <KEY> · **Type:** Bug / Feature request · **Scope:** <UI/API/Publishing/etc.>  
+**Routing:** QE_REVIEW_READY / QE_REVIEW_WITH_FLAGS / Draft-human-clarification  
+**Score:** <0-100> · **Review status:** Draft / Review-ready  
+**QE review:** Required; not auto-approved
 
-- JIRA source:
-- Documentation/spec evidence:
-- Repository evidence:
-- Diff evidence: available / unavailable
-- Automation evidence:
-- Historical Jira evidence:
-- Missing evidence:
-- Confidence:
+---
 
-## 2. Requirement and behavior summary
+## 1. Action items (QA — start here)
 
-- Current behavior / reproduction:
-- Requested/intended behavior:
-- User or technical entry point:
-- Acceptance criteria:
-- Existing behavior that must not regress:
+### Setup (one time)
 
-## 3. Evidence map
+1. Test data / DAM path
+2. Environment prerequisites
+3. Auth / config
 
-| Evidence ID | Source | What it proves | Link / path |
+### Must run before release
+
+**Gate:** list required AC / scenario IDs.
+
+| Run first | Scenario | Pass if |
+| --- | --- | --- |
+
+### Test list (priority order)
+
+| Scenario ID | Priority | Title | Links to | How to verify |
+| --- | --- | --- | --- | --- |
+
+Include at least one **R0** regression row. Max **10** rows.
+
+### Steps for P0 / P1 tests
+
+For each P0/P1: **Do** + **How to check** (API + log + CRX when useful).
+
+### Sign-off checks (acceptance from Jira)
+
+Bullet each **AC-*** — what to prove · maps to S-* · pass criteria · classification label.
+
+**Blocking sign-off today:** …
+
+---
+
+## 2. Supplementary — context, risks & traceability
+
+### Summary & expected behaviour
+
+- **Bug / feature:**
+- **API or UI entry point:**
+- **How to reproduce today:**
+- **Fix area (if known):** `repo/file:line`
+
+**Expected behaviour (reference):** EB-* bullets (5-7 pass/fail statements).
+
+### Where we got the facts (evidence)
+
+| Evidence ID | Source | Classification | What it proves | Link / path |
+| --- | --- | --- | --- | --- |
+
+Classification: ticket-confirmed | documentation-confirmed | specification-confirmed | implementation-derived | previous-JIRA-derived | assumption | human-clarification-required
+
+### What can break & risks
+
+### Code path (where the fix lives)
+
+Short flow: user action -> code -> service/API/background job -> what customer sees.
+
+| Area | Impact | Why | Test / skip |
 | --- | --- | --- | --- |
 
-## 4. Blast radius and risk analysis
+Impact values: Direct, Shared-path, Downstream, Compatibility, Not impacted, Unknown.
 
-### Execution/change-path narrative
+| Risk ID | Priority | What goes wrong | Test / skip |
+| --- | --- | --- | --- |
 
-Describe the entry point, current/suspected implementation path, upstream callers, shared services, persistence/cache/state/asynchronous boundaries, error handling, downstream consumers, existing tests, compatibility dimensions, exclusions, and unknowns.
+### Must not break (regression checks)
 
-### Mandatory classification table
+- List R0 scenario IDs — things that worked before and must still work.
 
-| Area / component | Impact level | Why affected | Evidence | Regression action |
-| --- | --- | --- | --- | --- |
+### Likely bugs to watch (top 3)
 
-### Failure/risk register
+| ID | What we suspect | How you'd notice | Test |
+| --- | --- | --- | --- |
 
-| Risk ID | Surface / failure mode | User/business impact | Likelihood | Priority | Evidence | Scenario / exclusion |
-| --- | --- | --- | --- | --- | --- | --- |
+### Related past Jiras
 
-### Existing behavior that must remain unchanged
+Max **5 rows**. Past bugs are hints only — not requirements.
 
-- R0 control behavior:
+| Jira | What happened | Why it matters here | Test |
+| --- | --- | --- | --- |
 
-### Minimum direct regression
+If none found: `Historical search: no related Jiras found (query: …)`.
 
-- R1 direct coverage:
+### Automation coverage
 
-### Shared-path regression
+| Check | Where | Coverage | Gap |
+| --- | --- | --- | --- |
 
-- R2 shared-path coverage:
+Coverage: Exact and strong | Exact but weak check | Partial | Obsolete | Mocked-path only | Missing | Best match for this bug
 
-### Downstream regression
+### Confidence breakdown
 
-- R3 downstream coverage:
-
-### Conditional regression
-
-- R4 compatibility coverage:
-
-### Explicit exclusions
-
-| Area / component | Reason excluded | Evidence |
+| Dimension | Score | Evidence / deduction |
 | --- | --- | --- |
+| Ticket completeness |  |  |
+| Retrieval quality |  |  |
+| Evidence coverage |  |  |
+| Source consistency |  |  |
+| Sign-off testability |  |  |
+| Requirement traceability |  |  |
 
-### Unknowns that can expand the scope
+**Routing reason:** explain why QE_REVIEW_READY / QE_REVIEW_WITH_FLAGS / Draft-human-clarification.
 
-| Unknown | Why it matters | Decision-changing question |
-| --- | --- | --- |
+### QE review package
 
-## 5. Bug hypothesis register
+- QE owner:
+- Must review before release:
+- Unresolved questions:
+- Required approval evidence:
 
-| Hypothesis ID | Rank | Trigger / heuristic | Suspected bug | Evidence / signal | Confidence | Scenario / exclusion |
-| --- | --- | --- | --- | --- | --- | --- |
+### Evidence & release status
 
-## 6. Kill the Fix analysis
-
-| Changed branch / contract | Escape mode | Test to kill incomplete fix | Evidence | Scenario / exclusion |
-| --- | --- | --- | --- | --- |
-
-If no diff was inspected, write: `Diff not inspected; fix-escape coverage is Draft-only until changed branches and error contracts are mapped.`
-
-## 7. Historical regression signals
-
-| Historical Jira | Signal type | Why it matters | Risk / hypothesis influenced | Automation lesson |
-| --- | --- | --- | --- | --- |
-
-## 8. Interaction matrix
-
-| Interaction ID | Selected combination | Why this can exercise changed path | Risk / hypothesis | Scenario |
-| --- | --- | --- | --- | --- |
-
-## 9. Prioritized scenarios
-
-Every scenario must trace to a requirement, risk, bug hypothesis, kill-the-fix item, interaction, or historical signal.
-
-| Scenario ID | Ring | Pack | Priority | Title | Trace to risk / hypothesis / evidence | Automation layer | Oracle summary |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-
-## 10. Detailed test scenarios
-
-For each scenario include Scenario ID, Priority, Regression ring, Regression pack, Requirement/risk/hypothesis trace, Preconditions, Test data, Steps, Expected result, Multi-layer oracle, Failure injection if applicable, and Automation recommendation.
-
-Bug plans must include reproduction, R0 control, negative, and recovery coverage.
-
-## 11. Automation strength assessment
-
-| Existing / proposed check | Layer | Strength classification | Why | Gap / action |
-| --- | --- | --- | --- | --- |
-
-Allowed classifications: Exact and strong, Exact but weak oracle, Partial, Obsolete, Mocked-path only, Missing.
-
-## 12. Regression pack split
-
-| Pack | Included scenarios | Entry criteria | Required oracle | Owner / cadence |
-| --- | --- | --- | --- | --- |
-
-Packs: PR Gate, Component Regression, Nightly, Release Regression, Exploratory.
-
-## 13. Focused exploratory charters
-
-| Charter ID | Target area | Mission | Data / setup | Stop condition | Risk addressed |
-| --- | --- | --- | --- | --- | --- |
-
-## 14. Residual Risk and Release Confidence
-
-- Unavailable evidence:
-- Unexecuted critical risks:
-- Assumptions:
-- Residual risks accepted:
-- Exact information needed to improve confidence:
-- Release confidence: Low / Medium / High
-
-## 15. Traceability and quality gates
-
-- All Direct/Shared-path critical items covered or excluded:
-- All P0/P1 risks covered or excluded:
-- Bug hypotheses mapped:
-- Kill-the-fix coverage complete or Draft-only:
-- Reproduction/control/negative/recovery coverage present for bug plans:
-- Multi-layer oracles present:
-- Historical Jira search completed or marked unavailable:
-- Exclusions evidence-backed:
-- Unknowns labeled:
-- Missing Jira/RAG/code evidence forces Draft:
-- Review status: Draft / Review-ready
+- Jira / code / Swagger / test-data paths:
+- Full RAG packet path if available:
+- Retained memory / prior plan path if available:
+- Not tested yet:
+- Known gaps:
+- **Release confidence:** Low / Medium / High
+- **Review status:** Draft / Review-ready
