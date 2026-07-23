@@ -626,6 +626,8 @@ def infer_feature_area(*parts: str) -> str:
 def infer_source_product_family(url: str) -> str:
     parsed = urlparse(url or "")
     path = parsed.path.lower()
+    if parsed.netloc.lower().endswith("dita-ot.org"):
+        return "dita-ot"
     if parsed.netloc.lower() == "github.com" and path.startswith("/dita-ot/dita-ot/"):
         return "dita-ot"
     markers = (

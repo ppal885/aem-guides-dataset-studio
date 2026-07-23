@@ -560,7 +560,12 @@ def build_qa_oracles(constructs: list[str], feature_areas: list[str], output_con
 
 
 def infer_source_product_family(url: str) -> str:
-    segments = [segment for segment in urlparse(str(url or "")).path.split("/") if segment]
+    parsed = urlparse(str(url or ""))
+    if parsed.netloc.lower().endswith("dita-ot.org"):
+        return "dita-ot"
+    if parsed.netloc.lower() == "github.com" and parsed.path.lower().startswith("/dita-ot/dita-ot/"):
+        return "dita-ot"
+    segments = [segment for segment in parsed.path.split("/") if segment]
     try:
         index = segments.index("docs")
         return segments[index + 1] if index + 1 < len(segments) else ""
