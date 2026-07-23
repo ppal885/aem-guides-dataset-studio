@@ -64,6 +64,24 @@ def test_publishing_dataset_intent_routes_above_combination_pdf_to_dita_ot():
     assert intent["source"] == "auto_publishing_dataset"
 
 
+def test_dita_ot_evidence_question_does_not_generate_dataset():
+    intent = detect_publishing_dataset_intent(
+        "How does DITA-OT preprocess conref, keyref, copy-to, chunk, and profile before PDF or HTML5 generation? Give evidence."
+    )
+
+    assert intent is None
+
+
+def test_dita_ot_question_followup_request_for_data_still_generates():
+    intent = detect_publishing_dataset_intent(
+        "Generate DITA-OT PDF and HTML5 test data for conref, keyref, copy-to, chunk, and profile"
+    )
+
+    assert intent is not None
+    assert intent["name"] == "generate_dita_ot_pdf"
+    assert intent["args"]["output_format"] == "all"
+
+
 def test_branch_filtering_all_attributes_expands_to_publishable_constructs():
     constructs = detect_publishing_constructs(
         "Generate DITA-OT PDF and HTML5 for how branch filtering behaves in case of all the attributes added"
