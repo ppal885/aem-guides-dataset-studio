@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
             commands.append(build_source_command(source, args))
     if args.enrich:
         commands.append(build_enrichment_command(config, args))
+        commands.extend(build_dita_ot_docs_index_commands(config, args))
     if not commands:
         print("No commands selected. Use --enrich and/or omit --skip-scrape.")
         return 1
@@ -79,6 +80,8 @@ def build_source_command(source: dict[str, Any], args: argparse.Namespace) -> li
         return build_experienceleague_command(source, args)
     if source_type == "dita_ot_issues":
         return build_dita_ot_issue_command(source, args)
+    if source_type == "dita_ot_docs":
+        return build_dita_ot_docs_command(source, args)
     raise SystemExit(f"Unsupported source type for {source.get('id')}: {source_type}")
 
 
@@ -121,6 +124,26 @@ def build_dita_ot_issue_command(source: dict[str, Any], args: argparse.Namespace
     return command
 
 
+def build_dita_ot_docs_command(source: dict[str, Any], args: argparse.Namespace) -> list[str]:
+    command = [
+        args.python,
+        "scripts/scrape_dita_ot_docs_to_dita.py",
+        "--state-dir",
+        str(source["state_dir"]),
+        "--scope-prefix",
+        str(source["scope_prefix"]),
+        "--seed-url",
+        str(source["seed_url"]),
+        "--limit",
+        str(args.limit or int(source.get("limit") or 250)),
+    ]
+    if args.resume:
+        command.append("--resume")
+    if args.reset:
+        command.append("--reset")
+    return command
+
+
 def build_enrichment_command(config: dict[str, Any], args: argparse.Namespace) -> list[str]:
     enrichment = config.get("enrichment") or {}
     command = [args.python, "scripts/enrich_experienceleague_behavior_chunks.py"]
@@ -142,6 +165,32 @@ def build_enrichment_command(config: dict[str, Any], args: argparse.Namespace) -
     if args.upsert_chroma:
         command.append("--upsert-chroma")
     return command
+
+
+def build_dita_ot_docs_index_commands(config: dict[str, Any], args: argparse.Namespace) -> list[list[str]]:
+    indexing = config.get("dita_ot_docs_indexing") or {}
+    roots = [root for root in indexing.get("roots", []) if (PROJECT_ROOT / root).exists()]
+    if not roots:
+        return []
+    commands: list[list[str]] = []
+    for root in roots:
+        command = [
+            args.python,
+            "scripts/index_dita_behavior_corpus.py",
+            "--corpus-root",
+            str(root),
+            "--output",
+            str(indexing.get("output") or "backend/storage/dita_ot_docs_behavior_chunks.json"),
+            "--sample-output",
+            str(indexing.get("sample_output") or "tmp/dita_ot_docs_behavior_sample.json"),
+        ]
+        for prefix in indexing.get("allowed_source_prefixes", ["https://www.dita-ot.org/"]):
+            command.extend(["--allowed-source-prefix", str(prefix)])
+        if args.upsert_chroma:
+            command.append("--upsert-chroma")
+            command.extend(["--batch-size", str(indexing.get("batch_size") or 64)])
+        commands.append(command)
+    return commands
 
 
 def print_summary(config: dict[str, Any], sources: list[dict[str, Any]], commands: list[list[str]], *, dry_run: bool) -> None:

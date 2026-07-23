@@ -47,6 +47,17 @@
       "why": "Open DITA-OT issues provide active risk signals for PDF/HTML5 publishing failures."
     },
     {
+      "id": "dita-ot-official-docs",
+      "type": "dita_ot_docs",
+      "enabled": true,
+      "priority": 45,
+      "state_dir": "dita-ot-docs-corpus",
+      "scope_prefix": "https://www.dita-ot.org/dev/",
+      "seed_url": "https://www.dita-ot.org/dev/",
+      "limit": 250,
+      "why": "Official DITA-OT behavior for preprocessing, publishing, transforms, parameters, troubleshooting, and extension points."
+    },
+    {
       "id": "dita-ot-closed-issues",
       "type": "dita_ot_issues",
       "enabled": true,
@@ -70,10 +81,22 @@
     "max_chunks": 12000,
     "batch_size": 64
   },
+  "dita_ot_docs_indexing": {
+    "roots": [
+      "dita-ot-docs-corpus/topics"
+    ],
+    "output": "backend/storage/dita_ot_docs_behavior_chunks.json",
+    "sample_output": "tmp/dita_ot_docs_behavior_sample.json",
+    "max_chunks": 8000,
+    "batch_size": 64,
+    "allowed_source_prefixes": [
+      "https://www.dita-ot.org/"
+    ]
+  },
   "notes": [
     "Run with --dry-run first to see exact commands.",
     "Use --source-id to execute one source at a time on the VM.",
     "Use --skip-scrape --enrich --upsert-chroma when corpus folders were copied manually.",
-    "DITA-OT official docs need a dedicated docs crawler before adding them as first-class sources."
+    "DITA-OT official docs are scraped through scripts/scrape_dita_ot_docs_to_dita.py and indexed into the same Chroma-backed retrieval path."
   ]
 }
