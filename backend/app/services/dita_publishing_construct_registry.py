@@ -743,11 +743,11 @@ def detect_publishing_constructs(prompt: str) -> list[str]:
 
 def detect_output_format(prompt: str, default: str = "pdf") -> str:
     text = (prompt or "").lower()
-    wants_pdf = bool(re.search(r"\b(pdf|pdf2)\b", text))
-    wants_html = bool(re.search(r"\b(html5|html|xhtml|classic\s+html)\b", text))
+    wants_pdf = bool(re.search(r"\b(pdf|pdf\s*2|pd2)\b", text))
+    wants_html = bool(re.search(r"\b(html\s*5|html|xhtml|classic\s+html)\b", text))
     if "all" in text or (wants_pdf and wants_html):
         return "all"
-    if "html5" in text:
+    if re.search(r"\bhtml\s*5\b", text):
         return "html5"
     if re.search(r"\b(html|xhtml|classic\s+html)\b", text):
         return "html"

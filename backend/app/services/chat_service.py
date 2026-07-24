@@ -415,7 +415,7 @@ _DITA_RELATED_LINKS_TOC_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_OUTPUT_TARGET_PATTERN = re.compile(
-    r"\b(pdf|native\s+pdf|web|html|html5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
+    r"\b(pdf|pdf\s*2|pd2|native\s+pdf|web|html|html\s*5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
     re.IGNORECASE,
 )
 _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
@@ -432,7 +432,8 @@ _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
     r"translate\s+attribute|dir\s+attribute|colsep|rowsep|rowheader|valign|expanse|frame\s+attribute|"
     r"scale\s+attribute|expiry|golive|role\s+attribute|otherrole|base\s+attribute|status\s+attribute|"
     r"keycol|relcolwidth|refcols|"
-    r"processing-role|collection-type|locktitle|keyscope|navtitle)\b",
+    r"processing-role|collection-type|locktitle|keyscope|navtitle|searchtitle|search\s+title|"
+    r"titlealts?|topicmeta|lockmeta|metadata\s+cascad(?:e|ing)|cascade)\b",
     re.IGNORECASE,
 )
 _DITA_FOREIGN_ELEMENT_QUERY_PATTERN = re.compile(r"</?foreign\b|\bforeign\s+element\b|\bforeign\b", re.IGNORECASE)
@@ -582,7 +583,7 @@ _DITA_OT_GUIDANCE: Optional[str] = None
 _DITA_AUTHORING_GUIDANCE: Optional[str] = None
 
 _DITA_OT_PATTERN = re.compile(
-    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish|publishing|"
+    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf\s*2|pd2|html\s*5\s+output|publish|publishing|"
     r"output preset|native pdf|ant\s+propert|plugin|ditaval filter|xsl.fo|fop|xslt|"
     r"dita command|dita --input|dita --format|dita --output|"
     # DITA-OT error/warning codes (DOTX, DOTJ, DOTA, DOTF prefixes)
@@ -8665,7 +8666,12 @@ async def _stream_assistant_reply(
     elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
-    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
+    routed_tool_intent = (
+        route_decision.candidate_contract
+        if route_decision.intent == "dita_ot_generation" and isinstance(route_decision.candidate_contract, dict)
+        else None
+    )
+    parsed_tool_intent = tool_intent or routed_tool_intent or parse_tool_intent_from_content(user_content)
     parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
     if parsed_tool_intent is None:
         parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)

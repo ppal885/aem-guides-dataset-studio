@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 PromptIntent = Literal[
     "dita_question",
     "dita_generation",
+    "dita_ot_generation",
     "dita_answer_then_generation",
     "dita_review",
     "screenshot_authoring",

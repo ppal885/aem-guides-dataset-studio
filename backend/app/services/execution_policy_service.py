@@ -68,7 +68,7 @@ def decide_execution_policy(route: PromptRouteDecision) -> ExecutionPolicyDecisi
             candidate_contract=dict(route.candidate_contract or {}),
         )
 
-    if route.intent in {"dita_review", "dataset_job", "artifact_request", "screenshot_authoring"}:
+    if route.intent in {"dita_ot_generation", "dita_review", "dataset_job", "artifact_request", "screenshot_authoring"}:
         return ExecutionPolicyDecision(
             action="run_directly",
             reason="This intent is handled by the specialized execution path.",

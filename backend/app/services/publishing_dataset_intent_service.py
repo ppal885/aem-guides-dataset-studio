@@ -34,15 +34,15 @@ _QA_ANSWER_SIGNAL = re.compile(
     re.IGNORECASE,
 )
 _DITA_OT_SIGNAL = re.compile(
-    r"\b(dita[-\s]?ot|dita\s+open\s+toolkit|open\s+toolkit|pdf2|html5|xhtml|classic\s+html)\b",
+    r"\b(dita[-\s]?ot|dita\s+open\s+toolkit|open\s+toolkit|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html)\b",
     re.IGNORECASE,
 )
 _PUBLISH_OUTPUT_SIGNAL = re.compile(
-    r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|transform|transformation|publish|publishing|output)\b",
+    r"\b(pdf|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html|html|transform|transformation|publish|publishing|output)\b",
     re.IGNORECASE,
 )
 _EXPLICIT_FORMAT_SIGNAL = re.compile(
-    r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|all)\b",
+    r"\b(pdf|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html|html|all)\b",
     re.IGNORECASE,
 )
 _PRIOR_CONTEXT_SIGNAL = re.compile(
