@@ -11,7 +11,8 @@ Usage:
   scripts/configure_vm_remote_mcp_nginx.sh [--config /etc/nginx/sites-enabled/default] [--reload] [--skip-nginx-test]
 
 What it does:
-  - Backs up the nginx site config.
+  - Backs up the nginx site config outside sites-enabled so nginx does not load backups.
+  - Moves stale default.bak.* files out of sites-enabled before testing.
   - Removes any existing /mcp nginx location blocks, including accidentally nested ones.
   - Inserts the correct /mcp proxy locations as top-level siblings inside the server block that listens on 4502.
   - Runs `nginx -t`.
@@ -65,7 +66,28 @@ if [[ "$(id -u)" -ne 0 && "$CONFIG_PATH" == /etc/nginx/* ]]; then
   exit 1
 fi
 
-BACKUP_PATH="${CONFIG_PATH}.bak.$(date +%Y%m%d-%H%M%S)"
+CONFIG_DIR="$(dirname "$CONFIG_PATH")"
+CONFIG_NAME="$(basename "$CONFIG_PATH")"
+BACKUP_DIR="/etc/nginx/codex-backups"
+if [[ "$CONFIG_PATH" != /etc/nginx/* ]]; then
+  BACKUP_DIR="${CONFIG_DIR}/.codex-backups"
+fi
+mkdir -p "$BACKUP_DIR"
+
+# nginx commonly includes every file in /etc/nginx/sites-enabled. A backup named
+# default.bak.* in that directory is still parsed and can keep a broken nested
+# location block alive even after the active config is fixed.
+shopt -s nullglob
+for stale_backup in "${CONFIG_DIR}/${CONFIG_NAME}.bak."*; do
+  if [[ -f "$stale_backup" ]]; then
+    moved_to="${BACKUP_DIR}/$(basename "$stale_backup")"
+    mv "$stale_backup" "$moved_to"
+    echo "Moved stale nginx-loaded backup out of sites-enabled: $stale_backup -> $moved_to"
+  fi
+done
+shopt -u nullglob
+
+BACKUP_PATH="${BACKUP_DIR}/${CONFIG_NAME}.bak.$(date +%Y%m%d-%H%M%S)"
 cp "$CONFIG_PATH" "$BACKUP_PATH"
 echo "Backup written: $BACKUP_PATH"
 
