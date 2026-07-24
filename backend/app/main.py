@@ -43,6 +43,7 @@ from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.api.v1.router import api_router as v1_router
+from app.api.routes.remote_mcp import router as remote_mcp_router
 from app.api.v1.routes.evidence_mcp import router as evidence_mcp_router
 from app.core.runtime_safety import validate_runtime_safety
 from app.core.structured_logging import get_structured_logger, LoggingContext
@@ -66,6 +67,8 @@ app = FastAPI(
     description="API for generating and managing AEM Guides datasets",
     version="1.0.0",
 )
+
+app.include_router(remote_mcp_router)
 
 # Runtime safety snapshot
 _runtime_safety = validate_runtime_safety()
@@ -505,7 +508,15 @@ async def startup_event():
         jira_url = os.getenv("JIRA_BASE_URL") or os.getenv("JIRA_URL", "")
         jira_user = os.getenv("JIRA_USERNAME", "")
         jira_api_ver = os.getenv("JIRA_API_VERSION", "2")
-        jira_configured = bool(jira_url and (jira_user and os.getenv("JIRA_PASSWORD")) or (os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN")))
+        jira_configured = bool(
+            jira_url
+            and (
+                (jira_user and os.getenv("JIRA_PASSWORD"))
+                or (os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN"))
+                or os.getenv("JIRA_PAT")
+                or os.getenv("JIRA_BEARER_TOKEN")
+            )
+        )
         logger.info_structured(
             "Jira config",
             extra_fields={

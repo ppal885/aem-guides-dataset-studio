@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "aem-guides-dataset-studio": {
+      "command": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/backend/.venv/Scripts/python.exe",
+      "args": [
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/mcp_server.py"
+      ],
+      "cwd": "C:/Users/prashantp/Videos/aem-guides-dataset-studio",
+      "env": {
+        "PYTHONUTF8": "1",
+        "AEM_DATASET_STUDIO_MCP_STDIO": "1",
+        "TQDM_DISABLE": "1",
+        "LANGSMITH_TRACING": "false",
+        "LANGCHAIN_TRACING_V2": "false",
+        "AEM_STUDIO_URL": "http://10.42.46.78:8001",
+        "AEM_STUDIO_TOKEN": "dev-bypass"
+      }
+    }
+  }
+}
