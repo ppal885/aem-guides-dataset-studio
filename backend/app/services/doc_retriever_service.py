@@ -141,6 +141,57 @@ def _lexical_score(query_tokens: set[str], content: str) -> float:
     return matches / len(query_tokens) if query_tokens else 0.0
 
 
+_TITLE_SLUG_STOPWORDS = {
+    "adobe",
+    "aem",
+    "admin",
+    "asset",
+    "assets",
+    "configure",
+    "configuring",
+    "configuration",
+    "configurations",
+    "experience",
+    "manager",
+    "setting",
+    "settings",
+    "tools",
+    "view",
+}
+
+
+def _normalized_match_words(text: str) -> list[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(text or "").lower())
+    return [word for word in normalized.split() if len(word) >= 3]
+
+
+def _title_slug_match_bonus(query: str, *, title: str, url: str) -> float:
+    query_words = [
+        word for word in _normalized_match_words(query)
+        if word not in _TITLE_SLUG_STOPWORDS
+    ]
+    if not query_words:
+        return 0.0
+
+    slug = urlparse(str(url or "")).path.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+    target_words = _normalized_match_words(f"{title} {slug}")
+    target_word_set = set(target_words)
+    matched_terms = {word for word in query_words if word in target_word_set}
+    if len(matched_terms) < 2:
+        return 0.0
+
+    bonus = min(0.32, 0.08 * len(matched_terms))
+    for window_size, window_bonus in ((4, 0.34), (3, 0.28), (2, 0.22)):
+        for start in range(0, max(0, len(query_words) - window_size + 1)):
+            phrase = query_words[start:start + window_size]
+            if len(set(phrase)) < min(2, window_size):
+                continue
+            for target_start in range(0, max(0, len(target_words) - window_size + 1)):
+                if phrase == target_words[target_start:target_start + window_size]:
+                    return min(0.64, bonus + window_bonus)
+    return bonus
+
+
 def _infer_evidence_type(value: str, explicit: str = "") -> str:
     if explicit:
         return explicit
@@ -190,6 +241,11 @@ def _classify_aem_query_intent(query: str) -> str:
         lowered,
     ):
         return "configuration"
+    if re.search(r"/bin/(guides|fmdita|dxml)/", lowered) or re.search(
+        r"\b(asset status|rest api|servlet|/bin/guides/v1)\b",
+        lowered,
+    ):
+        return "rest_api"
     if re.search(r"\bbaselines?\b", lowered):
         return "baseline"
     if re.search(r"\bmap collections?\b", lowered):
@@ -223,6 +279,18 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     intent = _classify_aem_query_intent(query)
     bonus = 0.0
     lowered_query = str(query or "").lower()
+
+    if intent == "rest_api":
+        api_signals = lowered_title + " " + lowered_url + " " + lowered_content
+        if re.search(r"\b(rest api|http api|servlet|assets?\s+status|/bin/guides)\b", api_signals):
+            bonus += 1.6
+        if re.search(r"\b(assets http api|api reference|rest endpoints?)\b", api_signals):
+            bonus += 1.2
+        if re.search(r"\b(assets view|search assets|assets ui introduction)\b", lowered_title) and re.search(
+            r"\b(rest api|/bin/|servlet|asset status)\b",
+            lowered_query,
+        ):
+            bonus -= 1.0
 
     if "dita-ot.org" in lowered_url:
         preprocess_targets = [
@@ -376,10 +444,31 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
         if "/install-conf-guide/" in lowered_url:
             bonus += 0.45
         if "conf-new-baseline-on-prem" in lowered_url and re.search(
-            r"\b(new baseline|on-premise|on-prem|enable faster baseline|baseline v2|configmanager|configmgr|web console|enable\.baseline\.v2|osgi)\b",
+            r"\b(new baseline|enable faster baseline|baseline v2|enable\.baseline\.v2)\b",
             lowered_query,
         ):
             bonus += 2.2
+        if "conf-folder-post-processing" in lowered_url and re.search(
+            r"\b(post\s*processing|postprocessing|uuid|dam update asset|ignored paths for post processing|"
+            r"enabled paths for post processing|ignored\.post\.processing\.paths|enabled\.post\.processing\.paths)\b",
+            lowered_query,
+        ):
+            bonus += 2.4
+        if "#cloud-service-postprocessing-configuration" in lowered_url and re.search(
+            r"\b(cloud service|configuration overrides?|ignored\.post\.processing\.paths|enabled\.post\.processing\.paths)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
+        if "#on-premise-postprocessing-configuration" in lowered_url and re.search(
+            r"\b(on-premise|on-prem|web console|configmgr|ignored paths for post processing|enabled paths for post processing)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
+        if "#rules-to-enable-or-disable-postprocessing" in lowered_url and re.search(
+            r"\b(parent|child|successors?|same folder path|ignored wins|enable or disable postprocessing)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
         if re.search(r"\b(configure|settings?|profile|filter|mapping|indexing|search|workspace)\b", lowered_title):
             bonus += 0.28
         if "/output-gen/" in lowered_url and "output" not in str(query or "").lower():
@@ -545,6 +634,7 @@ def _document_relevance_score(
         + (title_score * 0.35)
         + (url_score * 0.18)
         + min(0.4, phrase_bonus)
+        + _title_slug_match_bonus(query, title=title, url=url)
         + _aem_intent_bonus(query, title=title, url=url, content=content)
         + host_bonus
         + evidence_bonus
