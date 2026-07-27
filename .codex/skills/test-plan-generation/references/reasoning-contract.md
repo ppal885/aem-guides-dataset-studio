@@ -150,7 +150,10 @@ Use this JSON only as an internal evidence checklist or when a pipeline explicit
     {
       "source": "github_pr|git_commit|local_git|not_available",
       "ref": "",
+      "source_branch_or_pr": "",
       "changed_files": [],
+      "line_change_summary": "",
+      "changed_hunks": [],
       "changed_contracts": [],
       "tests_added_or_missing": "",
       "impact": ""
@@ -198,6 +201,7 @@ Rules:
 - Team test-plan memory must be read before scenario design and updated after plan creation/material changes.
 - Historical Jira MCP evidence is mandatory before review-ready sign-off.
 - Git/GitHub PR diff evidence is mandatory for fix-impact claims.
+- Diff evidence must include changed files, added/deleted line counts, and key hunks/functions when available; otherwise mark `Lines Changed` as a Draft blocker in the user-facing plan.
 - Inferred repo queries are allowed only when labeled with non-high confidence.
 - Keep the user-facing plan compact, bullet-only, and limited to: Acceptance Criteria, Expected Behaviour, Scope From Git, Code Touched, Lines Changed, Test Scenarios, Past Similar Tickets, and Regression Areas.
 - Do not use tables in the user-facing plan.

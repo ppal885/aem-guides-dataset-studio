@@ -33,6 +33,7 @@ Run these stages in order. Do not skip ahead to repo keywords or scenarios.
    - Build RAG queries from the normalized workflow and expected behavior, not from raw keyword lists.
    - Retrieve product behavior from Experience League/VM RAG/DITA evidence where relevant.
    - Capture what the product is supposed to do, what is unknown, and whether documentation is enough to support sign-off.
+   - Treat RAG as mandatory for functionality facts and expected behavior unless the Jira is strictly code-only; never expose raw RAG chunks in the final plan.
 
 4. **Historical Jira MCP analysis**
    - Use Adobe Jira MCP again with semantic JQL derived from exact error text, workflow, API route, component, version boundary, customer impact, and likely code area.
@@ -53,7 +54,8 @@ Run these stages in order. Do not skip ahead to repo keywords or scenarios.
    - Fetch PR URLs from Jira comments, issue links, development panel, and linked commits.
    - Prefer the configured GitHub MCP in Claude Code when available through Claude `mcp.json`; only use local git as a fallback for commit-history hints.
    - If Jira contains no PR/branch/commit link, ask the user for the GitHub PR URL, PR number, or branch before writing the final plan: `Jira has no PR link for <JIRA_KEY>. Please share the Git PR/branch so I can inspect the fix diff.`
-   - If the user provides a PR, inspect it with GitHub MCP and capture changed files, changed functions/classes, removed branches, new tests, config/migration changes, API/error contract changes, and test gaps.
+   - If the user provides a PR, inspect it with GitHub MCP and capture changed files, changed functions/classes, added/deleted line counts, important changed hunks, removed branches, new tests, config/migration changes, API/error contract changes, and test gaps.
+   - If using local git fallback, capture `git diff --stat`, `git diff --numstat`, and relevant hunk/function names from the branch/commit range before writing `Scope From Git`, `Code Touched`, or `Lines Changed`.
    - If GitHub MCP is unavailable, the user cannot provide a PR, or no fix exists yet, write `fix diff not inspected - user PR required` and design fix-safety checks from current product HEAD only.
 
 7. **Final Claude impact analysis**
@@ -85,6 +87,17 @@ Run these stages in order. Do not skip ahead to repo keywords or scenarios.
 - Every PR/diff bullet must cite the PR URL, commit, or local git evidence. If missing, say `fix diff not inspected - user PR required`.
 - Every past-ticket bullet must explain why the ticket is similar and how it changes coverage.
 
+## Final Section Content Guide
+
+- **Acceptance Criteria**: Rewrite Jira acceptance/sign-off conditions as tester-readable bullets. If Jira has no clear AC, add `Draft blocker: acceptance criteria missing or unclear`.
+- **Expected Behaviour**: State the intended product behavior from Jira plus behavior RAG/product docs. Mark any unsupported behavior as `Unknown from current evidence`.
+- **Scope From Git**: List PR/branch/commit, repo sync state, changed product area, and whether the diff was inspected. Do not infer scope from keywords alone.
+- **Code Touched**: List only real files/functions/classes/components touched or directly implicated by repo scan/diff, with short QA impact.
+- **Lines Changed**: Summarize added/deleted line counts and key hunks by file from PR/Git diff. If line counts are unavailable, add `Draft blocker: line-level diff not inspected`.
+- **Test Scenarios**: Write 6-10 practical bullets max, priority-tagged `P0`, `P1`, or `P2`. Each bullet should include action + expected result in plain English; cover happy path, negative/boundary, permission/config/state, and fix-safety checks when relevant.
+- **Past Similar Tickets**: List up to five related Jira keys with why similar and what coverage they add. If historical Jira MCP is unavailable or returns no matches, say that directly.
+- **Regression Areas**: List nearby workflows/APIs/configurations/roles/browsers/data shapes/automation gaps most likely to break because of the touched code and past-ticket learning.
+
 ## Test Plan Rules
 
 - Keep raw backend/RAG audit sections out of the final test plan.
@@ -92,6 +105,7 @@ Run these stages in order. Do not skip ahead to repo keywords or scenarios.
 - Do not use tables; use compact bullet points only.
 - Do not add extra headings such as `What can break`, `Likely bugs to watch`, `Fix safety checks`, `Important combinations`, `Automation`, or `Draft blockers`.
 - Put fix-safety, likely-bug, important-combination, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
+- Prefix missing-evidence bullets with `Draft blocker:` inside the relevant final section; do not create a separate blocker section.
 - Never mark review-ready when current Jira MCP, behavior RAG, historical Jira MCP, required repo evidence, or PR/diff inspection is missing.
 - Never silently continue as review-ready when Jira has no PR link; ask the user for the Git PR first, then keep Draft/flags if no PR is provided.
 - Never create a plan without reading/updating team memory unless the file is unavailable; in that case list it as a Draft blocker/action item.
