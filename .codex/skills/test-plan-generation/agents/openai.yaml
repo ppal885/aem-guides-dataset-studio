@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Plan Generation"
+  short_description: "Generate plain-English AEM Guides QA test plans"
+  default_prompt: "Use $test-plan-generation to analyze this Jira and generate a plain-English, bullet-only QA test plan."
