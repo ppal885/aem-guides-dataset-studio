@@ -586,6 +586,7 @@ def _document_relevance_score(
     lowered_title = str(title or "").lower()
     lowered_url = str(url or "").lower()
     lowered_content = str(content or "").lower()
+    searchable = f"{lowered_title} {lowered_url} {lowered_content}"
 
     phrase_bonus = 0.0
     for phrase in _phrase_candidates(query):
@@ -629,6 +630,26 @@ def _document_relevance_score(
             evidence_bonus += 0.55
         elif lowered_evidence_type == "enriched_generation_oracle":
             evidence_bonus += 0.50
+    exact_match_bonus = 0.0
+    for issue_key in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or "")):
+        if issue_key.lower() in searchable:
+            exact_match_bonus += 1.0
+    for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
+        normalized_version = version.replace("-", ".")
+        if version in searchable or normalized_version in searchable:
+            exact_match_bonus += 1.15
+        parts = normalized_version.split(".")
+        if len(parts) >= 2 and len(parts[0]) == 4:
+            short_release = f"{parts[0][2:]}{parts[1]}"
+            if f"/{short_release}-release/" in searchable:
+                exact_match_bonus += 0.65
+        compact_release = re.sub(r"\D", "", normalized_version)[:6]
+        if compact_release and f"/{compact_release}-release/" in searchable:
+            exact_match_bonus += 0.65
+    if re.search(r"\bupgrade instructions?\b", str(query or "").lower()) and re.search(
+        r"\bupgrade instructions?\b", searchable
+    ):
+        exact_match_bonus += 0.35
     return (
         (content_score * 0.45)
         + (title_score * 0.35)
@@ -638,6 +659,7 @@ def _document_relevance_score(
         + _aem_intent_bonus(query, title=title, url=url, content=content)
         + host_bonus
         + evidence_bonus
+        + exact_match_bonus
     )
 
 
@@ -688,6 +710,89 @@ def _filter_and_rank_docs(
         if len(deduped) >= k:
             break
     return deduped
+
+
+def _query_needs_exact_match_supplement(query: str) -> bool:
+    lowered_query = str(query or "").lower()
+    return bool(
+        re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))
+        or re.search(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", lowered_query)
+    )
+
+
+def _exact_match_fragments(query: str) -> set[str]:
+    fragments = {term.lower() for term in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))}
+    for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
+        normalized_version = version.replace("-", ".")
+        fragments.add(version)
+        fragments.add(normalized_version)
+        parts = normalized_version.split(".")
+        if len(parts) >= 2 and len(parts[0]) == 4:
+            short_release = f"{parts[0][2:]}{parts[1]}"
+            fragments.add(f"/{short_release}-release/")
+            fragments.add(f"/{parts[0]}-releases/{short_release}-release/")
+        compact_release = re.sub(r"\D", "", normalized_version)[:6]
+        if compact_release:
+            fragments.add(f"/{compact_release}-release/")
+    return {fragment for fragment in fragments if fragment}
+
+
+def _lexical_supplement_docs(
+    query: str,
+    *,
+    k: int,
+    max_snippet_chars: int,
+    allowed_host_suffixes: tuple[str, ...] | None,
+    existing_chunk_ids: set[str],
+) -> list[dict]:
+    if not _query_needs_exact_match_supplement(query):
+        return []
+
+    scored: list[tuple[float, dict]] = []
+    exact_terms = _exact_match_fragments(query)
+    if not exact_terms:
+        return []
+    for chunk in _load_chunks():
+        chunk_id = str(chunk.get("id") or chunk.get("chunk_id") or "").strip()
+        if chunk_id and chunk_id in existing_chunk_ids:
+            continue
+        url = str(chunk.get("source_url") or chunk.get("canonical_url") or chunk.get("url") or "")
+        if not _matches_allowed_hosts(url, allowed_host_suffixes):
+            continue
+        snippet = str(chunk.get("content") or "")[:max_snippet_chars]
+        title = str(chunk.get("title") or "")
+        searchable = f"{title} {url} {snippet}".lower()
+        if not any(term in searchable for term in exact_terms):
+            continue
+        score = _document_relevance_score(
+            query,
+            title=title,
+            url=url,
+            content=snippet,
+            evidence_type=str(chunk.get("evidence_type") or ""),
+            allowed_host_suffixes=allowed_host_suffixes,
+        )
+        score += 1.0
+        if score <= 0:
+            continue
+        scored.append(
+            (
+                score,
+                {
+                    "chunk_id": chunk_id,
+                    "url": url,
+                    "source_url": chunk.get("source_url") or chunk.get("url", ""),
+                    "canonical_url": chunk.get("canonical_url") or chunk.get("url", ""),
+                    "corpus": chunk.get("corpus", "aem_guides"),
+                    "evidence_type": _infer_evidence_type(snippet, str(chunk.get("evidence_type") or "")),
+                    "title": title,
+                    "snippet": snippet,
+                },
+            )
+        )
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [doc for _score, doc in scored[: max(k, 1)]]
 
 
 def _require_semantic_retrieval_for_aem_guides(
@@ -797,18 +902,28 @@ def retrieve_relevant_docs_with_diagnostics(
                         "title": meta.get("title", ""),
                         "snippet": snippet,
                     })
+                lexical_supplements = _lexical_supplement_docs(
+                    query,
+                    k=max(k * 4, 20),
+                    max_snippet_chars=max_snippet_chars,
+                    allowed_host_suffixes=allowed_hosts,
+                    existing_chunk_ids={str(doc.get("chunk_id") or "") for doc in result},
+                )
+                if lexical_supplements:
+                    result.extend(lexical_supplements)
                 ranked = _filter_and_rank_docs(query, result, k=k, allowed_host_suffixes=allowed_hosts)
                 logger.info_structured(
                     "AEM Guides docs from ChromaDB (Experience League)",
                     extra_fields={
                         "source": "chromadb",
                         "count": len(ranked),
+                        "lexical_supplements": len(lexical_supplements),
                         "allowed_hosts": list(allowed_hosts),
                     },
                 )
                 payload["results"] = ranked
                 payload["count"] = len(ranked)
-                payload["retrieval_mode"] = "chromadb_semantic"
+                payload["retrieval_mode"] = "chromadb_semantic_plus_lexical" if lexical_supplements else "chromadb_semantic"
                 return payload
 
     chunks = _load_chunks()
