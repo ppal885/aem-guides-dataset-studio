@@ -69,8 +69,10 @@ Examples:
 - Unknown from current evidence: exact behaviour for upgraded instances was not confirmed by Jira or RAG.
 
 **Scope From Git**
+- Jira development link: <PR URL or no PR in Jira>.
+- GitHub MCP PR discovery: <PR found by Jira key/search terms, or not found>.
 - PR inspected: <PR URL>; changed area is <component/workflow>.
-- Repo sync state: fetched and clean/up to date before diff inspection.
+- Repo sync state: <Starling/xmleditor/new editor/guides-ui-tests/dxml-it-tests fetched and clean/up to date, or blocker>.
 
 **Code Touched**
 - `<file>`: affects <workflow/API/UI state>, so QA should verify <impact>.
@@ -93,4 +95,5 @@ Examples:
 - Shared validation/API path used by <nearby workflow>.
 - Role/permission combinations around <feature>.
 - Config/version boundary around <setting/release>.
+- Automation coverage gaps in `guides-ui-tests` or `dxml-it-tests` for <workflow>.
 ```

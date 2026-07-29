@@ -1,6 +1,6 @@
 ---
 name: test-plan-generation
-description: "Generate evidence-backed, plain-English AEM Guides QA test plans from Jira, PR, branch, commit, or pasted diff context. Use when Codex must create, improve, or review a manual QA test plan with acceptance criteria, expected behaviour, Git/PR scope, touched code, changed lines, test scenarios, past similar tickets, and regression areas; using `ask_dita_expert` for VM-backed RAG behaviour learning; optional connected Jira/GitHub MCPs when available; strict Draft blockers when Jira, RAG, PR/diff, repo sync, or historical evidence is missing; and no tables or noisy raw evidence dumps."
+description: "Generate evidence-backed, plain-English AEM Guides QA test plans from Jira, PR, branch, commit, pasted diff, or user-cloned repo context. Use when Codex must create, improve, or review a manual QA test plan with acceptance criteria, expected behaviour, Git/PR scope, touched code, changed lines, test scenarios, past similar tickets, and regression areas; using Jira MCP for Jira facts, GitHub MCP to discover/fetch PRs when Jira does not mention one, `ask_dita_expert` for VM-backed RAG behaviour learning, and user cloned repos such as Starling/backend, xmleditor, new editor, guides-ui-tests, and dxml-it-tests for code and automation evidence; with strict Draft blockers when Jira, RAG, PR/diff, repo sync, or historical evidence is missing; and no tables or noisy raw evidence dumps."
 ---
 
 # Test Plan Generation
@@ -15,18 +15,21 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Keep the final answer short and tester-facing; keep raw evidence, chunk scores, backend traces, and reasoning audits internal.
 - Treat the plan as `Draft` unless current Jira facts, accepted behaviour evidence, past-similar-ticket search, and required Git/PR evidence are present.
 - Ask for the missing Jira text, PR URL, branch, commit, or pasted diff only when that evidence is required and unavailable.
-- Do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, copy product repos, or run old test-plan MCP tools.
+- Use user-provided local clones when present; do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, or run old test-plan MCP tools.
 
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
+- Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira details and mark the Jira evidence gap.
+- Use GitHub MCP to inspect a PR when Jira includes one; if Jira has no PR link, use GitHub MCP to search likely repos by Jira key, summary terms, branch names, commit messages, and PR body before asking the user for a PR.
 - Do not use or expect `/aem-guides-test-plan`, `guides_test_plan_generator`, `test_plan_pipeline`, or any generated test-plan MCP tool.
-- Use connected Jira/GitHub MCPs only if available in the current session. If unavailable, rely on user-provided Jira/PR/diff text and mark gaps as Draft blockers.
-- If a local repo is used for evidence, fetch before relying on it and never stash, reset, merge, or rebase automatically.
+- Use connected Jira/GitHub MCPs only if available in the current session. If unavailable, rely on user-provided Jira/PR/diff text and local clones, then mark gaps as Draft blockers.
+- If a local cloned repo is used for evidence, fetch before relying on it and never stash, reset, merge, or rebase automatically.
 
 ## Required References
 
 - Read `references/rag-query-cookbook.md` before calling or judging `ask_dita_expert` evidence.
+- Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/output-template.md` before writing the final test plan.
 - Read `references/quality-gate-checklist.md` before marking a plan review-ready.
 
@@ -41,7 +44,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ### Phase 1 — Collect Jira Facts
 
-- Use connected Jira MCP when available; otherwise use pasted Jira details.
+- Use connected Jira MCP first for the target Jira whenever available; otherwise use pasted Jira details and mark that Jira MCP was unavailable.
 - Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, comments, labels, components, affected/fix versions, status, customer impact, attachments, linked issues, and development links.
 - Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
 - Convert unclear AC into tester-readable bullets and keep ambiguity visible.
@@ -69,8 +72,10 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ### Phase 5 — Inspect Git/PR Evidence
 
-- Prefer connected GitHub MCP for PRs. Capture changed files, functions/classes/components, added/deleted line counts, key hunks, tests, config/migration changes, API/error contract changes, and gaps.
-- For local repos, run `git fetch --all --prune`, inspect `git status -sb`, and fast-forward pull only if clean and behind. If dirty, diverged, no upstream, or fetch/pull fails, keep repo claims provisional.
+- Prefer connected GitHub MCP for PRs. If Jira does not mention a PR, search GitHub MCP by Jira key, summary terms, branch names, commit messages, and PR body across likely AEM Guides repos before asking the user for a PR.
+- Capture changed files, functions/classes/components, added/deleted line counts, key hunks, tests, config/migration changes, API/error contract changes, and gaps.
+- Inspect user-cloned repos when available for code and automation context: Starling/backend, xmleditor, new editor, `guides-ui-tests`, and `dxml-it-tests`.
+- For local cloned repos, run `git fetch --all --prune`, inspect `git status -sb`, and fast-forward pull only if clean and behind. If dirty, diverged, no upstream, or fetch/pull fails, keep repo claims provisional.
 - Never infer Git scope from Jira keywords alone.
 - If line-level diff is unavailable, write `Draft blocker: line-level diff not inspected`.
 
@@ -107,7 +112,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 - **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` evidence. If unsupported, write `Unknown from current evidence`.
-- **Scope From Git**: List PR/branch/commit, repo sync state, changed product area, and whether diff was inspected.
+- **Scope From Git**: List Jira development-link source, GitHub MCP PR-discovery result, PR/branch/commit, repo sync state, changed product area, and whether diff was inspected.
 - **Code Touched**: List only real files/functions/classes/components touched or directly implicated by PR/repo scan, with short QA impact.
 - **Lines Changed**: Summarize added/deleted line counts and key hunks by file. If unavailable, add `Draft blocker: line-level diff not inspected`.
 - **Test Scenarios**: Keep 6-10 practical P0/P1/P2 bullets, each with action + expected result.
