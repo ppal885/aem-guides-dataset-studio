@@ -1,0 +1,15 @@
+{
+  "name": "aem-guides-mcp-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal Claude MCP client for AEM Guides VM RAG and local AEM upload.",
+  "scripts": {
+    "aem:upload": "node scripts/aem_upload.js"
+  },
+  "dependencies": {
+    "@adobe/aem-upload": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

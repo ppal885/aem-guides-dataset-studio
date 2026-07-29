@@ -1,93 +1,99 @@
 ---
 name: test-plan-generation
-description: "Generate evidence-backed, plain-English AEM Guides test plans from Jira. Use when Codex must create, improve, or review a Jira-driven QA test plan by extracting acceptance criteria, expected behavior, Git scope, touched code, changed lines, test scenarios, past similar tickets, and regression areas; using high-signal RAG/product behavior evidence; rejecting noisy or unrelated retrieval chunks; syncing local repos with remote before repo evidence; inspecting Git/GitHub PR diffs; and keeping the plan Draft when required evidence is missing."
+description: "Generate evidence-backed, plain-English AEM Guides QA test plans from Jira, PR, branch, commit, or pasted diff context. Use when Codex must create, improve, or review a manual QA test plan with acceptance criteria, expected behaviour, Git/PR scope, touched code, changed lines, test scenarios, past similar tickets, and regression areas; using `ask_dita_expert` for VM-backed RAG behaviour learning; optional connected Jira/GitHub MCPs when available; strict Draft blockers when Jira, RAG, PR/diff, repo sync, or historical evidence is missing; and no tables or noisy raw evidence dumps."
 ---
 
 # Test Plan Generation
 
 ## Goal
 
-Produce a concrete, high-value test plan that reads like it was written by a manual QA engineer with 5+ years of experience. Gather evidence from Jira, behavior RAG, historical tickets, synced repos, and PR/diff inspection, but keep the final user-facing test plan short, plain-English, and bullet-only.
+Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Use RAG to learn product behaviour, but do not let RAG replace Jira facts or PR diff evidence.
 
-## Evidence Quality Gates
+## Operating Mode
 
-- Prefer evidence in this order: current Jira facts, exact PR/diff, exact Experience League/release-note behavior, workflow/configuration docs, historical Jira, then repo/automation hints.
-- Accept a RAG chunk only when it directly supports the Jira workflow, expected behavior, configuration, or regression area. Reject generic chunks that only share broad words such as `tag`, `topic`, `map`, `assets`, `cloud`, or `metadata`.
-- Run focused RAG queries from normalized behavior, not raw keyword spam: one exact failure query, one expected-workflow query, and one configuration/boundary query.
-- Record internally which source supported each expected-behavior claim. Do not expose raw RAG dumps, scores, or long citations in the final plan.
-- If Live VM RAG/MCP is down, returns `500`, or returns unrelated results, use local Chroma/JSON/Experience League files only when exact source evidence is available, and keep the plan Draft with a short blocker.
-- Never let RAG override Jira facts or PR diff. Use RAG to ground product behavior, user workflow, expected UI/API outcome, and regression scope.
+- Work evidence-first: collect facts, normalize behaviour, retrieve RAG, inspect diff, then write scenarios.
+- Keep the final answer short and tester-facing; keep raw evidence, chunk scores, backend traces, and reasoning audits internal.
+- Treat the plan as `Draft` unless current Jira facts, accepted behaviour evidence, past-similar-ticket search, and required Git/PR evidence are present.
+- Ask for the missing Jira text, PR URL, branch, commit, or pasted diff only when that evidence is required and unavailable.
+- Do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, copy product repos, or run old test-plan MCP tools.
 
-## Required Sequence
+## Tool Boundary
 
-Run these stages in order. Do not skip ahead to repo keywords or scenarios.
+- Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
+- Do not use or expect `/aem-guides-test-plan`, `guides_test_plan_generator`, `test_plan_pipeline`, or any generated test-plan MCP tool.
+- Use connected Jira/GitHub MCPs only if available in the current session. If unavailable, rely on user-provided Jira/PR/diff text and mark gaps as Draft blockers.
+- If a local repo is used for evidence, fetch before relying on it and never stash, reset, merge, or rebase automatically.
 
-0. **Read team test-plan memory**
-   - Read `{STARLING}/docs/qa/test-plans/team-test-plan-memory.json` and `{STARLING}/docs/qa/test-plans/test-plans-registry.json` when available.
-   - Use memory only as prior-plan learning: similar APIs, code paths, risks, scenario IDs, automation gaps, and related past Jiras.
-   - Do not treat memory as proof of current behavior; current Jira MCP, behavior RAG, repo scan, and PR diff override memory.
+## Required References
 
-1. **Current Jira MCP extraction**
-   - Use Adobe Jira MCP first for the target Jira.
-   - Pull summary, description, expected/actual behavior, acceptance criteria/UAC text, comments, linked issues, attachments, labels, components, affected/fix versions, status, customer impact, and any development-panel or PR links.
-   - If Jira has no PR, branch, commit, or development-panel link, record that explicitly; do not replace the missing PR link with guessed local git history.
-   - If Jira MCP is unavailable but configured Jira REST works, label the evidence as `Jira REST fallback`, use only returned fields, and keep the result Draft.
-   - If both Jira MCP and Jira REST are unavailable, do not invent missing comments, linked PRs, or related Jira IDs; keep the result Draft.
+- Read `references/rag-query-cookbook.md` before calling or judging `ask_dita_expert` evidence.
+- Read `references/output-template.md` before writing the final test plan.
+- Read `references/quality-gate-checklist.md` before marking a plan review-ready.
 
-2. **Claude deep ticket analysis**
-   - Normalize the issue into current behavior, expected behavior, affected user workflow, data shape, error contract, version boundary, business impact, acceptance criteria, and ambiguity gaps.
-   - Infer likely frontend/backend/test ownership only after reading the Jira fields.
-   - Mark each inference as confirmed, inferred, or blocked by missing evidence.
+## Lifecycle
 
-3. **Behavior RAG retrieval**
-   - Build RAG queries from the normalized workflow and expected behavior, not from raw keyword lists.
-   - Retrieve product behavior from Experience League/VM RAG/DITA evidence where relevant; capture retrieval mode internally (`vm_mcp`, `local_chroma`, `json_fallback`, `official_file`, or `unavailable`).
-   - Use at least three focused queries: exact failure text or Jira key, normal expected workflow, and configuration/boundary behavior.
-   - Prefer exact Experience League release-note or product-doc chunks for fixed Jira behavior, then workflow docs, then configuration docs. Do not use unrelated DITA/spec/general docs as proof for AEM Guides UI behavior.
-   - Capture what the product is supposed to do, what is unknown, and whether documentation is enough to support sign-off.
-   - If top RAG results are noisy, say internally that RAG did not support the claim; do not launder noisy chunks into confident expected behavior.
-   - Treat RAG as mandatory for functionality facts and expected behavior unless the Jira is strictly code-only; never expose raw RAG chunks in the final plan.
+### Phase 0 — Classify Input
 
-4. **Historical Jira MCP analysis**
-   - Use Adobe Jira MCP again with semantic JQL derived from exact error text, workflow, API route, component, version boundary, customer impact, and likely code area.
-   - Curate related Jira rows: key, summary, status/resolution, similarity reason, previous fix/escape/reopen/automation signal, and how each row changes test coverage.
-   - If Jira MCP is unavailable but configured Jira REST JQL works, label the rows as `Jira REST fallback`, reject broad/noisy matches, and keep the plan Draft.
-   - If no results or both MCP/REST are unavailable, state the exact JQL required and keep the plan Draft.
+- Identify whether the user provided Jira only, PR only, Jira + PR, branch/commit, pasted diff, or only a vague request.
+- If Jira facts are missing, keep the plan Draft and ask for Jira summary/description/AC or a Jira MCP connection.
+- If PR/diff evidence is missing and fix-impact claims are needed, ask for PR URL, branch, commit, or pasted diff.
+- If the user only wants a lightweight draft, still mark unsupported sections with `Draft blocker:`.
 
-5. **Repository scan from the test-plan template**
-   - Before scanning any local clone, verify it is up to date with its configured remote so other developers' latest changes are included.
-   - Run `git fetch --all --prune` and check `git status -sb` plus upstream ahead/behind state for each relevant repo.
-   - If the repo is behind its upstream and the worktree is clean, run `git pull --ff-only` before using repo evidence.
-   - If the repo has uncommitted changes, no upstream, diverged history, or the fast-forward pull fails, do not stash, reset, merge, or rebase automatically; ask the user to sync the repo or provide the intended branch/remote.
-   - Treat unsynced repo evidence as provisional and keep the plan Draft until the repo sync blocker is resolved or explicitly waived.
-   - Use the semantic repo queries from the analysis to scan local clones: `xmleditor`, `starling`, `guides-ui-tests`, and `dxml-it-tests`.
-   - Cite real paths/functions/tests. If no repo path is found, keep code-path claims provisional.
-   - Do not use broad standalone words such as `map`, `topic`, `type`, `format`, `reports`, `cloud`, or `baseline`.
+### Phase 1 — Collect Jira Facts
 
-6. **Git/GitHub MCP PR and diff inspection**
-   - Fetch PR URLs from Jira comments, issue links, development panel, and linked commits.
-   - Prefer the configured GitHub MCP in Claude Code when available through Claude `mcp.json`; only use local git as a fallback for commit-history hints.
-   - If Jira contains no PR/branch/commit link, ask the user for the GitHub PR URL, PR number, or branch before writing the final plan: `Jira has no PR link for <JIRA_KEY>. Please share the Git PR/branch so I can inspect the fix diff.`
-   - If the user provides a PR, inspect it with GitHub MCP and capture changed files, changed functions/classes, added/deleted line counts, important changed hunks, removed branches, new tests, config/migration changes, API/error contract changes, and test gaps.
-   - If using local git fallback, capture `git diff --stat`, `git diff --numstat`, and relevant hunk/function names from the branch/commit range before writing `Scope From Git`, `Code Touched`, or `Lines Changed`.
-   - If GitHub MCP is unavailable, the user cannot provide a PR, or no fix exists yet, write `fix diff not inspected - user PR required` and design fix-safety checks from current product HEAD only.
+- Use connected Jira MCP when available; otherwise use pasted Jira details.
+- Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, comments, labels, components, affected/fix versions, status, customer impact, attachments, linked issues, and development links.
+- Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
+- Convert unclear AC into tester-readable bullets and keep ambiguity visible.
 
-7. **Final Claude impact analysis**
-   - Combine Jira facts, behavior RAG, historical Jira evidence, repo code scan, and PR diff.
-   - Produce plain-English analysis: what can break, likely bugs to watch, fix safety checks, important combinations, automation strength, regression pack, and what remains unverified.
-   - Every P0/P1 scenario must trace to an acceptance criterion, historical Jira, behavior source, repo path, PR diff, or explicit risk.
+### Phase 2 — Normalize Behaviour
 
-8. **Update team test-plan memory**
-   - After writing or materially changing a plan, update `team-test-plan-memory.json` and `test-plans-registry.json`.
-   - Store the Jira key, plan path, review status, component/scope, APIs, error contracts, code paths, AC IDs, scenario IDs, automation coverage, related past Jiras, PR/diff refs, and remaining blockers.
-   - If backend pipeline memory exists, cite the retained pipeline memory path too.
+- Convert Jira text into current behaviour, expected behaviour, affected workflow, data shape, error contract, version boundary, configuration boundary, roles/permissions, user impact, and open questions.
+- Label inferred ownership, impacted code, or workflow assumptions as inferred unless PR/repo evidence confirms them.
+- Build three concise search intents: exact failure, expected workflow, and configuration/boundary.
+
+### Phase 3 — Retrieve Behaviour RAG
+
+- Call `ask_dita_expert` with focused questions from normalized behaviour, not raw keyword spam.
+- Use RAG to ground expected behaviour, workflow rules, product constraints, release-note behaviour, configuration effects, and regression areas.
+- Reject chunks that only share broad vocabulary such as `topic`, `map`, `assets`, `metadata`, `cloud`, `report`, `translation`, or `workflow` without proving the actual behaviour.
+- Never use attribute-only DITA evidence as proof for an exact element behaviour, or generic DITA docs as proof for AEM Guides UI behaviour.
+- If RAG is unavailable, noisy, or unrelated, add a Draft blocker under `Expected Behaviour` or `Regression Areas`.
+
+### Phase 4 — Find Past Similar Tickets
+
+- Use Jira MCP/JQL if available; otherwise use only user-provided related tickets or available team memory.
+- Search by exact error text, workflow, API route, component, UI label, data shape, version boundary, and likely code area.
+- Keep at most five past tickets. For each, explain why similar and what coverage it adds.
+- Reject broad results that match only generic words.
+
+### Phase 5 — Inspect Git/PR Evidence
+
+- Prefer connected GitHub MCP for PRs. Capture changed files, functions/classes/components, added/deleted line counts, key hunks, tests, config/migration changes, API/error contract changes, and gaps.
+- For local repos, run `git fetch --all --prune`, inspect `git status -sb`, and fast-forward pull only if clean and behind. If dirty, diverged, no upstream, or fetch/pull fails, keep repo claims provisional.
+- Never infer Git scope from Jira keywords alone.
+- If line-level diff is unavailable, write `Draft blocker: line-level diff not inspected`.
+
+### Phase 6 — Design Test Scenarios
+
+- Write 6-10 scenarios maximum, priority-tagged `P0`, `P1`, or `P2`.
+- Each scenario must include action + expected result in one plain-English bullet.
+- Cover happy path, negative/boundary, role/permission, configuration, data-shape, upgrade/version, and fix-safety checks when relevant.
+- Every P0/P1 scenario must trace to Jira AC, accepted RAG, PR diff, past Jira learning, or an explicit high-risk regression.
+
+### Phase 7 — Decide Draft vs Review-Ready
+
+- Use `Draft blocker:` bullets inside the affected final section; do not create a separate blocker section.
+- Keep Draft if Jira facts, accepted RAG, historical Jira search, PR/diff, line counts, or repo sync are missing and required for confidence.
+- Mark review-ready only when evidence supports expected behaviour, scope, code impact, test scenarios, and regression areas.
 
 ## Output Contract
 
-- Use `references/reasoning-contract.md` as an internal evidence checklist or pipeline packet only when JSON is explicitly requested.
-- For normal test-plan generation, output Markdown bullets only; do not output JSON, tables, raw RAG audits, backend trace dumps, or long evidence matrices.
-- Write like an experienced manual QA engineer: clear, practical, concise, and focused on what should be tested.
-- Use only these final sections, in this order:
+- Output Markdown bullets only.
+- Do not use tables.
+- Do not output JSON unless explicitly requested.
+- Do not include raw RAG chunks, chunk scores, backend traces, evidence matrices, or long citations.
+- Use exactly these sections, in this order:
   1. `Acceptance Criteria`
   2. `Expected Behaviour`
   3. `Scope From Git`
@@ -96,33 +102,22 @@ Run these stages in order. Do not skip ahead to repo keywords or scenarios.
   6. `Test Scenarios`
   7. `Past Similar Tickets`
   8. `Regression Areas`
-- Keep every section as bullets. If evidence is missing, add a short blocker bullet inside the relevant section instead of creating extra sections.
-- Every local repo evidence bullet must state whether the repo was fetched and whether it was clean/up to date, fast-forward pulled, or blocked by sync risk.
-- Every PR/diff bullet must cite the PR URL, commit, or local git evidence. If missing, say `fix diff not inspected - user PR required`.
-- Every past-ticket bullet must explain why the ticket is similar and how it changes coverage.
-- Every expected-behavior bullet must be backed by Jira, accepted RAG, PR diff, or an explicit `Unknown from current evidence` qualifier.
 
-## Final Section Content Guide
+## Section Rules
 
-- **Acceptance Criteria**: Rewrite Jira acceptance/sign-off conditions as tester-readable bullets. If Jira has no clear AC, add `Draft blocker: acceptance criteria missing or unclear`.
-- **Expected Behaviour**: State the intended product behavior from Jira plus accepted behavior RAG/product docs. Mark any unsupported or noisy-retrieval behavior as `Unknown from current evidence`.
-- **Scope From Git**: List PR/branch/commit, repo sync state, changed product area, and whether the diff was inspected. Do not infer scope from keywords alone.
-- **Code Touched**: List only real files/functions/classes/components touched or directly implicated by repo scan/diff, with short QA impact.
-- **Lines Changed**: Summarize added/deleted line counts and key hunks by file from PR/Git diff. If line counts are unavailable, add `Draft blocker: line-level diff not inspected`.
-- **Test Scenarios**: Write 6-10 practical bullets max, priority-tagged `P0`, `P1`, or `P2`. Each bullet should include action + expected result in plain English; cover happy path, negative/boundary, permission/config/state, and fix-safety checks when relevant.
-- **Past Similar Tickets**: List up to five related Jira keys with why similar and what coverage they add. If historical Jira MCP is unavailable or returns no matches, say that directly.
-- **Regression Areas**: List nearby workflows/APIs/configurations/roles/browsers/data shapes/automation gaps most likely to break because of the touched code and past-ticket learning.
+- **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
+- **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` evidence. If unsupported, write `Unknown from current evidence`.
+- **Scope From Git**: List PR/branch/commit, repo sync state, changed product area, and whether diff was inspected.
+- **Code Touched**: List only real files/functions/classes/components touched or directly implicated by PR/repo scan, with short QA impact.
+- **Lines Changed**: Summarize added/deleted line counts and key hunks by file. If unavailable, add `Draft blocker: line-level diff not inspected`.
+- **Test Scenarios**: Keep 6-10 practical P0/P1/P2 bullets, each with action + expected result.
+- **Past Similar Tickets**: List up to five Jira keys with similarity reason and coverage impact. If unavailable, say so directly.
+- **Regression Areas**: List nearby workflows, APIs, configs, roles, browsers, data shapes, upgrade paths, and automation gaps likely to break.
 
-## Test Plan Rules
+## Hard Rules
 
-- Keep raw backend/RAG audit sections out of the final test plan.
 - Keep acceptance criteria in the plan.
-- Do not use tables; use compact bullet points only.
-- Do not add extra headings such as `What can break`, `Likely bugs to watch`, `Fix safety checks`, `Important combinations`, `Automation`, or `Draft blockers`.
-- Put fix-safety, likely-bug, important-combination, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
-- Prefix missing-evidence bullets with `Draft blocker:` inside the relevant final section; do not create a separate blocker section.
-- Never mark review-ready when current Jira MCP, behavior RAG, historical Jira MCP, required repo evidence, or PR/diff inspection is missing.
-- Never silently continue as review-ready when Jira has no PR link; ask the user for the Git PR first, then keep Draft/flags if no PR is provided.
-- Never create a plan without reading/updating team memory unless the file is unavailable; in that case list it as a Draft blocker/action item.
-- Never rely on stale local repo evidence when a relevant repo is behind remote; fast-forward pull clean worktrees or keep the plan Draft with a repo-sync blocker.
-- Never call a plan `proper RAG-backed` when the retrieved chunks are generic, unrelated, or only keyword-matched. Either retrieve better evidence or add a Draft blocker under `Expected Behaviour`.
+- Do not add extra headings such as `What can break`, `Likely bugs`, `Fix safety`, `Important combinations`, `Automation`, or `Draft blockers`.
+- Put likely bugs, fix-safety, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
+- Never call a plan `proper RAG-backed` when evidence is generic, unrelated, unavailable, or only keyword-matched.
+- Never mark review-ready when required Jira, RAG, past-ticket, PR/diff, line-count, or repo-sync evidence is missing.
