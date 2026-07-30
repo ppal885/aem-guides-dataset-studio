@@ -115,6 +115,15 @@ for collection in (
 PY
 }
 
+service_env_value() {
+  local name="$1"
+  local pid="${2:-}"
+  if [[ -z "$pid" || "$pid" == "0" || ! -r "/proc/$pid/environ" ]]; then
+    return 0
+  fi
+  tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n "s/^${name}=//p" | head -1
+}
+
 section "repo"
 echo "root_dir=$ROOT_DIR"
 echo "pwd=$(pwd)"
@@ -133,11 +142,31 @@ section "systemd service: $SERVICE_NAME"
 systemctl status "$SERVICE_NAME" --no-pager -l || true
 PID="$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || true)"
 echo "MainPID=${PID:-}"
+SERVICE_STORAGE_PATH=""
+SERVICE_PYTHONPATH=""
+SERVICE_VIRTUAL_ENV=""
 if [[ -n "${PID:-}" && "$PID" != "0" && -d "/proc/$PID" ]]; then
   echo "service_cwd=$(readlink -f "/proc/$PID/cwd" 2>/dev/null || true)"
   echo "service_cmd=$(tr '\0' ' ' < "/proc/$PID/cmdline" 2>/dev/null || true)"
   echo "service_env:"
   tr '\0' '\n' < "/proc/$PID/environ" 2>/dev/null | grep -E 'STORAGE_PATH|PYTHONPATH|VIRTUAL_ENV|CHROMA|AEM_STUDIO' || true
+  SERVICE_STORAGE_PATH="$(service_env_value STORAGE_PATH "$PID")"
+  SERVICE_PYTHONPATH="$(service_env_value PYTHONPATH "$PID")"
+  SERVICE_VIRTUAL_ENV="$(service_env_value VIRTUAL_ENV "$PID")"
+fi
+
+section "service-env python probe"
+if [[ -x "$ROOT_DIR/backend/.venv/bin/python" ]]; then
+  SERVICE_PROBE_PYTHONPATH="${SERVICE_PYTHONPATH:-backend}"
+  SERVICE_PROBE_VENV="${SERVICE_VIRTUAL_ENV:-$ROOT_DIR/backend/.venv}"
+  if [[ -n "$SERVICE_STORAGE_PATH" ]]; then
+    STORAGE_PATH="$SERVICE_STORAGE_PATH" VIRTUAL_ENV="$SERVICE_PROBE_VENV" PATH="$SERVICE_PROBE_VENV/bin:$PATH" PYTHONPATH="$SERVICE_PROBE_PYTHONPATH" python_probe "$ROOT_DIR/backend/.venv/bin/python"
+  else
+    echo "Service does not expose STORAGE_PATH; using backend code default for this probe."
+    VIRTUAL_ENV="$SERVICE_PROBE_VENV" PATH="$SERVICE_PROBE_VENV/bin:$PATH" PYTHONPATH="$SERVICE_PROBE_PYTHONPATH" python_probe "$ROOT_DIR/backend/.venv/bin/python"
+  fi
+else
+  echo "backend/.venv/bin/python not found."
 fi
 
 section "current shell python probe"
@@ -172,5 +201,6 @@ fi
 
 section "summary hints"
 echo "If backend/.venv count is low, run scripts/upsert_vm_rag_backend.sh to upsert with the same venv/storage used by the service."
-echo "If backend/.venv count is high but HTTP count is low, run scripts/upsert_vm_rag_backend.sh --restart-only."
+echo "If service-env count is low, run scripts/upsert_vm_rag_backend.sh; it will default to the live service STORAGE_PATH."
+echo "If service-env count is high but HTTP count is low, run scripts/upsert_vm_rag_backend.sh --restart-only."
 echo "If direct backend and public URL differ, reload nginx with: nginx -t && systemctl reload nginx"

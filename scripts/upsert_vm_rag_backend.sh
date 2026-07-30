@@ -11,6 +11,8 @@ RESTART_SERVICE="1"
 RELOAD_NGINX="0"
 DRY_RUN="0"
 RESTART_ONLY="0"
+STORAGE_PATH_OVERRIDE=""
+PYTHONPATH_OVERRIDE=""
 
 usage() {
   cat <<'EOF'
@@ -24,6 +26,8 @@ Options:
   --min-expected N        fail if final aem_guides count is below this; default: 1000
   --public-url URL        nginx/public URL; default: http://10.42.46.78:4502
   --backend-url URL       direct backend URL; default: http://127.0.0.1:8001
+  --storage-path PATH     override STORAGE_PATH for the upsert; default: live service STORAGE_PATH
+  --pythonpath VALUE      override PYTHONPATH for the upsert; default: live service PYTHONPATH or backend
   --no-restart            upsert only, do not restart systemd service
   --restart-only          skip upsert and only restart/verify service
   --reload-nginx          run nginx -t and reload nginx after service restart
@@ -31,7 +35,7 @@ Options:
 
 What it does:
   - Uses backend/.venv/bin/python when available.
-  - Upserts behavior chunks into the Chroma path resolved by backend code.
+  - Uses the live systemd service STORAGE_PATH by default, so Chroma writes to the same DB that HTTP reads.
   - Restarts the systemd backend service so HTTP RAG sees the updated Chroma collection.
   - Verifies counts through direct backend and public nginx URL.
 
@@ -71,6 +75,16 @@ while [[ $# -gt 0 ]]; do
     --backend-url)
       BACKEND_URL="${2:-}"
       [[ -n "$BACKEND_URL" ]] || { echo "ERROR: --backend-url requires a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --storage-path)
+      STORAGE_PATH_OVERRIDE="${2:-}"
+      [[ -n "$STORAGE_PATH_OVERRIDE" ]] || { echo "ERROR: --storage-path requires a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --pythonpath)
+      PYTHONPATH_OVERRIDE="${2:-}"
+      [[ -n "$PYTHONPATH_OVERRIDE" ]] || { echo "ERROR: --pythonpath requires a value" >&2; exit 2; }
       shift 2
       ;;
     --no-restart)
@@ -114,6 +128,15 @@ fail() {
   exit 1
 }
 
+service_env_value() {
+  local name="$1"
+  local pid="${2:-}"
+  if [[ -z "$pid" || "$pid" == "0" || ! -r "/proc/$pid/environ" ]]; then
+    return 0
+  fi
+  tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n "s/^${name}=//p" | head -1
+}
+
 extract_aem_count() {
   python3 -c 'import json,sys; data=json.load(sys.stdin); print((data.get("aem_guides") or {}).get("chunk_count", ""))'
 }
@@ -149,11 +172,38 @@ else
   fail "python not found"
 fi
 
+SERVICE_PID="$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || true)"
+SERVICE_STORAGE_PATH="$(service_env_value STORAGE_PATH "$SERVICE_PID")"
+SERVICE_PYTHONPATH="$(service_env_value PYTHONPATH "$SERVICE_PID")"
+SERVICE_VIRTUAL_ENV="$(service_env_value VIRTUAL_ENV "$SERVICE_PID")"
+EFFECTIVE_STORAGE_PATH="${STORAGE_PATH_OVERRIDE:-${SERVICE_STORAGE_PATH:-${STORAGE_PATH:-}}}"
+EFFECTIVE_PYTHONPATH="${PYTHONPATH_OVERRIDE:-${SERVICE_PYTHONPATH:-backend}}"
+if [[ -n "$SERVICE_VIRTUAL_ENV" && -x "$SERVICE_VIRTUAL_ENV/bin/python" ]]; then
+  PYTHON_BIN="$SERVICE_VIRTUAL_ENV/bin/python"
+  VENV_DIR="$SERVICE_VIRTUAL_ENV"
+fi
+
+run_backend_python() {
+  local -a env_args
+  env_args=("PATH=${VENV_DIR:+$VENV_DIR/bin:}$PATH" "PYTHONPATH=$EFFECTIVE_PYTHONPATH")
+  if [[ -n "$VENV_DIR" ]]; then
+    env_args+=("VIRTUAL_ENV=$VENV_DIR")
+  fi
+  if [[ -n "$EFFECTIVE_STORAGE_PATH" ]]; then
+    env_args+=("STORAGE_PATH=$EFFECTIVE_STORAGE_PATH")
+  fi
+  env "${env_args[@]}" "$PYTHON_BIN" "$@"
+}
+
 section "resolved runtime"
 echo "root_dir=$ROOT_DIR"
 echo "service=$SERVICE_NAME"
+echo "service_pid=${SERVICE_PID:-}"
 echo "python=$PYTHON_BIN"
 echo "venv=$VENV_DIR"
+echo "service_storage_path=${SERVICE_STORAGE_PATH:-}"
+echo "effective_storage_path=${EFFECTIVE_STORAGE_PATH:-<backend default>}"
+echo "effective_pythonpath=$EFFECTIVE_PYTHONPATH"
 echo "input=$INPUT_PATH"
 echo "batch_size=$BATCH_SIZE"
 echo "public_url=$PUBLIC_URL"
@@ -161,7 +211,7 @@ echo "backend_url=$BACKEND_URL"
 
 section "service before"
 systemctl status "$SERVICE_NAME" --no-pager -l || true
-PID="$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || true)"
+PID="$SERVICE_PID"
 echo "MainPID=${PID:-}"
 if [[ -n "${PID:-}" && "$PID" != "0" && -d "/proc/$PID" ]]; then
   echo "service_cwd=$(readlink -f "/proc/$PID/cwd" 2>/dev/null || true)"
@@ -171,7 +221,7 @@ if [[ -n "${PID:-}" && "$PID" != "0" && -d "/proc/$PID" ]]; then
 fi
 
 section "counts before"
-VIRTUAL_ENV="$VENV_DIR" PATH="${VENV_DIR:+$VENV_DIR/bin:}$PATH" PYTHONPATH=backend "$PYTHON_BIN" - <<'PY'
+run_backend_python - <<'PY'
 from __future__ import annotations
 import os
 
@@ -196,13 +246,13 @@ fi
 
 if [[ "$RESTART_ONLY" != "1" ]]; then
   section "upsert"
-  VIRTUAL_ENV="$VENV_DIR" PATH="${VENV_DIR:+$VENV_DIR/bin:}$PATH" PYTHONPATH=backend "$PYTHON_BIN" -u scripts/upsert_behavior_chunks_json.py \
+  run_backend_python -u scripts/upsert_behavior_chunks_json.py \
     --input "$INPUT_PATH" \
     --batch-size "$BATCH_SIZE"
 fi
 
 section "count after upsert before restart"
-VIRTUAL_ENV="$VENV_DIR" PATH="${VENV_DIR:+$VENV_DIR/bin:}$PATH" PYTHONPATH=backend "$PYTHON_BIN" - <<'PY'
+run_backend_python - <<'PY'
 from app.services.vector_store_service import CHROMA_COLLECTION_AEM_GUIDES, get_collection_count
 
 print("python_count:", get_collection_count(CHROMA_COLLECTION_AEM_GUIDES))
