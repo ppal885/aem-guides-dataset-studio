@@ -193,6 +193,41 @@ def run_migrations() -> None:
                         logger.info("Migration: added tenant_id to dataset_runs")
                 except Exception as e:
                     logger.debug("dataset_runs user/tenant migration skipped: %s", e)
+                try:
+                    res = conn.execute(text("PRAGMA table_info(jira_enriched_issues)"))
+                    jira_enriched_cols = [row[1] for row in res.fetchall()]
+                    for col, sql_type in (
+                        ("resolution", "VARCHAR(120)"),
+                        ("jira_updated_at", "DATETIME"),
+                        ("source_type", "VARCHAR(80)"),
+                        ("source_file_hash", "VARCHAR(64)"),
+                    ):
+                        if jira_enriched_cols and col not in jira_enriched_cols:
+                            conn.execute(text(f"ALTER TABLE jira_enriched_issues ADD COLUMN {col} {sql_type}"))
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS jira_csv_import_runs (
+                            id VARCHAR(36) PRIMARY KEY,
+                            status VARCHAR(30) NOT NULL,
+                            filenames JSON NOT NULL,
+                            file_hashes JSON NOT NULL,
+                            total_rows INTEGER NOT NULL DEFAULT 0,
+                            processed_rows INTEGER NOT NULL DEFAULT 0,
+                            indexed_issues INTEGER NOT NULL DEFAULT 0,
+                            skipped_issues INTEGER NOT NULL DEFAULT 0,
+                            failed_issues INTEGER NOT NULL DEFAULT 0,
+                            chunks_indexed INTEGER NOT NULL DEFAULT 0,
+                            redacted_fields INTEGER NOT NULL DEFAULT 0,
+                            errors JSON NOT NULL,
+                            created_by VARCHAR(120),
+                            created_at DATETIME NOT NULL,
+                            started_at DATETIME,
+                            completed_at DATETIME
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: ensured Jira CSV import schema")
+                except Exception as e:
+                    logger.debug("Jira CSV import migration skipped: %s", e)
             else:
                 def col_exists(table: str, c: str) -> bool:
                     r = conn.execute(
@@ -362,5 +397,38 @@ def run_migrations() -> None:
                         logger.info("Migration: added tenant_id to dataset_runs (PostgreSQL)")
                 except Exception as e:
                     logger.debug("dataset_runs user/tenant migration skipped: %s", e)
+                try:
+                    for col, sql_type in (
+                        ("resolution", "VARCHAR(120)"),
+                        ("jira_updated_at", "TIMESTAMP"),
+                        ("source_type", "VARCHAR(80)"),
+                        ("source_file_hash", "VARCHAR(64)"),
+                    ):
+                        if col_exists("jira_enriched_issues", col) is False:
+                            conn.execute(text(f"ALTER TABLE jira_enriched_issues ADD COLUMN {col} {sql_type}"))
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS jira_csv_import_runs (
+                            id VARCHAR(36) PRIMARY KEY,
+                            status VARCHAR(30) NOT NULL,
+                            filenames JSON NOT NULL,
+                            file_hashes JSON NOT NULL,
+                            total_rows INTEGER NOT NULL DEFAULT 0,
+                            processed_rows INTEGER NOT NULL DEFAULT 0,
+                            indexed_issues INTEGER NOT NULL DEFAULT 0,
+                            skipped_issues INTEGER NOT NULL DEFAULT 0,
+                            failed_issues INTEGER NOT NULL DEFAULT 0,
+                            chunks_indexed INTEGER NOT NULL DEFAULT 0,
+                            redacted_fields INTEGER NOT NULL DEFAULT 0,
+                            errors JSON NOT NULL,
+                            created_by VARCHAR(120),
+                            created_at TIMESTAMP NOT NULL,
+                            started_at TIMESTAMP,
+                            completed_at TIMESTAMP
+                        )
+                    """))
+                    conn.commit()
+                    logger.info("Migration: ensured Jira CSV import schema (PostgreSQL)")
+                except Exception as e:
+                    logger.debug("Jira CSV import migration skipped: %s", e)
     except Exception as e:
         logger.warning("Migration skipped or failed (table may not exist yet): %s", e)

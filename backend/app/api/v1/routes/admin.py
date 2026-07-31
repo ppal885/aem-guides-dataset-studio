@@ -1,7 +1,7 @@
 """Admin and maintenance endpoints."""
 import os
 import subprocess
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from app.core.auth import AdminUser, UserIdentity
 from app.services.cleaning_service import clean_old_data
@@ -10,6 +10,81 @@ from app.core.structured_logging import get_structured_logger
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 logger = get_structured_logger(__name__)
+
+
+@router.post("/jira-rag/import-csv")
+async def import_jira_csv(
+    response: Response,
+    files: list[UploadFile] = File(...),
+    dry_run: bool = False,
+    user: UserIdentity = AdminUser,
+):
+    """Preview or asynchronously ingest one or more Jira CSV exports."""
+    from app.services.jira_csv_import_service import (
+        MAX_CSV_BYTES,
+        create_import_run,
+        preview_jira_csv_files,
+        start_import,
+    )
+
+    if not files or len(files) > 10:
+        raise HTTPException(status_code=400, detail="Upload between 1 and 10 Jira CSV files")
+    payloads: list[tuple[str, bytes]] = []
+    try:
+        for upload in files:
+            filename = upload.filename or "jira-export.csv"
+            data = await upload.read(MAX_CSV_BYTES + 1)
+            if len(data) > MAX_CSV_BYTES:
+                raise ValueError(f"{filename} exceeds the 25 MB limit")
+            payloads.append((filename, data))
+        preview = preview_jira_csv_files(payloads)
+        if dry_run:
+            return preview
+        run_id, paths = create_import_run(payloads, created_by=user.id)
+        start_import(run_id, paths)
+        response.status_code = 202
+        return {
+            "import_id": run_id,
+            "status": "pending",
+            "status_url": f"/api/v1/admin/jira-rag/imports/{run_id}",
+            "preview": preview,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        for upload in files:
+            await upload.close()
+
+
+@router.get("/jira-rag/imports/{import_id}")
+def jira_csv_import_status(import_id: str, user: UserIdentity = AdminUser):
+    """Return progress and final statistics for a Jira CSV import."""
+    del user
+    from app.services.jira_csv_import_service import get_import_run
+
+    result = get_import_run(import_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Jira CSV import not found")
+    return result
+
+
+@router.post("/jira-rag/learning-chunks/rebuild")
+def rebuild_jira_learning_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 10_000,
+    user: UserIdentity = AdminUser,
+):
+    """Build high-signal historical learning chunks from indexed resolved Jira evidence."""
+    del user
+    from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
+
+    result = backfill_jira_learning_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 100_000)),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
 
 
 @router.post("/env-check")

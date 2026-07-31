@@ -1,7 +1,68 @@
 /**
  * Jira QA RAG REST client — index issues into Chroma (`jira_qa`) for API/tools; not a separate chat product surface.
  */
-import { apiUrl, fetchJson } from '@/utils/api';
+import { apiUrl, fetchJson, fetchWithRetry } from '@/utils/api';
+
+export interface JiraCsvPreviewFile {
+  filename: string;
+  file_hash: string;
+  rows: number;
+  columns: number;
+  duplicate_headers: Record<string, number>;
+  resolution_counts: Record<string, number>;
+  already_imported: boolean;
+}
+
+export interface JiraCsvPreview {
+  valid: boolean;
+  total_files: number;
+  total_rows: number;
+  unique_issue_keys: number;
+  redacted_fields: number;
+  files: JiraCsvPreviewFile[];
+}
+
+export interface JiraCsvImportStatus {
+  import_id: string;
+  status: 'pending' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+  filenames: string[];
+  total_rows: number;
+  processed_rows: number;
+  indexed_issues: number;
+  skipped_issues: number;
+  failed_issues: number;
+  chunks_indexed: number;
+  redacted_fields: number;
+  errors: string[];
+  progress_percent: number;
+}
+
+async function postJiraCsvFiles<T>(files: File[], dryRun: boolean): Promise<T> {
+  const body = new FormData();
+  files.forEach(file => body.append('files', file));
+  const response = await fetchWithRetry(
+    apiUrl(`/api/v1/admin/jira-rag/import-csv?dry_run=${dryRun ? 'true' : 'false'}`),
+    { method: 'POST', body },
+    { maxAttempts: 1 }
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(payload?.detail || `Jira CSV import failed with HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function previewJiraCsvFiles(files: File[]): Promise<JiraCsvPreview> {
+  return postJiraCsvFiles<JiraCsvPreview>(files, true);
+}
+
+export function startJiraCsvImport(files: File[]): Promise<{ import_id: string; status_url: string; preview: JiraCsvPreview }> {
+  return postJiraCsvFiles(files, false);
+}
+
+export function getJiraCsvImportStatus(importId: string): Promise<JiraCsvImportStatus> {
+  return fetchJson(apiUrl(`/api/v1/admin/jira-rag/imports/${importId}`));
+}
 
 /** GET /api/v1/jira-rag/status/chunks — row count in the Jira QA Chroma collection. */
 export async function getJiraQaChunkStatus(): Promise<{ collection: string; chunk_count: number }> {

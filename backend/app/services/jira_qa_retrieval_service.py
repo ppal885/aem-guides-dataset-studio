@@ -19,7 +19,16 @@ from app.services.enterprise_qa.enterprise_reranking_engine import (
     build_rerank_base_from_issue_chunks,
 )
 
-_SIGNAL_TYPES = frozenset({"full_ticket_summary", "customer_problem", "similar_ticket_signals"})
+_SIGNAL_TYPES = frozenset(
+    {
+        "full_ticket_summary",
+        "customer_problem",
+        "similar_ticket_signals",
+        "summary_chunk",
+        "problem_chunk",
+        "learning_behavior_chunk",
+    }
+)
 
 
 def _parse_json_list(raw: str) -> list[str]:

@@ -18,6 +18,10 @@ class JiraEnrichedDocument(BaseModel):
     issue_type: str = ""
     status: str = ""
     priority: str = ""
+    resolution: str = ""
+    jira_updated_at: str = ""
+    source_type: str = "jira_api"
+    source_file_hash: str = ""
     labels: list[str] = Field(default_factory=list)
     components: list[str] = Field(default_factory=list)
     customer_names: list[str] = Field(default_factory=list)
@@ -45,3 +49,8 @@ class JiraEnrichedDocument(BaseModel):
         default="",
         description="Compact comment text supplied by indexer for smart chunking.",
     )
+    acceptance_criteria: str = ""
+    root_cause: str = ""
+    test_plan: str = ""
+    linked_issue_refs: list[str] = Field(default_factory=list)
+    attachment_filenames: list[str] = Field(default_factory=list)
