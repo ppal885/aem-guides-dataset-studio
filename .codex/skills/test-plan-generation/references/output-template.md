@@ -32,6 +32,9 @@ Use exactly these sections. Keep every line as a bullet.
 
 **Regression Areas**
 - ...
+
+**Open Questions**
+- ...
 ```
 
 ## Writing Style
@@ -40,6 +43,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Prefer “Verify that…” and “Confirm that…” over vague words like “check properly”.
 - Keep bullets short enough to scan.
 - Put missing evidence in the section it affects: `Draft blocker: ...`
+- Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - Do not create extra sections.
 - Do not use tables.
 
@@ -53,6 +57,7 @@ Examples:
 
 - `P0: Create a translation project from a map with postprocessing enabled -> project creation completes and generated assets remain under the expected DAM path.`
 - `P1: Repeat the workflow for a child folder ignored for postprocessing -> child and successor folders are skipped consistently.`
+- `P1: Repeat the API/UI flow on the required cloud/on-prem or old/new UI matrix -> behaviour stays consistent or follows the documented platform difference.`
 - `P2: Refresh the UI after the operation -> status, toast, and persisted state remain consistent without duplicate actions.`
 
 ## Sample Draft
@@ -72,6 +77,7 @@ Examples:
 - Jira development link: <PR URL or no PR in Jira>.
 - GitHub MCP PR discovery: <PR found by Jira key/search terms, or not found>.
 - PR inspected: <PR URL>; changed area is <component/workflow>.
+- Figma/design evidence: <Figma MCP inspected link/frame, screenshot/design notes used, or not applicable>.
 - Repo sync state: <Starling/xmleditor/new editor/guides-ui-tests/dxml-it-tests fetched and clean/up to date, or blocker>.
 
 **Code Touched**
@@ -84,6 +90,8 @@ Examples:
 - P0: Run the primary Jira workflow with valid data -> operation succeeds and expected UI/API state is persisted.
 - P0: Run the workflow with the Jira failure condition -> previous failure does not reproduce.
 - P1: Use invalid or boundary input -> user sees a clear error and no partial state is saved.
+- P1: Follow the Figma-observed alternate UI state when applicable -> visible state, copy, and recovery action match the intended flow.
+- P1: Use the Jira-required test fixture, role, config, and platform matrix -> expected behaviour is proven without relying on default setup assumptions.
 - P1: Repeat after browser refresh/session reload -> state remains consistent.
 - P2: Verify nearby workflow that shares the touched component -> no regression in existing behaviour.
 
@@ -96,4 +104,10 @@ Examples:
 - Role/permission combinations around <feature>.
 - Config/version boundary around <setting/release>.
 - Automation coverage gaps in `guides-ui-tests` or `dxml-it-tests` for <workflow>.
+
+**Open Questions**
+- Permission/role: Confirm whether admin, author, reviewer, publisher, or restricted users must be covered.
+- Configuration: Confirm whether XML Editor profile, AEM OSGi/DAM setting, or translation configuration changes are required for this Jira.
+- Upgrade impact: For on-premise release/upgrade scope, confirm source/target versions, retained custom configs, changed defaults, manual post-upgrade steps, and backward-compatibility expectations.
+- DITA/output: Confirm whether PDF, HTML5, Native PDF, DITA-OT, preset, or plugin-specific output must be validated.
 ```

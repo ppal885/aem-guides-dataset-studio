@@ -1,4 +1,4 @@
 interface:
   display_name: "Test Plan Generation"
-  short_description: "Generate RAG-backed AEM Guides QA test plans"
-  default_prompt: "Use $test-plan-generation to create an evidence-backed, bullet-only AEM Guides QA test plan from this Jira/PR context."
+  short_description: "Generate UAC-first AEM Guides QA test plans"
+  default_prompt: "Use $test-plan-generation to create an evidence-backed, UAC-first, bullet-only AEM Guides QA test plan from this Jira/PR context."

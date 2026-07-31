@@ -748,6 +748,9 @@ Use this example as a quality bar for report tickets where key references, conte
 - Let UAC drive `Expected Behaviour`, `Test Scenarios`, `Regression Areas`, and `Open Questions` before adding PR/RAG/Figma/repo-derived coverage.
 - Use UAC scope and out-of-scope to avoid testing known non-goals as failures.
 - Use UAC integration notes to decide what nearby workflows can break and must be listed under `Regression Areas`.
+- Turn UAC setup details into executable QA conditions: test data, role, config, platform, environment, feature flag, version, and upgrade/source-target matrix must appear in scenarios or open questions.
+- For API-focused UAC, always preserve exact endpoint names, parameter names, encoding/list-splitting rules, response fields, status/error behaviour, batch isolation, and log expectations.
+- For future reference additions, prefer one high-quality UAC per feature family over many repetitive examples; split into domain-specific reference files once a family becomes large.
 - Put cloud/on-premise parity, status, cancel/abort/resume, versioning, and configuration rules under `Expected Behaviour`.
 - For review-functionality tickets, put impacted pages, no feature flag, doc impact, automation impact, and no-regression expectations under `Scope From Git`, `Test Scenarios`, and `Regression Areas` as applicable.
 - For live filter tickets, always test typed input, pasted input, no-match empty state, clearing input, case-insensitive matching, stale results, and no-extra-action behaviour.
