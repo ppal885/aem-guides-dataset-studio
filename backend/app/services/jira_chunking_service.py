@@ -24,6 +24,12 @@ SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
         "qa_signal_chunk",
         "customer_signal_chunk",
         "domain_entity_chunk",
+        "acceptance_criteria_chunk",
+        "resolution_rca_chunk",
+        "test_evidence_chunk",
+        "linked_issue_chunk",
+        "attachment_signal_chunk",
+        "learning_behavior_chunk",
     }
 )
 
@@ -77,6 +83,8 @@ def _core_fields(enriched: JiraEnrichedDocument) -> dict[str, Any]:
     return {
         "jira_key": enriched.jira_key.strip(),
         "domain": (enriched.domain or "unknown")[:80],
+        "resolution": (enriched.resolution or "")[:120],
+        "source_type": (enriched.source_type or "jira_api")[:80],
         "customer_names": list(enriched.customer_names or []),
         "affected_outputs": list(enriched.affected_outputs or []),
         "dita_entities": list(enriched.dita_entities or []),
@@ -232,6 +240,63 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
         syn += f" Feature hints: {feats}."
     _append_chunk(out, chunk_type="domain_entity_chunk", chunk_text=syn, enriched=e)
 
+    if e.acceptance_criteria.strip():
+        _append_chunk(
+            out,
+            chunk_type="acceptance_criteria_chunk",
+            chunk_text="Acceptance criteria:\n" + e.acceptance_criteria.strip(),
+            enriched=e,
+        )
+
+    resolution_parts = []
+    if e.resolution.strip():
+        resolution_parts.append("Resolution: " + e.resolution.strip())
+    if e.root_cause.strip():
+        resolution_parts.append("Root cause: " + e.root_cause.strip())
+    if resolution_parts:
+        _append_chunk(
+            out,
+            chunk_type="resolution_rca_chunk",
+            chunk_text="\n".join(resolution_parts),
+            enriched=e,
+        )
+
+    if e.test_plan.strip():
+        _append_chunk(
+            out,
+            chunk_type="test_evidence_chunk",
+            chunk_text="Test plan and evidence:\n" + e.test_plan.strip(),
+            enriched=e,
+        )
+
+    if e.linked_issue_refs:
+        _append_chunk(
+            out,
+            chunk_type="linked_issue_chunk",
+            chunk_text="Linked Jira issues: " + ", ".join(e.linked_issue_refs[:80]),
+            enriched=e,
+        )
+
+    if e.attachment_filenames:
+        _append_chunk(
+            out,
+            chunk_type="attachment_signal_chunk",
+            chunk_text="Attachment filenames: " + ", ".join(e.attachment_filenames[:50]),
+            enriched=e,
+        )
+
+    from app.services.jira_learning_chunk_service import build_learning_chunk_from_enriched
+
+    learning = build_learning_chunk_from_enriched(e)
+    if learning:
+        _append_chunk(
+            out,
+            chunk_type=str(learning["chunk_type"]),
+            chunk_text=str(learning["chunk_text"]),
+            enriched=e,
+        )
+        out[-1].update({key: value for key, value in learning.items() if key not in {"chunk_type", "chunk_text"}})
+
     return out
 
 
@@ -300,6 +365,10 @@ def smart_chunks_to_chroma_rows(
         meta = _build_base_metadata(chunk_type=ctype, **base_kw)
         meta.update(
             {
+                "resolution": enriched.resolution[:120],
+                "jira_updated_at": enriched.jira_updated_at[:80],
+                "import_source_type": enriched.source_type[:80],
+                "source_file_hash": enriched.source_file_hash[:64],
                 "enrich_domain": enriched.domain[:120],
                 "enrich_sub_domain": (enriched.sub_domain or "")[:120],
                 "enrich_customers": _json_meta(enriched.customer_names),
@@ -310,6 +379,11 @@ def smart_chunks_to_chroma_rows(
                 "smart_customer_names": _json_meta(sc.get("customer_names") or []),
                 "smart_affected_outputs": _json_meta(sc.get("affected_outputs") or []),
                 "smart_dita_entities": _json_meta(sc.get("dita_entities") or []),
+                "learning_confidence": str(sc.get("learning_confidence") or ""),
+                "historical_outcome": str(sc.get("historical_outcome") or ""),
+                "is_verified_fix": bool(sc.get("is_verified_fix") or False),
+                "evidence_facets": _json_meta(sc.get("evidence_facets") or []),
+                "learning_strategy_version": str(sc.get("learning_strategy_version") or ""),
             }
         )
         cid = f"{issue_key}::{ctype}::{idx}"

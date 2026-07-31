@@ -138,6 +138,10 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     row.issue_type = data.get("issue_type") or None
     row.status = data.get("status") or None
     row.priority = data.get("priority") or None
+    row.resolution = (data.get("resolution") or "")[:120] or None
+    row.jira_updated_at = _parse_source_datetime(data.get("jira_updated_at"))
+    row.source_type = (data.get("source_type") or "jira_api")[:80]
+    row.source_file_hash = (data.get("source_file_hash") or "")[:64] or None
     row.labels = data.get("labels") or []
     row.components = data.get("components") or []
     row.customer_names = data.get("customer_names") or []
@@ -159,6 +163,21 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     session.flush()
     enqueue_weak_enrichment_review(session, enriched_doc)
     return row
+
+
+def _parse_source_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        for fmt in ("%d/%b/%y %I:%M %p", "%d/%b/%y %H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(raw, fmt)
+            except ValueError:
+                continue
+    return None
 
 
 def insert_jira_chunks(
@@ -227,6 +246,10 @@ def get_jira_by_key(session: Session, jira_key: str) -> dict[str, Any] | None:
         "issue_type": row.issue_type,
         "status": row.status,
         "priority": row.priority,
+        "resolution": row.resolution,
+        "jira_updated_at": _iso(row.jira_updated_at),
+        "source_type": row.source_type,
+        "source_file_hash": row.source_file_hash,
         "labels": row.labels,
         "components": row.components,
         "customer_names": row.customer_names,

@@ -37,6 +37,10 @@ class JiraEnrichedIssue(Base):
     issue_type = Column(String(120), nullable=True)
     status = Column(String(120), nullable=True)
     priority = Column(String(120), nullable=True)
+    resolution = Column(String(120), nullable=True, index=True)
+    jira_updated_at = Column(DateTime, nullable=True, index=True)
+    source_type = Column(String(80), nullable=True, index=True)
+    source_file_hash = Column(String(64), nullable=True, index=True)
     labels = Column(JSON, nullable=True)  # list[str]; JSONB on PostgreSQL
     components = Column(JSON, nullable=True)
     customer_names = Column(JSON, nullable=True)
@@ -56,6 +60,29 @@ class JiraEnrichedIssue(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     indexed_at = Column(DateTime, nullable=True, index=True)
+
+
+class JiraCsvImportRun(Base):
+    """Restart-safe status and audit metadata for admin Jira CSV imports."""
+
+    __tablename__ = "jira_csv_import_runs"
+
+    id = Column(String(36), primary_key=True)
+    status = Column(String(30), nullable=False, index=True, default="pending")
+    filenames = Column(JSON, nullable=False, default=list)
+    file_hashes = Column(JSON, nullable=False, default=list)
+    total_rows = Column(Integer, nullable=False, default=0)
+    processed_rows = Column(Integer, nullable=False, default=0)
+    indexed_issues = Column(Integer, nullable=False, default=0)
+    skipped_issues = Column(Integer, nullable=False, default=0)
+    failed_issues = Column(Integer, nullable=False, default=0)
+    chunks_indexed = Column(Integer, nullable=False, default=0)
+    redacted_fields = Column(Integer, nullable=False, default=0)
+    errors = Column(JSON, nullable=False, default=list)
+    created_by = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
 
 
 class JiraEnrichmentReviewQueue(Base):

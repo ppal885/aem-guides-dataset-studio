@@ -19,9 +19,15 @@ logger = get_structured_logger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{3,}", re.I)
 _CHUNK_TYPE_WEIGHT: dict[str, float] = {
+    "learning_behavior_chunk": 0.06,
+    "acceptance_criteria_chunk": 0.05,
+    "resolution_rca_chunk": 0.05,
+    "test_evidence_chunk": 0.045,
+    "expected_actual_chunk": 0.04,
     "similar_ticket_signals": 0.04,
     "full_ticket_summary": 0.035,
     "customer_problem": 0.035,
+    "comment_chunk": 0.015,
     "comments_discussion": 0.015,
     "attachment_log_signals": 0.015,
     "live_jira_snapshot": 0.02,
@@ -551,33 +557,23 @@ def _candidate_rejection_reasons(
     evidence_gate_enabled: bool,
     require_non_vector_evidence: bool = True,
 ) -> list[dict[str, Any]]:
-    """Hard gates for candidate rejection — kept minimal to avoid false negatives.
-
-    Removed gates (all converted to soft penalties in _penalty_breakdown):
-    - final_score < MIN_FINAL_SCORE  → double-penalises after score already incorporates penalties
-    - metadata_score < MIN_METADATA_SCORE → too strict when small index has sparse entity metadata
-    - customer_conflict              → already penalised in scoring; hard gate incorrectly blocked
-                                       tickets where customer tokens leaked from cloud env IDs
-    - component_gate_failed         → same reasoning as entity/output gates removed earlier
-    - issue_type_mismatch           → Bug ≠ Story should not hard-reject; just lower score
-    """
-    # Below minimum embedding similarity — always reject regardless of metadata.
+    """Reject candidates that have similarity but no reusable evidence."""
+    reasons: list[dict[str, Any]] = []
     if vector_score < MIN_VECTOR_SCORE:
-        return [
+        reasons.append(
             {
                 "reason": "below_min_vector_score",
                 "detail": f"vector_score={round(vector_score, 4)} < MIN_VECTOR_SCORE={MIN_VECTOR_SCORE}",
             }
-        ]
+        )
 
-    # Cross-domain with zero entity override — clearly wrong domain unless forced by fallback.
     if (
         evidence_gate_enabled
         and gate_signals.get("domain_mismatch")
         and gate_signals.get("entity_overlap_count", 0) == 0
         and gate_signals.get("output_overlap_count", 0) == 0
     ):
-        return [
+        reasons.append(
             {
                 "reason": "domain_gate_failed",
                 "detail": (
@@ -586,9 +582,52 @@ def _candidate_rejection_reasons(
                     "no entity or output overlap to override domain mismatch"
                 ),
             }
-        ]
+        )
 
-    return []
+    if evidence_gate_enabled and gate_signals.get("query_entities") and not gate_signals.get(
+        "entity_overlap_count", 0
+    ):
+        reasons.append(
+            {
+                "reason": "entity_overlap_gate_failed",
+                "detail": "The query supplied DITA entities but none overlap the candidate.",
+            }
+        )
+
+    if evidence_gate_enabled and gate_signals.get("query_outputs") and not gate_signals.get(
+        "output_overlap_count", 0
+    ):
+        reasons.append(
+            {
+                "reason": "output_overlap_gate_failed",
+                "detail": "The query supplied output types but none overlap the candidate.",
+            }
+        )
+
+    structural_evidence = any(
+        (
+            gate_signals.get("domain_match"),
+            gate_signals.get("entity_overlap_count", 0) > 0,
+            gate_signals.get("output_overlap_count", 0) > 0,
+            gate_signals.get("customer_match"),
+            gate_signals.get("component_overlap_count", 0) > 0,
+            gate_signals.get("issue_type_match"),
+        )
+    )
+    if (
+        evidence_gate_enabled
+        and require_non_vector_evidence
+        and not structural_evidence
+        and keyword_score < 0.06
+    ):
+        reasons.append(
+            {
+                "reason": "vector_only_weak_evidence",
+                "detail": "Embedding similarity has no structural metadata or meaningful keyword support.",
+            }
+        )
+
+    return reasons
 
 
 def _build_why_similar(
@@ -1222,7 +1261,8 @@ def retrieve_similar_jiras(
     bc = {x.lower().strip() for x in (base_components or []) if x}
     lex = label_expanded_tokens if label_expanded_tokens is not None else frozenset()
     evidence_gate_enabled = bool(
-        domain
+        require_non_vector_evidence
+        or domain
         or sub_domain
         or dita_entities
         or affected_outputs
@@ -1478,7 +1518,7 @@ def retrieve_similar_jiras(
     )
     evidence_drops: list[dict[str, Any]] = []
     ranked = [r for r in ranked_full if r.strong_evidence]
-    if not ranked and ranked_full:
+    if not ranked and ranked_full and not evidence_gate_enabled:
         # Fallback: strict gates filtered everything — return best-effort top candidates
         # with a lower floor so QA engineers always see something useful.
         _FALLBACK_FLOOR = 0.35

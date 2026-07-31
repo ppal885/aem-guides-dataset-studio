@@ -1,0 +1,228 @@
+from __future__ import annotations
+
+import csv
+import io
+from datetime import datetime
+
+import pytest
+import numpy as np
+
+from app.services.jira_chunking_service import build_comments_digest
+from app.services.jira_csv_import_service import (
+    parse_jira_csv_bytes,
+    preview_jira_csv_files,
+    should_skip_existing,
+)
+from app.services.jira_enrichment_service import enrich_jira
+from app.services.jira_qa_chunking_service import build_jira_qa_chunks
+
+
+BASE_HEADERS = [
+    "Summary",
+    "Issue key",
+    "Issue Type",
+    "Status",
+    "Resolution",
+    "Priority",
+    "Description",
+    "Updated",
+]
+
+
+def _csv_bytes(headers: list[str], rows: list[list[str]]) -> bytes:
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return stream.getvalue().encode("utf-8-sig")
+
+
+def test_parse_repeated_headers_redacts_direct_identifiers_and_preserves_signals():
+    headers = BASE_HEADERS + [
+        "Labels",
+        "Labels",
+        "Component/s",
+        "Comment",
+        "Comment",
+        "Attachment",
+        "Custom field (Acceptance Criteria)",
+        "Custom field (Root Cause)",
+        "Custom field (Test Plan)",
+        "Custom field (Customer Names)",
+        "Outward issue link (Fixed By)",
+    ]
+    row = [
+        "Publishing queue stalls",
+        "GUIDES-50001",
+        "Customer Request",
+        "Closed",
+        "Fixed",
+        "Critical",
+        "Contact owner@example.com in 6AAB041762B261FF0A495E40@AdobeOrg and [~owner].",
+        "31/Jul/26 05:30 PM",
+        "publishing",
+        "regression",
+        "AEM Guides",
+        "31/Jul/26 05:31 PM;owner;Verified fix with [~reviewer].",
+        "31/Jul/26 05:32 PM;owner;Token access_token=secret-value was revoked.",
+        "31/Jul/26 05:33 PM;owner;error.log;https://jira.example/secure/attachment/1/error.log",
+        "Publishing must finish and release the queue.",
+        "Concurrent Oak writes collided.",
+        "Run two large publishing jobs sequentially.",
+        "Example Bank",
+        "GUIDES-49999",
+    ]
+    parsed = parse_jira_csv_bytes(_csv_bytes(headers, [row]), "closed-cr.csv")
+
+    assert len(parsed.issues) == 1
+    assert parsed.duplicate_headers == {"Labels": 2, "Comment": 2}
+    issue = parsed.issues[0]
+    assert issue.resolution == "Fixed"
+    assert issue.customer_names == ["Example Bank"]
+    assert issue.attachment_filenames == ["error.log"]
+    assert issue.linked_issue_refs == ["outward (Fixed By): GUIDES-49999"]
+    privacy_blob = issue.issue["fields"]["description"] + build_comments_digest(issue.comments)
+    assert "owner@example.com" not in privacy_blob
+    assert "@AdobeOrg" not in privacy_blob
+    assert "secret-value" not in privacy_blob
+    assert "https://jira.example" not in " ".join(issue.attachment_filenames)
+
+
+def test_high_signal_csv_chunks_are_generated():
+    headers = BASE_HEADERS + [
+        "Custom field (Acceptance Criteria)",
+        "Custom field (Root Cause)",
+        "Custom field (Test Plan)",
+        "Attachment",
+        "Inward issue link (Has a Test Case)",
+    ]
+    row = [
+        "Translation API filters",
+        "GUIDES-50002",
+        "Customer Request",
+        "Closed",
+        "Complete",
+        "Major",
+        "Create a translation project through automation.",
+        "2026-07-31T18:00:00+00:00",
+        "Support latest version and baseline.",
+        "Version selection ignored the baseline.",
+        "Validate all project and filter combinations.",
+        "31/Jul/26 06:00 PM;owner;translation.log;https://jira.example/attachment/translation.log",
+        "GUIDES-50003",
+    ]
+    parsed_issue = parse_jira_csv_bytes(_csv_bytes(headers, [row]), "translation.csv").issues[0]
+    enriched = enrich_jira(parsed_issue.issue).model_copy(
+        update={
+            "resolution": parsed_issue.resolution,
+            "jira_updated_at": parsed_issue.jira_updated_at,
+            "source_type": "jira_csv",
+            "acceptance_criteria": parsed_issue.acceptance_criteria,
+            "root_cause": parsed_issue.root_cause,
+            "test_plan": parsed_issue.test_plan,
+            "linked_issue_refs": parsed_issue.linked_issue_refs,
+            "attachment_filenames": parsed_issue.attachment_filenames,
+        }
+    )
+    chunks = build_jira_qa_chunks(parsed_issue.issue_key, parsed_issue.issue, enriched=enriched)
+    chunk_types = {chunk["metadata"]["chunk_type"] for chunk in chunks}
+
+    assert {
+        "summary_chunk",
+        "domain_entity_chunk",
+        "acceptance_criteria_chunk",
+        "resolution_rca_chunk",
+        "test_evidence_chunk",
+        "linked_issue_chunk",
+        "attachment_signal_chunk",
+    }.issubset(chunk_types)
+    assert all(chunk["metadata"]["resolution"] == "Complete" for chunk in chunks)
+
+
+def test_variable_schema_and_cross_file_duplicate_detection(monkeypatch):
+    minimal = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
+    wider = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Labels", "Comment"],
+        [["Two", "GUIDES-2", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31", "a", "b", ""]],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    preview = preview_jira_csv_files([("minimal.csv", minimal), ("wider.csv", wider)])
+    assert preview["total_rows"] == 2
+    assert preview["unique_issue_keys"] == 2
+    assert [item["columns"] for item in preview["files"]] == [8, 11]
+
+    duplicate = _csv_bytes(BASE_HEADERS, [["Again", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
+    with pytest.raises(ValueError, match="Duplicate Jira keys across uploaded files"):
+        preview_jira_csv_files([("minimal.csv", minimal), ("duplicate.csv", duplicate)])
+
+
+def test_newest_updated_timestamp_wins():
+    existing = datetime(2026, 7, 31, 18, 0, 0)
+    assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True
+    assert should_skip_existing(existing, "2026-07-31T18:00:00+00:00") is False
+    assert should_skip_existing(existing, "2026-08-01T00:00:00+00:00") is False
+
+
+def test_admin_csv_preview_endpoint(client, auth_headers, monkeypatch):
+    payload = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-9", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    response = client.post(
+        "/api/v1/admin/jira-rag/import-csv?dry_run=true",
+        files=[("files", ("jira.csv", payload, "text/csv"))],
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["total_rows"] == 1
+
+
+def test_admin_csv_preview_requires_admin(client, monkeypatch):
+    payload = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-10", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
+    monkeypatch.setenv(
+        "AUTH_TOKENS_JSON",
+        '{"writer-token":{"id":"writer","roles":["writer"],"allowed_tenants":["*"]}}',
+    )
+    response = client.post(
+        "/api/v1/admin/jira-rag/import-csv?dry_run=true",
+        files=[("files", ("jira.csv", payload, "text/csv"))],
+        headers={"Authorization": "Bearer writer-token"},
+    )
+    assert response.status_code == 403
+
+
+def test_flush_batch_retries_chroma_and_persists_sql(monkeypatch):
+    from app.services import jira_csv_import_service as service
+
+    parsed = parse_jira_csv_bytes(
+        _csv_bytes(BASE_HEADERS, [["One", "GUIDES-11", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]]),
+        "jira.csv",
+    ).issues[0]
+    enriched = enrich_jira(parsed.issue).model_copy(update={"resolution": "Fixed", "source_type": "jira_csv"})
+    chunks = build_jira_qa_chunks(parsed.issue_key, parsed.issue, enriched=enriched)
+    attempts = []
+
+    class FakeSession:
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    def flaky_add(*_args, **_kwargs):
+        attempts.append(1)
+        return len(attempts) > 1
+
+    monkeypatch.setattr(service, "embed_texts_batched", lambda docs, batch_size: np.zeros((len(docs), 3)))
+    monkeypatch.setattr(service, "add_documents", flaky_add)
+    monkeypatch.setattr(service.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(service, "SessionLocal", FakeSession)
+    monkeypatch.setattr(service, "upsert_jira_issue", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "insert_jira_chunks", lambda *_args, **_kwargs: len(chunks))
+
+    chunk_count, issue_count, errors = service._flush_issue_batch([(parsed, enriched, chunks)])
+    assert len(attempts) == 2
+    assert chunk_count == len(chunks)
+    assert issue_count == 1
+    assert errors == []
