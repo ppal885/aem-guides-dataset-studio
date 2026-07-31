@@ -23,6 +23,7 @@ from app.services.jira_retrieval_service import (
     MIN_VECTOR_SCORE,
     RetrievedJira,
     explain_similarity,
+    extract_structured_learning_evidence,
     retrieve_similar_jiras,
 )
 from app.services.jira_client import JiraClient
@@ -262,6 +263,7 @@ def _similar_payload(rows: list[RetrievedJira], enriched: JiraEnrichedDocument) 
                     "overlap_signals": r.evidence_overlap_signals,
                 },
                 "document_excerpt": (r.document or "")[:500],
+                "learning": extract_structured_learning_evidence(r),
             }
         )
     return out
@@ -304,7 +306,13 @@ def _retrieval_debug(en: JiraEnrichedDocument, similar: list[RetrievedJira]) -> 
 def _structured_uac(en: JiraEnrichedDocument, similar: list[RetrievedJira], retrieval_debug: dict[str, Any]) -> dict[str, Any]:
     return generate_uac_recommendations(
         en,
-        [row.model_dump() for row in similar],
+        [
+            {
+                **row.model_dump(),
+                "learning": extract_structured_learning_evidence(row),
+            }
+            for row in similar
+        ],
         retrieval_debug,
     )
 

@@ -45,6 +45,21 @@ Use this before writing the `Open Questions` section. Ask only questions that af
 - Which logs should appear or not appear, and should validation use UI status, API response, repository state, Splunk, or service logs?
 - Are backward-compatible response shapes required for existing UI callers, automation clients, or integrations?
 
+## Operational Incident And Recovery Questions
+
+- Is the requested outcome immediate cleanup/service restoration, a permanent product safeguard, workflow/config correction, resource increase, or all of these?
+- Which exact output type, environment/build, workflows, job/output UUIDs, target paths, queue states, and customer-like fixture sizes are in scope?
+- What completion SLA applies, and how long may a job remain in Waiting, Executing, Post Publishing, cancellation requested, or another non-terminal state before it is considered stuck?
+- For concurrent operations targeting the same or overlapping destinations, should the system serialize, lock, retry, fail fast, or isolate jobs by path?
+- What must happen to partial writes, previously valid output, temporary nodes, history nodes, workflow instances, and queued successor jobs after failure or cancellation?
+- Must Waiting jobs auto-resume after recovery, or is an explicit retry/restart required?
+- Which exact nodes/workflows may cleanup remove, and what correlation, backup, approval, audit, rollback, and unrelated-state preservation checks are mandatory?
+- How should author-pod restart, deployment, workflow restart, network interruption, timeout, and repeated cancellation affect active and queued jobs?
+- Which CPU, memory, heap, indexing, repository, and workflow metrics decide whether a resource increase is required rather than a code/config fix?
+- Which correlation IDs, job/output/workflow UUIDs, target paths, stage timings, retry counts, terminal reasons, and log messages must QA capture?
+- What generated-output oracle is required beyond UI/build success: page/file count, links, assets, metadata, navigation, output history, workflow completion, or orphan-state checks?
+- Can destructive failure and cleanup scenarios run only on a production-equivalent clone, and which production checks are safe after engineering-approved remediation?
+
 ## On-Premise Release Upgrade Impact Questions
 
 - Which exact on-premise source and target versions/service packs must be tested, including the starting build and upgraded build?

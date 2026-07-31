@@ -156,6 +156,37 @@ DOMAIN_PLAYBOOKS: dict[str, DomainPlaybook] = {
             "Which {output} artifact fields prove {entity} is rendered correctly for {jira_key}?",
         ),
     ),
+    "publishing": DomainPlaybook(
+        key="publishing",
+        aliases=(
+            "publishing",
+            "publish workflow",
+            "output generation",
+            "aem sites publishing",
+            "post publishing",
+        ),
+        default_entities=("ditamap", "output preset", "publishing workflow"),
+        default_outputs=("aem_sites", "native_pdf", "html5"),
+        risk_theme="publishing completion and output integrity",
+        scenarios=(
+            ScenarioPattern(
+                scenario="{jira_key}: Publish {entity} through {output} and verify terminal job and workflow states",
+                why="{entity} acceptance requires both correct output and a completed publishing lifecycle in {output}.",
+                layer="Publishing",
+                automation_fit="Partial",
+            ),
+            ScenarioPattern(
+                scenario="{jira_key}: Retry, cancel, and recover {entity} publishing for {output}",
+                why="Publishing failures must not leave partial output, orphan state, or a blocked successor queue.",
+                layer="Publishing",
+                automation_fit="Partial",
+            ),
+        ),
+        clarifications=(
+            "Which output preset, destination, and terminal workflow state define successful {output} publishing for {jira_key}?",
+            "What timeout, retry, cancellation, cleanup, and queue-unblocking contract applies to {entity} in {jira_key}?",
+        ),
+    ),
     "baseline": DomainPlaybook(
         key="baseline",
         aliases=("baseline", "versioned content", "version snapshot", "baseline publish"),
@@ -595,6 +626,27 @@ def _row_blob(row: Mapping[str, Any]) -> str:
     return "\n".join(str(x) for x in parts if x)
 
 
+def _row_learning(row: Mapping[str, Any]) -> dict[str, Any]:
+    raw = row.get("learning")
+    if not isinstance(raw, Mapping):
+        return {}
+    learning = dict(raw)
+    reuse_mode = _norm_key(learning.get("reuse_mode")) or "risk_signal_only"
+    reusable = reuse_mode == "verified_regression_contract"
+    return {
+        "learning_confidence": _norm_key(learning.get("learning_confidence")) or "caution",
+        "historical_outcome": _norm_key(learning.get("historical_outcome")) or "other_resolution",
+        "is_verified_fix": bool(learning.get("is_verified_fix")),
+        "reuse_mode": reuse_mode,
+        "observed_problem": _truncate(learning.get("observed_problem"), 700),
+        "behavior_contract": _truncate(learning.get("behavior_contract"), 700) if reusable else "",
+        "root_cause": _truncate(learning.get("root_cause"), 500) if reusable else "",
+        "qa_oracle": _truncate(learning.get("qa_oracle"), 700) if reusable else "",
+        "regression_risks": _truncate(learning.get("regression_risks"), 400),
+        "reuse_rule": _truncate(learning.get("reuse_rule"), 300),
+    }
+
+
 def _infer_domain(enriched: Mapping[str, Any]) -> str:
     explicit = _norm_key(enriched.get("domain"))
     sub = _norm_key(enriched.get("sub_domain"))
@@ -741,7 +793,17 @@ def _playbook(ctx: EvidenceContext) -> DomainPlaybook | None:
 def _primary_entity(ctx: EvidenceContext) -> str:
     playbook = _playbook(ctx)
     defaults = list(playbook.default_entities) if playbook else []
-    return _first(ctx.entities + defaults + ctx.features + ctx.components, ctx.jira_key or "ticket_scope")
+    evidence_blob = f"{ctx.summary} {ctx.description}".lower()
+    if ctx.domain == "publishing":
+        for default in defaults:
+            aliases = {default.lower(), default.lower().replace("dita", "dita ")}
+            if default == "ditamap":
+                aliases.update({"dita map", "large map", " map "})
+            if any(alias in f" {evidence_blob} " for alias in aliases):
+                return default
+    output_tokens = {_norm_key(value) for value in ctx.outputs}
+    concrete_entities = [value for value in ctx.entities if _norm_key(value) not in output_tokens]
+    return _first(concrete_entities + defaults + ctx.features + ctx.components, ctx.jira_key or "ticket_scope")
 
 
 def _primary_output(ctx: EvidenceContext) -> str:
@@ -847,11 +909,17 @@ def _normalize_similar_jiras(ctx: EvidenceContext) -> tuple[list[dict[str, Any]]
             + _json_list(row.get("affected_outputs"))
             + _json_list(meta.get("enrich_outputs"))
         )
-        overlap_entities = [x for x in ctx.entities if x.lower() in {e.lower() for e in row_entities}]
+        output_names = {value.lower() for value in ctx.outputs + row_outputs}
+        overlap_entities = [
+            x
+            for x in ctx.entities
+            if x.lower() in {e.lower() for e in row_entities} and x.lower() not in output_names
+        ]
         overlap_outputs = [x for x in ctx.outputs if x.lower() in {o.lower() for o in row_outputs}]
         blob = _row_blob(row)
         lexical_overlap = current_tokens & _tokens(blob)
         score = _score(row)
+        learning = _row_learning(row)
 
         weak = not (overlap_entities or overlap_outputs or lexical_overlap or score >= 0.58)
         if weak:
@@ -891,6 +959,11 @@ def _normalize_similar_jiras(ctx: EvidenceContext) -> tuple[list[dict[str, Any]]
                     value=row.get("matched_snippet") or row.get("why_similar") or row.get("document") or "",
                 )
             ],
+            "chunk_type": str(row.get("chunk_type") or meta.get("chunk_type") or ""),
+            "learning": learning,
+            "oracle_reuse_allowed": bool(
+                learning.get("reuse_mode") == "verified_regression_contract" and overlap_entities
+            ),
         }
         accepted.append(accepted_row)
         seen.add(key)
@@ -950,6 +1023,17 @@ def _risk_summary(ctx: EvidenceContext, similar_rows: Sequence[Mapping[str, Any]
     if similar_rows:
         keys = ", ".join(str(row.get("jira_key")) for row in similar_rows[:3])
         drivers.append(_truncate(f"{keys}: historical Jira evidence increases regression risk for {entity} in {output}.", 260))
+        for row in similar_rows:
+            learning = _row_learning(row)
+            concrete_risk = learning.get("regression_risks") or learning.get("root_cause")
+            if concrete_risk:
+                drivers.append(
+                    _truncate(
+                        f"{row.get('jira_key')}: historical regression evidence — {concrete_risk}",
+                        260,
+                    )
+                )
+                break
     if ctx.customers and output != "output_not_specified":
         drivers.append(
             _truncate(
@@ -1002,6 +1086,21 @@ def _scenario_from_pattern(
     }
 
 
+def _concise_learning_oracle(value: Any) -> str:
+    text = _norm(value)
+    text = re.sub(r"^Verify the captured behavior contract:\s*", "", text, flags=re.I)
+    expected = re.search(
+        r"Expected:\s*(.*?)(?=\s+(?:Actual:|Acceptance criteria:|CC\s*-)|$)",
+        text,
+        re.I,
+    )
+    if expected:
+        text = expected.group(1).strip()
+    text = re.sub(r"!image-[^!]+!", "", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip(" ;,.-")
+    return _truncate(text, 260)
+
+
 def _must_test_scenarios(ctx: EvidenceContext, similar_rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     if not (ctx.entities or ctx.outputs or similar_rows):
         return []
@@ -1012,14 +1111,54 @@ def _must_test_scenarios(ctx: EvidenceContext, similar_rows: Sequence[Mapping[st
     candidates: list[dict[str, Any]] = []
 
     if similar_rows:
-        sim_key = str(similar_rows[0].get("jira_key") or "")
-        pattern = ScenarioPattern(
-            scenario="{jira_key}: Regression parity for {entity} in {output} against {similar_key}",
-            why="{similar_key} is grounded similar Jira evidence; compare {entity}/{output} behavior before UAC sign-off.",
-            layer="Hybrid",
-            automation_fit="Partial",
+        historical_row = next(
+            (row for row in similar_rows if _row_learning(row).get("qa_oracle") or _row_learning(row).get("regression_risks")),
+            similar_rows[0],
         )
-        candidates.append(_scenario_from_pattern(ctx, pattern, entity=entity, output=output, similar_key=sim_key))
+        sim_key = str(historical_row.get("jira_key") or "")
+        learning = _row_learning(historical_row)
+        oracle = _concise_learning_oracle(learning.get("qa_oracle") or learning.get("regression_risks"))
+        if oracle:
+            reusable = bool(historical_row.get("oracle_reuse_allowed"))
+            root_cause = learning.get("root_cause")
+            why = (
+                f"{sim_key} provides a {learning.get('learning_confidence')} confidence historical regression contract"
+                if reusable
+                else (
+                    f"{sim_key} has a historical contract but lacks concrete entity overlap with the current Jira; reuse it only as a regression risk signal"
+                    if learning.get("reuse_mode") == "verified_regression_contract"
+                    else f"{sim_key} is cautionary history and may only be reused as a regression risk signal"
+                )
+            )
+            if root_cause:
+                why += f"; historical root cause: {root_cause}"
+            candidates.append(
+                {
+                    "scenario": _truncate(
+                        f"{ctx.jira_key}: Validate {entity} in {output} against {sim_key} regression oracle — {oracle}",
+                        220,
+                    ),
+                    "why": _truncate(why + ".", 260),
+                    "evidence": [
+                        _evidence_item("similar_jira", jira_key=sim_key, field="historical_outcome", value=learning.get("historical_outcome")),
+                        _evidence_item("similar_jira", jira_key=sim_key, field="qa_oracle", value=oracle),
+                        _evidence_item("similar_jira", jira_key=sim_key, field="root_cause", value=root_cause),
+                    ],
+                    "impacted_output": output,
+                    "related_entity": entity,
+                    "test_layer": "Hybrid",
+                    "priority": "P1" if reusable else "P2",
+                    "automation_fit": "Partial",
+                }
+            )
+        else:
+            pattern = ScenarioPattern(
+                scenario="{jira_key}: Regression parity for {entity} in {output} against {similar_key}",
+                why="{similar_key} is grounded similar Jira evidence; compare {entity}/{output} behavior before UAC sign-off.",
+                layer="Hybrid",
+                automation_fit="Partial",
+            )
+            candidates.append(_scenario_from_pattern(ctx, pattern, entity=entity, output=output, similar_key=sim_key))
 
     if playbook:
         for pattern in playbook.scenarios:
@@ -1078,7 +1217,8 @@ def _must_test_scenarios(ctx: EvidenceContext, similar_rows: Sequence[Mapping[st
             }
         )
 
-    return candidates
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    return sorted(candidates, key=lambda row: priority_order.get(str(row.get("priority") or "P3"), 3))
 
 
 def _missing_clarifications(ctx: EvidenceContext, similar_rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -1118,17 +1258,22 @@ def _missing_clarifications(ctx: EvidenceContext, similar_rows: Sequence[Mapping
 
     if similar_rows:
         sim_key = str(similar_rows[0].get("jira_key") or "")
-        rows.append(
-            {
-                "question": _truncate(
-                    f"Should {ctx.jira_key or 'current Jira'} match the {entity}/{output} behavior proven by {sim_key}?",
-                    240,
-                ),
-                "why": _truncate(f"{sim_key} is similar historical Jira evidence for the same UAC area.", 240),
-                "evidence": [_evidence_item("similar_jira", jira_key=sim_key, field="jira_key", value=sim_key)],
-                "related_entity": entity,
-            }
-        )
+        learning = _row_learning(similar_rows[0])
+        if learning.get("reuse_mode") != "verified_regression_contract" or not learning.get("behavior_contract"):
+            rows.append(
+                {
+                    "question": _truncate(
+                        f"Which parts of cautionary history {sim_key}, if any, apply to {entity}/{output} for {ctx.jira_key or 'current Jira'}?",
+                        240,
+                    ),
+                    "why": _truncate(
+                        f"{sim_key} is not a verified reusable behavior contract and must not silently define current acceptance.",
+                        240,
+                    ),
+                    "evidence": [_evidence_item("similar_jira", jira_key=sim_key, field="reuse_mode", value=learning.get("reuse_mode") or "unclassified")],
+                    "related_entity": entity,
+                }
+            )
 
     return rows
 

@@ -40,12 +40,21 @@ Use exactly these sections. Keep every line as a bullet.
 ## Writing Style
 
 - Write like a manual QA engineer: direct action, observable result, no implementation jargon unless needed.
+- State the lifecycle stage in `Scope From Git`: `Pre-Development UAC`, `Implementation Review`, or `Post-Fix Validation`.
 - Prefer “Verify that…” and “Confirm that…” over vague words like “check properly”.
 - Keep bullets short enough to scan.
-- Put missing evidence in the section it affects: `Draft blocker: ...`
+- Put only stage-relevant missing evidence in the section it affects: `Draft blocker: ...`.
+- For pre-development, use `Not applicable — development has not started` for PR, changed-code, and line-count fields; never call these Draft blockers.
+- In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - Do not create extra sections.
 - Do not use tables.
+
+## Stage Mapping
+
+- **Pre-Development UAC**: Define proposed acceptance criteria, inspect current product and automation clones, list implicated current implementation, and make PR/line-count fields not applicable.
+- **Implementation Review**: Inspect the real branch/commit/PR, list changed code and line counts, and map code branches to scenarios.
+- **Post-Fix Validation**: Inspect the candidate fix/build and diff, then map acceptance, regression, environment, and fix-safety evidence to QA sign-off.
 
 ## Scenario Formula
 
@@ -60,7 +69,7 @@ Examples:
 - `P1: Repeat the API/UI flow on the required cloud/on-prem or old/new UI matrix -> behaviour stays consistent or follows the documented platform difference.`
 - `P2: Refresh the UI after the operation -> status, toast, and persisted state remain consistent without duplicate actions.`
 
-## Sample Draft
+## Sample Pre-Development UAC
 
 ```markdown
 **Acceptance Criteria**
@@ -74,17 +83,20 @@ Examples:
 - Unknown from current evidence: exact behaviour for upgraded instances was not confirmed by Jira or RAG.
 
 **Scope From Git**
-- Jira development link: <PR URL or no PR in Jira>.
-- GitHub MCP PR discovery: <PR found by Jira key/search terms, or not found>.
-- PR inspected: <PR URL>; changed area is <component/workflow>.
+- Lifecycle stage: `Pre-Development UAC`; development has not started.
+- Issue source: <Jira, Dynamics/support case, customer escalation, pasted logs, or investigation notes>.
+- Product clones: <Starling/backend, xmleditor, or new editor path and sync state>.
+- Automation clones: <guides-ui-tests/dxml-it-tests path and sync state>.
+- PR discovery: Not applicable — development has not started.
 - Figma/design evidence: <Figma MCP inspected link/frame, screenshot/design notes used, or not applicable>.
-- Repo sync state: <Starling/xmleditor/new editor/guides-ui-tests/dxml-it-tests fetched and clean/up to date, or blocker>.
 
 **Code Touched**
-- `<file>`: affects <workflow/API/UI state>, so QA should verify <impact>.
+- No code changes yet — development has not started.
+- Current implementation implicated: `<verified product-clone file/function/class/workflow>` affects <workflow/API/UI state>; evidence source is <exact repo match/log/API/config>.
+- Current automation coverage: `<automation file/scenario/helper>` covers <existing path>; missing <negative/concurrency/recovery/config coverage> remains a gap.
 
 **Lines Changed**
-- `<file>`: +12/-4; key hunk changes validation before save.
+- Not applicable — development has not started.
 
 **Test Scenarios**
 - P0: Run the primary Jira workflow with valid data -> operation succeeds and expected UI/API state is persisted.
@@ -97,7 +109,7 @@ Examples:
 
 **Past Similar Tickets**
 - `GUIDES-xxxxx`: similar because <reason>; adds coverage for <area>.
-- Draft blocker: historical Jira MCP/JQL was unavailable, so similar-ticket coverage is incomplete.
+- Historical search status: <Jira MCP/JQL result, user-provided incidents only, or unavailable>. Add a Draft blocker only when missing history leaves a material behaviour or regression decision unsupported.
 
 **Regression Areas**
 - Shared validation/API path used by <nearby workflow>.

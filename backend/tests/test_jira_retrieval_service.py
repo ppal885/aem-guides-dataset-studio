@@ -9,10 +9,102 @@ from app.services.jira_retrieval_service import (
     MIN_FINAL_SCORE,
     MIN_METADATA_SCORE,
     MIN_VECTOR_SCORE,
+    extract_structured_learning_evidence,
     extract_hybrid_filters_from_issue_rows,
     retrieve_similar_jiras,
     retrieve_similar_jiras_debug,
 )
+
+
+def test_extract_structured_learning_evidence_enforces_outcome_guardrail():
+    fixed = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Historical Jira learning: GUIDES-1\n"
+                "Behavior contract: Queue successors resume after failed job cleanup.\n"
+                "Root cause evidence: Concurrent commits targeted the same node.\n"
+                "QA oracle: Run two publishes and verify terminal states.\n"
+                "Regression risks: queue blockage"
+            ),
+            "metadata": {
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+            },
+        }
+    )
+    caution = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": "Behavior contract: Do not reuse me.\nQA oracle: Do not reuse me.",
+            "metadata": {
+                "learning_confidence": "caution",
+                "historical_outcome": "non_fix_decision",
+            },
+        }
+    )
+
+    assert fixed["reuse_mode"] == "verified_regression_contract"
+    assert "terminal states" in fixed["qa_oracle"]
+    assert caution["reuse_mode"] == "risk_signal_only"
+    assert caution["behavior_contract"] == ""
+    assert caution["qa_oracle"] == ""
+
+
+@patch("app.services.jira_retrieval_service.query_collection")
+@patch("app.services.jira_retrieval_service.embed_query")
+@patch("app.services.jira_retrieval_service.is_embedding_available")
+@patch("app.services.jira_retrieval_service.is_chroma_available")
+def test_retrieval_prefers_reusable_learning_when_scores_are_comparable(
+    mock_chroma, mock_emb, mock_embed, mock_q
+):
+    mock_chroma.return_value = True
+    mock_emb.return_value = True
+    mock_vec = MagicMock()
+    mock_vec.tolist.return_value = [0.1] * 8
+    mock_embed.return_value = mock_vec
+    base_meta = {
+        "jira_key": "GUIDES-LEARN",
+        "title": "Publishing queue collision",
+        "enrich_domain": "publishing",
+        "enrich_entities": '["workflow"]',
+        "enrich_outputs": '["AEM Sites"]',
+        "labels": "[]",
+        "components": "[]",
+    }
+    mock_q.return_value = [
+        {
+            "id": "summary",
+            "document": "Publishing workflow queue collision AEM Sites",
+            "metadata": {**base_meta, "chunk_type": "summary_chunk"},
+            "distance": 0.10,
+        },
+        {
+            "id": "learning",
+            "document": "Publishing workflow queue collision AEM Sites",
+            "metadata": {
+                **base_meta,
+                "chunk_type": "learning_behavior_chunk",
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+                "is_verified_fix": False,
+            },
+            "distance": 0.13,
+        },
+    ]
+
+    rows = retrieve_similar_jiras(
+        "publishing workflow queue collision AEM Sites",
+        domain="publishing",
+        dita_entities=["workflow"],
+        affected_outputs=["AEM Sites"],
+        customer_names=[],
+        limit=3,
+        recent_jira_keys=[],
+    )
+
+    assert rows[0].chunk_type == "learning_behavior_chunk"
+    assert rows[0].score_breakdown["ranking_score"] > rows[0].final_score
 
 
 def test_extract_hybrid_filters_from_rows():

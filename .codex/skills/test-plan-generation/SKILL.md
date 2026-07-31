@@ -1,35 +1,36 @@
 ---
 name: test-plan-generation
-description: "Generate evidence-backed, plain-English AEM Guides QA test plans from Jira, PR, branch, commit, pasted diff, Figma design links, or user-cloned repo context. Use when Codex must create, improve, or review a manual QA test plan with acceptance criteria, expected behaviour, Git/PR scope, touched code, changed lines, test scenarios, past similar tickets, regression areas, and targeted open questions; using Jira MCP for Jira facts, GitHub MCP to discover/fetch PRs when Jira does not mention one, Figma MCP to inspect existing designs and learn UI flows when design evidence is available, `ask_dita_expert` for VM-backed RAG behaviour learning, and user cloned repos such as Starling/backend, xmleditor, new editor, guides-ui-tests, and dxml-it-tests for code and automation evidence; with strict Draft blockers when Jira, RAG, PR/diff, repo sync, design evidence, open questions, or historical evidence is missing; and no tables or noisy raw evidence dumps."
+description: "Generate evidence-backed, plain-English AEM Guides QA test plans and UACs from Jira, Dynamics/support incidents, customer escalations, PRs, branches, commits, pasted diffs, logs, screenshots, Figma designs, or user-cloned repos. Use for pre-development UAC planning, implementation review, and post-fix validation; inspect available product clones such as Starling/backend, xmleditor, and new editor for current or changed implementation, plus guides-ui-tests and dxml-it-tests for automation evidence; use Jira/GitHub/Figma MCPs and `ask_dita_expert` when available; apply lifecycle-stage-specific evidence requirements so missing PRs and line counts are not blockers before development starts; and output concise bullet-only plans without tables or raw evidence dumps."
 ---
 
 # Test Plan Generation
 
 ## Goal
 
-Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Use RAG to learn product behaviour, but do not let RAG replace Jira facts or PR diff evidence. Treat Jira UAC/acceptance criteria as the primary acceptance and sign-off contract: it defines scope, out-of-scope, expected behaviour, integration expectations, regression boundaries, and open questions.
+Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Adapt evidence requirements to the lifecycle stage. Use RAG to learn product behaviour, but do not let RAG replace issue facts, UAC, current implementation evidence, or an available fix diff. Treat Jira UAC, pasted acceptance criteria, or a normalized support-incident acceptance contract as the primary scope and sign-off contract.
 
 ## Operating Mode
 
-- Work evidence-first: collect facts, normalize behaviour, retrieve RAG, inspect diff, then write scenarios.
-- Apply conflict priority in this order: Jira/UAC acceptance contract > inspected PR implementation > accepted RAG documentation > Figma UI intent > cloned repo/team memory. When sources conflict, surface the contradiction as a Draft blocker instead of silently choosing.
+- Work evidence-first: classify lifecycle stage, collect facts, inspect available clones, normalize behaviour, retrieve RAG, inspect an available diff when stage-relevant, then write scenarios.
+- Apply conflict priority in this order: Jira/UAC or normalized incident acceptance contract > inspected fix implementation when one exists > accepted RAG documentation > Figma UI intent > verified current product clone > automation clone > team memory. Surface material contradictions instead of silently choosing.
 - Derive edge cases from concrete evidence: UAC boundaries, PR diff, code branches, API contracts, configs, old automation failures, and past similar Jira history; do not invent edge cases from generic module names.
 - Map integration impact for every plan: identify adjacent workflows, callers, configs, output types, permissions, and automation areas that can break even if not directly changed.
 - Use exact evidence probes before broad reasoning: RAG queries, Jira searches, repo searches, and automation searches must include the precise API path, config key, UI label, DITA construct, error text, or release/version boundary whenever one is available.
 - Treat setup and test data as part of QA quality: each plan must make required environment, role, config, fixture, file type, output preset, and upgrade/source-target version needs visible inside `Test Scenarios`, `Regression Areas`, or `Open Questions`.
 - Keep the final answer short and tester-facing; keep raw evidence, chunk scores, backend traces, and reasoning audits internal.
-- Treat the plan as `Draft` unless current Jira facts, accepted behaviour evidence, past-similar-ticket search, and required Git/PR evidence are present.
-- Ask for the missing Jira text, PR URL, branch, commit, or pasted diff only when that evidence is required and unavailable.
-- Use user-provided local clones when present; do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, or run old test-plan MCP tools.
+- Judge readiness against the lifecycle stage: UAC-ready before development, implementation-review-ready while code is changing, or QA-sign-off-ready after a fix is available.
+- Ask for a PR, branch, commit, or pasted diff only in implementation-review or post-fix stages, or when the user explicitly requests changed-code claims.
+- Inspect every relevant user-provided or discoverable local clone before declaring code or automation evidence unavailable; do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, or run old test-plan MCP tools.
 
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
-- Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira details and mark the Jira evidence gap.
-- Use GitHub MCP to inspect a PR when Jira includes one; if Jira has no PR link, use GitHub MCP to search likely repos by Jira key, summary terms, branch names, commit messages, and PR body before asking the user for a PR.
+- Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira, Dynamics, support-case, customer-escalation, log, screenshot, and investigation details; state the evidence source without automatically blocking a pre-development UAC.
+- When the Dataset Studio app or local repo is available, use its `jira_qa` related-ticket retrieval as the first historical-learning candidate source, then validate mutable Jira facts with Jira MCP. Treat indexed learning as historical QA evidence only, never as current Jira truth or product documentation.
+- Use GitHub MCP to inspect or discover a PR only when development may have started, a fix is claimed, or changed-code evidence is requested. Do not search for or request a PR when the issue is explicitly pre-development and no implementation exists.
 - Use Figma MCP read-only when Jira, PR, comments, attachments, or the user provides design links, frame names, prototype links, or asks to verify against existing UX/design flow.
 - Do not use or expect any generated test-plan slash command or test-plan MCP tool.
-- Use connected Jira/GitHub MCPs only if available in the current session. If unavailable, rely on user-provided Jira/PR/diff text and local clones, then mark gaps as Draft blockers.
+- Use connected Jira/GitHub MCPs only if available in the current session. If unavailable, rely on user-provided evidence and local clones, then apply only stage-relevant gaps or blockers.
 - Use connected Figma MCP only if available in the current session. If unavailable, rely on pasted screenshots/design notes and mark the Figma evidence gap.
 - If a local cloned repo is used for evidence, fetch before relying on it and never stash, reset, merge, or rebase automatically.
 
@@ -40,24 +41,30 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Read `references/design-evidence-flow.md` before using Figma MCP or design screenshots as evidence.
 - Read `references/output-template.md` before writing the final test plan.
 - Read `references/uac-reference-examples.md` when normalizing Jira UAC, writing acceptance criteria, or turning feature notes into test scenarios.
+- Read `references/review-workflow-uac.md` when Jira scope mentions review tasks, review comments, review right panel, comment import, side-by-side review diff, task dropdowns, current/closed task state, or author incorporation of review comments.
 - Read `references/open-questions-catalog.md` before writing the `Open Questions` section.
 - Read `references/native-aemsite-baseline-metadata.md` when Jira scope mentions Native AEM Site, baseline publishing, output preset metadata, metadata propagation, copy-to, or incremental publishing metadata.
 - Read `references/quality-gate-checklist.md` before marking a plan review-ready.
 
 ## Lifecycle
 
-### Phase 0 — Classify Input
+### Phase 0 — Classify Stage And Input
 
-- Identify whether the user provided Jira only, PR only, Jira + PR, branch/commit, pasted diff, or only a vague request.
-- If Jira facts are missing, keep the plan Draft and ask for Jira summary/description/AC or a Jira MCP connection.
-- If PR/diff evidence is missing and fix-impact claims are needed, ask for PR URL, branch, commit, or pasted diff.
-- If the user only wants a lightweight draft, still mark unsupported sections with `Draft blocker:`.
+- Classify the lifecycle stage before applying evidence gates:
+  - `Pre-Development UAC`: acceptance criteria are being created or refined and development has not started.
+  - `Implementation Review`: a branch, commit, PR, patch, or active implementation exists and code-impact review is required.
+  - `Post-Fix Validation`: a candidate fix/build exists and QA sign-off or regression validation is required.
+- Classify the input source: Jira, Dynamics/support case, customer escalation, logs, screenshots, investigation notes, PR, branch/commit, pasted diff, Figma, local clones, or a combination.
+- Infer `Pre-Development UAC` when the user states that UAC is not final, development has not started, or no code change exists. In this stage, missing PR, changed files, and line counts are `Not applicable`, not Draft blockers.
+- Treat operational incidents as valid pre-development inputs when they include customer context, symptoms, logs, investigation findings, recovery actions, similar incidents, and an end goal. Normalize these facts into an acceptance contract and targeted open questions.
+- If the stage is unclear, infer it from explicit evidence and state the assumption under `Scope From Git`; ask only when the distinction materially changes the plan.
+- Keep a pre-development plan Draft only for missing sign-off-critical UAC decisions, unsupported expected behaviour, missing required product-clone evidence, or unresolved environment/test-data constraints—not merely because implementation does not exist.
 
-### Phase 1 — Collect Jira Facts
+### Phase 1 — Collect Issue Facts
 
-- Use connected Jira MCP first for the target Jira whenever available; otherwise use pasted Jira details and mark that Jira MCP was unavailable.
-- Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, comments, labels, components, affected/fix versions, status, customer impact, attachments, linked issues, and development links.
-- Treat UAC as authoritative for acceptance criteria, scope, out-of-scope, expected behaviour, integrations, regression boundaries, and unresolved open questions.
+- Use connected Jira MCP first for a Jira-backed request whenever available; otherwise use pasted Jira, Dynamics, support-case, customer-escalation, logs, screenshots, and investigation details and identify the source.
+- Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, customer and business impact, environment, product/version, logs, error text, affected assets/workflows, actions already taken, requested engineering help, attachments, linked issues, and development links when present.
+- Treat supplied UAC as authoritative. When UAC does not exist, derive a proposed acceptance contract from the problem statement and end goal, label unresolved product decisions as open questions, and do not pretend proposed criteria are already approved.
 - Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
 - Convert unclear AC into tester-readable bullets and keep ambiguity visible.
 
@@ -69,6 +76,60 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Label inferred ownership, impacted code, or workflow assumptions as inferred unless PR/repo evidence confirms them.
 - Build focused search intents before retrieval: exact failure/API/config/UI label, expected workflow, boundary/config/version, and regression/automation coverage.
 
+#### Operational Incident And Recovery UAC Rules
+
+- Use these rules for Dynamics/support incidents, production escalations, stuck jobs, queue blockage, workflow failures, cleanup requests, performance degradation, concurrency failures, and customer-restoration plans.
+- Separate immediate remediation from permanent product behavior: backend cleanup, service restoration, workflow/config correction, code safeguard, resource change, and automation must each have explicit in-scope or out-of-scope status.
+- Convert the end goal into proposed acceptance criteria, but keep unapproved engineering choices visible as open questions rather than presenting them as decided UAC.
+- Define the exact affected output type, workflow, environment/build, target paths, job IDs/UUIDs, queue states, customer-like fixture size, and normal-versus-failure timing baseline.
+- Require terminal-state contracts for success, failure, cancel, retry exhaustion, and recovery; define the maximum allowed duration for Waiting, Executing, Post Publishing, cancellation requested, or equivalent states.
+- Define concurrency behavior for same map, same preset, same destination, overlapping destinations, and unrelated destinations: serialize, lock, retry, fail fast, or isolate.
+- Define partial-write behavior: rollback, reuse, overwrite, cleanup, idempotent retry, duplicate prevention, orphan prevention, and preservation of previously valid output.
+- Define queue isolation and fairness: one failed job must not indefinitely block unrelated jobs, and recovery must specify whether successors auto-resume or require manual restart.
+- Define cleanup safety: exact nodes/workflows targeted, correlation evidence, backup, approval, audit trail, unrelated-state preservation, rollback, and post-cleanup verification.
+- Define restart and failover behavior for author pod restart, workflow restart, deployment, timeout, network interruption, and repeated cancellation.
+- Define performance and resource acceptance separately: completion SLA, dataset scale, heap/pod limits, indexing state, CPU/memory evidence, and criteria for deciding whether a resource increase is required.
+- Define observability: required correlation IDs, job/output/workflow UUIDs, target path, stage timings, retry count, terminal reason, actionable errors, and sensitive-data redaction.
+- Verify the final generated output, not only DITA-OT/build success or UI status: page/file count, links, assets, metadata, navigation, history nodes, workflow completion, and absence of partial/orphan state as applicable.
+- Inspect product clones using exact stack-trace classes, workflow model names, JCR paths, APIs, config keys, and error strings; inspect automation clones for timeout, polling, cancel, cleanup, concurrency, performance, and recovery gaps.
+- Keep destructive production reproduction out of scope unless explicitly approved; prefer a production-equivalent clone and engineering-approved cleanup validation.
+
+#### Translation Project API UAC Reference
+
+- Use this UAC when scope covers an automation API that creates a translation project for a supplied DITA map and selected filters.
+- Require support for project types `newTranslationProject`, `xliffTranslationProject`, `newMultiLingualTranslationProject`, `addToExistingProject`, and `newScopingTranslationProject`.
+- For `latestVersion`, resolve forward references from the latest saved version of the DITA map and exclude working-copy changes.
+- For `baseline`, resolve forward references exactly as they existed when the specified baseline was created.
+- For `versionAsOfDate`, resolve forward references exactly as they existed at the supplied date and time.
+- Cover `referenceType` values `Direct` and `Indirect`.
+- Cover `fileType` values `Map`, `Topic`, and `Others`.
+- Cover `documentState` values `Draft`, `In-Review`, and `Reviewed`.
+- Cover `translationStatus` values `Out of Date`, `In Progress`, `In Sync`, `Out of Sync`, and `Missing copy`.
+- Require the API request to accept the DITA map, project title, project type, language list, version selection and required version value, and selected filters.
+- Verify the API creates missing target-language folders before creating or updating the translation project.
+- Derive positive, negative, boundary, filter-combination, version-resolution, missing-language-folder, permissions, idempotency, validation, error-contract, and automation-consumability scenarios from this UAC.
+- Keep unspecified API details as open questions, including endpoint and method, request/response schema, baseline identifier format, date/time zone and inclusivity, filter combination semantics, existing-project identifier, duplicate project-title behavior, partial-failure rollback, folder naming/location, and permissions.
+
+#### EDS GitHub And GitLab Publishing Profile UAC Reference
+
+- Use this UAC when scope covers creating or using EDS Publishing Profiles with GitHub or GitLab repositories.
+- Support GitHub Cloud public/private, GitLab Cloud public/private, self-hosted GitHub Enterprise, and self-hosted GitLab repositories.
+- Provide a `Git Provider` selector with GitHub and GitLab options, dynamically update provider-specific UI fields, and default the server URL to the self-hosted GitLab URL when GitLab is selected.
+- Enforce mandatory-field validation and enable `Save` only after all required fields are present and authentication succeeds; never persist an unauthenticated profile.
+- Support OAuth authentication for both providers using Client ID, Client Secret, and token exchange.
+- Show clear errors for invalid repository details or credentials, expired/revoked tokens, insufficient or read-only permissions, authentication failures, network interruption, API timeout, and server failure.
+- Prevent publishing when authentication fails or repository permissions are insufficient.
+- Verify `Push to Live` commits and pushes content to the configured repository and branch for both providers, while preserving the existing EDS workflow and downstream EDS pipeline trigger.
+- Verify Publishing Profile APIs behave consistently for GitHub and GitLab.
+- Preserve backward compatibility for existing GitHub publishing profiles, Push to Live, APIs, logging, upgrades, and all supported AEM Guides Cloud versions.
+- Preserve existing publishing profiles during upgrades and confirm no impact to Salesforce publishing.
+- Verify the required AEM Admin suffix configuration change from `HTML` to `HTM`; keep the exact setting, scope, default, and upgrade behavior as open questions when Jira does not define them.
+- Verify supported content publishes through both providers without content loss or formatting issues, including DITA topics, DITAMAPs, Bookmaps, Markdown, images, multimedia, MathML, tables, code blocks, cross-references, keyrefs, conrefs, conditional content, multilingual content, and other supported assets.
+- Require logging for authentication, token exchange, publishing, commit creation, push operations, API failures, and retries when applicable.
+- Verify Client Secret, Access Token, and OAuth Token values are never logged, exposed in UI errors, or returned through unsafe API responses.
+- Derive positive, negative, provider/platform matrix, public/private repository, permission, authentication lifecycle, UI-state, API-contract, upgrade, logging/redaction, retry, pipeline-trigger, content-fidelity, and regression scenarios from this UAC.
+- Keep unspecified details as open questions, including exact OAuth grant/token-exchange flow, redirect URI, scopes, token storage/refresh, provider-specific required fields, self-hosted TLS/proxy requirements, GitLab default URL behavior, branch protections, retry policy, rollback after partial commit/push failure, supported file-size limits, and the supported AEM Guides Cloud version matrix.
+
 ### Phase 3 — Retrieve Behaviour RAG
 
 - Call `ask_dita_expert` with focused questions from normalized behaviour, not raw keyword spam.
@@ -78,26 +139,31 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Prefer latest matching release docs or current Experience League pages over older release notes when both describe the same behaviour; use older release notes only for version-specific upgrade/history claims.
 - Reject chunks that only share broad vocabulary such as `topic`, `map`, `assets`, `metadata`, `cloud`, `report`, `translation`, or `workflow` without proving the actual behaviour.
 - Never use attribute-only DITA evidence as proof for an exact element behaviour, or generic DITA docs as proof for AEM Guides UI behaviour.
-- If RAG is unavailable, noisy, or unrelated, add a Draft blocker under `Expected Behaviour` or `Regression Areas`.
+- If RAG is unavailable, noisy, or unrelated, state that evidence status under `Expected Behaviour` or `Regression Areas`. Add a Draft blocker only when the affected behaviour is not already supported by the acceptance contract, exact logs, verified current implementation, design evidence, or another authoritative source.
 
 ### Phase 4 — Find Past Similar Tickets
 
-- Use Jira MCP/JQL if available; otherwise use only user-provided related tickets or available team memory.
+- Use the app's indexed Jira learning retrieval (`jira_qa`) when available, then use Jira MCP/JQL to validate current status, links, comments, and any facts that may have changed. If indexed retrieval is unavailable, use Jira MCP/JQL; otherwise use only user-provided related tickets or available team memory.
+- Prefer `learning_behavior_chunk`, acceptance-criteria, resolution/RCA, and test-evidence hits over summary-only matches when their structural evidence is comparable.
+- Preserve each learning hit's confidence, historical outcome, verified-fix flag, behavior contract, root cause, QA oracle, and regression risks. A `caution` or non-fix outcome is a risk signal only and must never define current expected behavior.
+- Reuse a historical behavior contract or QA oracle only when the outcome is an implemented fix and confidence is `medium` or `high`; keep current Jira/UAC authoritative.
 - Search with multiple narrow JQL passes by exact Jira key links, exact error text, API route, config key, workflow, UI label, data shape, version boundary, and likely code area.
 - Keep at most five past tickets. For each, explain why similar and what coverage it adds.
 - Reject broad results that match only generic words or unrelated automation-bulk tickets; if only noisy matches exist, say historical evidence is unavailable instead of padding the section.
 
-### Phase 5 — Inspect Git/PR Evidence
+### Phase 5 — Inspect Clones And Available Git Changes
 
-- Prefer connected GitHub MCP for PRs. If Jira does not mention a PR, search GitHub MCP by Jira key, summary terms, branch names, commit messages, and PR body across likely AEM Guides repos before asking the user for a PR.
-- Capture changed files, functions/classes/components, added/deleted line counts, key hunks, tests, config/migration changes, API/error contract changes, and gaps.
-- Inspect code branches/guards, API contracts, validation paths, error handling, config defaults, and data-shape boundaries to derive edge cases and integration risks.
-- Inspect user-cloned repos when available for code and automation context: Starling/backend, xmleditor, new editor, `guides-ui-tests`, and `dxml-it-tests`.
-- For `guides-ui-tests` and `dxml-it-tests`, mine existing tests, skipped/flaky history, fixtures, selectors/API clients, reusable scenarios, and automation coverage gaps.
-- Check known local clone paths when present, including `C:\UI TEST\guides-ui-tests`, user workspace clones, and any repo paths provided through environment variables or user context.
-- For local cloned repos, run `git fetch --all --prune`, inspect `git status -sb`, and fast-forward pull only if clean and behind. If dirty, diverged, no upstream, or fetch/pull fails, keep repo claims provisional.
-- Never infer Git scope from Jira keywords alone.
-- If line-level diff is unavailable, write `Draft blocker: line-level diff not inspected`.
+- Always inspect every relevant available clone, regardless of lifecycle stage: Starling/backend, xmleditor, new editor, `guides-ui-tests`, and `dxml-it-tests`.
+- Check user-provided workspace roots, environment variables, common teammate paths, and known paths such as `C:\UI TEST\guides-ui-tests` and `C:\UI TEST\dxml-it-tests` before declaring a clone unavailable.
+- For each clone, run `git fetch --all --prune`, inspect `git status -sb`, and fast-forward pull only if clean and behind. If dirty, diverged, detached, without upstream, or fetch/pull fails, do not alter the worktree; use verified remote refs when possible and label claims provisional.
+- In `Pre-Development UAC`, inspect product clones to identify the current implementation directly implicated by exact classes, workflow names, API paths, config keys, error strings, logs, or UI labels. Report these as `Current implementation implicated`, never as changed code.
+- In `Pre-Development UAC`, inspect automation clones for existing happy-path, negative, concurrency, recovery, role/config, performance, and regression coverage. Missing PR/diff and line counts are `Not applicable — development has not started`.
+- In `Implementation Review`, inspect the branch/commit/PR diff and capture changed files, functions/classes/components, added/deleted counts, key hunks, tests, config/migration changes, API/error contracts, and gaps. Also compare changed code with the current implementation and existing automation.
+- In `Post-Fix Validation`, inspect the exact candidate-fix diff/build source and map changed branches, guards, retries, persistence, cleanup, errors, and tests to fix-safety and regression scenarios.
+- Prefer connected GitHub MCP for a referenced PR. If development is expected but Jira has no PR link, search by Jira key, summary, branch, commit message, and PR body before asking for a PR.
+- For `guides-ui-tests` and `dxml-it-tests`, mine existing tests, skipped/flaky history, fixtures, selectors/API clients, reusable scenarios, polling/timeouts, cleanup helpers, and automation gaps.
+- Never label files as changed without a real diff. Never infer current implementation from generic Jira keywords; require exact repo matches or label the area inferred.
+- If an implementation-stage diff is unavailable, add `Draft blocker: implementation diff not inspected`. Do not emit this blocker in pre-development.
 
 ### Phase 6 — Inspect Figma Design Evidence
 
@@ -112,7 +178,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Write 6-10 scenarios maximum, priority-tagged `P0`, `P1`, or `P2`.
 - Each scenario must include action + expected result in one plain-English bullet.
 - Cover happy path, negative/boundary, role/permission, configuration, data-shape, environment matrix, setup/test-data fixture, upgrade/version, API contract, and fix-safety checks when relevant.
-- Every P0/P1 scenario must trace to Jira AC, accepted RAG, PR diff, Figma flow evidence, past Jira learning, or an explicit high-risk regression.
+- Every P0/P1 scenario must trace to Jira AC, accepted RAG, PR diff, Figma flow evidence, a medium/high implemented-fix Jira learning oracle, or an explicit high-risk regression. Cautionary/non-fix Jira history may justify exploration but not a sign-off expectation.
 - Include integration-impact scenarios when the ticket touches shared APIs, shared UI components, configs, publishing paths, editor flows, translation flows, upload/status flows, review flows, or automation infrastructure.
 
 ### Phase 8 — Capture Open Questions
@@ -127,8 +193,11 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 9 — Decide Draft vs Review-Ready
 
 - Use `Draft blocker:` bullets inside the affected final section; do not create a separate blocker section.
-- Keep Draft if Jira facts, accepted RAG, historical Jira search, PR/diff, line counts, repo sync, required Figma design evidence, or sign-off-critical open questions are missing and required for confidence.
-- Mark review-ready only when evidence supports expected behaviour, scope, code impact, test scenarios, regression areas, and no sign-off-critical open question is unresolved.
+- For `Pre-Development UAC`, mark UAC-ready when issue facts, proposed acceptance criteria, current product-clone evidence where available, automation evidence where available, expected-behaviour support, regression areas, test-data/environment needs, and sign-off decisions are sufficiently explicit. PRs, changed files, and line counts are not required.
+- For `Implementation Review`, mark review-ready only when the implementation diff, changed files, line counts, current-code comparison, expected behaviour, test scenarios, and integration impact are inspected.
+- For `Post-Fix Validation`, mark QA-sign-off-ready only when the candidate fix/build, changed code, acceptance coverage, regression evidence, required environment matrix, and sign-off-critical questions are resolved.
+- RAG or historical search unavailability is a blocker only when the missing evidence is necessary to establish a disputed or otherwise unsupported behaviour claim. Do not block a well-supported pre-development UAC merely because an optional source is unavailable.
+- Dirty or unavailable clones block only claims that depend on those clones. Keep verified evidence and mark dependent findings provisional instead of downgrading every section automatically.
 
 ## Output Contract
 
@@ -151,18 +220,22 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 - **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` and Figma design-flow evidence. If unsupported, write `Unknown from current evidence`.
-- **Scope From Git**: List Jira development-link source, GitHub MCP PR-discovery result, PR/branch/commit, repo sync state, changed product area, whether diff was inspected, and Figma design evidence state when applicable.
-- **Code Touched**: List only real files/functions/classes/components touched or directly implicated by PR/repo scan, with short QA impact.
-- **Lines Changed**: Summarize added/deleted line counts and key hunks by file. If unavailable, add `Draft blocker: line-level diff not inspected`.
+- **Scope From Git**: Start with lifecycle stage and readiness target. List issue/development-link source, relevant clone discovery and sync state, GitHub MCP/PR status only when stage-relevant, current or changed product area, diff-inspection state, and Figma evidence state when applicable.
+- **Code Touched**: In pre-development, write `No code changes yet — development has not started`, then list exact current files/functions/classes/workflows directly implicated by product-clone or log evidence under `Current implementation implicated`; keep inferred areas labeled. In implementation/post-fix stages, list only files/functions/classes/components actually changed or directly implicated by the inspected diff, plus short QA impact.
+- **Lines Changed**: In pre-development, write `Not applicable — development has not started`; never add a line-level Draft blocker. In implementation/post-fix stages, summarize added/deleted counts and key hunks by file; if unavailable, add `Draft blocker: implementation diff not inspected`.
 - **Test Scenarios**: Keep 6-10 practical P0/P1/P2 bullets, each with action + expected result; include Figma-observed UI states when design evidence exists.
-- **Past Similar Tickets**: List up to five Jira keys with similarity reason and coverage impact. If unavailable, say so directly.
+- **Past Similar Tickets**: List up to five Jira keys with similarity reason, historical outcome/confidence, reusable lesson or caution, and concrete coverage impact. If unavailable, say so directly.
 - **Regression Areas**: List nearby workflows, APIs, configs, roles, browsers, data shapes, design states, component variants, upgrade paths, integration impact, and automation coverage gaps likely to break.
 - **Open Questions**: List targeted unanswered questions by domain; include permission/role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5, and on-premise upgrade-impact questions only when relevant. If none, say `No open questions from current evidence`.
 
 ## Hard Rules
 
 - Keep acceptance criteria in the plan.
+- Always state the lifecycle stage and apply its evidence requirements consistently.
+- Always inspect relevant available product clones for current implementation and automation clones for coverage before declaring code or automation evidence unavailable.
+- Never treat missing PR, changed files, or line counts as a blocker in `Pre-Development UAC`.
+- Never present current implementation found in a clone as changed code unless a real diff proves the change.
 - Do not add extra headings such as `What can break`, `Likely bugs`, `Fix safety`, `Important combinations`, `Automation`, or `Draft blockers`.
 - Put likely bugs, fix-safety, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
 - Never call a plan `proper RAG-backed` when evidence is generic, unrelated, unavailable, or only keyword-matched.
-- Never mark review-ready when required Jira, RAG, past-ticket, PR/diff, line-count, repo-sync, design evidence, or sign-off-critical open questions are missing.
+- Never mark a plan ready when evidence required for its declared lifecycle stage or a sign-off-critical decision is missing. Do not impose implementation-stage PR, diff, or line-count requirements on pre-development UAC work.

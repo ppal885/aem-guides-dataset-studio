@@ -134,6 +134,85 @@ class RetrievedJira(BaseModel):
     rejection_reasons: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _metadata_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) -> dict[str, Any]:
+    """Return reusable learning fields without promoting cautionary history to product truth."""
+    if isinstance(row, RetrievedJira):
+        chunk_type = row.chunk_type
+        document = row.document
+        metadata = row.metadata
+    else:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        chunk_type = str(row.get("chunk_type") or metadata.get("chunk_type") or "")
+        document = str(row.get("document") or row.get("document_excerpt") or "")
+    if chunk_type != "learning_behavior_chunk":
+        return {}
+
+    labels: dict[str, str] = {}
+    for line in str(document or "").splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        labels[key.strip().lower()] = value.strip()
+
+    def evidence_value(label: str) -> str:
+        value = labels.get(label, "").strip()
+        lowered = value.lower()
+        if not value or lowered.startswith("not explicitly") or lowered.startswith("not classified"):
+            return ""
+        return re.sub(r"(?<![\w.])@[A-Za-z][\w.-]+", "", value).strip()
+
+    confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
+    outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
+    verified_fix = _metadata_bool(metadata.get("is_verified_fix"))
+    behavior_contract = evidence_value("behavior contract")
+    contract_is_only_actual = behavior_contract.lower().startswith("actual:") and not re.search(
+        r"\b(expected|acceptance criteria|must|should)\b",
+        behavior_contract,
+        re.I,
+    )
+    reusable_fix = (
+        outcome == "implemented_fix"
+        and confidence in {"high", "medium"}
+        and bool(verified_fix or (behavior_contract and not contract_is_only_actual))
+    )
+    return {
+        "chunk_type": "learning_behavior_chunk",
+        "learning_confidence": confidence,
+        "historical_outcome": outcome,
+        "is_verified_fix": verified_fix,
+        "reuse_mode": "verified_regression_contract" if reusable_fix else "risk_signal_only",
+        "observed_problem": evidence_value("observed problem"),
+        "behavior_contract": behavior_contract if reusable_fix else "",
+        "root_cause": evidence_value("root cause evidence") if reusable_fix else "",
+        "qa_oracle": evidence_value("qa oracle") if reusable_fix else "",
+        "regression_risks": evidence_value("regression risks"),
+        "reuse_rule": evidence_value("reuse rule"),
+    }
+
+
+def _chunk_utility_bonus(chunk_type: str, metadata: dict[str, Any]) -> float:
+    bonus = _CHUNK_TYPE_WEIGHT.get(chunk_type, 0.0)
+    if chunk_type != "learning_behavior_chunk":
+        return bonus
+    confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
+    outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
+    if outcome != "implemented_fix" or confidence == "caution":
+        return min(bonus, 0.01)
+    if confidence == "high" and _metadata_bool(metadata.get("is_verified_fix")):
+        return bonus + 0.02
+    return bonus
+
+
+def _retrieval_rank_score(row: RetrievedJira) -> float:
+    return round(row.final_score + _chunk_utility_bonus(row.chunk_type, row.metadata), 6)
+
+
 def _parse_json_list(raw: str | None) -> list[str]:
     if not raw or not str(raw).strip():
         return []
@@ -267,7 +346,11 @@ def _keyword_overlap_score(query_tokens: set[str], doc: str, meta: dict[str, Any
         return 0.0
     inter = query_tokens & doc_tokens
     union = query_tokens | doc_tokens
-    return len(inter) / len(union) if union else 0.0
+    if not union:
+        return 0.0
+    jaccard = len(inter) / len(union)
+    query_coverage = len(inter) / len(query_tokens)
+    return (jaccard + query_coverage) / 2.0
 
 
 def _metadata_match_details(
@@ -556,6 +639,7 @@ def _candidate_rejection_reasons(
     gate_signals: dict[str, Any],
     evidence_gate_enabled: bool,
     require_non_vector_evidence: bool = True,
+    meaningful_keyword_evidence: bool = False,
 ) -> list[dict[str, Any]]:
     """Reject candidates that have similarity but no reusable evidence."""
     reasons: list[dict[str, Any]] = []
@@ -618,7 +702,7 @@ def _candidate_rejection_reasons(
         evidence_gate_enabled
         and require_non_vector_evidence
         and not structural_evidence
-        and keyword_score < 0.06
+        and not meaningful_keyword_evidence
     ):
         reasons.append(
             {
@@ -1351,6 +1435,7 @@ def retrieve_similar_jiras(
                         break
         ct = str(meta.get("chunk_type") or "")
         chunk_w = _CHUNK_TYPE_WEIGHT.get(ct, 0.0)
+        utility_bonus = _chunk_utility_bonus(ct, meta)
         ob = _overlap_boost(meta, bl, bc)
         lb = _label_intel_boost(meta, lex)
         base_formula_score = _score_formula(vector_score, md, kw)
@@ -1394,6 +1479,9 @@ def retrieve_similar_jiras(
             gate_signals=gate_signals,
             evidence_gate_enabled=evidence_gate_enabled,
             require_non_vector_evidence=require_non_vector_evidence,
+            meaningful_keyword_evidence=(
+                kw >= 0.06 and not _generic_overlap_only(qt_tokens, doc_toks, gate_signals)
+            ),
         )
         strong_evidence = not rejection_reasons
 
@@ -1414,6 +1502,8 @@ def retrieve_similar_jiras(
             "penalty_total": round(penalty_total, 4),
             "final_score": round(fused, 4),
             "chunk_type_weight_observed": round(chunk_w, 4),
+            "chunk_utility_bonus": round(utility_bonus, 4),
+            "ranking_score": round(fused + utility_bonus, 4),
             "label_component_overlap_observed": round(ob, 4),
             "label_intel_observed": round(lb, 4),
             "evidence_overlap_signals": evidence_overlap,
@@ -1468,7 +1558,7 @@ def retrieve_similar_jiras(
                 jira_key=jk,
                 title=str(meta.get("title") or "")[:500],
                 chunk_type=ct,
-                document=doc[:600],
+                document=doc[:6000] if ct == "learning_behavior_chunk" else doc[:1200],
                 metadata=meta,
                 vector_score=round(vector_score, 4),
                 keyword_score=round(kw, 4),
@@ -1492,7 +1582,7 @@ def retrieve_similar_jiras(
         by_key_lists.setdefault(c.jira_key, []).append(c)
     dedupe_drops: list[dict[str, Any]] = []
     for jkey, lst in by_key_lists.items():
-        lst.sort(key=lambda x: (-x.final_score, -x.vector_score, -x.keyword_score))
+        lst.sort(key=lambda x: (-_retrieval_rank_score(x), -x.final_score, -x.vector_score, -x.keyword_score))
         for loser in lst[1:]:
             dedupe_drops.append(
                 {
@@ -1510,11 +1600,12 @@ def retrieve_similar_jiras(
     per_key: dict[str, RetrievedJira] = {}
     for c in candidates:
         prev = per_key.get(c.jira_key)
-        if prev is None or c.final_score > prev.final_score:
+        if prev is None or _retrieval_rank_score(c) > _retrieval_rank_score(prev):
             per_key[c.jira_key] = c
 
     ranked_full = sorted(
-        per_key.values(), key=lambda x: (-x.final_score, -x.vector_score, -x.keyword_score)
+        per_key.values(),
+        key=lambda x: (-_retrieval_rank_score(x), -x.final_score, -x.vector_score, -x.keyword_score),
     )
     evidence_drops: list[dict[str, Any]] = []
     ranked = [r for r in ranked_full if r.strong_evidence]
@@ -1998,6 +2089,7 @@ def retrieved_to_legacy_hit(r: RetrievedJira) -> dict[str, Any]:
         "matching_components": list(r.matching_components),
         "score_breakdown": dict(r.score_breakdown or {}),
         "rejection_reasons": list(r.rejection_reasons or []),
+        "learning": extract_structured_learning_evidence(r),
         "retrieval": {
             "vector_score": r.vector_score,
             "keyword_score": r.keyword_score,

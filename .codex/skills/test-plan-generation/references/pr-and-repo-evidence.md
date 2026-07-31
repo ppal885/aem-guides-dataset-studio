@@ -4,15 +4,23 @@ Use this file before searching GitHub MCP, inspecting PRs, or using user-cloned 
 
 ## Preferred Evidence Order
 
-- Jira development panel or linked PR from Jira MCP.
-- GitHub MCP PR search by Jira key, summary, branch name, commit message, and PR body.
-- User-provided PR URL, branch, commit, or pasted diff.
-- User-cloned local repos that can be fetched and verified.
+- Lifecycle stage and issue/UAC facts.
+- User-cloned product repos that can be fetched and verified for current implementation.
+- User-cloned automation repos that can be fetched and verified for existing coverage and gaps.
+- Jira development panel or linked PR from Jira MCP when development may have started.
+- GitHub MCP PR search by Jira key, summary, branch name, commit message, and PR body when implementation evidence is stage-relevant.
+- User-provided PR URL, branch, commit, or pasted diff when one exists.
 - Team memory or automation hints only as secondary coverage learning.
+
+## Lifecycle Rules
+
+- **Pre-Development UAC**: Do not search for or request a PR when the user states development has not started. Inspect product clones for current implementation and automation clones for coverage. Report changed code and line counts as not applicable.
+- **Implementation Review**: Require and inspect the available branch, commit, PR, or pasted diff. Compare it with current product code and existing automation.
+- **Post-Fix Validation**: Inspect the exact candidate fix/build source and its diff before making fix-impact or QA sign-off claims.
 
 ## GitHub MCP PR Discovery
 
-When Jira does not mention a PR:
+When development may have started and Jira does not mention a PR:
 
 - Search GitHub MCP for the Jira key in PR title/body, branch names, commits, and comments.
 - Search summary/product terms only after exact Jira key search.
@@ -22,12 +30,13 @@ When Jira does not mention a PR:
   - New editor repo for redesigned editor surfaces.
   - `guides-ui-tests` for UI automation coverage and regression hints.
   - `dxml-it-tests` for integration/API/backend regression coverage.
-- If GitHub MCP cannot search or returns no confident PR, ask the user for the PR URL, branch, commit, or pasted diff.
+- If GitHub MCP cannot search or returns no confident PR, ask for the PR URL, branch, commit, or pasted diff only in implementation-review or post-fix stages.
 - Never claim a PR was inspected unless the PR diff, changed files, and line counts were actually read.
+- Never run PR discovery merely to satisfy an output template when the lifecycle stage is pre-development.
 
 ## User-Cloned Repo Evidence
 
-Use local clones only when the user already has them or provides paths. Do not require cloning just to use the skill.
+Use local clones when the user already has them, provides paths, or exposes them as workspace roots. Do not require cloning just to use the skill, but always inspect every relevant available clone before declaring code or automation evidence unavailable.
 
 Check these local path sources before saying a repo is unavailable:
 
@@ -52,6 +61,16 @@ For each relevant clone:
 - If the worktree is clean and behind upstream, run `git pull --ff-only`.
 - If dirty, diverged, no upstream, detached, or fetch/pull fails, do not stash/reset/merge/rebase; mark evidence as provisional.
 - Capture exact paths, functions/classes/components, tests, and line counts only from real diffs or search results.
+- In pre-development, exact current files/functions/classes/workflows found by repo search are `Current implementation implicated`; they are not changed files.
+- When a product clone is dirty, prefer verified remote refs for read-only current-code searches where practical and label the result provisional.
+
+## Product Code Mining
+
+- Search Starling/backend, xmleditor, and new editor clones using exact stack-trace classes, method names, workflow names, endpoint paths, config keys, error strings, JCR paths, UI labels, and component names.
+- Read the matched implementation branches, guards, persistence paths, cleanup behavior, retries, timeouts, status transitions, and logging to derive testable risks.
+- Report exact current paths and symbols under `Code Touched` as implicated in pre-development, or as changed only when a diff proves the change.
+- If the relevant product clone is available but not inspected, the code-impact portion remains incomplete even when automation clones were inspected.
+- If no relevant product clone is available, say `Current product implementation not inspected` and ask for a clone/path only when code-grounded UAC coverage is necessary.
 
 ## Automation Coverage Mining
 
@@ -83,8 +102,11 @@ Reject broad standalone words such as `topic`, `map`, `assets`, `metadata`, `clo
 
 ## Output Mapping
 
-- Put PR discovery status and repo sync state under `Scope From Git`.
-- Put concrete files/functions/classes/components under `Code Touched`.
-- Put added/deleted counts and key hunks under `Lines Changed`.
+- Put lifecycle stage, clone discovery/sync state, and stage-relevant PR status under `Scope From Git`.
+- In pre-development, put `No code changes yet` plus verified current implementation and automation evidence under `Code Touched`.
+- In implementation/post-fix stages, put concrete changed files/functions/classes/components under `Code Touched`.
+- In pre-development, put `Not applicable — development has not started` under `Lines Changed`.
+- In implementation/post-fix stages, put added/deleted counts and key hunks under `Lines Changed`.
 - Put existing automation coverage, reusable automation scenarios, and automation coverage gaps in `Regression Areas` or `Test Scenarios`.
-- If no PR and no reliable clone evidence are available, write `Draft blocker: PR/diff not found via Jira or GitHub MCP; user PR/branch/diff required`.
+- If no PR exists in pre-development, do not add a blocker. If product or automation clone evidence needed for a material claim is unavailable, identify that specific evidence gap.
+- If an implementation/post-fix plan lacks a required diff, write `Draft blocker: implementation diff not inspected`.
