@@ -220,7 +220,7 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
                     continue
                 label = citation.get("label") or citation.get("title") or citation.get("id") or "Evidence"
                 uri = citation.get("uri") or ""
-                source_lines.append(f"- {label}{f' — {uri}' if uri else ''}")
+                source_lines.append(f"- {label}{f' - {uri}' if uri else ''}")
             grounding_lines = [
                 "## Grounding",
                 f"- Status: {grounding.get('status') or 'partial'}",

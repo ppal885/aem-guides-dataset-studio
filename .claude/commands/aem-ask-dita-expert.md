@@ -33,3 +33,8 @@ Rules:
 18. Emit clean UTF-8. Before returning, repair mojibake markers such as `â`, `Ã`, `Â`, `ā`, or the replacement character; use ASCII `-`, `->`, and `>=` if punctuation encoding is uncertain.
 19. Never abbreviate a claimed code path with `...`. If the MCP result does not provide a complete path and revision, say `Not verified from current evidence` instead of adding a code observation.
 20. Do not convert a proposed safeguard into existing behavior. Avoid exact terminal state names, timeout values, retry counts, cleanup commands, or concurrent-execution guarantees unless they appear in the MCP result.
+21. A grounding status of `partial`, `abstain`, or confidence below `0.75` is not permission to call the remaining semantics solid. Preserve uncertainty at the individual-claim level.
+22. For negative-case matrices, do not assign `error`, `warning`, `build-stopping`, `silent overwrite`, fallback behavior, or a diagnostic family unless the MCP result directly supports that exact case and outcome. Otherwise write `Not verified from current evidence; execute the fixture and inspect its log/output.`
+23. Do not invent or normalize DITA-OT message families or suffixes. `DOTX`, `DOTJ`, `DOTF`, and `DOTA` labels may be retained only when returned with direct evidence for the claim being made.
+24. Do not add diagnostic commands or command-line options absent from the MCP result. In particular, never emit `--keep-temp`; if retained evidence explicitly requires temporary files, use only its exact documented syntax.
+25. Do not infer that a previous green corpus explains processor behavior. Generation coverage and DITA-OT runtime semantics are separate evidence classes.
