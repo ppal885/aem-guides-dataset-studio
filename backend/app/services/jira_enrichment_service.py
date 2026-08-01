@@ -97,6 +97,7 @@ _CANONICAL_BRAND_MAP: dict[str, str] = {
     "swift": "Swift",
     "lexmark": "Lexmark",
     "topcon": "Topcon",
+    "fidelity": "Fidelity",
     "hp": "HP",
     "sap": "SAP",
     "aws": "AWS",

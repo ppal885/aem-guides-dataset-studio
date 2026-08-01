@@ -210,6 +210,20 @@ def test_row_level_customer_labels_are_preserved_with_file_cohort():
     assert merged[1].customer_cohorts == ["Swift", "Topcon"]
 
 
+def test_fidelity_file_detection_and_assignment():
+    headers = BASE_HEADERS + ["Labels", "Custom field (Customer Names)"]
+    payload = _csv_bytes(
+        headers,
+        [["Fidelity issue", "GUIDES-33", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "Fidelity", "FIDELITY"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "fidelity.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Fidelity"})
+
+    assert parsed.detected_customer == "Fidelity"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["Fidelity"]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

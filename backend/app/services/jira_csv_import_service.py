@@ -37,7 +37,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v3"
+IMPORTER_VERSION = "customer-intelligence-v4"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -58,8 +58,9 @@ _CUSTOMER_ALIASES = {
     "s.w.i.f.t": "Swift",
     "lexmark": "Lexmark",
     "topcon": "Topcon",
+    "fidelity": "Fidelity",
 }
-_SUPPORTED_CUSTOMERS = {"Red Hat", "IBM", "Swift", "Lexmark", "Topcon"}
+_SUPPORTED_CUSTOMERS = {"Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity"}
 _CUSTOMER_LABELS = {
     "redhat": "Red Hat",
     "red_hat": "Red Hat",
@@ -67,6 +68,7 @@ _CUSTOMER_LABELS = {
     "swift": "Swift",
     "lexmark": "Lexmark",
     "topcon": "Topcon",
+    "fidelity": "Fidelity",
 }
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"
@@ -573,7 +575,7 @@ def create_import_run(
 ) -> tuple[str, list[Path]]:
     preview = preview_jira_csv_files(files, customer_assignments)
     if not preview["valid"]:
-        raise ValueError("Confirm a Red Hat, IBM, Swift, Lexmark, or Topcon customer assignment for every file")
+        raise ValueError("Confirm a supported customer assignment for every file")
     run_id = str(uuid.uuid4())
     import_dir = Path(__file__).resolve().parents[2] / "storage" / "jira_csv_imports" / run_id
     import_dir.mkdir(parents=True, exist_ok=False)

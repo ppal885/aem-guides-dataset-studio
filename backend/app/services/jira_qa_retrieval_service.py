@@ -36,6 +36,7 @@ _QUERY_CUSTOMER_ALIASES = {
     "swift": "Swift",
     "lexmark": "Lexmark",
     "topcon": "Topcon",
+    "fidelity": "Fidelity",
 }
 
 

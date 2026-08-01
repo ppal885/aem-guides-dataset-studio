@@ -581,6 +581,7 @@ export function SettingsPage() {
                             <option value="Swift">Swift</option>
                             <option value="Lexmark">Lexmark</option>
                             <option value="Topcon">Topcon</option>
+                            <option value="Fidelity">Fidelity</option>
                           </select>
                           <span className="text-xs text-slate-500">
                             Detected {file.detected_customer || 'none'} ({file.customer_confidence} confidence)
