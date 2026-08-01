@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from collections import Counter
 from datetime import datetime
@@ -11,9 +12,14 @@ from typing import Any
 from app.db.jira_enrichment_models import JiraCustomerProfile, JiraEnrichedIssue
 from app.db.session import SessionLocal
 from app.services.embedding_service import embed_texts_batched
-from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, add_documents, delete_documents
+from app.services.vector_store_service import (
+    CHROMA_COLLECTION_JIRA_QA,
+    add_documents,
+    delete_documents,
+    update_documents_metadata,
+)
 
-PROFILE_VERSION = "customer-profile-v4"
+PROFILE_VERSION = "customer-profile-v5"
 PROFILE_CHUNK_TYPES = (
     "customer_profile_overview",
     "customer_profile_components_domains",
@@ -31,12 +37,40 @@ _CONTENT_DATA_PATTERNS = {
     "Key references": re.compile(r"\bkeyrefs?\b|\bconkeyrefs?\b", re.I),
     "Content references": re.compile(r"\bconrefs?\b|\bconrefend\b", re.I),
     "Cross-references": re.compile(r"\bxrefs?\b|cross[- ]references?", re.I),
-    "Images/assets": re.compile(r"\bimages?\b|\bassets?\b|\.png\b|\.jpe?g\b|\.svg\b", re.I),
+    "Images/media": re.compile(r"\bimages?\b|\bmultimedia\b|\.png\b|\.jpe?g\b|\.svg\b|\.mp4\b", re.I),
+    "AEM Assets/repository": re.compile(r"\baem assets\b|assets ui|asset management|\bdam\b|repository", re.I),
     "Tables": re.compile(r"\btables?\b", re.I),
     "Baselines/versions": re.compile(r"\bbaselines?\b|version history|versioning", re.I),
     "UUID-based content": re.compile(r"\buuid\b|referencelistener", re.I),
     "Review tasks": re.compile(r"review tasks?|review workflow", re.I),
     "Output presets": re.compile(r"output presets?", re.I),
+}
+_PROBLEM_TYPE_PATTERNS = {
+    "Functional failure": re.compile(r"\bfails?\b|not work(?:ing)?|unable to|cannot|doesn.t|broken|error", re.I),
+    "Workflow blockage": re.compile(r"\bstuck\b|blocked|waiting state|cannot complete|workflow", re.I),
+    "Performance/scalability": re.compile(r"performance|slow|latency|timeout|hours?|memory|heap", re.I),
+    "Data integrity/references": re.compile(r"missing|duplicate|corrupt|uuid|keyref|conref|xref|reference", re.I),
+    "Usability/editor behavior": re.compile(r"editor|authoring|dialog|panel|cursor|selection|drag|drop|usability", re.I),
+    "Publishing/output": re.compile(r"publish|output|preset|pdf|aem sites|html5|dita-ot", re.I),
+    "Review/collaboration": re.compile(r"review|reviewer|comment|collaboration", re.I),
+    "Migration/upgrade": re.compile(r"migration|upgrade|after update|regression", re.I),
+    "Configuration/permissions": re.compile(r"configuration|permission|access control|acl|setting", re.I),
+    "Search/indexing": re.compile(r"search|indexing|index", re.I),
+}
+_PRODUCT_AREA_ALIASES = {
+    "authoring": "Web Editor & Authoring",
+    "editor": "Web Editor & Authoring",
+    "review": "Review & Collaboration",
+    "publishing": "Publishing",
+    "native_pdf": "Publishing",
+    "asset management": "Assets & Repository",
+    "platform": "Administration & Platform",
+    "baseline": "Versioning & Baselines",
+    "uuid": "References & Repository Integrity",
+    "keyref": "DITA References",
+    "post_processing": "Publishing Workflows",
+    "migration": "Migration & Upgrade",
+    "performance": "Performance & Scalability",
 }
 
 
@@ -111,6 +145,53 @@ def _count_content_data_signals(rows: list[JiraEnrichedIssue]) -> list[dict[str,
     ]
 
 
+def _row_text(row: JiraEnrichedIssue) -> str:
+    return "\n".join(str(value or "") for value in (row.summary, row.description, row.raw_text))
+
+
+def _count_pattern_signals(
+    rows: list[JiraEnrichedIssue], patterns: dict[str, re.Pattern[str]]
+) -> list[dict[str, Any]]:
+    counts: Counter[str] = Counter()
+    keys: dict[str, list[str]] = {}
+    for row in rows:
+        text = _row_text(row)
+        for name, pattern in patterns.items():
+            if pattern.search(text):
+                counts[name] += 1
+                keys.setdefault(name, []).append(row.jira_key)
+    return [
+        {"name": name, "issue_count": count, "representative_keys": keys[name][:5]}
+        for name, count in counts.most_common(20)
+    ]
+
+
+def _row_product_areas(row: JiraEnrichedIssue) -> set[str]:
+    areas: set[str] = set()
+    for component in _list(row.components):
+        mapped = _PRODUCT_AREA_ALIASES.get(component.casefold())
+        if mapped:
+            areas.add(mapped)
+    domain = str(row.domain or "").strip().casefold()
+    mapped_domain = _PRODUCT_AREA_ALIASES.get(domain)
+    if mapped_domain:
+        areas.add(mapped_domain)
+    return areas
+
+
+def _count_product_areas(rows: list[JiraEnrichedIssue]) -> list[dict[str, Any]]:
+    counts: Counter[str] = Counter()
+    keys: dict[str, list[str]] = {}
+    for row in rows:
+        for area in _row_product_areas(row):
+            counts[area] += 1
+            keys.setdefault(area, []).append(row.jira_key)
+    return [
+        {"name": name, "issue_count": count, "representative_keys": keys[name][:5]}
+        for name, count in counts.most_common(20)
+    ]
+
+
 def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[str, Any]:
     ordered = sorted(rows, key=lambda row: (row.jira_updated_at or datetime.min, row.jira_key), reverse=True)
     source_hashes = sorted({value for row in rows for value in _list(row.source_file_hashes) if value})
@@ -119,17 +200,27 @@ def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[st
     resolutions = _count_issue_values(rows, "resolutions")
     if not resolutions:
         resolutions = _count_scalar(rows, "resolution")
+    known_domains = sum(1 for row in rows if str(row.domain or "unknown").casefold() != "unknown")
+    product_areas = _count_product_areas(rows)
     return {
         "customer_name": customer_name,
         "customer_key": _slug(customer_name),
         "issue_count": len(rows),
         "issue_types": _count_scalar(rows, "issue_type"),
+        "problem_types": _count_pattern_signals(rows, _PROBLEM_TYPE_PATTERNS),
         "components": _count_issue_values(rows, "components"),
+        "product_areas": product_areas,
         "domains": _count_scalar(rows, "domain"),
         "workflows": _count_issue_values(rows, "affected_features"),
         "affected_outputs": _count_issue_values(rows, "affected_outputs"),
         "dita_entities": _count_issue_values(rows, "dita_entities"),
         "content_data_signals": _count_content_data_signals(rows),
+        "classification_quality": {
+            "domain_classified_count": known_domains,
+            "domain_unknown_count": len(rows) - known_domains,
+            "domain_coverage_percent": round((known_domains / max(len(rows), 1)) * 100, 1),
+            "product_area_covered_count": sum(1 for row in rows if _row_product_areas(row)),
+        },
         "failure_areas": failures,
         "automation_signals": automation,
         "resolution_patterns": resolutions,
@@ -169,7 +260,9 @@ def _profile_documents(profile: dict[str, Any]) -> list[tuple[str, str]]:
         (
             "customer_profile_issue_types_content_data",
             f"{customer} frequently represented issue types in this Jira corpus: "
-            f"{_render_frequency(profile['issue_types'])}\nContent and data patterns: "
+            f"{_render_frequency(profile['issue_types'])}\nProblem patterns: "
+            f"{_render_frequency(profile['problem_types'])}\nProduct areas: "
+            f"{_render_frequency(profile['product_areas'])}\nContent and data patterns: "
             f"{_render_frequency(profile['content_data_signals'])}\n{boundary}",
         ),
         (
@@ -225,6 +318,8 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
                     "enrich_outputs": json.dumps([item["name"] for item in profile["affected_outputs"][:20]], ensure_ascii=False),
                     "aggregate_context": True,
                     "direct_assertion_allowed": False,
+                    "approval_status": "draft",
+                    "reviewed_customer_profile": False,
                     "evidence_class": "customer_jira_profile",
                     "profile_issue_count": profile["issue_count"],
                     "profile_version": PROFILE_VERSION,
@@ -245,10 +340,20 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
             if row is None:
                 row = JiraCustomerProfile(customer_key=slug)
                 db.add(row)
+            profile_hash = hashlib.sha256(
+                json.dumps(profile, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
+            changed = row.profile_hash != profile_hash
             for key, value in profile.items():
                 if key != "customer_key":
                     setattr(row, key, value)
             row.profile_version = PROFILE_VERSION
+            row.profile_hash = profile_hash
+            if changed:
+                row.approval_status = "draft"
+                row.approved_by = None
+                row.approved_at = None
+                row.review_notes = None
             row.rebuilt_at = datetime.utcnow()
             db.commit()
             results[customer] = {
@@ -272,18 +377,58 @@ def get_customer_profile(customer: str) -> dict[str, Any] | None:
             "customer_key": row.customer_key,
             "issue_count": row.issue_count,
             "issue_types": row.issue_types or [],
+            "problem_types": row.problem_types or [],
             "components": row.components or [],
+            "product_areas": row.product_areas or [],
             "domains": row.domains or [],
             "workflows": row.workflows or [],
             "affected_outputs": row.affected_outputs or [],
             "dita_entities": row.dita_entities or [],
             "content_data_signals": row.content_data_signals or [],
+            "classification_quality": row.classification_quality or {},
             "failure_areas": row.failure_areas or [],
             "automation_signals": row.automation_signals or [],
             "resolution_patterns": row.resolution_patterns or [],
             "representative_keys": row.representative_keys or [],
+            "profile_version": row.profile_version,
+            "profile_hash": row.profile_hash,
+            "approval_status": row.approval_status,
+            "approved_by": row.approved_by,
+            "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+            "review_notes": row.review_notes,
             "evidence_boundary": "Aggregate Jira-corpus context only; direct Jira evidence is required for assertions.",
             "rebuilt_at": row.rebuilt_at.isoformat() if row.rebuilt_at else None,
         }
+    finally:
+        db.close()
+
+
+def set_customer_profile_approval(
+    customer: str, *, status: str, reviewer: str, notes: str = ""
+) -> dict[str, Any] | None:
+    normalized_status = status.strip().casefold()
+    if normalized_status not in {"draft", "approved", "rejected"}:
+        raise ValueError("Approval status must be draft, approved, or rejected")
+    db = SessionLocal()
+    try:
+        row = db.query(JiraCustomerProfile).filter(JiraCustomerProfile.customer_key == _slug(customer)).first()
+        if row is None:
+            return None
+        row.approval_status = normalized_status
+        row.approved_by = reviewer[:120] if normalized_status == "approved" else None
+        row.approved_at = datetime.utcnow() if normalized_status == "approved" else None
+        row.review_notes = notes.strip()[:4000] or None
+        db.commit()
+        update_documents_metadata(
+            CHROMA_COLLECTION_JIRA_QA,
+            {"jira_key": f"CUSTOMER-PROFILE-{row.customer_key.upper()}"},
+            {
+                "approval_status": row.approval_status,
+                "reviewed_customer_profile": row.approval_status == "approved",
+                "profile_version": row.profile_version,
+                "profile_hash": row.profile_hash or "",
+            },
+        )
+        return get_customer_profile(customer)
     finally:
         db.close()

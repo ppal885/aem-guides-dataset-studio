@@ -141,6 +141,34 @@ def jira_customer_profile(customer: str, user: UserIdentity = AdminUser):
     return result
 
 
+class CustomerProfileApprovalRequest(BaseModel):
+    status: str
+    notes: str = ""
+
+
+@router.post("/jira-rag/customer-profiles/{customer}/approval")
+def approve_jira_customer_profile(
+    customer: str,
+    request: CustomerProfileApprovalRequest,
+    user: UserIdentity = AdminUser,
+):
+    """Record reviewer approval without converting aggregate context into direct behavior proof."""
+    from app.services.jira_customer_profile_service import set_customer_profile_approval
+
+    try:
+        result = set_customer_profile_approval(
+            customer,
+            status=request.status,
+            reviewer=user.id,
+            notes=request.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Customer Jira profile not found")
+    return result
+
+
 @router.post("/env-check")
 def check_env(user: UserIdentity = AdminUser):
     """Check which env vars are set (values redacted for secrets)."""

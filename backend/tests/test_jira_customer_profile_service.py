@@ -79,3 +79,17 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
     assert {item["name"] for item in stored.issue_types} == {"Bug", "Customer Request"}
     assert {item["name"] for item in stored.content_data_signals} >= {"DITA maps", "DITA topics", "XML content", "Review tasks"}
     assert any("Content and data patterns" in document for document in captured["documents"])
+    assert stored.approval_status == "draft"
+
+    metadata_updates = {}
+    monkeypatch.setattr(
+        service,
+        "update_documents_metadata",
+        lambda collection, where, metadata: metadata_updates.update(metadata) is None,
+    )
+    approved = service.set_customer_profile_approval(
+        "IBM", status="approved", reviewer="qa-reviewer", notes="Validated against representative tickets"
+    )
+    assert approved["approval_status"] == "approved"
+    assert approved["approved_by"] == "qa-reviewer"
+    assert metadata_updates["reviewed_customer_profile"] is True

@@ -249,25 +249,44 @@ def run_migrations() -> None:
                             customer_name VARCHAR(200) NOT NULL,
                             issue_count INTEGER NOT NULL DEFAULT 0,
                             issue_types JSON NOT NULL,
+                            problem_types JSON NOT NULL,
                             components JSON NOT NULL,
+                            product_areas JSON NOT NULL,
                             domains JSON NOT NULL,
                             workflows JSON NOT NULL,
                             affected_outputs JSON NOT NULL,
                             dita_entities JSON NOT NULL,
                             content_data_signals JSON NOT NULL,
+                            classification_quality JSON NOT NULL,
                             failure_areas JSON NOT NULL,
                             automation_signals JSON NOT NULL,
                             resolution_patterns JSON NOT NULL,
                             representative_keys JSON NOT NULL,
                             source_file_hashes JSON NOT NULL,
                             profile_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            profile_hash VARCHAR(64),
+                            approval_status VARCHAR(30) NOT NULL DEFAULT 'draft',
+                            approved_by VARCHAR(120),
+                            approved_at DATETIME,
+                            review_notes TEXT,
                             rebuilt_at DATETIME NOT NULL
                         )
                     """))
                     profile_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(jira_customer_profiles)")).fetchall()]
-                    for col in ("issue_types", "content_data_signals"):
+                    for col, sql_type in (
+                        ("issue_types", "JSON NOT NULL DEFAULT '[]'"),
+                        ("problem_types", "JSON NOT NULL DEFAULT '[]'"),
+                        ("product_areas", "JSON NOT NULL DEFAULT '[]'"),
+                        ("content_data_signals", "JSON NOT NULL DEFAULT '[]'"),
+                        ("classification_quality", "JSON NOT NULL DEFAULT '{}'"),
+                        ("profile_hash", "VARCHAR(64)"),
+                        ("approval_status", "VARCHAR(30) NOT NULL DEFAULT 'draft'"),
+                        ("approved_by", "VARCHAR(120)"),
+                        ("approved_at", "DATETIME"),
+                        ("review_notes", "TEXT"),
+                    ):
                         if col not in profile_cols:
-                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} JSON NOT NULL DEFAULT '[]'"))
+                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} {sql_type}"))
                     conn.commit()
                     logger.info("Migration: ensured Jira CSV import schema")
                 except Exception as e:
@@ -494,24 +513,43 @@ def run_migrations() -> None:
                             customer_name VARCHAR(200) NOT NULL,
                             issue_count INTEGER NOT NULL DEFAULT 0,
                             issue_types JSON NOT NULL,
+                            problem_types JSON NOT NULL,
                             components JSON NOT NULL,
+                            product_areas JSON NOT NULL,
                             domains JSON NOT NULL,
                             workflows JSON NOT NULL,
                             affected_outputs JSON NOT NULL,
                             dita_entities JSON NOT NULL,
                             content_data_signals JSON NOT NULL,
+                            classification_quality JSON NOT NULL,
                             failure_areas JSON NOT NULL,
                             automation_signals JSON NOT NULL,
                             resolution_patterns JSON NOT NULL,
                             representative_keys JSON NOT NULL,
                             source_file_hashes JSON NOT NULL,
                             profile_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            profile_hash VARCHAR(64),
+                            approval_status VARCHAR(30) NOT NULL DEFAULT 'draft',
+                            approved_by VARCHAR(120),
+                            approved_at TIMESTAMP,
+                            review_notes TEXT,
                             rebuilt_at TIMESTAMP NOT NULL
                         )
                     """))
-                    for col in ("issue_types", "content_data_signals"):
+                    for col, sql_type in (
+                        ("issue_types", "JSON NOT NULL DEFAULT '[]'::json"),
+                        ("problem_types", "JSON NOT NULL DEFAULT '[]'::json"),
+                        ("product_areas", "JSON NOT NULL DEFAULT '[]'::json"),
+                        ("content_data_signals", "JSON NOT NULL DEFAULT '[]'::json"),
+                        ("classification_quality", "JSON NOT NULL DEFAULT '{}'::json"),
+                        ("profile_hash", "VARCHAR(64)"),
+                        ("approval_status", "VARCHAR(30) NOT NULL DEFAULT 'draft'"),
+                        ("approved_by", "VARCHAR(120)"),
+                        ("approved_at", "TIMESTAMP"),
+                        ("review_notes", "TEXT"),
+                    ):
                         if col_exists("jira_customer_profiles", col) is False:
-                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} JSON NOT NULL DEFAULT '[]'::json"))
+                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} {sql_type}"))
                     conn.commit()
                     logger.info("Migration: ensured Jira CSV import schema (PostgreSQL)")
                 except Exception as e:
