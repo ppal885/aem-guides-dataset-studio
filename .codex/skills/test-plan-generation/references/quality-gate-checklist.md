@@ -12,6 +12,8 @@ Use this before calling a test plan review-ready.
 
 ## Evidence Gate
 
+- `Understanding From Jira` appears first and contains the five required confidence-check bullets: issue, impact, requested outcome, lifecycle, and evidence boundary.
+- The Jira understanding is a faithful plain-English synthesis of live Jira or supplied issue evidence; it does not invent code changes, root cause, acceptance, or implementation.
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
@@ -109,7 +111,7 @@ Use this before calling a test plan review-ready.
 - Regression areas that omit integration impact for shared APIs, components, configs, publishing/editor/review/upload/translation flows, or automation repos.
 - On-premise release test plans that omit upgrade impact, retained custom configs, changed defaults, or source/target version coverage.
 - Confident product behaviour based only on memory, code names, or broad docs.
-- Any non-empty line outside the ten required sections, including a title, lifecycle preamble, connector warning, or tool trace.
+- Any non-empty line outside the eleven required sections, including a title, lifecycle preamble, connector warning, or tool trace.
 - Acceptance labels other than exact `[Confirmed]` and `[Proposed]`.
 - Historical cleanup observations presented as confirmed Jira AC when the native Jira/UAC acceptance field is empty.
 - Product AC that prescribes node deletion, tracker reconciliation, mandatory workflow-step placement, a single-source-of-truth architecture, or a specific lock/retry/serialization implementation that Jira did not approve.

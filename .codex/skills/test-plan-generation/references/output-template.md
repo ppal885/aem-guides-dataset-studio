@@ -7,6 +7,13 @@ Use this file before writing the final user-facing plan.
 Use exactly these sections. Keep every line as a bullet.
 
 ```markdown
+**Understanding From Jira**
+- Issue understood: <plain-English statement of the user-visible problem or requested feature>.
+- Why it matters: <customer, workflow, release, data, or business impact stated in Jira/supplied evidence>.
+- Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
+- Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
+- Evidence boundary: <live Jira, indexed Jira, supplied incident, contradictions, and material facts not yet verified>.
+
 **Acceptance Criteria**
 - AC-01 [Confirmed]: ...
 - AC-02 [Proposed]: ...
@@ -85,6 +92,13 @@ Examples:
 ## Sample Pre-Development UAC
 
 ```markdown
+**Understanding From Jira**
+- Issue understood: The affected workflow does not satisfy the behavior requested in the issue.
+- Why it matters: The failure blocks the documented customer or release workflow described in the supplied evidence.
+- Requested outcome: The workflow reaches the Jira-defined observable outcome without the reported failure.
+- Lifecycle understood as: `Pre-Development UAC` because development has not started.
+- Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
+
 **Acceptance Criteria**
 - Verify that the configured workflow completes for the affected user role.
 - Verify that invalid or unsupported input is blocked with a clear error.

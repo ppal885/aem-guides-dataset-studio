@@ -234,21 +234,23 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Do not include raw RAG chunks, chunk scores, backend traces, evidence matrices, or long citations.
 - Never expose numeric retrieval confidence such as `0.88` in the user-facing plan. Describe evidence as verified, partial, inferred, conflicting, or unavailable and identify the evidence type.
 - Emit valid UTF-8 text. Before returning, scan for mojibake markers such as `â€`, `â‰`, `Ã`, `Â`, or the replacement character; repair them or use ASCII punctuation such as `-`, `->`, and `>=` when the client encoding is uncertain.
-- Do not emit a title, lifecycle preamble, authorization warning, tool trace, or quality-audit prose outside the ten required sections. Put lifecycle and evidence availability under `Scope From Git`.
+- Do not emit a title, lifecycle preamble, authorization warning, tool trace, or quality-audit prose outside the eleven required sections. Put the concise issue interpretation first under `Understanding From Jira` and detailed lifecycle/evidence availability under `Scope From Git`.
 - Use exactly these sections, in this order:
-  1. `Acceptance Criteria`
-  2. `Expected Behaviour`
-  3. `Scope From Git`
-  4. `Code Touched`
-  5. `Lines Changed`
-  6. `Test Scenarios`
-  7. `Known Jira Bugs / Past Similar Tickets`
-  8. `Regression Areas`
-  9. `Automation Coverage & Gaps`
-  10. `Open Questions`
+  1. `Understanding From Jira`
+  2. `Acceptance Criteria`
+  3. `Expected Behaviour`
+  4. `Scope From Git`
+  5. `Code Touched`
+  6. `Lines Changed`
+  7. `Test Scenarios`
+  8. `Known Jira Bugs / Past Similar Tickets`
+  9. `Regression Areas`
+  10. `Automation Coverage & Gaps`
+  11. `Open Questions`
 
 ## Section Rules
 
+- **Understanding From Jira**: Give the user a concise confidence check before the plan. Use exactly five bullets beginning `Issue understood:`, `Why it matters:`, `Requested outcome:`, `Lifecycle understood as:`, and `Evidence boundary:`. Restate the Jira or supplied issue in plain English without copying raw fields, inventing implementation, or writing test cases. Identify whether facts came from live Jira, indexed Jira, or supplied incident text; expose contradictions or missing Jira access in `Evidence boundary`. Keep this section to the issue's user-visible problem, impact, requested end state, lifecycle interpretation, and evidence limit.
 - **Acceptance Criteria**: Write `AC-## [Confirmed]` for Jira-approved behavior and `AC-## [Proposed]` for criteria derived from requirements, incidents, or identified gaps. Each bullet must be an independently testable product contract, not a `Verify...` test step. If a sign-off-critical decision is unknown, keep it in `Open Questions` and add a Draft blocker only when it prevents UAC readiness.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` and Figma design-flow evidence. Separate observation, supported inference, and confirmed root cause. Do not use exclusive wording such as `purely`, `only cause`, or `proves the root cause` unless the evidence rules out credible alternatives for the relevant time window. If unsupported, write `Unknown from current evidence`.
 - **Scope From Git**: Start with lifecycle stage and readiness target. List issue/development-link source, relevant clone discovery and sync state, GitHub MCP/PR status only when stage-relevant, current or changed product area, diff-inspection state, and Figma evidence state when applicable. For every cited clone include absolute repository path, branch, pre-sync SHA, inspected post-sync SHA/ref, upstream/ahead/behind state, pre/post dirty state, fetch/pull result, whether claims use the synchronized worktree or a verified remote ref, and any retained developer-work stash OID/ref with its restore command.

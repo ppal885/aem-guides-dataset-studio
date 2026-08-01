@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 SECTIONS = (
+    "Understanding From Jira",
     "Acceptance Criteria",
     "Expected Behaviour",
     "Scope From Git",
@@ -25,6 +26,13 @@ AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
 JIRA_RE = re.compile(r"^- (?:[A-Z][A-Z0-9]+-\d+)\b")
 WINDOWS_PATH_RE = re.compile(r"(?<![\w])([A-Za-z]:\\[^`\n;,]+)")
 MOJIBAKE = ("\u00e2\u20ac", "\u00e2\u2030", "\u00c3", "\u00c2", "\ufffd")
+UNDERSTANDING_PREFIXES = (
+    "- Issue understood:",
+    "- Why it matters:",
+    "- Requested outcome:",
+    "- Lifecycle understood as:",
+    "- Evidence boundary:",
+)
 
 
 def _section_map(lines: list[str]) -> tuple[dict[str, list[tuple[int, str]]], list[str]]:
@@ -68,6 +76,14 @@ def validate(text: str) -> list[str]:
         r"live Jira|fetched via .*jira|Jira MCP.*(?:success|fetched)", text, re.IGNORECASE
     ):
         errors.append("Jira authorization warning contradicts successful live Jira evidence")
+
+    understanding = sections["Understanding From Jira"]
+    understanding_lines = [line for _, line in understanding]
+    if len(understanding_lines) != len(UNDERSTANDING_PREFIXES):
+        errors.append("Understanding From Jira must contain exactly five confidence-check bullets")
+    for prefix in UNDERSTANDING_PREFIXES:
+        if not any(line.startswith(prefix) and line[len(prefix) :].strip() for line in understanding_lines):
+            errors.append(f"Understanding From Jira is missing required bullet '{prefix}'")
 
     acceptance = sections["Acceptance Criteria"]
     native_ac_empty = any(

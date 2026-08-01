@@ -20,7 +20,14 @@ SPEC.loader.exec_module(VALIDATOR)
 
 
 def _valid_plan() -> str:
-    return """**Acceptance Criteria**
+    return """**Understanding From Jira**
+- Issue understood: Concurrent publishing can leave an output job non-terminal.
+- Why it matters: A blocked publishing queue prevents documentation delivery.
+- Requested outcome: Every accepted publish reaches a defined outcome without corrupting output.
+- Lifecycle understood as: Pre-Development UAC because implementation has not started.
+- Evidence boundary: Supplied Jira evidence supports the problem; implementation and retry policy remain unverified.
+
+**Acceptance Criteria**
 - AC-01 [Proposed]: A concurrent publish completes successfully without leaving a job in a non-terminal state.
 
 **Expected Behaviour**
@@ -104,3 +111,15 @@ def test_validator_rejects_incomplete_historical_ticket_fields():
     )
 
     assert any("historical Jira entry is missing" in error for error in VALIDATOR.validate(plan))
+
+
+def test_validator_rejects_missing_jira_understanding_confidence_bullet():
+    plan = _valid_plan().replace(
+        "- Evidence boundary: Supplied Jira evidence supports the problem; implementation and retry policy remain unverified.\n",
+        "",
+    )
+
+    errors = VALIDATOR.validate(plan)
+
+    assert any("exactly five confidence-check bullets" in error for error in errors)
+    assert any("Evidence boundary" in error for error in errors)
