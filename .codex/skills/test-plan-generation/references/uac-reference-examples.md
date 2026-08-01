@@ -4,6 +4,9 @@ Use this file when normalizing Jira UAC or when a user asks for a test plan that
 
 ## What Good UAC Looks Like
 
+- Assign stable IDs such as `AC-01` and label derived requirements `[Proposed]` until Jira or the product owner confirms them.
+- Write acceptance criteria as observable product contracts, not as test instructions beginning with `Verify`.
+- Keep test execution steps in `Test Scenarios` and map each scenario back to one or more AC IDs.
 - Start with a short business/feature context before listing test cases.
 - Treat UAC as the primary acceptance and sign-off contract: it defines what QA must prove, what is out of scope, and which unresolved questions block review-ready status.
 - Separate cloud and on-premise expectations when behaviour differs.

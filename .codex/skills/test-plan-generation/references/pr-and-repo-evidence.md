@@ -34,6 +34,18 @@ When development may have started and Jira does not mention a PR:
 - Never claim a PR was inspected unless the PR diff, changed files, and line counts were actually read.
 - Never run PR discovery merely to satisfy an output template when the lifecycle stage is pre-development.
 
+## Referenced PR Deep Analysis
+
+When Jira or the user supplies a PR, branch, commit, or development link and GitHub MCP is connected:
+
+- Fetch the PR itself; do not rely only on Jira development-panel metadata.
+- Inspect repository, PR state, base/head branches, commits, changed files, complete diff hunks, line counts, reviews and unresolved comments when available, and checks/test results.
+- Read changed functions and their adjacent branches, callers, API contracts, persistence, cleanup, retries, concurrency, permissions, configuration, logging, errors, feature flags, compatibility paths, and tests.
+- Compare the diff with the relevant current product clone and existing `guides-ui-tests`/`dxml-it-tests` coverage.
+- Map concrete hunks to AC IDs and P0/P1/P2 scenarios; map shared or adjacent impact to `Regression Areas`.
+- Separate actual changed code from potential impact. Never list an untouched adjacent file as changed.
+- If GitHub MCP cannot access the PR, use an exact local branch/commit or user-provided diff when available and state the evidence boundary.
+
 ## User-Cloned Repo Evidence
 
 Use local clones when the user already has them, provides paths, or exposes them as workspace roots. Do not require cloning just to use the skill, but always inspect every relevant available clone before declaring code or automation evidence unavailable.
@@ -43,8 +55,20 @@ Check these local path sources before saying a repo is unavailable:
 - User-provided repo paths in the prompt.
 - Workspace roots visible in the current environment.
 - Environment variables such as `STARLING_REPO`, `XMLEDITOR_REPO`, `NEW_EDITOR_REPO`, `GUIDES_UI_TESTS_REPO`, and `DXML_IT_TESTS_REPO`.
-- Common Windows teammate paths such as `C:\UI TEST\guides-ui-tests`, `C:\UI TEST\dxml-it-tests`, `C:\Users\<user>\guides-ui-tests`, and `C:\Users\<user>\dxml-it-tests`.
+- Common Windows product paths such as `C:\starling`, `C:\xmleditor\xmleditor`, `C:\ui_framework\new_editor`, `C:\new_editor`, and immediate child repositories under those roots.
+- Common Windows automation paths such as `C:\UI TEST\guides-ui-tests`, `C:\ui_framework\guides-ui-tests`, `C:\api automation\dxml-it-tests`, `C:\api automation\guides-ui-tests`, `C:\editor-e2e\guides-editor-e2e`, `C:\Users\<user>\guides-ui-tests`, and `C:\Users\<user>\dxml-it-tests`.
+- Common Windows repository containers such as `C:\github_main-repo`, `C:\ui_framework`, `C:\api automation`, `C:\UI TEST`, `C:\editor-e2e`, and `C:\Users\<user>`; inspect their immediate children and one nested level for `.git` before declaring a clone missing.
 - Common Mac/Linux teammate paths such as `~/guides-ui-tests`, `~/dxml-it-tests`, `~/workspace/<repo>`, and `~/code/<repo>`.
+
+### Bounded Clone Discovery Protocol
+
+- Do not limit clone discovery to the currently opened project or workspace root.
+- On Windows, first test the explicit paths above, then inspect immediate children up to two levels under the listed repository containers. Do not recursively scan the entire system drive.
+- Treat a directory as a clone only when it contains `.git`; account for wrapper directories such as `C:\xmleditor\xmleditor` and `C:\ui_framework\new_editor\<repo>`.
+- Record every relevant resolved clone path and its Git sync state under `Scope From Git` before writing `Code Touched`.
+- Search product clones and automation clones independently. Finding only `guides-ui-tests` never justifies saying no backend or product implementation exists.
+- Before writing `none found`, report which relevant clones were searched and the exact Jira key, API terms, UI labels, enum names, workflow names, error strings, or config keys used. If a relevant available clone was not inspected, write `Clone discovered but not inspected` instead of `none found`.
+- For translation-project API scope, search Starling/backend and integration tests with exact terms including `newTranslationProject`, `xliffTranslationProject`, `newMultiLingualTranslationProject`, `addToExistingProject`, `newScopingTranslationProject`, `translation project`, `baseline`, `versionAsOfDate`, and candidate endpoint/request field names from Jira.
 
 Relevant clone categories:
 
@@ -70,6 +94,7 @@ For each relevant clone:
 - Read the matched implementation branches, guards, persistence paths, cleanup behavior, retries, timeouts, status transitions, and logging to derive testable risks.
 - Report exact current paths and symbols under `Code Touched` as implicated in pre-development, or as changed only when a diff proves the change.
 - If the relevant product clone is available but not inspected, the code-impact portion remains incomplete even when automation clones were inspected.
+- Never infer `Current implementation implicated: none found` from automation repositories alone. That conclusion requires completed searches in every discovered relevant product clone and must list the searched paths and terms.
 - If no relevant product clone is available, say `Current product implementation not inspected` and ask for a clone/path only when code-grounded UAC coverage is necessary.
 
 ## Automation Coverage Mining
@@ -85,6 +110,12 @@ For `guides-ui-tests` and `dxml-it-tests`, inspect automation evidence when the 
 - Identify automation coverage gaps: missing happy path, missing negative path, missing permissions/config coverage, missing cloud/on-prem parity, missing upgrade/backward-compat coverage, or missing API/UI pairing.
 - Derive edge cases from existing assertions, fixtures, API contracts, branching conditions, historical failures, and similar Jira automation rather than from generic module names.
 - Map useful existing coverage and automation coverage gaps into `Test Scenarios` or `Regression Areas`; do not dump raw automation files in the final plan.
+- Prefer synchronized local automation clones for deep code search. Use GitHub MCP when a clone is absent or stale, when automation changes are in a PR/branch, or when current remote/default-branch evidence must be validated.
+- Record the inspected revision or branch so old local tests are not reported as current coverage.
+- Map automation evidence to AC IDs using `Covered`, `Partially covered`, `Not covered`, or `Not suitable for automation`.
+- For each covered AC, capture the exact repository, test file, scenario/test method, reusable page object/API client/helper/fixture, setup/cleanup behavior, tags/suite, and key assertion.
+- For every partial or missing AC, recommend the correct automation layer, exact existing file to extend or new file area, reusable helpers/fixtures, required test data, cleanup, polling/timeouts, assertions, and platform/config matrix.
+- Identify skipped, flaky, quarantined, disabled, stale, and inaccessible tests separately; their existence does not count as reliable coverage.
 - If automation repos are unavailable or stale/dirty, state that automation coverage gaps were not fully inspected and keep affected claims Draft.
 
 ## What To Search Locally
@@ -107,6 +138,6 @@ Reject broad standalone words such as `topic`, `map`, `assets`, `metadata`, `clo
 - In implementation/post-fix stages, put concrete changed files/functions/classes/components under `Code Touched`.
 - In pre-development, put `Not applicable — development has not started` under `Lines Changed`.
 - In implementation/post-fix stages, put added/deleted counts and key hunks under `Lines Changed`.
-- Put existing automation coverage, reusable automation scenarios, and automation coverage gaps in `Regression Areas` or `Test Scenarios`.
+- Put detailed existing automation, reusable helpers, reliability state, AC mapping, and missing automation recommendations in `Automation Coverage & Gaps`; keep only execution scenarios in `Test Scenarios` and product risk in `Regression Areas`.
 - If no PR exists in pre-development, do not add a blocker. If product or automation clone evidence needed for a material claim is unavailable, identify that specific evidence gap.
 - If an implementation/post-fix plan lacks a required diff, write `Draft blocker: implementation diff not inspected`.

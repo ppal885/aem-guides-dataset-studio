@@ -8,7 +8,8 @@ Use exactly these sections. Keep every line as a bullet.
 
 ```markdown
 **Acceptance Criteria**
-- ...
+- AC-01 [Confirmed]: ...
+- AC-02 [Proposed]: ...
 
 **Expected Behaviour**
 - ...
@@ -23,15 +24,20 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
-- P0: ...
-- P1: ...
-- P2: ...
+- P0 [AC-01]: ...
+- P1 [AC-02, AC-03]: ...
+- P2 [AC-04]: ...
 
-**Past Similar Tickets**
+**Known Jira Bugs / Past Similar Tickets**
 - ...
 
 **Regression Areas**
 - ...
+
+**Automation Coverage & Gaps**
+- AC-01 — Covered: `<repo>:<file>:<test>` using `<fixture/helper>` at `<revision>`.
+- AC-02 — Partially covered: existing test proves <covered behavior>; missing <specific boundary/assertion>.
+- AC-03 — Not covered: add/extend `<UI/API/integration suite>` using `<setup/cleanup>` and assert <observable contract>.
 
 **Open Questions**
 - ...
@@ -47,6 +53,7 @@ Use exactly these sections. Keep every line as a bullet.
 - For pre-development, use `Not applicable — development has not started` for PR, changed-code, and line-count fields; never call these Draft blockers.
 - In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
+- In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
 - Do not create extra sections.
 - Do not use tables.
 
@@ -60,7 +67,7 @@ Use exactly these sections. Keep every line as a bullet.
 
 Use:
 
-`- P0: <action/test data/config/user role> -> <expected observable result>.`
+`- P0 [AC-01, AC-02]: <action/test data/config/user role> -> <expected observable result>.`
 
 Examples:
 
@@ -107,7 +114,7 @@ Examples:
 - P1: Repeat after browser refresh/session reload -> state remains consistent.
 - P2: Verify nearby workflow that shares the touched component -> no regression in existing behaviour.
 
-**Past Similar Tickets**
+**Known Jira Bugs / Past Similar Tickets**
 - `GUIDES-xxxxx`: similar because <reason>; adds coverage for <area>.
 - Historical search status: <Jira MCP/JQL result, user-provided incidents only, or unavailable>. Add a Draft blocker only when missing history leaves a material behaviour or regression decision unsupported.
 
