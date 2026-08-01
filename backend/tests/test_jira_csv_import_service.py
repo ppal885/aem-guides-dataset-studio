@@ -187,6 +187,7 @@ def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
     assert len(merged) == 1
     assert merged[0].customer_cohorts == ["Red Hat", "IBM"]
     assert merged[0].resolutions == ["Fixed", "Done"]
+    assert merged[0].evidence_archive["acceptance_criteria"] == []
     assert merged[0].company_names == ["IBM"]
     assert "@AdobeOrg" not in " ".join(merged[0].customer_names)
     assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
@@ -197,6 +198,24 @@ def test_newest_updated_timestamp_wins():
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True
     assert should_skip_existing(existing, "2026-07-31T18:00:00+00:00") is False
     assert should_skip_existing(existing, "2026-08-01T00:00:00+00:00") is False
+
+
+@pytest.mark.parametrize("column_count", [230, 340, 361])
+def test_large_variable_export_schemas_with_repeated_positional_headers(column_count):
+    repeated_count = column_count - len(BASE_HEADERS)
+    headers = BASE_HEADERS + ["Labels"] * repeated_count
+    row = ["Wide", f"GUIDES-{column_count}", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01"]
+    row += ["IBM" if index == 0 else "" for index in range(repeated_count)]
+    parsed = parse_jira_csv_bytes(_csv_bytes(headers, [row]), f"wide-{column_count}.csv")
+    assert len(parsed.headers) == column_count
+    assert parsed.duplicate_headers["Labels"] == repeated_count
+    assert parsed.detected_customer == "IBM"
+
+
+def test_malformed_row_width_is_rejected():
+    payload = b"Summary,Issue key,Issue Type,Status,Resolution,Description,Updated\nOnly one value\n"
+    with pytest.raises(ValueError, match="columns; expected"):
+        parse_jira_csv_bytes(payload, "malformed.csv")
 
 
 def test_admin_csv_preview_endpoint(client, auth_headers, monkeypatch):

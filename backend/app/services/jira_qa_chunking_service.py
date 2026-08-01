@@ -238,6 +238,7 @@ def build_jira_qa_chunks(
                 "customer_cohorts": _json_meta(enriched.customer_cohorts),
                 "resolutions": _json_meta(enriched.resolutions),
                 "source_file_hashes": _json_meta(enriched.source_file_hashes),
+                "import_evidence_archive": _json_meta(enriched.evidence_archive),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
                 "enrich_automation_fit": enriched.automation_fit[:200],

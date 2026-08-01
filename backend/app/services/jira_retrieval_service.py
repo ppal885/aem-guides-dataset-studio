@@ -31,6 +31,11 @@ _CHUNK_TYPE_WEIGHT: dict[str, float] = {
     "comments_discussion": 0.015,
     "attachment_log_signals": 0.015,
     "live_jira_snapshot": 0.02,
+    "customer_profile_overview": 0.025,
+    "customer_profile_components_domains": 0.025,
+    "customer_profile_workflows_outputs": 0.025,
+    "customer_profile_dita_entities": 0.02,
+    "customer_profile_failures_automation_resolutions": 0.025,
 }
 
 # Enterprise hybrid fusion weights.  Keep these aligned with the documented

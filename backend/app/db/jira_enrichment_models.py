@@ -43,6 +43,7 @@ class JiraEnrichedIssue(Base):
     source_file_hash = Column(String(64), nullable=True, index=True)
     source_file_hashes = Column(JSON, nullable=True)
     import_provenance = Column(JSON, nullable=True)
+    evidence_archive = Column(JSON, nullable=True)
     labels = Column(JSON, nullable=True)  # list[str]; JSONB on PostgreSQL
     components = Column(JSON, nullable=True)
     company_names = Column(JSON, nullable=True)

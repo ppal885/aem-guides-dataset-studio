@@ -144,6 +144,7 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     row.source_file_hash = (data.get("source_file_hash") or "")[:64] or None
     row.source_file_hashes = data.get("source_file_hashes") or []
     row.import_provenance = data.get("import_provenance") or []
+    row.evidence_archive = data.get("evidence_archive") or {}
     row.labels = data.get("labels") or []
     row.components = data.get("components") or []
     row.company_names = data.get("company_names") or []
@@ -257,6 +258,7 @@ def get_jira_by_key(session: Session, jira_key: str) -> dict[str, Any] | None:
         "source_file_hash": row.source_file_hash,
         "source_file_hashes": row.source_file_hashes,
         "import_provenance": row.import_provenance,
+        "evidence_archive": row.evidence_archive,
         "labels": row.labels,
         "components": row.components,
         "company_names": row.company_names,

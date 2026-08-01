@@ -24,6 +24,7 @@ class JiraEnrichedDocument(BaseModel):
     source_file_hash: str = ""
     source_file_hashes: list[str] = Field(default_factory=list)
     import_provenance: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_archive: dict[str, list[str]] = Field(default_factory=dict)
     labels: list[str] = Field(default_factory=list)
     components: list[str] = Field(default_factory=list)
     company_names: list[str] = Field(default_factory=list)

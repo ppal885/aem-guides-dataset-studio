@@ -94,6 +94,9 @@ Use this before calling a test plan review-ready.
 - On-premise release/upgrade plans state source/target version coverage, retained custom config expectations, changed defaults, manual steps, and backward-compatibility risks when applicable.
 - Relevant product and automation clones are either inspected or explicitly marked unavailable.
 - Existing automation coverage and automation coverage gaps are mapped into `Test Scenarios` or `Regression Areas`.
+- When customer profile evidence exists, `Known Jira Bugs / Past Similar Tickets` includes `Observed Customer Jira Profile`, distinct-key counts, representative keys, and the aggregate-context limitation.
+- No acceptance criterion, expected result, RCA, Jira status, or fix-version claim relies only on an aggregate customer profile.
+- Customer frequencies use `frequently represented or affected in the customer Jira corpus`, never `most used` or equivalent telemetry claims.
 - Evidence conflicts are resolved by the priority rule or shown as Draft blockers.
 - Past similar tickets either list useful matches or clearly state no matches/evidence unavailable.
 - Regression areas are specific to touched code and learned product behaviour, not generic module names.

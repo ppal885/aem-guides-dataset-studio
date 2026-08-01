@@ -90,6 +90,7 @@ export function SettingsPage() {
   const [customUrlsResult, setCustomUrlsResult] = useState<{ message: string; isError: boolean } | null>(null);
   const [jiraCsvFiles, setJiraCsvFiles] = useState<File[]>([]);
   const [jiraCsvPreview, setJiraCsvPreview] = useState<JiraCsvPreview | null>(null);
+  const [jiraCustomerAssignments, setJiraCustomerAssignments] = useState<Record<string, string>>({});
   const [jiraCsvImport, setJiraCsvImport] = useState<JiraCsvImportStatus | null>(null);
   const [jiraCsvBusy, setJiraCsvBusy] = useState(false);
   const [jiraCsvError, setJiraCsvError] = useState<string | null>(null);
@@ -264,7 +265,11 @@ export function SettingsPage() {
     setJiraCsvError(null);
     setJiraCsvPreview(null);
     try {
-      setJiraCsvPreview(await previewJiraCsvFiles(jiraCsvFiles));
+      const preview = await previewJiraCsvFiles(jiraCsvFiles);
+      setJiraCsvPreview(preview);
+      setJiraCustomerAssignments(
+        Object.fromEntries(preview.files.map(file => [file.file_hash, file.assigned_customer || file.detected_customer]))
+      );
     } catch (previewError) {
       setJiraCsvError(previewError instanceof Error ? previewError.message : 'CSV preview failed');
     } finally {
@@ -277,7 +282,7 @@ export function SettingsPage() {
     setJiraCsvBusy(true);
     setJiraCsvError(null);
     try {
-      const result = await startJiraCsvImport(jiraCsvFiles);
+      const result = await startJiraCsvImport(jiraCsvFiles, jiraCustomerAssignments);
       setJiraCsvImport({
         import_id: result.import_id,
         status: 'pending',
@@ -286,6 +291,7 @@ export function SettingsPage() {
         processed_rows: 0,
         indexed_issues: 0,
         skipped_issues: 0,
+        metadata_merged_issues: 0,
         failed_issues: 0,
         chunks_indexed: 0,
         redacted_fields: result.preview.redacted_fields,
@@ -296,7 +302,7 @@ export function SettingsPage() {
       setJiraCsvError(importError instanceof Error ? importError.message : 'CSV import failed to start');
       setJiraCsvBusy(false);
     }
-  }, [jiraCsvFiles, jiraCsvPreview]);
+  }, [jiraCsvFiles, jiraCsvPreview, jiraCustomerAssignments]);
 
   useEffect(() => {
     if (!jiraCsvImport || !['pending', 'running'].includes(jiraCsvImport.status)) return;
@@ -517,6 +523,7 @@ export function SettingsPage() {
                 onChange={event => {
                   setJiraCsvFiles(Array.from(event.target.files || []));
                   setJiraCsvPreview(null);
+                  setJiraCustomerAssignments({});
                   setJiraCsvImport(null);
                   setJiraCsvError(null);
                 }}
@@ -529,7 +536,11 @@ export function SettingsPage() {
                 <Button
                   variant="outline"
                   onClick={handleStartJiraCsvImport}
-                  disabled={jiraCsvBusy || !jiraCsvPreview || jiraCsvPreview.unique_issue_keys !== jiraCsvPreview.total_rows}
+                  disabled={
+                    jiraCsvBusy
+                    || !jiraCsvPreview
+                    || !jiraCsvPreview.files.every(file => Boolean(jiraCustomerAssignments[file.file_hash]))
+                  }
                 >
                   Index previewed files
                 </Button>
@@ -539,12 +550,46 @@ export function SettingsPage() {
                   <div className="font-semibold text-slate-900">
                     {jiraCsvPreview.total_files} file(s), {jiraCsvPreview.total_rows} rows, {jiraCsvPreview.unique_issue_keys} unique Jira keys
                   </div>
+                  <div className="mt-1">
+                    {jiraCsvPreview.overlap_count} cross-file association(s) will be merged across {jiraCsvPreview.overlapping_issue_keys.length} Jira key(s).
+                  </div>
                   <div className="mt-1">Potential direct identifiers redacted: {jiraCsvPreview.redacted_fields}</div>
-                  <ul className="mt-3 space-y-1">
+                  <ul className="mt-3 space-y-3">
                     {jiraCsvPreview.files.map(file => (
-                      <li key={file.file_hash}>
-                        {file.filename}: {file.rows} rows, {file.columns} columns
-                        {file.already_imported ? ' (already imported; will be skipped)' : ''}
+                      <li key={file.file_hash} className="rounded-md border border-slate-200 bg-white p-3">
+                        <div>
+                          {file.filename}: {file.rows} rows, {file.columns} columns
+                          {file.already_imported ? ' (already imported by this importer version; will be skipped)' : ''}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <label htmlFor={`jira-customer-${file.file_hash}`} className="font-medium text-slate-800">
+                            Customer cohort
+                          </label>
+                          <select
+                            id={`jira-customer-${file.file_hash}`}
+                            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                            value={jiraCustomerAssignments[file.file_hash] || ''}
+                            disabled={jiraCsvBusy}
+                            onChange={event => setJiraCustomerAssignments(current => ({
+                              ...current,
+                              [file.file_hash]: event.target.value,
+                            }))}
+                          >
+                            <option value="">Select customer</option>
+                            <option value="Red Hat">Red Hat</option>
+                            <option value="IBM">IBM</option>
+                            <option value="Swift">Swift</option>
+                          </select>
+                          <span className="text-xs text-slate-500">
+                            Detected {file.detected_customer || 'none'} ({file.customer_confidence} confidence)
+                          </span>
+                        </div>
+                        {file.customer_evidence_signals.length ? (
+                          <div className="mt-2 text-xs text-slate-500">{file.customer_evidence_signals.join(' | ')}</div>
+                        ) : null}
+                        {file.warnings.map(warning => (
+                          <div key={warning} className="mt-1 text-xs text-amber-700">{warning}</div>
+                        ))}
                       </li>
                     ))}
                   </ul>
@@ -558,7 +603,7 @@ export function SettingsPage() {
                   </div>
                   <Progress value={jiraCsvImport.progress_percent} className="h-2 bg-teal-100 [&>*]:bg-teal-600" />
                   <div>
-                    Processed {jiraCsvImport.processed_rows}/{jiraCsvImport.total_rows}; indexed {jiraCsvImport.indexed_issues}; skipped {jiraCsvImport.skipped_issues}; failed {jiraCsvImport.failed_issues}; chunks {jiraCsvImport.chunks_indexed}.
+                    Processed {jiraCsvImport.processed_rows}/{jiraCsvImport.total_rows}; indexed {jiraCsvImport.indexed_issues}; metadata-only merges {jiraCsvImport.metadata_merged_issues}; skipped {jiraCsvImport.skipped_issues}; failed {jiraCsvImport.failed_issues}; chunks {jiraCsvImport.chunks_indexed}.
                   </div>
                   {jiraCsvImport.errors.length ? (
                     <ul className="list-disc pl-5 text-amber-900">

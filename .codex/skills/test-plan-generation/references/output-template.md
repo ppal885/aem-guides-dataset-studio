@@ -37,6 +37,7 @@ Use exactly these sections. Keep every line as a bullet.
 - P2 [AC-04]: ...
 
 **Known Jira Bugs / Past Similar Tickets**
+- **Observed Customer Jira Profile:** <customer> has <distinct-key count> Jira keys; frequently represented or affected components/workflows/outputs/entities are <signals>; automation patterns are <signals>; representative candidate keys are <keys>. Aggregate context only - validate direct Jira evidence before using any assertion.
 - ...
 
 **Regression Areas**
@@ -69,6 +70,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Keep destructive cleanup procedures out of Acceptance Criteria and place them under `Incident recovery validation` in Test Scenarios.
 - Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
 - For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
+- Customer ticket frequencies describe what is frequently represented or affected in the Jira corpus; they do not prove feature usage or product behaviour.
 
 ## Stage Mapping
 

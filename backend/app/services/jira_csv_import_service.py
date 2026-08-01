@@ -79,6 +79,7 @@ class ParsedCsvIssue:
     resolutions: list[str]
     source_file_hashes: list[str]
     import_provenance: list[dict[str, str]]
+    evidence_archive: dict[str, list[str]]
     linked_issue_refs: list[str]
     attachment_filenames: list[str]
     redacted_fields: int
@@ -356,6 +357,17 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                         "jira_updated_at": first(row, "Updated")[:80],
                     }
                 ],
+                evidence_archive={
+                    "acceptance_criteria": [sanitized["Custom field (Acceptance Criteria)"]]
+                    if sanitized["Custom field (Acceptance Criteria)"] else [],
+                    "root_causes": [sanitized["Custom field (Root Cause)"]]
+                    if sanitized["Custom field (Root Cause)"] else [],
+                    "test_plans": [sanitized["Custom field (Test Plan)"]]
+                    if sanitized["Custom field (Test Plan)"] else [],
+                    "comments": [comment["body_text"] for comment in comments if comment.get("body_text")],
+                    "linked_issue_refs": _dedupe(linked_refs, limit=200),
+                    "attachment_filenames": attachment_filenames,
+                },
                 linked_issue_refs=_dedupe(linked_refs, limit=200),
                 attachment_filenames=attachment_filenames,
                 redacted_fields=redactions,
@@ -462,6 +474,16 @@ def merge_parsed_issues(
                 if key not in provenance_seen:
                     provenance_seen.add(key)
                     output.import_provenance.append(entry)
+        archive_keys = {
+            key for snapshot in snapshots for key in snapshot.evidence_archive
+        }
+        output.evidence_archive = {
+            key: _dedupe(
+                [value for snapshot in snapshots for value in snapshot.evidence_archive.get(key, [])],
+                limit=200,
+            )
+            for key in sorted(archive_keys)
+        }
         output.redacted_fields = sum(snapshot.redacted_fields for snapshot in snapshots)
         merged.append(output)
     return merged
@@ -635,6 +657,10 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
                 seen.add(key)
                 provenance.append(item)
         row.import_provenance = provenance[:100]
+        archive = dict(row.evidence_archive or {})
+        for key, values in parsed_issue.evidence_archive.items():
+            archive[key] = _union_values(archive.get(key), values, limit=200)
+        row.evidence_archive = archive
         row.updated_at = datetime.utcnow()
         db.query(JiraIssueChunk).filter(JiraIssueChunk.jira_key == parsed_issue.issue_key).update(
             {JiraIssueChunk.customer_names: row.customer_names}, synchronize_session=False
@@ -650,6 +676,7 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
                 "resolutions": json.dumps(row.resolutions, ensure_ascii=False)[:4000],
                 "source_file_hashes": json.dumps(row.source_file_hashes, ensure_ascii=False)[:4000],
                 "metadata_only_merge": True,
+                "import_evidence_archive": json.dumps(row.evidence_archive, ensure_ascii=False)[:4000],
             },
         )
         return True
@@ -759,6 +786,7 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                         "resolutions": list(existing.resolutions or []),
                         "source_file_hashes": list(existing.source_file_hashes or []),
                         "import_provenance": list(existing.import_provenance or []),
+                        "evidence_archive": dict(existing.evidence_archive or {}),
                     } if existing else {}
                 finally:
                     db.close()
@@ -786,6 +814,9 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                         if key not in seen_provenance:
                             seen_provenance.add(key)
                             provenance.append(item)
+                    evidence_archive = dict(existing_metadata.get("evidence_archive") or {})
+                    for key, values in parsed_issue.evidence_archive.items():
+                        evidence_archive[key] = _union_values(evidence_archive.get(key), values, limit=200)
                     enriched = enriched.model_copy(
                         update={
                             "resolution": parsed_issue.resolution,
@@ -797,6 +828,7 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                                 existing_metadata.get("source_file_hashes"), parsed_issue.source_file_hashes, limit=50
                             ),
                             "import_provenance": provenance[:100],
+                            "evidence_archive": evidence_archive,
                             "acceptance_criteria": parsed_issue.acceptance_criteria,
                             "root_cause": parsed_issue.root_cause,
                             "test_plan": parsed_issue.test_plan,
