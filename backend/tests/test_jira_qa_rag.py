@@ -11,7 +11,7 @@ import numpy as np
 from app.services.jira_qa_automation_rubric import score_automation_fit
 from app.services.jira_qa_chunking_service import build_jira_qa_chunks
 from app.services.jira_qa_intent_service import classify_jira_qa_intent_rules
-from app.services.jira_qa_retrieval_service import semantic_search_jira_qa
+from app.services.jira_qa_retrieval_service import _customer_names_from_query, semantic_search_jira_qa
 
 
 def test_intent_rules_related():
@@ -81,6 +81,11 @@ def test_automation_rubric_range():
     r = score_automation_fit(text)
     assert 0 <= r.score_0_10 <= 10
     assert r.fit_label in {"Yes", "No", "Partial"}
+
+
+def test_customer_names_are_inferred_from_free_text_query():
+    assert _customer_names_from_query("Lexmark publishing issues") == ["Lexmark"]
+    assert _customer_names_from_query("Topcon and Red Hat review regressions") == ["Red Hat", "Topcon"]
 
 
 @patch("app.services.jira_retrieval_service.query_collection")
