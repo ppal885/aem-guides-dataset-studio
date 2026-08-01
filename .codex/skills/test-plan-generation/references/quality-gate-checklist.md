@@ -14,6 +14,7 @@ Use this before calling a test plan review-ready.
 
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
+- Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
 - Jira UAC/acceptance criteria are treated as the primary acceptance and sign-off contract for scope, out-of-scope, expected behaviour, integrations, regression boundaries, and open questions.
 - Conflict priority is applied when evidence disagrees: Jira/UAC > PR implementation > accepted RAG docs > Figma UI intent > cloned repo/team memory.
 - Edge cases are derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, and similar Jira history.
@@ -35,8 +36,14 @@ Use this before calling a test plan review-ready.
 - `guides-ui-tests` and `dxml-it-tests` were inspected for existing coverage, old failures, reusable scenarios, and automation coverage gaps when available.
 - Known local clone paths and environment-provided repo paths were checked before declaring automation/product repos unavailable.
 - Local repo evidence states fetch/sync status and is not used as final proof when dirty, stale, diverged, or unsynced.
+- Every cited clone/file uses a complete absolute path plus branch, commit SHA, upstream/ahead/behind state, dirty/clean state, and fetch result; no path contains `...`.
 - Open questions are specific to unresolved permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5 output, or on-premise upgrade-impact decisions.
 - Test data, setup preconditions, role/config/platform matrix, and API contract questions are either answered by evidence or captured under `Open Questions`.
+- Historical Jira entries include the narrow JQL/search intent, current status/resolution, affected/fix versions, RCA, linked test evidence, and scenario impact; unavailable fields are explicitly marked unavailable.
+- Automation classification is contract-exact: adjacent happy-path coverage is not called partial coverage unless it asserts a named clause of the same AC.
+- Automation gaps name the exact candidate test location, deterministic setup/injection, polling oracle, timeout source, output-integrity assertions, cleanup/rollback, and suite/tags.
+- Approximate incident runtimes, dataset sizes, and resource recommendations remain baselines or open questions unless an approved SLA or controlled benchmark defines the oracle.
+- Concurrency recovery checks successful completion and output integrity separately from retry-exhaustion terminal failure.
 
 ## Draft When
 
@@ -61,6 +68,10 @@ Use this before calling a test plan review-ready.
 - Test data/setup/environment matrix is required for sign-off but absent from `Test Scenarios`, `Regression Areas`, and `Open Questions`.
 - Backend/API contract is relevant but endpoint, parameters, response/error contract, batch behaviour, or logs are not clarified.
 - Expected behaviour depends on an unverified product assumption.
+- Expected behaviour uses exclusive root-cause language such as `purely`, `only cause`, or `proves the root cause` without evidence that excludes credible alternatives.
+- A destructive cleanup scenario omits ownership/correlation, approval, pre-change inventory/backup, unrelated-state protection, audit evidence, rollback, or post-cleanup verification.
+- A plan marks adjacent happy-path automation as partial coverage of recovery, concurrency, orphan-state, queue-drain, or dashboard-consistency behavior.
+- A performance scenario turns approximate customer timing, topic count, or heap guidance into a hard oracle without an approved SLA or controlled benchmark.
 - On-premise release/upgrade scope exists but source/target versions, retained configs, changed defaults, manual post-upgrade steps, or compatibility expectations are not clarified.
 - Sign-off-critical permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5, or on-premise upgrade-impact questions are unresolved.
 
@@ -81,6 +92,7 @@ Use this before calling a test plan review-ready.
 - Evidence conflicts are resolved by the priority rule or shown as Draft blockers.
 - Past similar tickets either list useful matches or clearly state no matches/evidence unavailable.
 - Regression areas are specific to touched code and learned product behaviour, not generic module names.
+- Final output contains no mojibake markers and uses valid UTF-8 or safe ASCII punctuation.
 - `Open Questions` exists and either lists targeted unresolved questions or says `No open questions from current evidence`.
 
 ## Anti-Patterns To Block

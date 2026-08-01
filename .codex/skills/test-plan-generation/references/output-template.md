@@ -24,6 +24,7 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
+- Incident recovery validation: Confirm target correlation and approved scope; capture pre-change inventory/backup, execute the safe cleanup, preserve unrelated state, retain audit evidence, verify queue/dashboard recovery, and prove rollback readiness.
 - P0 [AC-01]: ...
 - P1 [AC-02, AC-03]: ...
 - P2 [AC-04]: ...
@@ -35,9 +36,9 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Automation Coverage & Gaps**
-- AC-01 — Covered: `<repo>:<file>:<test>` using `<fixture/helper>` at `<revision>`.
-- AC-02 — Partially covered: existing test proves <covered behavior>; missing <specific boundary/assertion>.
-- AC-03 — Not covered: add/extend `<UI/API/integration suite>` using `<setup/cleanup>` and assert <observable contract>.
+- AC-01 - Covered: `<absolute repo path>:<complete file path>:<test method>` using `<fixture/helper>` at `<branch>@<SHA>`; clone is `<clean/dirty, ahead/behind, fetch result>`.
+- AC-02 - Partially covered: existing test directly proves <named clause of AC-02>; missing <specific clause/boundary/assertion>. Adjacent happy-path tests are reusable infrastructure, not partial coverage.
+- AC-03 - Not covered: add/extend `<exact file/class/method>` in `<UI/API/integration layer>`; reuse `<client/helper/fixture>`, create state through `<deterministic setup/injection>`, poll `<endpoint/state>` with `<timeout source>`, assert `<terminal and output-integrity oracle>`, and clean up or roll back through `<mechanism>` under `<suite/tags>`.
 
 **Open Questions**
 - ...
@@ -56,6 +57,11 @@ Use exactly these sections. Keep every line as a bullet.
 - In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
 - Do not create extra sections.
 - Do not use tables.
+- Before returning, scan for mojibake (`â€`, `â‰`, `Ã`, `Â`, or `�`) and repair it; use ASCII punctuation if the client encoding is uncertain.
+- Never abbreviate repository or file paths with `...`; include branch, commit SHA, sync state, and dirty/clean state.
+- Keep destructive cleanup procedures out of Acceptance Criteria and place them under `Incident recovery validation` in Test Scenarios.
+- Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
+- For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
 
 ## Stage Mapping
 
