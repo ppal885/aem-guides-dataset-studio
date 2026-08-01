@@ -48,6 +48,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Read `references/open-questions-catalog.md` before writing the `Open Questions` section.
 - Read `references/native-aemsite-baseline-metadata.md` when Jira scope mentions Native AEM Site, baseline publishing, output preset metadata, metadata propagation, copy-to, or incremental publishing metadata.
 - Read `references/quality-gate-checklist.md` before marking a plan review-ready.
+- Before returning any plan, write the proposed final Markdown to a UTF-8 temporary file and run `python scripts/validate_test_plan.py <draft-file>`. If it reports any error, repair the draft and rerun until it exits successfully. Do not show an invalid draft as the final answer or claim the quality gate passed without this validation.
 
 ## Lifecycle
 
@@ -70,6 +71,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Treat placeholders such as `GUIDES-XXXXX` as missing input, not as a real Jira key. Ask for the actual key instead of producing a Jira-backed plan.
 - Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, customer and business impact, environment, product/version, logs, error text, affected assets/workflows, actions already taken, requested engineering help, attachments, linked issues, and development links when present.
 - Treat supplied UAC as authoritative. When UAC does not exist, derive a proposed acceptance contract from the problem statement and end goal, label every derived criterion `[Proposed]`, label Jira criteria `[Confirmed]`, and do not pretend proposed criteria are already approved.
+- Historical observations, completed cleanup steps, support comments, and previously successful recovery are evidence for `Expected Behaviour` or `Incident recovery validation`; they are not Jira-authored AC and must not receive `[Confirmed]` when the native Jira/UAC acceptance field is empty.
 - Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
 - Assign stable IDs (`AC-01`, `AC-02`, ...) to every acceptance criterion. Write each criterion as an independently testable product contract containing input or precondition, behavior, and observable outcome; do not write acceptance criteria as generic `Verify...` test instructions.
 - Split compound requirements when their outcomes can pass or fail independently. Preserve every named enum, mode, project type, provider, state, filter, version boundary, and failure outcome either as its own criterion or as an explicit exhaustive matrix inside one criterion.
@@ -229,6 +231,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Do not include raw RAG chunks, chunk scores, backend traces, evidence matrices, or long citations.
 - Never expose numeric retrieval confidence such as `0.88` in the user-facing plan. Describe evidence as verified, partial, inferred, conflicting, or unavailable and identify the evidence type.
 - Emit valid UTF-8 text. Before returning, scan for mojibake markers such as `â€`, `â‰`, `Ã`, `Â`, or the replacement character; repair them or use ASCII punctuation such as `-`, `->`, and `>=` when the client encoding is uncertain.
+- Do not emit a title, lifecycle preamble, authorization warning, tool trace, or quality-audit prose outside the ten required sections. Put lifecycle and evidence availability under `Scope From Git`.
 - Use exactly these sections, in this order:
   1. `Acceptance Criteria`
   2. `Expected Behaviour`
@@ -265,6 +268,18 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Never abbreviate cited repository or file paths with `...`, and never describe a clone as current from wall-clock recency such as `last commit today`; report its exact revision and sync state.
 - Never promote an approximate incident runtime, dataset size, or resource recommendation into a pass/fail requirement without an approved SLA or controlled benchmark contract.
 - Never treat `terminal success/failure` as sufficient for a workflow whose acceptance contract requires successful output; test success, output integrity, and retry-exhaustion failure as distinct outcomes.
+- Only exact labels `AC-## [Confirmed]` and `AC-## [Proposed]` are valid. Reject decorated labels such as `[Confirmed - historical]`, `[Confirmed - incident recovery]`, or any equivalent punctuation variant.
+- Acceptance criteria describe observable product outcomes, not implementation choices. Keep node deletion, tracker reconciliation, mandatory workflow-step placement, single-source-of-truth architecture, lock type, retry mechanism, serialization strategy, and concrete cleanup commands in scenarios, code-impact analysis, or open questions unless Jira explicitly approves that implementation contract.
+- Every non-incident P0/P1/P2 scenario must contain at least one `[AC-##]` mapping. `Incident recovery validation` bullets are the only traceability exemption.
+- `Not suitable for automation` applies only to the destructive one-time production operation itself. Repeatable post-recovery product behavior on a production-equivalent environment is `Covered`, `Partially covered`, or `Not covered`.
+- When one Jira connector requires authorization but another connected Jira MCP succeeds, omit the failed-connector warning from the final plan and report only the evidence source actually used.
+
+## Quality-Gate Audit Requests
+
+- When the user asks to audit a previous answer, first read `references/quality-gate-checklist.md` and run `scripts/validate_test_plan.py` against the previous plan when its text is available.
+- List every validator failure plus evidence-quality failures that static validation cannot detect. Do not stop after the first few failures.
+- Regenerate a complete plan only after the failure list. Validate the regenerated draft with the same script and return only the failure list followed by the corrected ten-section plan.
+- Do not retain an obsolete Jira-authorization warning when live Jira evidence was subsequently fetched successfully.
 - Do not add extra headings such as `What can break`, `Likely bugs`, `Fix safety`, `Important combinations`, or `Draft blockers` beyond the required output sections.
 - Put likely bugs, fix-safety, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
 - Never call a plan `proper RAG-backed` when evidence is generic, unrelated, unavailable, or only keyword-matched.

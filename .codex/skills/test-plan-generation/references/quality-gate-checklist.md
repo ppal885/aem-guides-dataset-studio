@@ -106,3 +106,14 @@ Use this before calling a test plan review-ready.
 - Regression areas that omit integration impact for shared APIs, components, configs, publishing/editor/review/upload/translation flows, or automation repos.
 - On-premise release test plans that omit upgrade impact, retained custom configs, changed defaults, or source/target version coverage.
 - Confident product behaviour based only on memory, code names, or broad docs.
+- Any non-empty line outside the ten required sections, including a title, lifecycle preamble, connector warning, or tool trace.
+- Acceptance labels other than exact `[Confirmed]` and `[Proposed]`.
+- Historical cleanup observations presented as confirmed Jira AC when the native Jira/UAC acceptance field is empty.
+- Product AC that prescribes node deletion, tracker reconciliation, mandatory workflow-step placement, a single-source-of-truth architecture, or a specific lock/retry/serialization implementation that Jira did not approve.
+- `Not suitable for automation` applied to repeatable post-recovery behavior rather than only the destructive production operation.
+- A Jira authorization warning retained even though another Jira MCP successfully supplied live issue evidence.
+
+## Executable Gate
+
+- Save the final draft as UTF-8 and run `python scripts/validate_test_plan.py <draft-file>` from the skill directory.
+- A non-zero exit means the plan is not review-ready. Repair every reported error and rerun; never replace executable failures with a narrative claim that the gate passed.
