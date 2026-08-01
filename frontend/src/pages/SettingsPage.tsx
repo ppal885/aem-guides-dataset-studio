@@ -579,6 +579,8 @@ export function SettingsPage() {
                             <option value="Red Hat">Red Hat</option>
                             <option value="IBM">IBM</option>
                             <option value="Swift">Swift</option>
+                            <option value="Lexmark">Lexmark</option>
+                            <option value="Topcon">Topcon</option>
                           </select>
                           <span className="text-xs text-slate-500">
                             Detected {file.detected_customer || 'none'} ({file.customer_confidence} confidence)

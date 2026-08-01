@@ -193,6 +193,23 @@ def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
     assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
 
 
+def test_row_level_customer_labels_are_preserved_with_file_cohort():
+    headers = BASE_HEADERS + ["Labels", "Labels"]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["Lexmark association", "GUIDES-31", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "SWIFT", "Lexmark"],
+            ["Topcon association", "GUIDES-32", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "SWIFT", "Topcon"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "swift.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Swift"})
+
+    assert parsed.detected_customer == "Swift"
+    assert merged[0].customer_cohorts == ["Swift", "Lexmark"]
+    assert merged[1].customer_cohorts == ["Swift", "Topcon"]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

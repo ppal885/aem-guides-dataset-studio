@@ -37,7 +37,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v2"
+IMPORTER_VERSION = "customer-intelligence-v3"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -56,8 +56,18 @@ _CUSTOMER_ALIASES = {
     "international business machines": "IBM",
     "swift": "Swift",
     "s.w.i.f.t": "Swift",
+    "lexmark": "Lexmark",
+    "topcon": "Topcon",
 }
-_CUSTOMER_LABELS = {"redhat": "Red Hat", "red_hat": "Red Hat", "ibm": "IBM", "swift": "Swift"}
+_SUPPORTED_CUSTOMERS = {"Red Hat", "IBM", "Swift", "Lexmark", "Topcon"}
+_CUSTOMER_LABELS = {
+    "redhat": "Red Hat",
+    "red_hat": "Red Hat",
+    "ibm": "IBM",
+    "swift": "Swift",
+    "lexmark": "Lexmark",
+    "topcon": "Topcon",
+}
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"
 )
@@ -153,7 +163,7 @@ def _detect_file_customer(item: ParsedCsvFile) -> tuple[str, str, list[str], lis
             label_counts[customer] += 1
         for customer in issue.customer_names + issue.company_names:
             canonical = _canonical_customer(customer)
-            if canonical in {"Red Hat", "IBM", "Swift"}:
+            if canonical in _SUPPORTED_CUSTOMERS:
                 field_counts[canonical] += 1
     signals: list[str] = []
     candidates = set(label_counts) | set(field_counts)
@@ -289,6 +299,17 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             values(row, "Custom field (Company)") + values(row, "Company")
         )
         redactions += customer_redactions + company_redactions
+        row_customer_cohorts = _dedupe(
+            [
+                customer
+                for customer in (
+                    [_CUSTOMER_LABELS.get(str(label).strip().casefold(), "") for label in labels]
+                    + [_canonical_customer(value) for value in customer_names + company_names]
+                )
+                if customer in _SUPPORTED_CUSTOMERS
+            ],
+            limit=20,
+        )
 
         comments: list[dict[str, str]] = []
         for raw_comment in values(row, "Comment"):
@@ -347,7 +368,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 jira_updated_at=first(row, "Updated"),
                 company_names=company_names,
                 customer_names=customer_names,
-                customer_cohorts=[],
+                customer_cohorts=row_customer_cohorts,
                 resolutions=[resolution] if resolution else [],
                 source_file_hashes=[hashlib.sha256(data).hexdigest()],
                 import_provenance=[
@@ -400,7 +421,7 @@ def _normalize_customer_assignments(
     for item in parsed:
         raw = supplied.get(item.file_hash, item.detected_customer)
         customer = _canonical_customer(raw)
-        if customer not in {"Red Hat", "IBM", "Swift"}:
+        if customer not in _SUPPORTED_CUSTOMERS:
             customer = ""
         normalized[item.file_hash] = customer
     return normalized
@@ -423,7 +444,13 @@ def merge_parsed_issues(
         cohort = assignment_map.get(parsed_file.file_hash, "")
         for issue in parsed_file.issues:
             grouped[issue.issue_key].append(
-                replace(issue, customer_cohorts=[cohort] if cohort else [])
+                replace(
+                    issue,
+                    customer_cohorts=_dedupe(
+                        issue.customer_cohorts + ([cohort] if cohort else []),
+                        limit=20,
+                    ),
+                )
             )
 
     merged: list[ParsedCsvIssue] = []
@@ -546,7 +573,7 @@ def create_import_run(
 ) -> tuple[str, list[Path]]:
     preview = preview_jira_csv_files(files, customer_assignments)
     if not preview["valid"]:
-        raise ValueError("Confirm a Red Hat, IBM, or Swift customer assignment for every file")
+        raise ValueError("Confirm a Red Hat, IBM, Swift, Lexmark, or Topcon customer assignment for every file")
     run_id = str(uuid.uuid4())
     import_dir = Path(__file__).resolve().parents[2] / "storage" / "jira_csv_imports" / run_id
     import_dir.mkdir(parents=True, exist_ok=False)
@@ -879,9 +906,10 @@ def run_import(run_id: str, paths: list[Path]) -> None:
             flush()
         affected_customers = sorted(
             {
-                customer_assignments.get(item.file_hash, "")
-                for item in import_files
-                if customer_assignments.get(item.file_hash, "")
+                customer
+                for issue in merged_issues
+                for customer in issue.customer_cohorts
+                if customer
             }
         )
         profile_rebuild: dict[str, Any] = {}

@@ -13,7 +13,7 @@ from app.db.session import SessionLocal
 from app.services.embedding_service import embed_texts_batched
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, add_documents, delete_documents
 
-PROFILE_VERSION = "customer-profile-v1"
+PROFILE_VERSION = "customer-profile-v2"
 PROFILE_CHUNK_TYPES = (
     "customer_profile_overview",
     "customer_profile_components_domains",
