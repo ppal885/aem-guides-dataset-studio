@@ -9,3 +9,5 @@ def test_ask_dita_command_blocks_partial_grounding_overclaims():
     assert "Not verified from current evidence; execute the fixture" in command
     assert "never emit `--keep-temp`" in command
     assert "Generation coverage and DITA-OT runtime semantics are separate" in command
+    assert "does not execute DITA-OT fixtures" in command
+    assert "Do not offer generation, upload, per-case reruns" in command

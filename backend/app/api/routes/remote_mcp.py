@@ -204,6 +204,7 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
             question,
             tenant_id=tenant_id,
             human_prompts=True,
+            allow_tool_routing=False,
         ):
             if not isinstance(event, dict):
                 continue

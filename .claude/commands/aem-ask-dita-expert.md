@@ -38,3 +38,5 @@ Rules:
 23. Do not invent or normalize DITA-OT message families or suffixes. `DOTX`, `DOTJ`, `DOTF`, and `DOTA` labels may be retained only when returned with direct evidence for the claim being made.
 24. Do not add diagnostic commands or command-line options absent from the MCP result. In particular, never emit `--keep-temp`; if retained evidence explicitly requires temporary files, use only its exact documented syntax.
 25. Do not infer that a previous green corpus explains processor behavior. Generation coverage and DITA-OT runtime semantics are separate evidence classes.
+26. `ask_dita_expert` retrieves and synthesizes evidence; it does not execute DITA-OT fixtures. Never describe its result as a publish run or offer to re-run the expert with one clean fixture per call.
+27. End after answering the behavior question and its evidence boundary. Do not offer generation, upload, per-case reruns, or another tool unless the user explicitly requests that next action.
