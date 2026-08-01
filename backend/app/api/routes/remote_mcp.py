@@ -9,6 +9,7 @@ cloning the Dataset Studio repository locally.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import zipfile
 from pathlib import Path
@@ -56,20 +57,6 @@ def _tools() -> list[dict[str, Any]]:
             ),
         ),
         _tool(
-            "guides_test_plan_generator",
-            "Build an evidence packet for the AEM Guides test-plan Claude skill from a Jira key.",
-            _schema(
-                {
-                    "jira_key": {"type": "string"},
-                    "tenant_id": {"type": "string", "default": "kone"},
-                    "evidence_k": {"type": "integer", "default": 8},
-                    "include_repository_evidence": {"type": "boolean", "default": True},
-                    "max_repo_matches": {"type": "integer", "default": 30},
-                },
-                ["jira_key"],
-            ),
-        ),
-        _tool(
             "generate_dita_ot_output",
             "Generate/publish a spec-driven DITA-OT corpus for PDF, XHTML, HTML5, both, or all outputs.",
             _schema(
@@ -99,6 +86,26 @@ def _tools() -> list[dict[str, Any]]:
                     "max_upload_files": {"type": "integer", "default": 70000},
                 },
                 ["target_path"],
+            ),
+        ),
+        _tool(
+            "upload_dataset_to_aem",
+            (
+                "Alias for upload_mcp_generated_data_to_aem when the caller has a VM-side "
+                "source_path. This does not upload local laptop files."
+            ),
+            _schema(
+                {
+                    "source_path": {"type": "string"},
+                    "target_path": {"type": "string"},
+                    "aem_base_url": {"type": "string", "default": ""},
+                    "username": {"type": "string", "default": ""},
+                    "password": {"type": "string", "default": ""},
+                    "access_token": {"type": "string", "default": ""},
+                    "max_concurrent": {"type": "integer", "default": 20},
+                    "max_upload_files": {"type": "integer", "default": 70000},
+                },
+                ["source_path", "target_path"],
             ),
         ),
         _tool(
@@ -163,9 +170,9 @@ async def remote_mcp_json_rpc(
 async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
     tools: dict[str, Callable[[dict[str, Any]], Any]] = {
         "ask_dita_expert": _ask_dita_expert,
-        "guides_test_plan_generator": _guides_test_plan_generator,
         "generate_dita_ot_output": _generate_dita_ot_output,
         "upload_mcp_generated_data_to_aem": _upload_mcp_generated_data_to_aem,
+        "upload_dataset_to_aem": _upload_dataset_to_aem,
         "check_rag_status": _check_rag_status,
     }
     if name not in tools:
@@ -203,7 +210,7 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
         if grounding:
             citations = grounding.get("citations") or []
             source_lines = []
-            for citation in citations[:6]:
+            for citation in _relevant_mcp_citations(question, citations)[:6]:
                 if not isinstance(citation, dict):
                     continue
                 label = citation.get("label") or citation.get("title") or citation.get("id") or "Evidence"
@@ -231,19 +238,42 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
             pass
 
 
-def _guides_test_plan_generator(arguments: dict[str, Any]) -> dict[str, Any]:
-    jira_key = str(arguments.get("jira_key") or "").strip()
-    if not jira_key:
-        raise ValueError("jira_key is required")
-    from app.services.guides_test_plan_generator_service import build_guides_test_plan_packet
+_MCP_CITATION_STOPWORDS = {
+    "aem", "adobe", "guides", "dita", "output", "publish", "publishing", "behavior", "behaviour",
+    "expected", "source", "evidence", "verify", "verified", "documentation", "topic", "map",
+}
 
-    return build_guides_test_plan_packet(
-        jira_key,
-        tenant_id=str(arguments.get("tenant_id") or "kone"),
-        evidence_k=int(arguments.get("evidence_k") or 8),
-        include_repository_evidence=bool(arguments.get("include_repository_evidence", True)),
-        max_repo_matches=int(arguments.get("max_repo_matches") or 30),
-    )
+
+def _relevant_mcp_citations(question: str, citations: list[Any]) -> list[dict[str, Any]]:
+    """Prefer citations that support the exact named construct or workflow."""
+    lowered_question = (question or "").lower()
+    question_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9._-]+", lowered_question)
+        if len(token) >= 4 and token not in _MCP_CITATION_STOPWORDS
+    }
+    critical_terms = {
+        term
+        for term in ("searchtitle", "baseline", "copy-to", "chunk", "keyref", "conref", "post-generation")
+        if term in lowered_question
+    }
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for index, citation in enumerate(citations or []):
+        if not isinstance(citation, dict):
+            continue
+        haystack = " ".join(
+            str(citation.get(field) or "") for field in ("label", "title", "uri", "id")
+        ).lower()
+        critical_matches = sum(1 for term in critical_terms if term in haystack)
+        token_matches = sum(1 for token in question_tokens if token in haystack)
+        score = critical_matches * 10 + token_matches
+        if critical_terms and critical_matches == 0 and token_matches == 0:
+            continue
+        scored.append((score, -index, citation))
+    if not scored:
+        return [item for item in (citations or []) if isinstance(item, dict)][:3]
+    scored.sort(reverse=True, key=lambda item: (item[0], item[1]))
+    return [item[2] for item in scored]
 
 
 async def _generate_dita_ot_output(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -297,6 +327,26 @@ def _upload_mcp_generated_data_to_aem(arguments: dict[str, Any]) -> dict[str, An
         max_upload_files=max(1, int(arguments.get("max_upload_files") or 70000)),
     )
     return _mask_secrets(result)
+
+
+def _upload_dataset_to_aem(arguments: dict[str, Any]) -> dict[str, Any]:
+    source_path = str(arguments.get("source_path") or "").strip()
+    if not source_path:
+        raise ValueError("source_path is required")
+    return _upload_mcp_generated_data_to_aem(
+        {
+            "target_path": arguments.get("target_path"),
+            "source_path": source_path,
+            "job_id": "",
+            "latest": False,
+            "aem_base_url": arguments.get("aem_base_url", ""),
+            "username": arguments.get("username", ""),
+            "password": arguments.get("password", ""),
+            "access_token": arguments.get("access_token", ""),
+            "max_concurrent": arguments.get("max_concurrent", 20),
+            "max_upload_files": arguments.get("max_upload_files", 70000),
+        }
+    )
 
 
 def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:

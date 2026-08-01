@@ -32,6 +32,7 @@ ENRICHED_BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_enriched_behavior_chunks.jso
 DITA_OT_ISSUE_DOC_CHUNKS_FILENAME = "dita_ot_issue_behavior_chunks.json"
 MANUAL_DOC_CHUNKS_FILENAME = "manual_aem_guides_doc_chunks.json"
 SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME = "manual_searchtitle_behavior_chunks.json"
+COPY_TO_CHUNK_BEHAVIOR_DOC_CHUNKS_FILENAME = "manual_copy_to_chunk_behavior_chunks.json"
 MAX_SNIPPET_CHARS = 1500
 
 
@@ -48,6 +49,11 @@ def _get_manual_doc_chunks_path() -> Path:
 def _get_searchtitle_behavior_doc_chunks_path() -> Path:
     storage = get_storage()
     return storage.base_path / SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME
+
+
+def _get_copy_to_chunk_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / COPY_TO_CHUNK_BEHAVIOR_DOC_CHUNKS_FILENAME
 
 
 def _get_behavior_doc_chunks_path() -> Path:
@@ -80,11 +86,20 @@ def _load_chunks() -> list[dict]:
     """Load doc chunks from JSON, including manual fallback chunks."""
     primary = _load_chunk_file(_get_doc_chunks_path())
     searchtitle_behavior = _load_chunk_file(_get_searchtitle_behavior_doc_chunks_path())
+    copy_to_chunk_behavior = _load_chunk_file(_get_copy_to_chunk_behavior_doc_chunks_path())
     enriched_behavior = _load_chunk_file(_get_enriched_behavior_doc_chunks_path())
     behavior = _load_chunk_file(_get_behavior_doc_chunks_path())
     dita_ot_issues = _load_chunk_file(_get_dita_ot_issue_doc_chunks_path())
     manual = _load_chunk_file(_get_manual_doc_chunks_path())
-    return [*searchtitle_behavior, *manual, *dita_ot_issues, *enriched_behavior, *behavior, *primary]
+    return [
+        *searchtitle_behavior,
+        *copy_to_chunk_behavior,
+        *manual,
+        *dita_ot_issues,
+        *enriched_behavior,
+        *behavior,
+        *primary,
+    ]
 
 
 def check_rag_readiness() -> dict:
@@ -690,13 +705,27 @@ def _filter_and_rank_docs(
         "aem-guides-searchtitle-legacy-sites-qa-v1",
         "aem-guides-searchtitle-evidence-boundary-v1",
     }
+    copy_to_chunk_evidence_ids = {
+        "dita-copy-to-chunk-naming-v1",
+        "dita-copy-to-chunk-by-topic-fixture-v1",
+        "dita-copy-to-chunk-boundaries-v1",
+        "dita-copy-to-chunk-evidence-contract-v1",
+    }
     allow_bounded_searchtitle_evidence = bool(re.search(r"\bsearchtitle\b", str(query or ""), re.IGNORECASE))
+    allow_bounded_copy_to_chunk_evidence = bool(
+        re.search(r"\bcopy-to\b", str(query or ""), re.IGNORECASE)
+        and re.search(r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", str(query or ""), re.IGNORECASE)
+    )
     filtered = [
         doc for doc in (docs or [])
         if _matches_allowed_hosts(str(doc.get("url") or ""), allowed_host_suffixes)
         or (
             allow_bounded_searchtitle_evidence
             and str(doc.get("chunk_id") or "") in searchtitle_evidence_ids
+        )
+        or (
+            allow_bounded_copy_to_chunk_evidence
+            and str(doc.get("chunk_id") or "") in copy_to_chunk_evidence_ids
         )
     ]
     intent = _classify_aem_query_intent(query)
@@ -743,6 +772,10 @@ def _query_needs_exact_match_supplement(query: str) -> bool:
         re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))
         or re.search(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", lowered_query)
         or re.search(r"\bsearchtitle\b", lowered_query)
+        or (
+            re.search(r"\bcopy-to\b", lowered_query)
+            and re.search(r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", lowered_query)
+        )
     )
 
 
@@ -750,6 +783,12 @@ def _exact_match_fragments(query: str) -> set[str]:
     fragments = {term.lower() for term in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))}
     if re.search(r"\bsearchtitle\b", str(query or "").lower()):
         fragments.add("searchtitle")
+    lowered_query = str(query or "").lower()
+    if re.search(r"\bcopy-to\b", lowered_query):
+        fragments.add("copy-to")
+    for token in ("to-content", "by-topic"):
+        if re.search(rf"\b{token}\b", lowered_query):
+            fragments.add(token)
     for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
         normalized_version = version.replace("-", ".")
         fragments.add(version)
@@ -785,7 +824,17 @@ def _lexical_supplement_docs(
         if chunk_id and chunk_id in existing_chunk_ids:
             continue
         url = str(chunk.get("source_url") or chunk.get("canonical_url") or chunk.get("url") or "")
-        if not _matches_allowed_hosts(url, allowed_host_suffixes):
+        bounded_copy_to_chunk_ids = {
+            "dita-copy-to-chunk-naming-v1",
+            "dita-copy-to-chunk-by-topic-fixture-v1",
+            "dita-copy-to-chunk-boundaries-v1",
+            "dita-copy-to-chunk-evidence-contract-v1",
+        }
+        allow_bounded_copy_to_chunk = (
+            str(chunk_id) in bounded_copy_to_chunk_ids
+            and "copy-to" in str(query or "").lower()
+        )
+        if not _matches_allowed_hosts(url, allowed_host_suffixes) and not allow_bounded_copy_to_chunk:
             continue
         snippet = str(chunk.get("content") or "")[:max_snippet_chars]
         title = str(chunk.get("title") or "")

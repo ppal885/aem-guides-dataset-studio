@@ -4837,6 +4837,55 @@ def _question_shape_hint(question: str) -> str:
             "Use a markdown table or bullet list. Be exhaustive — list ALL values/options, not just common ones. "
             "Add a brief description for each."
         )
+    requested_facets: list[str] = []
+    facet_patterns = (
+        ("Source DITA", r"\bsource\s+dita\b|\bdita\s+source\b"),
+        ("Publishing steps", r"\bpublish(?:ing)?\s+steps?\b|\bgeneration\s+steps?\b"),
+        ("Expected HTML/JCR output", r"\bhtml\b.{0,20}\bjcr\b|\bjcr\b.{0,20}\bhtml\b|\bexpected\s+(?:html|jcr|output)"),
+        ("PDF observations", r"\bpdf\s+observations?\b|\bexpected\s+pdf\b"),
+        ("Output comparison", r"\boutput\s+comparison\b|\bcompare\b.{0,30}\boutput"),
+        ("Negative cases", r"\bnegative\s+(?:cases?|scenarios?|tests?)\b"),
+        ("Fallback cases", r"\bfallback\s+(?:cases?|behavior|behaviour|precedence)\b"),
+        ("Mapping scope", r"\bmapping\s+scope\b|\boverride\s+scope\b"),
+        ("Evidence sources", r"\bevidence\s+sources?\b|\bsources?\s+of\s+evidence\b"),
+        ("Unverified behaviors", r"\b(?:explicitly\s+)?list\b.{0,40}\bnot\s+(?:yet\s+)?verified\b|\bunverified\b"),
+    )
+    for label, pattern in facet_patterns:
+        if re.search(pattern, q, re.IGNORECASE):
+            requested_facets.append(label)
+    if len(requested_facets) >= 2:
+        hints.append(
+            "This is a multi-part QA-oracle request. Use these headings in the user's requested order: "
+            + "; ".join(requested_facets)
+            + ". Answer every heading explicitly. If evidence does not support a heading, write `Not verified from current evidence` "
+            "and state the exact runtime, code, or documentation evidence needed; never silently omit it or replace it with adjacent guidance. "
+            "Keep DITA specification behavior, DITA-OT runtime behavior, and AEM Guides product behavior separate. "
+            "Do not end with a bare source dump: connect every cited source to the claim it supports and reject sources that only share broad terms."
+        )
+    if re.search(r"\bsearchtitle\b", q, re.IGNORECASE) and re.search(
+        r"\b(html|jcr|pdf|publish|output|mapping|fallback|index)", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For `searchtitle`, clearly separate: valid source placement; generic DITA/DITA-OT behavior; verified AEM Guides mapping and its component/version boundary; "
+            "an executable assertion; negative cases; and unsupported HTML `<title>`, JCR, fallback, search-indexing, ranking, translation, or newer-mapping claims."
+        )
+    if re.search(r"\bcopy-to\b", q, re.IGNORECASE) and re.search(
+        r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For `copy-to` combined with chunking, state the normative resource-name precedence: when `copy-to` is specified for the chunk, "
+            "the output resource name comes from `copy-to`. Explain `to-content` as combining selected topics into one output chunk. "
+            "Demonstrate `by-topic` with nested topics in one physical source document, not merely sibling child topicrefs. "
+            "State that chunk processing is output-format and processor specific; never claim identical AEM Sites, HTML5, and PDF behavior without runtime evidence. "
+            "Separate normative collision recovery and unsupported scope rules from exact DITA-OT filenames, temporary-file order, rewritten links, and AEM mappings that require generated or product evidence."
+        )
+    if re.search(r"\bbaselines?\b", q, re.IGNORECASE) and re.search(
+        r"\b(resolve|reference|working copy|version|keyref|conref|publish|metadata)", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For baseline behavior, distinguish the baseline's captured map/topic versions from working copies and from publish-time processing. "
+            "Answer each named reference or metadata type separately, distinguish legacy versus New Baseline when evidence does, and do not use release-note or DITA-spec adjacency as proof of AEM baseline behavior."
+        )
     return "\n\n".join(hints)
 
 

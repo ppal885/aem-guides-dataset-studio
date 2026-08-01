@@ -4005,7 +4005,6 @@ def show_mcp_rag_corpus_status() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def guides_test_plan_generator(
     jira_key: str,
     tenant_id: str = "kone",
@@ -4040,7 +4039,6 @@ def guides_test_plan_generator(
         return f"Error building Guides test-plan evidence packet: {e}"
 
 
-@mcp.tool()
 def publishing_ticket_dita_qa_packet(
     jira_key: str,
     tenant_id: str = "kone",
