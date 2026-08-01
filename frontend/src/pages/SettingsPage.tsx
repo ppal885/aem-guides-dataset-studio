@@ -582,6 +582,9 @@ export function SettingsPage() {
                             <option value="Lexmark">Lexmark</option>
                             <option value="Topcon">Topcon</option>
                             <option value="Fidelity">Fidelity</option>
+                            <option value="JPMC">JPMC</option>
+                            <option value="KONE">KONE</option>
+                            <option value="Mixed (row-level cohorts)">Mixed (use row-level customer labels)</option>
                           </select>
                           <span className="text-xs text-slate-500">
                             Detected {file.detected_customer || 'none'} ({file.customer_confidence} confidence)

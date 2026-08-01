@@ -37,7 +37,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v4"
+IMPORTER_VERSION = "customer-intelligence-v5"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -59,8 +59,14 @@ _CUSTOMER_ALIASES = {
     "lexmark": "Lexmark",
     "topcon": "Topcon",
     "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jp morgan": "JPMC",
+    "jpmorgan": "JPMC",
+    "jpmorgan chase": "JPMC",
+    "kone": "KONE",
 }
-_SUPPORTED_CUSTOMERS = {"Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity"}
+_SUPPORTED_CUSTOMERS = {"Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity", "JPMC", "KONE"}
+_MIXED_CUSTOMER = "Mixed (row-level cohorts)"
 _CUSTOMER_LABELS = {
     "redhat": "Red Hat",
     "red_hat": "Red Hat",
@@ -69,6 +75,10 @@ _CUSTOMER_LABELS = {
     "lexmark": "Lexmark",
     "topcon": "Topcon",
     "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jpmorgan": "JPMC",
+    "jp_morgan": "JPMC",
+    "kone": "KONE",
 }
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"
@@ -177,6 +187,14 @@ def _detect_file_customer(item: ParsedCsvFile) -> tuple[str, str, list[str], lis
     warnings: list[str] = []
     if len(unanimous) == 1:
         return unanimous[0], "high", signals, warnings
+    row_covered = sum(1 for issue in item.issues if issue.customer_cohorts)
+    row_cohorts = sorted(
+        {customer for issue in item.issues for customer in issue.customer_cohorts},
+        key=str.casefold,
+    )
+    if row_covered == total and len(row_cohorts) > 1:
+        signals.append(f"Mixed row-level cohort coverage: {row_covered}/{total} rows; {', '.join(row_cohorts)}")
+        return _MIXED_CUSTOMER, "high", signals, warnings
     ranked = (label_counts + field_counts).most_common()
     if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
         warnings.append("Customer was inferred from majority evidence; confirm before import.")
@@ -422,6 +440,9 @@ def _normalize_customer_assignments(
     normalized: dict[str, str] = {}
     for item in parsed:
         raw = supplied.get(item.file_hash, item.detected_customer)
+        if str(raw).strip() == _MIXED_CUSTOMER:
+            normalized[item.file_hash] = _MIXED_CUSTOMER
+            continue
         customer = _canonical_customer(raw)
         if customer not in _SUPPORTED_CUSTOMERS:
             customer = ""
@@ -444,6 +465,8 @@ def merge_parsed_issues(
     grouped: dict[str, list[ParsedCsvIssue]] = defaultdict(list)
     for parsed_file in parsed_files:
         cohort = assignment_map.get(parsed_file.file_hash, "")
+        if cohort == _MIXED_CUSTOMER:
+            cohort = ""
         for issue in parsed_file.issues:
             grouped[issue.issue_key].append(
                 replace(

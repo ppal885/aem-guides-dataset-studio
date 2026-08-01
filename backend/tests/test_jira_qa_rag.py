@@ -87,6 +87,7 @@ def test_customer_names_are_inferred_from_free_text_query():
     assert _customer_names_from_query("Lexmark publishing issues") == ["Lexmark"]
     assert _customer_names_from_query("Topcon and Red Hat review regressions") == ["Red Hat", "Topcon"]
     assert _customer_names_from_query("Fidelity authoring regressions") == ["Fidelity"]
+    assert _customer_names_from_query("JPMC and KONE publishing issues") == ["JPMC", "KONE"]
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

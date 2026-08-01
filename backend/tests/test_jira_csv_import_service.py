@@ -224,6 +224,24 @@ def test_fidelity_file_detection_and_assignment():
     assert merged[0].customer_cohorts == ["Fidelity"]
 
 
+def test_mixed_jpmc_kone_file_uses_row_level_cohorts_without_global_assignment():
+    headers = BASE_HEADERS + ["Labels", "Labels"]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["JPMC issue", "GUIDES-34", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "JPMC", ""],
+            ["KONE issue", "GUIDES-35", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "KONE", ""],
+            ["Shared issue", "GUIDES-36", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "JPMC", "KONE"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "mixed.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Mixed (row-level cohorts)"})
+
+    assert parsed.detected_customer == "Mixed (row-level cohorts)"
+    assert parsed.detection_confidence == "high"
+    assert [issue.customer_cohorts for issue in merged] == [["JPMC"], ["KONE"], ["JPMC", "KONE"]]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

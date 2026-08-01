@@ -37,6 +37,10 @@ _QUERY_CUSTOMER_ALIASES = {
     "lexmark": "Lexmark",
     "topcon": "Topcon",
     "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jp morgan": "JPMC",
+    "jpmorgan": "JPMC",
+    "kone": "KONE",
 }
 
 
