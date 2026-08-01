@@ -34,9 +34,11 @@ Use this before calling a test plan review-ready.
 - Every relevant available user-cloned repo was inspected: Starling/backend, xmleditor, new editor, `guides-ui-tests`, and `dxml-it-tests`.
 - Pre-development `Code Touched` distinguishes current implementation implicated from changed code and cites exact product-clone/log/API/workflow evidence.
 - `guides-ui-tests` and `dxml-it-tests` were inspected for existing coverage, old failures, reusable scenarios, and automation coverage gaps when available.
+- Every discovered automation clone, including editor E2E and repository-specific suites, completed the guarded fetch/stash/fast-forward flow or has an explicit blocked-sync boundary and verified remote-ref fallback.
 - Known local clone paths and environment-provided repo paths were checked before declaring automation/product repos unavailable.
-- Local repo evidence states fetch/sync status and is not used as final proof when dirty, stale, diverged, or unsynced.
-- Every cited clone/file uses a complete absolute path plus branch, commit SHA, upstream/ahead/behind state, dirty/clean state, and fetch result; no path contains `...`.
+- Local repo evidence uses the guarded sync flow and states fetch/pull status; blocked, diverged, or unsynced worktree evidence is not used as final proof when a verified remote ref is unavailable.
+- Every cited clone/file uses a complete absolute path plus branch, pre/post sync SHA, inspected ref, upstream/ahead/behind state, pre/post dirty state, fetch/pull result, and retained stash OID/ref when developer work was preserved; no path contains `...`.
+- Dirty developer work was stashed only after safety checks, includes tracked and untracked files but not ignored files, remains recoverable with an exact restore command, and was never silently popped or dropped.
 - Open questions are specific to unresolved permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5 output, or on-premise upgrade-impact decisions.
 - Test data, setup preconditions, role/config/platform matrix, and API contract questions are either answered by evidence or captured under `Open Questions`.
 - Historical Jira entries include the narrow JQL/search intent, current status/resolution, affected/fix versions, RCA, linked test evidence, and scenario impact; unavailable fields are explicitly marked unavailable.
@@ -60,6 +62,7 @@ Use this before calling a test plan review-ready.
 - Figma design contradicts Jira, RAG, or PR implementation and the contradiction is unresolved.
 - Line counts or key hunks are unavailable in implementation-review or post-fix stages.
 - Repo evidence needed for a claim is dirty, stale, behind, diverged, or not fetched and no verified remote-ref evidence supports that claim.
+- A dirty evidence clone was pulled without a recorded safety stash, or a stash was created without reporting its exact OID/ref and restore command.
 - Relevant cloned repo paths are unavailable and code/automation impact is required.
 - Known local clone paths such as `C:\UI TEST\guides-ui-tests` or environment-provided repo paths were available but not checked.
 - Integration impact is missing, generic, or just repeats the direct feature area.

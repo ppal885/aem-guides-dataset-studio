@@ -98,8 +98,8 @@ Examples:
 **Scope From Git**
 - Lifecycle stage: `Pre-Development UAC`; development has not started.
 - Issue source: <Jira, Dynamics/support case, customer escalation, pasted logs, or investigation notes>.
-- Product clones: <Starling/backend, xmleditor, or new editor path and sync state>.
-- Automation clones: <guides-ui-tests/dxml-it-tests path and sync state>.
+- Product clones: <absolute Starling/backend, xmleditor, or new editor path; branch; pre/post SHA; upstream/ahead/behind; pre/post dirty state; fetch/pull result; inspected ref; retained stash and restore command when applicable>.
+- Automation clones: <absolute guides-ui-tests/dxml-it-tests path with the same guarded sync evidence>.
 - PR discovery: Not applicable — development has not started.
 - Figma/design evidence: <Figma MCP inspected link/frame, screenshot/design notes used, or not applicable>.
 
