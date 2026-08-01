@@ -20,6 +20,8 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
         [
             JiraEnrichedIssue(
                 jira_key="GUIDES-1",
+                issue_type="Bug",
+                summary="DITA map output preset fails for XML content",
                 customer_cohorts=["IBM"],
                 components=["Publishing", "Authoring"],
                 domain="publishing",
@@ -34,6 +36,8 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
             ),
             JiraEnrichedIssue(
                 jira_key="GUIDES-2",
+                issue_type="Customer Request",
+                summary="Review task for versioned DITA topic",
                 customer_cohorts=["IBM", "Swift"],
                 components=["Publishing"],
                 domain="publishing",
@@ -72,3 +76,6 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
     stored = Session().query(JiraCustomerProfile).filter_by(customer_key="ibm").one()
     assert stored.issue_count == 2
     assert stored.components[0]["name"] == "Publishing"
+    assert {item["name"] for item in stored.issue_types} == {"Bug", "Customer Request"}
+    assert {item["name"] for item in stored.content_data_signals} >= {"DITA maps", "DITA topics", "XML content", "Review tasks"}
+    assert any("Content and data patterns" in document for document in captured["documents"])

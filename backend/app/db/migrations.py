@@ -248,11 +248,13 @@ def run_migrations() -> None:
                             customer_key VARCHAR(120) PRIMARY KEY,
                             customer_name VARCHAR(200) NOT NULL,
                             issue_count INTEGER NOT NULL DEFAULT 0,
+                            issue_types JSON NOT NULL,
                             components JSON NOT NULL,
                             domains JSON NOT NULL,
                             workflows JSON NOT NULL,
                             affected_outputs JSON NOT NULL,
                             dita_entities JSON NOT NULL,
+                            content_data_signals JSON NOT NULL,
                             failure_areas JSON NOT NULL,
                             automation_signals JSON NOT NULL,
                             resolution_patterns JSON NOT NULL,
@@ -262,6 +264,10 @@ def run_migrations() -> None:
                             rebuilt_at DATETIME NOT NULL
                         )
                     """))
+                    profile_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(jira_customer_profiles)")).fetchall()]
+                    for col in ("issue_types", "content_data_signals"):
+                        if col not in profile_cols:
+                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} JSON NOT NULL DEFAULT '[]'"))
                     conn.commit()
                     logger.info("Migration: ensured Jira CSV import schema")
                 except Exception as e:
@@ -487,11 +493,13 @@ def run_migrations() -> None:
                             customer_key VARCHAR(120) PRIMARY KEY,
                             customer_name VARCHAR(200) NOT NULL,
                             issue_count INTEGER NOT NULL DEFAULT 0,
+                            issue_types JSON NOT NULL,
                             components JSON NOT NULL,
                             domains JSON NOT NULL,
                             workflows JSON NOT NULL,
                             affected_outputs JSON NOT NULL,
                             dita_entities JSON NOT NULL,
+                            content_data_signals JSON NOT NULL,
                             failure_areas JSON NOT NULL,
                             automation_signals JSON NOT NULL,
                             resolution_patterns JSON NOT NULL,
@@ -501,6 +509,9 @@ def run_migrations() -> None:
                             rebuilt_at TIMESTAMP NOT NULL
                         )
                     """))
+                    for col in ("issue_types", "content_data_signals"):
+                        if col_exists("jira_customer_profiles", col) is False:
+                            conn.execute(text(f"ALTER TABLE jira_customer_profiles ADD COLUMN {col} JSON NOT NULL DEFAULT '[]'::json"))
                     conn.commit()
                     logger.info("Migration: ensured Jira CSV import schema (PostgreSQL)")
                 except Exception as e:
