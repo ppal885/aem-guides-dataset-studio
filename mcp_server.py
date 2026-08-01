@@ -3318,6 +3318,44 @@ _DITA_QUESTION_STOPWORDS = {
     "behaviour",
 }
 
+_DITA_AMBIGUOUS_BARE_CONSTRUCTS = {
+    "steps",
+    "scope",
+    "search",
+    "title",
+    "type",
+    "format",
+    "platform",
+    "product",
+    "audience",
+}
+_DITA_PRODUCT_EVIDENCE_QUESTION = re.compile(
+    r"\b(aem|guides|sites|publishing|publish|output|html|jcr|component mapping|mapping scope|"
+    r"override|fallback|indexing|ranking|evidence|verified|negative cases?|test oracle|not yet verified)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_explicit_dita_construct_reference(question: str, construct: str) -> bool:
+    escaped = re.escape(construct)
+    return bool(
+        re.search(rf"<\s*{escaped}\b|@{escaped}\b", question or "", re.IGNORECASE)
+        or re.search(rf"\b{escaped}\s+(?:element|attribute)\b", question or "", re.IGNORECASE)
+        or re.search(
+            rf"\b(?:what\s+is|what\s+does|define|explain|how\s+does)\s+(?:the\s+)?`?@?{escaped}`?\b",
+            question or "",
+            re.IGNORECASE,
+        )
+    )
+
+
+def _should_use_dita_construct_fast_path(question: str, constructs: list[str]) -> bool:
+    if not constructs or len(constructs) > 3:
+        return False
+    if _DITA_PRODUCT_EVIDENCE_QUESTION.search(question or ""):
+        return False
+    return all(_is_explicit_dita_construct_reference(question, construct) for construct in constructs)
+
 
 def _recognized_dita_constructs_from_question(question: str, *, max_items: int = 4) -> list[str]:
     """Extract known DITA constructs from a natural-language question."""
@@ -3332,6 +3370,8 @@ def _recognized_dita_constructs_from_question(question: str, *, max_items: int =
     for candidate in raw_candidates:
         clean = candidate.strip().strip("`'\".,:;()[]{}").lstrip("@").lower()
         if not clean or clean in seen or clean in _DITA_QUESTION_STOPWORDS:
+            continue
+        if clean in _DITA_AMBIGUOUS_BARE_CONSTRUCTS and not _is_explicit_dita_construct_reference(text, clean):
             continue
         seen.add(clean)
         candidates.append(clean)
@@ -3375,7 +3415,7 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
         return "Provide a question to ask."
 
     constructs = _recognized_dita_constructs_from_question(question)
-    if constructs and len(constructs) <= 3:
+    if _should_use_dita_construct_fast_path(question, constructs):
         sections = [lookup_dita_construct(construct) for construct in constructs]
         sections.append(
             "## Grounding\n"
