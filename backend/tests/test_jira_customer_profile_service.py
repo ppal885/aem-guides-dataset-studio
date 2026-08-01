@@ -80,6 +80,7 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
     assert {item["name"] for item in stored.content_data_signals} >= {"DITA maps", "DITA topics", "XML content", "Review tasks"}
     assert any("Content and data patterns" in document for document in captured["documents"])
     assert stored.approval_status == "draft"
+    assert stored.classification_quality["product_area_coverage_percent"] == 100.0
 
     metadata_updates = {}
     monkeypatch.setattr(

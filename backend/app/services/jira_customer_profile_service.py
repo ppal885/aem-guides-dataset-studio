@@ -202,6 +202,7 @@ def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[st
         resolutions = _count_scalar(rows, "resolution")
     known_domains = sum(1 for row in rows if str(row.domain or "unknown").casefold() != "unknown")
     product_areas = _count_product_areas(rows)
+    product_area_covered_count = sum(1 for row in rows if _row_product_areas(row))
     return {
         "customer_name": customer_name,
         "customer_key": _slug(customer_name),
@@ -219,7 +220,11 @@ def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[st
             "domain_classified_count": known_domains,
             "domain_unknown_count": len(rows) - known_domains,
             "domain_coverage_percent": round((known_domains / max(len(rows), 1)) * 100, 1),
-            "product_area_covered_count": sum(1 for row in rows if _row_product_areas(row)),
+            "product_area_covered_count": product_area_covered_count,
+            "product_area_unclassified_count": len(rows) - product_area_covered_count,
+            "product_area_coverage_percent": round(
+                (product_area_covered_count / max(len(rows), 1)) * 100, 1
+            ),
         },
         "failure_areas": failures,
         "automation_signals": automation,
