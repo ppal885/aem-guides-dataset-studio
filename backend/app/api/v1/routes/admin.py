@@ -260,6 +260,25 @@ def trigger_deploy(user: UserIdentity = AdminUser):
         )
         results["git_pull"] = (pull.stdout.strip() or pull.stderr.strip())[-500:]
 
+        # Keep the host nginx proxy aligned with the API's 10 files x 25 MB validation.
+        try:
+            nginx_limit = "/etc/nginx/conf.d/aem-guides-upload-limit.conf"
+            with open(nginx_limit, "w", encoding="utf-8") as nginx_file:
+                nginx_file.write("client_max_body_size 260m;\n")
+            nginx_test = subprocess.run(
+                ["nginx", "-t"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_test.returncode != 0:
+                raise RuntimeError((nginx_test.stderr or nginx_test.stdout).strip())
+            nginx_reload = subprocess.run(
+                ["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_reload.returncode != 0:
+                raise RuntimeError((nginx_reload.stderr or nginx_reload.stdout).strip())
+            results["nginx_upload_limit"] = "260 MB configured and nginx reloaded"
+        except Exception as nginx_exc:
+            results["nginx_upload_limit_error"] = str(nginx_exc)
+
         # clear pyc cache so new code takes effect
         subprocess.run(
             ["bash", "-c", f"find {repo_dir}/backend/app -name '*.pyc' -delete"],
