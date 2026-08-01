@@ -87,6 +87,25 @@ def rebuild_jira_learning_chunks(
     return result
 
 
+@router.post("/jira-rag/reconcile")
+def reconcile_jira_rag(
+    dry_run: bool = True,
+    limit: int = 10_000,
+    user: UserIdentity = AdminUser,
+):
+    """Repair Jira keys present in SQL but absent from Chroma."""
+    del user
+    from app.services.jira_rag_reconciliation_service import reconcile_jira_sql_chroma
+
+    result = reconcile_jira_sql_chroma(
+        dry_run=dry_run,
+        limit=max(1, min(limit, 100_000)),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
+
+
 @router.post("/env-check")
 def check_env(user: UserIdentity = AdminUser):
     """Check which env vars are set (values redacted for secrets)."""
