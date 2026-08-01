@@ -3414,6 +3414,16 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
     if not (question or "").strip():
         return "Provide a question to ask."
 
+    try:
+        with _tool_stdout_guard():
+            from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
+
+        incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
+        if incident_answer:
+            return incident_answer
+    except Exception:
+        pass
+
     constructs = _recognized_dita_constructs_from_question(question)
     if _should_use_dita_construct_fast_path(question, constructs):
         sections = [lookup_dita_construct(construct) for construct in constructs]

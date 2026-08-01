@@ -733,7 +733,12 @@ def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
         "- Never use placeholder links like example.com.\n"
         "- If a generate_dita tool result exists, use only its returned download_url and prefer telling the user to use the in-app download action.\n"
         "- Do not claim a bundle was generated unless the tool result says it was.\n"
-        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
+        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers.\n"
+        "- Keep official documentation, indexed Jira incident evidence, runtime observation, and source-code observation explicitly separate.\n"
+        "- If documentation does not address a recovery mechanism, do not say the evidence recommends one. Label incident-derived sequential execution as temporary operational mitigation, not product behavior.\n"
+        "- Do not present full-map overwrite/orphan cleanup as recovery for Oak/JCR commit conflicts unless direct evidence explicitly establishes that relationship.\n"
+        "- Do not claim Support or Cloud Ops ownership, mandatory full republish, automatic retry, locking, or serialization without direct current evidence.\n"
+        "- Cite only sources that directly prove a retained claim; do not add unrelated source links or advertise unrelated tools at the end."
     )
     return prompt + safety_rules
 

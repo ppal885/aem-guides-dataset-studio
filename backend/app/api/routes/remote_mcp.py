@@ -188,6 +188,11 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
     if not question:
         return "Provide a question."
     tenant_id = str(arguments.get("tenant_id") or "kone")
+    from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
+
+    incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
+    if incident_answer:
+        return incident_answer
     from app.services import chat_service
 
     session_id = chat_service.create_session()
