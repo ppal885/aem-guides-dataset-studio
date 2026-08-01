@@ -93,6 +93,8 @@ _TEXT_TOKEN_STOPWORDS: frozenset[str] = frozenset(
 _CANONICAL_BRAND_MAP: dict[str, str] = {
     "pwc": "PwC",
     "ibm": "IBM",
+    "redhat": "Red Hat",
+    "swift": "Swift",
     "hp": "HP",
     "sap": "SAP",
     "aws": "AWS",

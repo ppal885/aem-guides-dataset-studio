@@ -10,6 +10,7 @@ import numpy as np
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
     parse_jira_csv_bytes,
+    merge_parsed_issues,
     preview_jira_csv_files,
     should_skip_existing,
 )
@@ -139,7 +140,7 @@ def test_high_signal_csv_chunks_are_generated():
     assert all(chunk["metadata"]["resolution"] == "Complete" for chunk in chunks)
 
 
-def test_variable_schema_and_cross_file_duplicate_detection(monkeypatch):
+def test_variable_schema_and_cross_file_duplicate_merge(monkeypatch):
     minimal = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
     wider = _csv_bytes(
         BASE_HEADERS + ["Labels", "Labels", "Comment"],
@@ -152,8 +153,43 @@ def test_variable_schema_and_cross_file_duplicate_detection(monkeypatch):
     assert [item["columns"] for item in preview["files"]] == [8, 11]
 
     duplicate = _csv_bytes(BASE_HEADERS, [["Again", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
-    with pytest.raises(ValueError, match="Duplicate Jira keys across uploaded files"):
-        preview_jira_csv_files([("minimal.csv", minimal), ("duplicate.csv", duplicate)])
+    duplicate_preview = preview_jira_csv_files([("minimal.csv", minimal), ("duplicate.csv", duplicate)])
+    assert duplicate_preview["total_rows"] == 2
+    assert duplicate_preview["unique_issue_keys"] == 1
+    assert duplicate_preview["overlap_count"] == 1
+    assert duplicate_preview["overlapping_issue_keys"] == ["GUIDES-1"]
+
+
+def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
+    headers = BASE_HEADERS + [
+        "Labels",
+        "Custom field (Customer Names)",
+        "Custom field (Company)",
+        "Component/s",
+    ]
+    red_hat = _csv_bytes(
+        headers,
+        [["Same", "GUIDES-21", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "Redhat", "Red Hat", "12345", "Schematron"]],
+    )
+    ibm = _csv_bytes(
+        headers,
+        [["Same", "GUIDES-21", "Customer Request", "Closed", "Done", "Major", "Body", "2026-08-01", "IBM", "6AAB041762B261FF0A495E40@AdobeOrg", "IBM", "Publishing"]],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    preview = preview_jira_csv_files([("redhat.csv", red_hat), ("ibm.csv", ibm)])
+    assert [(item["detected_customer"], item["customer_confidence"]) for item in preview["files"]] == [
+        ("Red Hat", "high"),
+        ("IBM", "high"),
+    ]
+    parsed = [parse_jira_csv_bytes(red_hat, "redhat.csv"), parse_jira_csv_bytes(ibm, "ibm.csv")]
+    assignments = {parsed[0].file_hash: "Red Hat", parsed[1].file_hash: "IBM"}
+    merged = merge_parsed_issues(parsed, assignments)
+    assert len(merged) == 1
+    assert merged[0].customer_cohorts == ["Red Hat", "IBM"]
+    assert merged[0].resolutions == ["Fixed", "Done"]
+    assert merged[0].company_names == ["IBM"]
+    assert "@AdobeOrg" not in " ".join(merged[0].customer_names)
+    assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
 
 
 def test_newest_updated_timestamp_wins():

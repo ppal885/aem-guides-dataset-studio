@@ -201,6 +201,11 @@ def run_migrations() -> None:
                         ("jira_updated_at", "DATETIME"),
                         ("source_type", "VARCHAR(80)"),
                         ("source_file_hash", "VARCHAR(64)"),
+                        ("source_file_hashes", "JSON"),
+                        ("import_provenance", "JSON"),
+                        ("company_names", "JSON"),
+                        ("customer_cohorts", "JSON"),
+                        ("resolutions", "JSON"),
                     ):
                         if jira_enriched_cols and col not in jira_enriched_cols:
                             conn.execute(text(f"ALTER TABLE jira_enriched_issues ADD COLUMN {col} {sql_type}"))
@@ -210,10 +215,14 @@ def run_migrations() -> None:
                             status VARCHAR(30) NOT NULL,
                             filenames JSON NOT NULL,
                             file_hashes JSON NOT NULL,
+                            importer_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            customer_assignments JSON NOT NULL DEFAULT '{}',
+                            profile_rebuild JSON NOT NULL DEFAULT '{}',
                             total_rows INTEGER NOT NULL DEFAULT 0,
                             processed_rows INTEGER NOT NULL DEFAULT 0,
                             indexed_issues INTEGER NOT NULL DEFAULT 0,
                             skipped_issues INTEGER NOT NULL DEFAULT 0,
+                            metadata_merged_issues INTEGER NOT NULL DEFAULT 0,
                             failed_issues INTEGER NOT NULL DEFAULT 0,
                             chunks_indexed INTEGER NOT NULL DEFAULT 0,
                             redacted_fields INTEGER NOT NULL DEFAULT 0,
@@ -222,6 +231,34 @@ def run_migrations() -> None:
                             created_at DATETIME NOT NULL,
                             started_at DATETIME,
                             completed_at DATETIME
+                        )
+                    """))
+                    run_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(jira_csv_import_runs)")).fetchall()]
+                    for col, sql_type in (
+                        ("importer_version", "VARCHAR(40) NOT NULL DEFAULT '1'"),
+                        ("customer_assignments", "JSON NOT NULL DEFAULT '{}'"),
+                        ("profile_rebuild", "JSON NOT NULL DEFAULT '{}'"),
+                        ("metadata_merged_issues", "INTEGER NOT NULL DEFAULT 0"),
+                    ):
+                        if col not in run_cols:
+                            conn.execute(text(f"ALTER TABLE jira_csv_import_runs ADD COLUMN {col} {sql_type}"))
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS jira_customer_profiles (
+                            customer_key VARCHAR(120) PRIMARY KEY,
+                            customer_name VARCHAR(200) NOT NULL,
+                            issue_count INTEGER NOT NULL DEFAULT 0,
+                            components JSON NOT NULL,
+                            domains JSON NOT NULL,
+                            workflows JSON NOT NULL,
+                            affected_outputs JSON NOT NULL,
+                            dita_entities JSON NOT NULL,
+                            failure_areas JSON NOT NULL,
+                            automation_signals JSON NOT NULL,
+                            resolution_patterns JSON NOT NULL,
+                            representative_keys JSON NOT NULL,
+                            source_file_hashes JSON NOT NULL,
+                            profile_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            rebuilt_at DATETIME NOT NULL
                         )
                     """))
                     conn.commit()
@@ -403,6 +440,11 @@ def run_migrations() -> None:
                         ("jira_updated_at", "TIMESTAMP"),
                         ("source_type", "VARCHAR(80)"),
                         ("source_file_hash", "VARCHAR(64)"),
+                        ("source_file_hashes", "JSON"),
+                        ("import_provenance", "JSON"),
+                        ("company_names", "JSON"),
+                        ("customer_cohorts", "JSON"),
+                        ("resolutions", "JSON"),
                     ):
                         if col_exists("jira_enriched_issues", col) is False:
                             conn.execute(text(f"ALTER TABLE jira_enriched_issues ADD COLUMN {col} {sql_type}"))
@@ -412,10 +454,14 @@ def run_migrations() -> None:
                             status VARCHAR(30) NOT NULL,
                             filenames JSON NOT NULL,
                             file_hashes JSON NOT NULL,
+                            importer_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            customer_assignments JSON NOT NULL DEFAULT '{}'::json,
+                            profile_rebuild JSON NOT NULL DEFAULT '{}'::json,
                             total_rows INTEGER NOT NULL DEFAULT 0,
                             processed_rows INTEGER NOT NULL DEFAULT 0,
                             indexed_issues INTEGER NOT NULL DEFAULT 0,
                             skipped_issues INTEGER NOT NULL DEFAULT 0,
+                            metadata_merged_issues INTEGER NOT NULL DEFAULT 0,
                             failed_issues INTEGER NOT NULL DEFAULT 0,
                             chunks_indexed INTEGER NOT NULL DEFAULT 0,
                             redacted_fields INTEGER NOT NULL DEFAULT 0,
@@ -424,6 +470,33 @@ def run_migrations() -> None:
                             created_at TIMESTAMP NOT NULL,
                             started_at TIMESTAMP,
                             completed_at TIMESTAMP
+                        )
+                    """))
+                    for col, sql_type in (
+                        ("importer_version", "VARCHAR(40) NOT NULL DEFAULT '1'"),
+                        ("customer_assignments", "JSON NOT NULL DEFAULT '{}'::json"),
+                        ("profile_rebuild", "JSON NOT NULL DEFAULT '{}'::json"),
+                        ("metadata_merged_issues", "INTEGER NOT NULL DEFAULT 0"),
+                    ):
+                        if col_exists("jira_csv_import_runs", col) is False:
+                            conn.execute(text(f"ALTER TABLE jira_csv_import_runs ADD COLUMN {col} {sql_type}"))
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS jira_customer_profiles (
+                            customer_key VARCHAR(120) PRIMARY KEY,
+                            customer_name VARCHAR(200) NOT NULL,
+                            issue_count INTEGER NOT NULL DEFAULT 0,
+                            components JSON NOT NULL,
+                            domains JSON NOT NULL,
+                            workflows JSON NOT NULL,
+                            affected_outputs JSON NOT NULL,
+                            dita_entities JSON NOT NULL,
+                            failure_areas JSON NOT NULL,
+                            automation_signals JSON NOT NULL,
+                            resolution_patterns JSON NOT NULL,
+                            representative_keys JSON NOT NULL,
+                            source_file_hashes JSON NOT NULL,
+                            profile_version VARCHAR(40) NOT NULL DEFAULT '1',
+                            rebuilt_at TIMESTAMP NOT NULL
                         )
                     """))
                     conn.commit()

@@ -45,6 +45,9 @@ def _load_label_alias_map() -> dict[str, str]:
             pass
     return {
         "swift": "Swift",
+        "redhat": "Red Hat",
+        "red_hat": "Red Hat",
+        "ibm": "IBM",
         "abs": "ABS",
         "topcon": "Topcon",
         "cisco": "Cisco",

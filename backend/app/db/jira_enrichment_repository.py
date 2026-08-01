@@ -142,9 +142,14 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     row.jira_updated_at = _parse_source_datetime(data.get("jira_updated_at"))
     row.source_type = (data.get("source_type") or "jira_api")[:80]
     row.source_file_hash = (data.get("source_file_hash") or "")[:64] or None
+    row.source_file_hashes = data.get("source_file_hashes") or []
+    row.import_provenance = data.get("import_provenance") or []
     row.labels = data.get("labels") or []
     row.components = data.get("components") or []
+    row.company_names = data.get("company_names") or []
     row.customer_names = data.get("customer_names") or []
+    row.customer_cohorts = data.get("customer_cohorts") or []
+    row.resolutions = data.get("resolutions") or []
     row.domain = (data.get("domain") or "unknown")[:80]
     row.sub_domain = (data.get("sub_domain") or "")[:120] or None
     row.affected_outputs = data.get("affected_outputs") or []
@@ -250,9 +255,14 @@ def get_jira_by_key(session: Session, jira_key: str) -> dict[str, Any] | None:
         "jira_updated_at": _iso(row.jira_updated_at),
         "source_type": row.source_type,
         "source_file_hash": row.source_file_hash,
+        "source_file_hashes": row.source_file_hashes,
+        "import_provenance": row.import_provenance,
         "labels": row.labels,
         "components": row.components,
+        "company_names": row.company_names,
         "customer_names": row.customer_names,
+        "customer_cohorts": row.customer_cohorts,
+        "resolutions": row.resolutions,
         "domain": row.domain,
         "sub_domain": row.sub_domain,
         "affected_outputs": row.affected_outputs,
