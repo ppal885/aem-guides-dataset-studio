@@ -31,6 +31,7 @@ BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_behavior_chunks.json"
 ENRICHED_BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_enriched_behavior_chunks.json"
 DITA_OT_ISSUE_DOC_CHUNKS_FILENAME = "dita_ot_issue_behavior_chunks.json"
 MANUAL_DOC_CHUNKS_FILENAME = "manual_aem_guides_doc_chunks.json"
+SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME = "manual_searchtitle_behavior_chunks.json"
 MAX_SNIPPET_CHARS = 1500
 
 
@@ -42,6 +43,11 @@ def _get_doc_chunks_path() -> Path:
 def _get_manual_doc_chunks_path() -> Path:
     storage = get_storage()
     return storage.base_path / MANUAL_DOC_CHUNKS_FILENAME
+
+
+def _get_searchtitle_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME
 
 
 def _get_behavior_doc_chunks_path() -> Path:
@@ -73,11 +79,12 @@ def _load_chunk_file(path: Path) -> list[dict]:
 def _load_chunks() -> list[dict]:
     """Load doc chunks from JSON, including manual fallback chunks."""
     primary = _load_chunk_file(_get_doc_chunks_path())
+    searchtitle_behavior = _load_chunk_file(_get_searchtitle_behavior_doc_chunks_path())
     enriched_behavior = _load_chunk_file(_get_enriched_behavior_doc_chunks_path())
     behavior = _load_chunk_file(_get_behavior_doc_chunks_path())
     dita_ot_issues = _load_chunk_file(_get_dita_ot_issue_doc_chunks_path())
     manual = _load_chunk_file(_get_manual_doc_chunks_path())
-    return [*manual, *dita_ot_issues, *enriched_behavior, *behavior, *primary]
+    return [*searchtitle_behavior, *manual, *dita_ot_issues, *enriched_behavior, *behavior, *primary]
 
 
 def check_rag_readiness() -> dict:
@@ -650,6 +657,13 @@ def _document_relevance_score(
         r"\bupgrade instructions?\b", searchable
     ):
         exact_match_bonus += 0.35
+    if re.search(r"\bsearchtitle\b", str(query or "").lower()):
+        if "searchtitle" in lowered_title:
+            exact_match_bonus += 1.4
+        elif "searchtitle" in lowered_url:
+            exact_match_bonus += 1.0
+        elif "searchtitle" in lowered_content:
+            exact_match_bonus += 0.8
     return (
         (content_score * 0.45)
         + (title_score * 0.35)
@@ -670,9 +684,20 @@ def _filter_and_rank_docs(
     k: int,
     allowed_host_suffixes: tuple[str, ...] | None,
 ) -> list[dict]:
+    searchtitle_evidence_ids = {
+        "aem-guides-searchtitle-dita-contract-v1",
+        "aem-guides-searchtitle-legacy-sites-mapping-v1",
+        "aem-guides-searchtitle-legacy-sites-qa-v1",
+        "aem-guides-searchtitle-evidence-boundary-v1",
+    }
+    allow_bounded_searchtitle_evidence = bool(re.search(r"\bsearchtitle\b", str(query or ""), re.IGNORECASE))
     filtered = [
         doc for doc in (docs or [])
         if _matches_allowed_hosts(str(doc.get("url") or ""), allowed_host_suffixes)
+        or (
+            allow_bounded_searchtitle_evidence
+            and str(doc.get("chunk_id") or "") in searchtitle_evidence_ids
+        )
     ]
     intent = _classify_aem_query_intent(query)
     limit_per_doc = 2 if intent in {"authoring_create", "baseline"} else (1 if intent in {"configuration", "publishing", "workflow"} else 2)
@@ -717,11 +742,14 @@ def _query_needs_exact_match_supplement(query: str) -> bool:
     return bool(
         re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))
         or re.search(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", lowered_query)
+        or re.search(r"\bsearchtitle\b", lowered_query)
     )
 
 
 def _exact_match_fragments(query: str) -> set[str]:
     fragments = {term.lower() for term in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))}
+    if re.search(r"\bsearchtitle\b", str(query or "").lower()):
+        fragments.add("searchtitle")
     for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
         normalized_version = version.replace("-", ".")
         fragments.add(version)

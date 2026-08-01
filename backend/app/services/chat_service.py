@@ -3562,6 +3562,60 @@ def _normalize_grounded_tool_facts(
             tenant_points = _tenant_output_guidance_points(tenant)
             native_pdf_summary = str(native_pdf.get("short_answer") or native_pdf.get("summary") or "").strip()
 
+            aem_result_ids = {
+                str(item.get("chunk_id") or "").strip()
+                for item in (aem.get("results") or [])
+                if isinstance(item, dict)
+            }
+            has_searchtitle_mapping = "aem-guides-searchtitle-legacy-sites-mapping-v1" in aem_result_ids
+            has_searchtitle_boundary = "aem-guides-searchtitle-evidence-boundary-v1" in aem_result_ids
+            if element_name_lower == "searchtitle" and has_searchtitle_mapping and has_searchtitle_boundary:
+                return NormalizedGroundedFactSet(
+                    answer_kind="dita_output_behavior",
+                    source_policy=source_policy,
+                    canonical_definition=(
+                        "For the verified legacy AEM Sites component mapping, publish a topic with a distinct "
+                        "`<searchtitle>` value and inspect the rendered page head for "
+                        "`<meta name=\"searchtitle\" content=\"...\">`."
+                    ),
+                    default_behavior=[
+                        "DITA defines `<searchtitle>` as alternate search-oriented title metadata; it does not define an AEM Sites implementation.",
+                        "The verified legacy mapping targets the component to the HTML head and preserves the source value in `meta[name=\"searchtitle\"]`.",
+                    ],
+                    placement_notes=[
+                        "DITA 1.3 source: place `<searchtitle>` inside `<titlealts>` after the primary `<title>`.",
+                        "Verified output scope: legacy AEM Sites component mapping only; composite or newer mappings need separate evidence.",
+                    ],
+                    usage_patterns=[
+                        "Use different primary-title and searchtitle values plus a unique marker, publish with the applicable AEM Sites preset, and inspect the generated page source or DOM head.",
+                        "Pass when exactly one `meta[name=\"searchtitle\"]` has `content` equal to the authored searchtitle marker.",
+                        "Record the preset and component-mapping type with the result so the legacy oracle is not applied to another pipeline.",
+                    ],
+                    common_mistakes=[
+                        "Do not treat the verified meta tag as proof that `<searchtitle>` replaces the HTML `<title>`, visible heading, or a JCR title property.",
+                        "Fallback precedence and AEM search indexing or ranking remain unverified until product code, official documentation, or a runtime observation proves them.",
+                        "Do not apply this expected result to composite or newer component mapping without separate evidence.",
+                    ],
+                    verified_examples=[
+                        VerifiedExampleSnippet(
+                            label="Verified legacy mapping oracle",
+                            snippet=(
+                                "<titlealts><searchtitle>qa-searchtitle-marker</searchtitle></titlealts>\n"
+                                "<!-- rendered page head -->\n"
+                                "<meta name=\"searchtitle\" content=\"qa-searchtitle-marker\">"
+                            ),
+                            source="verified_product_code",
+                            deterministic=True,
+                        )
+                    ],
+                    example_verified=True,
+                    semantic_warnings=[
+                        "No indexed evidence currently verifies fallback precedence or AEM search indexing/ranking for this value."
+                    ],
+                    thin_evidence=False,
+                    cross_source_mixed=False,
+                )
+
             if attr_name or element_name or native_pdf_has_doc_evidence or aem_summary or tenant_points:
                 if element_name_lower == "glossentry" and _NATIVE_PDF_QUERY_PATTERN.search(question or ""):
                     short_answer = (
@@ -6047,6 +6101,11 @@ def _build_compact_chat_system_prompt(
         "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
         "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
         "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
+        "10. **DITA-to-product mappings**: Never infer concrete HTML tags, JCR properties, title fallback or "
+        "override precedence, search indexing, search-result behavior, or UI behavior from the DITA specification "
+        "alone. Require explicit AEM Guides product documentation or verified implementation evidence. Preserve "
+        "the documented implementation boundary, such as legacy versus composite component mapping, and label "
+        "every unsupported mapping claim as unverified.\n\n"
         "# EXPERT DEPTH & SOURCE FUSION\n"
         "- Answer as a senior DITA / AEM Guides consultant. Lead with a direct answer to exactly what was asked "
         "(the how / where / why / which), then explain the underlying behavior, give a concrete spec-aligned XML "
