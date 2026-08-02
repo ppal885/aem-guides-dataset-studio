@@ -19,7 +19,7 @@ from app.services.vector_store_service import (
     update_documents_metadata,
 )
 
-PROFILE_VERSION = "customer-profile-v5"
+PROFILE_VERSION = "customer-profile-v6"
 PROFILE_CHUNK_TYPES = (
     "customer_profile_overview",
     "customer_profile_components_domains",
@@ -27,6 +27,10 @@ PROFILE_CHUNK_TYPES = (
     "customer_profile_dita_entities",
     "customer_profile_issue_types_content_data",
     "customer_profile_failures_automation_resolutions",
+    "customer_profile_bug_taxonomy",
+    "customer_profile_bug_concentrations",
+    "customer_profile_regression_recommendations",
+    "customer_profile_test_data_exploration",
 )
 
 _CONTENT_DATA_PATTERNS = {
@@ -56,6 +60,53 @@ _PROBLEM_TYPE_PATTERNS = {
     "Migration/upgrade": re.compile(r"migration|upgrade|after update|regression", re.I),
     "Configuration/permissions": re.compile(r"configuration|permission|access control|acl|setting", re.I),
     "Search/indexing": re.compile(r"search|indexing|index", re.I),
+}
+_BUG_TYPE_PATTERNS = {
+    "Create/edit/save failure": re.compile(r"\bcreate|edit|save|check[ -]?in|check[ -]?out|lock|unlock\b", re.I),
+    "UI rendering or interaction": re.compile(r"\bui\b|render|display|dialog|panel|button|cursor|selection|drag|drop", re.I),
+    "Publishing or output generation": re.compile(r"publish|output|preset|pdf|aem sites|html5|dita-ot", re.I),
+    "Workflow or job-state failure": re.compile(r"workflow|job|stuck|queue|waiting|post[ -]?publish|cancel", re.I),
+    "Reference resolution or integrity": re.compile(r"keyref|conref|xref|reference|uuid|broken link|missing copy", re.I),
+    "Search or indexing": re.compile(r"search|indexing|index", re.I),
+    "Permissions or authentication": re.compile(r"permission|access control|acl|auth|oauth|token|credential", re.I),
+    "Performance or scalability": re.compile(r"performance|slow|latency|timeout|hours?|memory|heap|large map", re.I),
+    "Upgrade or backward compatibility": re.compile(r"upgrade|migration|after update|backward compat|regression", re.I),
+    "Import/export or integration": re.compile(r"import|export|api|integration|github|gitlab|salesforce|oxygen", re.I),
+    "Localization or translation": re.compile(r"translation|multilingual|language|locale|xliff", re.I),
+    "Data loss, duplication, or corruption": re.compile(r"data loss|missing|duplicate|corrupt|overwrite|orphan", re.I),
+}
+_PROBLEM_REPORT_PATTERN = re.compile(
+    r"\bfail(?:s|ed|ure)?\b|not work(?:ing)?|unable to|cannot|doesn.t|broken|error|exception|"
+    r"stuck|blocked|timeout|slow|missing|duplicate|corrupt|incorrect|wrong|regression|data loss|crash",
+    re.I,
+)
+_TEST_DATA_RECIPES = {
+    "DITA topics": "Create valid, minimal, long, specialized, and invalid DITA topics with stable expected snapshots.",
+    "DITA maps": "Create small, nested, reused-topic, deeply referenced, and large DITA maps with deterministic link graphs.",
+    "Bookmaps": "Create a bookmap with front matter, chapters, appendices, and mixed topic types.",
+    "XML content": "Include namespace, special-character, large-text, malformed, and profile-specific XML samples.",
+    "Key references": "Include valid, scoped, duplicate, missing, circular, and overridden key definitions and keyrefs.",
+    "Content references": "Include valid, ranged, nested, missing-target, circular, and cross-folder conrefs.",
+    "Cross-references": "Include internal, external, cross-map, missing-target, renamed-target, and fragment xrefs.",
+    "Images/media": "Include supported images and multimedia plus missing, renamed, large, unsupported, and reused assets.",
+    "AEM Assets/repository": "Create deep folders, reused assets, versioned assets, permission variants, and move/rename fixtures.",
+    "Tables": "Include simple, wide, nested, merged-cell, accessibility, and boundary-size tables.",
+    "Baselines/versions": "Create working-copy, latest-version, named-baseline, and as-of-date snapshots with changed references.",
+    "UUID-based content": "Include copied, moved, renamed, deleted, duplicated, and restored UUID-based resources.",
+    "Review tasks": "Create active, closed, reassigned, multi-reviewer, commented, and version-diverged review tasks.",
+    "Output presets": "Create valid, cloned, edited, missing-config, permission-restricted, and multi-output presets.",
+}
+_EXPLORATORY_RECIPES = {
+    "Functional failure": "Repeat the primary flow after refresh, relogin, retry, and reopen; confirm persisted state and no partial artifacts.",
+    "Workflow blockage": "Exercise concurrent submission, cancellation, retry, restart recovery, queue ordering, and terminal-state cleanup.",
+    "Performance/scalability": "Run controlled small/medium/large fixtures, record baselines, and inspect growth without inventing an SLA.",
+    "Data integrity/references": "Vary missing, duplicate, moved, renamed, reused, circular, and cross-folder references; assert no silent loss.",
+    "Usability/editor behavior": "Cover keyboard, mouse, focus, refresh, browser, viewport, long labels, empty states, and unsaved changes.",
+    "Publishing/output": "Compare full and incremental publish, preset variants, output integrity, stale/orphan cleanup, and republish behavior.",
+    "Review/collaboration": "Cover concurrent reviewers, replies, reassignment, closed tasks, stale versions, permissions, and notifications.",
+    "Migration/upgrade": "Compare upgraded and fresh instances, retained configuration, old content, defaults, and rollback compatibility.",
+    "Configuration/permissions": "Cross product roles with inherited/explicit permissions, missing configuration, invalid values, and least privilege.",
+    "Search/indexing": "Cover new, updated, moved, deleted, permission-filtered, multilingual, and reindexed content with eventual consistency.",
 }
 _PRODUCT_AREA_ALIASES = {
     "authoring": "Web Editor & Authoring",
@@ -166,6 +217,102 @@ def _count_pattern_signals(
     ]
 
 
+def _is_bug_row(row: JiraEnrichedIssue) -> bool:
+    issue_type = str(row.issue_type or "").strip().casefold()
+    return issue_type in {"bug", "defect"} or "bug" in issue_type or "defect" in issue_type
+
+
+def _is_problem_report_row(row: JiraEnrichedIssue) -> bool:
+    return _is_bug_row(row) or bool(_PROBLEM_REPORT_PATTERN.search(_row_text(row)))
+
+
+def _add_share(items: list[dict[str, Any]], denominator: int) -> list[dict[str, Any]]:
+    return [
+        {
+            **item,
+            "problem_report_share_percent": round(
+                (int(item["issue_count"]) / max(denominator, 1)) * 100, 1
+            ),
+        }
+        for item in items
+    ]
+
+
+def _bug_concentrations(problem_rows: list[JiraEnrichedIssue]) -> dict[str, list[dict[str, Any]]]:
+    count = len(problem_rows)
+    return {
+        "by_component": _add_share(_count_issue_values(problem_rows, "components"), count),
+        "by_product_area": _add_share(_count_product_areas(problem_rows), count),
+        "by_workflow": _add_share(_count_issue_values(problem_rows, "affected_features"), count),
+        "by_output": _add_share(_count_issue_values(problem_rows, "affected_outputs"), count),
+        "by_bug_type": _add_share(_count_pattern_signals(problem_rows, _BUG_TYPE_PATTERNS), count),
+    }
+
+
+def _build_regression_recommendations(
+    bug_count: int,
+    bug_types: list[dict[str, Any]],
+    product_areas: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    recommendations: list[dict[str, Any]] = []
+    for item in bug_types[:8]:
+        name = item["name"]
+        exploratory = _EXPLORATORY_RECIPES.get(name) or (
+            f"Retest the current Jira flow plus positive, negative, recovery, persistence, and adjacent {name.lower()} paths."
+        )
+        recommendations.append(
+            {
+                "area": name,
+                "priority": "P0" if item["issue_count"] >= max(3, round(bug_count * 0.2)) else "P1",
+                "recommendation": exploratory,
+                "issue_count": item["issue_count"],
+                "problem_report_share_percent": item.get("problem_report_share_percent", 0.0),
+                "representative_keys": item["representative_keys"],
+            }
+        )
+    for item in product_areas[:5]:
+        recommendations.append(
+            {
+                "area": item["name"],
+                "priority": "P1",
+                "recommendation": (
+                    f"Run the current change against shared {item['name']} entry points, configurations, roles, "
+                    "persisted state, and backward-compatible workflows represented by the cited Jira keys."
+                ),
+                "issue_count": item["issue_count"],
+                "problem_report_share_percent": item.get("problem_report_share_percent", 0.0),
+                "representative_keys": item["representative_keys"],
+            }
+        )
+    return recommendations[:12]
+
+
+def _build_test_data_recommendations(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "data_pattern": item["name"],
+            "recommendation": _TEST_DATA_RECIPES[item["name"]],
+            "issue_count": item["issue_count"],
+            "representative_keys": item["representative_keys"],
+        }
+        for item in signals
+        if item["name"] in _TEST_DATA_RECIPES
+    ][:12]
+
+
+def _build_exploratory_recommendations(problem_types: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "risk_pattern": item["name"],
+            "recommendation": _EXPLORATORY_RECIPES[item["name"]],
+            "issue_count": item["issue_count"],
+            "representative_keys": item["representative_keys"],
+        }
+        for item in problem_types
+        if item["name"] in _EXPLORATORY_RECIPES
+    ][:10]
+
+
 def _row_product_areas(row: JiraEnrichedIssue) -> set[str]:
     areas: set[str] = set()
     for component in _list(row.components):
@@ -202,20 +349,32 @@ def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[st
         resolutions = _count_scalar(rows, "resolution")
     known_domains = sum(1 for row in rows if str(row.domain or "unknown").casefold() != "unknown")
     product_areas = _count_product_areas(rows)
+    problem_types = _count_pattern_signals(rows, _PROBLEM_TYPE_PATTERNS)
+    content_data_signals = _count_content_data_signals(rows)
+    bug_rows = [row for row in rows if _is_bug_row(row)]
+    problem_rows = [row for row in rows if _is_problem_report_row(row)]
+    bug_concentrations = _bug_concentrations(problem_rows)
+    bug_taxonomy = bug_concentrations["by_bug_type"]
     product_area_covered_count = sum(1 for row in rows if _row_product_areas(row))
     return {
         "customer_name": customer_name,
         "customer_key": _slug(customer_name),
         "issue_count": len(rows),
+        "bug_issue_count": len(bug_rows),
+        "bug_issue_percent": round((len(bug_rows) / max(len(rows), 1)) * 100, 1),
+        "problem_report_count": len(problem_rows),
+        "problem_report_percent": round((len(problem_rows) / max(len(rows), 1)) * 100, 1),
         "issue_types": _count_scalar(rows, "issue_type"),
-        "problem_types": _count_pattern_signals(rows, _PROBLEM_TYPE_PATTERNS),
+        "problem_types": problem_types,
+        "bug_taxonomy": bug_taxonomy,
+        "bug_concentrations": bug_concentrations,
         "components": _count_issue_values(rows, "components"),
         "product_areas": product_areas,
         "domains": _count_scalar(rows, "domain"),
         "workflows": _count_issue_values(rows, "affected_features"),
         "affected_outputs": _count_issue_values(rows, "affected_outputs"),
         "dita_entities": _count_issue_values(rows, "dita_entities"),
-        "content_data_signals": _count_content_data_signals(rows),
+        "content_data_signals": content_data_signals,
         "classification_quality": {
             "domain_classified_count": known_domains,
             "domain_unknown_count": len(rows) - known_domains,
@@ -229,6 +388,11 @@ def _build_profile(customer_name: str, rows: list[JiraEnrichedIssue]) -> dict[st
         "failure_areas": failures,
         "automation_signals": automation,
         "resolution_patterns": resolutions,
+        "regression_recommendations": _build_regression_recommendations(
+            len(problem_rows), bug_taxonomy, bug_concentrations["by_product_area"]
+        ),
+        "test_data_recommendations": _build_test_data_recommendations(content_data_signals),
+        "exploratory_recommendations": _build_exploratory_recommendations(problem_types),
         "representative_keys": [row.jira_key for row in ordered[:25]],
         "source_file_hashes": source_hashes,
     }
@@ -276,6 +440,34 @@ def _profile_documents(profile: dict[str, Any]) -> list[tuple[str, str]]:
             f"Automation signals: {_render_frequency(profile['automation_signals'])}\n"
             f"Resolution patterns: {_render_frequency(profile['resolution_patterns'])}\n{boundary}",
         ),
+        (
+            "customer_profile_bug_taxonomy",
+            f"{customer} reported-problem taxonomy from {profile['problem_report_count']} failure-like Jira keys "
+            f"({profile['problem_report_percent']}% of this customer corpus), including "
+            f"{profile['bug_issue_count']} native Bug/Defect keys: {_render_frequency(profile['bug_taxonomy'])}\n"
+            f"Counts describe the Jira corpus, not feature usage. {boundary}",
+        ),
+        (
+            "customer_profile_bug_concentrations",
+            f"{customer} bug concentration by product area: "
+            f"{_render_frequency(profile['bug_concentrations']['by_product_area'])}\n"
+            f"By component: {_render_frequency(profile['bug_concentrations']['by_component'])}\n"
+            f"By workflow: {_render_frequency(profile['bug_concentrations']['by_workflow'])}\n"
+            f"By output: {_render_frequency(profile['bug_concentrations']['by_output'])}\n{boundary}",
+        ),
+        (
+            "customer_profile_regression_recommendations",
+            f"{customer} Jira-derived regression recommendations: "
+            f"{json.dumps(profile['regression_recommendations'], ensure_ascii=False)}\n"
+            f"Recommendations are risk-guided exploration, not acceptance criteria. {boundary}",
+        ),
+        (
+            "customer_profile_test_data_exploration",
+            f"{customer} Jira-derived test-data recommendations: "
+            f"{json.dumps(profile['test_data_recommendations'], ensure_ascii=False)}\n"
+            f"Additional exploratory coverage: {json.dumps(profile['exploratory_recommendations'], ensure_ascii=False)}\n"
+            f"Use only recommendations relevant to the current Jira. {boundary}",
+        ),
     ]
 
 
@@ -298,12 +490,18 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
         for customer in cohorts:
             rows = [row for row in all_rows if customer.casefold() in {value.casefold() for value in _list(row.customer_cohorts)}]
             profile = _build_profile(customer, rows)
+            slug = profile["customer_key"]
+            profile_hash = hashlib.sha256(
+                json.dumps(profile, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
+            row = db.query(JiraCustomerProfile).filter(JiraCustomerProfile.customer_key == slug).first()
+            changed = row is None or row.profile_hash != profile_hash
+            approval_status = "draft" if changed or row is None else row.approval_status
             documents = _profile_documents(profile)
             embeddings = embed_texts_batched([text for _, text in documents], batch_size=16)
             if embeddings is None:
                 results[customer] = {"status": "failed", "error": "embedding batch failed"}
                 continue
-            slug = profile["customer_key"]
             ids = [f"customer-profile::{slug}::{chunk_type}" for chunk_type, _ in documents]
             delete_documents(CHROMA_COLLECTION_JIRA_QA, ids)
             metadata = [
@@ -316,6 +514,9 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
                     "customer_cohorts": json.dumps([customer], ensure_ascii=False),
                     "components": json.dumps([item["name"] for item in profile["components"][:20]], ensure_ascii=False),
                     "issue_types": json.dumps([item["name"] for item in profile["issue_types"][:20]], ensure_ascii=False),
+                    "bug_taxonomy": json.dumps([item["name"] for item in profile["bug_taxonomy"][:20]], ensure_ascii=False),
+                    "bug_issue_count": profile["bug_issue_count"],
+                    "problem_report_count": profile["problem_report_count"],
                     "enrich_entities": json.dumps([item["name"] for item in profile["dita_entities"][:20]], ensure_ascii=False),
                     "content_data_signals": json.dumps(
                         [item["name"] for item in profile["content_data_signals"][:20]], ensure_ascii=False
@@ -323,8 +524,8 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
                     "enrich_outputs": json.dumps([item["name"] for item in profile["affected_outputs"][:20]], ensure_ascii=False),
                     "aggregate_context": True,
                     "direct_assertion_allowed": False,
-                    "approval_status": "draft",
-                    "reviewed_customer_profile": False,
+                    "approval_status": approval_status,
+                    "reviewed_customer_profile": approval_status == "approved",
                     "evidence_class": "customer_jira_profile",
                     "profile_issue_count": profile["issue_count"],
                     "profile_version": PROFILE_VERSION,
@@ -341,14 +542,9 @@ def rebuild_customer_profiles(customer_names: list[str] | None = None) -> dict[s
             if not ok:
                 results[customer] = {"status": "failed", "error": "Chroma upsert failed"}
                 continue
-            row = db.query(JiraCustomerProfile).filter(JiraCustomerProfile.customer_key == slug).first()
             if row is None:
                 row = JiraCustomerProfile(customer_key=slug)
                 db.add(row)
-            profile_hash = hashlib.sha256(
-                json.dumps(profile, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-            ).hexdigest()
-            changed = row.profile_hash != profile_hash
             for key, value in profile.items():
                 if key != "customer_key":
                     setattr(row, key, value)
@@ -381,8 +577,14 @@ def get_customer_profile(customer: str) -> dict[str, Any] | None:
             "customer_name": row.customer_name,
             "customer_key": row.customer_key,
             "issue_count": row.issue_count,
+            "bug_issue_count": row.bug_issue_count,
+            "bug_issue_percent": row.bug_issue_percent,
+            "problem_report_count": row.problem_report_count,
+            "problem_report_percent": row.problem_report_percent,
             "issue_types": row.issue_types or [],
             "problem_types": row.problem_types or [],
+            "bug_taxonomy": row.bug_taxonomy or [],
+            "bug_concentrations": row.bug_concentrations or {},
             "components": row.components or [],
             "product_areas": row.product_areas or [],
             "domains": row.domains or [],
@@ -394,6 +596,9 @@ def get_customer_profile(customer: str) -> dict[str, Any] | None:
             "failure_areas": row.failure_areas or [],
             "automation_signals": row.automation_signals or [],
             "resolution_patterns": row.resolution_patterns or [],
+            "regression_recommendations": row.regression_recommendations or [],
+            "test_data_recommendations": row.test_data_recommendations or [],
+            "exploratory_recommendations": row.exploratory_recommendations or [],
             "representative_keys": row.representative_keys or [],
             "profile_version": row.profile_version,
             "profile_hash": row.profile_hash,

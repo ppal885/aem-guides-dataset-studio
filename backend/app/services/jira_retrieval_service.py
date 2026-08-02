@@ -36,6 +36,10 @@ _CHUNK_TYPE_WEIGHT: dict[str, float] = {
     "customer_profile_workflows_outputs": 0.025,
     "customer_profile_dita_entities": 0.02,
     "customer_profile_failures_automation_resolutions": 0.025,
+    "customer_profile_bug_taxonomy": 0.035,
+    "customer_profile_bug_concentrations": 0.035,
+    "customer_profile_regression_recommendations": 0.04,
+    "customer_profile_test_data_exploration": 0.04,
 }
 
 # Enterprise hybrid fusion weights.  Keep these aligned with the documented

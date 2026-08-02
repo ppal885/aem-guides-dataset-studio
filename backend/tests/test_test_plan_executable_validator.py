@@ -22,7 +22,7 @@ SPEC.loader.exec_module(VALIDATOR)
 def _valid_plan() -> str:
     return """**Understanding From Jira**
 - Issue understood: Concurrent publishing can leave an output job non-terminal.
-- Why it matters: A blocked publishing queue prevents documentation delivery.
+- Why it matters: Customer context resolved from Jira: JPMC from labels; a blocked publishing queue prevents documentation delivery.
 - Requested outcome: Every accepted publish reaches a defined outcome without corrupting output.
 - Lifecycle understood as: Pre-Development UAC because implementation has not started.
 - Evidence boundary: Supplied Jira evidence supports the problem; implementation and retry policy remain unverified.
@@ -45,7 +45,8 @@ def _valid_plan() -> str:
 - Not applicable - development has not started.
 
 **Test Scenarios**
-- P0 [AC-01]: Run two overlapping publishes -> both finish and output integrity is preserved.
+- Test data to prepare: Two valid maps, one shared AEM Sites target, a successful output snapshot, and cleanup access.
+- P0 [AC-01]: Action: Run two overlapping publishes. Expected: Both finish and output integrity is preserved.
 - Incident recovery validation: Use an approved production-equivalent recovery checklist and preserve audit evidence.
 
 **Known Jira Bugs / Past Similar Tickets**
@@ -74,7 +75,7 @@ def test_validator_rejects_response_quality_failures():
     )
     bad = "Jira requires authorization. Live Jira fetched successfully.\n" + bad
     bad = bad.replace(
-        "- P0 [AC-01]: Run two overlapping publishes -> both finish and output integrity is preserved.",
+        "- P0 [AC-01]: Action: Run two overlapping publishes. Expected: Both finish and output integrity is preserved.",
         "- P0: Run two overlapping publishes.",
     )
     bad = bad.replace(
@@ -123,3 +124,36 @@ def test_validator_rejects_missing_jira_understanding_confidence_bullet():
 
     assert any("exactly five confidence-check bullets" in error for error in errors)
     assert any("Evidence boundary" in error for error in errors)
+
+
+def test_validator_requires_customer_context_resolution_in_jira_understanding():
+    plan = _valid_plan().replace(
+        "- Why it matters: Customer context resolved from Jira: JPMC from labels; a blocked publishing queue prevents documentation delivery.",
+        "- Why it matters: A blocked publishing queue prevents documentation delivery.",
+    )
+
+    assert any("Customer context resolved from Jira" in error for error in VALIDATOR.validate(plan))
+
+
+def test_validator_requires_named_and_sourced_customer_profile():
+    plan = _valid_plan().replace(
+        "**Known Jira Bugs / Past Similar Tickets**\n",
+        "**Known Jira Bugs / Past Similar Tickets**\n"
+        "- Observed Customer Jira Profile: JPMC - resolved from Jira label; profile customer-profile-v6; approval draft; 84 Jira keys including 50 Bug/Defect keys and 70 problem-report keys; test-data recommendations available; representative keys GUIDES-1; Aggregate context only.\n",
+    )
+    assert VALIDATOR.validate(plan) == []
+
+    invalid = plan.replace(
+        "- Observed Customer Jira Profile: JPMC - resolved from Jira label; profile customer-profile-v6; approval draft; 84 Jira keys including 50 Bug/Defect keys and 70 problem-report keys; test-data recommendations available; representative keys GUIDES-1; Aggregate context only.",
+        "- Observed Customer Jira Profile: customer signals found.",
+    )
+    assert any("must name the resolved customer" in error for error in VALIDATOR.validate(invalid))
+
+
+def test_validator_accepts_backticked_absolute_windows_path_with_spaces():
+    plan = _valid_plan().replace(
+        "`C:\\api-tests\\PublishIT.java`",
+        "`C:\\UI TEST\\guides-ui-tests\\PublishIT.java`",
+    )
+
+    assert VALIDATOR.validate(plan) == []
