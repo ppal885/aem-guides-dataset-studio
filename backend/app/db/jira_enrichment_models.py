@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import JSON
 
 from app.db.base import Base
@@ -103,8 +103,14 @@ class JiraCustomerProfile(Base):
     customer_key = Column(String(120), primary_key=True)
     customer_name = Column(String(200), nullable=False, index=True)
     issue_count = Column(Integer, nullable=False, default=0)
+    bug_issue_count = Column(Integer, nullable=False, default=0)
+    bug_issue_percent = Column(Float, nullable=False, default=0.0)
+    problem_report_count = Column(Integer, nullable=False, default=0)
+    problem_report_percent = Column(Float, nullable=False, default=0.0)
     issue_types = Column(JSON, nullable=False, default=list)
     problem_types = Column(JSON, nullable=False, default=list)
+    bug_taxonomy = Column(JSON, nullable=False, default=list)
+    bug_concentrations = Column(JSON, nullable=False, default=dict)
     components = Column(JSON, nullable=False, default=list)
     product_areas = Column(JSON, nullable=False, default=list)
     domains = Column(JSON, nullable=False, default=list)
@@ -116,6 +122,9 @@ class JiraCustomerProfile(Base):
     failure_areas = Column(JSON, nullable=False, default=list)
     automation_signals = Column(JSON, nullable=False, default=list)
     resolution_patterns = Column(JSON, nullable=False, default=list)
+    regression_recommendations = Column(JSON, nullable=False, default=list)
+    test_data_recommendations = Column(JSON, nullable=False, default=list)
+    exploratory_recommendations = Column(JSON, nullable=False, default=list)
     representative_keys = Column(JSON, nullable=False, default=list)
     source_file_hashes = Column(JSON, nullable=False, default=list)
     profile_version = Column(String(40), nullable=False, default="1")

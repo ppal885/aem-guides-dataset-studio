@@ -9,10 +9,10 @@ Use exactly these sections. Keep every line as a bullet.
 ```markdown
 **Understanding From Jira**
 - Issue understood: <plain-English statement of the user-visible problem or requested feature>.
-- Why it matters: <customer, workflow, release, data, or business impact stated in Jira/supplied evidence>.
+- Why it matters: Customer context resolved from Jira: <canonical customer(s), sourced from explicit customer fields, labels, both, or not identified>; <workflow, release, data, or business impact>.
 - Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
 - Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
-- Evidence boundary: <live Jira, indexed Jira, supplied incident, contradictions, and material facts not yet verified>.
+- Evidence boundary: <live Jira, indexed Jira, supplied incident, customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
 - AC-01 [Confirmed]: ...
@@ -31,16 +31,20 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
+- Test data to prepare: <clear list of maps/topics/assets/references/preset/target path/roles/config/version/scale/failure fixture/expected snapshot/cleanup data>.
 - Incident recovery validation: Confirm target correlation and approved scope; capture pre-change inventory/backup, execute the safe cleanup, preserve unrelated state, retain audit evidence, verify queue/dashboard recovery, and prove rollback readiness.
-- P0 [AC-01]: ...
-- P1 [AC-02, AC-03]: ...
-- P2 [AC-04]: ...
+- P0 [AC-01]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-02, AC-03]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P2 [AC-04]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-##]: Customer-shaped fixture for <customer>, supported by <representative Jira keys>. Action: <simple action using prepared data>. Expected: <observable current-Jira result and cleanup result>.
+- P2 [AC-##]: Customer-derived exploratory coverage for <customer>, supported by <concentration or representative Jira keys>. Action: <adjacent state, boundary, recovery, or integration check>. Expected: <observable no-regression result>.
 
 **Known Jira Bugs / Past Similar Tickets**
-- **Observed Customer Jira Profile:** <customer> has <distinct-key count> Jira keys; frequently represented or affected components/workflows/outputs/entities are <signals>; automation patterns are <signals>; representative candidate keys are <keys>. Aggregate context only - validate direct Jira evidence before using any assertion.
+- **Observed Customer Jira Profile: <customer> -** resolved from <Jira customer field/label>; profile <version>, approval <status>, <distinct-key count> Jira keys including <native Bug/Defect count> and <failure-like problem-report count/corpus percentage>, and <classification coverage>; current-Jira-relevant reported-problem taxonomy and concentrations are <types/areas/counts/percentages>; test-data, regression, and exploratory recommendations are <signals>; representative candidate keys are <keys>. Aggregate context only - validate direct Jira evidence before using any assertion. Repeat this bullet separately for every Jira customer; if missing, write `Observed Customer Jira Profile: <customer> - unavailable`.
 - ...
 
 **Regression Areas**
+- Customer-derived regression focus: <customer>; <bug area, corpus count/percentage, representative keys>; overlaps <current Jira/code/shared workflow> and adds <exact regression check/fixture>. Aggregate risk guidance, not product-behaviour proof.
 - ...
 
 **Automation Coverage & Gaps**
@@ -63,6 +67,7 @@ Use exactly these sections. Keep every line as a bullet.
 - In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
+- Resolve customer context from Jira fields and labels without asking the user again; preserve multiple customers and keep each customer profile separate.
 - Do not create extra sections.
 - Do not use tables.
 - Before returning, scan for mojibake (`â€`, `â‰`, `Ã`, `Â`, or `�`) and repair it; use ASCII punctuation if the client encoding is uncertain.
@@ -82,7 +87,7 @@ Use exactly these sections. Keep every line as a bullet.
 
 Use:
 
-`- P0 [AC-01, AC-02]: <action/test data/config/user role> -> <expected observable result>.`
+`- P0 [AC-01, AC-02]: Action: <what the tester does using prepared data>. Expected: <visible or measurable result>.`
 
 Examples:
 

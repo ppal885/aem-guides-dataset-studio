@@ -75,10 +75,23 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
     assert all(item["direct_assertion_allowed"] is False for item in captured["metadata"])
     stored = Session().query(JiraCustomerProfile).filter_by(customer_key="ibm").one()
     assert stored.issue_count == 2
+    assert stored.bug_issue_count == 1
+    assert stored.bug_issue_percent == 50.0
+    assert stored.problem_report_count == 1
+    assert stored.problem_report_percent == 50.0
     assert stored.components[0]["name"] == "Publishing"
     assert {item["name"] for item in stored.issue_types} == {"Bug", "Customer Request"}
     assert {item["name"] for item in stored.content_data_signals} >= {"DITA maps", "DITA topics", "XML content", "Review tasks"}
     assert any("Content and data patterns" in document for document in captured["documents"])
+    assert any("reported-problem taxonomy" in document for document in captured["documents"])
+    assert any("bug concentration" in document for document in captured["documents"])
+    assert any("regression recommendations" in document for document in captured["documents"])
+    assert any("test-data recommendations" in document for document in captured["documents"])
+    assert {item["name"] for item in stored.bug_taxonomy} >= {"Publishing or output generation"}
+    assert stored.bug_concentrations["by_component"][0]["name"] in {"Publishing", "Authoring"}
+    assert stored.regression_recommendations
+    assert {item["data_pattern"] for item in stored.test_data_recommendations} >= {"DITA maps"}
+    assert stored.exploratory_recommendations
     assert stored.approval_status == "draft"
     assert stored.classification_quality["product_area_coverage_percent"] == 100.0
 
@@ -94,3 +107,58 @@ def test_profile_uses_distinct_jira_keys_and_corpus_frequency_wording(monkeypatc
     assert approved["approval_status"] == "approved"
     assert approved["approved_by"] == "qa-reviewer"
     assert metadata_updates["reviewed_customer_profile"] is True
+
+    service.rebuild_customer_profiles(["IBM"])
+    assert all(item["approval_status"] == "approved" for item in captured["metadata"])
+    assert all(item["reviewed_customer_profile"] is True for item in captured["metadata"])
+
+
+def test_profile_bug_concentration_excludes_customer_requests_from_bug_denominator():
+    bug = JiraEnrichedIssue(
+        jira_key="GUIDES-10",
+        issue_type="Bug",
+        summary="Publishing job stuck for a large DITA map",
+        customer_cohorts=["KONE"],
+        components=["Publishing"],
+        domain="publishing",
+        affected_features=["workflow"],
+    )
+    request = JiraEnrichedIssue(
+        jira_key="GUIDES-11",
+        issue_type="Customer Request",
+        summary="Add a publishing option",
+        customer_cohorts=["KONE"],
+        components=["Publishing"],
+        domain="publishing",
+        affected_features=["workflow"],
+    )
+
+    profile = service._build_profile("KONE", [bug, request])
+
+    assert profile["bug_issue_count"] == 1
+    assert profile["bug_issue_percent"] == 50.0
+    assert profile["bug_concentrations"]["by_component"][0]["issue_count"] == 1
+    assert profile["bug_concentrations"]["by_component"][0]["problem_report_share_percent"] == 100.0
+
+
+def test_customer_request_with_failure_language_contributes_to_problem_taxonomy():
+    request = JiraEnrichedIssue(
+        jira_key="GUIDES-12",
+        issue_type="Customer Request",
+        summary="AEM Sites publishing job is stuck and cancellation fails",
+        customer_cohorts=["JPMC"],
+        components=["Publishing"],
+        domain="publishing",
+        affected_outputs=["AEM Sites"],
+        affected_features=["workflow"],
+    )
+
+    profile = service._build_profile("JPMC", [request])
+
+    assert profile["bug_issue_count"] == 0
+    assert profile["problem_report_count"] == 1
+    assert profile["problem_report_percent"] == 100.0
+    assert {item["name"] for item in profile["bug_taxonomy"]} >= {
+        "Publishing or output generation",
+        "Workflow or job-state failure",
+    }

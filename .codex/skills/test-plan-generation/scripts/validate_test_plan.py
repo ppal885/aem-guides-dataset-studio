@@ -84,6 +84,14 @@ def validate(text: str) -> list[str]:
     for prefix in UNDERSTANDING_PREFIXES:
         if not any(line.startswith(prefix) and line[len(prefix) :].strip() for line in understanding_lines):
             errors.append(f"Understanding From Jira is missing required bullet '{prefix}'")
+    why_it_matters = next(
+        (line for line in understanding_lines if line.startswith("- Why it matters:")),
+        "",
+    )
+    if "customer context resolved from jira:" not in why_it_matters.lower():
+        errors.append(
+            "Why it matters must state 'Customer context resolved from Jira:' and its Jira field/label source"
+        )
 
     acceptance = sections["Acceptance Criteria"]
     native_ac_empty = any(
@@ -111,9 +119,14 @@ def validate(text: str) -> list[str]:
         if prescribed.search(line):
             errors.append(f"line {number}: acceptance criterion prescribes an unapproved implementation choice")
 
-    for number, line in sections["Test Scenarios"]:
+    scenarios = sections["Test Scenarios"]
+    if not any(line.startswith("- Test data to prepare:") for _, line in scenarios):
+        errors.append("Test Scenarios must begin with explicit 'Test data to prepare:' guidance")
+    for number, line in scenarios:
         if SCENARIO_RE.match(line) and "Incident recovery validation" not in line and not AC_LINK_RE.search(line):
             errors.append(f"line {number}: P0/P1/P2 scenario is missing an AC mapping")
+        if SCENARIO_RE.match(line) and ("Action:" not in line or "Expected:" not in line):
+            errors.append(f"line {number}: P0/P1/P2 scenario must use plain-English Action: and Expected: wording")
 
     if "..." in text:
         for number, line in enumerate(lines, start=1):
@@ -130,7 +143,10 @@ def validate(text: str) -> list[str]:
     for section_name in ("Code Touched", "Automation Coverage & Gaps"):
         for number, line in sections[section_name]:
             if "\\" in line:
-                for candidate in re.findall(r"`?([^`\s,;]+\\[^`\s,;]+)`?", line):
+                quoted_candidates = re.findall(r"`([^`]*\\[^`]*)`", line)
+                unquoted_text = re.sub(r"`[^`]*`", "", line)
+                unquoted_candidates = re.findall(r"([^`\s,;]+\\[^`\s,;]+)", unquoted_text)
+                for candidate in quoted_candidates + unquoted_candidates:
                     if candidate.startswith(("<", "/")):
                         continue
                     if not re.match(r"^[A-Za-z]:\\", candidate):
@@ -156,6 +172,28 @@ def validate(text: str) -> list[str]:
             if missing:
                 errors.append(f"line {number}: historical Jira entry is missing {', '.join(missing)}")
     history_text = "\n".join(line for _, line in sections["Known Jira Bugs / Past Similar Tickets"])
+    for number, line in sections["Known Jira Bugs / Past Similar Tickets"]:
+        if "Observed Customer Jira Profile:" not in line:
+            continue
+        if not re.search(r"Observed Customer Jira Profile:\s*[^-]+\s+-", line):
+            errors.append(f"line {number}: customer profile must name the resolved customer")
+        if "unavailable" not in line.lower():
+            required_profile_terms = (
+                "resolved from",
+                "profile",
+                "approval",
+                "Jira keys",
+                "Bug/Defect",
+                "problem-report",
+                "test-data",
+                "representative",
+                "Aggregate context",
+            )
+            missing = [term for term in required_profile_terms if term.lower() not in line.lower()]
+            if missing:
+                errors.append(
+                    f"line {number}: customer profile evidence is missing {', '.join(missing)}"
+                )
     if history_text and not all(term in history_text.lower() for term in ("jql", "error", "workflow")):
         errors.append("historical search must report multiple narrow JQL intents including error and workflow searches")
 
