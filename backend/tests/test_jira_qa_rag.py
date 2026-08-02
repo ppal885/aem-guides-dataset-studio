@@ -90,6 +90,7 @@ def test_customer_names_are_inferred_from_free_text_query():
     assert _customer_names_from_query("JPMC and KONE publishing issues") == ["JPMC", "KONE"]
     assert _customer_names_from_query("Mayo Clinic and Thomson Reuters authoring issues") == ["Mayo Clinic", "Thomson Reuters"]
     assert _customer_names_from_query("PwC publishing issues") == ["PwC"]
+    assert _customer_names_from_query("LinkedIn authoring issues") == ["LinkedIn"]
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

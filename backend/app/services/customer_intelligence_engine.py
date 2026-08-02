@@ -57,6 +57,7 @@ def _load_label_alias_map() -> dict[str, str]:
         "mayo_clinic": "Mayo Clinic",
         "thomsonreuters": "Thomson Reuters",
         "thomson_reuters": "Thomson Reuters",
+        "linkedin": "LinkedIn",
         "abs": "ABS",
         "topcon": "Topcon",
         "cisco": "Cisco",

@@ -47,6 +47,8 @@ _QUERY_CUSTOMER_ALIASES = {
     "thomsonreuters": "Thomson Reuters",
     "pwc": "PwC",
     "pricewaterhousecoopers": "PwC",
+    "linkedin": "LinkedIn",
+    "linked in": "LinkedIn",
 }
 
 

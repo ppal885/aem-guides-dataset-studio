@@ -271,6 +271,19 @@ def test_pwc_file_detection():
     assert merged[0].customer_cohorts == ["PwC"]
 
 
+def test_linkedin_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels"],
+        [["LinkedIn issue", "GUIDES-40", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "LinkedIn"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "linkedin.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "LinkedIn"})
+
+    assert parsed.detected_customer == "LinkedIn"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["LinkedIn"]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

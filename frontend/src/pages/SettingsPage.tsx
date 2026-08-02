@@ -587,6 +587,7 @@ export function SettingsPage() {
                             <option value="Mayo Clinic">Mayo Clinic</option>
                             <option value="Thomson Reuters">Thomson Reuters</option>
                             <option value="PwC">PwC</option>
+                            <option value="LinkedIn">LinkedIn</option>
                             <option value="Mixed (row-level cohorts)">Mixed (use row-level customer labels)</option>
                           </select>
                           <span className="text-xs text-slate-500">
