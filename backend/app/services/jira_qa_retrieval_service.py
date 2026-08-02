@@ -45,6 +45,8 @@ _QUERY_CUSTOMER_ALIASES = {
     "mayoclinic": "Mayo Clinic",
     "thomson reuters": "Thomson Reuters",
     "thomsonreuters": "Thomson Reuters",
+    "pwc": "PwC",
+    "pricewaterhousecoopers": "PwC",
 }
 
 

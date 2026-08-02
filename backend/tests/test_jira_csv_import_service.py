@@ -258,6 +258,19 @@ def test_mayo_primary_cohort_preserves_swift_cross_association():
     assert [issue.customer_cohorts for issue in merged] == [["Mayo Clinic"], ["Mayo Clinic", "Swift"]]
 
 
+def test_pwc_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels"],
+        [["PwC issue", "GUIDES-39", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "PWC"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "pwc.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "PwC"})
+
+    assert parsed.detected_customer == "PwC"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["PwC"]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

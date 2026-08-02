@@ -586,6 +586,7 @@ export function SettingsPage() {
                             <option value="KONE">KONE</option>
                             <option value="Mayo Clinic">Mayo Clinic</option>
                             <option value="Thomson Reuters">Thomson Reuters</option>
+                            <option value="PwC">PwC</option>
                             <option value="Mixed (row-level cohorts)">Mixed (use row-level customer labels)</option>
                           </select>
                           <span className="text-xs text-slate-500">

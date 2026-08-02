@@ -37,7 +37,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v6"
+IMPORTER_VERSION = "customer-intelligence-v7"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -69,10 +69,13 @@ _CUSTOMER_ALIASES = {
     "mayo foundation for medical education and research": "Mayo Clinic",
     "thomson reuters": "Thomson Reuters",
     "thomsonreuters": "Thomson Reuters",
+    "pwc": "PwC",
+    "pricewaterhousecoopers": "PwC",
+    "pricewaterhouse coopers": "PwC",
 }
 _SUPPORTED_CUSTOMERS = {
     "Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity", "JPMC", "KONE",
-    "Mayo Clinic", "Thomson Reuters",
+    "Mayo Clinic", "Thomson Reuters", "PwC",
 }
 _MIXED_CUSTOMER = "Mixed (row-level cohorts)"
 _CUSTOMER_LABELS = {
@@ -91,6 +94,7 @@ _CUSTOMER_LABELS = {
     "mayo_clinic": "Mayo Clinic",
     "thomsonreuters": "Thomson Reuters",
     "thomson_reuters": "Thomson Reuters",
+    "pwc": "PwC",
 }
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"
