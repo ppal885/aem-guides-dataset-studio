@@ -584,6 +584,8 @@ export function SettingsPage() {
                             <option value="Fidelity">Fidelity</option>
                             <option value="JPMC">JPMC</option>
                             <option value="KONE">KONE</option>
+                            <option value="Mayo Clinic">Mayo Clinic</option>
+                            <option value="Thomson Reuters">Thomson Reuters</option>
                             <option value="Mixed (row-level cohorts)">Mixed (use row-level customer labels)</option>
                           </select>
                           <span className="text-xs text-slate-500">

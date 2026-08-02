@@ -41,6 +41,10 @@ _QUERY_CUSTOMER_ALIASES = {
     "jp morgan": "JPMC",
     "jpmorgan": "JPMC",
     "kone": "KONE",
+    "mayo clinic": "Mayo Clinic",
+    "mayoclinic": "Mayo Clinic",
+    "thomson reuters": "Thomson Reuters",
+    "thomsonreuters": "Thomson Reuters",
 }
 
 
