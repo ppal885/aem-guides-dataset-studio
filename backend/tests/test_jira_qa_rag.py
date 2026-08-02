@@ -92,6 +92,9 @@ def test_customer_names_are_inferred_from_free_text_query():
     assert _customer_names_from_query("PwC publishing issues") == ["PwC"]
     assert _customer_names_from_query("LinkedIn authoring issues") == ["LinkedIn"]
     assert _customer_names_from_query("Sonova and Demant publishing issues") == ["Sonova", "Demant"]
+    assert _customer_names_from_query("Workday review and translation issues") == ["Workday"]
+    assert _customer_names_from_query("Sub-Zero authoring regressions") == ["Sub-Zero"]
+    assert _customer_names_from_query("Broadcomm publishing and UUID migration issues") == ["Broadcom"]
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

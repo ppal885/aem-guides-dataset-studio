@@ -51,6 +51,13 @@ _QUERY_CUSTOMER_ALIASES = {
     "linked in": "LinkedIn",
     "sonova": "Sonova",
     "demant": "Demant",
+    "workday": "Workday",
+    "work day": "Workday",
+    "sub-zero": "Sub-Zero",
+    "sub zero": "Sub-Zero",
+    "subzero": "Sub-Zero",
+    "broadcom": "Broadcom",
+    "broadcomm": "Broadcom",
 }
 
 

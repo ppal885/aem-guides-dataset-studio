@@ -300,6 +300,38 @@ def test_mixed_sonova_demant_file_detection():
     assert [issue.customer_cohorts for issue in merged] == [["Sonova"], ["Demant"], ["Sonova", "Demant"]]
 
 
+def test_workday_and_sub_zero_customer_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Labels"],
+        [
+            ["Workday issue", "GUIDES-44", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "workday", ""],
+            ["Sub-Zero association", "GUIDES-45", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Workday", "SubZero"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "workday.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Workday"})
+
+    assert parsed.detected_customer == "Workday"
+    assert parsed.detection_confidence == "high"
+    assert [issue.customer_cohorts for issue in merged] == [["Workday"], ["Workday", "Sub-Zero"]]
+
+
+def test_broadcom_alias_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Labels"],
+        [
+            ["Broadcom issue", "GUIDES-46", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Broadcom", ""],
+            ["Broadcomm spelling", "GUIDES-47", "Customer Request", "Open", "", "Major", "Body", "2026-08-02", "Broadcomm", ""],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "broadcom.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Broadcom"})
+
+    assert parsed.detected_customer == "Broadcom"
+    assert parsed.detection_confidence == "high"
+    assert [issue.customer_cohorts for issue in merged] == [["Broadcom"], ["Broadcom"]]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True
@@ -307,7 +339,7 @@ def test_newest_updated_timestamp_wins():
     assert should_skip_existing(existing, "2026-08-01T00:00:00+00:00") is False
 
 
-@pytest.mark.parametrize("column_count", [230, 340, 361])
+@pytest.mark.parametrize("column_count", [230, 340, 348, 361, 497])
 def test_large_variable_export_schemas_with_repeated_positional_headers(column_count):
     repeated_count = column_count - len(BASE_HEADERS)
     headers = BASE_HEADERS + ["Labels"] * repeated_count

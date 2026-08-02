@@ -37,7 +37,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v9"
+IMPORTER_VERSION = "customer-intelligence-v11"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -76,10 +76,18 @@ _CUSTOMER_ALIASES = {
     "linked in": "LinkedIn",
     "sonova": "Sonova",
     "demant": "Demant",
+    "workday": "Workday",
+    "work day": "Workday",
+    "sub-zero": "Sub-Zero",
+    "sub zero": "Sub-Zero",
+    "subzero": "Sub-Zero",
+    "broadcom": "Broadcom",
+    "broadcomm": "Broadcom",
 }
 _SUPPORTED_CUSTOMERS = {
     "Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity", "JPMC", "KONE",
     "Mayo Clinic", "Thomson Reuters", "PwC", "LinkedIn", "Sonova", "Demant",
+    "Workday", "Sub-Zero", "Broadcom",
 }
 _MIXED_CUSTOMER = "Mixed (row-level cohorts)"
 _CUSTOMER_LABELS = {
@@ -102,6 +110,13 @@ _CUSTOMER_LABELS = {
     "linkedin": "LinkedIn",
     "sonova": "Sonova",
     "demant": "Demant",
+    "workday": "Workday",
+    "work_day": "Workday",
+    "sub-zero": "Sub-Zero",
+    "sub_zero": "Sub-Zero",
+    "subzero": "Sub-Zero",
+    "broadcom": "Broadcom",
+    "broadcomm": "Broadcom",
 }
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"

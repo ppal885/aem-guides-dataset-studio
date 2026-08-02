@@ -22,6 +22,14 @@ def test_detect_customer_labels_from_issue_order_and_dedupe() -> None:
     assert out == ["Cisco"]
 
 
+def test_detect_workday_and_sub_zero_labels() -> None:
+    assert detect_customer_labels_from_issue(["workday", "SubZero", "sub_zero"]) == ["Workday", "Sub-Zero"]
+
+
+def test_detect_broadcom_label_aliases() -> None:
+    assert detect_customer_labels_from_issue(["Broadcom", "broadcomm"]) == ["Broadcom"]
+
+
 def test_extract_customer_metadata_merges_custom_field_and_labels() -> None:
     fields = {
         "summary": "PDF fails",
