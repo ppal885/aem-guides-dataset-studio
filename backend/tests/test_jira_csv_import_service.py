@@ -284,6 +284,22 @@ def test_linkedin_file_detection():
     assert merged[0].customer_cohorts == ["LinkedIn"]
 
 
+def test_mixed_sonova_demant_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Labels"],
+        [
+            ["Sonova issue", "GUIDES-41", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Sonova", ""],
+            ["Demant issue", "GUIDES-42", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Demant", ""],
+            ["Shared issue", "GUIDES-43", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Sonova", "Demant"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "sonova-demant.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Mixed (row-level cohorts)"})
+
+    assert parsed.detected_customer == "Mixed (row-level cohorts)"
+    assert [issue.customer_cohorts for issue in merged] == [["Sonova"], ["Demant"], ["Sonova", "Demant"]]
+
+
 def test_newest_updated_timestamp_wins():
     existing = datetime(2026, 7, 31, 18, 0, 0)
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True

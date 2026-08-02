@@ -49,6 +49,8 @@ _QUERY_CUSTOMER_ALIASES = {
     "pricewaterhousecoopers": "PwC",
     "linkedin": "LinkedIn",
     "linked in": "LinkedIn",
+    "sonova": "Sonova",
+    "demant": "Demant",
 }
 
 

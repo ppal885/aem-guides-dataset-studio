@@ -104,6 +104,8 @@ _CANONICAL_BRAND_MAP: dict[str, str] = {
     "mayoclinic": "Mayo Clinic",
     "thomsonreuters": "Thomson Reuters",
     "linkedin": "LinkedIn",
+    "sonova": "Sonova",
+    "demant": "Demant",
     "hp": "HP",
     "sap": "SAP",
     "aws": "AWS",
