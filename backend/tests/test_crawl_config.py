@@ -496,6 +496,7 @@ def test_bundled_crawl_config_includes_2026_01_cloud_release_notes(monkeypatch):
     target_urls = {
         base + "whats-new-2026-01-0",
         base + "fixed-issues-2026-01-0",
+        base + "upgrade-instructions-2026-01-0",
     }
 
     monkeypatch.setattr(crawl_service, "_get_crawl_config_path", lambda: config_path)

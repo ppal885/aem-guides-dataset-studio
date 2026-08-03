@@ -435,7 +435,8 @@
     "https://www.dita-ot.org/dev/resources/theme/extending-themes",
     "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/whats-new-2026-01-0",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/fixed-issues-2026-01-0"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/fixed-issues-2026-01-0",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/upgrade-instructions-2026-01-0"
   ],
   "recursive": {
     "enabled": false,
