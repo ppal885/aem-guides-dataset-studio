@@ -484,3 +484,17 @@ def test_bundled_crawl_config_includes_requested_authoring_assets_and_ditaval_pa
     urls = set(crawl_service._load_crawl_urls())
 
     assert target_urls.issubset(urls)
+
+
+def test_bundled_crawl_config_includes_2026_01_cloud_release_notes(monkeypatch):
+    backend_dir = Path(__file__).resolve().parents[1]
+    config_path = backend_dir / "config" / "aem_guides_crawl_urls.json"
+    target_url = (
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/"
+        "using/release-info/release-notes/cloud-release-notes/2026-releases/"
+        "2601-release/whats-new-2026-01-0"
+    )
+
+    monkeypatch.setattr(crawl_service, "_get_crawl_config_path", lambda: config_path)
+
+    assert target_url in crawl_service._load_crawl_urls()
