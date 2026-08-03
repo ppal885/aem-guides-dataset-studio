@@ -438,7 +438,8 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/fixed-issues-2026-01-0",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2601-release/upgrade-instructions-2026-01-0",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2025-releases/2511-release/whats-new-2025-11-0",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2025-releases/2510-release/whats-new-2025-10-0"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2025-releases/2510-release/whats-new-2025-10-0",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2025-releases/2510-release/fixed-issues-2025-10-0"
   ],
   "recursive": {
     "enabled": false,
