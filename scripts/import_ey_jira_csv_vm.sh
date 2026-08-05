@@ -57,6 +57,10 @@ import json
 import os
 from pathlib import Path
 
+from app.db.base import Base
+from app.db.migrations import run_migrations
+from app.db.session import engine
+from app.db import jira_enrichment_models  # noqa: F401
 from app.services.jira_csv_import_service import (
     create_import_run,
     get_import_run,
@@ -79,6 +83,9 @@ non_ey = [
 if non_ey:
     raise SystemExit("ERROR: CSV contains issues without the EY label: " + ", ".join(non_ey[:20]))
 
+Base.metadata.create_all(bind=engine)
+run_migrations()
+print("database_schema=ready", flush=True)
 preview = preview_jira_csv_files([(path.name, data)])
 print("preview=" + json.dumps(preview, ensure_ascii=False), flush=True)
 print("jira_qa_before=" + str(get_collection_count(CHROMA_COLLECTION_JIRA_QA)), flush=True)
