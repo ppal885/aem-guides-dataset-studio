@@ -25,24 +25,25 @@ def run_migrations() -> None:
 
                 result = conn.execute(text("PRAGMA table_info(run_feedback)"))
                 columns = [row[1] for row in result.fetchall()]
-                if "scenario_id" not in columns:
+                if columns and "scenario_id" not in columns:
                     conn.execute(text("ALTER TABLE run_feedback ADD COLUMN scenario_id VARCHAR(100)"))
                     conn.commit()
                     logger.info("Migration: added scenario_id to run_feedback")
-                for col, sql_type in [
-                    ("user_rating", "VARCHAR(20)"),
-                    ("expected_recipe_id", "VARCHAR(100)"),
-                    ("suggested_recipe_id", "VARCHAR(100)"),
-                    ("selected_feature", "VARCHAR(50)"),
-                    ("selected_pattern", "VARCHAR(50)"),
-                    ("recipes_used", "TEXT"),
-                ]:
-                    res = conn.execute(text("PRAGMA table_info(run_feedback)"))
-                    cols = [row[1] for row in res.fetchall()]
-                    if col not in cols:
-                        conn.execute(text(f"ALTER TABLE run_feedback ADD COLUMN {col} {sql_type}"))
-                        conn.commit()
-                        logger.info("Migration: added %s to run_feedback", col)
+                if columns:
+                    for col, sql_type in [
+                        ("user_rating", "VARCHAR(20)"),
+                        ("expected_recipe_id", "VARCHAR(100)"),
+                        ("suggested_recipe_id", "VARCHAR(100)"),
+                        ("selected_feature", "VARCHAR(50)"),
+                        ("selected_pattern", "VARCHAR(50)"),
+                        ("recipes_used", "TEXT"),
+                    ]:
+                        res = conn.execute(text("PRAGMA table_info(run_feedback)"))
+                        cols = [row[1] for row in res.fetchall()]
+                        if col not in cols:
+                            conn.execute(text(f"ALTER TABLE run_feedback ADD COLUMN {col} {sql_type}"))
+                            conn.commit()
+                            logger.info("Migration: added %s to run_feedback", col)
 
                 # Chat sessions and messages
                 try:
