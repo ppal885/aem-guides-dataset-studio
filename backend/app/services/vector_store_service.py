@@ -204,6 +204,31 @@ def delete_documents(collection_name: str, ids: list[str]) -> bool:
         return False
 
 
+def update_documents_metadata(collection_name: str, where: dict, updates: dict, *, limit: int = 500) -> int:
+    """Merge scalar metadata into matching Chroma documents without changing text or embeddings."""
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return 0
+    try:
+        coll = client.get_collection(name=collection_name)
+        result = coll.get(where=where, limit=max(1, limit), include=["metadatas"])
+        ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        if not ids:
+            return 0
+        merged = []
+        for index, _doc_id in enumerate(ids):
+            metadata = dict(metadatas[index] or {})
+            metadata.update({key: value for key, value in updates.items() if isinstance(value, (str, int, float, bool))})
+            merged.append(metadata)
+        coll.update(ids=ids, metadatas=merged)
+        return len(ids)
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB metadata update failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "where": str(where)[:500]},
+        )
+        return 0
 def delete_collection(collection_name: str) -> bool:
     """Delete a ChromaDB collection. Returns True on success. No-op if collection does not exist."""
     client = _get_client()
@@ -234,6 +259,27 @@ def get_collection_count(collection_name: str) -> int:
         return coll.count()
     except Exception:
         return 0
+
+
+def get_collection_records(collection_name: str) -> list[dict]:
+    """Return all document IDs and metadata for consistency checks."""
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return []
+    try:
+        result = client.get_collection(name=collection_name).get(include=["metadatas"])
+        ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        return [
+            {"id": doc_id, "metadata": metadatas[index] or {}}
+            for index, doc_id in enumerate(ids)
+        ]
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB collection record scan failed",
+            extra_fields={"collection": collection_name, "error": str(exc)},
+        )
+        return []
 
 
 def get_documents_where(

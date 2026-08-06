@@ -19,6 +19,7 @@ from app.services.dita_publishing_construct_registry import (
     build_publishing_corpus,
 )
 from app.services.dita_ot_failure_evidence_service import lookup_dita_ot_failure_evidence
+from app.services.dita_ot_negative_fixture_service import write_negative_fixtures
 from app.services.dita_map_closure_service import copy_map_closure_to_dir
 
 
@@ -620,6 +621,12 @@ def _run_dita(input_map: Path, fmt: str, output_dir: Path, timeout_seconds: int)
     }
 
 
+def _write_run_logs(log_dir: Path, name: str, result: dict[str, Any]) -> None:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / f"{name}.stdout.log").write_text(str(result.get("stdout") or ""), encoding="utf-8")
+    (log_dir / f"{name}.stderr.log").write_text(str(result.get("stderr") or ""), encoding="utf-8")
+
+
 async def publish_with_dita_ot(
     *,
     input_map: str | None = None,
@@ -653,6 +660,8 @@ async def publish_with_dita_ot(
     else:
         input_for_build = _write_sample_dataset(work_dir, prompt or slug, output_format=requested)
 
+    negative_fixtures = write_negative_fixtures(work_dir, prompt)
+
     if requested == "both":
         formats = ["pdf", "html5"]
     elif requested == "all":
@@ -662,6 +671,33 @@ async def publish_with_dita_ot(
     publish: dict[str, Any] = {}
     for fmt in formats:
         publish[fmt] = _run_dita(input_for_build, fmt, publish_dir / fmt, timeout_seconds)
+        _write_run_logs(OUTPUT_ROOT / run_id / "logs", f"positive-control.{fmt}", publish[fmt])
+
+    negative_case_results: list[dict[str, Any]] = []
+    for fixture in negative_fixtures:
+        fixture_results: dict[str, Any] = {}
+        for fmt in formats:
+            result = _run_dita(
+                fixture.map_path,
+                fmt,
+                publish_dir / "negative-cases" / fixture.fixture_id / fmt,
+                timeout_seconds,
+            )
+            fixture_results[fmt] = result
+            _write_run_logs(
+                OUTPUT_ROOT / run_id / "logs" / "negative-cases",
+                f"{fixture.fixture_id}.{fmt}",
+                result,
+            )
+        negative_case_results.append(
+            {
+                "fixture_id": fixture.fixture_id,
+                "source_map": fixture.map_path.relative_to(work_dir).as_posix(),
+                "purpose": fixture.purpose,
+                "expected_signal": fixture.expected_signal,
+                "observed": fixture_results,
+            }
+        )
 
     pdf_files = sorted((publish_dir / "pdf").glob("*.pdf")) if (publish_dir / "pdf").exists() else []
     xhtml_files = sorted((publish_dir / "xhtml").rglob("*.html")) if (publish_dir / "xhtml").exists() else []
@@ -672,14 +708,39 @@ async def publish_with_dita_ot(
         work_dir=work_dir,
         formats=formats,
     )
+    generation_summary["negative_fixture_results"] = negative_case_results
+    generation_summary["negative_fixture_count"] = len(negative_case_results)
+    if negative_case_results:
+        generation_summary["what_was_generated"] = [
+            *generation_summary.get("what_was_generated", []),
+            f"{len(negative_case_results)} isolated negative/control fixtures, each executed independently.",
+            "Per-fixture stdout, stderr, exit status, purpose, expected signal, and generated output evidence.",
+        ]
+    observation_path = OUTPUT_ROOT / run_id / "observation-summary.json"
+    observation_path.write_text(
+        json.dumps(
+            {
+                "positive_control": publish,
+                "negative_fixtures": negative_case_results,
+                "interpretation_rule": (
+                    "A negative fixture is evidence of observed processor behavior; a non-zero exit is not required. "
+                    "Review exit status, stdout, stderr, and generated output together."
+                ),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     zip_path = OUTPUT_ROOT / run_id / f"{slug}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for base in (work_dir, publish_dir):
+        for base in (work_dir, publish_dir, OUTPUT_ROOT / run_id / "logs"):
             if not base.exists():
                 continue
             for path in base.rglob("*"):
                 if path.is_file():
                     archive.write(path, path.relative_to(OUTPUT_ROOT / run_id).as_posix())
+        archive.write(observation_path, observation_path.relative_to(OUTPUT_ROOT / run_id).as_posix())
         archive.writestr(
             "manifest.json",
             json.dumps(
@@ -723,6 +784,9 @@ async def publish_with_dita_ot(
         "expected_pdf_review_areas": generation_summary["expected_pdf_review_areas"],
         "expected_html_review_areas": generation_summary["expected_html_review_areas"],
         "negative_or_risk_cases": generation_summary.get("negative_or_risk_cases", []),
+        "negative_fixture_results": negative_case_results,
+        "negative_fixture_count": len(negative_case_results),
+        "observation_summary": str(observation_path),
         "validation_oracles": generation_summary.get("validation_oracles", []),
         "recommended_user_next_step": generation_summary["recommended_user_next_step"],
         "confidence_contract": generation_summary.get("confidence_contract", []),

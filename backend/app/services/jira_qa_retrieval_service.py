@@ -29,6 +29,29 @@ _SIGNAL_TYPES = frozenset(
         "learning_behavior_chunk",
     }
 )
+_QUERY_CUSTOMER_ALIASES = {
+    "red hat": "Red Hat",
+    "redhat": "Red Hat",
+    "ibm": "IBM",
+    "swift": "Swift",
+    "lexmark": "Lexmark",
+    "topcon": "Topcon",
+    "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jp morgan": "JPMC",
+    "jpmorgan": "JPMC",
+    "kone": "KONE",
+    "mayo clinic": "Mayo Clinic",
+    "mayoclinic": "Mayo Clinic",
+    "thomson reuters": "Thomson Reuters",
+    "thomsonreuters": "Thomson Reuters",
+    "pwc": "PwC",
+    "pricewaterhousecoopers": "PwC",
+    "linkedin": "LinkedIn",
+    "linked in": "LinkedIn",
+    "sonova": "Sonova",
+    "demant": "Demant",
+}
 
 
 def _parse_json_list(raw: str) -> list[str]:
@@ -45,6 +68,18 @@ def _parse_json_list(raw: str) -> list[str]:
 
 def _norm_customer_token(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _customer_names_from_query(query_text: str) -> list[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", query_text.casefold()).strip()
+    padded = f" {normalized} "
+    return list(
+        dict.fromkeys(
+            customer
+            for alias, customer in _QUERY_CUSTOMER_ALIASES.items()
+            if f" {alias} " in padded
+        )
+    )
 
 
 def get_chunks_for_jira_key(jira_key: str, *, limit: int = 64) -> list[dict[str, Any]]:
@@ -206,6 +241,8 @@ def semantic_search_jira_qa(
         cache_set_embedding_vector(qt, emb)
 
     names = list(customer_names or [])
+    if not names and not customer:
+        names.extend(_customer_names_from_query(qt))
     if customer and str(customer).strip():
         names.append(str(customer).strip())
 

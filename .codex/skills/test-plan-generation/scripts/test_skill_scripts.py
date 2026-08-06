@@ -28,7 +28,7 @@ verify_mod = _load("verify_evidence", "verify_evidence.py")
 
 GOOD_PLAN = """**Understanding From Jira**
 - Issue understood: a thing is broken with a visible symptom.
-- Why it matters: it hurts customers in a concrete way.
+- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.
 - Requested outcome: the thing should stop being broken.
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: facts are from live Jira and a backend clone.
@@ -44,9 +44,9 @@ GOOD_PLAN = """**Understanding From Jira**
 **Lines Changed**
 - Not applicable — development has not started.
 **Test Scenarios**
-- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
-- P0 [AC-01]: do the first thing and observe the correct output.
-- P1 [AC-02]: do the second thing and observe prior state retained.
+- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
+- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.
+- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.
 **Known Jira Bugs / Past Similar Tickets**
 - GUIDES-100 — Some bug. Similarity: strongest match — same failure shape of wrong output. Status: Closed. Resolution: Fixed. Affected version: not available in current evidence. Fix version: 2609. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: reuse its oracle.
 - Search status: JQL by exact error text and workflow terms across the project.
@@ -84,8 +84,8 @@ def test_validator() -> None:
 
     ac_no_scenario = _replace(
         GOOD_PLAN,
-        "- P1 [AC-02]: do the second thing and observe prior state retained.",
-        "- P1 [AC-01]: do a redundant first thing again.",
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P1 [AC-01]: Action: do a redundant first thing again. Expected: observe the first result.",
     )
     errs = validate_mod.validate(ac_no_scenario)
     check("AC with no scenario mapping is rejected", any("AC-02 has no Test Scenarios" in e for e in errs))
@@ -100,19 +100,35 @@ def test_validator() -> None:
 
     scenario_no_ac = _replace(
         GOOD_PLAN,
-        "- P0 [AC-01]: do the first thing and observe the correct output.",
-        "- P0 do the first thing and observe the correct output.",
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 Action: do the first thing. Expected: observe the correct output.",
     )
     errs = validate_mod.validate(scenario_no_ac)
     check("scenario without AC mapping is rejected", any("missing an AC mapping" in e for e in errs))
 
     no_test_data = _replace(
         GOOD_PLAN,
-        "- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
+        "- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
         "",
     )
     errs = validate_mod.validate(no_test_data)
-    check("Test Scenarios without a Setup and test data bullet is rejected", any("Setup and test data" in e for e in errs))
+    check("Test Scenarios without a Test data to prepare bullet is rejected", any("Test data to prepare" in e for e in errs))
+
+    no_customer_source = _replace(
+        GOOD_PLAN,
+        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
+        "- Why it matters: it hurts customers in a concrete way.",
+    )
+    errs = validate_mod.validate(no_customer_source)
+    check("customer context source is required", any("Customer context resolved from Jira" in e for e in errs))
+
+    no_action_expected = _replace(
+        GOOD_PLAN,
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 [AC-01]: do the first thing and observe the correct output.",
+    )
+    errs = validate_mod.validate(no_action_expected)
+    check("scenario Action and Expected wording is required", any("Action:" in e and "Expected:" in e for e in errs))
 
     terse_regression = _replace(
         GOOD_PLAN,

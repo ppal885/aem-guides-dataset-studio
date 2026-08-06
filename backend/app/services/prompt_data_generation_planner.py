@@ -67,14 +67,14 @@ def build_prompt_generation_plan(text: str, *, instructions: str | None = None) 
     if wants_negative or wants_dataset or wants_publishing:
         negative_cases.extend(
             [
-                "missing target/reference case documented as a risk or safe negative path",
-                "invalid value risk captured without making the positive corpus unpublishable",
+                "requested missing target/reference cases must be authored as isolated fixtures",
+                "invalid fixtures must run separately so the positive-control build remains reviewable",
             ]
         )
     if "chunk" in publishing_constructs:
-        negative_cases.append("invalid chunk tokens such as split/to-navigation must not be generated as valid controls")
+        negative_cases.append("invalid chunk tokens such as split/to-navigation must be isolated from valid controls and executed")
     if "copy-to" in publishing_constructs:
-        negative_cases.append("duplicate copy-to/effective-target collision risk must be called out")
+        negative_cases.append("duplicate references and copy-to target collisions must be authored and executed when requested")
     if "xref" in publishing_constructs:
         negative_cases.append("broken href/fragment and wrong scope/format risks must be represented or documented")
 
@@ -94,6 +94,7 @@ def build_prompt_generation_plan(text: str, *, instructions: str | None = None) 
             "Do not collapse multi-construct prompts into one generic topic; create separate focused controls plus an integration case.",
             "Every generated dataset must explain expected behavior, QA checklist, source files, and confidence limits.",
             "If PDF/HTML5 is requested, generation must be map-based and publishable, not a single isolated topic.",
+            "Never replace an explicitly requested negative fixture with a risk note; isolate it, execute it, and report the observed result.",
         ],
     }
     return plan

@@ -9,7 +9,6 @@ import subprocess
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from datetime import datetime
-from typing import Any
 
 # ── Resolve both import styles used across your codebase ─────────────────────
 # Some files use `from app.xxx`, others use `from backend.app.xxx`
@@ -38,12 +37,7 @@ def _load_env_files() -> None:
 
 _load_env_files()
 
-from app.core.mcp_stdio import (
-    configure_mcp_stdio_runtime,
-    is_mcp_stdio_mode,
-    mcp_tool_execution_guard,
-    strip_stdio_log_handlers,
-)
+from app.core.mcp_stdio import configure_mcp_stdio_runtime, is_mcp_stdio_mode, strip_stdio_log_handlers
 
 configure_mcp_stdio_runtime()
 
@@ -62,7 +56,10 @@ TAVILY_API_KEY = (os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_KEY") or "").
 @contextmanager
 def _tool_stdout_guard():
     """Keep MCP stdio clean: app logs/progress must not be written to stdout."""
-    with mcp_tool_execution_guard():
+    if is_mcp_stdio_mode():
+        with redirect_stdout(sys.stderr):
+            yield
+    else:
         yield
 
 
@@ -3419,21 +3416,13 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
 
     try:
         with _tool_stdout_guard():
-            from app.services.publishing_dataset_intent_service import detect_publishing_dataset_intent
+            from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
 
-        publishing_intent = detect_publishing_dataset_intent(question)
+        incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
+        if incident_answer:
+            return incident_answer
     except Exception:
-        publishing_intent = None
-    if publishing_intent:
-        args = publishing_intent.get("args") if isinstance(publishing_intent.get("args"), dict) else {}
-        output_format = str(args.get("output_format") or "pdf")
-        constructs = args.get("detected_constructs") if isinstance(args.get("detected_constructs"), list) else []
-        construct_text = f" Detected constructs: {', '.join(str(item) for item in constructs)}." if constructs else ""
-        return (
-            "ask_dita_expert is Q&A-only and will not generate or publish DITA datasets. "
-            "Use generate_dita_ot_output for PDF/HTML5 publishing evidence generation "
-            f"(suggested output_format={output_format}).{construct_text}"
-        )
+        pass
 
     constructs = _recognized_dita_constructs_from_question(question)
     if _should_use_dita_construct_fast_path(question, constructs):
@@ -4032,9 +4021,6 @@ def guides_test_plan_generator(
     evidence_k: int = 8,
     include_repository_evidence: bool = True,
     max_repo_matches: int = 30,
-    external_historical_jiras: list[dict[str, Any]] | None = None,
-    skip_uac_label_gate: bool = False,
-    full_rag: bool = False,
 ) -> str:
     """
     Build the evidence packet for the Claude Code slash command:
@@ -4044,80 +4030,23 @@ def guides_test_plan_generator(
     The packet combines Jira lookup, Experience League RAG evidence, DITA/spec
     evidence, and QA Studio preview data. It is read-only: it does not crawl,
     reindex, delete, or mutate production vector indexes.
-
-    Set skip_uac_label_gate=true and full_rag=true for QA testing without UAC_Check.
     """
-    with _tool_stdout_guard():
-        try:
-            from app.services.guides_test_plan_generator_service import (
-                build_guides_test_plan_packet,
-                render_guides_test_plan_packet_markdown,
-            )
+    try:
+        from app.services.guides_test_plan_generator_service import (
+            build_guides_test_plan_packet,
+            render_guides_test_plan_packet_markdown,
+        )
 
-            packet = build_guides_test_plan_packet(
-                jira_key,
-                tenant_id=tenant_id,
-                evidence_k=max(3, min(int(evidence_k), 12)),
-                include_repository_evidence=include_repository_evidence,
-                max_repo_matches=max_repo_matches,
-                external_historical_jiras=external_historical_jiras or [],
-                skip_uac_label_gate=skip_uac_label_gate,
-                full_rag=full_rag,
-            )
-            return render_guides_test_plan_packet_markdown(packet)
-        except Exception as e:
-            return f"Error building Guides test-plan evidence packet: {e}"
-
-
-def test_plan_pipeline(
-    jira_key: str,
-    tenant_id: str = "kone",
-    evidence_k: int = 8,
-    include_repository_evidence: bool = True,
-    max_repo_matches: int = 30,
-    external_historical_jiras: list[dict[str, Any]] | None = None,
-    skip_uac_label_gate: bool = False,
-    write_starling_artifacts: bool = False,
-    starling_repo_path: str | None = None,
-    human_review_threshold: int = 50,
-) -> str:
-    """
-    Run the full AEM Guides QA pipeline for a Jira ticket:
-
-    ticket brief → full RAG → confidence score → UAC intelligence →
-    draft test plan → QE handoff.
-
-    Prefer HTTP POST /api/v1/test-plans/pipeline for long runs (MCP stdio may timeout).
-    Set write_starling_artifacts=true to write files under docs/qa/test-plans/ in starling.
-    """
-    with _tool_stdout_guard():
-        try:
-            from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
-            from app.services.test_plan_pipeline_service import (
-                render_pipeline_result_markdown,
-                run_test_plan_pipeline,
-            )
-
-            request = TestPlanPipelineRequest(
-                jira_key=jira_key,
-                tenant_id=tenant_id,
-                evidence_k=max(3, min(int(evidence_k), 12)),
-                include_repository_evidence=include_repository_evidence,
-                max_repo_matches=max_repo_matches,
-                external_historical_jiras=external_historical_jiras or [],
-                skip_uac_label_gate=skip_uac_label_gate,
-                full_rag=True,
-                include_uac_intelligence=True,
-                compose_draft_plan=True,
-                write_starling_artifacts=write_starling_artifacts,
-                starling_repo_path=starling_repo_path,
-                publish_to_team_ui=False,
-                human_review_threshold=max(0, min(int(human_review_threshold), 100)),
-            )
-            result = run_test_plan_pipeline(request)
-            return render_pipeline_result_markdown(result)
-        except Exception as e:
-            return f"Error running test-plan pipeline: {e}"
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=max(3, min(int(evidence_k), 12)),
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
+        )
+        return render_guides_test_plan_packet_markdown(packet)
+    except Exception as e:
+        return f"Error building Guides test-plan evidence packet: {e}"
 
 
 def publishing_ticket_dita_qa_packet(
@@ -4133,32 +4062,31 @@ def publishing_ticket_dita_qa_packet(
     It refuses non-publishing tickets, and for matching Jira labels/text returns the
     Guides test-plan packet with DITA-OT GitHub evidence integrated for QA risk analysis.
     """
-    with _tool_stdout_guard():
-        try:
-            from app.services.guides_test_plan_generator_service import (
-                build_guides_test_plan_packet,
-                is_publishing_transform_ticket,
-                render_guides_test_plan_packet_markdown,
-            )
+    try:
+        from app.services.guides_test_plan_generator_service import (
+            build_guides_test_plan_packet,
+            is_publishing_transform_ticket,
+            render_guides_test_plan_packet_markdown,
+        )
 
-            packet = build_guides_test_plan_packet(
-                jira_key,
-                tenant_id=tenant_id,
-                evidence_k=max(3, min(int(evidence_k), 12)),
-                include_repository_evidence=include_repository_evidence,
-                max_repo_matches=max_repo_matches,
+        packet = build_guides_test_plan_packet(
+            jira_key,
+            tenant_id=tenant_id,
+            evidence_k=max(3, min(int(evidence_k), 12)),
+            include_repository_evidence=include_repository_evidence,
+            max_repo_matches=max_repo_matches,
+        )
+        issue = packet.get("issue") or {}
+        if not is_publishing_transform_ticket(issue):
+            labels = issue.get("labels") or issue.get("label_names") or []
+            return (
+                "Refused: this MCP tool is only for publishing/PDF2/HTML/HTML5/"
+                f"DITA-OT transformation Jira tickets.\nJira: {packet.get('jira_key')}\n"
+                f"Detected labels: {labels}\nUse guides_test_plan_generator for non-publishing tickets."
             )
-            issue = packet.get("issue") or {}
-            if not is_publishing_transform_ticket(issue):
-                labels = issue.get("labels") or issue.get("label_names") or []
-                return (
-                    "Refused: this MCP tool is only for publishing/PDF2/HTML/HTML5/"
-                    f"DITA-OT transformation Jira tickets.\nJira: {packet.get('jira_key')}\n"
-                    f"Detected labels: {labels}\nUse guides_test_plan_generator for non-publishing tickets."
-                )
-            return render_guides_test_plan_packet_markdown(packet)
-        except Exception as e:
-            return f"Error building publishing DITA QA packet: {e}"
+        return render_guides_test_plan_packet_markdown(packet)
+    except Exception as e:
+        return f"Error building publishing DITA QA packet: {e}"
 
 
 if __name__ == "__main__":
