@@ -152,6 +152,25 @@ http_count() {
   printf '%s' "$raw" | extract_aem_count
 }
 
+wait_http_count() {
+  local url="$1"
+  local attempts="${2:-24}"
+  local delay_seconds="${3:-5}"
+  local count=""
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    count="$(http_count "$url")"
+    if [[ -n "$count" ]]; then
+      printf '%s' "$count"
+      return 0
+    fi
+    echo "Waiting for RAG status at $url (attempt $attempt/$attempts)..." >&2
+    sleep "$delay_seconds"
+  done
+
+  return 1
+}
+
 if [[ ! -f "$INPUT_PATH" && "$RESTART_ONLY" != "1" ]]; then
   fail "input JSON not found: $INPUT_PATH"
 fi
@@ -261,7 +280,7 @@ PY
 if [[ "$RESTART_SERVICE" == "1" ]]; then
   section "restart service"
   systemctl restart "$SERVICE_NAME"
-  sleep 5
+  sleep 2
   systemctl status "$SERVICE_NAME" --no-pager -l || true
 fi
 
@@ -272,8 +291,8 @@ if [[ "$RELOAD_NGINX" == "1" ]]; then
 fi
 
 section "verify HTTP counts"
-DIRECT_AFTER="$(http_count "$BACKEND_URL")"
-PUBLIC_AFTER="$(http_count "$PUBLIC_URL")"
+DIRECT_AFTER="$(wait_http_count "$BACKEND_URL" 24 5 || true)"
+PUBLIC_AFTER="$(wait_http_count "$PUBLIC_URL" 24 5 || true)"
 echo "direct_http_count=${DIRECT_AFTER:-unavailable}"
 echo "public_http_count=${PUBLIC_AFTER:-unavailable}"
 
