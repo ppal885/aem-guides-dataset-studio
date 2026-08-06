@@ -77,7 +77,7 @@ from app.services.jira_csv_import_service import (
     preview_jira_csv_files,
     run_import,
 )
-from app.services.jira_customer_profile_service import index_customer_jira_profile
+from app.services.jira_customer_profile_service import rebuild_customer_profiles
 from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, get_collection_count
 
@@ -117,13 +117,10 @@ learning = backfill_jira_learning_chunks(source_type="jira_csv", limit=10_000)
 print("learning=" + json.dumps(learning, ensure_ascii=False), flush=True)
 if learning.get("error") or learning.get("failed_issues"):
     raise SystemExit("ERROR: Jira learned-behavior backfill reported failures")
-profile = index_customer_jira_profile(
-    customer=profile_name,
-    source_file_hash=parsed.file_hash,
-    required_label=required_label,
-)
+profile = rebuild_customer_profiles([profile_name])
 print("customer_profile=" + json.dumps(profile, ensure_ascii=False), flush=True)
-if not profile.get("indexed") or profile.get("chunks") != 4:
+profile_result = profile.get("profiles", {}).get(profile_name, {})
+if profile_result.get("status") != "completed" or not profile_result.get("chunks_indexed"):
     raise SystemExit(f"ERROR: {profile_name} behavior profile was not indexed")
 print("jira_qa_after=" + str(get_collection_count(CHROMA_COLLECTION_JIRA_QA)), flush=True)
 PY

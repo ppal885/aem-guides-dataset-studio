@@ -10,6 +10,7 @@ import numpy as np
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
     parse_jira_csv_bytes,
+    merge_parsed_issues,
     preview_jira_csv_files,
     should_skip_existing,
 )
@@ -139,7 +140,7 @@ def test_high_signal_csv_chunks_are_generated():
     assert all(chunk["metadata"]["resolution"] == "Complete" for chunk in chunks)
 
 
-def test_variable_schema_and_cross_file_duplicate_detection(monkeypatch):
+def test_variable_schema_and_cross_file_duplicate_merge(monkeypatch):
     minimal = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
     wider = _csv_bytes(
         BASE_HEADERS + ["Labels", "Labels", "Comment"],
@@ -152,8 +153,151 @@ def test_variable_schema_and_cross_file_duplicate_detection(monkeypatch):
     assert [item["columns"] for item in preview["files"]] == [8, 11]
 
     duplicate = _csv_bytes(BASE_HEADERS, [["Again", "GUIDES-1", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
-    with pytest.raises(ValueError, match="Duplicate Jira keys across uploaded files"):
-        preview_jira_csv_files([("minimal.csv", minimal), ("duplicate.csv", duplicate)])
+    duplicate_preview = preview_jira_csv_files([("minimal.csv", minimal), ("duplicate.csv", duplicate)])
+    assert duplicate_preview["total_rows"] == 2
+    assert duplicate_preview["unique_issue_keys"] == 1
+    assert duplicate_preview["overlap_count"] == 1
+    assert duplicate_preview["overlapping_issue_keys"] == ["GUIDES-1"]
+
+
+def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
+    headers = BASE_HEADERS + [
+        "Labels",
+        "Custom field (Customer Names)",
+        "Custom field (Company)",
+        "Component/s",
+    ]
+    red_hat = _csv_bytes(
+        headers,
+        [["Same", "GUIDES-21", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "Redhat", "Red Hat", "12345", "Schematron"]],
+    )
+    ibm = _csv_bytes(
+        headers,
+        [["Same", "GUIDES-21", "Customer Request", "Closed", "Done", "Major", "Body", "2026-08-01", "IBM", "6AAB041762B261FF0A495E40@AdobeOrg", "IBM", "Publishing"]],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    preview = preview_jira_csv_files([("redhat.csv", red_hat), ("ibm.csv", ibm)])
+    assert [(item["detected_customer"], item["customer_confidence"]) for item in preview["files"]] == [
+        ("Red Hat", "high"),
+        ("IBM", "high"),
+    ]
+    parsed = [parse_jira_csv_bytes(red_hat, "redhat.csv"), parse_jira_csv_bytes(ibm, "ibm.csv")]
+    assignments = {parsed[0].file_hash: "Red Hat", parsed[1].file_hash: "IBM"}
+    merged = merge_parsed_issues(parsed, assignments)
+    assert len(merged) == 1
+    assert merged[0].customer_cohorts == ["Red Hat", "IBM"]
+    assert merged[0].resolutions == ["Fixed", "Done"]
+    assert merged[0].evidence_archive["acceptance_criteria"] == []
+    assert merged[0].company_names == ["IBM"]
+    assert "@AdobeOrg" not in " ".join(merged[0].customer_names)
+    assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
+
+
+def test_row_level_customer_labels_are_preserved_with_file_cohort():
+    headers = BASE_HEADERS + ["Labels", "Labels"]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["Lexmark association", "GUIDES-31", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "SWIFT", "Lexmark"],
+            ["Topcon association", "GUIDES-32", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "SWIFT", "Topcon"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "swift.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Swift"})
+
+    assert parsed.detected_customer == "Swift"
+    assert merged[0].customer_cohorts == ["Swift", "Lexmark"]
+    assert merged[1].customer_cohorts == ["Swift", "Topcon"]
+
+
+def test_fidelity_file_detection_and_assignment():
+    headers = BASE_HEADERS + ["Labels", "Custom field (Customer Names)"]
+    payload = _csv_bytes(
+        headers,
+        [["Fidelity issue", "GUIDES-33", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "Fidelity", "FIDELITY"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "fidelity.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Fidelity"})
+
+    assert parsed.detected_customer == "Fidelity"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["Fidelity"]
+
+
+def test_mixed_jpmc_kone_file_uses_row_level_cohorts_without_global_assignment():
+    headers = BASE_HEADERS + ["Labels", "Labels"]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["JPMC issue", "GUIDES-34", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "JPMC", ""],
+            ["KONE issue", "GUIDES-35", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "KONE", ""],
+            ["Shared issue", "GUIDES-36", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01", "JPMC", "KONE"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "mixed.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Mixed (row-level cohorts)"})
+
+    assert parsed.detected_customer == "Mixed (row-level cohorts)"
+    assert parsed.detection_confidence == "high"
+    assert [issue.customer_cohorts for issue in merged] == [["JPMC"], ["KONE"], ["JPMC", "KONE"]]
+
+
+def test_mayo_primary_cohort_preserves_swift_cross_association():
+    headers = BASE_HEADERS + ["Labels", "Labels"]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["Mayo issue", "GUIDES-37", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "MayoClinic", ""],
+            ["Shared issue", "GUIDES-38", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "MayoClinic", "SWIFT"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "mayo.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Mayo Clinic"})
+
+    assert parsed.detected_customer == "Mayo Clinic"
+    assert [issue.customer_cohorts for issue in merged] == [["Mayo Clinic"], ["Mayo Clinic", "Swift"]]
+
+
+def test_pwc_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels"],
+        [["PwC issue", "GUIDES-39", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "PWC"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "pwc.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "PwC"})
+
+    assert parsed.detected_customer == "PwC"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["PwC"]
+
+
+def test_linkedin_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels"],
+        [["LinkedIn issue", "GUIDES-40", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "LinkedIn"]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "linkedin.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "LinkedIn"})
+
+    assert parsed.detected_customer == "LinkedIn"
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == ["LinkedIn"]
+
+
+def test_mixed_sonova_demant_file_detection():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Labels"],
+        [
+            ["Sonova issue", "GUIDES-41", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Sonova", ""],
+            ["Demant issue", "GUIDES-42", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Demant", ""],
+            ["Shared issue", "GUIDES-43", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-02", "Sonova", "Demant"],
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, "sonova-demant.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: "Mixed (row-level cohorts)"})
+
+    assert parsed.detected_customer == "Mixed (row-level cohorts)"
+    assert [issue.customer_cohorts for issue in merged] == [["Sonova"], ["Demant"], ["Sonova", "Demant"]]
 
 
 def test_newest_updated_timestamp_wins():
@@ -161,6 +305,24 @@ def test_newest_updated_timestamp_wins():
     assert should_skip_existing(existing, "2026-07-31T17:59:59+00:00") is True
     assert should_skip_existing(existing, "2026-07-31T18:00:00+00:00") is False
     assert should_skip_existing(existing, "2026-08-01T00:00:00+00:00") is False
+
+
+@pytest.mark.parametrize("column_count", [230, 340, 361])
+def test_large_variable_export_schemas_with_repeated_positional_headers(column_count):
+    repeated_count = column_count - len(BASE_HEADERS)
+    headers = BASE_HEADERS + ["Labels"] * repeated_count
+    row = ["Wide", f"GUIDES-{column_count}", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-01"]
+    row += ["IBM" if index == 0 else "" for index in range(repeated_count)]
+    parsed = parse_jira_csv_bytes(_csv_bytes(headers, [row]), f"wide-{column_count}.csv")
+    assert len(parsed.headers) == column_count
+    assert parsed.duplicate_headers["Labels"] == repeated_count
+    assert parsed.detected_customer == "IBM"
+
+
+def test_malformed_row_width_is_rejected():
+    payload = b"Summary,Issue key,Issue Type,Status,Resolution,Description,Updated\nOnly one value\n"
+    with pytest.raises(ValueError, match="columns; expected"):
+        parse_jira_csv_bytes(payload, "malformed.csv")
 
 
 def test_admin_csv_preview_endpoint(client, auth_headers, monkeypatch):

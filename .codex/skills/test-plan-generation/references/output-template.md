@@ -7,6 +7,13 @@ Use this file before writing the final user-facing plan.
 Use exactly these sections. Keep every line as a bullet.
 
 ```markdown
+**Understanding From Jira**
+- Issue understood: <plain-English statement of the user-visible problem or requested feature>.
+- Why it matters: Customer context resolved from Jira: <canonical customer(s), sourced from explicit customer fields, labels, both, or not identified>; <workflow, release, data, or business impact>.
+- Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
+- Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
+- Evidence boundary: <live Jira, indexed Jira, supplied incident, customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
+
 **Acceptance Criteria**
 - AC-01 [Confirmed]: ...
 - AC-02 [Proposed]: ...
@@ -24,20 +31,26 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
-- P0 [AC-01]: ...
-- P1 [AC-02, AC-03]: ...
-- P2 [AC-04]: ...
+- Test data to prepare: <clear list of maps/topics/assets/references/preset/target path/roles/config/version/scale/failure fixture/expected snapshot/cleanup data>.
+- Incident recovery validation: Confirm target correlation and approved scope; capture pre-change inventory/backup, execute the safe cleanup, preserve unrelated state, retain audit evidence, verify queue/dashboard recovery, and prove rollback readiness.
+- P0 [AC-01]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-02, AC-03]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P2 [AC-04]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-##]: Customer-shaped fixture for <customer>, supported by <representative Jira keys>. Action: <simple action using prepared data>. Expected: <observable current-Jira result and cleanup result>.
+- P2 [AC-##]: Customer-derived exploratory coverage for <customer>, supported by <concentration or representative Jira keys>. Action: <adjacent state, boundary, recovery, or integration check>. Expected: <observable no-regression result>.
 
 **Known Jira Bugs / Past Similar Tickets**
+- **Observed Customer Jira Profile: <customer> -** resolved from <Jira customer field/label>; profile <version>, approval <status>, <distinct-key count> Jira keys including <native Bug/Defect count> and <failure-like problem-report count/corpus percentage>, and <classification coverage>; current-Jira-relevant reported-problem taxonomy and concentrations are <types/areas/counts/percentages>; test-data, regression, and exploratory recommendations are <signals>; representative candidate keys are <keys>. Aggregate context only - validate direct Jira evidence before using any assertion. Repeat this bullet separately for every Jira customer; if missing, write `Observed Customer Jira Profile: <customer> - unavailable`.
 - ...
 
 **Regression Areas**
+- Customer-derived regression focus: <customer>; <bug area, corpus count/percentage, representative keys>; overlaps <current Jira/code/shared workflow> and adds <exact regression check/fixture>. Aggregate risk guidance, not product-behaviour proof.
 - ...
 
 **Automation Coverage & Gaps**
-- AC-01 — Covered: `<repo>:<file>:<test>` using `<fixture/helper>` at `<revision>`.
-- AC-02 — Partially covered: existing test proves <covered behavior>; missing <specific boundary/assertion>.
-- AC-03 — Not covered: add/extend `<UI/API/integration suite>` using `<setup/cleanup>` and assert <observable contract>.
+- AC-01 - Covered: `<absolute repo path>:<complete file path>:<test method>` using `<fixture/helper>` at `<branch>@<SHA>`; clone is `<clean/dirty, ahead/behind, fetch result>`.
+- AC-02 - Partially covered: existing test directly proves <named clause of AC-02>; missing <specific clause/boundary/assertion>. Adjacent happy-path tests are reusable infrastructure, not partial coverage.
+- AC-03 - Not covered: add/extend `<exact file/class/method>` in `<UI/API/integration layer>`; reuse `<client/helper/fixture>`, create state through `<deterministic setup/injection>`, poll `<endpoint/state>` with `<timeout source>`, assert `<terminal and output-integrity oracle>`, and clean up or roll back through `<mechanism>` under `<suite/tags>`.
 
 **Open Questions**
 - ...
@@ -54,8 +67,15 @@ Use exactly these sections. Keep every line as a bullet.
 - In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
+- Resolve customer context from Jira fields and labels without asking the user again; preserve multiple customers and keep each customer profile separate.
 - Do not create extra sections.
 - Do not use tables.
+- Before returning, scan for mojibake (`â€`, `â‰`, `Ã`, `Â`, or `�`) and repair it; use ASCII punctuation if the client encoding is uncertain.
+- Never abbreviate repository or file paths with `...`; include branch, commit SHA, sync state, and dirty/clean state.
+- Keep destructive cleanup procedures out of Acceptance Criteria and place them under `Incident recovery validation` in Test Scenarios.
+- Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
+- For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
+- Customer ticket frequencies describe what is frequently represented or affected in the Jira corpus; they do not prove feature usage or product behaviour.
 
 ## Stage Mapping
 
@@ -67,7 +87,7 @@ Use exactly these sections. Keep every line as a bullet.
 
 Use:
 
-`- P0 [AC-01, AC-02]: <action/test data/config/user role> -> <expected observable result>.`
+`- P0 [AC-01, AC-02]: Action: <what the tester does using prepared data>. Expected: <visible or measurable result>.`
 
 Examples:
 
@@ -79,6 +99,13 @@ Examples:
 ## Sample Pre-Development UAC
 
 ```markdown
+**Understanding From Jira**
+- Issue understood: The affected workflow does not satisfy the behavior requested in the issue.
+- Why it matters: The failure blocks the documented customer or release workflow described in the supplied evidence.
+- Requested outcome: The workflow reaches the Jira-defined observable outcome without the reported failure.
+- Lifecycle understood as: `Pre-Development UAC` because development has not started.
+- Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
+
 **Acceptance Criteria**
 - Verify that the configured workflow completes for the affected user role.
 - Verify that invalid or unsupported input is blocked with a clear error.
@@ -92,8 +119,8 @@ Examples:
 **Scope From Git**
 - Lifecycle stage: `Pre-Development UAC`; development has not started.
 - Issue source: <Jira, Dynamics/support case, customer escalation, pasted logs, or investigation notes>.
-- Product clones: <Starling/backend, xmleditor, or new editor path and sync state>.
-- Automation clones: <guides-ui-tests/dxml-it-tests path and sync state>.
+- Product clones: <absolute Starling/backend, xmleditor, or new editor path; branch; pre/post SHA; upstream/ahead/behind; pre/post dirty state; fetch/pull result; inspected ref; retained stash and restore command when applicable>.
+- Automation clones: <absolute guides-ui-tests/dxml-it-tests path with the same guarded sync evidence>.
 - PR discovery: Not applicable — development has not started.
 - Figma/design evidence: <Figma MCP inspected link/frame, screenshot/design notes used, or not applicable>.
 

@@ -22,9 +22,15 @@ class JiraEnrichedDocument(BaseModel):
     jira_updated_at: str = ""
     source_type: str = "jira_api"
     source_file_hash: str = ""
+    source_file_hashes: list[str] = Field(default_factory=list)
+    import_provenance: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_archive: dict[str, list[str]] = Field(default_factory=dict)
     labels: list[str] = Field(default_factory=list)
     components: list[str] = Field(default_factory=list)
+    company_names: list[str] = Field(default_factory=list)
     customer_names: list[str] = Field(default_factory=list)
+    customer_cohorts: list[str] = Field(default_factory=list)
+    resolutions: list[str] = Field(default_factory=list)
     domain: str = "unknown"
     sub_domain: str = ""
     affected_outputs: list[str] = Field(default_factory=list)

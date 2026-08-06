@@ -18,6 +18,8 @@ def test_prompt_generation_plan_preserves_constructs_outputs_and_oracles():
     assert any("root DITA map" in item for item in plan["artifact_expectations"])
     assert any("publishing checks" in item for item in plan["oracle_expectations"])
     assert plan["negative_or_risk_cases"]
+    assert any("authored and executed" in item for item in plan["negative_or_risk_cases"])
+    assert any("Never replace" in item for item in plan["quality_rules"])
 
 
 def test_render_prompt_generation_plan_is_injectable_text():

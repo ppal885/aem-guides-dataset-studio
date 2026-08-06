@@ -733,7 +733,12 @@ def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
         "- Never use placeholder links like example.com.\n"
         "- If a generate_dita tool result exists, use only its returned download_url and prefer telling the user to use the in-app download action.\n"
         "- Do not claim a bundle was generated unless the tool result says it was.\n"
-        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
+        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers.\n"
+        "- Keep official documentation, indexed Jira incident evidence, runtime observation, and source-code observation explicitly separate.\n"
+        "- If documentation does not address a recovery mechanism, do not say the evidence recommends one. Label incident-derived sequential execution as temporary operational mitigation, not product behavior.\n"
+        "- Do not present full-map overwrite/orphan cleanup as recovery for Oak/JCR commit conflicts unless direct evidence explicitly establishes that relationship.\n"
+        "- Do not claim Support or Cloud Ops ownership, mandatory full republish, automatic retry, locking, or serialization without direct current evidence.\n"
+        "- Cite only sources that directly prove a retained claim; do not add unrelated source links or advertise unrelated tools at the end."
     )
     return prompt + safety_rules
 
@@ -8736,6 +8741,7 @@ async def _stream_assistant_reply(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """Generate and persist an assistant reply for an existing last user message."""
     if attachments:
@@ -8774,15 +8780,18 @@ async def _stream_assistant_reply(
     elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
-    routed_tool_intent = (
-        route_decision.candidate_contract
-        if route_decision.intent == "dita_ot_generation" and isinstance(route_decision.candidate_contract, dict)
-        else None
-    )
-    parsed_tool_intent = tool_intent or routed_tool_intent or parse_tool_intent_from_content(user_content)
-    parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
-    if parsed_tool_intent is None:
-        parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)
+    routed_tool_intent = None
+    parsed_tool_intent = None
+    if allow_tool_routing:
+        routed_tool_intent = (
+            route_decision.candidate_contract
+            if route_decision.intent == "dita_ot_generation" and isinstance(route_decision.candidate_contract, dict)
+            else None
+        )
+        parsed_tool_intent = tool_intent or routed_tool_intent or parse_tool_intent_from_content(user_content)
+        parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
+        if parsed_tool_intent is None:
+            parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)
     if parsed_tool_intent:
         async for event in _stream_tool_intent_reply(
             session_id,
@@ -8903,7 +8912,7 @@ async def _stream_assistant_reply(
         yield {"type": "done"}
         return
 
-    if route_decision.intent == "dita_answer_then_generation" and policy_decision.action == "answer_then_preview":
+    if allow_tool_routing and route_decision.intent == "dita_answer_then_generation" and policy_decision.action == "answer_then_preview":
         async for event in _stream_mixed_dita_answer_then_preview_reply(
             session_id,
             user_content=user_content,
@@ -8916,7 +8925,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
+    if allow_tool_routing and route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
         contract = route_decision.candidate_contract or {}
         fresh_generate_dita_plan = _build_generate_dita_preview_plan(
             user_request=user_content,
@@ -8934,7 +8943,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    agent_plan = build_agent_plan(user_content, tenant_id=tenant_id) if answer_mode == "agent_research_plan" else None
+    agent_plan = build_agent_plan(user_content, tenant_id=tenant_id) if allow_tool_routing and answer_mode == "agent_research_plan" else None
     if agent_plan:
         async for event in _stream_agent_plan_reply(
             session_id,
@@ -9012,7 +9021,7 @@ async def _stream_assistant_reply(
         yield {"type": "done"}
         return
 
-    if _should_use_tool_mode(user_content, session_id=session_id):
+    if allow_tool_routing and _should_use_tool_mode(user_content, session_id=session_id):
         async for event in _stream_tool_mode_reply(
             session_id,
             user_content=user_content,
@@ -10653,6 +10662,7 @@ async def chat_turn(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """Process a chat turn (LangSmith-traced when enabled)."""
     impl = _get_traced_chat_turn_impl()
@@ -10667,6 +10677,7 @@ async def chat_turn(
         attachments=attachments,
         generation_options=generation_options,
         jira_context=jira_context,
+        allow_tool_routing=allow_tool_routing,
     ):
         yield event
 
@@ -10703,6 +10714,7 @@ async def _chat_turn_impl(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """
     Process a chat turn: persist user message, call LLM with RAG, stream response, persist assistant message.
@@ -10773,6 +10785,7 @@ async def _chat_turn_impl(
         attachments=attachments,
         generation_options=generation_options,
         jira_context=jira_context,
+        allow_tool_routing=allow_tool_routing,
     ):
         yield event
 

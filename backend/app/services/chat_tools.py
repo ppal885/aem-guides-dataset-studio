@@ -2151,9 +2151,11 @@ async def execute_lookup_aem_guides(query: str, k: int = 5) -> dict[str, Any]:
         )
         local_results = [
             {
+                "chunk_id": d.get("chunk_id", ""),
                 "url": d.get("url", ""),
                 "title": d.get("title", ""),
                 "snippet": (d.get("snippet") or "")[:800],
+                "evidence_type": d.get("evidence_type", ""),
                 "source": "local_rag",
             }
             for d in (retrieval.get("results") or [])
