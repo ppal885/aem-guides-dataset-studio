@@ -102,11 +102,19 @@ if invalid_labels:
 Base.metadata.create_all(bind=engine)
 run_migrations()
 print("database_schema=ready", flush=True)
-preview = preview_jira_csv_files([(path.name, data)])
+customer_assignments = {parsed.file_hash: profile_name}
+preview = preview_jira_csv_files(
+    [(path.name, data)],
+    customer_assignments=customer_assignments,
+)
 print("preview=" + json.dumps(preview, ensure_ascii=False), flush=True)
 print("jira_qa_before=" + str(get_collection_count(CHROMA_COLLECTION_JIRA_QA)), flush=True)
 customer_key = profile_name.lower().replace(" ", "-")
-run_id, paths = create_import_run([(path.name, data)], created_by=f"vm-{customer_key}-import")
+run_id, paths = create_import_run(
+    [(path.name, data)],
+    created_by=f"vm-{customer_key}-import",
+    customer_assignments=customer_assignments,
+)
 run_import(run_id, paths)
 result = get_import_run(run_id) or {}
 print("import=" + json.dumps(result, ensure_ascii=False), flush=True)
