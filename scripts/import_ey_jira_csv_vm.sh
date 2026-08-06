@@ -5,13 +5,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 CSV_PATH="${1:-}"
+CUSTOMER_LABEL="${2:-EY}"
 SERVICE_NAME="${SERVICE_NAME:-aem-backend.service}"
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8001}"
 PUBLIC_URL="${PUBLIC_URL:-http://10.42.46.78:4502}"
 PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/backend/.venv/bin/python}"
 
 if [[ -z "$CSV_PATH" || ! -f "$CSV_PATH" ]]; then
-  echo "Usage: bash scripts/import_ey_jira_csv_vm.sh /absolute/path/to/jira.csv" >&2
+  echo "Usage: bash scripts/import_ey_jira_csv_vm.sh /absolute/path/to/jira.csv [customer-label]" >&2
   exit 2
 fi
 if [[ ! -x "$PYTHON_BIN" ]]; then
@@ -41,8 +42,13 @@ echo "service_cwd=${SERVICE_CWD:-}"
 echo "storage_path=${STORAGE_PATH_VALUE:-<backend default>}"
 echo "database_url=${DATABASE_URL_VALUE:+resolved}"
 echo "csv=$CSV_PATH"
+echo "customer=$CUSTOMER_LABEL"
 
-env_args=("PYTHONPATH=backend" "EY_CSV_PATH=$(readlink -f "$CSV_PATH")")
+env_args=(
+  "PYTHONPATH=backend"
+  "CUSTOMER_CSV_PATH=$(readlink -f "$CSV_PATH")"
+  "CUSTOMER_LABEL=$CUSTOMER_LABEL"
+)
 if [[ -n "$STORAGE_PATH_VALUE" ]]; then
   env_args+=("STORAGE_PATH=$STORAGE_PATH_VALUE")
 fi
@@ -72,16 +78,21 @@ from app.services.jira_customer_profile_service import index_customer_jira_profi
 from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, get_collection_count
 
-path = Path(os.environ["EY_CSV_PATH"])
+customer = os.environ["CUSTOMER_LABEL"].strip()
+path = Path(os.environ["CUSTOMER_CSV_PATH"])
 data = path.read_bytes()
 parsed = parse_jira_csv_bytes(data, path.name)
-non_ey = [
+expected_label = customer.casefold()
+invalid_labels = [
     issue.issue_key
     for issue in parsed.issues
-    if "EY" not in {str(label).strip().upper() for label in issue.issue["fields"].get("labels", [])}
+    if expected_label
+    not in {str(label).strip().casefold() for label in issue.issue["fields"].get("labels", [])}
 ]
-if non_ey:
-    raise SystemExit("ERROR: CSV contains issues without the EY label: " + ", ".join(non_ey[:20]))
+if invalid_labels:
+    raise SystemExit(
+        f"ERROR: CSV contains issues without the {customer} label: " + ", ".join(invalid_labels[:20])
+    )
 
 Base.metadata.create_all(bind=engine)
 run_migrations()
@@ -89,7 +100,8 @@ print("database_schema=ready", flush=True)
 preview = preview_jira_csv_files([(path.name, data)])
 print("preview=" + json.dumps(preview, ensure_ascii=False), flush=True)
 print("jira_qa_before=" + str(get_collection_count(CHROMA_COLLECTION_JIRA_QA)), flush=True)
-run_id, paths = create_import_run([(path.name, data)], created_by="vm-ey-import")
+customer_key = customer.lower().replace(" ", "-")
+run_id, paths = create_import_run([(path.name, data)], created_by=f"vm-{customer_key}-import")
 run_import(run_id, paths)
 result = get_import_run(run_id) or {}
 print("import=" + json.dumps(result, ensure_ascii=False), flush=True)
@@ -101,13 +113,13 @@ print("learning=" + json.dumps(learning, ensure_ascii=False), flush=True)
 if learning.get("error") or learning.get("failed_issues"):
     raise SystemExit("ERROR: Jira learned-behavior backfill reported failures")
 profile = index_customer_jira_profile(
-    customer="EY",
+    customer=customer,
     source_file_hash=parsed.file_hash,
-    required_label="EY",
+    required_label=customer,
 )
 print("customer_profile=" + json.dumps(profile, ensure_ascii=False), flush=True)
 if not profile.get("indexed") or profile.get("chunks") != 4:
-    raise SystemExit("ERROR: EY customer behavior profile was not indexed")
+    raise SystemExit(f"ERROR: {customer} customer behavior profile was not indexed")
 print("jira_qa_after=" + str(get_collection_count(CHROMA_COLLECTION_JIRA_QA)), flush=True)
 PY
 
