@@ -76,10 +76,15 @@ _CUSTOMER_ALIASES = {
     "linked in": "LinkedIn",
     "sonova": "Sonova",
     "demant": "Demant",
+    "crown": "Crown Equipment",
+    "crown equipment": "Crown Equipment",
+    "abs": "American Bureau of Shipping",
+    "american bureau of shipping": "American Bureau of Shipping",
 }
 _SUPPORTED_CUSTOMERS = {
     "Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity", "JPMC", "KONE",
     "Mayo Clinic", "Thomson Reuters", "PwC", "LinkedIn", "Sonova", "Demant",
+    "Crown Equipment", "American Bureau of Shipping",
 }
 _MIXED_CUSTOMER = "Mixed (row-level cohorts)"
 _CUSTOMER_LABELS = {
@@ -102,6 +107,8 @@ _CUSTOMER_LABELS = {
     "linkedin": "LinkedIn",
     "sonova": "Sonova",
     "demant": "Demant",
+    "crown": "Crown Equipment",
+    "abs": "American Bureau of Shipping",
 }
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"

@@ -224,6 +224,40 @@ def test_fidelity_file_detection_and_assignment():
     assert merged[0].customer_cohorts == ["Fidelity"]
 
 
+@pytest.mark.parametrize(
+    ("label", "customer_field", "canonical"),
+    [
+        ("Crown", "Crown Equipment", "Crown Equipment"),
+        ("ABS", "AMERICAN BUREAU OF SHIPPING", "American Bureau of Shipping"),
+    ],
+)
+def test_crown_and_abs_detection_and_assignment(label, customer_field, canonical):
+    headers = BASE_HEADERS + ["Labels", "Custom field (Customer Names)"]
+    payload = _csv_bytes(
+        headers,
+        [
+            [
+                f"{label} issue",
+                "GUIDES-34",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "Body",
+                "2026-08-01",
+                label,
+                customer_field,
+            ]
+        ],
+    )
+    parsed = parse_jira_csv_bytes(payload, f"{label.lower()}.csv")
+    merged = merge_parsed_issues([parsed], {parsed.file_hash: canonical})
+
+    assert parsed.detected_customer == canonical
+    assert parsed.detection_confidence == "high"
+    assert merged[0].customer_cohorts == [canonical]
+
+
 def test_mixed_jpmc_kone_file_uses_row_level_cohorts_without_global_assignment():
     headers = BASE_HEADERS + ["Labels", "Labels"]
     payload = _csv_bytes(
