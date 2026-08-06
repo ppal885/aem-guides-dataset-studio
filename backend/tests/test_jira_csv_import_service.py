@@ -9,6 +9,7 @@ import numpy as np
 
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
+    _completed_file_hashes,
     parse_jira_csv_bytes,
     merge_parsed_issues,
     preview_jira_csv_files,
@@ -146,7 +147,10 @@ def test_variable_schema_and_cross_file_duplicate_merge(monkeypatch):
         BASE_HEADERS + ["Labels", "Labels", "Comment"],
         [["Two", "GUIDES-2", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31", "a", "b", ""]],
     )
-    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    monkeypatch.setattr(
+        "app.services.jira_csv_import_service._completed_file_hashes",
+        lambda **_kwargs: set(),
+    )
     preview = preview_jira_csv_files([("minimal.csv", minimal), ("wider.csv", wider)])
     assert preview["total_rows"] == 2
     assert preview["unique_issue_keys"] == 2
@@ -175,7 +179,10 @@ def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
         headers,
         [["Same", "GUIDES-21", "Customer Request", "Closed", "Done", "Major", "Body", "2026-08-01", "IBM", "6AAB041762B261FF0A495E40@AdobeOrg", "IBM", "Publishing"]],
     )
-    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    monkeypatch.setattr(
+        "app.services.jira_csv_import_service._completed_file_hashes",
+        lambda **_kwargs: set(),
+    )
     preview = preview_jira_csv_files([("redhat.csv", red_hat), ("ibm.csv", ibm)])
     assert [(item["detected_customer"], item["customer_confidence"]) for item in preview["files"]] == [
         ("Red Hat", "high"),
@@ -191,6 +198,19 @@ def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
     assert merged[0].company_names == ["IBM"]
     assert "@AdobeOrg" not in " ".join(merged[0].customer_names)
     assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
+
+
+def test_completed_hash_is_reprocessed_when_customer_assignment_changes(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.jira_csv_import_service._prior_file_customer_assignments",
+        lambda **_kwargs: {"same-hash": {"Swift"}},
+    )
+
+    assert _completed_file_hashes() == {"same-hash"}
+    assert _completed_file_hashes(customer_assignments={"same-hash": "Swift"}) == {"same-hash"}
+    assert _completed_file_hashes(
+        customer_assignments={"same-hash": "American Bureau of Shipping"}
+    ) == set()
 
 
 def test_row_level_customer_labels_are_preserved_with_file_cohort():
@@ -361,7 +381,10 @@ def test_malformed_row_width_is_rejected():
 
 def test_admin_csv_preview_endpoint(client, auth_headers, monkeypatch):
     payload = _csv_bytes(BASE_HEADERS, [["One", "GUIDES-9", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-07-31"]])
-    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+    monkeypatch.setattr(
+        "app.services.jira_csv_import_service._completed_file_hashes",
+        lambda **_kwargs: set(),
+    )
     response = client.post(
         "/api/v1/admin/jira-rag/import-csv?dry_run=true",
         files=[("files", ("jira.csv", payload, "text/csv"))],

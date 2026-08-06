@@ -578,7 +578,7 @@ def preview_jira_csv_files(
     keys = [issue.issue_key for item in parsed for issue in item.issues]
     duplicate_keys = sorted(key for key, count in Counter(keys).items() if count > 1)
     assignment_map = _normalize_customer_assignments(parsed, customer_assignments)
-    completed_hashes = _completed_file_hashes()
+    completed_hashes = _completed_file_hashes(customer_assignments=assignment_map)
     return {
         "valid": all(assignment_map.values()),
         "importer_version": IMPORTER_VERSION,
@@ -608,19 +608,39 @@ def preview_jira_csv_files(
     }
 
 
-def _completed_file_hashes(*, exclude_run_id: str = "") -> set[str]:
+def _prior_file_customer_assignments(*, exclude_run_id: str = "") -> dict[str, set[str]]:
     db = SessionLocal()
     try:
         rows = db.query(JiraCsvImportRun).filter(JiraCsvImportRun.status == "completed").all()
-        return {
-            str(file_hash)
-            for row in rows
-            if row.id != exclude_run_id and str(row.importer_version or "1") == IMPORTER_VERSION
-            for file_hash in (row.file_hashes or [])
-            if file_hash
-        }
+        assignments: dict[str, set[str]] = defaultdict(set)
+        for row in rows:
+            if row.id == exclude_run_id or str(row.importer_version or "1") != IMPORTER_VERSION:
+                continue
+            row_assignments = dict(row.customer_assignments or {})
+            for file_hash in row.file_hashes or []:
+                if not file_hash:
+                    continue
+                customer = _canonical_customer(row_assignments.get(str(file_hash), ""))
+                if customer:
+                    assignments[str(file_hash)].add(customer)
+        return assignments
     finally:
         db.close()
+
+
+def _completed_file_hashes(
+    *,
+    exclude_run_id: str = "",
+    customer_assignments: dict[str, str] | None = None,
+) -> set[str]:
+    prior = _prior_file_customer_assignments(exclude_run_id=exclude_run_id)
+    requested = customer_assignments or {}
+    completed: set[str] = set()
+    for file_hash, previous_customers in prior.items():
+        current = _canonical_customer(requested.get(file_hash, ""))
+        if not current or current in previous_customers:
+            completed.add(file_hash)
+    return completed
 
 
 def create_import_run(
@@ -715,15 +735,31 @@ def _union_values(existing: Any, incoming: list[str], *, limit: int = 200) -> li
     return _dedupe([str(value) for value in current] + incoming, limit=limit)
 
 
-def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
+def _metadata_only_merge(parsed_issue: ParsedCsvIssue, stale_assignments: set[str] | None = None) -> bool:
     """Union cohort/provenance evidence into a newer SQL/Chroma issue without replacing its content."""
     db = SessionLocal()
     try:
         row = db.query(JiraEnrichedIssue).filter(JiraEnrichedIssue.jira_key == parsed_issue.issue_key).first()
         if row is None:
             return False
+        stale = {
+            value.casefold()
+            for value in (stale_assignments or set())
+            if value.casefold() not in {cohort.casefold() for cohort in parsed_issue.customer_cohorts}
+        }
+        if stale:
+            row.customer_names = [
+                value for value in (row.customer_names or []) if value.casefold() not in stale
+            ]
+            row.customer_cohorts = [
+                value for value in (row.customer_cohorts or []) if value.casefold() not in stale
+            ]
         row.company_names = _union_values(row.company_names, parsed_issue.company_names, limit=100)
-        row.customer_names = _union_values(row.customer_names, parsed_issue.customer_names, limit=100)
+        row.customer_names = _union_values(
+            row.customer_names,
+            parsed_issue.customer_names + parsed_issue.customer_cohorts,
+            limit=100,
+        )
         row.customer_cohorts = _union_values(row.customer_cohorts, parsed_issue.customer_cohorts, limit=20)
         row.components = _union_values(
             row.components,
@@ -829,13 +865,17 @@ def run_import(run_id: str, paths: list[Path]) -> None:
         if not is_embedding_available():
             raise RuntimeError("Embedding model is not available")
         _set_run(run_id, status="running", started_at=datetime.utcnow())
-        completed_hashes = _completed_file_hashes(exclude_run_id=run_id)
         db = SessionLocal()
         try:
             run_row = db.query(JiraCsvImportRun).filter(JiraCsvImportRun.id == run_id).first()
             customer_assignments = dict(run_row.customer_assignments or {}) if run_row else {}
         finally:
             db.close()
+        prior_assignments = _prior_file_customer_assignments(exclude_run_id=run_id)
+        completed_hashes = _completed_file_hashes(
+            exclude_run_id=run_id,
+            customer_assignments=customer_assignments,
+        )
         parsed_files = [parse_jira_csv_bytes(path.read_bytes(), path.name.split("-", 1)[-1]) for path in paths]
         import_files = [item for item in parsed_files if item.file_hash not in completed_hashes]
         for item in parsed_files:
@@ -855,6 +895,13 @@ def run_import(run_id: str, paths: list[Path]) -> None:
             batch = []
 
         for parsed_issue in merged_issues:
+                stale_assignments = {
+                    previous
+                    for file_hash in parsed_issue.source_file_hashes
+                    for previous in prior_assignments.get(file_hash, set())
+                    if previous.casefold()
+                    not in {cohort.casefold() for cohort in parsed_issue.customer_cohorts}
+                }
                 source_row_count = max(1, len(parsed_issue.import_provenance))
                 db = SessionLocal()
                 try:
@@ -872,9 +919,21 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                     } if existing else {}
                 finally:
                     db.close()
+                if stale_assignments:
+                    stale_folded = {value.casefold() for value in stale_assignments}
+                    existing_metadata["customer_names"] = [
+                        value
+                        for value in existing_metadata.get("customer_names", [])
+                        if value.casefold() not in stale_folded
+                    ]
+                    existing_metadata["customer_cohorts"] = [
+                        value
+                        for value in existing_metadata.get("customer_cohorts", [])
+                        if value.casefold() not in stale_folded
+                    ]
                 if should_skip_existing(existing_updated, parsed_issue.jira_updated_at):
                     try:
-                        if _metadata_only_merge(parsed_issue):
+                        if _metadata_only_merge(parsed_issue, stale_assignments):
                             metadata_merged += 1
                         else:
                             skipped += 1
