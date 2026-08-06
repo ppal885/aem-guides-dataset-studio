@@ -128,6 +128,78 @@ def validate(text: str) -> list[str]:
         if SCENARIO_RE.match(line) and ("Action:" not in line or "Expected:" not in line):
             errors.append(f"line {number}: P0/P1/P2 scenario must use plain-English Action: and Expected: wording")
 
+    defined_acs: set[str] = set()
+    for _, line in acceptance:
+        match = re.match(r"- (AC-\d{2}) \[", line)
+        if match:
+            defined_acs.add(match.group(1))
+    scenario_acs: set[str] = set()
+    for _, line in sections["Test Scenarios"]:
+        for group in AC_LINK_RE.findall(line):
+            scenario_acs.update(re.findall(r"AC-\d{2}", group))
+    automation_text = "\n".join(line for _, line in sections["Automation Coverage & Gaps"])
+    automation_acs = set(re.findall(r"AC-\d{2}", automation_text))
+    for ac in sorted(defined_acs):
+        if ac not in scenario_acs:
+            errors.append(f"acceptance criterion {ac} has no Test Scenarios mapping")
+        if ac not in automation_acs:
+            errors.append(f"acceptance criterion {ac} has no verdict in Automation Coverage & Gaps")
+
+    scenario_lines = sections["Test Scenarios"]
+    if scenario_lines and not any(
+        line.lower().startswith(("- setup and test data", "- test data to prepare:"))
+        for _, line in scenario_lines
+    ):
+        errors.append(
+            "Test Scenarios must include at least one 'Test data to prepare:' bullet with concrete "
+            "fixtures, identifier/example values, config, environment, and oracles"
+        )
+
+    for number, line in sections["Regression Areas"]:
+        content = line[2:].strip() if line.startswith("- ") else line.strip()
+        if content and len(content) < 60:
+            errors.append(
+                f"line {number}: Regression Areas bullet is too terse to be a QA regression item; "
+                f"state what to re-test and the risk, not just an area name"
+            )
+
+    for number, line in sections["Open Questions"]:
+        lowered = line.lower()
+        if "no open questions" in lowered:
+            continue
+        if line.startswith("- ") and "impact" not in lowered:
+            errors.append(
+                f"line {number}: Open Questions bullet must state the QA impact of the answer "
+                f"(name the decision and what each possible answer changes for testing)"
+            )
+
+    scope_text = "\n".join(line for _, line in sections["Scope From Git"]).lower()
+    if re.search(r"[a-z]:[\\/]", scope_text):
+        mentions_sha = "sha" in scope_text
+        acknowledges = any(
+            token in scope_text
+            for token in ("not captured", "not recorded", "provisional", "anchored to the inspected", "verified remote ref")
+        )
+        synced = any(token in scope_text for token in ("ahead", "behind", "fast-forward", "fetched", "synced"))
+        if not (mentions_sha and (acknowledges or synced)):
+            errors.append(
+                "Scope From Git cites a clone path but does not state its sync/SHA state; give the captured SHA "
+                "plus fetch/ahead/behind, or an explicit provisional acknowledgment that the SHA was not captured"
+            )
+
+    jira_key_re = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
+    known_bug_text = "\n".join(line for _, line in sections["Known Jira Bugs / Past Similar Tickets"])
+    known_bug_keys = set(jira_key_re.findall(known_bug_text))
+    for number, line in sections["Regression Areas"]:
+        for key in jira_key_re.findall(line):
+            if key.startswith("AC-"):
+                continue
+            if key not in known_bug_keys:
+                errors.append(
+                    f"line {number}: Regression Areas cites Jira {key} that is not vetted and listed in "
+                    f"Known Jira Bugs; do not name-drop unrelated tickets"
+                )
+
     if "..." in text:
         for number, line in enumerate(lines, start=1):
             if "..." in line:
@@ -165,12 +237,22 @@ def validate(text: str) -> list[str]:
         ):
             errors.append(f"line {number}: repeatable post-recovery behavior is automatable")
 
-    history_terms = ("Status:", "Resolution:", "Affected version:", "Fix version:", "RCA:", "Test evidence:", "Impact:")
+    history_terms = ("Similarity:", "Status:", "Resolution:", "Affected version:", "Fix version:", "RCA:", "Test evidence:", "Impact:")
+    strength_terms = ("strongest", "structural twin", "adjacent", "weak", "setup-only", "setup only", "closest")
     for number, line in sections["Known Jira Bugs / Past Similar Tickets"]:
         if JIRA_RE.match(line):
             missing = [term for term in history_terms if term.lower() not in line.lower()]
             if missing:
                 errors.append(f"line {number}: historical Jira entry is missing {', '.join(missing)}")
+            lowered = line.lower()
+            if "similarity:" in lowered:
+                similarity_clause = lowered.split("similarity:", 1)[1].split("status:", 1)[0]
+                if not any(term in similarity_clause for term in strength_terms):
+                    errors.append(
+                        f"line {number}: historical Jira entry must state a match strength in its Similarity "
+                        f"clause (e.g. strongest match, structural twin, adjacent, weak/setup-only) so area-only "
+                        f"or keyword-only matches are not padded into this section"
+                    )
     history_text = "\n".join(line for _, line in sections["Known Jira Bugs / Past Similar Tickets"])
     for number, line in sections["Known Jira Bugs / Past Similar Tickets"]:
         if "Observed Customer Jira Profile:" not in line:
@@ -191,9 +273,7 @@ def validate(text: str) -> list[str]:
             )
             missing = [term for term in required_profile_terms if term.lower() not in line.lower()]
             if missing:
-                errors.append(
-                    f"line {number}: customer profile evidence is missing {', '.join(missing)}"
-                )
+                errors.append(f"line {number}: customer profile evidence is missing {', '.join(missing)}")
     if history_text and not all(term in history_text.lower() for term in ("jql", "error", "workflow")):
         errors.append("historical search must report multiple narrow JQL intents including error and workflow searches")
 

@@ -50,17 +50,17 @@ def _valid_plan() -> str:
 - Incident recovery validation: Use an approved production-equivalent recovery checklist and preserve audit evidence.
 
 **Known Jira Bugs / Past Similar Tickets**
-- GUIDES-1 - Status: Closed; Resolution: Fixed; Affected version: unavailable; Fix version: unavailable; RCA: commit conflict; Test evidence: unavailable; Impact: adds concurrency regression coverage.
+- GUIDES-1 - Similarity: strongest match with the same concurrent publishing failure shape; Status: Closed; Resolution: Fixed; Affected version: unavailable; Fix version: unavailable; RCA: commit conflict; Test evidence: unavailable; Impact: adds concurrency regression coverage.
 - Search method: JQL by exact error `OakState0002`; JQL by workflow `Publish DITAMAP`; indexed history unavailable.
 
 **Regression Areas**
-- Unrelated publishing queues and output types.
+- Re-run unrelated publishing queues and output types that share job-state handling to confirm concurrent execution does not leave jobs non-terminal or corrupt generated output.
 
 **Automation Coverage & Gaps**
 - AC-01 - Not covered: add `concurrentPublish` in `C:\\api-tests\\PublishIT.java`; API layer; setup fixture; poll status endpoint; timeout from suite configuration; assert terminal success and output integrity; cleanup fixture; tag `publishing-concurrency`.
 
 **Open Questions**
-- Confirm the approved retry budget and SLA.
+- Confirm the approved retry budget and SLA; QA impact: the answer defines polling duration, terminal-failure timing, and sign-off thresholds.
 """
 
 
@@ -107,7 +107,7 @@ def test_validator_rejects_confirmed_ac_when_native_jira_ac_is_empty():
 
 def test_validator_rejects_incomplete_historical_ticket_fields():
     plan = _valid_plan().replace(
-        "- GUIDES-1 - Status: Closed; Resolution: Fixed; Affected version: unavailable; Fix version: unavailable; RCA: commit conflict; Test evidence: unavailable; Impact: adds concurrency regression coverage.",
+        "- GUIDES-1 - Similarity: strongest match with the same concurrent publishing failure shape; Status: Closed; Resolution: Fixed; Affected version: unavailable; Fix version: unavailable; RCA: commit conflict; Test evidence: unavailable; Impact: adds concurrency regression coverage.",
         "- GUIDES-1 - Status: Closed; Resolution: Fixed.",
     )
 

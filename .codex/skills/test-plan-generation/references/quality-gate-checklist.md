@@ -14,9 +14,7 @@ Use this before calling a test plan review-ready.
 
 - `Understanding From Jira` appears first and contains the five required confidence-check bullets: issue, impact, requested outcome, lifecycle, and evidence boundary.
 - The Jira understanding is a faithful plain-English synthesis of live Jira or supplied issue evidence; it does not invent code changes, root cause, acceptance, or implementation.
-- `Why it matters` states the canonical customer context and whether it came from Jira customer fields, labels, both, or was not identified.
-- Every customer present in Jira customer fields or customer-identifying labels is preserved; the plan does not ask the user to repeat already available customer context.
-- Conflicting customer fields and labels remain visible in `Evidence boundary` and become an open question only when they materially change coverage or sign-off.
+- `Why it matters` states canonical customer context and its Jira field/label source; multiple customers remain separate and material conflicts remain visible.
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
@@ -29,8 +27,19 @@ Use this before calling a test plan review-ready.
 - Behaviour-sensitive plans used focused RAG probes for exact API/config/UI/construct terms, expected workflow, and boundary/version/regression behaviour.
 - Accepted RAG came from exact feature/API/config/source overlap; broad release-note or validation-oracle chunks were rejected unless they directly matched the Jira.
 - Latest matching current docs were preferred over older release notes unless the Jira is explicitly about older-release or upgrade behaviour.
+- Every Jira attachment was downloaded and actually analysed (screenshots opened, logs/sample content read), and embedded description/comment snippets (logs, code blocks, tables, pasted images) were mined; any claim about an attachment traces to opening it, not to its filename.
+- At least three focused RAG probes were run before writing (a single noisy probe is not "RAG unavailable"), recorded as `rag_probes` in the evidence manifest, and every grounded finding is folded into `Expected Behaviour` with a RAG label.
+- The indexed `jira_qa` history of already-fixed tickets was queried for the issue's customer/label and problem area, its hits were validated live before citing, kept only when same-mechanism (others named as excluded in search-status), and the run is recorded as `indexed_history_run` in the manifest.
+- Test Scenarios include concrete `Setup and test data` bullets with real fixtures, identifier formats/example values, property/field/column names, config keys and values, environment matrix, and pass/fail oracles — not just abstract "create a map/topic" steps.
+- Regression Areas are written as senior-QA regression items — each names the specific thing to re-test and the risk (what could break and why), ordered by blast radius with the top risk called out — not bare area names or keyword fragments.
+- Open Questions are written as UAC decisions with the QA impact of each plausible answer (what each answer changes for scenarios, expected results, environment matrix, or sign-off) — not bare questions with no stated consequence.
+- Acceptance Criteria are Principal-QA product contracts — each states precondition/input, trigger, and observable outcome with the scope boundary (included vs excluded) and the verification oracle, names exact properties/fields/enums and expected values, and passes/fails independently — not terse labels or generic "Verify..." steps.
+- Every Covered / Partially covered automation item has its real code quoted verbatim (from the actual file, with absolute path, what it proves, and the gap) in an `Appendix A - Automation Evidence` section kept outside the eleven validated bullet-only sections; the combined file was delivered to the user and passed verify_evidence.py. verify_evidence.py hard-fails a Covered/Partially-covered verdict when the file has no fenced code evidence, so this cannot be silently skipped on a re-run - always regenerate Appendix A and run verify on the combined plan+appendix, never on the body alone.
 - Past similar tickets were searched through Jira MCP/JQL, user-provided tickets, or available team memory.
 - Past similar tickets were searched with multiple narrow passes and noisy automation-bulk/generic keyword hits were rejected.
+- Each listed past ticket names a concrete shared defect mechanism (same failure shape/root-cause family), not merely a shared feature area, subsystem name, or keyword; cross-feature candidates surfaced by broad JQL (version-purge, map-collection, translation, etc.) were excluded unless the same code path/property/failure was shown, and the section was not padded to five.
+- No Jira key is name-dropped in `Regression Areas` (or elsewhere) unless it is vetted and listed in `Known Jira Bugs`; regression risks are referenced by workflow/code path/automation, not by unrelated ticket numbers.
+- The full similar-ticket list was re-audited (not just newly-flagged ones): no ticket survives on an abstract shape or shared domain across a different feature/entity/code path, none is kept by relabelling it "adjacent", and if no same-defect-class history exists the section says so and lists only excluded candidates.
 - If development may have started and Jira had no PR link, GitHub MCP PR discovery was attempted before asking for PR/branch/diff. PR discovery is not required in pre-development.
 - Figma MCP was used when Jira/PR/user context supplied a Figma or prototype link, or when design evidence is required for a UI-heavy workflow.
 - Existing design flow was inspected for entry points, states, dialogs, variants, and contradictions with Jira/RAG/PR evidence.
@@ -46,8 +55,7 @@ Use this before calling a test plan review-ready.
 - Dirty developer work was stashed only after safety checks, includes tracked and untracked files but not ignored files, remains recoverable with an exact restore command, and was never silently popped or dropped.
 - Open questions are specific to unresolved permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5 output, or on-premise upgrade-impact decisions.
 - Test data, setup preconditions, role/config/platform matrix, and API contract questions are either answered by evidence or captured under `Open Questions`.
-- `Test Scenarios` begins with explicit `Test data to prepare:` bullets covering required files, state, roles, configuration, scale, expected snapshots, and cleanup.
-- Every P0/P1/P2 scenario uses simple `Action:` and `Expected:` wording that a manual tester can follow without reading source code.
+- `Test Scenarios` begins with explicit `Test data to prepare:` bullets, and every P0/P1/P2 scenario uses simple `Action:` and `Expected:` wording.
 - Historical Jira entries include the narrow JQL/search intent, current status/resolution, affected/fix versions, RCA, linked test evidence, and scenario impact; unavailable fields are explicitly marked unavailable.
 - Automation classification is contract-exact: adjacent happy-path coverage is not called partial coverage unless it asserts a named clause of the same AC.
 - Automation gaps name the exact candidate test location, deterministic setup/injection, polling oracle, timeout source, output-integrity assertions, cleanup/rollback, and suite/tags.
@@ -76,7 +84,6 @@ Use this before calling a test plan review-ready.
 - Edge cases are guessed from generic module names instead of derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, or similar Jira history.
 - Automation repos are available but existing coverage, old failures, reusable scenarios, or automation coverage gaps were not inspected.
 - Test data/setup/environment matrix is required for sign-off but absent from `Test Scenarios`, `Regression Areas`, and `Open Questions`.
-- Scenarios hide required fixtures inside dense prose or use implementation jargon instead of explicit test-data preparation and visible expected results.
 - Backend/API contract is relevant but endpoint, parameters, response/error contract, batch behaviour, or logs are not clarified.
 - Expected behaviour depends on an unverified product assumption.
 - Expected behaviour uses exclusive root-cause language such as `purely`, `only cause`, or `proves the root cause` without evidence that excludes credible alternatives.
@@ -100,15 +107,6 @@ Use this before calling a test plan review-ready.
 - On-premise release/upgrade plans state source/target version coverage, retained custom config expectations, changed defaults, manual steps, and backward-compatibility risks when applicable.
 - Relevant product and automation clones are either inspected or explicitly marked unavailable.
 - Existing automation coverage and automation coverage gaps are mapped into `Test Scenarios` or `Regression Areas`.
-- When Jira identifies a customer, `Known Jira Bugs / Past Similar Tickets` contains one `Observed Customer Jira Profile: <customer>` bullet per resolved customer, or explicitly says that customer's profile is unavailable.
-- Every customer-profile query combines the canonical customer with current-Jira component, workflow/output, or failure-signature terms; broad customer-name-only retrieval is not treated as sufficient relevance.
-- Customer-profile bullets include resolution source, profile version/approval, distinct-key counts, representative keys relevant to the current Jira, and the aggregate-context limitation.
-- Customer-profile bullets distinguish total Jira keys, native Bug/Defect keys, and failure-like customer problem reports; concentration uses problem-report corpus counts/percentages rather than customer-usage claims.
-- Relevant customer test-data recommendations become concrete fixtures with content shape, references/assets, version/language/role/config/size variants, oracle, cleanup, and representative Jira keys.
-- Relevant customer bug concentrations produce an exact `Customer-derived regression focus` with overlap rationale; unrelated high-frequency areas are omitted.
-- Relevant adjacent recommendations become explicitly exploratory scenarios and are not promoted to confirmed acceptance criteria.
-- No acceptance criterion, expected result, RCA, Jira status, or fix-version claim relies only on an aggregate customer profile.
-- Customer frequencies use `frequently represented or affected in the customer Jira corpus`, never `most used` or equivalent telemetry claims.
 - Evidence conflicts are resolved by the priority rule or shown as Draft blockers.
 - Past similar tickets either list useful matches or clearly state no matches/evidence unavailable.
 - Regression areas are specific to touched code and learned product behaviour, not generic module names.
@@ -132,10 +130,7 @@ Use this before calling a test plan review-ready.
 - Product AC that prescribes node deletion, tracker reconciliation, mandatory workflow-step placement, a single-source-of-truth architecture, or a specific lock/retry/serialization implementation that Jira did not approve.
 - `Not suitable for automation` applied to repeatable post-recovery behavior rather than only the destructive production operation.
 - A Jira authorization warning retained even though another Jira MCP successfully supplied live issue evidence.
-- Asking for a customer name that live Jira already supplies in customer fields or labels.
-- Silently dropping one of multiple Jira customer associations, merging multiple profiles into synthetic frequencies, or substituting another customer's profile when the matching profile is unavailable.
-- Copying every customer-profile recommendation into the plan without intersecting it with the current Jira, implementation, or directly validated historical evidence.
-- Calling the highest Jira-corpus concentration the customer's most-used functionality or treating aggregate frequency as a hard expected result.
+- Asking for customer context already present in Jira, merging multiple customer profiles into synthetic frequencies, or treating Jira-corpus concentration as feature-usage telemetry.
 
 ## Executable Gate
 
