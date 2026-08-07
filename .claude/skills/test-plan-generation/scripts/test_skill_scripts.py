@@ -258,6 +258,43 @@ def test_verifier() -> None:
         check("only Not-covered needs no code evidence", failures == [])
 
 
+def test_git_ref_citations() -> None:
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        def git(*args):
+            subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True)
+        try:
+            git("init", "-q")
+            git("config", "user.email", "t@t")
+            git("config", "user.name", "t")
+        except (OSError, subprocess.CalledProcessError):
+            print("ok: git-ref self-test skipped (git unavailable)")
+            return
+        (root / "pages").mkdir()
+        (root / "pages" / "editor.py").write_text("x = 1\n", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-qm", "seed")
+
+        # a real ref:path resolves -> no failure (HEAD is branch-name-agnostic).
+        # Avoid the word "Covered" so the unrelated fenced-code rule is not triggered.
+        good = "- Exercised by `HEAD:pages/editor.py` in the automation clone.\n"
+        failures, notes = verify_mod.verify(good, git_ref_roots=[str(root)])
+        check("valid git-ref citation verifies against repo root", failures == []
+              and any("git-ref citations" in n and "1 verified" in n for n in notes))
+
+        # a wrong ref:path is now caught (previously silently skipped)
+        bad = "- Exercised by `HEAD:pages/ghost.py` in the automation clone.\n"
+        failures, _ = verify_mod.verify(bad, git_ref_roots=[str(root)])
+        check("wrong git-ref citation is failed", any("does not resolve" in f for f in failures))
+
+        # with no repo root, it is reported as unverified (a note), not silently ignored
+        failures, notes = verify_mod.verify(good, git_ref_roots=[])
+        check("git-ref with no repo root is surfaced as unverified", failures == []
+              and any("NOT verified" in n for n in notes))
+
+
 def test_attachment_manifest() -> None:
     import json
 
@@ -347,6 +384,7 @@ def test_extract_acs() -> None:
 def main() -> int:
     test_validator()
     test_verifier()
+    test_git_ref_citations()
     test_attachment_manifest()
     test_run_gates()
     test_extract_acs()

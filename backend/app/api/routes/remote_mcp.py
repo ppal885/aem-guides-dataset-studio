@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.auth import CurrentUser, UserIdentity
+from app.services.customer_tokens import clean_customer_tokens
 
 router = APIRouter(prefix="/mcp", tags=["remote-mcp"])
 
@@ -478,6 +479,10 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
         meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
         learning = hit.get("learning") if isinstance(hit.get("learning"), dict) else {}
         matching_components = hit.get("matching_components") or []
+        # Sanitize customer tokens (label pollution) before returning them.
+        raw_customers = _jira_json_list(meta.get("customer_names")) or _jira_json_list(meta.get("customer"))
+        clean_customers = clean_customer_tokens(raw_customers)
+        scalar_customer = clean_customer_tokens([meta.get("customer") or ""])
         results.append(
             {
                 "jira_key": key,
@@ -485,7 +490,8 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": meta.get("status") or "",
                 "resolution": meta.get("resolution") or "",
                 "components": list(matching_components) or _jira_json_list(meta.get("components")),
-                "customer": meta.get("customer") or "",
+                "customer": (scalar_customer[0] if scalar_customer else (clean_customers[0] if clean_customers else "")),
+                "customers": clean_customers,
                 "labels": _jira_json_list(meta.get("labels")),
                 "fix_versions": _jira_json_list(meta.get("fix_versions")),
                 "affected_versions": _jira_json_list(meta.get("affected_versions")),

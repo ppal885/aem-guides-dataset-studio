@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from app.core.schemas_jira_enrichment import JiraEnrichedDocument
+from app.services.customer_tokens import clean_customer_tokens
 from app.services.jira_client import extract_description_from_issue, _adf_to_plain_text
 from app.services.jira_enrichment_service import (
     enrich_jira,
@@ -85,9 +86,7 @@ def _core_fields(enriched: JiraEnrichedDocument) -> dict[str, Any]:
         "domain": (enriched.domain or "unknown")[:80],
         "resolution": (enriched.resolution or "")[:120],
         "source_type": (enriched.source_type or "jira_api")[:80],
-        "customer_names": list(enriched.customer_names or []),
-        "company_names": list(enriched.company_names or []),
-        "customer_cohorts": list(enriched.customer_cohorts or []),
+        "customer_names": clean_customer_tokens(list(enriched.customer_names or [])),
         "affected_outputs": list(enriched.affected_outputs or []),
         "dita_entities": list(enriched.dita_entities or []),
     }
@@ -379,12 +378,12 @@ def smart_chunks_to_chroma_rows(
                 "import_evidence_archive": _json_meta(enriched.evidence_archive),
                 "enrich_domain": enriched.domain[:120],
                 "enrich_sub_domain": (enriched.sub_domain or "")[:120],
-                "enrich_customers": _json_meta(enriched.customer_names),
+                "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
                 "enrich_automation_fit": enriched.automation_fit[:200],
                 "enrich_profile_json": je_profile,
-                "smart_customer_names": _json_meta(sc.get("customer_names") or []),
+                "smart_customer_names": _json_meta(clean_customer_tokens(sc.get("customer_names") or [])),
                 "smart_affected_outputs": _json_meta(sc.get("affected_outputs") or []),
                 "smart_dita_entities": _json_meta(sc.get("dita_entities") or []),
                 "learning_confidence": str(sc.get("learning_confidence") or ""),

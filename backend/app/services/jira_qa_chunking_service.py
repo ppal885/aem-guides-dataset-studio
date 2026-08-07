@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from app.core.schemas_jira_enrichment import JiraEnrichedDocument
+from app.services.customer_tokens import clean_customer_tokens
 from app.services.jira_client import extract_description_from_issue, _adf_to_plain_text
 from app.services.jira_enrichment_service import (
     enrich_jira,
@@ -139,6 +140,10 @@ def _build_base_metadata(
         "issue_type": issue_type,
         "status": status,
         "priority": priority,
+        "resolution": str(fields.get("_csv_resolution") or "")[:120],
+        "jira_updated_at": str(fields.get("updated") or "")[:80],
+        "import_source_type": str(fields.get("_source_type") or "jira_api")[:80],
+        "source_file_hash": str(fields.get("_source_file_hash") or "")[:64],
         "components": _json_meta(components),
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
@@ -233,12 +238,7 @@ def build_jira_qa_chunks(
             {
                 "enrich_domain": enriched.domain[:120],
                 "enrich_sub_domain": (enriched.sub_domain or "")[:120],
-                "enrich_customers": _json_meta(enriched.customer_names),
-                "company_names": _json_meta(enriched.company_names),
-                "customer_cohorts": _json_meta(enriched.customer_cohorts),
-                "resolutions": _json_meta(enriched.resolutions),
-                "source_file_hashes": _json_meta(enriched.source_file_hashes),
-                "import_evidence_archive": _json_meta(enriched.evidence_archive),
+                "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
                 "enrich_automation_fit": enriched.automation_fit[:200],
