@@ -408,6 +408,37 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Jira labels leak into the indexed customer_names field (process/status tags like
+# Triaged, Bugs, Uac_done, Won't_automate, Plan_2611, 5.1.2_sp_guides, ID, Name...).
+# These pollute customer matching, so sanitize customer tokens at query time.
+_CUSTOMER_TOKEN_DENY_EXACT = {
+    "automated", "bugs", "triaged", "groomed", "id", "name", "org", "ims", "also",
+    "uac_done", "uac_not_required", "uac_check", "won't_automate", "wont_automate",
+    "not_automated", "loc_tested", "loc", "doc_required", "features", "context",
+    "information", "impact", "managed", "services", "service", "support", "production",
+    "cert", "environment", "har", "td", "severity", "subzero", "urgent", "break",
+    "sr", "sla3", "shift_left_guides", "elite", "elite3", "deleting", "not", "segment",
+}
+_CUSTOMER_TOKEN_DENY_PREFIX = ("plan_", "cxps", "fluffyjaws", "guides_", "productmay",
+                               "elevate", "must_fix", "5.", "4.", "2609", "2611", "2606")
+
+
+def _clean_customer_tokens(tokens: list[str]) -> list[str]:
+    out: list[str] = []
+    for t in tokens:
+        s = str(t or "").strip()
+        low = s.lower().replace("’", "'")  # normalize curly apostrophe (Won't vs Won't)
+        if not s or low in _CUSTOMER_TOKEN_DENY_EXACT:
+            continue
+        if any(low.startswith(p) for p in _CUSTOMER_TOKEN_DENY_PREFIX):
+            continue
+        if re.fullmatch(r"[0-9._-]+", low):  # pure version/number tokens
+            continue
+        if s not in out:
+            out.append(s)
+    return out
+
+
 def _jira_json_list(raw: Any) -> list[str]:
     if isinstance(raw, list):
         return [str(x).strip() for x in raw if str(x).strip()]
@@ -477,6 +508,10 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
         meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
         learning = hit.get("learning") if isinstance(hit.get("learning"), dict) else {}
         matching_components = hit.get("matching_components") or []
+        # Sanitize customer tokens (label pollution) before returning them.
+        raw_customers = _jira_json_list(meta.get("customer_names")) or _jira_json_list(meta.get("customer"))
+        clean_customers = _clean_customer_tokens(raw_customers)
+        scalar_customer = _clean_customer_tokens([meta.get("customer") or ""])
         results.append(
             {
                 "jira_key": key,
@@ -484,7 +519,8 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
                 "status": meta.get("status") or "",
                 "resolution": meta.get("resolution") or "",
                 "components": list(matching_components) or _jira_json_list(meta.get("components")),
-                "customer": meta.get("customer") or "",
+                "customer": (scalar_customer[0] if scalar_customer else (clean_customers[0] if clean_customers else "")),
+                "customers": clean_customers,
                 "labels": _jira_json_list(meta.get("labels")),
                 "fix_versions": _jira_json_list(meta.get("fix_versions")),
                 "affected_versions": _jira_json_list(meta.get("affected_versions")),
