@@ -113,6 +113,28 @@ def _tools() -> list[dict[str, Any]]:
             "Return VM RAG/Chroma readiness and indexed corpus counts.",
             _schema({"tenant_id": {"type": "string", "default": "kone"}}),
         ),
+        _tool(
+            "search_jira_history",
+            (
+                "Search the indexed customer-reported Jira history (jira_qa collection) for past "
+                "tickets similar to a described defect or behaviour. Optionally filter/boost by "
+                "Jira Component (Authoring, Publishing, Platform and Integration, Editor) and by "
+                "Customer Label so same-area/same-customer tickets rank first. Returns ranked "
+                "matches with key, summary, status, resolution, component, customer, versions, and "
+                "any recorded root cause / QA oracle. Use this for 'past similar tickets' and "
+                "'known bugs' history mining - do NOT use ask_dita_expert for Jira history, it "
+                "searches product documentation, not jira_qa."
+            ),
+            _schema(
+                {
+                    "query": {"type": "string"},
+                    "component": {"type": "string", "default": ""},
+                    "customer": {"type": "string", "default": ""},
+                    "top_k": {"type": "integer", "default": 10},
+                },
+                ["query"],
+            ),
+        ),
     ]
 
 
@@ -174,6 +196,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
         "upload_mcp_generated_data_to_aem": _upload_mcp_generated_data_to_aem,
         "upload_dataset_to_aem": _upload_dataset_to_aem,
         "check_rag_status": _check_rag_status,
+        "search_jira_history": _search_jira_history,
     }
     if name not in tools:
         raise ValueError(f"Unknown tool: {name}")
@@ -376,6 +399,121 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
             CHROMA_COLLECTION_DITA_SPEC: get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0,
             CHROMA_COLLECTION_JIRA_QA: get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0,
         },
+    }
+
+
+def _jira_json_list(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [str(x).strip() for x in data if str(x).strip()]
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return [text]
+
+
+def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        return {"error": "Provide a 'query' describing the defect or behaviour to search for."}
+    component = str(arguments.get("component") or "").strip()
+    customer = str(arguments.get("customer") or "").strip()
+    try:
+        top_k = int(arguments.get("top_k") or 10)
+    except (TypeError, ValueError):
+        top_k = 10
+    top_k = max(1, min(top_k, 30))
+
+    from app.services.vector_store_service import (
+        CHROMA_COLLECTION_JIRA_QA,
+        get_collection_count,
+        is_chroma_available,
+    )
+    from app.services.embedding_service import is_embedding_available
+
+    chroma_ok = is_chroma_available()
+    embed_ok = is_embedding_available()
+    indexed = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
+    searched = bool(chroma_ok and embed_ok and indexed > 0)
+
+    hits: list[dict[str, Any]] = []
+    if searched:
+        from app.services.jira_qa_retrieval_service import semantic_search_jira_qa
+
+        hits = semantic_search_jira_qa(
+            query,
+            top_k=top_k,
+            customer=customer or None,
+            base_components=[component] if component else None,
+            customer_names=[customer] if customer else None,
+        )
+
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for hit in hits:
+        key = str(hit.get("jira_key") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+        learning = hit.get("learning") if isinstance(hit.get("learning"), dict) else {}
+        matching_components = hit.get("matching_components") or []
+        results.append(
+            {
+                "jira_key": key,
+                "summary": hit.get("title") or meta.get("title") or "",
+                "status": meta.get("status") or "",
+                "resolution": meta.get("resolution") or "",
+                "components": list(matching_components) or _jira_json_list(meta.get("components")),
+                "customer": meta.get("customer") or "",
+                "labels": _jira_json_list(meta.get("labels")),
+                "fix_versions": _jira_json_list(meta.get("fix_versions")),
+                "affected_versions": _jira_json_list(meta.get("affected_versions")),
+                "score": round(float(hit.get("score") or 0.0), 4),
+                "why_similar": hit.get("why_similar") or "",
+                "historical_outcome": learning.get("historical_outcome") or "",
+                "is_verified_fix": learning.get("is_verified_fix"),
+                "root_cause": learning.get("root_cause") or "",
+                "qa_oracle": learning.get("qa_oracle") or "",
+                "observed_problem": learning.get("observed_problem") or "",
+            }
+        )
+
+    # "Never say absent" guard: a caller must be able to tell an *empty search*
+    # apart from a *skipped search*, and must never conclude a ticket does not
+    # exist just because retrieval was unavailable or nothing crossed threshold.
+    if not searched:
+        note = (
+            f"jira_qa was NOT searched (chroma_available={chroma_ok}, "
+            f"embedding_available={embed_ok}, indexed_chunks={indexed}). "
+            "Do NOT conclude any ticket is absent from history - retrieval was unavailable."
+        )
+    elif not results:
+        note = (
+            f"Searched {indexed} indexed jira_qa chunks and found no match above threshold for "
+            "this query/filters. This means no similar ticket surfaced, NOT that the ticket does "
+            "not exist. Broaden the query or drop the component/customer filter and retry before "
+            "asserting there is no history."
+        )
+    else:
+        note = (
+            f"Searched {indexed} indexed jira_qa chunks; returning {len(results)} ranked "
+            "matches (most-similar first)."
+        )
+
+    return {
+        "searched_jira_qa": searched,
+        "indexed_chunks": indexed,
+        "component_filter": component or None,
+        "customer_filter": customer or None,
+        "match_count": len(results),
+        "results": results,
+        "note": note,
     }
 
 
