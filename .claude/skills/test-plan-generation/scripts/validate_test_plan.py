@@ -21,6 +21,14 @@ SECTIONS = (
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 AC_RE = re.compile(r"^- AC-\d{2} \[(Confirmed|Proposed)\]:\s+\S")
 ANY_AC_RE = re.compile(r"^- AC-\d{2} \[([^]]+)\]")
+# Every AC must be a sphere-tagged Given|When|Then contract so a downstream
+# automation-drafting step can parse it deterministically (Sphere->category,
+# Given->fixtures, When->action, Then->assertion) instead of guessing.
+AC_SPHERE_GWT_RE = re.compile(
+    r"^- AC-\d{2} \[(?:Confirmed|Proposed)\]: "
+    r"\((?:Basic|Negative|Integration|Performance)\) "
+    r"Given .+ \| When .+ \| Then .+"
+)
 SCENARIO_RE = re.compile(r"^- P[012]\b")
 AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
 JIRA_RE = re.compile(r"^- (?:[A-Z][A-Z0-9]+-\d+)\b")
@@ -104,6 +112,12 @@ def validate(text: str) -> list[str]:
         if not match or not AC_RE.match(line):
             errors.append(f"line {number}: acceptance criterion must use exact AC-## [Confirmed|Proposed]: syntax")
             continue
+        if not AC_SPHERE_GWT_RE.match(line):
+            errors.append(
+                f"line {number}: acceptance criterion must be sphere-tagged Given|When|Then - "
+                f"`AC-## [Confirmed|Proposed]: (Basic|Negative|Integration|Performance) "
+                f"Given ... | When ... | Then ...` - so the automation-drafting step can parse it"
+            )
         if native_ac_empty and match.group(1) == "Confirmed":
             errors.append(f"line {number}: derived criterion cannot be Confirmed when Jira AC is empty")
         if destructive.search(line):
@@ -200,12 +214,23 @@ def validate(text: str) -> list[str]:
 
     for section_name in ("Code Touched", "Automation Coverage & Gaps"):
         for number, line in sections[section_name]:
-            if "\\" in line:
-                for candidate in re.findall(r"`?([^`\s,;]+\\[^`\s,;]+)`?", line):
-                    if candidate.startswith(("<", "/")):
-                        continue
-                    if not re.match(r"^[A-Za-z]:\\", candidate):
-                        errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
+            if "\\" not in line:
+                continue
+            # Backtick-quoted paths are checked as whole units so a legitimate
+            # absolute path containing spaces (e.g. `C:\api automation\...`) is
+            # not falsely flagged as relative just because it has a space.
+            for candidate in re.findall(r"`([^`]+)`", line):
+                if "\\" not in candidate or candidate.startswith(("<", "/")):
+                    continue
+                if not re.match(r"^[A-Za-z]:\\", candidate):
+                    errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
+            # Bare (unquoted) path tokens cannot contain spaces, so split on whitespace.
+            stripped = re.sub(r"`[^`]+`", "", line)
+            for candidate in re.findall(r"([^\s,;`]+\\[^\s,;`]+)", stripped):
+                if candidate.startswith(("<", "/")):
+                    continue
+                if not re.match(r"^[A-Za-z]:\\", candidate):
+                    errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
 
     automation = sections["Automation Coverage & Gaps"]
     recipe_terms = ("layer", "setup", "poll", "timeout", "assert", "cleanup", "tag")

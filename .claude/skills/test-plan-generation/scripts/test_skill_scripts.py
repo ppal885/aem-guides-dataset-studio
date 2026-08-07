@@ -33,8 +33,8 @@ GOOD_PLAN = """**Understanding From Jira**
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: facts are from live Jira and a backend clone.
 **Acceptance Criteria**
-- AC-01 [Proposed]: given an input, the system produces the correct observable output.
-- AC-02 [Proposed]: given a second input, the system retains valid prior state.
+- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output.
+- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.
 **Expected Behaviour**
 - Unknown from current evidence.
 **Scope From Git**
@@ -81,6 +81,22 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(missing_strength)
     check("area-only similarity (no match strength) is rejected", any("match strength" in e for e in errs))
+
+    ac_no_sphere = _replace(
+        GOOD_PLAN,
+        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output.",
+        "- AC-01 [Proposed]: Given an input | When the system runs | Then it produces the correct observable output.",
+    )
+    errs = validate_mod.validate(ac_no_sphere)
+    check("AC missing the sphere tag is rejected", any("sphere-tagged Given|When|Then" in e for e in errs))
+
+    ac_no_gwt = _replace(
+        GOOD_PLAN,
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.",
+        "- AC-02 [Proposed]: (Negative) the system should retain valid prior state.",
+    )
+    errs = validate_mod.validate(ac_no_gwt)
+    check("AC missing Given|When|Then is rejected", any("sphere-tagged Given|When|Then" in e for e in errs))
 
     ac_no_scenario = _replace(
         GOOD_PLAN,
@@ -159,6 +175,22 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(unvetted_regression_key)
     check("Regression Areas citing a Jira key absent from Known Bugs is rejected", any("GUIDES-777" in e for e in errs))
+
+    # absolute path WITH SPACES in a body section must NOT be flagged when backtick-quoted
+    spaced_abs_ok = _replace(
+        GOOD_PLAN,
+        "- No code changes yet — development has not started.",
+        "- No code changes yet — development has not started.\n- Current implementation in `C:\\\\api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
+    )
+    check("backtick absolute path with spaces is accepted in a body section", validate_mod.validate(spaced_abs_ok) == [])
+
+    rel_path_flagged = _replace(
+        GOOD_PLAN,
+        "- No code changes yet — development has not started.",
+        "- No code changes yet — development has not started.\n- Current implementation in `api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
+    )
+    errs = validate_mod.validate(rel_path_flagged)
+    check("non-absolute backtick path is still flagged in a body section", any("not absolute" in e for e in errs))
 
 
 def test_verifier() -> None:
@@ -296,11 +328,28 @@ def test_run_gates() -> None:
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
 
 
+def test_extract_acs() -> None:
+    extract_mod = _load("extract_acs", "extract_acs.py")
+    acs, problems = extract_mod.extract(GOOD_PLAN)
+    check("extract_acs parses both good ACs", len(acs) == 2 and problems == [])
+    check("extract_acs maps sphere/given/when/then", acs[0]["sphere"] == "Basic"
+          and acs[0]["id"] == "AC-01" and acs[0]["given"] and acs[0]["when"] and acs[0]["then"])
+    check("extract_acs second AC sphere is Negative", acs[1]["sphere"] == "Negative")
+    malformed = _replace(
+        GOOD_PLAN,
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.",
+        "- AC-02 [Proposed]: the system retains prior state.",
+    )
+    acs2, problems2 = extract_mod.extract(malformed)
+    check("extract_acs reports a malformed AC line", len(acs2) == 1 and any("unparseable" in p for p in problems2))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
     test_attachment_manifest()
     test_run_gates()
+    test_extract_acs()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
