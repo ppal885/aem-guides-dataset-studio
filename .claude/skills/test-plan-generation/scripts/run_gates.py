@@ -88,7 +88,16 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
 
     combined = Path(combined_path).read_text(encoding="utf-8")
     jira_keys = verify_mod._load_manifest(jira_keys_path)
-    v_fail, v_notes = verify_mod.verify(combined, jira_keys)
+    # Pass the manifest's clone roots so git-ref citations (main:<path>, etc.) are
+    # disk-checked against the actual repos instead of being trusted blindly.
+    git_ref_roots: list[str] = []
+    if manifest_path and Path(manifest_path).is_file():
+        try:
+            _mdata = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            git_ref_roots = [c.get("path") for c in (_mdata.get("clones") or []) if isinstance(c, dict) and c.get("path")]
+        except (OSError, json.JSONDecodeError):
+            git_ref_roots = []
+    v_fail, v_notes = verify_mod.verify(combined, jira_keys, git_ref_roots=git_ref_roots)
     failures += [f"[verify] {f}" for f in v_fail]
     notes += v_notes
     if manifest_path and Path(manifest_path).is_file():
