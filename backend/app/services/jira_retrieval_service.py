@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.structured_logging import get_structured_logger
+from app.services.customer_tokens import clean_customer_tokens
 from app.services.embedding_service import embed_query, is_embedding_available
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
@@ -292,16 +293,17 @@ def _metadata_lists(meta: dict[str, Any]) -> tuple[set[str], set[str], set[str]]
             + _parse_json_list_preserve(str(meta.get("smart_affected_outputs") or ""))
         )
     }
-    customers: set[str] = set()
-    for x in _parse_json_list_preserve(str(meta.get("enrich_customers") or "")):
-        customers.add(_norm_label(x))
-    for x in _parse_json_list_preserve(str(meta.get("smart_customer_names") or "")):
-        customers.add(_norm_label(x))
-    for x in _parse_json_list_preserve(str(meta.get("customer_labels") or "")):
-        customers.add(_norm_label(x))
+    # Sanitize leaked Jira-label pollution out of stored customer tokens so
+    # customer overlap scoring compares real customers, not process/status tags.
+    # Applied on READ, so already-indexed (polluted) chunks are cleaned without a re-index.
+    raw_customer_tokens: list[str] = []
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("enrich_customers") or ""))
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("smart_customer_names") or ""))
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("customer_labels") or ""))
     mc = str(meta.get("customer") or "").strip()
     if mc:
-        customers.add(_norm_label(mc))
+        raw_customer_tokens.append(mc)
+    customers: set[str] = {_norm_label(x) for x in clean_customer_tokens(raw_customer_tokens)}
     return entities, outputs, customers
 
 
@@ -913,7 +915,7 @@ def extract_hybrid_filters_from_issue_rows(rows: list[dict[str, Any]]) -> dict[s
         "domain": domain or None,
         "dita_entities": entities[:40],
         "affected_outputs": outputs[:20],
-        "customer_names": customers[:20],
+        "customer_names": clean_customer_tokens(customers)[:20],
     }
 
 
