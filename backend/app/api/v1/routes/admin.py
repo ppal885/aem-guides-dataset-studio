@@ -1,7 +1,8 @@
 """Admin and maintenance endpoints."""
 import os
+import json
 import subprocess
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from app.core.auth import AdminUser, UserIdentity
 from app.services.cleaning_service import clean_old_data
@@ -16,6 +17,7 @@ logger = get_structured_logger(__name__)
 async def import_jira_csv(
     response: Response,
     files: list[UploadFile] = File(...),
+    customer_assignments_json: str = Form("{}"),
     dry_run: bool = False,
     user: UserIdentity = AdminUser,
 ):
@@ -37,10 +39,21 @@ async def import_jira_csv(
             if len(data) > MAX_CSV_BYTES:
                 raise ValueError(f"{filename} exceeds the 25 MB limit")
             payloads.append((filename, data))
-        preview = preview_jira_csv_files(payloads)
+        try:
+            customer_assignments = json.loads(customer_assignments_json or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("customer_assignments_json must be a JSON object keyed by file hash") from exc
+        if not isinstance(customer_assignments, dict):
+            raise ValueError("customer_assignments_json must be a JSON object keyed by file hash")
+        customer_assignments = {str(key): str(value) for key, value in customer_assignments.items()}
+        preview = preview_jira_csv_files(payloads, customer_assignments)
         if dry_run:
             return preview
-        run_id, paths = create_import_run(payloads, created_by=user.id)
+        run_id, paths = create_import_run(
+            payloads,
+            created_by=user.id,
+            customer_assignments=customer_assignments,
+        )
         start_import(run_id, paths)
         response.status_code = 202
         return {
@@ -84,6 +97,75 @@ def rebuild_jira_learning_chunks(
     )
     if result.get("error"):
         raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
+
+
+@router.post("/jira-rag/reconcile")
+def reconcile_jira_rag(
+    dry_run: bool = True,
+    limit: int = 10_000,
+    user: UserIdentity = AdminUser,
+):
+    """Repair Jira keys present in SQL but absent from Chroma."""
+    del user
+    from app.services.jira_rag_reconciliation_service import reconcile_jira_sql_chroma
+
+    result = reconcile_jira_sql_chroma(
+        dry_run=dry_run,
+        limit=max(1, min(limit, 100_000)),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
+
+
+@router.post("/jira-rag/customer-profiles/rebuild")
+def rebuild_jira_customer_profiles(customers: str = "", user: UserIdentity = AdminUser):
+    """Rebuild aggregate customer workflow profiles from distinct SQL Jira keys."""
+    del user
+    from app.services.jira_customer_profile_service import rebuild_customer_profiles
+
+    selected = [value.strip() for value in customers.split(",") if value.strip()]
+    return rebuild_customer_profiles(selected or None)
+
+
+@router.get("/jira-rag/customer-profiles/{customer}")
+def jira_customer_profile(customer: str, user: UserIdentity = AdminUser):
+    """Return one aggregate profile with its explicit evidence boundary."""
+    del user
+    from app.services.jira_customer_profile_service import get_customer_profile
+
+    result = get_customer_profile(customer)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Customer Jira profile not found")
+    return result
+
+
+class CustomerProfileApprovalRequest(BaseModel):
+    status: str
+    notes: str = ""
+
+
+@router.post("/jira-rag/customer-profiles/{customer}/approval")
+def approve_jira_customer_profile(
+    customer: str,
+    request: CustomerProfileApprovalRequest,
+    user: UserIdentity = AdminUser,
+):
+    """Record reviewer approval without converting aggregate context into direct behavior proof."""
+    from app.services.jira_customer_profile_service import set_customer_profile_approval
+
+    try:
+        result = set_customer_profile_approval(
+            customer,
+            status=request.status,
+            reviewer=user.id,
+            notes=request.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Customer Jira profile not found")
     return result
 
 
@@ -205,6 +287,25 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             timeout=60,
         )
         results["git_pull"] = (pull.stdout.strip() or pull.stderr.strip())[-500:]
+
+        # Keep the host nginx proxy aligned with the API's 10 files x 25 MB validation.
+        try:
+            nginx_limit = "/etc/nginx/conf.d/aem-guides-upload-limit.conf"
+            with open(nginx_limit, "w", encoding="utf-8") as nginx_file:
+                nginx_file.write("client_max_body_size 260m;\n")
+            nginx_test = subprocess.run(
+                ["nginx", "-t"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_test.returncode != 0:
+                raise RuntimeError((nginx_test.stderr or nginx_test.stdout).strip())
+            nginx_reload = subprocess.run(
+                ["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_reload.returncode != 0:
+                raise RuntimeError((nginx_reload.stderr or nginx_reload.stdout).strip())
+            results["nginx_upload_limit"] = "260 MB configured and nginx reloaded"
+        except Exception as nginx_exc:
+            results["nginx_upload_limit_error"] = str(nginx_exc)
 
         # clear pyc cache so new code takes effect
         subprocess.run(

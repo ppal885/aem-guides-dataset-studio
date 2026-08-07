@@ -1,0 +1,306 @@
+[
+  {
+    "id": "aem-guides-searchtitle-dita-contract-v1",
+    "chunk_id": "aem-guides-searchtitle-dita-contract-v1",
+    "url": "https://dita-lang.org/dita/langref/base/searchtitle",
+    "source_url": "https://dita-lang.org/dita/langref/base/searchtitle",
+    "canonical_url": "https://dita-lang.org/dita/langref/base/searchtitle",
+    "dita_path": "dita/langref/base/searchtitle",
+    "title": "DITA searchtitle normative behavior",
+    "section": "Normative DITA contract",
+    "section_path": [
+      "Normative DITA contract"
+    ],
+    "content": "Normative DITA behavior for <searchtitle>: a search title is an alternative title intended for display by search tools when the primary topic title is too general in a search-results context. The <searchtitle> convenience element is equivalent to <titlealt title-role=\"search\">, and its processing expectations follow the rules for <titlealt>. This source defines DITA semantics only. It does not define how AEM Guides maps the value to HTML, JCR properties, AEM search indexes, or a specific publishing implementation.",
+    "summary": "DITA defines searchtitle as an alternative title for search tools and as equivalent to titlealt with title-role search.",
+    "learned_behavior": "Use searchtitle as alternate search-oriented title metadata; do not infer AEM output mapping from the DITA contract alone.",
+    "detected_constructs": [
+      "searchtitle",
+      "titlealt",
+      "title-role=search"
+    ],
+    "feature_area": "aem-sites-searchtitle",
+    "feature_areas": [
+      "dita-metadata",
+      "aem-sites-publishing",
+      "searchtitle"
+    ],
+    "output_contexts": [
+      "DITA",
+      "search tools"
+    ],
+    "workflow_cues": [
+      "author alternate search title",
+      "publish through a processor-specific mapping"
+    ],
+    "expected_behavior": [
+      "searchtitle provides alternate search-oriented title metadata",
+      "searchtitle is equivalent to titlealt with title-role search"
+    ],
+    "qa_oracles": [
+      "Verify source DITA contains searchtitle or titlealt with title-role search",
+      "Use product-specific evidence before asserting rendered output"
+    ],
+    "risk_signals": [
+      "treating DITA semantics as proof of an AEM Sites mapping"
+    ],
+    "retrieval_intents": [
+      "dita_behavior_question",
+      "aem_guides_qa",
+      "test_plan_generation"
+    ],
+    "query_terms": [
+      "searchtitle",
+      "titlealt",
+      "title-role search",
+      "search results",
+      "alternative title"
+    ],
+    "chunk_index": 0,
+    "evidence_type": "enriched_learned_behavior",
+    "source_product_family": "dita",
+    "source_type": "official-dita-spec",
+    "product": "DITA",
+    "source_language": "en",
+    "source_last_updated": "",
+    "source_content_hash": "searchtitle-dita-contract-v1",
+    "chunk_content_hash": "searchtitle-dita-contract-v1",
+    "chunker_version": "manual-searchtitle-behavior/1.0",
+    "confidence": "high",
+    "confidence_contract": "Normative for DITA semantics; not evidence for an AEM Guides output mapping.",
+    "neighbor_prev_id": "",
+    "neighbor_next_id": "aem-guides-searchtitle-legacy-sites-mapping-v1"
+  },
+  {
+    "id": "aem-guides-searchtitle-legacy-sites-mapping-v1",
+    "chunk_id": "aem-guides-searchtitle-legacy-sites-mapping-v1",
+    "url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/config/elementmapping.xml",
+    "source_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp",
+    "canonical_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp",
+    "dita_path": "AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp",
+    "title": "AEM Guides legacy AEM Sites searchtitle mapping",
+    "section": "Verified product implementation",
+    "section_path": [
+      "Verified product implementation"
+    ],
+    "content": "Verified Starling origin/develop implementation for legacy AEM Sites component mapping. elementmapping.xml maps the DITA class '- topic/searchtitle ' to component path fmdita/components/dita/searchtitle, stores the XML in property data, and targets the component to head. The searchtitle.jsp component reads the data property, parses the XML, obtains the element text, and renders <meta name=\"searchtitle\" content=\"{value}\">. Therefore, for this legacy mapping, the grounded verification is to publish with an AEM Sites preset that uses legacy component mapping and inspect the rendered page head for a meta element whose name is searchtitle and whose content equals the source searchtitle text.",
+    "summary": "Legacy AEM Sites mapping targets searchtitle to the page head and renders meta name searchtitle with the source value.",
+    "learned_behavior": "For legacy component mapping only, verify searchtitle in the rendered page head as meta name searchtitle.",
+    "detected_constructs": [
+      "searchtitle",
+      "topic/searchtitle",
+      "meta name=searchtitle"
+    ],
+    "feature_area": "aem-sites-searchtitle",
+    "feature_areas": [
+      "aem-sites-publishing",
+      "legacy-component-mapping",
+      "dita-metadata"
+    ],
+    "output_contexts": [
+      "AEM Sites",
+      "legacy component mapping",
+      "HTML head"
+    ],
+    "workflow_cues": [
+      "publish DITA map with AEM Sites preset",
+      "inspect rendered page head"
+    ],
+    "expected_behavior": [
+      "topic/searchtitle maps to fmdita/components/dita/searchtitle",
+      "the mapping target is head",
+      "the component renders meta name searchtitle with the element text"
+    ],
+    "qa_oracles": [
+      "Publish a topic containing a unique searchtitle value using legacy component mapping",
+      "Inspect rendered page source and locate meta name searchtitle in the head",
+      "Assert the meta content equals the unique source searchtitle value"
+    ],
+    "risk_signals": [
+      "using this legacy oracle for composite or newer component mapping",
+      "checking HTML title instead of meta name searchtitle"
+    ],
+    "retrieval_intents": [
+      "aem_guides_qa",
+      "aem_sites_publishing",
+      "test_plan_generation",
+      "product_code_behavior"
+    ],
+    "query_terms": [
+      "searchtitle AEM Sites",
+      "legacy component mapping",
+      "meta name searchtitle",
+      "page head",
+      "elementmapping.xml",
+      "searchtitle.jsp"
+    ],
+    "chunk_index": 1,
+    "evidence_type": "enriched_verified_product_behavior",
+    "source_product_family": "experience-manager-guides",
+    "source_type": "verified-product-code",
+    "product": "AEM Guides",
+    "source_language": "en",
+    "source_last_updated": "2026-08-01",
+    "source_content_hash": "starling-origin-develop-e64ffd2890-searchtitle",
+    "chunk_content_hash": "searchtitle-legacy-sites-mapping-v1",
+    "chunker_version": "manual-searchtitle-behavior/1.0",
+    "confidence": "high",
+    "confidence_contract": "Verified against Starling origin/develop legacy component files; scope does not extend to composite or newer mappings.",
+    "neighbor_prev_id": "aem-guides-searchtitle-dita-contract-v1",
+    "neighbor_next_id": "aem-guides-searchtitle-legacy-sites-qa-v1"
+  },
+  {
+    "id": "aem-guides-searchtitle-legacy-sites-qa-v1",
+    "chunk_id": "aem-guides-searchtitle-legacy-sites-qa-v1",
+    "url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp",
+    "source_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp#qa-oracles",
+    "canonical_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp",
+    "dita_path": "AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp#qa-oracles",
+    "title": "AEM Sites searchtitle verification oracles",
+    "section": "QA oracle pack",
+    "section_path": [
+      "QA oracle pack"
+    ],
+    "content": "Evidence-backed QA oracle for searchtitle with legacy AEM Sites component mapping. Create a topic whose primary title and searchtitle are deliberately different and whose searchtitle contains a unique marker. Publish the map through the applicable AEM Sites preset. Open the generated Sites page and inspect the rendered HTML source or DOM head. Pass when a meta element has name=\"searchtitle\" and content exactly matching the source searchtitle text. Keep the visible heading, HTML title element, JCR title properties, map-level override behavior, fallback behavior, and AEM search-result ranking as separate checks that require their own implementation or runtime evidence.",
+    "summary": "Legacy verification checks meta name searchtitle in the rendered page head and exact source-value preservation.",
+    "learned_behavior": "Use a distinct primary title and unique searchtitle marker; assert only the verified head meta mapping.",
+    "detected_constructs": [
+      "searchtitle",
+      "title",
+      "meta"
+    ],
+    "feature_area": "aem-sites-searchtitle",
+    "feature_areas": [
+      "aem-sites-publishing",
+      "legacy-component-mapping",
+      "qa-oracle"
+    ],
+    "output_contexts": [
+      "AEM Sites",
+      "legacy component mapping"
+    ],
+    "workflow_cues": [
+      "author distinct title values",
+      "publish",
+      "inspect page head",
+      "compare exact content"
+    ],
+    "expected_behavior": [
+      "rendered head contains meta name searchtitle",
+      "meta content preserves source searchtitle text"
+    ],
+    "qa_oracles": [
+      "Use a unique marker to avoid false positives",
+      "Assert exact meta name and content",
+      "Record preset and mapping type with the result"
+    ],
+    "risk_signals": [
+      "asserting unrelated title or search-index behavior",
+      "failing to record mapping type"
+    ],
+    "retrieval_intents": [
+      "aem_guides_qa",
+      "test_plan_generation",
+      "aem_sites_searchtitle_verification"
+    ],
+    "query_terms": [
+      "verify searchtitle AEM Sites",
+      "inspect page source",
+      "meta name searchtitle",
+      "legacy mapping",
+      "expected result"
+    ],
+    "chunk_index": 2,
+    "evidence_type": "enriched_generation_oracle",
+    "source_product_family": "experience-manager-guides",
+    "source_type": "verified-product-code-derived-qa",
+    "product": "AEM Guides",
+    "source_language": "en",
+    "source_last_updated": "2026-08-01",
+    "source_content_hash": "starling-origin-develop-e64ffd2890-searchtitle",
+    "chunk_content_hash": "searchtitle-legacy-sites-qa-v1",
+    "chunker_version": "manual-searchtitle-behavior/1.0",
+    "confidence": "high",
+    "confidence_contract": "Oracle is limited to the rendered legacy meta component and exact value preservation.",
+    "neighbor_prev_id": "aem-guides-searchtitle-legacy-sites-mapping-v1",
+    "neighbor_next_id": "aem-guides-searchtitle-evidence-boundary-v1"
+  },
+  {
+    "id": "aem-guides-searchtitle-evidence-boundary-v1",
+    "chunk_id": "aem-guides-searchtitle-evidence-boundary-v1",
+    "url": "https://dita-lang.org/dita/langref/base/searchtitle",
+    "source_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp#evidence-boundaries",
+    "canonical_url": "https://git.corp.adobe.com/AdobeStarling/starling/blob/e64ffd2890/AEM6.x/repo/jcr_root/libs/fmdita/components/dita/searchtitle/searchtitle.jsp#evidence-boundaries",
+    "dita_path": "evidence-boundaries/searchtitle-aem-sites",
+    "title": "Searchtitle AEM Sites evidence boundaries",
+    "section": "Unsupported claims and required evidence",
+    "section_path": [
+      "Unsupported claims and required evidence"
+    ],
+    "content": "Evidence boundary for searchtitle answers. The indexed sources verify DITA searchtitle semantics and the legacy AEM Sites component's meta name=\"searchtitle\" output. They do not verify that searchtitle replaces the HTML <title>, changes the visible H1, populates jcr:title or another JCR property, overrides a topic value from map topicmeta, follows a particular fallback chain when absent, is indexed by a specific AEM search implementation, changes search ranking, or behaves identically with composite or newer component mapping. Do not present any of those claims as expected behavior without a matching product-code path, official product document, or observed runtime result.",
+    "summary": "Keep title, JCR, precedence, fallback, indexing, ranking, and non-legacy mapping claims unverified until separately evidenced.",
+    "learned_behavior": "Separate verified legacy meta output from unsupported adjacent searchtitle assumptions.",
+    "detected_constructs": [
+      "searchtitle",
+      "HTML title",
+      "jcr:title",
+      "topicmeta"
+    ],
+    "feature_area": "aem-sites-searchtitle",
+    "feature_areas": [
+      "evidence-boundary",
+      "aem-sites-publishing",
+      "searchtitle"
+    ],
+    "output_contexts": [
+      "AEM Sites",
+      "HTML",
+      "JCR",
+      "search"
+    ],
+    "workflow_cues": [
+      "check mapping type",
+      "separate verified and unverified assertions"
+    ],
+    "expected_behavior": [
+      "unsupported adjacent claims remain explicitly unverified"
+    ],
+    "qa_oracles": [
+      "Do not reuse the legacy meta oracle as proof of search indexing or title precedence",
+      "Require runtime evidence for composite or newer component mapping"
+    ],
+    "risk_signals": [
+      "invented fallback chain",
+      "invented map override precedence",
+      "invented AEM search behavior",
+      "legacy-to-composite overgeneralization"
+    ],
+    "retrieval_intents": [
+      "evidence_boundary",
+      "aem_guides_qa",
+      "test_plan_generation"
+    ],
+    "query_terms": [
+      "searchtitle fallback",
+      "searchtitle override",
+      "searchtitle jcr title",
+      "searchtitle HTML title",
+      "AEM search indexing",
+      "composite component mapping"
+    ],
+    "chunk_index": 3,
+    "evidence_type": "enriched_evidence_boundary",
+    "source_product_family": "experience-manager-guides",
+    "source_type": "verified-source-boundary",
+    "product": "AEM Guides",
+    "source_language": "en",
+    "source_last_updated": "2026-08-01",
+    "source_content_hash": "searchtitle-source-boundary-v1",
+    "chunk_content_hash": "searchtitle-evidence-boundary-v1",
+    "chunker_version": "manual-searchtitle-behavior/1.0",
+    "confidence": "high",
+    "confidence_contract": "High confidence about what the inspected sources do not establish.",
+    "neighbor_prev_id": "aem-guides-searchtitle-legacy-sites-qa-v1",
+    "neighbor_next_id": ""
+  }
+]

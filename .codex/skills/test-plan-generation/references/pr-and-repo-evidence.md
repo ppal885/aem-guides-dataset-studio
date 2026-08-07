@@ -50,6 +50,8 @@ When Jira or the user supplies a PR, branch, commit, or development link and Git
 
 Use local clones when the user already has them, provides paths, or exposes them as workspace roots. Do not require cloning just to use the skill, but always inspect every relevant available clone before declaring code or automation evidence unavailable.
 
+Before mining a clone, follow `git-repo-sync.md` and run `scripts/sync_evidence_repo.py <absolute-path> --stash-dirty`. This replaces ad hoc fetch/pull handling and creates an auditable, non-destructive sync record.
+
 Check these local path sources before saying a repo is unavailable:
 
 - User-provided repo paths in the prompt.
@@ -80,13 +82,14 @@ Relevant clone categories:
 
 For each relevant clone:
 
-- Run `git fetch --all --prune`.
-- Run `git status -sb`.
-- If the worktree is clean and behind upstream, run `git pull --ff-only`.
-- If dirty, diverged, no upstream, detached, or fetch/pull fails, do not stash/reset/merge/rebase; mark evidence as provisional.
+- Record pre-sync SHA, branch, upstream, ahead/behind, and tracked/untracked status.
+- Fetch all remotes with prune and tags before deciding whether pull is safe.
+- For a dirty but otherwise fast-forwardable clone, preserve tracked and untracked developer work in a uniquely named stash, then pull only with `--ff-only`.
+- Keep the successful sync stash intact and record its OID/ref and restore command; never pop or drop it automatically.
+- If detached, diverged, without upstream, in an active Git operation, dirty in a submodule, or fetch/pull fails, do not reset/merge/rebase/switch/force-checkout. Use verified remote refs where possible and mark dependent claims provisional.
 - Capture exact paths, functions/classes/components, tests, and line counts only from real diffs or search results.
 - In pre-development, exact current files/functions/classes/workflows found by repo search are `Current implementation implicated`; they are not changed files.
-- When a product clone is dirty, prefer verified remote refs for read-only current-code searches where practical and label the result provisional.
+- When synchronization is blocked, prefer verified remote refs for read-only current-code searches and label worktree-dependent results provisional.
 
 ## Product Code Mining
 
@@ -100,6 +103,9 @@ For each relevant clone:
 ## Automation Coverage Mining
 
 For `guides-ui-tests` and `dxml-it-tests`, inspect automation evidence when the repos are available:
+
+- Synchronize each automation clone with `scripts/sync_evidence_repo.py <absolute-path> --stash-dirty` before searching it. Apply the same rule to editor E2E and any repository-specific UI, API, integration, publishing, or upgrade automation suite discovered during evidence collection.
+- If an automation clone contains local developer changes, retain them in the named safety stash and inspect the clean synchronized revision. Report the stash OID/ref and restore command under `Scope From Git`; never count an unsynchronized dirty worktree as current automation coverage.
 
 - Search by Jira key, summary terms, changed APIs, UI labels, selectors, config keys, workflow names, and similar failure text.
 - Extract existing scenario names, test file paths, selectors/API fixtures, data builders, setup helpers, and assertions that already cover the workflow.

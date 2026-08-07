@@ -11,6 +11,11 @@ export interface JiraCsvPreviewFile {
   duplicate_headers: Record<string, number>;
   resolution_counts: Record<string, number>;
   already_imported: boolean;
+  detected_customer: string;
+  assigned_customer: string;
+  customer_confidence: 'high' | 'medium' | 'low' | 'none';
+  customer_evidence_signals: string[];
+  warnings: string[];
 }
 
 export interface JiraCsvPreview {
@@ -18,6 +23,8 @@ export interface JiraCsvPreview {
   total_files: number;
   total_rows: number;
   unique_issue_keys: number;
+  overlap_count: number;
+  overlapping_issue_keys: string[];
   redacted_fields: number;
   files: JiraCsvPreviewFile[];
 }
@@ -30,16 +37,23 @@ export interface JiraCsvImportStatus {
   processed_rows: number;
   indexed_issues: number;
   skipped_issues: number;
+  metadata_merged_issues: number;
   failed_issues: number;
   chunks_indexed: number;
   redacted_fields: number;
   errors: string[];
   progress_percent: number;
+  profile_rebuild?: Record<string, unknown>;
 }
 
-async function postJiraCsvFiles<T>(files: File[], dryRun: boolean): Promise<T> {
+async function postJiraCsvFiles<T>(
+  files: File[],
+  dryRun: boolean,
+  customerAssignments: Record<string, string> = {}
+): Promise<T> {
   const body = new FormData();
   files.forEach(file => body.append('files', file));
+  body.append('customer_assignments_json', JSON.stringify(customerAssignments));
   const response = await fetchWithRetry(
     apiUrl(`/api/v1/admin/jira-rag/import-csv?dry_run=${dryRun ? 'true' : 'false'}`),
     { method: 'POST', body },
@@ -52,12 +66,18 @@ async function postJiraCsvFiles<T>(files: File[], dryRun: boolean): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function previewJiraCsvFiles(files: File[]): Promise<JiraCsvPreview> {
-  return postJiraCsvFiles<JiraCsvPreview>(files, true);
+export function previewJiraCsvFiles(
+  files: File[],
+  customerAssignments: Record<string, string> = {}
+): Promise<JiraCsvPreview> {
+  return postJiraCsvFiles<JiraCsvPreview>(files, true, customerAssignments);
 }
 
-export function startJiraCsvImport(files: File[]): Promise<{ import_id: string; status_url: string; preview: JiraCsvPreview }> {
-  return postJiraCsvFiles(files, false);
+export function startJiraCsvImport(
+  files: File[],
+  customerAssignments: Record<string, string>
+): Promise<{ import_id: string; status_url: string; preview: JiraCsvPreview }> {
+  return postJiraCsvFiles(files, false, customerAssignments);
 }
 
 export function getJiraCsvImportStatus(importId: string): Promise<JiraCsvImportStatus> {
