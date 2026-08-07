@@ -211,11 +211,17 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
     if not question:
         return "Provide a question."
     tenant_id = str(arguments.get("tenant_id") or "kone")
-    from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
+    # The canned-incident shortcut is optional: it lives in a module that is not present
+    # on every deployed branch. A missing/broken module must NOT crash ask_dita_expert -
+    # fall through to the normal grounded chat path instead.
+    try:
+        from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
 
-    incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
-    if incident_answer:
-        return incident_answer
+        incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
+        if incident_answer:
+            return incident_answer
+    except Exception:
+        pass
     from app.services import chat_service
 
     session_id = chat_service.create_session()
