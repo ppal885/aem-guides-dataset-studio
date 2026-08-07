@@ -245,8 +245,13 @@ def _overlap_boost(meta: dict[str, Any], base_labels: set[str], base_components:
     if base_labels & labels:
         boost += 0.04 * min(4, len(base_labels & labels))
     if base_components & comps:
-        boost += 0.05 * min(3, len(base_components & comps))
-    return min(boost, 0.2)
+        # Component (Authoring / Publishing / Platform and Integration / Editor)
+        # is a strong same-area signal. Because ``components`` is a JSON-list
+        # metadata field that Chroma cannot ``where``-filter, it is applied as a
+        # heavy post-retrieval boost so a same-Component defect reliably outranks
+        # a generic same-domain ticket instead of only nudging it up.
+        boost += 0.12 * min(3, len(base_components & comps))
+    return min(boost, 0.4)
 
 
 def _label_intel_boost(meta: dict[str, Any], expanded: frozenset[str]) -> float:
