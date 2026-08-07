@@ -23,6 +23,13 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Inspect every relevant user-provided or discoverable local clone before declaring code or automation evidence unavailable; do not ask teammates to clone dataset-studio, copy RAG JSON, copy ChromaDB, or run old test-plan MCP tools.
 - Clone discovery is not limited to the current workspace. Follow the bounded Windows/Mac/Linux discovery protocol in `references/pr-and-repo-evidence.md`, resolve wrapper directories to the nested `.git` repository, and list the paths actually inspected.
 
+## Prerequisites & Environment Setup
+
+- Before the first evidence step, do a quick environment/prerequisite check and surface it to the user so they can set up anything missing (see `references/prerequisites-and-clone-setup.md`). Required: Jira MCP (issue facts + attachments + historical search) and GitHub MCP (remote code/PR/blame inspection, and the substitute for any product/automation clone the QA does not have locally). Recommended: the Dataset Studio RAG tools `ask_dita_expert` and `search_jira_history`. Optional: Figma MCP (only for UI/design-flow tickets).
+- State plainly which prerequisites are configured and which are missing, and what each missing one costs: no Jira MCP -> rely on pasted issue text; no GitHub MCP AND no local clones -> code/implementation evidence cannot be gathered (a real blocker for implementation/post-fix stages, a labelled gap for pre-development); no RAG -> fall back to live Jira JQL and mark the RAG gap; no Figma -> mark the design-evidence gap only if the ticket is design-dependent. Do not silently proceed as if a missing prerequisite were present.
+- Detect the host OS (Windows vs macOS vs Linux) up front; it determines the candidate clone paths and the exact `git clone`/setup commands you show. Never mix path conventions across OSes.
+- A QA without the backend/product clones is a supported, common case: GitHub MCP remote inspection is the standard substitute, so a missing clone is not a reason to skip code evidence - only a genuinely absent GitHub MCP (or access-denied repo) is.
+
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
@@ -40,6 +47,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ## Required References
 
+- Read `references/prerequisites-and-clone-setup.md` first: it lists the required/optional MCPs, the OS-aware clone candidate paths, the `git clone` commands per OS, and the rule for substituting GitHub MCP when a clone is absent.
 - Read `references/rag-query-cookbook.md` before calling or judging `ask_dita_expert` evidence.
 - Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/git-repo-sync.md` and use `scripts/sync_evidence_repo.py` before treating a local clone as current product or automation evidence.
@@ -195,7 +203,8 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 5 — Inspect Clones And Available Git Changes
 
 - Always inspect every relevant available clone, regardless of lifecycle stage: Starling/backend, xmleditor, new editor, `guides-ui-tests`, and `dxml-it-tests`.
-- Check user-provided workspace roots, environment variables, common teammate paths, and known paths such as `C:\UI TEST\guides-ui-tests` and `C:\UI TEST\dxml-it-tests` before declaring a clone unavailable.
+- Detect the OS first and search the platform-correct candidate paths before declaring a clone unavailable (see `references/prerequisites-and-clone-setup.md`): on Windows check the drive-letter roots (e.g. `C:\starling`, `C:\xmleditor\xmleditor`, `C:\ui_framework\new_editor`, `C:\ui_framework\guides-ui-tests`, `C:\UI TEST\guides-ui-tests`, `C:\api automation\dxml-it-tests`); on macOS/Linux check `$HOME` and common workspace roots (e.g. `~/starling`, `~/xmleditor`, `~/src/*`, `/Users/<me>/…`, `/home/<me>/…`), plus any user-provided workspace roots and env vars. Never assume Windows paths on a Mac/Linux host or vice versa.
+- Many QA engineers will NOT have the backend/product clones (Starling, xmleditor, new editor) locally - that is expected, not a blocker. When a needed clone is absent: (1) fall back to GitHub MCP and inspect the repo REMOTELY (`search_code repo:<owner>/<name>`, `get_file_contents`, `list_commits`, PR/branch APIs) to get the exact current implementation, file, and blame - this is a first-class substitute for a local clone, not a degraded mode; label findings with the repo and inspected ref. (2) OR, only if the user wants a local copy, offer the OS-correct `git clone` command from `references/prerequisites-and-clone-setup.md` and let the user run it (do not clone large product repos unprompted). Record in `Scope From Git` whether each area was inspected via a local clone or via GitHub MCP, and never write "clone unavailable / no backend evidence" without having tried GitHub MCP for that repo.
 - Synchronize every relevant clone before code or automation mining. Use `python scripts/sync_evidence_repo.py <absolute-repo-path> --stash-dirty`: it records state, fetches/prunes/tags, stashes dirty tracked and untracked developer work only after safety checks, and pulls only when the branch can fast-forward. Leave the named safety stash intact after a successful update and report its exact OID/ref plus restore command.
 - If a repo is detached, diverged, lacks an upstream, has an in-progress Git operation, contains dirty submodules, or fetch/pull fails, do not reset, merge, rebase, switch branches, or force synchronization. Inspect the verified upstream/default remote ref with read-only Git commands when possible and label worktree-dependent claims provisional.
 - In `Pre-Development UAC`, inspect product clones to identify the current implementation directly implicated by exact classes, workflow names, API paths, config keys, error strings, logs, or UI labels. Report these as `Current implementation implicated`, never as changed code.
