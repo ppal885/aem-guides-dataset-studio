@@ -130,6 +130,7 @@ def _tools() -> list[dict[str, Any]]:
                     "query": {"type": "string"},
                     "component": {"type": "string", "default": ""},
                     "customer": {"type": "string", "default": ""},
+                    "exclude_jira_key": {"type": "string", "default": ""},
                     "top_k": {"type": "integer", "default": 10},
                 },
                 ["query"],
@@ -429,6 +430,9 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"error": "Provide a 'query' describing the defect or behaviour to search for."}
     component = str(arguments.get("component") or "").strip()
     customer = str(arguments.get("customer") or "").strip()
+    # The issue being planned is itself in the corpus and will otherwise rank #1
+    # against its own description; never return it as its own "past similar" hit.
+    exclude_jira_key = str(arguments.get("exclude_jira_key") or "").strip().upper()
     try:
         top_k = int(arguments.get("top_k") or 10)
     except (TypeError, ValueError):
@@ -453,7 +457,8 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
 
         hits = semantic_search_jira_qa(
             query,
-            top_k=top_k,
+            top_k=top_k + (1 if exclude_jira_key else 0),
+            exclude_jira_key=exclude_jira_key or None,
             customer=customer or None,
             base_components=[component] if component else None,
             customer_names=[customer] if customer else None,
@@ -462,8 +467,12 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
     for hit in hits:
+        if len(results) >= top_k:
+            break
         key = str(hit.get("jira_key") or "").strip()
         if not key or key in seen:
+            continue
+        if exclude_jira_key and key.upper() == exclude_jira_key:
             continue
         seen.add(key)
         meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
