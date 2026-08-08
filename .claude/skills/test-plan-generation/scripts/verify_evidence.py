@@ -5,7 +5,8 @@ checks structure). It confirms that every cited source-file path actually
 exists on disk and that every cited line number is within that file's length.
 
 Scope of what is checked (deliberately narrow to avoid false positives):
-- Only drive-absolute paths (for example C:\\starling\\... or C:/starling/...).
+- Only absolute paths (for example C:\\starling\\..., C:/starling/..., or
+  /home/user/starling/...).
 - Only paths ending in a known source extension. Directory roots, runtime
   paths such as /var/dxml/btree, relative test paths, and proposed new files
   (which are cited relatively by convention) are treated as unverifiable-by-
@@ -44,8 +45,8 @@ SOURCE_EXTENSIONS = (
     ".md",
     ".properties",
 )
-ABS_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s`,;)]+")
-BACKTICK_PATH_RE = re.compile(r"`([A-Za-z]:[\\/][^`\n]+)`")
+ABS_PATH_RE = re.compile(r"(?<![\w.:/-])(?:[A-Za-z]:[\\/]|/)[^\s`,;)]+")
+BACKTICK_PATH_RE = re.compile(r"`((?:[A-Za-z]:[\\/]|/)[^`\n]+)`")
 # git-ref citations like `main:tests/foo/Bar.py`, `develop:core/X.java`,
 # `<40-hex-sha>:pages/y.py`, `feature/z:core/X.java`. These are NOT disk paths,
 # so the disk checks above skip them; they were previously unverified entirely.
