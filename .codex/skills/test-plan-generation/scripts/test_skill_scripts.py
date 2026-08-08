@@ -31,7 +31,7 @@ GOOD_PLAN = """**Understanding From Jira**
 - Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.
 - Requested outcome: the thing should stop being broken.
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
-- Evidence boundary: facts are from live Jira and a backend clone.
+- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.
 **Acceptance Criteria**
 - AC-01 [Proposed]: given an input, the system produces the correct observable output.
 - AC-02 [Proposed]: given a second input, the system retains valid prior state.
@@ -293,6 +293,43 @@ def test_attachment_manifest() -> None:
         check("one probe passes when behaviour_matters is false", failures == [])
 
 
+def _full_preflight() -> dict:
+    return {
+        "mode": "full",
+        "checked_at": "2026-08-08T15:30:00+05:30",
+        "sources": {
+            "product_rag": {
+                "status": "available",
+                "checked_via": "check_rag_status call and ask_dita_expert probes succeeded",
+                "reason": "",
+            },
+            "jira_history": {
+                "status": "available",
+                "checked_via": "search_jira_history queries succeeded",
+                "reason": "",
+            },
+            "live_jira": {
+                "status": "available",
+                "checked_via": "Jira issue fetch succeeded",
+                "reason": "",
+            },
+            "git": {
+                "status": "available",
+                "checked_via": "local backend clone inspected after sync",
+                "reason": "",
+            },
+            "figma": {
+                "status": "not_applicable",
+                "checked_via": "input inspection",
+                "reason": "No design evidence is supplied or required.",
+            },
+        },
+        "readiness_impact": "none",
+        "readiness_impact_reason": "",
+        "claim_restrictions": [],
+    }
+
+
 def test_run_gates() -> None:
     import json
 
@@ -309,6 +346,7 @@ def test_run_gates() -> None:
         dual_source = {
             "issue": "X",
             "attachments": [],
+            "evidence_preflight": _full_preflight(),
             "rag_tool": "ask_dita_expert",
             "rag_probes": ["a", "b", "c"],
             "jira_history_tool": "search_jira_history",
@@ -353,6 +391,155 @@ def test_run_gates() -> None:
             "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
         }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
+
+        configured_only = json.loads(json.dumps(dual_source))
+        configured_only["clones"] = []
+        configured_only["evidence_preflight"]["sources"]["live_jira"]["checked_via"] = "Jira MCP configured"
+        path.write_text(json.dumps(configured_only), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects configuration as proof of availability",
+            any("configuration alone" in failure for failure in failures),
+        )
+
+        failed_but_available = json.loads(json.dumps(dual_source))
+        failed_but_available["clones"] = []
+        failed_but_available["evidence_preflight"]["sources"]["live_jira"]["checked_via"] = (
+            "Jira issue fetch returned HTTP 403"
+        )
+        path.write_text(json.dumps(failed_but_available), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects a failed call labelled available",
+            any("records a failed check" in failure for failure in failures),
+        )
+
+        naive_timestamp = json.loads(json.dumps(dual_source))
+        naive_timestamp["clones"] = []
+        naive_timestamp["evidence_preflight"]["checked_at"] = "2026-08-08T15:30:00"
+        path.write_text(json.dumps(naive_timestamp), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects a timestamp without timezone",
+            any("timezone-aware" in failure for failure in failures),
+        )
+
+        missing_reason = json.loads(json.dumps(dual_source))
+        missing_reason["clones"] = []
+        missing_reason["evidence_preflight"]["sources"]["figma"]["reason"] = ""
+        path.write_text(json.dumps(missing_reason), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight requires a not-applicable reason",
+            any("figma.reason" in failure for failure in failures),
+        )
+
+        false_full = json.loads(json.dumps(dual_source))
+        false_full["clones"] = []
+        false_full["evidence_preflight"]["sources"]["live_jira"] = {
+            "status": "unavailable",
+            "checked_via": "Jira issue fetch returned HTTP 403",
+            "reason": "The authenticated user lacks Browse permission.",
+        }
+        false_full["evidence_preflight"]["claim_restrictions"] = [
+            "Current Jira status, resolution, and fix version remain unverified."
+        ]
+        path.write_text(json.dumps(false_full), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects full mode when a source is unavailable",
+            any("mode must be 'degraded'" in failure for failure in failures),
+        )
+
+        degraded = json.loads(json.dumps(false_full))
+        degraded["evidence_preflight"]["mode"] = "degraded"
+        path.write_text(json.dumps(degraded), encoding="utf-8")
+        check(
+            "preflight accepts a complete degraded manifest",
+            run_gates.check_manifest_completeness(str(path)) == [],
+        )
+
+        no_restrictions = json.loads(json.dumps(degraded))
+        no_restrictions["evidence_preflight"]["claim_restrictions"] = []
+        path.write_text(json.dumps(no_restrictions), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "degraded preflight requires claim restrictions",
+            any("requires at least one claim restriction" in failure for failure in failures),
+        )
+
+        check(
+            "full preflight aligns with the visible evidence boundary",
+            run_gates._validate_preflight_plan_alignment(dual_source, GOOD_PLAN) == [],
+        )
+        failures = run_gates._validate_preflight_plan_alignment(degraded, GOOD_PLAN)
+        check(
+            "degraded preflight rejects a falsely full evidence boundary",
+            any("Evidence mode: degraded" in failure for failure in failures),
+        )
+        degraded_plan = _replace(
+            GOOD_PLAN,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; live Jira is unavailable after HTTP 403, so current status and resolution remain unverified; indexed Jira and backend clone evidence were used.",
+        )
+        check(
+            "degraded preflight aligns when unavailable sources and limits are visible",
+            run_gates._validate_preflight_plan_alignment(degraded, degraded_plan) == [],
+        )
+
+        unnamed_source_plan = _replace(
+            GOOD_PLAN,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; one source is unavailable, so current status remains unverified.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(degraded, unnamed_source_plan)
+        check(
+            "degraded evidence boundary must name each unavailable source",
+            any("live_jira" in failure for failure in failures),
+        )
+
+        git_degraded = json.loads(json.dumps(dual_source))
+        git_degraded["evidence_preflight"]["mode"] = "degraded"
+        git_degraded["evidence_preflight"]["sources"]["git"] = {
+            "status": "unavailable",
+            "checked_via": "local clone inspection failed",
+            "reason": "No clone, diff, branch, commit, or GitHub connection was available.",
+        }
+        git_degraded["evidence_preflight"]["claim_restrictions"] = [
+            "Current implementation, changed files, changed lines, and fix impact remain unverified."
+        ]
+        implementation_plan = _replace(
+            GOOD_PLAN,
+            "- Lifecycle understood as: Pre-Development UAC with no PR yet.",
+            "- Lifecycle understood as: Implementation Review with a claimed fix.",
+        )
+        implementation_plan = _replace(
+            implementation_plan,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; Git is unavailable, so implementation and changed-code claims remain unverified.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(git_degraded, implementation_plan)
+        check(
+            "implementation review cannot stay ready when Git is unavailable",
+            any("draft_only or blocked" in failure for failure in failures),
+        )
+
+        git_degraded["evidence_preflight"]["readiness_impact"] = "draft_only"
+        git_degraded["evidence_preflight"]["readiness_impact_reason"] = "Implementation evidence is unavailable."
+        check(
+            "implementation review accepts explicit degraded readiness",
+            run_gates._validate_preflight_plan_alignment(git_degraded, implementation_plan) == [],
+        )
+
+        post_fix_plan = implementation_plan.replace(
+            "Lifecycle understood as: Implementation Review with a claimed fix.",
+            "Lifecycle understood as: Post-Fix Validation for candidate sign-off.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(git_degraded, post_fix_plan)
+        check(
+            "post-fix validation is blocked when Git fix evidence is unavailable",
+            any("blocked readiness impact" in failure for failure in failures),
+        )
 
 
 def main() -> int:

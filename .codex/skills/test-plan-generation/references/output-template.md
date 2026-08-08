@@ -12,7 +12,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Why it matters: Customer context resolved from Jira: <canonical customer(s), sourced from explicit customer fields, labels, both, or not identified>; <workflow, release, data, or business impact>.
 - Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
 - Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
-- Evidence boundary: <live Jira, indexed Jira, supplied incident, customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
+- Evidence boundary: Evidence mode: <full|degraded>; <available evidence sources; every unavailable source and resulting claim restriction; customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
 - AC-01 [Confirmed]: ...
@@ -104,7 +104,7 @@ Examples:
 - Why it matters: The failure blocks the documented customer or release workflow described in the supplied evidence.
 - Requested outcome: The workflow reaches the Jira-defined observable outcome without the reported failure.
 - Lifecycle understood as: `Pre-Development UAC` because development has not started.
-- Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
+- Evidence boundary: Evidence mode: full; Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
 
 **Acceptance Criteria**
 - Verify that the configured workflow completes for the affected user role.
