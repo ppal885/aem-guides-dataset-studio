@@ -271,6 +271,17 @@ def verify_attachments(manifest_path: str) -> tuple[list[str], list[str]]:
         else:
             notes.append(f"manifest records {len(rag)} RAG probe(s)")
 
+    jira_queries = data.get("jira_history_queries")
+    if jira_queries is not None:
+        if not isinstance(jira_queries, list):
+            failures.append("evidence manifest 'jira_history_queries' must be a list")
+        elif jira_queries:
+            notes.append(f"manifest records {len(jira_queries)} search_jira_history query(s)")
+        elif not str(data.get("jira_history_unavailable_reason", "")).strip():
+            failures.append(
+                "no search_jira_history queries recorded and no jira_history_unavailable_reason supplied"
+            )
+
     attachments = data.get("attachments", [])
     if not isinstance(attachments, list):
         return ["evidence manifest 'attachments' must be a list"], notes

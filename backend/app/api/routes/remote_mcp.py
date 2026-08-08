@@ -118,9 +118,10 @@ def _tools() -> list[dict[str, Any]]:
             "search_jira_history",
             (
                 "Search the indexed customer-reported Jira history (jira_qa collection) for past "
-                "tickets similar to a described defect or behaviour. Optionally filter/boost by "
+                "tickets similar to a described defect or behaviour. Optionally hard-filter by "
                 "Jira Component (Authoring, Publishing, Platform and Integration, Editor) and by "
-                "Customer Label so same-area/same-customer tickets rank first. Returns ranked "
+                "Customer Label so same-area/same-customer tickets rank first. Component filtering "
+                "uses normalized scalar component_primary metadata. Returns ranked "
                 "matches with key, summary, status, resolution, component, customer, versions, and "
                 "any recorded root cause / QA oracle. Use this for 'past similar tickets' and "
                 "'known bugs' history mining - do NOT use ask_dita_expert for Jira history, it "
@@ -518,7 +519,7 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
         note = (
             f"Searched {indexed} indexed jira_qa chunks and found no match above threshold for "
             "this query/filters. This means no similar ticket surfaced, NOT that the ticket does "
-            "not exist. Broaden the query or drop the component/customer filter and retry before "
+            "not exist. Broaden the query or intentionally drop the component/customer filter and retry before "
             "asserting there is no history."
         )
     else:

@@ -16,6 +16,32 @@ from app.services.jira_retrieval_service import (
 )
 
 
+@patch("app.services.jira_retrieval_service.query_collection", return_value=[])
+@patch("app.services.jira_retrieval_service.is_embedding_available", return_value=True)
+@patch("app.services.jira_retrieval_service.is_chroma_available", return_value=True)
+def test_component_uses_strict_chroma_filter_without_unfiltered_fallback(
+    _mock_chroma, _mock_embedding, mock_query
+):
+    debug: dict = {}
+
+    rows = retrieve_similar_jiras(
+        "hotspot link fails in preview",
+        domain=None,
+        dita_entities=[],
+        affected_outputs=[],
+        customer_names=[],
+        base_components=["Editor"],
+        query_embedding=[0.1, 0.2],
+        retrieval_debug_sink=debug,
+    )
+
+    assert rows == []
+    mock_query.assert_called_once()
+    assert mock_query.call_args.kwargs["where"] == {"component_primary": "editor"}
+    assert debug["chroma"]["component_chroma_filter_applied"] is True
+    assert debug["chroma"]["unfiltered_fallback_query"] is False
+
+
 def test_extract_structured_learning_evidence_enforces_outcome_guardrail():
     fixed = extract_structured_learning_evidence(
         {

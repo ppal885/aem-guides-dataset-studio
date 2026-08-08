@@ -14,6 +14,7 @@ from app.core.structured_logging import get_structured_logger
 from app.services.customer_tokens import clean_customer_tokens
 from app.services.embedding_service import embed_query, is_embedding_available
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
+from app.services.jira_component_metadata_service import normalize_component_token
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
 
 logger = get_structured_logger(__name__)
@@ -934,12 +935,14 @@ def _metadata_where_plan(
     sub_domain: str | None,
     issue_type: str | None,
     customer_names: list[str] | None,
+    components: list[str] | None,
 ) -> list[dict[str, Any]]:
     """Build Chroma metadata-first vector query passes for scalar metadata fields.
 
-    JSON-list fields such as enrich_entities/enrich_outputs/components are scored
+    JSON-list fields such as enrich_entities/enrich_outputs are scored
     after retrieval because exact Chroma filters cannot reliably query inside
-    encoded arrays across all deployed Chroma versions.
+    encoded arrays across all deployed Chroma versions. Components use the
+    normalized scalar ``component_primary`` field and therefore are hard-filtered.
     """
     passes: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -951,6 +954,18 @@ def _metadata_where_plan(
             return
         seen.add(marker)
         passes.append({"label": label, "where": where})
+
+    component_tokens = list(dict.fromkeys(
+        token for token in (normalize_component_token(value) for value in (components or [])) if token
+    ))
+    if component_tokens:
+        where = (
+            {"component_primary": component_tokens[0]}
+            if len(component_tokens) == 1
+            else {"component_primary": {"$in": component_tokens}}
+        )
+        add("component_primary_filtered", where)
+        return passes
 
     dom_f = _norm_domain(domain) if domain else ""
     if dom_f and dom_f != "unknown":
@@ -1290,6 +1305,7 @@ def retrieve_similar_jiras(
         sub_domain=sub_domain,
         issue_type=issue_type,
         customer_names=customer_names or [],
+        components=base_components or [],
     )
 
     def _extend(rows: list[dict[str, Any]], *, pass_label: str) -> None:
@@ -1322,7 +1338,13 @@ def retrieve_similar_jiras(
         _extend(filtered, pass_label=str(plan.get("label") or "metadata_filtered"))
 
     unique_filtered_keys = {str((r.get("metadata") or {}).get("jira_key") or "") for r in raw_rows if r.get("metadata")}
-    if metadata_query_plan and metadata_query_plan[0].get("where") and len(unique_filtered_keys) < max(3, limit // 2):
+    strict_component_filter = bool(base_components)
+    if (
+        not strict_component_filter
+        and metadata_query_plan
+        and metadata_query_plan[0].get("where")
+        and len(unique_filtered_keys) < max(3, limit // 2)
+    ):
         unfiltered_fallback = True
         _extend(
             query_collection(CHROMA_COLLECTION_JIRA_QA, emb, k=fetch_k, where=None),
@@ -1340,6 +1362,9 @@ def retrieve_similar_jiras(
             ],
             "domain_chroma_filter_applied": any(
                 (plan.get("where") or {}).get("enrich_domain") for plan in metadata_query_plan
+            ),
+            "component_chroma_filter_applied": any(
+                (plan.get("where") or {}).get("component_primary") for plan in metadata_query_plan
             ),
             "unfiltered_fallback_query": unfiltered_fallback,
             "merged_hit_count": len(raw_rows),
