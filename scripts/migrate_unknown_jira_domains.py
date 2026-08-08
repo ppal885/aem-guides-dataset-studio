@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canonicalize Jira component metadata in Chroma without Jira API access."""
+"""Conservatively backfill unknown Jira domains in Chroma and SQL."""
 
 from __future__ import annotations
 
@@ -47,18 +47,25 @@ def _load_env_file(path: Path) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    parser.add_argument("--apply", action="store_true", help="apply changes; default is dry-run")
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-sql", action="store_true")
     args = parser.parse_args(argv or sys.argv[1:])
     env_warning = _load_env_file(args.env_file)
 
-    from app.services.jira_component_metadata_service import migrate_jira_component_primary
+    from app.services.jira_domain_metadata_service import migrate_unknown_jira_domains
 
-    result = migrate_jira_component_primary(dry_run=args.dry_run, batch_size=max(1, args.batch_size))
+    report = migrate_unknown_jira_domains(
+        dry_run=not args.apply,
+        batch_size=max(1, min(args.batch_size, 2000)),
+        sync_sql=not args.skip_sql,
+    )
     if env_warning:
-        result["warning"] = env_warning
-    print(json.dumps(result, indent=2))
-    return 0
+        report.setdefault("warnings", []).append(env_warning)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    sql_sync = report.get("sql_sync") or {}
+    sql_failed = bool(args.apply and not args.skip_sql and not sql_sync.get("skipped") and not sql_sync.get("available"))
+    return 0 if report.get("available") and int(report.get("failed_chunk_count") or 0) == 0 and not sql_failed else 1
 
 
 if __name__ == "__main__":

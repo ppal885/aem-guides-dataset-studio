@@ -366,8 +366,8 @@ def test_run_gates() -> None:
             "rag_probes": ["a", "b", "c"],
             "jira_history_tool": "search_jira_history",
             "jira_history_queries": [
-                {"scope": "same_customer", "query": "failure shape", "component": "Editor", "customer": "Acme"},
-                {"scope": "cross_customer", "query": "failure shape", "component": "Editor"},
+                {"scope": "same_customer", "query": "failure shape", "component": "Schematron", "customer": "Acme"},
+                {"scope": "cross_customer", "query": "failure shape", "component": "Schematron"},
             ],
             "indexed_history_run": True,
         }
@@ -385,6 +385,21 @@ def test_run_gates() -> None:
         path.write_text(json.dumps(one_scope), encoding="utf-8")
         failures = run_gates.check_manifest_completeness(str(path))
         check("run_gates requires same and cross-customer Jira searches", any("both same_customer" in f for f in failures))
+
+        invalid_component = {
+            **dual_source,
+            "jira_history_queries": [
+                {**query, "component": "Platform and Integration"}
+                for query in dual_source["jira_history_queries"]
+            ],
+            "clones": [],
+        }
+        path.write_text(json.dumps(invalid_component), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects noncanonical Jira components",
+            any("component must be one of" in failure for failure in failures),
+        )
 
         path.write_text(json.dumps({
             **dual_source,

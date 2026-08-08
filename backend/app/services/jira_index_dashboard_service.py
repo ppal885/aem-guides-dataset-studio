@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db.jira_enrichment_models import JiraEnrichedIssue, JiraIssueChunk
-from app.services.jira_sync_state import load_jira_qa_sync_state
+from app.services.jira_sync_state import load_jira_qa_sync_state, sync_cursor_health
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, get_collection_count, is_chroma_available
 from app.storage import get_storage
 
@@ -102,6 +103,8 @@ def collect_sync_state_summaries() -> list[dict[str, Any]]:
             st = load_jira_qa_sync_state(sid)
         except ValueError:
             continue
+        project_key = sid.split(":", 1)[1] if sid.startswith("project:") else None
+        cursor_health = sync_cursor_health(st, project_key=project_key)
         out.append(
             {
                 "sync_state_id": sid,
@@ -109,6 +112,10 @@ def collect_sync_state_summaries() -> list[dict[str, Any]]:
                 "last_indexed_jira_key": st.last_indexed_jira_key,
                 "total_indexed_recorded": st.total_indexed,
                 "failed_keys_count": len(st.failed_keys or []),
+                "cursor_valid": bool(cursor_health["valid"]),
+                "cursor_source": st.cursor_source,
+                "historical_backfill_complete": st.historical_backfill_complete,
+                "missing_or_invalid_cursor_fields": cursor_health["missing_or_invalid_fields"],
             }
         )
     return out
@@ -269,6 +276,17 @@ def build_jira_index_status(session: Session | None) -> dict[str, Any]:
     distinct_chunked = int(sql_part.get("distinct_issues_with_sql_chunks") or 0)
     sql_chunk_rows = int(sql_part.get("sql_chunk_rows_total") or 0)
     total_chunks = chroma_chunks if chroma_ok else sql_chunk_rows
+    configured_project = (
+        os.getenv("JIRA_QA_RAG_PROJECT_KEY")
+        or os.getenv("JIRA_PROJECT_KEY")
+        or "GUIDES"
+    ).strip().upper()
+    configured_sync_state_id = f"project:{configured_project}"
+    configured_state = load_jira_qa_sync_state(configured_sync_state_id)
+    configured_cursor_health = sync_cursor_health(
+        configured_state,
+        project_key=configured_project,
+    )
 
     return {
         "chroma_available": chroma_ok,
@@ -291,6 +309,16 @@ def build_jira_index_status(session: Session | None) -> dict[str, Any]:
         "failed_jira_keys_failure_log": _unique_strings(logged_failed_keys, cap=500),
         "recent_failure_count": len(log_items),
         "sync_states": summaries,
+        "incremental_sync_cursor": {
+            "project_key": configured_project,
+            "sync_state_id": configured_sync_state_id,
+            "valid": bool(configured_cursor_health["valid"]),
+            "health": configured_cursor_health,
+            "state": configured_state.model_dump(mode="json"),
+            "repair_command": (
+                f"bash scripts/bootstrap_jira_sync_cursor_vm.sh --project {configured_project} --apply"
+            ),
+        },
         "tickets_with_unknown_domain": int(sql_part.get("unknown_domain_total") or 0),
         "tickets_missing_expected_or_actual": int(sql_part.get("tickets_missing_expected_or_actual") or 0),
         **sql_part,

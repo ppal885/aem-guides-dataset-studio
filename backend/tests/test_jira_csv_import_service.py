@@ -9,6 +9,7 @@ import numpy as np
 
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
+    create_import_run,
     parse_jira_csv_bytes,
     merge_parsed_issues,
     preview_jira_csv_files,
@@ -63,7 +64,7 @@ def test_parse_repeated_headers_redacts_direct_identifiers_and_preserves_signals
         "31/Jul/26 05:30 PM",
         "publishing",
         "regression",
-        "AEM Guides",
+        "publishing",
         "31/Jul/26 05:31 PM;owner;Verified fix with [~reviewer].",
         "31/Jul/26 05:32 PM;owner;Token access_token=secret-value was revoked.",
         "31/Jul/26 05:33 PM;owner;error.log;https://jira.example/secure/attachment/1/error.log",
@@ -79,6 +80,9 @@ def test_parse_repeated_headers_redacts_direct_identifiers_and_preserves_signals
     assert parsed.duplicate_headers == {"Labels": 2, "Comment": 2}
     issue = parsed.issues[0]
     assert issue.resolution == "Fixed"
+    assert issue.issue["fields"]["components"] == [{"name": "Publishing"}]
+    assert issue.raw_components == ["publishing"]
+    assert issue.noncanonical_components == []
     assert issue.customer_names == ["Example Bank"]
     assert issue.attachment_filenames == ["error.log"]
     assert issue.linked_issue_refs == ["outward (Fixed By): GUIDES-49999"]
@@ -158,6 +162,78 @@ def test_variable_schema_and_cross_file_duplicate_merge(monkeypatch):
     assert duplicate_preview["unique_issue_keys"] == 1
     assert duplicate_preview["overlap_count"] == 1
     assert duplicate_preview["overlapping_issue_keys"] == ["GUIDES-1"]
+
+
+def test_preview_enforces_six_canonical_components_and_preserves_multi_component_rows(monkeypatch):
+    headers = BASE_HEADERS + ["Labels", "Component/s", "Component/s"]
+    canonical = _csv_bytes(
+        headers,
+        [[
+            "Canonical components",
+            "GUIDES-20",
+            "Customer Request",
+            "Closed",
+            "Fixed",
+            "Major",
+            "Body",
+            "2026-08-01",
+            "IBM",
+            "editor",
+            "Integration",
+        ]],
+    )
+    unsupported = _csv_bytes(
+        headers,
+        [[
+            "Legacy component",
+            "GUIDES-22",
+            "Customer Request",
+            "Closed",
+            "Fixed",
+            "Major",
+            "Body",
+            "2026-08-01",
+            "IBM",
+            "Platform and Integration",
+            "",
+        ]],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+
+    canonical_preview = preview_jira_csv_files([("canonical.csv", canonical)])
+    invalid_preview = preview_jira_csv_files([("unsupported.csv", unsupported)])
+
+    assert canonical_preview["valid"] is True
+    assert canonical_preview["component_quality_valid"] is True
+    assert canonical_preview["canonical_components"] == [
+        "Editor",
+        "Authoring",
+        "Publishing",
+        "Platform",
+        "Schematron",
+        "Integration",
+    ]
+    assert canonical_preview["files"][0]["component_counts"]["Editor"] == 1
+    assert canonical_preview["files"][0]["component_counts"]["Integration"] == 1
+    parsed = parse_jira_csv_bytes(canonical, "canonical.csv")
+    assert parsed.issues[0].issue["fields"]["components"] == [
+        {"name": "Editor"},
+        {"name": "Integration"},
+    ]
+
+    assert invalid_preview["valid"] is False
+    assert invalid_preview["customer_assignment_valid"] is True
+    assert invalid_preview["component_quality_valid"] is False
+    assert invalid_preview["rows_without_canonical_component"] == 1
+    assert invalid_preview["rows_with_noncanonical_component"] == 1
+    assert invalid_preview["files"][0]["noncanonical_component_values"] == [
+        "Platform and Integration"
+    ]
+    with pytest.raises(ValueError, match="unsupported Component/s"):
+        create_import_run(
+            [("unsupported.csv", unsupported)],
+            created_by="component-validation-test",
+        )
 
 
 def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):

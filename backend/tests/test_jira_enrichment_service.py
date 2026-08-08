@@ -9,6 +9,7 @@ from app.services.jira_enrichment_service import (
     detect_customers_dynamic,
     detect_customers_dynamic_with_debug,
     enrich_jira,
+    infer_domain_from_components,
     extract_dita_entities,
     extract_expected_actual,
 )
@@ -27,6 +28,88 @@ def test_classify_domain_keyref_over_publishing():
 def test_classify_domain_unknown():
     r = classify_domain("nothing specific here", [])
     assert r["domain"] == "unknown"
+
+
+def test_component_domain_fallback_is_conservative():
+    assert {
+        component: infer_domain_from_components([component])
+        for component in (
+            "Editor",
+            "Authoring",
+            "Publishing",
+            "Platform",
+            "Schematron",
+            "Integration",
+        )
+    } == {
+        "Editor": "editor",
+        "Authoring": "authoring",
+        "Publishing": "publishing",
+        "Platform": "platform",
+        "Schematron": "schematron",
+        "Integration": "integration",
+    }
+    assert infer_domain_from_components(["Platform and Integration"]) == ""
+
+
+def test_enrich_jira_uses_component_as_authoritative_primary_area():
+    issue = {
+        "key": "GUIDES-43",
+        "fields": {
+            "summary": "Unexpected behavior after clicking save",
+            "description": "The operation does not complete.",
+            "labels": [],
+            "components": [{"name": "Editor"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert doc.domain == "editor"
+    assert doc.components == ["Editor"]
+    assert doc.enrichment_debug["jira_components"] == {
+        "canonical": ["Editor"],
+        "raw": ["Editor"],
+        "noncanonical": [],
+    }
+    assert doc.enrichment_debug["domain_classification"]["source"] == "jira_component"
+
+
+def test_enrich_jira_rejects_noncanonical_component_metadata():
+    issue = {
+        "key": "GUIDES-45",
+        "fields": {
+            "summary": "Unexpected behavior",
+            "description": "The operation does not complete.",
+            "labels": [],
+            "components": [{"name": "Platform and Integration"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert doc.components == []
+    assert doc.enrichment_debug["jira_components"]["noncanonical"] == [
+        "Platform and Integration"
+    ]
+
+
+def test_enrich_jira_preserves_text_classification_as_component_subdomain():
+    issue = {
+        "key": "GUIDES-44",
+        "fields": {
+            "summary": "Native PDF output fails for a bookmap",
+            "description": "The publishing pipeline cannot create the PDF.",
+            "labels": [],
+            "components": [{"name": "Integration"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert doc.domain == "integration"
+    assert doc.sub_domain == "publishing"
+    assert doc.enrichment_debug["domain_classification"]["source"] == "jira_component"
 
 
 def test_extract_dita_entities_order_unique():

@@ -23,6 +23,13 @@ from app.db.jira_enrichment_repository import insert_jira_chunks, upsert_jira_is
 from app.db.session import SessionLocal
 from app.services.embedding_service import embed_texts_batched, is_embedding_available
 from app.services.jira_chunking_service import build_comments_digest
+from app.services.jira_component_metadata_service import (
+    CANONICAL_JIRA_COMPONENTS,
+    COMPONENT_FILTER_SCHEMA_VERSION,
+    canonical_component_name,
+    canonical_component_names,
+    component_primary_from_names,
+)
 from app.services.jira_enrichment_service import enrich_jira
 from app.services.jira_qa_chunking_service import build_jira_qa_chunks
 from app.services.vector_store_service import (
@@ -37,7 +44,7 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v9"
+IMPORTER_VERSION = "customer-intelligence-v10"
 REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -121,6 +128,8 @@ class ParsedCsvIssue:
     company_names: list[str]
     customer_names: list[str]
     customer_cohorts: list[str]
+    raw_components: list[str]
+    noncanonical_components: list[str]
     resolutions: list[str]
     source_file_hashes: list[str]
     import_provenance: list[dict[str, str]]
@@ -139,6 +148,10 @@ class ParsedCsvFile:
     duplicate_headers: dict[str, int]
     resolution_counts: dict[str, int]
     redacted_fields: int
+    component_counts: dict[str, int]
+    rows_without_canonical_component: int
+    rows_with_noncanonical_component: int
+    noncanonical_component_values: list[str]
     detected_customer: str = ""
     detection_confidence: str = "none"
     detection_signals: list[str] | None = None
@@ -330,7 +343,11 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             redactions += count
 
         labels = _dedupe(values(row, "Labels"))
-        components = _dedupe(values(row, "Component/s"))
+        raw_components = _dedupe(values(row, "Component/s"))
+        components = canonical_component_names(raw_components)
+        noncanonical_components = [
+            component for component in raw_components if not canonical_component_name(component)
+        ]
         fix_versions = _dedupe(values(row, "Fix Version/s"))
         affected_versions = _dedupe(values(row, "Affects Version/s"))
         customer_names, customer_redactions = _safe_customer_values(
@@ -389,6 +406,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             "priority": {"name": first(row, "Priority")},
             "labels": labels,
             "components": [{"name": item} for item in components],
+            "_components_raw": raw_components,
             "fixVersions": [{"name": item} for item in fix_versions],
             "versions": [{"name": item} for item in affected_versions],
             "created": first(row, "Created"),
@@ -412,6 +430,8 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 company_names=company_names,
                 customer_names=customer_names,
                 customer_cohorts=row_customer_cohorts,
+                raw_components=raw_components,
+                noncanonical_components=noncanonical_components,
                 resolutions=[resolution] if resolution else [],
                 source_file_hashes=[hashlib.sha256(data).hexdigest()],
                 import_provenance=[
@@ -439,6 +459,11 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
         )
         total_redactions += redactions
 
+    component_counts = Counter(
+        component
+        for issue in issues
+        for component in canonical_component_names(issue.raw_components)
+    )
     parsed_file = ParsedCsvFile(
         filename=Path(filename).name,
         file_hash=hashlib.sha256(data).hexdigest(),
@@ -447,6 +472,23 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
         duplicate_headers=duplicate_headers,
         resolution_counts=dict(resolution_counts),
         redacted_fields=total_redactions,
+        component_counts={
+            component: component_counts.get(component, 0)
+            for component in CANONICAL_JIRA_COMPONENTS
+        },
+        rows_without_canonical_component=sum(
+            1 for issue in issues if not canonical_component_names(issue.raw_components)
+        ),
+        rows_with_noncanonical_component=sum(
+            1 for issue in issues if issue.noncanonical_components
+        ),
+        noncanonical_component_values=_dedupe(
+            [
+                component
+                for issue in issues
+                for component in issue.noncanonical_components
+            ]
+        ),
     )
     detected, confidence, signals, warnings = _detect_file_customer(parsed_file)
     parsed_file.detected_customer = detected
@@ -524,7 +566,19 @@ def merge_parsed_issues(
             return [{"name": value} for value in clean] if object_values else clean
 
         fields["labels"] = field_union("labels")
-        fields["components"] = field_union("components", object_values=True)
+        output.raw_components = union("raw_components")
+        output.noncanonical_components = union("noncanonical_components")
+        fields["components"] = [
+            {"name": value}
+            for value in canonical_component_names(
+                [
+                    str(item.get("name") or "")
+                    for item in field_union("components", object_values=True)
+                    if isinstance(item, dict)
+                ]
+            )
+        ]
+        fields["_components_raw"] = output.raw_components
         fields["fixVersions"] = field_union("fixVersions", object_values=True)
         fields["versions"] = field_union("versions", object_values=True)
         output.company_names = union("company_names", 100)
@@ -572,15 +626,43 @@ def preview_jira_csv_files(
     duplicate_keys = sorted(key for key, count in Counter(keys).items() if count > 1)
     assignment_map = _normalize_customer_assignments(parsed, customer_assignments)
     completed_hashes = _completed_file_hashes()
+    customer_assignment_valid = all(assignment_map.values())
+    rows_without_canonical_component = sum(
+        item.rows_without_canonical_component for item in parsed
+    )
+    rows_with_noncanonical_component = sum(
+        item.rows_with_noncanonical_component for item in parsed
+    )
+    component_quality_valid = (
+        rows_without_canonical_component == 0
+        and rows_with_noncanonical_component == 0
+    )
+    validation_errors: list[str] = []
+    if not customer_assignment_valid:
+        validation_errors.append("Confirm a supported customer assignment for every file")
+    if rows_without_canonical_component:
+        validation_errors.append(
+            f"{rows_without_canonical_component} Jira rows lack a canonical Component/s value"
+        )
+    if rows_with_noncanonical_component:
+        validation_errors.append(
+            f"{rows_with_noncanonical_component} Jira rows contain unsupported Component/s values"
+        )
     return {
-        "valid": all(assignment_map.values()),
+        "valid": customer_assignment_valid and component_quality_valid,
         "importer_version": IMPORTER_VERSION,
+        "canonical_components": list(CANONICAL_JIRA_COMPONENTS),
+        "customer_assignment_valid": customer_assignment_valid,
+        "component_quality_valid": component_quality_valid,
+        "validation_errors": validation_errors,
         "total_files": len(parsed),
         "total_rows": len(keys),
         "unique_issue_keys": len(set(keys)),
         "overlap_count": len(keys) - len(set(keys)),
         "overlapping_issue_keys": duplicate_keys,
         "redacted_fields": sum(item.redacted_fields for item in parsed),
+        "rows_without_canonical_component": rows_without_canonical_component,
+        "rows_with_noncanonical_component": rows_with_noncanonical_component,
         "files": [
             {
                 "filename": item.filename,
@@ -589,12 +671,31 @@ def preview_jira_csv_files(
                 "columns": len(item.headers),
                 "duplicate_headers": item.duplicate_headers,
                 "resolution_counts": item.resolution_counts,
+                "component_counts": item.component_counts,
+                "rows_without_canonical_component": item.rows_without_canonical_component,
+                "rows_with_noncanonical_component": item.rows_with_noncanonical_component,
+                "noncanonical_component_values": item.noncanonical_component_values,
                 "already_imported": item.file_hash in completed_hashes,
                 "detected_customer": item.detected_customer,
                 "assigned_customer": assignment_map.get(item.file_hash, ""),
                 "customer_confidence": item.detection_confidence,
                 "customer_evidence_signals": item.detection_signals or [],
-                "warnings": item.detection_warnings or [],
+                "warnings": (item.detection_warnings or [])
+                + (
+                    [
+                        "Every Jira row must include at least one of the six canonical components."
+                    ]
+                    if item.rows_without_canonical_component
+                    else []
+                )
+                + (
+                    [
+                        "Unsupported component values: "
+                        + ", ".join(item.noncanonical_component_values)
+                    ]
+                    if item.noncanonical_component_values
+                    else []
+                ),
             }
             for item in parsed
         ],
@@ -621,7 +722,7 @@ def create_import_run(
 ) -> tuple[str, list[Path]]:
     preview = preview_jira_csv_files(files, customer_assignments)
     if not preview["valid"]:
-        raise ValueError("Confirm a supported customer assignment for every file")
+        raise ValueError("; ".join(preview["validation_errors"]))
     run_id = str(uuid.uuid4())
     import_dir = Path(__file__).resolve().parents[2] / "storage" / "jira_csv_imports" / run_id
     import_dir.mkdir(parents=True, exist_ok=False)
@@ -718,10 +819,9 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
         row.company_names = _union_values(row.company_names, parsed_issue.company_names, limit=100)
         row.customer_names = _union_values(row.customer_names, parsed_issue.customer_names, limit=100)
         row.customer_cohorts = _union_values(row.customer_cohorts, parsed_issue.customer_cohorts, limit=20)
-        row.components = _union_values(
-            row.components,
-            [str(item.get("name") or "") for item in parsed_issue.issue.get("fields", {}).get("components", [])],
-        )
+        existing_components = list(row.components or [])
+        raw_components = _dedupe(existing_components + parsed_issue.raw_components)
+        row.components = canonical_component_names(raw_components)
         row.resolutions = _union_values(row.resolutions, parsed_issue.resolutions, limit=50)
         row.source_file_hashes = _union_values(row.source_file_hashes, parsed_issue.source_file_hashes, limit=50)
         provenance = list(row.import_provenance or [])
@@ -750,6 +850,10 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
                 "customer_cohorts": json.dumps(row.customer_cohorts, ensure_ascii=False)[:4000],
                 "resolutions": json.dumps(row.resolutions, ensure_ascii=False)[:4000],
                 "source_file_hashes": json.dumps(row.source_file_hashes, ensure_ascii=False)[:4000],
+                "components": json.dumps(row.components, ensure_ascii=False)[:4000],
+                "components_raw": json.dumps(raw_components, ensure_ascii=False)[:4000],
+                "component_primary": component_primary_from_names(row.components),
+                "component_filter_schema_version": COMPONENT_FILTER_SCHEMA_VERSION,
                 "metadata_only_merge": True,
                 "import_evidence_archive": json.dumps(row.evidence_archive, ensure_ascii=False)[:4000],
             },
@@ -910,8 +1014,12 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                             "linked_issue_refs": parsed_issue.linked_issue_refs,
                             "attachment_filenames": parsed_issue.attachment_filenames,
                             "comments_digest": build_comments_digest(parsed_issue.comments),
-                            "components": _union_values(
-                                existing_metadata.get("components"), list(enriched.components or []), limit=200
+                            "components": canonical_component_names(
+                                _union_values(
+                                    existing_metadata.get("components"),
+                                    list(enriched.components or []),
+                                    limit=200,
+                                )
                             ),
                             "company_names": _union_values(
                                 existing_metadata.get("company_names"), parsed_issue.company_names, limit=100

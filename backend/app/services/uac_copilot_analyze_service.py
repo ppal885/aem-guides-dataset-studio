@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from typing import Any
 
 import httpx
@@ -196,18 +197,23 @@ def _retrieval_query_text(en: JiraEnrichedDocument) -> str:
         (en.raw_text or "")[:6000],
         " ".join(en.dita_entities or []),
         " ".join(en.affected_outputs or []),
+        " ".join(en.affected_features or []),
+        " ".join(en.components or []),
+        " ".join(en.labels or []),
+        " ".join(en.customer_names or []),
+        " ".join(en.symptoms or []),
+        (en.expected_behavior or "")[:2000],
+        (en.actual_behavior or "")[:2000],
+        " ".join(en.qa_risk_tags or []),
     ]
     return "\n\n".join(p for p in parts if p.strip())
 
 
 def _has_retrieval_anchors(en: JiraEnrichedDocument) -> bool:
-    """Avoid vector-only similar Jira retrieval when the current ticket has no reusable UAC anchors."""
+    """Require meaningful searchable text, never a known domain classification."""
 
-    return bool(
-        (en.domain or "").strip().lower() not in {"", "unknown"}
-        or (en.dita_entities or [])
-        or (en.affected_outputs or [])
-    )
+    tokens = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", _retrieval_query_text(en).lower()))
+    return len(tokens) >= 2
 
 
 def _collect_risk_section_drops(
@@ -544,14 +550,9 @@ async def run_uac_analyze(
 
     similar: list[RetrievedJira] = []
     retrieval_sink: dict[str, Any] = {}
-    # Skip vector retrieval when there are no anchors to search on:
-    # unknown domain + empty entity list + empty output list → query would be noise
-    _has_anchors = (
-        (enriched.domain or "").strip().lower() not in {"", "unknown"}
-        or (enriched.dita_entities or [])
-        or (enriched.affected_outputs or [])
-    )
-    can_retrieve_similar = include_similar and max_similar > 0 and _has_anchors
+    # Use meaningful ticket text even when domain classification is unknown.
+    has_query_evidence = _has_retrieval_anchors(enriched)
+    can_retrieve_similar = include_similar and max_similar > 0 and has_query_evidence
     if can_retrieve_similar:
         qtext = _retrieval_query_text(enriched)
         eff_domain = enriched.domain if enriched.domain != "unknown" else None
@@ -569,6 +570,7 @@ async def run_uac_analyze(
         )
         if debug:
             retrieval_sink.setdefault("uac_effective_domain_for_retrieval", eff_domain)
+            retrieval_sink.setdefault("domain_policy", "soft_boost_only")
             retrieval_sink["classification_snapshot"] = _classification_payload(enriched)
         logger.info_structured(
             "uac_analyze_retrieval",
@@ -588,10 +590,11 @@ async def run_uac_analyze(
                 "exclude_jira_key": jk,
             },
             "note": (
-                "Similar-ticket retrieval was not run because current Jira lacks domain/entity/output anchors."
-                if include_similar and max_similar > 0 and not _has_anchors
+                "Similar-ticket retrieval was not run because current Jira lacks meaningful searchable text."
+                if include_similar and max_similar > 0 and not has_query_evidence
                 else "Similar-ticket retrieval was not run (include_similar=false or max_similar=0)."
             ),
+            "domain_policy": "soft_boost_only",
             "classification_snapshot": _classification_payload(enriched),
         }
 

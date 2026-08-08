@@ -564,6 +564,72 @@ def jira_rag_status(user: UserIdentity = AdminUser):
         return {"available": True, "error": str(e)}
 
 
+@router.get("/jira-rag/corpus-audit")
+def jira_rag_corpus_audit(
+    duplicate_sample_limit: int = 20,
+    top_components_per_customer: int = 10,
+    user: UserIdentity = AdminUser,
+):
+    """Audit unique-issue customer, component, date, metadata, and duplicate coverage in Chroma."""
+    del user
+    from app.services.jira_corpus_audit_service import audit_jira_corpus
+
+    try:
+        return audit_jira_corpus(
+            duplicate_sample_limit=max(0, min(int(duplicate_sample_limit), 100)),
+            top_components_per_customer=max(1, min(int(top_components_per_customer), 50)),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Jira corpus audit failed: {exc}") from exc
+
+
+class JiraSyncCursorBootstrapRequest(BaseModel):
+    project_key: str = Field("", max_length=30)
+    sync_state_id: str = Field("", max_length=120)
+    dry_run: bool = True
+    force: bool = False
+
+
+@router.post("/jira-rag/sync-cursor/bootstrap")
+def bootstrap_jira_rag_sync_cursor(
+    request: JiraSyncCursorBootstrapRequest,
+    user: UserIdentity = AdminUser,
+):
+    """Preview or repair the incremental cursor from searchable Jira metadata."""
+    del user
+    from app.services.jira_sync_cursor_service import bootstrap_jira_sync_cursor
+
+    try:
+        result = bootstrap_jira_sync_cursor(
+            request.project_key or None,
+            sync_state_id=request.sync_state_id or None,
+            dry_run=request.dry_run,
+            force=request.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not result.get("available"):
+        raise HTTPException(status_code=409, detail=result)
+    return result
+
+
+@router.get("/rag/knowledge-audit")
+def rag_knowledge_audit(
+    duplicate_sample_limit: int = 10,
+    user: UserIdentity = AdminUser,
+):
+    """Audit authoritative topic and metadata coverage in product and DITA knowledge corpora."""
+    del user
+    from app.services.knowledge_corpus_audit_service import audit_knowledge_corpora
+
+    try:
+        return audit_knowledge_corpora(
+            duplicate_sample_limit=max(0, min(int(duplicate_sample_limit), 100))
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Knowledge corpus audit failed: {exc}") from exc
+
+
 @router.post("/init-embedding")
 def init_embedding_model(user: UserIdentity = AdminUser):
     """Force-initialize the embedding model (downloads from HuggingFace if needed).

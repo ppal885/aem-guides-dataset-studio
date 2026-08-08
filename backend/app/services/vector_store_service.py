@@ -288,17 +288,27 @@ def get_collection_count(collection_name: str) -> int:
         return 0
 
 
-def get_collection_records(collection_name: str) -> list[dict]:
-    """Return all document IDs and metadata for consistency checks."""
+def get_collection_records(collection_name: str, *, include_documents: bool = False) -> list[dict]:
+    """Return all document IDs and metadata, optionally including document text."""
     client = _get_client()
     if not client or not _collection_exists(client, collection_name):
         return []
     try:
-        result = client.get_collection(name=collection_name).get(include=["metadatas"])
+        includes = ["metadatas", "documents"] if include_documents else ["metadatas"]
+        result = client.get_collection(name=collection_name).get(include=includes)
         ids = result.get("ids") or []
         metadatas = result.get("metadatas") or []
+        documents = result.get("documents") or []
         return [
-            {"id": doc_id, "metadata": metadatas[index] or {}}
+            {
+                "id": doc_id,
+                "metadata": (metadatas[index] if index < len(metadatas) else None) or {},
+                **(
+                    {"document": (documents[index] if index < len(documents) else None) or ""}
+                    if include_documents
+                    else {}
+                ),
+            }
             for index, doc_id in enumerate(ids)
         ]
     except Exception as exc:

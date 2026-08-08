@@ -178,7 +178,7 @@ def test_uac_analyze_llm_off_returns_structured_grounded_fallback():
     assert ui["classification_card"]["jira_key"] == "EPV-3"
 
 
-def test_uac_analyze_unknown_domain_without_anchors_skips_vector_retrieval():
+def test_uac_analyze_unknown_domain_uses_text_for_vector_retrieval():
     from app.services.jira_retrieval_service import INSUFFICIENT_EVIDENCE_MESSAGE
     from app.services.uac_copilot_analyze_service import run_uac_analyze
 
@@ -189,11 +189,16 @@ def test_uac_analyze_unknown_domain_without_anchors_skips_vector_retrieval():
         domain="unknown",
     )
     with patch("app.services.uac_copilot_analyze_service._load_or_fetch_enriched", return_value=(enriched, "db")):
-        with patch("app.services.uac_copilot_analyze_service.retrieve_similar_jiras") as mock_retrieve:
+        with patch(
+            "app.services.uac_copilot_analyze_service.retrieve_similar_jiras",
+            return_value=[],
+        ) as mock_retrieve:
             out = asyncio.run(run_uac_analyze("EPV-4", include_similar=True, max_similar=8, debug=True))
 
-    mock_retrieve.assert_not_called()
+    mock_retrieve.assert_called_once()
+    assert mock_retrieve.call_args.kwargs["domain"] is None
+    assert "Short description" in mock_retrieve.call_args.args[0]
     assert out["uac_answer"] == INSUFFICIENT_EVIDENCE_MESSAGE
     assert out["must_test_scenarios"] == []
-    assert "lacks domain/entity/output anchors" in out["retrieval_debug"]["note"]
+    assert out["retrieval_debug"]["domain_policy"] == "soft_boost_only"
     assert out["uac_ui"]["executive_summary_card"]["summary"]

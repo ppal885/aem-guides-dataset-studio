@@ -10,6 +10,7 @@ from app.db.jira_enrichment_models import JiraEnrichedIssue, JiraEnrichmentRevie
 from app.db.jira_enrichment_repository import (
     get_jira_by_key,
     insert_jira_chunks,
+    search_jira_kb,
     search_by_metadata,
     upsert_jira_issue,
 )
@@ -104,5 +105,36 @@ def test_insert_replaces_chunks():
         )
         s.commit()
         assert s.query(JiraIssueChunk).filter(JiraIssueChunk.jira_key == "GUIDES-502").count() == 1
+    finally:
+        s.close()
+
+
+def test_kb_domain_is_a_soft_boost_not_a_filter():
+    s = _session()
+    try:
+        s.add_all([
+            JiraEnrichedIssue(
+                jira_key="GUIDES-601",
+                summary="Publishing timeout",
+                description="Output generation timeout",
+                domain="publishing",
+            ),
+            JiraEnrichedIssue(
+                jira_key="GUIDES-602",
+                summary="Publishing timeout with unclassified area",
+                description="Output generation timeout",
+                domain="unknown",
+            ),
+        ])
+        s.commit()
+
+        rows = search_jira_kb(s, q="timeout", domain="publishing", limit=10)
+
+        assert [row["jira_key"] for row in rows] == ["GUIDES-601", "GUIDES-602"]
+        assert rows[0]["domain_match"] is True
+        assert rows[1]["domain_match"] is False
+
+        metadata_rows = search_by_metadata(s, domain="publishing", limit=10)
+        assert [row.jira_key for row in metadata_rows] == ["GUIDES-601", "GUIDES-602"]
     finally:
         s.close()
