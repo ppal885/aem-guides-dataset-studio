@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canonicalize Jira component metadata in Chroma without Jira API access."""
+"""Preview or bootstrap the Jira QA incremental-sync cursor from indexed metadata."""
 
 from __future__ import annotations
 
@@ -21,11 +21,7 @@ for candidate in (PROJECT_ROOT, BACKEND_DIR):
 def _load_env_file(path: Path) -> str | None:
     if not path.exists():
         return f"env file not found: {path}"
-    try:
-        lines = path.read_text(encoding="utf-8-sig").splitlines()
-    except OSError as exc:
-        return f"env file could not be read: {exc}"
-    for raw_line in lines:
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -47,18 +43,30 @@ def _load_env_file(path: Path) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
-    parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--project", default="")
+    parser.add_argument("--sync-state-id", default="")
+    parser.add_argument("--apply", action="store_true", help="persist the proposed cursor")
+    parser.add_argument("--force", action="store_true", help="repair even when a valid cursor exists")
+    parser.add_argument("--skip-sql", action="store_true", help="derive only from Chroma metadata")
     args = parser.parse_args(argv or sys.argv[1:])
     env_warning = _load_env_file(args.env_file)
 
-    from app.services.jira_component_metadata_service import migrate_jira_component_primary
+    from app.services.jira_sync_cursor_service import bootstrap_jira_sync_cursor
 
-    result = migrate_jira_component_primary(dry_run=args.dry_run, batch_size=max(1, args.batch_size))
+    try:
+        report = bootstrap_jira_sync_cursor(
+            args.project or None,
+            sync_state_id=args.sync_state_id or None,
+            dry_run=not args.apply,
+            force=args.force,
+            include_sql=not args.skip_sql,
+        )
+    except ValueError as exc:
+        report = {"available": False, "valid": False, "error": str(exc)}
     if env_warning:
-        result["warning"] = env_warning
-    print(json.dumps(result, indent=2))
-    return 0
+        report.setdefault("warnings", []).append(env_warning)
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    return 0 if report.get("available") and report.get("valid") else 1
 
 
 if __name__ == "__main__":

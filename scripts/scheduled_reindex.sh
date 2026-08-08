@@ -16,6 +16,12 @@ PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/backend/.venv/bin/python}"
 LIMIT="${REINDEX_LIMIT:-300}"
 
 echo "[$(date -Is)] jira_qa incremental reindex starting (limit=$LIMIT)"
-"$PYTHON_BIN" scripts/repair_jira_rag_on_vm.py --incremental --limit "$LIMIT"
-echo "[$(date -Is)] reindex done; current status:"
+if "$PYTHON_BIN" scripts/repair_jira_rag_on_vm.py --incremental --limit "$LIMIT"; then
+  REINDEX_EXIT=0
+  echo "[$(date -Is)] jira_qa incremental reindex succeeded; current status:"
+else
+  REINDEX_EXIT=$?
+  echo "[$(date -Is)] ERROR: jira_qa incremental reindex failed (exit_code=$REINDEX_EXIT); current status:" >&2
+fi
 "$PYTHON_BIN" scripts/repair_jira_rag_on_vm.py --check || true
+exit "$REINDEX_EXIT"

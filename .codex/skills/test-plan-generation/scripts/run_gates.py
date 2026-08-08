@@ -29,6 +29,16 @@ import json
 from pathlib import Path
 
 
+CANONICAL_JIRA_COMPONENTS = {
+    "Editor",
+    "Authoring",
+    "Publishing",
+    "Platform",
+    "Schematron",
+    "Integration",
+}
+
+
 def _load(module_name: str, filename: str):
     spec = importlib.util.spec_from_file_location(module_name, Path(__file__).with_name(filename))
     module = importlib.util.module_from_spec(spec)
@@ -84,8 +94,14 @@ def _validate_dual_source_evidence(data: dict) -> list[str]:
             scopes.add(scope)
             if not str(query.get("query", "")).strip():
                 failures.append(f"jira_history_queries[{index}] is missing query")
-            if not str(query.get("component", "")).strip():
+            component = str(query.get("component", "")).strip()
+            if not component:
                 failures.append(f"jira_history_queries[{index}] is missing component")
+            elif component not in CANONICAL_JIRA_COMPONENTS:
+                allowed = ", ".join(sorted(CANONICAL_JIRA_COMPONENTS))
+                failures.append(
+                    f"jira_history_queries[{index}] component must be one of: {allowed}"
+                )
             if scope == "same_customer":
                 if not str(query.get("customer", "")).strip() and not str(query.get("customer_unavailable_reason", "")).strip():
                     failures.append(

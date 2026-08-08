@@ -377,6 +377,8 @@ def smart_chunks_to_chroma_rows(
                 "importer_version": "customer-intelligence-v2" if enriched.source_type == "jira_csv" else "",
                 "import_evidence_archive": _json_meta(enriched.evidence_archive),
                 "enrich_domain": enriched.domain[:120],
+                "domain_ranking_policy": "soft_boost_only",
+                "domain_schema_version": "jira-domain-v2",
                 "enrich_sub_domain": (enriched.sub_domain or "")[:120],
                 "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),

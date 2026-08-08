@@ -68,7 +68,8 @@ def test_chunking_emits_types(monkeypatch):
     assert "similar_ticket_signals" in types
     assert "attachment_log_signals" in types
     assert {c["metadata"]["component_primary"] for c in chunks} == {"publishing"}
-    assert {c["metadata"]["component_filter_schema_version"] for c in chunks} == {1}
+    assert {c["metadata"]["component_filter_schema_version"] for c in chunks} == {2}
+    assert {c["metadata"]["components_raw"] for c in chunks} == {'["Publishing"]'}
 
 
 def test_automation_rubric_range():
@@ -370,6 +371,7 @@ def test_incremental_without_state_falls_back_to_backfill(monkeypatch):
         "app.services.jira_qa_index_service.load_jira_qa_sync_state",
         lambda _sid: type("S", (), {"last_successful_sync_time": None})(),
     )
+    monkeypatch.setenv("JIRA_QA_AUTO_BOOTSTRAP_CURSOR", "false")
     monkeypatch.setattr("app.services.jira_qa_index_service.index_jira_project_backfill", fake_backfill)
 
     out = index_jira_project_incremental("GUIDES", limit=1000)

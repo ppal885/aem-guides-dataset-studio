@@ -100,12 +100,17 @@ def readiness() -> dict[str, Any]:
     from app.services.embedding_service import is_embedding_available
     from app.services.jira_client import JiraClient
     from app.services.jira_qa_index_service import _jira_configured, resolve_jira_qa_project_key
+    from app.services.jira_sync_state import load_jira_qa_sync_state, sync_cursor_health
     from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, get_collection_count, is_chroma_available
 
     client = JiraClient()
     chroma_ok = bool(is_chroma_available())
     embedding_ok = bool(is_embedding_available())
     count = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
+    project = resolve_jira_qa_project_key()
+    sync_state_id = f"project:{project}"
+    sync_state = load_jira_qa_sync_state(sync_state_id)
+    cursor_health = sync_cursor_health(sync_state, project_key=project)
     return {
         "env": masked_env(
             [
@@ -130,10 +135,19 @@ def readiness() -> dict[str, Any]:
         "jira_base_url": client.base_url,
         "jira_user": client.username or client.email,
         "jira_auth_mode": getattr(client, "auth_mode", "unknown"),
-        "resolved_project": resolve_jira_qa_project_key(),
+        "resolved_project": project,
         "chroma_available": chroma_ok,
         "embedding_available": embedding_ok,
         "jira_qa_collection_count": count,
+        "incremental_sync_cursor": {
+            "sync_state_id": sync_state_id,
+            "valid": bool(cursor_health["valid"]),
+            "health": cursor_health,
+            "state": sync_state.model_dump(mode="json"),
+            "repair_command": (
+                f"bash scripts/bootstrap_jira_sync_cursor_vm.sh --project {project} --apply"
+            ),
+        },
     }
 
 
@@ -203,6 +217,33 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
 
+def _positive_int(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def index_result_failure_reasons(result: dict[str, Any]) -> list[str]:
+    """Classify structured index failures that must produce a nonzero process exit."""
+    reasons: list[str] = []
+    if result.get("error"):
+        reasons.append("top_level_error")
+
+    errors_count = _positive_int(result.get("errors_count"))
+    if errors_count:
+        reasons.append(f"errors_count={errors_count}")
+    elif result.get("errors"):
+        reasons.append("errors_present")
+
+    issues_failed = _positive_int(result.get("issues_failed"))
+    if issues_failed:
+        reasons.append(f"issues_failed={issues_failed}")
+    if result.get("sync_state_error"):
+        reasons.append("sync_state_persistence_failed")
+    return reasons
+
+
 def safe_jira_error(exc: Exception) -> dict[str, Any]:
     message = str(exc)
     status_code = getattr(getattr(exc, "response", None), "status_code", None)
@@ -243,10 +284,20 @@ def main() -> int:
         return 0
 
     result = run_index(args, project)
-    print_json({"phase": "index_result", "result": result})
+    failure_reasons = index_result_failure_reasons(result)
+    exit_code = 1 if failure_reasons else 0
+    print_json(
+        {
+            "phase": "index_result",
+            "success": not failure_reasons,
+            "exit_code": exit_code,
+            "failure_reasons": failure_reasons,
+            "result": result,
+        }
+    )
     after = readiness()
     print_json({"phase": "readiness_after", **after})
-    return 1 if result.get("error") else 0
+    return exit_code
 
 
 if __name__ == "__main__":

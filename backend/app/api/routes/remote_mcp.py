@@ -20,6 +20,10 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.auth import CurrentUser, UserIdentity
 from app.services.customer_tokens import clean_customer_tokens
+from app.services.jira_component_metadata_service import (
+    CANONICAL_JIRA_COMPONENTS,
+    canonical_component_name,
+)
 
 router = APIRouter(prefix="/mcp", tags=["remote-mcp"])
 
@@ -119,7 +123,7 @@ def _tools() -> list[dict[str, Any]]:
             (
                 "Search the indexed customer-reported Jira history (jira_qa collection) for past "
                 "tickets similar to a described defect or behaviour. Optionally hard-filter by "
-                "Jira Component (Authoring, Publishing, Platform and Integration, Editor) and by "
+                "Jira Component (Editor, Authoring, Publishing, Platform, Schematron, or Integration) and by "
                 "Customer Label so same-area/same-customer tickets rank first. Component filtering "
                 "uses normalized scalar component_primary metadata. Returns ranked "
                 "matches with key, summary, status, resolution, component, customer, versions, and "
@@ -130,13 +134,40 @@ def _tools() -> list[dict[str, Any]]:
             _schema(
                 {
                     "query": {"type": "string"},
-                    "component": {"type": "string", "default": ""},
+                    "component": {
+                        "type": "string",
+                        "enum": ["", *CANONICAL_JIRA_COMPONENTS],
+                        "default": "",
+                    },
                     "customer": {"type": "string", "default": ""},
                     "exclude_jira_key": {"type": "string", "default": ""},
                     "top_k": {"type": "integer", "default": 10},
                 },
                 ["query"],
             ),
+        ),
+        _tool(
+            "audit_jira_corpus",
+            (
+                "Audit the searchable jira_qa corpus by unique Jira issue. Returns represented customers, "
+                "components, date coverage, chunks-per-issue distribution, missing metadata, import overlap, "
+                "incremental-sync cursor health, and normalized exact-duplicate document signals. Use this instead "
+                "of chunk count to measure coverage."
+            ),
+            _schema(
+                {
+                    "duplicate_sample_limit": {"type": "integer", "default": 20},
+                    "top_components_per_customer": {"type": "integer", "default": 10},
+                }
+            ),
+        ),
+        _tool(
+            "audit_knowledge_corpora",
+            (
+                "Audit aem_guides and dita_spec knowledge reliability. Reports authoritative-source coverage, "
+                "baseline topic probes, DITA versions, product release coverage, provenance gaps, and duplicates."
+            ),
+            _schema({"duplicate_sample_limit": {"type": "integer", "default": 10}}),
         ),
     ]
 
@@ -200,6 +231,8 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
         "upload_dataset_to_aem": _upload_dataset_to_aem,
         "check_rag_status": _check_rag_status,
         "search_jira_history": _search_jira_history,
+        "audit_jira_corpus": _audit_jira_corpus,
+        "audit_knowledge_corpora": _audit_knowledge_corpora,
     }
     if name not in tools:
         raise ValueError(f"Unknown tool: {name}")
@@ -396,8 +429,38 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
         is_chroma_available,
     )
     from app.services.embedding_service import is_embedding_available
+    from app.services.jira_sync_cursor_service import resolve_sync_project_key
+    from app.services.jira_sync_state import load_jira_qa_sync_state, sync_cursor_health
 
     chroma_ok = is_chroma_available()
+    try:
+        jira_project = resolve_sync_project_key()
+        sync_state_id = f"project:{jira_project}"
+        sync_state = load_jira_qa_sync_state(sync_state_id)
+        cursor_health = sync_cursor_health(sync_state, project_key=jira_project)
+        cursor_status = {
+            "project_key": jira_project,
+            "sync_state_id": sync_state_id,
+            "valid": bool(cursor_health["valid"]),
+            "health": cursor_health,
+            "state": sync_state.model_dump(mode="json"),
+            "repair_command": (
+                f"bash scripts/bootstrap_jira_sync_cursor_vm.sh --project {jira_project} --apply"
+            ),
+        }
+    except ValueError as exc:
+        cursor_status = {
+            "project_key": None,
+            "sync_state_id": None,
+            "valid": False,
+            "health": {
+                "valid": False,
+                "missing_or_invalid_fields": ["project_key"],
+                "configuration_error": str(exc),
+            },
+            "state": None,
+            "repair_command": None,
+        }
     return {
         "status": "ok",
         "tenant_id": str(arguments.get("tenant_id") or "kone"),
@@ -407,6 +470,17 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
             CHROMA_COLLECTION_AEM_GUIDES: get_collection_count(CHROMA_COLLECTION_AEM_GUIDES) if chroma_ok else 0,
             CHROMA_COLLECTION_DITA_SPEC: get_collection_count(CHROMA_COLLECTION_DITA_SPEC) if chroma_ok else 0,
             CHROMA_COLLECTION_JIRA_QA: get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0,
+        },
+        "jira_corpus_coverage": {
+            "mcp_tool": "audit_jira_corpus",
+            "admin_api": "/api/v1/admin/jira-rag/corpus-audit",
+            "incremental_sync_cursor": cursor_status,
+            "note": "Use the audit for customer, component, date, duplicate, and metadata coverage; chunk count alone is not a coverage measure.",
+        },
+        "knowledge_corpus_coverage": {
+            "mcp_tool": "audit_knowledge_corpora",
+            "admin_api": "/api/v1/admin/rag/knowledge-audit",
+            "note": "Use the audit to distinguish authoritative coverage from secondary or missing topic evidence.",
         },
     }
 
@@ -430,7 +504,14 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
     if not query:
         return {"error": "Provide a 'query' describing the defect or behaviour to search for."}
-    component = str(arguments.get("component") or "").strip()
+    requested_component = str(arguments.get("component") or "").strip()
+    component = canonical_component_name(requested_component)
+    if requested_component and not component:
+        return {
+            "error": "Unsupported Jira component.",
+            "component": requested_component,
+            "allowed_components": list(CANONICAL_JIRA_COMPONENTS),
+        }
     customer = str(arguments.get("customer") or "").strip()
     # The issue being planned is itself in the corpus and will otherwise rank #1
     # against its own description; never return it as its own "past similar" hit.
@@ -537,6 +618,33 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
         "results": results,
         "note": note,
     }
+
+
+def _audit_jira_corpus(arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services.jira_corpus_audit_service import audit_jira_corpus
+
+    try:
+        duplicate_sample_limit = max(0, min(int(arguments.get("duplicate_sample_limit", 20)), 100))
+    except (TypeError, ValueError):
+        duplicate_sample_limit = 20
+    try:
+        top_components = max(1, min(int(arguments.get("top_components_per_customer", 10)), 50))
+    except (TypeError, ValueError):
+        top_components = 10
+    return audit_jira_corpus(
+        duplicate_sample_limit=duplicate_sample_limit,
+        top_components_per_customer=top_components,
+    )
+
+
+def _audit_knowledge_corpora(arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services.knowledge_corpus_audit_service import audit_knowledge_corpora
+
+    try:
+        duplicate_sample_limit = max(0, min(int(arguments.get("duplicate_sample_limit", 10)), 100))
+    except (TypeError, ValueError):
+        duplicate_sample_limit = 10
+    return audit_knowledge_corpora(duplicate_sample_limit=duplicate_sample_limit)
 
 
 def _find_generated_zip(*, source_path: str = "", job_id: str = "", latest: bool = False) -> Path:

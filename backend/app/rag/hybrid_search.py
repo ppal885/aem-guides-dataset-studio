@@ -19,7 +19,7 @@ class HybridSearchOutput:
 
 
 class HybridJiraSearch:
-    """Metadata-aware semantic retrieval with relaxed semantic fallback."""
+    """Metadata-aware retrieval with soft feature/domain reranking."""
 
     def __init__(
         self,
@@ -74,5 +74,6 @@ class HybridJiraSearch:
                 "strict_metadata_count": len(strict),
                 "selected_count": len(ranked),
                 "fallback_reason": fallback_reason,
+                "domain_policy": "soft_boost_only",
             },
         )

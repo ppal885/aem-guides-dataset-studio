@@ -69,9 +69,6 @@ MIN_ENTITY_OVERLAP = int(
 JIRA_UAC_MIN_SIMILARITY_SCORE = MIN_VECTOR_SCORE
 JIRA_UAC_MINIMUM_EVIDENCE_THRESHOLD = MIN_FINAL_SCORE
 JIRA_UAC_MIN_METADATA_OVERLAP = MIN_ENTITY_OVERLAP
-JIRA_UAC_MAX_SIMILAR_PER_DOMAIN = int(
-    os.getenv("JIRA_UAC_MAX_SIMILAR_PER_DOMAIN", os.getenv("MAX_SIMILAR_PER_DOMAIN", "3"))
-)
 JIRA_UAC_MIN_STRONG_SIMILAR = int(os.getenv("JIRA_UAC_MIN_STRONG_SIMILAR", "2"))
 JIRA_UAC_VECTOR_ONLY_PENALTY = float(os.getenv("JIRA_UAC_VECTOR_ONLY_PENALTY", "0.14"))
 JIRA_UAC_ENTITY_MATCH_BOOST = float(os.getenv("JIRA_UAC_ENTITY_MATCH_BOOST", "0.04"))
@@ -252,11 +249,11 @@ def _parse_json_list_preserve(raw: str | None) -> list[str]:
 def _overlap_boost(meta: dict[str, Any], base_labels: set[str], base_components: set[str]) -> float:
     boost = 0.0
     labels = set(_parse_json_list(str(meta.get("labels") or "")))
-    comps = set(_parse_json_list(str(meta.get("components") or "")))
+    comps = _metadata_components(meta)
     if base_labels & labels:
         boost += 0.04 * min(4, len(base_labels & labels))
     if base_components & comps:
-        # Component (Authoring / Publishing / Platform and Integration / Editor)
+        # Canonical Jira component is a strong same-area signal.
         # is a strong same-area signal. Because ``components`` is a JSON-list
         # metadata field that Chroma cannot ``where``-filter, it is applied as a
         # heavy post-retrieval boost so a same-Component defect reliably outranks
@@ -318,7 +315,14 @@ def _metadata_lists(meta: dict[str, Any]) -> tuple[set[str], set[str], set[str]]
 
 
 def _metadata_components(meta: dict[str, Any]) -> set[str]:
-    return {_norm_label(x) for x in _parse_json_list_preserve(str(meta.get("components") or "")) if _norm_label(x)}
+    return {
+        token
+        for token in (
+            normalize_component_token(value)
+            for value in _parse_json_list_preserve(str(meta.get("components") or ""))
+        )
+        if token
+    }
 
 
 def _metadata_issue_type(meta: dict[str, Any]) -> str:
@@ -396,7 +400,11 @@ def _metadata_match_details(
     ent_q = {_norm_label(x) for x in dita_entities if str(x).strip()}
     out_q = {_norm_label(x) for x in affected_outputs if str(x).strip()}
     cust_q = {_norm_label(x) for x in customer_names if str(x).strip()}
-    comp_q = {_norm_label(x) for x in (components or []) if str(x).strip()}
+    comp_q = {
+        token
+        for token in (normalize_component_token(value) for value in (components or []))
+        if token
+    }
 
     ent_overlap = ent_q & ent_meta
     out_overlap = out_q & out_meta
@@ -642,8 +650,6 @@ def _candidate_confidence_score(
     score = 0.34 * final_score + 0.26 * metadata_score + 0.22 * vector_score + 0.18 * structural
     if gate_signals.get("customer_conflict"):
         score -= 0.2
-    if gate_signals.get("domain_mismatch") and gate_signals.get("entity_overlap_count", 0) == 0:
-        score -= 0.12
     return round(max(0.0, min(1.0, score)), 4)
 
 
@@ -665,23 +671,6 @@ def _candidate_rejection_reasons(
             {
                 "reason": "below_min_vector_score",
                 "detail": f"vector_score={round(vector_score, 4)} < MIN_VECTOR_SCORE={MIN_VECTOR_SCORE}",
-            }
-        )
-
-    if (
-        evidence_gate_enabled
-        and gate_signals.get("domain_mismatch")
-        and gate_signals.get("entity_overlap_count", 0) == 0
-        and gate_signals.get("output_overlap_count", 0) == 0
-    ):
-        reasons.append(
-            {
-                "reason": "domain_gate_failed",
-                "detail": (
-                    f"query_domain={gate_signals.get('domain_query')}; "
-                    f"candidate_domain={gate_signals.get('domain_candidate')}; "
-                    "no entity or output overlap to override domain mismatch"
-                ),
             }
         )
 
@@ -707,7 +696,6 @@ def _candidate_rejection_reasons(
 
     structural_evidence = any(
         (
-            gate_signals.get("domain_match"),
             gate_signals.get("entity_overlap_count", 0) > 0,
             gate_signals.get("output_overlap_count", 0) > 0,
             gate_signals.get("customer_match"),
@@ -939,7 +927,8 @@ def _metadata_where_plan(
 ) -> list[dict[str, Any]]:
     """Build Chroma metadata-first vector query passes for scalar metadata fields.
 
-    JSON-list fields such as enrich_entities/enrich_outputs are scored
+    Domain and sub-domain are always soft reranking signals and are never sent
+    as Chroma ``where`` filters. JSON-list fields such as enrich_entities/enrich_outputs are scored
     after retrieval because exact Chroma filters cannot reliably query inside
     encoded arrays across all deployed Chroma versions. Components use the
     normalized scalar ``component_primary`` field and therefore are hard-filtered.
@@ -967,12 +956,6 @@ def _metadata_where_plan(
         add("component_primary_filtered", where)
         return passes
 
-    dom_f = _norm_domain(domain) if domain else ""
-    if dom_f and dom_f != "unknown":
-        add("domain_filtered", {"enrich_domain": dom_f})
-    sub_f = _norm_domain(sub_domain) if sub_domain else ""
-    if sub_f:
-        add("sub_domain_filtered", {"enrich_sub_domain": sub_f})
     issue_f = str(issue_type or "").strip()
     if issue_f:
         add("issue_type_filtered", {"issue_type": issue_f})
@@ -985,161 +968,26 @@ def _metadata_where_plan(
     return passes
 
 
-def _apply_diversity(
-    ranked: list[RetrievedJira],
-    *,
-    limit: int,
-    broad: bool,
-    diversity_drops: list[dict[str, Any]] | None = None,
-) -> list[RetrievedJira]:
-    if not broad or len(ranked) <= 1:
-        res = ranked[:limit]
-        if diversity_drops is not None:
-            for i, r in enumerate(ranked[limit:], start=limit + 1):
-                diversity_drops.append(
-                    {
-                        "jira_key": r.jira_key,
-                        "chunk_type": r.chunk_type,
-                        "reason": "below_result_limit",
-                        "detail": f"sorted_rank={i}, limit={limit}, broad_query=false",
-                        "final_score": round(r.final_score, 4),
-                    }
-                )
-        return res
-    cap = max(2, (limit + 2) // 3)
-    per_bucket: dict[str, int] = {}
-    out: list[RetrievedJira] = []
-    bucket_skipped: list[tuple[RetrievedJira, str, int]] = []
-    for r in ranked:
-        m = r.metadata or {}
-        dom = str(m.get("enrich_domain") or "unknown")
-        sub = str(m.get("enrich_sub_domain") or "")
-        bucket = f"{dom}::{sub}"
-        if per_bucket.get(bucket, 0) >= cap:
-            bucket_skipped.append((r, bucket, cap))
-            continue
-        out.append(r)
-        per_bucket[bucket] = per_bucket.get(bucket, 0) + 1
-        if len(out) >= limit:
-            break
-    if len(out) < limit:
-        seen = {x.jira_key for x in out}
-        for r in ranked:
-            if r.jira_key in seen:
-                continue
-            out.append(r)
-            seen.add(r.jira_key)
-            if len(out) >= limit:
-                break
-    final = out[:limit]
-    if diversity_drops is not None:
-        dropped_keys: set[str] = set()
-        picked = {x.jira_key for x in final}
-        for r, bucket, c in bucket_skipped:
-            if r.jira_key in picked:
-                continue
-            diversity_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "diversity_bucket_cap",
-                    "detail": f"bucket={bucket}, per_bucket_cap={c}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-            dropped_keys.add(r.jira_key)
-        for i, r in enumerate(ranked):
-            if r.jira_key in picked or r.jira_key in dropped_keys:
-                continue
-            diversity_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "not_in_final_top_after_diversity",
-                    "detail": f"sorted_rank={i + 1}, limit={limit}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-            dropped_keys.add(r.jira_key)
-    return final
-
-
-def _apply_max_per_domain(
-    ranked: list[RetrievedJira],
-    *,
-    limit: int,
-    max_per_domain: int,
-    domain_drops: list[dict[str, Any]] | None = None,
-) -> list[RetrievedJira]:
-    if max_per_domain <= 0:
-        return ranked[:limit]
-    per: dict[str, int] = {}
-    out: list[RetrievedJira] = []
-    skipped: list[tuple[RetrievedJira, str]] = []
-    for r in ranked:
-        dom = _norm_domain(str((r.metadata or {}).get("enrich_domain") or "unknown"))
-        if per.get(dom, 0) >= max_per_domain:
-            skipped.append((r, dom))
-            continue
-        out.append(r)
-        per[dom] = per.get(dom, 0) + 1
-        if len(out) >= limit:
-            break
-    final = out[:limit]
-    if domain_drops is not None:
-        picked = {x.jira_key for x in final}
-        for r, dom in skipped:
-            if r.jira_key in picked:
-                continue
-            domain_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "max_similar_per_domain",
-                    "detail": f"domain={dom}, cap={max_per_domain}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-    return final
-
-
 def _apply_enterprise_diversity(
     ranked: list[RetrievedJira],
     *,
     limit: int,
-    max_per_domain: int,
     max_per_customer: int,
     diversity_drops: list[dict[str, Any]] | None = None,
 ) -> list[RetrievedJira]:
-    """Apply production diversity caps after reranking.
+    """Apply non-domain diversity safeguards after reranking.
 
-    Caps:
-    - max N per domain
-    - max N per customer when customer metadata is present
-    - skip near-duplicate title/document fingerprints
+    Domain and subdomain are intentionally absent from this selection step. They
+    are soft ranking signals and must never exclude an otherwise relevant Jira.
+    Customer caps and near-duplicate suppression remain independent safeguards.
     """
-    per_domain: dict[str, int] = {}
     per_customer: dict[str, int] = {}
     fingerprints: list[tuple[str, set[str]]] = []
     out: list[RetrievedJira] = []
 
     for r in ranked:
         meta = r.metadata or {}
-        dom = _norm_domain(str(meta.get("enrich_domain") or "unknown"))
         customer = _customer_bucket(meta)
-
-        if max_per_domain > 0 and per_domain.get(dom, 0) >= max_per_domain:
-            if diversity_drops is not None:
-                diversity_drops.append(
-                    {
-                        "jira_key": r.jira_key,
-                        "chunk_type": r.chunk_type,
-                        "reason": "max_similar_per_domain",
-                        "detail": f"domain={dom}, cap={max_per_domain}",
-                        "final_score": round(r.final_score, 4),
-                    }
-                )
-            continue
 
         if customer and max_per_customer > 0 and per_customer.get(customer, 0) >= max_per_customer:
             if diversity_drops is not None:
@@ -1175,7 +1023,6 @@ def _apply_enterprise_diversity(
             continue
 
         out.append(r)
-        per_domain[dom] = per_domain.get(dom, 0) + 1
         if customer:
             per_customer[customer] = per_customer.get(customer, 0) + 1
         fingerprints.append((r.jira_key, fp))
@@ -1237,8 +1084,8 @@ def retrieve_similar_jiras(
     require_non_vector_evidence: bool = True,
 ) -> list[RetrievedJira]:
     """
-    Hybrid retrieval over ``jira_qa`` Chroma: optional domain filter on vector query, token overlap,
-    enrichment metadata boosts, dedupe by ``jira_key``, diversity when the query is broad.
+    Hybrid retrieval over ``jira_qa`` Chroma: semantic candidate retrieval, soft domain and metadata
+    boosts, token overlap, dedupe by ``jira_key``, and diversity when the query is broad.
 
     When ``retrieval_debug_sink`` is a dict, it is cleared and filled with retrieval diagnostics
     (query text, extracted filters, Chroma hits, score breakdowns, diversity / dedupe drops).
@@ -1276,7 +1123,7 @@ def retrieve_similar_jiras(
             "min_similarity_score": JIRA_UAC_MIN_SIMILARITY_SCORE,
             "minimum_evidence_threshold": JIRA_UAC_MINIMUM_EVIDENCE_THRESHOLD,
             "min_metadata_overlap": JIRA_UAC_MIN_METADATA_OVERLAP,
-            "max_similar_per_domain": JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
+            "domain_policy": "soft_boost_only",
             "vector_only_penalty": JIRA_UAC_VECTOR_ONLY_PENALTY,
         }
 
@@ -1363,6 +1210,7 @@ def retrieve_similar_jiras(
             "domain_chroma_filter_applied": any(
                 (plan.get("where") or {}).get("enrich_domain") for plan in metadata_query_plan
             ),
+            "domain_policy": "soft_boost_only",
             "component_chroma_filter_applied": any(
                 (plan.get("where") or {}).get("component_primary") for plan in metadata_query_plan
             ),
@@ -1383,7 +1231,11 @@ def retrieve_similar_jiras(
 
     qt_tokens = _norm_token_set(query_text[:12000])
     bl = {x.lower().strip() for x in (base_labels or []) if x}
-    bc = {x.lower().strip() for x in (base_components or []) if x}
+    bc = {
+        token
+        for token in (normalize_component_token(value) for value in (base_components or []))
+        if token
+    }
     lex = label_expanded_tokens if label_expanded_tokens is not None else frozenset()
     evidence_gate_enabled = bool(
         require_non_vector_evidence
@@ -1451,7 +1303,11 @@ def retrieve_similar_jiras(
         ent_q = {_norm_label(x) for x in (dita_entities or []) if str(x).strip()}
         out_q = {_norm_label(x) for x in (affected_outputs or []) if str(x).strip()}
         cust_q = {_norm_label(x) for x in (customer_names or []) if str(x).strip()}
-        comp_q = {_norm_label(x) for x in (base_components or []) if str(x).strip()}
+        comp_q = {
+            token
+            for token in (normalize_component_token(value) for value in (base_components or []))
+            if token
+        }
         ent_inter = ent_q & ent_m
         out_inter = out_q & out_m
         comp_inter = comp_q & comp_m
@@ -1703,7 +1559,6 @@ def retrieve_similar_jiras(
     result = _apply_enterprise_diversity(
         ranked,
         limit=limit,
-        max_per_domain=JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
         max_per_customer=JIRA_MAX_SIMILAR_PER_CUSTOMER,
         diversity_drops=div_drops,
     )
@@ -1737,7 +1592,7 @@ def retrieve_similar_jiras(
         sink["broad_query_diversity_enabled"] = broad
         sink["evidence_gate_enabled"] = evidence_gate_enabled
         sink["diversity_limits"] = {
-            "max_per_domain": JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
+            "domain_cap_applied": False,
             "max_per_customer": JIRA_MAX_SIMILAR_PER_CUSTOMER,
             "near_duplicate_jaccard": JIRA_NEAR_DUPLICATE_JACCARD,
             "recent_repeat_penalty": JIRA_RECENT_REPEAT_PENALTY,
