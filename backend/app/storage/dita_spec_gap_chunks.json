@@ -1,0 +1,57 @@
+[
+  {
+    "id": "dita13-curated-dir-attribute-v1",
+    "title": "DITA 1.3 @dir bidirectional-text behavior",
+    "construct": "@dir",
+    "section": "2.4.6.2 The @dir attribute",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/diratt.html",
+    "spec_version": "DITA 1.3",
+    "content_type": "normative_behavior",
+    "aliases": ["dir attribute", "text direction", "bidirectional text", "bidi", "rtl", "ltr", "lro", "rlo"],
+    "content": "DITA 1.3 @dir evidence. The @dir attribute instructs processors how bidirectional text should be rendered. Its values are ltr, rtl, lro, and rlo. The ltr and rtl values affect neutral characters such as spaces and punctuation; they do not override the direction of all Unicode characters. The lro and rlo values override the Unicode bidirectional algorithm and force a direction on the element content, so they should be used only when ltr or rtl is insufficient. When @dir is used, it SHOULD be set on the highest-level topic or map element. Together with @xml:lang, @dir is especially important for tables and definition lists. DITA-processing applications SHOULD support the Unicode bidirectional algorithm and SHOULD ensure that root topic documents and the root map have @dir and @xml:lang values."
+  },
+  {
+    "id": "dita13-curated-domains-attribute-v1",
+    "title": "DITA 1.3 @domains compatibility metadata",
+    "construct": "@domains",
+    "section": "2.5.3.7 @domains attribute rules and syntax",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/specialization-domains-attribute.html",
+    "spec_version": "DITA 1.3",
+    "content_type": "normative_behavior",
+    "aliases": ["domains attribute", "domain compatibility", "document-type shell", "module ancestry", "strong constraint"],
+    "content": "DITA 1.3 @domains evidence. The @domains attribute is declared on the root element of each topic or map type and enables processors to determine whether documents or elements use compatible structural, domain, attribute-domain, and constraint modules. Its effective value is assembled by the document-type shell from parenthesized module contributions; authors do not normally write the value manually. Every domain and constraint module MUST contribute a value. Structural modules SHOULD contribute one and MUST do so when they depend on a module outside their specialization ancestry. Element-domain contributions use forms such as (topic hi-d); attribute domains use a(props attributeName) or a(base attributeName). Constraint contributions end in -c, and prefixing a contribution with s marks a strong constraint. During copy, reuse, or conref processing, incompatible specialized content might require generalization to a compatible ancestor."
+  },
+  {
+    "id": "dita13-curated-sort-as-v1",
+    "title": "DITA 1.3 sort-as processing and precedence",
+    "construct": "sort-as",
+    "section": "3.5.3.5 sort-as",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/langRef/base/sort-as.html",
+    "spec_version": "DITA 1.3",
+    "content_type": "normative_behavior",
+    "aliases": ["sort-as element", "effective sort phrase", "sorting", "index-sort-as", "sort precedence"],
+    "content": "DITA 1.3 <sort-as> evidence. <sort-as> is a specialization of <data> and is allowed wherever <data> is allowed, but its presence does not require a processor to sort. A processor that sorts the containing element MUST prepend the selected <sort-as> text to the base sort phrase. If both @value and element content are present, @value takes precedence; an empty <sort-as> without @value has no effect. A title-level <sort-as> takes precedence over one in the topic prolog. Outside the prolog, only a direct child of the sorted element or its title/label-defining element applies, and the first direct child wins when several occur. In <indexterm>, <sort-as> is equivalent to <index-sort-as>, and using both directly is an error. Filtering and conref resolution occur before the effective sort phrase is determined."
+  },
+  {
+    "id": "dita13-curated-specialization-v1",
+    "title": "DITA 1.3 specialization semantics and selection rule",
+    "construct": "DITA specialization",
+    "section": "2.5.3.1 Overview of specialization",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part3-all-inclusive/archSpec/base/specialization-overview.html",
+    "spec_version": "DITA 1.3",
+    "content_type": "normative_behavior",
+    "aliases": ["specialization", "structural specialization", "domain specialization", "specialized element", "inheritance"],
+    "content": "DITA 1.3 specialization evidence. Specialization defines new element types or attributes as descendants of existing DITA types. A specialized descendant inherits the semantics and default processing behavior of its ancestor, while optional additional processing can target the descendant. Structural specializations derive from topic or map types and define new document types. Domain specializations derive from topic or map elements, or from @props or @base attributes, and add subject-area markup that document-type shells can integrate. The relationship is an is-a hierarchy: specialized content remains an instance of its ancestor type. Use specialization when new semantics or processing behavior is required. Do not create a specialization merely to remove elements or attributes without changing semantics; use a constraint module for that restriction."
+  },
+  {
+    "id": "dita13-curated-constraints-v1",
+    "title": "DITA 1.3 constraint behavior and limits",
+    "construct": "Constraint behavior",
+    "section": "2.5.5.1 Overview of constraints",
+    "source_url": "https://docs.oasis-open.org/dita/dita/v1.3/os/part1-base/archSpec/base/constraints-overview.html",
+    "spec_version": "DITA 1.3",
+    "content_type": "normative_behavior",
+    "aliases": ["constraint module", "constraints", "constrained grammar", "content model restriction", "attribute restriction"],
+    "content": "DITA 1.3 constraint evidence. A constraint module restricts an OASIS-defined DITA grammar without changing the semantics of the vocabulary. The constrained grammar must remain a subset of the original grammar, so every instance valid against the constrained grammar is also valid against the original. A constraint can remove optional elements, make optional elements required, impose sequence on otherwise unordered elements, restrict available attributes or their values, restrict domain extension elements, or replace base elements with domain extensions. It cannot make required elements optional, loosen the original grammar, or permit an order forbidden by the original content model. Use constraints for restrictions; use specialization when new semantics or specialized processing are needed."
+  }
+]

@@ -67,6 +67,8 @@ def test_chunking_emits_types(monkeypatch):
     assert "full_ticket_summary" in types
     assert "similar_ticket_signals" in types
     assert "attachment_log_signals" in types
+    assert {c["metadata"]["component_primary"] for c in chunks} == {"publishing"}
+    assert {c["metadata"]["component_filter_schema_version"] for c in chunks} == {1}
 
 
 def test_automation_rubric_range():

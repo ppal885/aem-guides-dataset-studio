@@ -229,6 +229,33 @@ def update_documents_metadata(collection_name: str, where: dict, updates: dict, 
             extra_fields={"collection": collection_name, "error": str(exc), "where": str(where)[:500]},
         )
         return 0
+
+
+def update_document_metadatas(collection_name: str, ids: list[str], metadatas: list[dict]) -> bool:
+    """Replace metadata for specific documents while preserving documents and embeddings."""
+    if not ids or len(ids) != len(metadatas):
+        return False
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return False
+    cleaned: list[dict] = []
+    for metadata in metadatas:
+        cleaned.append({
+            key: value
+            for key, value in dict(metadata or {}).items()
+            if isinstance(value, (str, int, float, bool))
+        })
+    try:
+        client.get_collection(name=collection_name).update(ids=ids, metadatas=cleaned)
+        return True
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB per-document metadata update failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "count": len(ids)},
+        )
+        return False
+
+
 def delete_collection(collection_name: str) -> bool:
     """Delete a ChromaDB collection. Returns True on success. No-op if collection does not exist."""
     client = _get_client()

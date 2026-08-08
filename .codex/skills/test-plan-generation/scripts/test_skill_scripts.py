@@ -301,14 +301,37 @@ def test_run_gates() -> None:
         failures = run_gates.check_manifest_completeness(str(path))
         check("run_gates flags missing manifest keys", any("clones" in f for f in failures) and any("rag_probes" in f for f in failures))
 
-        path.write_text(json.dumps({"issue": "X", "attachments": [], "rag_probes": ["a", "b", "c"],
-                                    "indexed_history_run": True, "clones": [{"path": "C:/x"}]}), encoding="utf-8")
+        dual_source = {
+            "issue": "X",
+            "attachments": [],
+            "rag_tool": "ask_dita_expert",
+            "rag_probes": ["a", "b", "c"],
+            "jira_history_tool": "search_jira_history",
+            "jira_history_queries": [
+                {"scope": "same_customer", "query": "failure shape", "component": "Editor", "customer": "Acme"},
+                {"scope": "cross_customer", "query": "failure shape", "component": "Editor"},
+            ],
+            "indexed_history_run": True,
+        }
+
+        path.write_text(json.dumps({**dual_source, "clones": [{"path": "C:/x"}]}), encoding="utf-8")
         failures = run_gates.check_manifest_completeness(str(path))
         check("run_gates flags a clone with no sha and not provisional", any("captured sha" in f for f in failures))
 
-        path.write_text(json.dumps({"issue": "X", "attachments": [], "rag_probes": ["a", "b", "c"],
-                                    "indexed_history_run": True,
-                                    "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}]}), encoding="utf-8")
+        wrong_tool = {**dual_source, "rag_tool": "search_jira_history", "clones": []}
+        path.write_text(json.dumps(wrong_tool), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("run_gates rejects Jira search as product-doc RAG", any("rag_tool" in f for f in failures))
+
+        one_scope = {**dual_source, "jira_history_queries": dual_source["jira_history_queries"][:1], "clones": []}
+        path.write_text(json.dumps(one_scope), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("run_gates requires same and cross-customer Jira searches", any("both same_customer" in f for f in failures))
+
+        path.write_text(json.dumps({
+            **dual_source,
+            "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+        }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
 
 

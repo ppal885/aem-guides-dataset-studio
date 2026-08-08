@@ -5,8 +5,8 @@ simply not invoking a check: the evidence manifest is REQUIRED, and the manifest
 plus the combined plan+appendix are audited together.
 
 It runs, in order:
-  1. Manifest presence + completeness (issue, attachments, rag_probes,
-     indexed_history_run must all be declared).
+  1. Manifest presence + completeness, including separate tool evidence for
+     ask_dita_expert product-documentation probes and search_jira_history queries.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
   3. Evidence audit of the combined plan+appendix deliverable and the manifest
@@ -39,7 +39,77 @@ def _load(module_name: str, filename: str):
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 
-REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
+REQUIRED_MANIFEST_KEYS = (
+    "issue",
+    "attachments",
+    "rag_tool",
+    "rag_probes",
+    "jira_history_tool",
+    "jira_history_queries",
+    "indexed_history_run",
+    "clones",
+)
+
+
+def _validate_dual_source_evidence(data: dict) -> list[str]:
+    failures: list[str] = []
+    if data.get("rag_tool") != "ask_dita_expert":
+        failures.append("rag_tool must be 'ask_dita_expert'; product-documentation evidence cannot come from search_jira_history")
+    if data.get("jira_history_tool") != "search_jira_history":
+        failures.append("jira_history_tool must be 'search_jira_history'; Jira history cannot come from ask_dita_expert")
+
+    probes = data.get("rag_probes")
+    behaviour_matters = data.get("behaviour_matters", True)
+    if not isinstance(probes, list):
+        failures.append("rag_probes must be a list of ask_dita_expert questions")
+    else:
+        if any(not isinstance(probe, str) or not probe.strip() for probe in probes):
+            failures.append("every rag_probes entry must be a non-empty ask_dita_expert question")
+        if behaviour_matters and len(probes) < 3:
+            failures.append("rag_probes must record at least three ask_dita_expert questions when behaviour matters")
+        if not behaviour_matters and not str(data.get("behaviour_not_applicable_reason", "")).strip():
+            failures.append("behaviour_matters=false requires behaviour_not_applicable_reason")
+
+    queries = data.get("jira_history_queries")
+    unavailable_reason = str(data.get("jira_history_unavailable_reason", "")).strip()
+    if not isinstance(queries, list):
+        failures.append("jira_history_queries must be a list of search_jira_history call records")
+    elif not unavailable_reason:
+        scopes: set[str] = set()
+        for index, query in enumerate(queries):
+            if not isinstance(query, dict):
+                failures.append(f"jira_history_queries[{index}] must be an object")
+                continue
+            scope = str(query.get("scope", "")).strip()
+            scopes.add(scope)
+            if not str(query.get("query", "")).strip():
+                failures.append(f"jira_history_queries[{index}] is missing query")
+            if not str(query.get("component", "")).strip():
+                failures.append(f"jira_history_queries[{index}] is missing component")
+            if scope == "same_customer":
+                if not str(query.get("customer", "")).strip() and not str(query.get("customer_unavailable_reason", "")).strip():
+                    failures.append(
+                        f"jira_history_queries[{index}] same_customer search requires customer or customer_unavailable_reason"
+                    )
+            elif scope == "cross_customer":
+                if str(query.get("customer", "")).strip():
+                    failures.append(f"jira_history_queries[{index}] cross_customer search must omit customer")
+            else:
+                failures.append(
+                    f"jira_history_queries[{index}] scope must be 'same_customer' or 'cross_customer'"
+                )
+        if {"same_customer", "cross_customer"} - scopes:
+            failures.append(
+                "jira_history_queries must record both same_customer and cross_customer search_jira_history calls"
+            )
+        if data.get("indexed_history_run") is not True:
+            failures.append("indexed_history_run must be true after search_jira_history queries run")
+    else:
+        if queries:
+            failures.append("jira_history_unavailable_reason cannot be combined with recorded Jira-history queries")
+        if not isinstance(data.get("indexed_history_run"), str) or not str(data["indexed_history_run"]).strip():
+            failures.append("indexed_history_run must record the fallback reason when search_jira_history is unavailable")
+    return failures
 
 
 def check_manifest_completeness(path: str | None) -> list[str]:
@@ -54,12 +124,9 @@ def check_manifest_completeness(path: str | None) -> list[str]:
         if key not in data:
             failures.append(
                 f"manifest is missing required key '{key}' - every plan must declare "
-                f"attachments, rag_probes, and indexed_history_run even if empty/false with a reason"
+                f"both RAG tool paths, their queries, attachments, and clone state"
             )
-    if "indexed_history_run" in data and not data["indexed_history_run"]:
-        failures.append(
-            "indexed_history_run must be truthy (record that the jira_qa history was queried) or a reason string"
-        )
+    failures.extend(_validate_dual_source_evidence(data))
     clones = data.get("clones")
     if isinstance(clones, list):
         for entry in clones:

@@ -15,6 +15,10 @@ from app.services.jira_enrichment_service import (
     enrichment_embed_prefix,
     enrichment_metadata_json,
 )
+from app.services.jira_component_metadata_service import (
+    COMPONENT_FILTER_SCHEMA_VERSION,
+    component_primary_from_names,
+)
 
 JIRA_QA_CUSTOMER_FIELD_ID = (os.getenv("JIRA_QA_CUSTOMER_FIELD_ID") or "").strip()
 
@@ -145,6 +149,8 @@ def _build_base_metadata(
         "import_source_type": str(fields.get("_source_type") or "jira_api")[:80],
         "source_file_hash": str(fields.get("_source_file_hash") or "")[:64],
         "components": _json_meta(components),
+        "component_primary": component_primary_from_names(components),
+        "component_filter_schema_version": COMPONENT_FILTER_SCHEMA_VERSION,
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
         "affected_versions": _json_meta(_versions(fields, "versions")),

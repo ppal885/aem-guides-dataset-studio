@@ -20,6 +20,10 @@ from app.services.vector_store_service import (
     CHROMA_COLLECTION_DITA_SPEC,
 )
 from app.core.structured_logging import get_structured_logger
+from app.services.dita_spec_curated_chunk_service import (
+    curated_chunk_metadata,
+    load_curated_dita_spec_chunks,
+)
 
 logger = get_structured_logger(__name__)
 
@@ -92,7 +96,13 @@ def index_dita_pdf(
     Returns stats: pages_loaded, chunks_stored, sources_indexed, errors.
     """
     urls = pdf_urls or _get_pdf_urls()
-    stats = {"pages_loaded": 0, "chunks_stored": 0, "sources_indexed": [], "errors": []}
+    stats = {
+        "pages_loaded": 0,
+        "chunks_stored": 0,
+        "curated_chunks_stored": 0,
+        "sources_indexed": [],
+        "errors": [],
+    }
 
     try:
         import httpx
@@ -115,6 +125,7 @@ def index_dita_pdf(
         length_function=len,
         separators=["\n\n", "\n", ". ", " ", ""],
     )
+    curated_records = load_curated_dita_spec_chunks()
     all_records = []
     id_offset = 0
 
@@ -166,6 +177,8 @@ def index_dita_pdf(
         id_offset += len(chunks)
         stats["sources_indexed"].append(pdf_url)
 
+    all_records.extend(curated_records)
+
     if not all_records:
         logger.info_structured(
             "DITA PDF index completed (no chunks)",
@@ -189,8 +202,10 @@ def index_dita_pdf(
         ids = [r["id"] for r in all_records]
         documents = [r["content"] for r in all_records]
         metadatas = [
-            {"source_url": r.get("source_url", ""), "page": r.get("page", "")}
-            for r in all_records
+            curated_chunk_metadata(record)
+            if record.get("curated") is True
+            else {"source_url": record.get("source_url", ""), "page": record.get("page", "")}
+            for record in all_records
         ]
         if chroma_add_documents(
             CHROMA_COLLECTION_DITA_SPEC,
@@ -205,6 +220,7 @@ def index_dita_pdf(
             )
 
     stats["chunks_stored"] = len(all_records)
+    stats["curated_chunks_stored"] = len(curated_records)
 
     logger.info_structured(
         "DITA PDF index completed",
