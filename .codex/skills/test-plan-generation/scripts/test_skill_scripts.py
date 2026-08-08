@@ -178,6 +178,11 @@ def test_validator() -> None:
 
 
 def test_verifier() -> None:
+    check(
+        "POSIX absolute source path is recognized",
+        verify_mod.ABS_PATH_RE.search("/tmp/evidence/Real.java") is not None,
+    )
+
     with tempfile.TemporaryDirectory() as tmp:
         real = Path(tmp) / "Real.java"
         real.write_text("line1\nline2\nline3\n", encoding="utf-8")
