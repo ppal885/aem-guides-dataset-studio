@@ -12,7 +12,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Why it matters: <customer, workflow, release, data, or business impact stated in Jira/supplied evidence>.
 - Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
 - Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
-- Evidence boundary: <live Jira, indexed Jira, supplied incident, contradictions, and material facts not yet verified>.
+- Evidence boundary: Evidence mode: <full|degraded>; <available evidence sources; every unavailable source and resulting claim restriction; contradictions and material facts not yet verified>.
 
 **Acceptance Criteria**
 - AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <trigger> | Then <observable outcome>.
@@ -100,7 +100,7 @@ Examples:
 - Why it matters: The failure blocks the documented customer or release workflow described in the supplied evidence.
 - Requested outcome: The workflow reaches the Jira-defined observable outcome without the reported failure.
 - Lifecycle understood as: `Pre-Development UAC` because development has not started.
-- Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
+- Evidence boundary: Evidence mode: full; Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
 
 **Acceptance Criteria**
 - AC-01 [Proposed]: Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome.

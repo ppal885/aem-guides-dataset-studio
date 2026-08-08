@@ -5,8 +5,9 @@ simply not invoking a check: the evidence manifest is REQUIRED, and the manifest
 plus the combined plan+appendix are audited together.
 
 It runs, in order:
-  1. Manifest presence + completeness, including separate tool evidence for
-     ask_dita_expert product-documentation probes and search_jira_history queries.
+  1. Manifest presence + completeness, including the five-source availability
+     preflight and separate tool evidence for ask_dita_expert product-documentation
+     probes and search_jira_history queries.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
   3. Evidence audit of the combined plan+appendix deliverable and the manifest
@@ -26,6 +27,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+from datetime import datetime
 from pathlib import Path
 
 
@@ -52,6 +54,7 @@ verify_mod = _load("verify_evidence", "verify_evidence.py")
 REQUIRED_MANIFEST_KEYS = (
     "issue",
     "attachments",
+    "evidence_preflight",
     "rag_tool",
     "rag_probes",
     "jira_history_tool",
@@ -59,6 +62,244 @@ REQUIRED_MANIFEST_KEYS = (
     "indexed_history_run",
     "clones",
 )
+
+PREFLIGHT_SOURCE_KEYS = (
+    "product_rag",
+    "jira_history",
+    "live_jira",
+    "git",
+    "figma",
+)
+PREFLIGHT_STATUSES = {"available", "unavailable", "not_applicable"}
+PREFLIGHT_MODES = {"full", "degraded"}
+PREFLIGHT_READINESS_IMPACTS = {"none", "draft_only", "blocked"}
+PREFLIGHT_SOURCE_LABELS = {
+    "product_rag": ("product rag", "ask_dita_expert"),
+    "jira_history": ("jira history", "search_jira_history", "indexed jira"),
+    "live_jira": ("live jira",),
+    "git": ("git", "github", "diff"),
+    "figma": ("figma", "design"),
+}
+PREFLIGHT_RESTRICTION_TERMS = {
+    "product_rag": ("behaviour", "behavior", "product documentation", "documented product"),
+    "jira_history": ("similar", "historical", "history", "regression learning"),
+    "live_jira": ("status", "resolution", "fix version", "comment", "attachment", "mutable"),
+    "git": ("implementation", "changed file", "changed line", "root cause", "fix impact", "diff"),
+    "figma": ("layout", "interaction", "visual", "prototype", "design behaviour", "design behavior"),
+}
+PREFLIGHT_CHECK_ACTIONS = (
+    "call",
+    "fetch",
+    "query",
+    "search",
+    "inspect",
+    "read",
+    "download",
+    "probe",
+    "sync",
+    "diff",
+    "ask_dita_expert",
+    "search_jira_history",
+    "check_rag_status",
+)
+PREFLIGHT_FAILURE_MARKERS = (
+    "failed",
+    "failure",
+    "error",
+    "exception",
+    "unavailable",
+    "denied",
+    "timeout",
+    "timed out",
+    "connection refused",
+    "http 401",
+    "http 403",
+    "returned 401",
+    "returned 403",
+)
+PREFLIGHT_CONFIGURATION_SUCCESS_MARKERS = (
+    "succeed",
+    "returned",
+    "response received",
+    "completed",
+    "verified",
+    "inspected",
+    "fetched",
+    "queried",
+    "searched",
+    "downloaded",
+    "probe result",
+    " ran",
+)
+
+
+def _is_timezone_aware_iso8601(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+
+def _validate_evidence_preflight(data: dict) -> list[str]:
+    failures: list[str] = []
+    preflight = data.get("evidence_preflight")
+    if not isinstance(preflight, dict):
+        return ["evidence_preflight must be an object"]
+
+    mode = str(preflight.get("mode", "")).strip()
+    if mode not in PREFLIGHT_MODES:
+        failures.append("evidence_preflight.mode must be 'full' or 'degraded'")
+
+    if not _is_timezone_aware_iso8601(preflight.get("checked_at")):
+        failures.append("evidence_preflight.checked_at must be a timezone-aware ISO-8601 timestamp")
+
+    sources = preflight.get("sources")
+    unavailable_sources: list[str] = []
+    if not isinstance(sources, dict):
+        failures.append("evidence_preflight.sources must be an object containing all five source checks")
+        sources = {}
+    source_keys = set(sources)
+    missing_sources = set(PREFLIGHT_SOURCE_KEYS) - source_keys
+    unexpected_sources = source_keys - set(PREFLIGHT_SOURCE_KEYS)
+    if missing_sources:
+        failures.append(
+            "evidence_preflight.sources is missing: " + ", ".join(sorted(missing_sources))
+        )
+    if unexpected_sources:
+        failures.append(
+            "evidence_preflight.sources has unsupported keys: " + ", ".join(sorted(unexpected_sources))
+        )
+
+    for source_key in PREFLIGHT_SOURCE_KEYS:
+        source = sources.get(source_key)
+        if not isinstance(source, dict):
+            if source_key not in missing_sources:
+                failures.append(f"evidence_preflight.sources.{source_key} must be an object")
+            continue
+        status = str(source.get("status", "")).strip()
+        checked_via = str(source.get("checked_via", "")).strip()
+        reason = str(source.get("reason", "")).strip()
+        if status not in PREFLIGHT_STATUSES:
+            failures.append(
+                f"evidence_preflight.sources.{source_key}.status must be available, unavailable, or not_applicable"
+            )
+        if not checked_via:
+            failures.append(f"evidence_preflight.sources.{source_key}.checked_via is required")
+        elif status == "available":
+            checked_lower = checked_via.lower()
+            if any(marker in checked_lower for marker in PREFLIGHT_FAILURE_MARKERS):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key} cannot be available when checked_via records a failed check"
+                )
+            elif "configur" in checked_lower and not any(
+                marker in checked_lower for marker in PREFLIGHT_CONFIGURATION_SUCCESS_MARKERS
+            ):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key}.checked_via must describe a successful call or inspection, not configuration alone"
+                )
+            elif not any(action in checked_lower for action in PREFLIGHT_CHECK_ACTIONS):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key}.checked_via must describe a successful call or inspection, not configuration alone"
+                )
+        if status in {"unavailable", "not_applicable"} and not reason:
+            failures.append(
+                f"evidence_preflight.sources.{source_key}.reason is required when status is {status}"
+            )
+        if status == "unavailable":
+            unavailable_sources.append(source_key)
+
+    expected_mode = "degraded" if unavailable_sources else "full"
+    if mode in PREFLIGHT_MODES and mode != expected_mode:
+        failures.append(
+            f"evidence_preflight.mode must be '{expected_mode}' for the recorded source statuses"
+        )
+
+    restrictions = preflight.get("claim_restrictions")
+    if not isinstance(restrictions, list) or any(
+        not isinstance(item, str) or not item.strip() for item in restrictions
+    ):
+        failures.append("evidence_preflight.claim_restrictions must be a list of non-empty strings")
+        restrictions = []
+    if mode == "degraded" and not restrictions:
+        failures.append("degraded evidence_preflight requires at least one claim restriction")
+    restriction_text = " ".join(restrictions).lower()
+    for source_key in unavailable_sources:
+        if not any(term in restriction_text for term in PREFLIGHT_RESTRICTION_TERMS[source_key]):
+            failures.append(
+                f"evidence_preflight.claim_restrictions must cover unavailable source '{source_key}'"
+            )
+
+    readiness_impact = str(preflight.get("readiness_impact", "")).strip()
+    if readiness_impact not in PREFLIGHT_READINESS_IMPACTS:
+        failures.append("evidence_preflight.readiness_impact must be none, draft_only, or blocked")
+    readiness_reason = str(preflight.get("readiness_impact_reason", "")).strip()
+    if readiness_impact in {"draft_only", "blocked"} and not readiness_reason:
+        failures.append(
+            "evidence_preflight.readiness_impact_reason is required when readiness impact is not none"
+        )
+    return failures
+
+
+def _validate_preflight_plan_alignment(data: dict, plan_text: str) -> list[str]:
+    preflight = data.get("evidence_preflight")
+    if not isinstance(preflight, dict):
+        return []
+    mode = str(preflight.get("mode", "")).strip()
+    sources = preflight.get("sources") if isinstance(preflight.get("sources"), dict) else {}
+    readiness_impact = str(preflight.get("readiness_impact", "")).strip()
+    boundary = next(
+        (
+            line.strip()
+            for line in plan_text.splitlines()
+            if line.strip().lower().startswith("- evidence boundary:")
+        ),
+        "",
+    )
+    if not boundary:
+        return ["plan must contain an Evidence boundary bullet aligned with evidence_preflight"]
+    boundary_lower = boundary.lower()
+    if mode in PREFLIGHT_MODES and f"evidence mode: {mode}" not in boundary_lower:
+        return [f"Evidence boundary must state 'Evidence mode: {mode}'"]
+
+    failures: list[str] = []
+    unavailable_sources = [
+        key
+        for key in PREFLIGHT_SOURCE_KEYS
+        if isinstance(sources.get(key), dict) and sources[key].get("status") == "unavailable"
+    ]
+    if mode == "degraded":
+        for source_key in unavailable_sources:
+            if not any(label in boundary_lower for label in PREFLIGHT_SOURCE_LABELS[source_key]):
+                failures.append(
+                    f"degraded Evidence boundary must name unavailable source '{source_key}'"
+                )
+        if not any(
+            marker in boundary_lower
+            for marker in ("unavailable", "unverified", "not verified", "cannot", "restricted")
+        ):
+            failures.append(
+                "degraded Evidence boundary must state what is unavailable or remains unverified"
+            )
+
+    plan_lower = plan_text.lower()
+    git_unavailable = "git" in unavailable_sources
+    if "lifecycle understood as: implementation review" in plan_lower and git_unavailable:
+        if readiness_impact not in {"draft_only", "blocked"}:
+            failures.append(
+                "Implementation Review with unavailable Git evidence must have draft_only or blocked readiness impact"
+            )
+    if "lifecycle understood as: post-fix validation" in plan_lower and git_unavailable:
+        if readiness_impact != "blocked":
+            failures.append(
+                "Post-Fix Validation with unavailable Git/fix evidence must have blocked readiness impact"
+            )
+    return failures
 
 
 def _validate_dual_source_evidence(data: dict) -> list[str]:
@@ -135,17 +376,23 @@ def check_manifest_completeness(path: str | None) -> list[str]:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [f"evidence manifest missing or invalid JSON: {exc}"]
+    if not isinstance(data, dict):
+        return ["evidence manifest must be a JSON object"]
     failures: list[str] = []
     for key in REQUIRED_MANIFEST_KEYS:
         if key not in data:
             failures.append(
                 f"manifest is missing required key '{key}' - every plan must declare "
-                f"both RAG tool paths, their queries, attachments, and clone state"
+                f"preflight status, both RAG tool paths, their queries, attachments, and clone state"
             )
+    failures.extend(_validate_evidence_preflight(data))
     failures.extend(_validate_dual_source_evidence(data))
     clones = data.get("clones")
     if isinstance(clones, list):
-        for entry in clones:
+        for index, entry in enumerate(clones):
+            if not isinstance(entry, dict):
+                failures.append(f"manifest clones[{index}] must be an object")
+                continue
             ident = entry.get("path", "?")
             synced_with_sha = bool(entry.get("synced")) and bool(entry.get("sha"))
             provisional = bool(entry.get("provisional")) and bool(entry.get("note"))
@@ -168,6 +415,16 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
 
     body = Path(plan_path).read_text(encoding="utf-8")
     failures += [f"[validate] {e}" for e in validate_mod.validate(body)]
+    if manifest_path and Path(manifest_path).is_file():
+        try:
+            manifest_data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest_data = {}
+        if isinstance(manifest_data, dict):
+            failures += [
+                f"[manifest] {failure}"
+                for failure in _validate_preflight_plan_alignment(manifest_data, body)
+            ]
 
     combined = Path(combined_path).read_text(encoding="utf-8")
     jira_keys = verify_mod._load_manifest(jira_keys_path)
