@@ -15,11 +15,11 @@ Use exactly these sections. Keep every line as a bullet.
 - Evidence boundary: <live Jira, indexed Jira, supplied incident, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
-- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <trigger> | Then <observable outcome>.
-- AC-02 [Proposed]: (Negative) Given <invalid/unsupported input or wrong state> | When <trigger> | Then <blocked with the exact error contract, no partial state>.
-- AC-03 [Proposed]: (Integration) Given <adjacent workflow/API/config/output in scope> | When <trigger> | Then <coupled system behaves consistently>.
-- AC-04 [Proposed]: (Performance) Given <bulk/large/concurrent evidence-backed scale> | When <trigger> | Then <no regression vs baseline / meets approved SLA, no errors or timeouts>.
-(Format: `(<Sphere>) Given | When | Then` — Sphere is one of Basic, Negative, Integration, Performance. Include Integration/Performance ONLY when the evidence shows that dimension; do not manufacture empty spheres. No embedded Scope/Oracle fields — put scope boundary and verification oracle in the mapped Test Scenarios.)
+- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <trigger> | Then <observable outcome> | Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
+- AC-02 [Proposed]: (Negative) Given <invalid/unsupported input or wrong state> | When <trigger> | Then <blocked with the exact error contract, no partial state> | Evidence: <underlying source, never only a graph path ID>.
+- AC-03 [Proposed]: (Integration) Given <adjacent workflow/API/config/output in scope> | When <trigger> | Then <coupled system behaves consistently> | Evidence: <underlying source>.
+- AC-04 [Proposed]: (Performance) Given <bulk/large/concurrent evidence-backed scale> | When <trigger> | Then <no regression vs baseline / meets approved SLA, no errors or timeouts> | Evidence: <underlying source>.
+(Format: `(<Sphere>) Given | When | Then | Evidence` — Sphere is Basic, Negative, Integration, or Performance. Include Integration/Performance only when evidence shows that dimension. Put scope boundary and verification oracle in mapped Test Scenarios.)
 
 **Expected Behaviour**
 - ...
@@ -72,6 +72,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Keep destructive cleanup procedures out of Acceptance Criteria and place them under `Incident recovery validation` in Test Scenarios.
 - Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
 - For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
+- Every P0/P1-mapped AC ends with `| Evidence:` and cites the underlying source. Graph path IDs stay internal traceability metadata.
 
 ## Stage Mapping
 
@@ -103,8 +104,8 @@ Examples:
 - Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
 
 **Acceptance Criteria**
-- AC-01 [Proposed]: Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome.
-- AC-02 [Proposed]: Given invalid or unsupported input | When the user submits it to the same workflow | Then the operation is blocked with a clear, specific error and no partial state is written.
+- AC-01 [Proposed]: (Basic) Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome | Evidence: Jira UAC GUIDES-xxxxx.
+- AC-02 [Proposed]: (Negative) Given invalid or unsupported input | When the user submits it to the same workflow | Then the operation is blocked with a clear, specific error and no partial state is written | Evidence: Jira description GUIDES-xxxxx.
 - Draft blocker: Jira acceptance criteria are incomplete; confirm final sign-off conditions.
 
 **Expected Behaviour**

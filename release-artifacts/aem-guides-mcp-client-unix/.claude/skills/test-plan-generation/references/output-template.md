@@ -8,7 +8,7 @@ Use exactly these sections. Keep every line as a bullet.
 
 ```markdown
 **Acceptance Criteria**
-- ...
+- AC-01 [Confirmed|Proposed]: <precondition, trigger, and observable outcome> | Evidence: <underlying source; never only a graph path ID>.
 
 **Expected Behaviour**
 - ...
@@ -40,6 +40,8 @@ Use exactly these sections. Keep every line as a bullet.
 - Prefer “Verify that…” and “Confirm that…” over vague words like “check properly”.
 - Keep bullets short enough to scan.
 - Put missing evidence in the section it affects: `Draft blocker: ...`
+- Fold graph findings into existing sections and retain their leaf citations; do not add an Evidence Graph section.
+- Every AC mapped to P0/P1 ends with `| Evidence:` and cites an underlying source.
 - Do not create extra sections.
 - Do not use tables.
 

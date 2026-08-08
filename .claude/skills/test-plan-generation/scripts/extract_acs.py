@@ -2,14 +2,15 @@
 
 The AC section is authored as sphere-tagged Given|When|Then lines:
 
-    - AC-01 [Proposed]: (Basic) Given <precondition> | When <trigger> | Then <outcome>.
+    - AC-01 [Proposed]: (Basic) Given <precondition> | When <trigger> | Then <outcome> | Evidence: <source>.
 
 A downstream automation-drafting step should consume THIS JSON, not re-parse the
 prose, so it maps sphere->test category, given->fixtures/preconditions,
-when->action, then->assertion deterministically (no hallucinated re-parsing).
+when->action, then->assertion, and evidence->provenance deterministically
+(no hallucinated re-parsing).
 
 Run: python scripts/extract_acs.py <plan-file> [--out <file.json>]
-Emits a JSON list of {id, status, sphere, given, when, then, raw} to stdout
+Emits a JSON list of {id, status, sphere, given, when, then, evidence, raw} to stdout
 (or the --out file). Only lines that match the exact AC contract are emitted;
 malformed AC lines are reported on stderr so they can be fixed before handoff.
 
@@ -29,7 +30,7 @@ HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 AC_RE = re.compile(
     r"^- (AC-\d{2}) \[(Confirmed|Proposed)\]: "
     r"\((Basic|Negative|Integration|Performance)\) "
-    r"Given (.+?) \| When (.+?) \| Then (.+?)\s*$"
+    r"Given (.+?) \| When (.+?) \| Then (.+?) \| Evidence: (.+?)\s*$"
 )
 
 
@@ -55,9 +56,9 @@ def extract(text: str) -> tuple[list[dict[str, str]], list[str]]:
             continue
         m = AC_RE.match(line)
         if not m:
-            problems.append(f"unparseable AC line (not sphere-tagged Given|When|Then): {line}")
+            problems.append(f"unparseable AC line (not sphere-tagged Given|When|Then|Evidence): {line}")
             continue
-        ac_id, status, sphere, given, when, then = m.groups()
+        ac_id, status, sphere, given, when, then, evidence = m.groups()
         acs.append(
             {
                 "id": ac_id,
@@ -66,6 +67,7 @@ def extract(text: str) -> tuple[list[dict[str, str]], list[str]]:
                 "given": given.strip(),
                 "when": when.strip(),
                 "then": then.strip().rstrip("."),
+                "evidence": evidence.strip().rstrip("."),
                 "raw": line[2:].strip(),
             }
         )

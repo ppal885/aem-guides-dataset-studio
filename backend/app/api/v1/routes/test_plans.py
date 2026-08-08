@@ -34,9 +34,11 @@ async def run_test_plan_pipeline_route(
     draft test plan → QE handoff. Prefer this over MCP for long-running full RAG.
     """
     from app.services.test_plan_pipeline_service import run_test_plan_pipeline
+    from app.services.tenant_service import ensure_user_can_access_tenant
 
     try:
-        return await asyncio.to_thread(run_test_plan_pipeline, body)
+        body.tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)
+        return await asyncio.to_thread(run_test_plan_pipeline, body, user)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

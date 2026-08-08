@@ -7,6 +7,11 @@ Use this before calling a test plan review-ready.
 - Jira facts are collected with Jira MCP when available; fallback to pasted Jira details is clearly marked.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
 - `ask_dita_expert` was used for behaviour facts unless the task is strictly code-only.
+- Three focused `ask_dita_expert` probes and both same-customer and cross-customer `search_jira_history` calls ran before graph retrieval.
+- `query_test_evidence_graph` records influence mode, `used_for_plan`, status, generation, exact query, duration/cache status, path IDs, and deduplicated leaf citations; graph paths never serve as source evidence.
+- Shadow mode is observational only; only explicit augment mode with an independently valid leaf source may affect plan content.
+- Every P0/P1-mapped acceptance criterion cites an underlying source through `| Evidence:`.
+- Graph unavailability is degraded mode, not a Draft blocker when authoritative direct evidence covers behaviour.
 - RAG evidence was accepted only when direct and rejected when generic/noisy.
 - Past similar tickets were searched through Jira MCP/JQL, user-provided tickets, or available team memory.
 - If Jira had no PR link, GitHub MCP PR discovery was attempted before asking the user for PR/branch/diff.

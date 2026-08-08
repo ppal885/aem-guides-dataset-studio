@@ -1,4 +1,31 @@
+import pytest
+
 from app.services import guides_test_plan_generator_service as service
+
+
+@pytest.fixture(autouse=True)
+def _stub_optional_graph_and_history(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.jira_history_search_service.search_jira_history_evidence",
+        lambda query, **kwargs: {
+            "searched_jira_qa": True,
+            "indexed_chunks": 0,
+            "component_filter": kwargs.get("component") or None,
+            "customer_filter": kwargs.get("customer") or None,
+            "match_count": 0,
+            "results": [],
+            "note": "test fixture",
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_retrieve_evidence_graph",
+        lambda *args, **kwargs: {
+            "available": False,
+            "status": "disabled",
+            "evidence_paths": [],
+        },
+    )
 
 
 def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
@@ -190,3 +217,267 @@ def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
     assert "guides-ui-tests" in {
         repo["id"] for repo in packet["repository_evidence_contract"]["required_repositories"]
     }
+
+
+def test_direct_jira_history_runs_same_and_cross_customer(monkeypatch):
+    calls = []
+
+    def fake_search(query, **kwargs):
+        calls.append(kwargs)
+        customer = kwargs.get("customer") or ""
+        return {
+            "searched_jira_qa": True,
+            "indexed_chunks": 100,
+            "component_filter": kwargs.get("component") or None,
+            "customer_filter": customer or None,
+            "results": [
+                {
+                    "jira_key": "GUIDES-200",
+                    "customer": customer or "EY",
+                    "customers": [customer or "EY"],
+                    "why_similar": "Shared xref serializer",
+                },
+                {
+                    "jira_key": "GUIDES-201",
+                    "customer": "KONE",
+                    "customers": ["KONE"],
+                    "why_similar": "Shared scope behavior",
+                },
+            ],
+            "match_count": 2,
+            "note": "searched",
+        }
+
+    monkeypatch.setattr(
+        "app.services.jira_history_search_service.search_jira_history_evidence",
+        fake_search,
+    )
+    issue = {
+        "issue_key": "GUIDES-100",
+        "customer": "KONE",
+        "components": ["Editor"],
+    }
+
+    result = service._retrieve_direct_jira_history(
+        "GUIDES-100",
+        issue,
+        "xref scope is dropped",
+        {"outputs": ["AEM Sites"], "constructs": ["xref", "scope"]},
+        top_k=5,
+    )
+
+    assert [call.get("customer") for call in calls] == ["KONE", ""]
+    assert all(call["component"] == "Editor" for call in calls)
+    assert all(call["exclude_jira_key"] == "GUIDES-100" for call in calls)
+    assert {row["jira_key"] for row in result["same_customer"]["results"]} == {
+        "GUIDES-200",
+        "GUIDES-201",
+    }
+    assert [row["jira_key"] for row in result["cross_customer"]["results"]] == ["GUIDES-200"]
+    assert all(
+        row["evidence_origin"] == "search_jira_history"
+        for scope in ("same_customer", "cross_customer")
+        for row in result[scope]["results"]
+    )
+
+
+def test_same_customer_history_is_explicitly_unavailable_without_customer(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "app.services.jira_history_search_service.search_jira_history_evidence",
+        lambda query, **kwargs: calls.append(kwargs)
+        or {
+            "searched_jira_qa": False,
+            "indexed_chunks": 0,
+            "results": [],
+            "match_count": 0,
+            "note": "unavailable",
+        },
+    )
+
+    result = service._retrieve_direct_jira_history(
+        "GUIDES-100",
+        {"issue_key": "GUIDES-100", "components": ["Editor"]},
+        "xref scope is dropped",
+        {},
+        top_k=5,
+    )
+
+    assert len(calls) == 1
+    assert result["same_customer"]["status"] == "not_applicable"
+    assert result["cross_customer"]["status"] == "degraded"
+    assert result["warnings"]
+
+
+def test_packet_retrieves_direct_history_before_graph(monkeypatch):
+    order = []
+    monkeypatch.setattr(
+        service,
+        "_lookup_issue",
+        lambda jira_key, tenant_id: {"issue_key": jira_key, "summary": "xref failure"},
+    )
+    monkeypatch.setattr(service, "_retrieve_aem_docs", lambda query, k: [])
+    monkeypatch.setattr(
+        service,
+        "_retrieve_learned_behavior_evidence",
+        lambda query, k: {"available": False, "results": []},
+    )
+    monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
+    monkeypatch.setattr(
+        service,
+        "_build_publishing_transform_context",
+        lambda issue, query, k: {"enabled": False},
+    )
+    monkeypatch.setattr(
+        service,
+        "_retrieve_direct_jira_history",
+        lambda *args, **kwargs: order.append("history")
+        or {
+            "same_customer": {"results": []},
+            "cross_customer": {"results": []},
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_retrieve_evidence_graph",
+        lambda *args, **kwargs: order.append("graph")
+        or {"available": True, "status": "ready", "evidence_paths": []},
+    )
+    monkeypatch.setattr(service, "_collect_repository_evidence", lambda *args, **kwargs: {"status": "missing"})
+    monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
+
+    packet = service.build_guides_test_plan_packet("GUIDES-100")
+
+    assert order == ["history", "graph"]
+    assert "jira_history_searches" in packet
+    assert packet["evidence_graph_influence_mode"] == "shadow"
+    assert packet["evidence_graph_evaluation"]["used_for_plan"] is False
+    assert "Direct Jira history searches" in service.render_guides_test_plan_packet_markdown(packet)
+
+
+def test_disabled_graph_keeps_existing_planning_seeds(monkeypatch):
+    monkeypatch.delenv("EVIDENCE_GRAPH_ENABLED", raising=False)
+    direct_seed = {
+        "direct_jira_history_seed": [
+            {"jira_key": "GUIDES-100", "evidence": ["JIRA:GUIDES-100"]}
+        ],
+        "regression_risk_seed": [
+            {"id": "DIRECT-RR-01", "rationale": "Existing direct-evidence risk"}
+        ],
+    }
+
+    graph = service._retrieve_evidence_graph(
+        "GUIDES-200",
+        {"issue_key": "GUIDES-200", "summary": "xref failure"},
+        "xref failure",
+        direct_seed,
+        tenant_id="kone",
+        enabled=True,
+        max_paths=20,
+        allow_cross_customer_details=False,
+    )
+    merged = service._add_evidence_graph_seeds(direct_seed, graph)
+
+    assert graph["status"] == "disabled"
+    assert merged["direct_jira_history_seed"] == direct_seed["direct_jira_history_seed"]
+    assert merged["regression_risk_seed"] == direct_seed["regression_risk_seed"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "should_augment"),
+    (("shadow", False), ("augment", True)),
+)
+def test_graph_mode_controls_plan_seed_influence(monkeypatch, mode, should_augment):
+    monkeypatch.setenv("EVIDENCE_GRAPH_TEST_PLAN_MODE", mode)
+    baseline = {
+        "features": [],
+        "constructs": [],
+        "outputs": [],
+        "blast_radius_seed": [],
+        "bug_hypothesis_seed": [],
+        "test_area_seed": [],
+        "regression_risk_seed": [{"id": "DIRECT-RISK", "rationale": "Direct risk"}],
+    }
+    monkeypatch.setattr(
+        service,
+        "_lookup_issue",
+        lambda jira_key, tenant_id: {"issue_key": jira_key, "summary": "xref failure"},
+    )
+    monkeypatch.setattr(service, "_retrieve_aem_docs", lambda query, k: [])
+    monkeypatch.setattr(
+        service,
+        "_retrieve_learned_behavior_evidence",
+        lambda query, k: {"available": False, "results": []},
+    )
+    monkeypatch.setattr(service, "_derive_planning_seeds", lambda *_args: dict(baseline))
+    monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
+    monkeypatch.setattr(
+        service,
+        "_build_publishing_transform_context",
+        lambda issue, query, k: {"enabled": False},
+    )
+    monkeypatch.setattr(
+        service,
+        "_retrieve_direct_jira_history",
+        lambda *args, **kwargs: {
+            "same_customer": {"results": []},
+            "cross_customer": {"results": []},
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_retrieve_evidence_graph",
+        lambda *args, **kwargs: {
+            "available": True,
+            "status": "ready",
+            "generation": {"id": "generation-1"},
+            "documented_behaviors": [
+                {
+                    "behavior": "Graph-only behavior",
+                    "trust_tier": "authoritative",
+                    "leaf_citations": [{"leaf_id": "doc:1"}],
+                }
+            ],
+            "same_mechanism_jira_history": [],
+            "regression_signals": [
+                {
+                    "signal": "Graph-only risk",
+                    "trust_tier": "supporting",
+                    "leaf_citations": [{"leaf_id": "doc:1"}],
+                }
+            ],
+            "evidence_paths": [
+                {"path_id": "path-1", "leaf_citations": [{"leaf_id": "doc:1"}]}
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_collect_repository_evidence",
+        lambda *args, **kwargs: {"status": "missing", "repositories": [], "owner_gates": []},
+    )
+    monkeypatch.setattr(service, "_add_repository_evidence_seeds", lambda seeds, _repo: seeds)
+    monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
+
+    packet = service.build_guides_test_plan_packet("GUIDES-900")
+
+    assert packet["evidence_graph_influence_mode"] == mode
+    assert packet["evidence_graph_evaluation"]["used_for_plan"] is should_augment
+    if should_augment:
+        assert packet["planning_seeds"]["documented_behavior_seed"][0]["behavior"] == "Graph-only behavior"
+        assert any(
+            row.get("rationale") == "Graph-only risk"
+            for row in packet["planning_seeds"]["regression_risk_seed"]
+        )
+    else:
+        assert "documented_behavior_seed" not in packet["planning_seeds"]
+        assert packet["planning_seeds"]["regression_risk_seed"] == baseline["regression_risk_seed"]
+
+
+def test_invalid_graph_mode_fails_safe_to_shadow(monkeypatch):
+    monkeypatch.setenv("EVIDENCE_GRAPH_TEST_PLAN_MODE", "force-everything")
+
+    assert service._evidence_graph_test_plan_mode(requested=True) == "shadow"
+    assert service._evidence_graph_test_plan_mode(requested=False) == "off"

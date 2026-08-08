@@ -31,6 +31,15 @@ AC_SPHERE_GWT_RE = re.compile(
 )
 SCENARIO_RE = re.compile(r"^- P[012]\b")
 AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
+AC_EVIDENCE_RE = re.compile(r"\s\|\sEvidence:\s*(\S.*)$", re.IGNORECASE)
+UNDERLYING_SOURCE_RE = re.compile(
+    r"(?i:https?)://|\b[A-Z][A-Z0-9]+-\d+\b|(?i:\b(?:Jira (?:UAC|description|comment)|"
+    r"RAG (?:URL|chunk)|DITA (?:spec|source)|Figma (?:node|frame)|attachment(?: ID)?|"
+    r"source file|commit [0-9a-f]{7,40})\b)|(?i:\b(?:DOC|SPEC|CHUNK|SOURCE):\S+)|[A-Za-z]:[\\/]",
+)
+GRAPH_PATH_ONLY_RE = re.compile(
+    r"(?i)^(?:graph[- ]?)?path(?:\s+id)?(?:\s*[:=]\s*|\s+)\S+$"
+)
 JIRA_RE = re.compile(r"^- (?:[A-Z][A-Z0-9]+-\d+)\b")
 WINDOWS_PATH_RE = re.compile(r"(?<![\w])([A-Za-z]:\\[^`\n;,]+)")
 MOJIBAKE = ("\u00e2\u20ac", "\u00e2\u2030", "\u00c3", "\u00c2", "\ufffd")
@@ -135,9 +144,13 @@ def validate(text: str) -> list[str]:
         if match:
             defined_acs.add(match.group(1))
     scenario_acs: set[str] = set()
+    priority_acs: set[str] = set()
     for _, line in sections["Test Scenarios"]:
         for group in AC_LINK_RE.findall(line):
-            scenario_acs.update(re.findall(r"AC-\d{2}", group))
+            linked = set(re.findall(r"AC-\d{2}", group))
+            scenario_acs.update(linked)
+            if re.match(r"^- P[01]\b", line):
+                priority_acs.update(linked)
     automation_text = "\n".join(line for _, line in sections["Automation Coverage & Gaps"])
     automation_acs = set(re.findall(r"AC-\d{2}", automation_text))
     for ac in sorted(defined_acs):
@@ -145,6 +158,28 @@ def validate(text: str) -> list[str]:
             errors.append(f"acceptance criterion {ac} has no Test Scenarios mapping")
         if ac not in automation_acs:
             errors.append(f"acceptance criterion {ac} has no verdict in Automation Coverage & Gaps")
+    for number, line in acceptance:
+        match = re.match(r"- (AC-\d{2}) \[", line)
+        if not match or match.group(1) not in priority_acs:
+            continue
+        evidence_match = AC_EVIDENCE_RE.search(line)
+        if not evidence_match:
+            errors.append(
+                f"line {number}: P0/P1-mapped acceptance criterion must end with `| Evidence:` and cite an underlying source"
+            )
+            continue
+        evidence = evidence_match.group(1).strip()
+        if GRAPH_PATH_ONLY_RE.fullmatch(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite the graph leaf's underlying Jira, URL/chunk, "
+                "DITA source, Figma node, attachment, or inspected code - never only a graph path"
+            )
+            continue
+        if not UNDERLYING_SOURCE_RE.search(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite an underlying Jira, URL/chunk, DITA source, Figma node, "
+                f"attachment, inspected code path, or graph leaf - never only a graph path"
+            )
 
     scenario_lines = sections["Test Scenarios"]
     if scenario_lines and not any(

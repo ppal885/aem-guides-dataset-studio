@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.core.auth import UserIdentity
 from app.main import app
 
 
@@ -53,6 +54,18 @@ def test_remote_mcp_initialize_and_tools_list():
         "Schematron",
         "Integration",
     ]
+    graph_tool = next(
+        tool for tool in tools_response.json()["result"]["tools"] if tool["name"] == "query_test_evidence_graph"
+    )
+    assert graph_tool["inputSchema"]["required"] == ["query"]
+    assert graph_tool["inputSchema"]["properties"]["max_depth"] == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2,
+        "default": 2,
+    }
+    assert graph_tool["inputSchema"]["properties"]["top_k"]["maximum"] == 25
+    assert graph_tool["inputSchema"]["properties"]["max_paths"]["maximum"] == 50
 
 
 def test_remote_mcp_jira_corpus_audit_tool(monkeypatch):
@@ -124,3 +137,72 @@ def test_rag_status_reports_invalid_jira_project_without_failing(monkeypatch):
     assert cursor["valid"] is False
     assert cursor["health"]["missing_or_invalid_fields"] == ["project_key"]
     assert cursor["health"]["configuration_error"] == "invalid Jira project"
+
+
+def test_graph_query_enforces_tenant_and_aggregates_for_regular_user(monkeypatch):
+    from app.api.routes import remote_mcp
+
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.evidence_graph_query_service.query_test_evidence_graph",
+        lambda query, **kwargs: captured.update({"query": query, **kwargs}) or {"available": True},
+    )
+    user = UserIdentity(
+        id="writer",
+        roles=["writer"],
+        allowed_tenants=["kone"],
+    )
+
+    result = remote_mcp._query_test_evidence_graph(
+        {
+            "query": "xref publishing",
+            "tenant_id": "kone",
+            "component": "Editor",
+            "include_cross_customer": True,
+        },
+        user,
+    )
+
+    assert result == {"available": True}
+    assert captured["tenant_id"] == "kone"
+    assert captured["allow_cross_customer_details"] is False
+    assert captured["include_cross_customer"] is True
+    assert captured["actor_id"] == "writer"
+    assert captured["influence_mode"] == "interactive"
+
+
+def test_graph_query_allows_ticket_details_for_knowledge_reader(monkeypatch):
+    from app.api.routes import remote_mcp
+
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.evidence_graph_query_service.query_test_evidence_graph",
+        lambda query, **kwargs: captured.update({"query": query, **kwargs}) or {"available": True},
+    )
+    user = UserIdentity(
+        id="reader",
+        roles=["knowledge_reader"],
+        allowed_tenants=["kone"],
+    )
+
+    remote_mcp._query_test_evidence_graph({"query": "xref", "tenant_id": "kone"}, user)
+
+    assert captured["allow_cross_customer_details"] is True
+    assert captured["actor_id"] == "reader"
+    assert captured["influence_mode"] == "interactive"
+
+
+def test_graph_query_rejects_unauthorized_tenant():
+    from fastapi import HTTPException
+    from app.api.routes import remote_mcp
+
+    user = UserIdentity(id="writer", roles=["writer"], allowed_tenants=["kone"])
+    try:
+        remote_mcp._query_test_evidence_graph(
+            {"query": "xref", "tenant_id": "other"},
+            user,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 403
+    else:
+        raise AssertionError("Unauthorized tenant was accepted")

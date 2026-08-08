@@ -12,6 +12,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ## Operating Mode
 
 - Work evidence-first: collect facts, normalize behaviour, retrieve RAG, inspect diff, then write scenarios.
+- Preserve direct evidence collection: run three focused `ask_dita_expert` probes and both same-customer and cross-customer `search_jira_history` calls before querying the evidence graph.
 - Keep the final answer short and tester-facing; keep raw evidence, chunk scores, backend traces, and reasoning audits internal.
 - Treat the plan as `Draft` unless current Jira facts, accepted behaviour evidence, past-similar-ticket search, and required Git/PR evidence are present.
 - Ask for the missing Jira text, PR URL, branch, commit, or pasted diff only when that evidence is required and unavailable.
@@ -20,6 +21,8 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
+- Use `search_jira_history` for indexed Jira history; never treat it as product documentation or current mutable Jira truth.
+- Call `query_test_evidence_graph` after direct RAG and Jira retrieval. Default to shadow influence unless deployment explicitly enables augment; shadow output cannot change the plan. Graph paths are traceability only; only underlying leaf citations can support a claim.
 - Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira details and mark the Jira evidence gap.
 - Use GitHub MCP to inspect a PR when Jira includes one; if Jira has no PR link, use GitHub MCP to search likely repos by Jira key, summary terms, branch names, commit messages, and PR body before asking the user for a PR.
 - Do not use or expect `/aem-guides-test-plan`, `guides_test_plan_generator`, `test_plan_pipeline`, or any generated test-plan MCP tool.
@@ -32,6 +35,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/output-template.md` before writing the final test plan.
 - Read `references/quality-gate-checklist.md` before marking a plan review-ready.
+- Read `references/evidence-graph-contract.md` before using graph-connected findings.
 
 ## Lifecycle
 
@@ -58,6 +62,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 3 — Retrieve Behaviour RAG
 
 - Call `ask_dita_expert` with focused questions from normalized behaviour, not raw keyword spam.
+- Run at least three focused probes when behaviour matters and record their exact questions.
 - Use RAG to ground expected behaviour, workflow rules, product constraints, release-note behaviour, configuration effects, and regression areas.
 - Reject chunks that only share broad vocabulary such as `topic`, `map`, `assets`, `metadata`, `cloud`, `report`, `translation`, or `workflow` without proving the actual behaviour.
 - Never use attribute-only DITA evidence as proof for an exact element behaviour, or generic DITA docs as proof for AEM Guides UI behaviour.
@@ -66,9 +71,18 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 4 — Find Past Similar Tickets
 
 - Use Jira MCP/JQL if available; otherwise use only user-provided related tickets or available team memory.
+- Run `search_jira_history` twice with the canonical component: once with the current customer and once without a customer filter. Retain only same-mechanism results.
 - Search by exact error text, workflow, API route, component, UI label, data shape, version boundary, and likely code area.
 - Keep at most five past tickets. For each, explain why similar and what coverage it adds.
 - Reject broad results that match only generic words.
+
+### Phase 4.5 — Connect Evidence Graph
+
+- Query `query_test_evidence_graph` with the normalized failure shape and exact Jira/customer/component/output/DITA selectors after direct retrieval.
+- Record `influence_mode`, `used_for_plan`, duration, and cache status. In `shadow`, `used_for_plan=false` and graph output cannot change plan content, scoring, citations, repository scope, or automation verdicts.
+- Reject candidate-only, area-only, and path-only findings. Deduplicate graph and direct evidence by leaf/source ID.
+- Only in explicit `augment` mode, fold trusted graph findings into existing sections; never add an Evidence Graph section.
+- Record status, generation, query, path IDs, leaf citations, and degraded reason in the evidence manifest. Graph unavailability alone is not a Draft blocker when direct authoritative evidence covers behaviour.
 
 ### Phase 5 — Inspect Git/PR Evidence
 
@@ -110,7 +124,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ## Section Rules
 
-- **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
+- **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. Every AC mapped to P0/P1 ends with `| Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>`; a graph path alone is invalid. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` evidence. If unsupported, write `Unknown from current evidence`.
 - **Scope From Git**: List Jira development-link source, GitHub MCP PR-discovery result, PR/branch/commit, repo sync state, changed product area, and whether diff was inspected.
 - **Code Touched**: List only real files/functions/classes/components touched or directly implicated by PR/repo scan, with short QA impact.

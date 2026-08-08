@@ -83,10 +83,12 @@ async def run(args: argparse.Namespace) -> int:
             print(f"Connected MCP server. tools={len(tool_names)}")
             required = {
                 "ask_dita_expert",
+                "search_jira_history",
+                "query_test_evidence_graph",
+                "check_rag_status",
                 "lookup_dita_construct",
                 "generate_dita",
                 "generate_dita_ot_output",
-                "guides_test_plan_generator",
                 "upload_mcp_generated_data_to_aem",
             }
             missing = sorted(required - set(tool_names))
@@ -165,7 +167,11 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python", default=str(DEFAULT_PYTHON), help="Python executable used by Cursor MCP config")
+    parser.add_argument(
+        "--python",
+        default=os.getenv("PYTHON_BIN", str(DEFAULT_PYTHON)),
+        help="Python executable used by Cursor MCP config (defaults to PYTHON_BIN or backend/.venv)",
+    )
     parser.add_argument(
         "--call",
         choices=("ask", "lookup", "generate-router", "dita-ot", "all", "none"),

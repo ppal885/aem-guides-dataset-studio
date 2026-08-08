@@ -8,6 +8,7 @@ does not mutate indexes.
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
@@ -34,6 +35,42 @@ _PUBLISHING_TEXT_RE = re.compile(
     r"transformation|transform|output\s+generation|output\s+preset|dita-ot)\b",
     re.IGNORECASE,
 )
+_EVIDENCE_GRAPH_TEST_PLAN_MODES = {"off", "shadow", "augment"}
+
+
+def _evidence_graph_test_plan_mode(*, requested: bool) -> str:
+    if not requested:
+        return "off"
+    configured = os.getenv("EVIDENCE_GRAPH_TEST_PLAN_MODE", "shadow").strip().lower()
+    return configured if configured in _EVIDENCE_GRAPH_TEST_PLAN_MODES else "shadow"
+
+
+def _evidence_graph_evaluation(graph: dict[str, Any], *, mode: str) -> dict[str, Any]:
+    leaf_ids = {
+        leaf_id
+        for path in graph.get("evidence_paths") or []
+        for leaf_id in _leaf_ids(path)
+    }
+    available = bool(graph.get("available"))
+    used_for_plan = mode == "augment" and available
+    if mode == "off":
+        reason = "Evidence graph was disabled for this request."
+    elif mode == "shadow":
+        reason = "Evidence graph was measured for traceability only and did not alter plan inputs."
+    elif not available:
+        reason = "Evidence graph augmentation was requested but unavailable; direct evidence remained authoritative."
+    else:
+        reason = "Evidence graph findings may augment direct evidence after leaf-source validation."
+    return {
+        "mode": mode,
+        "queried": mode != "off",
+        "used_for_plan": used_for_plan,
+        "status": graph.get("status"),
+        "generation_id": (graph.get("generation") or {}).get("id"),
+        "path_count": len(graph.get("evidence_paths") or []),
+        "leaf_citation_count": len(leaf_ids),
+        "reason": reason,
+    }
 
 
 def normalize_jira_key(value: str) -> str:
@@ -51,6 +88,11 @@ def build_guides_test_plan_packet(
     evidence_k: int = 8,
     include_repository_evidence: bool = True,
     max_repo_matches: int = 30,
+    skip_uac_label_gate: bool = False,
+    full_rag: bool = True,
+    include_evidence_graph: bool = True,
+    graph_max_paths: int = 20,
+    allow_cross_customer_graph_details: bool = False,
 ) -> dict[str, Any]:
     """Return a complete MCP evidence packet for Claude Code plan generation."""
     key = normalize_jira_key(jira_key)
@@ -61,6 +103,29 @@ def build_guides_test_plan_packet(
     planning_seeds = _derive_planning_seeds(issue, learned_behavior)
     dita_chunks = _retrieve_dita_chunks(query_text, k=min(5, evidence_k))
     publishing_context = _build_publishing_transform_context(issue, query_text, k=min(6, evidence_k))
+    jira_history_searches = _retrieve_direct_jira_history(
+        key,
+        issue,
+        query_text,
+        planning_seeds,
+        top_k=min(10, max(3, evidence_k)),
+    )
+    planning_seeds = _add_direct_jira_history_seeds(planning_seeds, jira_history_searches)
+    graph_mode = _evidence_graph_test_plan_mode(requested=include_evidence_graph)
+    evidence_graph = _retrieve_evidence_graph(
+        key,
+        issue,
+        query_text,
+        planning_seeds,
+        tenant_id=tenant_id,
+        enabled=graph_mode != "off",
+        max_paths=graph_max_paths,
+        allow_cross_customer_details=allow_cross_customer_graph_details,
+        influence_mode=graph_mode,
+    )
+    graph_evaluation = _evidence_graph_evaluation(evidence_graph, mode=graph_mode)
+    if graph_evaluation["used_for_plan"]:
+        planning_seeds = _add_evidence_graph_seeds(planning_seeds, evidence_graph)
     repo_contract = _build_repository_evidence_contract(issue, planning_seeds)
     repository_evidence = (
         _collect_repository_evidence(issue, planning_seeds, repo_contract, max_matches=max_repo_matches)
@@ -83,7 +148,15 @@ def build_guides_test_plan_packet(
         "repo_evidence_status": repository_evidence.get("repo_evidence_status") or repository_evidence.get("status"),
         "dita_spec_evidence": dita_chunks,
         "publishing_transform_context": publishing_context,
+        "jira_history_searches": jira_history_searches,
         "qa_studio_preview": qa_preview,
+        "evidence_graph": evidence_graph,
+        "include_evidence_graph": bool(include_evidence_graph),
+        "evidence_graph_influence_mode": graph_mode,
+        "evidence_graph_evaluation": graph_evaluation,
+        "graph_max_paths": max(1, min(int(graph_max_paths or 20), 50)),
+        "skip_uac_label_gate": bool(skip_uac_label_gate),
+        "full_rag": bool(full_rag),
         "required_skill": "aem-guides-test-scenario-generator",
         "required_output_heading": "## 4. Blast radius and risk analysis",
         "instructions": [
@@ -92,9 +165,16 @@ def build_guides_test_plan_packet(
             "Cite official Experience League source_url/canonical_url values.",
             "Use learned_behavior_evidence from scraped Experience League DITA as product-behavior evidence, not as Jira facts.",
             "Use planning_seeds, including repository_evidence_seed, as mandatory inputs for blast radius, bug hypotheses, areas to test, automation strength, and regression risks.",
+            "Use repository_evidence_contract to enforce frontend, backend, cross-layer, and automation owner gates.",
             "Use repository_evidence from local clone scanning; if unavailable, keep the plan Draft and list missing repo evidence.",
             "For publishing/PDF2/HTML/HTML5/DITA-OT tickets, use publishing_transform_context and DITA-OT evidence.",
             "Use JIRA facts only from the returned issue/evidence packet.",
+            "Use jira_history_searches as the mandatory direct same-customer and cross-customer Jira retrieval; never infer absence when searched_jira_qa=false.",
+            "Use evidence_graph only to connect direct findings; cite leaf_citations, never graph path IDs, as evidence.",
+            "When evidence_graph_influence_mode=shadow, treat graph output as evaluation telemetry only; it must not change the plan, acceptance criteria, scoring, citations, or repository search scope.",
+            "Only evidence_graph_influence_mode=augment permits graph findings to augment direct evidence, and every claim still requires an underlying leaf citation.",
+            "Do not let graph evidence override current Jira/UAC, inspected implementation, or verified design evidence.",
+            "Graph unavailability is degraded mode, not a Draft blocker when authoritative direct evidence covers the behaviour.",
             "Mark the plan Draft if Jira, RAG, repository, or blast-radius evidence is incomplete.",
             "Validate the final plan with scripts/validate_test_plan.py before calling it review-ready.",
         ],
@@ -151,9 +231,17 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
             "",
             _json_block(packet.get("publishing_transform_context") or {}),
             "",
+            "## Direct Jira history searches",
+            "",
+            _json_block(packet.get("jira_history_searches") or {}),
+            "",
             "## QA Studio preview",
             "",
             _json_block(packet.get("qa_studio_preview") or {}),
+            "",
+            "## Evidence graph traceability",
+            "",
+            _json_block(packet.get("evidence_graph") or {}),
             "",
             "## Execution prompt",
             "",
@@ -161,6 +249,295 @@ def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _list_values(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        result = []
+        for item in value:
+            if isinstance(item, dict):
+                text = str(item.get("name") or item.get("value") or "").strip()
+            else:
+                text = str(item or "").strip()
+            if text:
+                result.append(text)
+        return result
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return [value.strip()]
+        return _list_values(parsed)
+    return []
+
+
+def _graph_issue_selectors(issue: dict[str, Any], planning_seeds: dict[str, Any]) -> dict[str, Any]:
+    from app.services.jira_component_metadata_service import canonical_component_names
+
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    components = canonical_component_names(
+        _list_values(issue.get("components")) + _list_values(fields.get("components"))
+    )
+    customers = []
+    for key in ("customer", "customer_name", "customer_names", "company_names"):
+        customers.extend(_list_values(issue.get(key)))
+    return {
+        "customer": customers[0] if customers else "",
+        "component": components[0] if components else "",
+        "outputs": [str(value) for value in (planning_seeds.get("outputs") or []) if str(value).strip()],
+        "dita_entities": [
+            str(value) for value in (planning_seeds.get("constructs") or []) if str(value).strip()
+        ],
+    }
+
+
+def _customer_identity(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def _history_scope_result(
+    result: dict[str, Any],
+    *,
+    scope: str,
+    excluded_customer: str = "",
+) -> dict[str, Any]:
+    scoped = {**result, "scope": scope}
+    rows = []
+    excluded_identity = _customer_identity(excluded_customer)
+    for raw in result.get("results") or []:
+        if not isinstance(raw, dict):
+            continue
+        row_customers = [str(raw.get("customer") or ""), *[str(x) for x in raw.get("customers") or []]]
+        if excluded_identity and any(_customer_identity(value) == excluded_identity for value in row_customers):
+            continue
+        rows.append({**raw, "evidence_origin": "search_jira_history", "search_scope": scope})
+    scoped["results"] = rows
+    scoped["match_count"] = len(rows)
+    if excluded_customer:
+        scoped["excluded_customer"] = excluded_customer
+    if result.get("searched_jira_qa"):
+        scoped["status"] = "searched"
+    else:
+        scoped["status"] = "degraded"
+    return scoped
+
+
+def _retrieve_direct_jira_history(
+    jira_key: str,
+    issue: dict[str, Any],
+    query: str,
+    planning_seeds: dict[str, Any],
+    *,
+    top_k: int,
+) -> dict[str, Any]:
+    selectors = _graph_issue_selectors(issue, planning_seeds)
+    customer = str(selectors.get("customer") or "").strip()
+    component = str(selectors.get("component") or "").strip()
+    from app.services.jira_history_search_service import search_jira_history_evidence
+
+    def safe_search(*, selected_customer: str = "", selected_top_k: int = top_k) -> dict[str, Any]:
+        try:
+            return search_jira_history_evidence(
+                query,
+                component=component,
+                customer=selected_customer,
+                exclude_jira_key=jira_key,
+                top_k=selected_top_k,
+            )
+        except Exception as exc:
+            return {
+                "searched_jira_qa": False,
+                "indexed_chunks": None,
+                "component_filter": component or None,
+                "customer_filter": selected_customer or None,
+                "match_count": 0,
+                "results": [],
+                "note": "Jira history retrieval failed; do not infer that matching history is absent.",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    if customer:
+        same_customer = _history_scope_result(
+            safe_search(selected_customer=customer),
+            scope="same_customer",
+        )
+    else:
+        same_customer = {
+            "scope": "same_customer",
+            "status": "not_applicable",
+            "searched_jira_qa": False,
+            "indexed_chunks": None,
+            "component_filter": component or None,
+            "customer_filter": None,
+            "match_count": 0,
+            "results": [],
+            "note": "Current Jira customer is unavailable; same-customer history cannot be selected deterministically.",
+        }
+
+    cross_customer = _history_scope_result(
+        safe_search(selected_top_k=min(30, top_k * 2)),
+        scope="cross_customer",
+        excluded_customer=customer,
+    )
+    warnings = []
+    for scoped in (same_customer, cross_customer):
+        if scoped.get("status") == "degraded":
+            warnings.append(f"{scoped['scope']} Jira history retrieval was unavailable.")
+    if same_customer.get("status") == "not_applicable":
+        warnings.append("Same-customer Jira history was not searchable because the current customer is unknown.")
+    return {
+        "query": query,
+        "selectors": selectors,
+        "same_customer": same_customer,
+        "cross_customer": cross_customer,
+        "warnings": warnings,
+    }
+
+
+def _add_direct_jira_history_seeds(
+    planning_seeds: dict[str, Any],
+    searches: dict[str, Any],
+) -> dict[str, Any]:
+    result = {**planning_seeds}
+    rows = []
+    seen: set[str] = set()
+    for scope in ("same_customer", "cross_customer"):
+        for item in (searches.get(scope) or {}).get("results") or []:
+            jira_key = str(item.get("jira_key") or "").strip().upper()
+            if not jira_key or jira_key in seen:
+                continue
+            seen.add(jira_key)
+            rows.append(
+                {
+                    "jira_key": jira_key,
+                    "summary": item.get("summary") or "",
+                    "why_similar": item.get("why_similar") or "",
+                    "search_scope": scope,
+                    "evidence_origin": "search_jira_history",
+                    "evidence": [f"JIRA:{jira_key}"],
+                    "mutable_facts_require_live_validation": True,
+                }
+            )
+    result["direct_jira_history_seed"] = rows[:20]
+    return result
+
+
+def _retrieve_evidence_graph(
+    jira_key: str,
+    issue: dict[str, Any],
+    query: str,
+    planning_seeds: dict[str, Any],
+    *,
+    tenant_id: str,
+    enabled: bool,
+    max_paths: int,
+    allow_cross_customer_details: bool,
+    influence_mode: str = "interactive",
+) -> dict[str, Any]:
+    if not enabled:
+        return {"available": False, "status": "skipped", "warnings": ["Evidence graph disabled for this request."]}
+    if os.getenv("EVIDENCE_GRAPH_ENABLED", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        return {
+            "available": False,
+            "status": "disabled",
+            "coverage_gaps": ["Evidence graph querying is disabled on this deployment."],
+            "warnings": [],
+        }
+    selectors = _graph_issue_selectors(issue, planning_seeds)
+    try:
+        from app.services.evidence_graph_query_service import query_test_evidence_graph
+
+        return query_test_evidence_graph(
+            query,
+            jira_key=jira_key,
+            customer=selectors["customer"],
+            component=selectors["component"],
+            outputs=selectors["outputs"],
+            dita_entities=selectors["dita_entities"],
+            include_cross_customer=True,
+            max_depth=2,
+            top_k=10,
+            max_paths=max(1, min(int(max_paths or 20), 50)),
+            tenant_id=tenant_id,
+            allow_cross_customer_details=allow_cross_customer_details,
+            actor_id="test-plan-pipeline",
+            influence_mode=influence_mode,
+        )
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "degraded",
+            "coverage_gaps": ["Evidence graph query failed; direct Jira/RAG evidence remains authoritative."],
+            "warnings": [f"{type(exc).__name__}: {exc}"],
+        }
+
+
+def _leaf_ids(item: dict[str, Any]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(citation.get("leaf_id") or "")
+            for citation in (item.get("leaf_citations") or [])
+            if str(citation.get("leaf_id") or "")
+        )
+    )
+
+
+def _add_evidence_graph_seeds(
+    planning_seeds: dict[str, Any],
+    graph: dict[str, Any],
+) -> dict[str, Any]:
+    result = {**planning_seeds}
+    result["evidence_graph_generation_id"] = (graph.get("generation") or {}).get("id")
+    result["evidence_graph_path_ids"] = [
+        str(path.get("path_id")) for path in (graph.get("evidence_paths") or []) if path.get("path_id")
+    ]
+    result["evidence_graph_leaf_ids"] = list(
+        dict.fromkeys(
+            leaf_id
+            for path in (graph.get("evidence_paths") or [])
+            for leaf_id in _leaf_ids(path)
+        )
+    )
+    result["documented_behavior_seed"] = [
+        {
+            "behavior": item.get("behavior"),
+            "trust_tier": item.get("trust_tier"),
+            "evidence": _leaf_ids(item),
+        }
+        for item in (graph.get("documented_behaviors") or [])
+        if item.get("behavior") and item.get("trust_tier") != "candidate"
+    ][:8]
+    result["historical_jira_seed"] = [
+        {
+            "jira_key": item.get("jira_key"),
+            "summary": item.get("summary"),
+            "shared_mechanisms": item.get("shared_mechanisms") or [],
+            "evidence": _leaf_ids(item),
+            "mutable_facts_require_live_validation": True,
+        }
+        for item in (graph.get("same_mechanism_jira_history") or [])
+        if item.get("jira_key")
+    ][:10]
+    risks = list(result.get("regression_risk_seed") or [])
+    existing = {str(item.get("rationale") or item) for item in risks if isinstance(item, dict)}
+    for index, item in enumerate(graph.get("regression_signals") or [], 1):
+        signal = str(item.get("signal") or "").strip()
+        if not signal or signal in existing:
+            continue
+        risks.append(
+            {
+                "id": f"GRAPH-RR-{index:02d}",
+                "category": str(item.get("type") or "graph regression signal"),
+                "priority": "P1",
+                "rationale": signal,
+                "evidence": _leaf_ids(item),
+                "trust_tier": item.get("trust_tier"),
+                "cannot_define_expected_behavior": not bool(item.get("usable_as_expected_behavior")),
+            }
+        )
+        existing.add(signal)
+    result["regression_risk_seed"] = risks
+    return result
 
 
 def _lookup_issue(jira_key: str, *, tenant_id: str) -> dict[str, Any]:
@@ -967,6 +1344,7 @@ def _add_repository_evidence_seeds(
 
 def _render_prompt(packet: dict[str, Any]) -> str:
     key = packet.get("jira_key", "")
+    graph_mode = packet.get("evidence_graph_influence_mode", "shadow")
     return f"""Generate an evidence-grounded AEM Guides test plan for `{key}`.
 
 Mandatory:
@@ -976,9 +1354,13 @@ Mandatory:
 - Cite Experience League `source_url` / `canonical_url` from the MCP packet.
 - Use `learned_behavior_evidence` to derive expected behavior, test data, QA checklist, PDF/HTML5 review areas, and validation oracles from scraped DITA docs.
 - Use `planning_seeds.blast_radius_seed`, `bug_hypothesis_seed`, `test_area_seed`, and `regression_risk_seed` as mandatory inputs; map each P0/P1 seed to a scenario or evidence-backed exclusion.
-- Use `repository_evidence` from local clone scanning. Cite exact paths/lines from `xmleditor`, `starling`, `guides-ui-tests`, and `dxml-it-tests`; missing or weak repo evidence means Draft.
+- Use `repository_evidence_contract` and `repository_evidence` from local clone scanning. Cite exact paths/lines from `xmleditor`, `starling`, `guides-ui-tests`, and `dxml-it-tests`; missing or weak repo evidence means Draft.
 - Apply owner gates: frontend requires `xmleditor` + `guides-ui-tests`, backend requires `starling` + `dxml-it-tests`, and cross-layer changes require both.
 - If `publishing_transform_context.enabled=true`, include DITA-OT publishing/PDF2/HTML5 evidence and map related risks/tests to it.
+- Use both direct `jira_history_searches.same_customer` and `jira_history_searches.cross_customer` results before graph findings; de-duplicate by Jira key.
+- Call graph evidence only after direct Jira and product-document retrieval, and cite graph leaf sources rather than path IDs.
+- Evidence graph influence mode is `{graph_mode}`. In `shadow` mode, graph output is telemetry only and must not alter the plan, ACs, score, citations, or repository scope.
+- In `augment` mode, graph findings may supplement direct evidence only when their leaf sources independently support the claim.
 - Separate confirmed evidence from unknowns.
 - Cover or explicitly exclude every P0/P1 Direct, Shared-path, Downstream, Compatibility, and Observability/Recovery risk.
 - Include at least one R0 unchanged-behavior control scenario.

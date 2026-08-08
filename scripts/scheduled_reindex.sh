@@ -16,12 +16,40 @@ PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/backend/.venv/bin/python}"
 LIMIT="${REINDEX_LIMIT:-300}"
 
 echo "[$(date -Is)] jira_qa incremental reindex starting (limit=$LIMIT)"
+OVERALL_EXIT=0
 if "$PYTHON_BIN" scripts/repair_jira_rag_on_vm.py --incremental --limit "$LIMIT"; then
-  REINDEX_EXIT=0
   echo "[$(date -Is)] jira_qa incremental reindex succeeded; current status:"
 else
   REINDEX_EXIT=$?
+  OVERALL_EXIT="$REINDEX_EXIT"
   echo "[$(date -Is)] ERROR: jira_qa incremental reindex failed (exit_code=$REINDEX_EXIT); current status:" >&2
 fi
 "$PYTHON_BIN" scripts/repair_jira_rag_on_vm.py --check || true
-exit "$REINDEX_EXIT"
+
+set +e
+PYTHONPATH="$ROOT_DIR/backend" "$PYTHON_BIN" scripts/evidence_graph_admin.py enabled >/dev/null 2>&1
+GRAPH_ENABLED_EXIT=$?
+set -e
+if [[ "$GRAPH_ENABLED_EXIT" -eq 0 ]]; then
+  echo "[$(date -Is)] evidence graph incremental synchronization starting"
+  if PYTHONPATH="$ROOT_DIR/backend" "$PYTHON_BIN" scripts/evidence_graph_admin.py sync \
+      --max-events "${EVIDENCE_GRAPH_SYNC_MAX_EVENTS:-500}" \
+      --max-retries "${EVIDENCE_GRAPH_SYNC_MAX_RETRIES:-5}" \
+      --batch-size "${EVIDENCE_GRAPH_BATCH_SIZE:-500}"; then
+    echo "[$(date -Is)] evidence graph incremental synchronization succeeded"
+  else
+    GRAPH_EXIT=$?
+    OVERALL_EXIT="$GRAPH_EXIT"
+    echo "[$(date -Is)] ERROR: evidence graph synchronization failed (exit_code=$GRAPH_EXIT)" >&2
+  fi
+elif [[ "$GRAPH_ENABLED_EXIT" -ne 3 ]]; then
+  OVERALL_EXIT="$GRAPH_ENABLED_EXIT"
+  echo "[$(date -Is)] ERROR: could not determine evidence graph enablement (exit_code=$GRAPH_ENABLED_EXIT)" >&2
+fi
+
+if [[ "$OVERALL_EXIT" -eq 0 ]]; then
+  echo "[$(date -Is)] scheduled reindex completed successfully"
+else
+  echo "[$(date -Is)] ERROR: scheduled reindex failed; success was not reported" >&2
+fi
+exit "$OVERALL_EXIT"

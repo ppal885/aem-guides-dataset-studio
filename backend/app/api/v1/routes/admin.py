@@ -13,6 +13,176 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 logger = get_structured_logger(__name__)
 
 
+class EvidenceGraphRebuildRequest(BaseModel):
+    dry_run: bool = True
+    sources: list[str] = Field(default_factory=lambda: ["jira", "docs", "dita"])
+    batch_size: int = Field(default=500, ge=10, le=5000)
+
+
+class EvidenceGraphSyncRequest(BaseModel):
+    max_events: int = Field(default=500, ge=1, le=5000)
+    max_retries: int = Field(default=5, ge=1, le=20)
+    batch_size: int = Field(default=500, ge=10, le=5000)
+
+
+class EvidenceGraphEventReplayRequest(BaseModel):
+    event_ids: list[str] = Field(default_factory=list)
+    source_kind: str = ""
+    confirm_all_failed: bool = False
+
+
+@router.get("/evidence-graph/status")
+def evidence_graph_status(user: UserIdentity = AdminUser):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import graph_status
+
+    session = SessionLocal()
+    try:
+        return graph_status(session)
+    finally:
+        session.close()
+
+
+@router.get("/evidence-graph/audit")
+def evidence_graph_audit(generation_id: str = "", user: UserIdentity = AdminUser):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import active_generation, audit_generation
+
+    session = SessionLocal()
+    try:
+        selected = generation_id.strip()
+        if not selected:
+            generation = active_generation(session)
+            if generation is None:
+                raise HTTPException(status_code=404, detail="No active evidence graph generation")
+            selected = generation.id
+        result = audit_generation(session, selected)
+        if result.get("errors") == ["Generation does not exist."]:
+            raise HTTPException(status_code=404, detail=result)
+        return result
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/rebuild")
+def rebuild_evidence_graph_endpoint(
+    request: EvidenceGraphRebuildRequest,
+    user: UserIdentity = AdminUser,
+):
+    from app.services.evidence_graph_build_service import rebuild_evidence_graph
+
+    result = rebuild_evidence_graph(
+        dry_run=request.dry_run,
+        sources=request.sources,
+        batch_size=request.batch_size,
+        created_by=user.id,
+    )
+    if not result.get("valid"):
+        raise HTTPException(status_code=409, detail=result)
+    return result
+
+
+@router.post("/evidence-graph/sync")
+def sync_evidence_graph_endpoint(
+    request: EvidenceGraphSyncRequest,
+    user: UserIdentity = AdminUser,
+):
+    from app.services.evidence_graph_sync_service import drain_evidence_graph_events
+
+    result = drain_evidence_graph_events(
+        max_events=request.max_events,
+        max_retries=request.max_retries,
+        batch_size=request.batch_size,
+        created_by=user.id,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail=result)
+    return result
+
+
+@router.get("/evidence-graph/events")
+def evidence_graph_events(
+    status: str = "failed",
+    source_kind: str = "",
+    limit: int = 100,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import list_source_events
+
+    normalized_status = status.strip().lower()
+    if normalized_status and normalized_status not in {"pending", "retry", "failed", "completed"}:
+        raise HTTPException(status_code=400, detail="Unsupported evidence graph event status")
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    session = SessionLocal()
+    try:
+        events = list_source_events(
+            session,
+            status=normalized_status or None,
+            source_kind=source_kind.strip() or None,
+            limit=limit,
+        )
+        return {"count": len(events), "events": events}
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/events/replay")
+def replay_evidence_graph_events_endpoint(
+    request: EvidenceGraphEventReplayRequest,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import replay_source_events
+
+    event_ids = list(dict.fromkeys(value.strip() for value in request.event_ids if value.strip()))
+    source_kind = request.source_kind.strip()
+    if len(event_ids) > 1000:
+        raise HTTPException(status_code=400, detail="At most 1000 event IDs can be replayed at once")
+    if not event_ids and not source_kind and not request.confirm_all_failed:
+        raise HTTPException(
+            status_code=400,
+            detail="Select event_ids/source_kind or explicitly set confirm_all_failed=true",
+        )
+    session = SessionLocal()
+    try:
+        result = replay_source_events(
+            session,
+            event_ids=event_ids,
+            source_kind=source_kind or None,
+        )
+        session.commit()
+        return result
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/rollback")
+def rollback_evidence_graph_endpoint(user: UserIdentity = AdminUser):
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import rollback_generation
+
+    session = SessionLocal()
+    try:
+        try:
+            result = rollback_generation(session)
+            session.commit()
+            return result
+        except ValueError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        session.close()
+
+
 @router.post("/jira-rag/import-csv")
 async def import_jira_csv(
     response: Response,

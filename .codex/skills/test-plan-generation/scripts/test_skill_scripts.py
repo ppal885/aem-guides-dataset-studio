@@ -33,8 +33,8 @@ GOOD_PLAN = """**Understanding From Jira**
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: facts are from live Jira and a backend clone.
 **Acceptance Criteria**
-- AC-01 [Proposed]: given an input, the system produces the correct observable output.
-- AC-02 [Proposed]: given a second input, the system retains valid prior state.
+- AC-01 [Proposed]: given an input, the system produces the correct observable output | Evidence: Jira UAC GUIDES-100.
+- AC-02 [Proposed]: given a second input, the system retains valid prior state | Evidence: Jira description GUIDES-100.
 **Expected Behaviour**
 - Unknown from current evidence.
 **Scope From Git**
@@ -73,6 +73,30 @@ def check(name: str, condition: bool) -> None:
 
 def test_validator() -> None:
     check("good plan passes", validate_mod.validate(GOOD_PLAN) == [])
+
+    ac_without_source = _replace(
+        GOOD_PLAN,
+        " | Evidence: Jira UAC GUIDES-100.",
+        "",
+    )
+    errs = validate_mod.validate(ac_without_source)
+    check("P0 acceptance criterion without source is rejected", any("underlying source" in e for e in errs))
+
+    ac_with_only_graph_path = _replace(
+        GOOD_PLAN,
+        "Evidence: Jira UAC GUIDES-100.",
+        "Evidence: graph path path-123.",
+    )
+    errs = validate_mod.validate(ac_with_only_graph_path)
+    check("graph path alone cannot support P0 acceptance", any("never only a graph path" in e for e in errs))
+
+    graph_path_with_jira_shaped_token = _replace(
+        GOOD_PLAN,
+        "Evidence: Jira UAC GUIDES-100.",
+        "Evidence: path:GUIDES-100.",
+    )
+    errs = validate_mod.validate(graph_path_with_jira_shaped_token)
+    check("graph path containing a Jira key is still rejected", any("never only a graph path" in e for e in errs))
 
     missing_strength = _replace(
         GOOD_PLAN,
@@ -317,6 +341,30 @@ def test_run_gates() -> None:
                 {"scope": "cross_customer", "query": "failure shape", "component": "Schematron"},
             ],
             "indexed_history_run": True,
+            "evidence_graph": {
+                "requested": True,
+                "tool": "query_test_evidence_graph",
+                "status": "ready",
+                "influence_mode": "shadow",
+                "used_for_plan": False,
+                "generation_id": "generation-1",
+                "queries": [
+                    {
+                        "query": "same error signature and output mechanism",
+                        "duration_ms": 42,
+                        "cache_hit": False,
+                        "path_ids": ["path-1"],
+                        "leaf_citations": [
+                            {
+                                "leaf_id": "jira_chroma:GUIDES-100:chunk-1:sha256:abc",
+                                "source_type": "jira_chroma",
+                                "source_ref": "GUIDES-100",
+                                "trust_tier": "historical_verified",
+                            }
+                        ],
+                    }
+                ],
+            },
         }
 
         path.write_text(json.dumps({**dual_source, "clones": [{"path": "C:/x"}]}), encoding="utf-8")
@@ -346,6 +394,53 @@ def test_run_gates() -> None:
         check(
             "run_gates rejects noncanonical Jira components",
             any("component must be one of" in failure for failure in failures),
+        )
+
+        paths_without_leaves = {
+            **dual_source,
+            "evidence_graph": {
+                **dual_source["evidence_graph"],
+                "queries": [{"query": "same mechanism", "duration_ms": 42, "cache_hit": False, "path_ids": ["path-1"], "leaf_citations": []}],
+            },
+            "clones": [],
+        }
+        path.write_text(json.dumps(paths_without_leaves), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects graph paths without leaf citations",
+            any("without underlying leaf citations" in failure for failure in failures),
+        )
+
+        shadow_influence = {
+            **dual_source,
+            "evidence_graph": {**dual_source["evidence_graph"], "used_for_plan": True},
+            "clones": [],
+        }
+        path.write_text(json.dumps(shadow_influence), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects shadow graph influence",
+            any("must be false in shadow mode" in failure for failure in failures),
+        )
+
+        degraded_graph = {
+            **dual_source,
+            "evidence_graph": {
+                "requested": True,
+                "tool": "query_test_evidence_graph",
+                "status": "degraded",
+                "influence_mode": "shadow",
+                "used_for_plan": False,
+                "generation_id": None,
+                "queries": [],
+                "degraded_reason": "graph service unavailable; direct evidence retained",
+            },
+            "clones": [],
+        }
+        path.write_text(json.dumps(degraded_graph), encoding="utf-8")
+        check(
+            "run_gates allows explicit graph degraded mode",
+            run_gates.check_manifest_completeness(str(path)) == [],
         )
 
         path.write_text(json.dumps({

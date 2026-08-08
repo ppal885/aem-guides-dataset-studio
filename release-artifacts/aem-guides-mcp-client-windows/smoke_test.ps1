@@ -16,6 +16,7 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
 $env:PYTHONUTF8 = "1"
 
 $code = @'
+import json
 import os
 import asyncio
 import importlib.util
@@ -47,38 +48,48 @@ print("aem_upload.node_module:", Path("node_modules/@adobe/aem-upload").exists()
 if not Path("node_modules/@adobe/aem-upload").exists():
     raise SystemExit("@adobe/aem-upload missing; rerun setup/install")
 
-with httpx.Client(timeout=60) as client:
-    qa_health = client.get(f"{url}/api/v1/qa-studio/health", headers=headers)
-    qa_health.raise_for_status()
-    qa_health_payload = qa_health.json()
-    print("qa_studio.status:", qa_health_payload.get("status"))
-    print("qa_studio.service:", qa_health_payload.get("service"))
-
-    remote_mcp = client.get(f"{url}/mcp/health", headers=headers)
-    remote_mcp.raise_for_status()
-    remote_mcp_payload = remote_mcp.json()
-    print("remote_mcp.status:", remote_mcp_payload.get("status"))
-    print("remote_mcp.tools:", remote_mcp_payload.get("tools"))
-
-    rag = client.get(f"{url}/api/v1/ai/rag-status", headers=headers, params={"tenant_id": "default"})
-    rag.raise_for_status()
-    rag_payload = rag.json()
-    print("rag.chroma_available:", rag_payload.get("chroma_available"))
-    print("rag.aem_guides.chunk_count:", (rag_payload.get("aem_guides") or {}).get("chunk_count"))
-    print("rag.dita_spec.chunk_count:", (rag_payload.get("dita_spec") or {}).get("chunk_count"))
-    print("rag.jira_qa.chunk_count:", (rag_payload.get("jira_qa") or {}).get("chunk_count"))
-
-    lookup = client.post(
-        f"{url}/api/v1/mcp/lookup-aem-guides",
+def rpc(client, method, params):
+    response = client.post(
+        f"{url}/mcp",
         headers=headers,
-        json={"query": "AEM Guides postprocessing ignored paths enabled paths rules"},
+        json={"jsonrpc": "2.0", "id": method, "method": method, "params": params},
     )
-    lookup.raise_for_status()
-    lookup_payload = lookup.json()
-    print("lookup.count:", lookup_payload.get("count"))
-    if lookup_payload.get("results"):
-        first = lookup_payload["results"][0]
-        print("lookup.first_source:", first.get("source"))
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("error"):
+        raise SystemExit(f"MCP error: {payload['error']}")
+    return payload.get("result") or {}
+
+
+def tool_result(client, name, arguments):
+    result = rpc(client, "tools/call", {"name": name, "arguments": arguments})
+    content = result.get("content") or []
+    text = content[0].get("text", "{}") if content else "{}"
+    return json.loads(text)
+
+
+with httpx.Client(timeout=60) as client:
+    listed = rpc(client, "tools/list", {})
+    remote_names = {item.get("name") for item in listed.get("tools", [])}
+    required_remote = {"ask_dita_expert", "search_jira_history", "query_test_evidence_graph", "check_rag_status"}
+    missing = sorted(required_remote - remote_names)
+    print("remote_mcp.tools:", sorted(remote_names))
+    if missing:
+        raise SystemExit(f"Missing remote MCP tools: {missing}")
+
+    rag_payload = tool_result(client, "check_rag_status", {"tenant_id": "kone"})
+    print("rag.chroma_available:", rag_payload.get("chroma_available"))
+    print("rag.collections:", rag_payload.get("collections"))
+    print("graph.status:", (rag_payload.get("evidence_graph") or {}).get("status"))
+
+    graph_payload = tool_result(
+        client,
+        "query_test_evidence_graph",
+        {"query": "documented AEM Guides image map hotspot behaviour", "tenant_id": "kone"},
+    )
+    if "status" not in graph_payload or "evidence_paths" not in graph_payload or "query_runtime" not in graph_payload:
+        raise SystemExit(f"Invalid graph query contract: {graph_payload}")
+    print("graph.query.status:", graph_payload.get("status"))
 
 module_path = Path("server.py").resolve()
 spec = importlib.util.spec_from_file_location("aem_guides_mcp_client_server", module_path)
@@ -88,7 +99,13 @@ spec.loader.exec_module(mod)
 
 async def check_tools():
     names = [tool.name for tool in await mod.list_tools()]
-    expected = ["ask_dita_expert", "upload_dataset_to_aem"]
+    expected = [
+        "ask_dita_expert",
+        "search_jira_history",
+        "query_test_evidence_graph",
+        "check_rag_status",
+        "upload_dataset_to_aem",
+    ]
     print("wrapper.tools:", names)
     if names != expected:
         raise SystemExit(f"Unexpected MCP tools exposed: {names}")

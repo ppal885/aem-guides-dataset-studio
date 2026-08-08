@@ -15,8 +15,8 @@ Use exactly these sections. Keep every line as a bullet.
 - Evidence boundary: <live Jira, indexed Jira, supplied incident, customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
-- AC-01 [Confirmed]: ...
-- AC-02 [Proposed]: ...
+- AC-01 [Confirmed]: <precondition, trigger, and observable outcome> | Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
+- AC-02 [Proposed]: <precondition, trigger, and observable outcome> | Evidence: <underlying source, never only a graph path ID>.
 
 **Expected Behaviour**
 - ...
@@ -76,6 +76,7 @@ Use exactly these sections. Keep every line as a bullet.
 - Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
 - For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
 - Customer ticket frequencies describe what is frequently represented or affected in the Jira corpus; they do not prove feature usage or product behaviour.
+- Every P0/P1-mapped AC ends with `| Evidence:` and cites the underlying source. Graph path IDs stay internal traceability metadata.
 
 ## Stage Mapping
 

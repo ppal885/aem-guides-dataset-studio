@@ -17,6 +17,8 @@ class TestPlanPipelineRequest(BaseModel):
     max_repo_matches: int = Field(default=30, ge=5, le=100)
     skip_uac_label_gate: bool = False
     full_rag: bool = True
+    include_evidence_graph: bool = True
+    graph_max_paths: int = Field(default=20, ge=1, le=50)
     include_uac_intelligence: bool = True
     compose_draft_plan: bool = True
     write_starling_artifacts: bool = False

@@ -48,6 +48,7 @@ def _load(module_name: str, filename: str):
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
+graph_manifest_mod = _load("evidence_graph_manifest", "evidence_graph_manifest.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -57,6 +58,7 @@ REQUIRED_MANIFEST_KEYS = (
     "jira_history_tool",
     "jira_history_queries",
     "indexed_history_run",
+    "evidence_graph",
     "clones",
 )
 
@@ -143,6 +145,7 @@ def check_manifest_completeness(path: str | None) -> list[str]:
                 f"both RAG tool paths, their queries, attachments, and clone state"
             )
     failures.extend(_validate_dual_source_evidence(data))
+    failures.extend(graph_manifest_mod.validate_evidence_graph_manifest(data))
     clones = data.get("clones")
     if isinstance(clones, list):
         for entry in clones:
@@ -185,6 +188,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_validator()
             self_tests.test_verifier()
             self_tests.test_attachment_manifest()
+            self_tests.test_run_gates()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

@@ -19,13 +19,13 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.auth import CurrentUser, UserIdentity
-from app.services.customer_tokens import clean_customer_tokens
+from app.core.structured_logging import get_structured_logger
 from app.services.jira_component_metadata_service import (
     CANONICAL_JIRA_COMPONENTS,
-    canonical_component_name,
 )
 
 router = APIRouter(prefix="/mcp", tags=["remote-mcp"])
+logger = get_structured_logger(__name__)
 
 
 class JsonRpcRequest(BaseModel):
@@ -115,8 +115,36 @@ def _tools() -> list[dict[str, Any]]:
         ),
         _tool(
             "check_rag_status",
-            "Return VM RAG/Chroma readiness and indexed corpus counts.",
+            "Return VM RAG/Chroma readiness, evidence-graph health, and indexed corpus counts.",
             _schema({"tenant_id": {"type": "string", "default": "kone"}}),
+        ),
+        _tool(
+            "query_test_evidence_graph",
+            (
+                "Connect product documentation, DITA constraints, releases, and same-mechanism Jira history "
+                "through the audited evidence graph. Graph paths are traceability metadata; every result "
+                "includes the underlying Jira, URL, chunk, or DITA leaf citations."
+            ),
+            _schema(
+                {
+                    "query": {"type": "string"},
+                    "jira_key": {"type": "string", "default": ""},
+                    "customer": {"type": "string", "default": ""},
+                    "component": {
+                        "type": "string",
+                        "enum": ["", *CANONICAL_JIRA_COMPONENTS],
+                        "default": "",
+                    },
+                    "outputs": {"type": "array", "items": {"type": "string"}, "default": []},
+                    "dita_entities": {"type": "array", "items": {"type": "string"}, "default": []},
+                    "include_cross_customer": {"type": "boolean", "default": True},
+                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 2, "default": 2},
+                    "top_k": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
+                    "max_paths": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+                    "tenant_id": {"type": "string", "default": "kone"},
+                },
+                ["query"],
+            ),
         ),
         _tool(
             "search_jira_history",
@@ -141,7 +169,7 @@ def _tools() -> list[dict[str, Any]]:
                     },
                     "customer": {"type": "string", "default": ""},
                     "exclude_jira_key": {"type": "string", "default": ""},
-                    "top_k": {"type": "integer", "default": 10},
+                    "top_k": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
                 },
                 ["query"],
             ),
@@ -214,7 +242,7 @@ async def remote_mcp_json_rpc(
             arguments = payload.params.get("arguments") or {}
             if not isinstance(arguments, dict):
                 return _rpc_error(payload.id, -32602, "Tool arguments must be an object")
-            result = await _call_tool(call_name, arguments)
+            result = await _call_tool(call_name, arguments, user=user)
             return _rpc_tool_result(payload.id, result)
         return _rpc_error(payload.id, -32601, f"Method not found: {payload.method}")
     except ValidationError as exc:
@@ -223,7 +251,12 @@ async def remote_mcp_json_rpc(
         return _rpc_tool_result(payload.id, f"{type(exc).__name__}: {exc}", is_error=True)
 
 
-async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
+async def _call_tool(
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    user: UserIdentity | None = None,
+) -> Any:
     tools: dict[str, Callable[[dict[str, Any]], Any]] = {
         "ask_dita_expert": _ask_dita_expert,
         "generate_dita_ot_output": _generate_dita_ot_output,
@@ -234,6 +267,10 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> Any:
         "audit_jira_corpus": _audit_jira_corpus,
         "audit_knowledge_corpora": _audit_knowledge_corpora,
     }
+    if name == "query_test_evidence_graph":
+        if user is None:
+            raise ValueError("Authenticated user context is required for evidence graph queries.")
+        return _query_test_evidence_graph(arguments, user)
     if name not in tools:
         raise ValueError(f"Unknown tool: {name}")
     result = tools[name](arguments)
@@ -461,6 +498,27 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
             "state": None,
             "repair_command": None,
         }
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import graph_status
+
+    session = SessionLocal()
+    try:
+        evidence_graph = graph_status(session)
+    finally:
+        session.close()
+    failed_keys = []
+    if isinstance(cursor_status.get("state"), dict):
+        failed_keys = list(cursor_status["state"].get("failed_keys") or [])
+    evidence_graph["jira_current_validation"] = {
+        "status": "degraded" if "search" in failed_keys else "available",
+        "historical_indexed_evidence_usable": True,
+        "mutable_jira_facts_verified": "search" not in failed_keys,
+        "reason": (
+            "Live Jira search is unavailable; indexed history remains usable, but status, resolution, and version facts require live validation."
+            if "search" in failed_keys
+            else None
+        ),
+    }
     return {
         "status": "ok",
         "tenant_id": str(arguments.get("tenant_id") or "kone"),
@@ -482,142 +540,70 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
             "admin_api": "/api/v1/admin/rag/knowledge-audit",
             "note": "Use the audit to distinguish authoritative coverage from secondary or missing topic evidence.",
         },
+        "evidence_graph": evidence_graph,
     }
 
 
-def _jira_json_list(raw: Any) -> list[str]:
-    if isinstance(raw, list):
-        return [str(x).strip() for x in raw if str(x).strip()]
-    text = str(raw or "").strip()
-    if not text:
-        return []
-    try:
-        data = json.loads(text)
-        if isinstance(data, list):
-            return [str(x).strip() for x in data if str(x).strip()]
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
-    return [text]
+def _query_test_evidence_graph(arguments: dict[str, Any], user: UserIdentity) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        raise ValueError("query is required")
+    tenant_id = str(arguments.get("tenant_id") or "kone").strip() or "kone"
+    from app.services.tenant_service import ensure_user_can_access_tenant
+
+    normalized_tenant = ensure_user_can_access_tenant(user, tenant_id)
+    roles = {str(role).strip().casefold() for role in user.roles}
+    allow_cross_customer_details = user.is_admin or "knowledge_reader" in roles
+    from app.services.evidence_graph_query_service import query_test_evidence_graph
+
+    result = query_test_evidence_graph(
+        query,
+        jira_key=str(arguments.get("jira_key") or ""),
+        customer=str(arguments.get("customer") or ""),
+        component=str(arguments.get("component") or ""),
+        outputs=[str(value) for value in (arguments.get("outputs") or [])],
+        dita_entities=[str(value) for value in (arguments.get("dita_entities") or [])],
+        include_cross_customer=bool(arguments.get("include_cross_customer", True)),
+        max_depth=arguments.get("max_depth", 2),
+        top_k=arguments.get("top_k", 10),
+        max_paths=arguments.get("max_paths", 20),
+        tenant_id=normalized_tenant,
+        allow_cross_customer_details=allow_cross_customer_details,
+        actor_id=user.id,
+        influence_mode="interactive",
+    )
+    from app.services.evidence_graph_contract import stable_digest
+
+    logger.info_structured(
+        "evidence_graph_query_audit",
+        extra_fields={
+            "user_id": user.id,
+            "tenant_id": normalized_tenant,
+            "query_hash": stable_digest(query, length=24),
+            "jira_key": str(arguments.get("jira_key") or "").strip().upper(),
+            "component": str(arguments.get("component") or ""),
+            "include_cross_customer": bool(arguments.get("include_cross_customer", True)),
+            "cross_customer_details_authorized": allow_cross_customer_details,
+            "generation_id": (result.get("generation") or {}).get("id"),
+            "path_count": len(result.get("evidence_paths") or []),
+            "cross_customer_aggregate_count": int(
+                (result.get("cross_customer_aggregate") or {}).get("same_mechanism_ticket_count", 0)
+            ),
+        },
+    )
+    return result
 
 
 def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
-    query = str(arguments.get("query") or "").strip()
-    if not query:
-        return {"error": "Provide a 'query' describing the defect or behaviour to search for."}
-    requested_component = str(arguments.get("component") or "").strip()
-    component = canonical_component_name(requested_component)
-    if requested_component and not component:
-        return {
-            "error": "Unsupported Jira component.",
-            "component": requested_component,
-            "allowed_components": list(CANONICAL_JIRA_COMPONENTS),
-        }
-    customer = str(arguments.get("customer") or "").strip()
-    # The issue being planned is itself in the corpus and will otherwise rank #1
-    # against its own description; never return it as its own "past similar" hit.
-    exclude_jira_key = str(arguments.get("exclude_jira_key") or "").strip().upper()
-    try:
-        top_k = int(arguments.get("top_k") or 10)
-    except (TypeError, ValueError):
-        top_k = 10
-    top_k = max(1, min(top_k, 30))
+    from app.services.jira_history_search_service import search_jira_history_evidence
 
-    from app.services.vector_store_service import (
-        CHROMA_COLLECTION_JIRA_QA,
-        get_collection_count,
-        is_chroma_available,
+    return search_jira_history_evidence(
+        str(arguments.get("query") or ""),
+        component=str(arguments.get("component") or ""),
+        customer=str(arguments.get("customer") or ""),
+        exclude_jira_key=str(arguments.get("exclude_jira_key") or ""),
+        top_k=arguments.get("top_k") or 10,
     )
-    from app.services.embedding_service import is_embedding_available
-
-    chroma_ok = is_chroma_available()
-    embed_ok = is_embedding_available()
-    indexed = get_collection_count(CHROMA_COLLECTION_JIRA_QA) if chroma_ok else 0
-    searched = bool(chroma_ok and embed_ok and indexed > 0)
-
-    hits: list[dict[str, Any]] = []
-    if searched:
-        from app.services.jira_qa_retrieval_service import semantic_search_jira_qa
-
-        hits = semantic_search_jira_qa(
-            query,
-            top_k=top_k + (1 if exclude_jira_key else 0),
-            exclude_jira_key=exclude_jira_key or None,
-            customer=customer or None,
-            base_components=[component] if component else None,
-            customer_names=[customer] if customer else None,
-        )
-
-    results: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for hit in hits:
-        if len(results) >= top_k:
-            break
-        key = str(hit.get("jira_key") or "").strip()
-        if not key or key in seen:
-            continue
-        if exclude_jira_key and key.upper() == exclude_jira_key:
-            continue
-        seen.add(key)
-        meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
-        learning = hit.get("learning") if isinstance(hit.get("learning"), dict) else {}
-        matching_components = hit.get("matching_components") or []
-        # Sanitize customer tokens (label pollution) before returning them.
-        raw_customers = _jira_json_list(meta.get("customer_names")) or _jira_json_list(meta.get("customer"))
-        clean_customers = clean_customer_tokens(raw_customers)
-        scalar_customer = clean_customer_tokens([meta.get("customer") or ""])
-        results.append(
-            {
-                "jira_key": key,
-                "summary": hit.get("title") or meta.get("title") or "",
-                "status": meta.get("status") or "",
-                "resolution": meta.get("resolution") or "",
-                "components": list(matching_components) or _jira_json_list(meta.get("components")),
-                "customer": (scalar_customer[0] if scalar_customer else (clean_customers[0] if clean_customers else "")),
-                "customers": clean_customers,
-                "labels": _jira_json_list(meta.get("labels")),
-                "fix_versions": _jira_json_list(meta.get("fix_versions")),
-                "affected_versions": _jira_json_list(meta.get("affected_versions")),
-                "score": round(float(hit.get("score") or 0.0), 4),
-                "why_similar": hit.get("why_similar") or "",
-                "historical_outcome": learning.get("historical_outcome") or "",
-                "is_verified_fix": learning.get("is_verified_fix"),
-                "root_cause": learning.get("root_cause") or "",
-                "qa_oracle": learning.get("qa_oracle") or "",
-                "observed_problem": learning.get("observed_problem") or "",
-            }
-        )
-
-    # "Never say absent" guard: a caller must be able to tell an *empty search*
-    # apart from a *skipped search*, and must never conclude a ticket does not
-    # exist just because retrieval was unavailable or nothing crossed threshold.
-    if not searched:
-        note = (
-            f"jira_qa was NOT searched (chroma_available={chroma_ok}, "
-            f"embedding_available={embed_ok}, indexed_chunks={indexed}). "
-            "Do NOT conclude any ticket is absent from history - retrieval was unavailable."
-        )
-    elif not results:
-        note = (
-            f"Searched {indexed} indexed jira_qa chunks and found no match above threshold for "
-            "this query/filters. This means no similar ticket surfaced, NOT that the ticket does "
-            "not exist. Broaden the query or intentionally drop the component/customer filter and retry before "
-            "asserting there is no history."
-        )
-    else:
-        note = (
-            f"Searched {indexed} indexed jira_qa chunks; returning {len(results)} ranked "
-            "matches (most-similar first)."
-        )
-
-    return {
-        "searched_jira_qa": searched,
-        "indexed_chunks": indexed,
-        "component_filter": component or None,
-        "customer_filter": customer or None,
-        "match_count": len(results),
-        "results": results,
-        "note": note,
-    }
 
 
 def _audit_jira_corpus(arguments: dict[str, Any]) -> dict[str, Any]:
