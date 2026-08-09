@@ -1018,6 +1018,60 @@ Use this human-authored UAC as the reference for a UI feature whose accepted con
 
 Before automation handoff, define old/new baseline fixtures (`UAC-03`), the selected-version oracles for conditions, direct/indirect references, and keys (`UAC-07`, `UAC-08`, `UAC-12`), resolve the dynamic-loader contradiction (`UAC-10`), and approve measurable performance limits (`UAC-16`). Keep revert/rollback, version-specific metadata editing, Reports, and linked implementation defects outside Confirmed AC unless a newer accepted Jira clause explicitly adds them.
 
+## Caution Reference: GUIDES-31711 DITAVAL Taxonomy Complaint Closed as Working as Designed
+
+Use this example to prevent a customer complaint, screenshots, or a standards interpretation from being promoted into accepted UAC when Jira contains no accepted criteria and the product decision is `Working as Designed`. It is valuable historical context and regression evidence, but it is not a trusted behavior contract for a taxonomy-changing enhancement.
+
+### Verified Current Evidence
+
+- Repository Search shows `Ditaval Files` as a dedicated filter under `Non-DITA Files`.
+- The DITAVAL creation flow uses the generic `New topic` dialog and a `Ditaval` template.
+- Reports display a `.ditaval` asset with file type `Others`.
+- The closed Jira clarification says all three choices are intentional: Repository Search uses a dedicated DITAVAL filter, the creation surface uses `topic` as a generic editable-piece abstraction, and Reports uses `Others` unless a separate enhancement requests a new category.
+- The same clarification says a distinct Reports category or harmonized taxonomy requires an enhancement request rather than a bug fix.
+
+### Standards And Authority Boundary
+
+- OASIS DITA defines DITAVAL as a document type for conditional-processing profiles. It is not a DITA topic or DITA map.
+- The DITA standard does not prescribe AEM Guides UI taxonomy, search-facet placement, creation-dialog labels, or Reports categories.
+- `Other DITA type document` in the complaint is a requested interpretation, not accepted AEM Guides UI copy.
+- The problem statement and screenshots prove the observed differences; they do not prove that the differences are defects.
+- The Jira has no accepted UAC. Therefore `accepted_uac_present=false`, no clause may become `[Confirmed]`, and historical reuse remains `candidate`/non-fix caution.
+
+### What The Analyzer Must Learn
+
+- Keep the complaint lines as context statements, not acceptance clauses.
+- Tag the evidence with `ditaval_asset`, `repository_search`, `creation_dialog`, `reports`, `file_type_taxonomy`, and `cross_touchpoint_taxonomy` so similar tickets can retrieve the decision.
+- Preserve the historical outcome as `expected_product_behavior` or non-fix decision.
+- Use the decision to challenge a new plan that assumes all three surfaces must use the same label without approved enhancement UAC.
+- Never use this ticket alone to define a new canonical DITAVAL enum, UI label, migration rule, API value, or report-export value.
+
+### Proposed Enhancement ACs Only
+
+- No Confirmed AC is justified by GUIDES-31711.
+- AC-01 [Proposed]: (Scope) Given product management has approved an exact canonical DITAVAL taxonomy and label in a new enhancement Jira | When that enhancement is implemented | Then its accepted UAC explicitly identifies which of Repository Search, creation, Reports, APIs, and exports must adopt the taxonomy and which current surface semantics remain unchanged.
+- AC-02 [Proposed]: (Repository Search) Given the approved enhancement keeps the dedicated DITAVAL search capability | When a user filters repository assets for DITAVAL | Then only matching `.ditaval` assets are returned under the approved category without reducing the current filter's discoverability.
+- AC-03 [Proposed]: (Creation UI) Given the approved enhancement defines DITAVAL creation terminology | When a user selects the `Ditaval` template | Then the dialog uses the approved DITAVAL wording and creates the same valid `.ditaval` asset without changing topic, map, or Markdown creation behavior.
+- AC-04 [Proposed]: (Reports) Given the approved enhancement defines the Reports file-type value for DITAVAL | When a report contains a `.ditaval` asset | Then the row displays and filters by that exact approved value instead of silently inheriting a different surface's label.
+
+### Required Open Questions Before Automation Handoff
+
+- What exact canonical display label and persisted enum are approved, and are they intentionally different?
+- Is Repository Search expected to remain under `Non-DITA Files` because that grouping serves search behavior, or must only its display label change?
+- Must the creation dialog stop using the generic `topic` abstraction, or is only helper text/template labeling changing?
+- Does Reports scope include the UI table only, or also downloaded CSV, APIs, saved filters, sorting, and analytics?
+- Must existing `.ditaval` assets be reindexed or migrated, and what is the backward-compatible value for older records?
+- Which AEM Guides versions, old/new editor surfaces, locales, roles, and upgrade paths are in scope?
+- No performance AC is justified by the supplied ticket because it contains no workload, latency, scale, concurrency, or resource-risk signal.
+
+### Regression Areas
+
+- Repository Search filter counts, combined filters, clear/reset behavior, and `.ditaval`-only result accuracy.
+- DITAVAL template selection, filename/extension handling, validation, save, reopen, and editing.
+- Reports file-type display, filtering, sorting, refresh, and download behavior if the enhancement includes those surfaces.
+- Existing DITA topic, DITA map, Markdown, image, multimedia, document, and JSON classifications must not move unintentionally.
+- Customer-specific permissions and KONE content must not change the taxonomy outcome unless the enhancement explicitly introduces tenant configuration.
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
