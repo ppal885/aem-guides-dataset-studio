@@ -764,6 +764,12 @@ def enrich_jira(jira: dict[str, Any]) -> JiraEnrichedDocument:
         for c in comps_raw:
             if isinstance(c, dict) and c.get("name"):
                 raw_components.append(str(c["name"]).strip())
+    source_components = fields.get("_components_raw")
+    if not isinstance(source_components, list):
+        source_components = list(raw_components)
+    source_components = [
+        str(component).strip() for component in source_components if str(component).strip()
+    ]
     components = canonical_component_names(raw_components)
     noncanonical_components = [
         component for component in raw_components if not canonical_component_name(component)
@@ -813,7 +819,11 @@ def enrich_jira(jira: dict[str, Any]) -> JiraEnrichedDocument:
         "jira_components": {
             "canonical": components,
             "raw": raw_components,
+            "source_raw": source_components,
             "noncanonical": noncanonical_components,
+            "assignment_method": str(
+                fields.get("_component_assignment_method") or "source"
+            )[:80],
         },
         "missing_info": missing,
         "qa_risk_tags": risks,

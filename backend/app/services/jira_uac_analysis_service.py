@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-UAC_SCHEMA_VERSION = "historical-uac-v1"
+UAC_SCHEMA_VERSION = "historical-uac-v3"
 UAC_ANALYSIS_METHOD = "deterministic-rules"
 UAC_CONTRACT_CHUNK_TYPE = "historical_uac_contract_chunk"
 UAC_CLAUSE_CHUNK_TYPE = "historical_uac_clause_chunk"
@@ -48,7 +48,7 @@ _CLOSED_STATUSES = {"closed", "resolved", "done", "complete", "completed"}
 _OPEN_RESOLUTION_VALUES = {"", "none", "null", "open", "unresolved", "unspecified"}
 _ACCEPTED_UAC_LABELS = {"uacdone", "uacapproved", "uacaccepted", "uacverified"}
 _OUT_OF_SCOPE_RE = re.compile(
-    r"\b(?:out\s+of\s+scope|outside\s+(?:the\s+)?scope|not\s+in\s+scope|not\s+needed|"
+    r"\b(?:out\s+of\s+scope|outside\s+(?:the\s+)?scope|beyond\s+(?:the\s+)?scope|not\s+in\s+scope|not\s+needed|"
     r"not\s+part\s+of\s+(?:this|the)\s+(?:ticket|requirement))\b",
     re.I,
 )
@@ -59,17 +59,21 @@ _ACCEPTANCE_HEADER_RE = re.compile(
     re.I,
 )
 _CONTEXT_HEADER_RE = re.compile(
-    r"^\s*(?:problem\s+statement|business\s+impact|background|issue\s+description|description)[\s:\u2013\u2014-]*$",
+    r"^\s*(?:problem\s+statement|business\s+impact|background|issue\s+description|description|automation)[\s:\u2013\u2014-]*$",
     re.I,
 )
 _HEADING_RE = re.compile(
-    r"^\s*(?:capabilities?\s+needed|catalyst|notes?)[\s:\u2013\u2014-]*$",
+    r"^\s*(?:capabilities?\s+needed|catalyst|notes?|other\s+pointers?)[\s:\u2013\u2014-]*$",
+    re.I,
+)
+_FUNCTIONAL_SCOPE_HEADER_RE = re.compile(
+    r"^\s*overall\s+functionality\b.{0,180}\bshould\s+work\s*:?\s*$",
     re.I,
 )
 _MATRIX_HEADER_RE = re.compile(r"^\s*following\s+validations?\s+to\s+work\s+as\s+is\s*:\s*$", re.I)
 _ROLLOUT_CONTEXT_RE = re.compile(r"^\s*we\s+will\s+be\s+providing\s+(?:a\s+)?fix\s+in\b", re.I)
 _PENDING_LINKED_SCOPE_RE = re.compile(
-    r"\b(?:more\s+information\s+awaited|scope\s+will\s+be\s+discussed)\b",
+    r"\b(?:more\s+information\s+awaited|scope\s*:?\s*will\s+be\s+discussed|will\s+be\s+discussed\s+and\s+updated)\b",
     re.I,
 )
 _LIST_PREFIX_RE = re.compile(r"^\s*(?:[-*+\u2022\u25cf\u25aa]+|\d{1,3}[.)]|[A-Za-z][.)])\s+")
@@ -105,6 +109,11 @@ _JIRA_REFERENCE_PREFIX_RE = re.compile(
     re.I,
 )
 _NO_FEATURE_FLAG_RE = re.compile(r"^\s*feature\s+flag\s*[-:]\s*(?:no|none|not\s+required|without)\b", re.I)
+_NO_ACCEPTED_UAC_RE = re.compile(
+    r"^(?:(?:uac|acceptance\s+criteri(?:a|on))\s*[:\-]?\s*)?"
+    r"(?:not\s+required|not\s+applicable|n\s*/?\s*a|none)\.?$",
+    re.I,
+)
 _NOT_APPLICABLE_RE = re.compile(r"(?:\bnot\s+applicable\b|(?<![A-Z0-9])N\s*/?\s*A(?![A-Z0-9]))", re.I)
 _CONFIGURATION_STATE_PAIR_RE = re.compile(
     r"\b(?:on\s*/\s*off|on\s+and\s+off|enabled\s*/\s*disabled|enabled\s+and\s+disabled)\b",
@@ -146,6 +155,67 @@ _VERIFICATION_RESULT_RE = re.compile(
     r"retained|preserved|matches?|successful|works?)\b",
     re.I,
 )
+_TENTATIVE_CAUSAL_EVIDENCE_RE = re.compile(
+    r"\b(?:root\s+cause\s+(?:could|may|might)|could\s+be\s+linked|may\s+be|might\s+be|"
+    r"seems?\s+to|appears?\s+to|potential(?:ly)?|hypothesis|to\s+confirm|"
+    r"suggest(?:s|ed|ing)?\s+(?:disabling|checking|verifying)|if\s+this\s+is\s+in\s+fact)\b",
+    re.I,
+)
+_CONFIRMED_CAUSAL_EVIDENCE_RE = re.compile(
+    r"\b(?:root\s+cause\s+(?:is|was)|this\s+indicated\s+a\s+problem|"
+    r"issue\s+(?:is|was)\s+environment[-\s]specific|"
+    r"re-?index(?:ing|ed)[^.;\n]{0,140}(?:fixed|resolved)|"
+    r"(?:fixed|resolved)[^.;\n]{0,100}after\s+re-?index(?:ing|ed)|"
+    r"initial\s+assumption[^.;\n]{0,140}(?:invalid|incorrect|ruled\s+out))\b",
+    re.I,
+)
+_CUSTOMER_VALIDATION_RE = re.compile(
+    r"\b(?:customer|[A-Z][A-Za-z0-9_-]+\s+(?:IT|team))?[^.;\n]{0,80}"
+    r"tested\s+and\s+validated[^.;\n]{0,120}(?:fixed|resolved|working)\b",
+    re.I,
+)
+_ACCEPTANCE_EXECUTION_RE = re.compile(
+    r"\b(?:ticket|issue)\s+(?:passes|passed)\s+all(?:\s+the)?(?:\s+mentioned)?\s+"
+    r"(?:points?\s+of\s+)?acceptance\s+criteri(?:a|on)\b",
+    re.I,
+)
+_EXECUTED_TEST_RE = re.compile(
+    r"\btested\b[^.\n]{0,260}\b(?:build|file[-\s]?sets?|smaller|bigger|larger|button|"
+    r"progress(?:\s+bar)?|common\s+tags?|select\s+all|filters?|broken\s+links?)\b",
+    re.I,
+)
+_VERIFIED_VERSION_RE = re.compile(
+    r"\bverified\s+on\s+(?:build\s+)?[\"']?v?\d+(?:\.\d+){1,3}[\"']?\b",
+    re.I,
+)
+_HOTFIX_VERSION_VALIDATION_RE = re.compile(
+    r"\b(?:this\s+is\s+)?(?:working\s+fine|works?|verified|validated)\s+on\s+"
+    r"(?:the\s+)?hotfix\s+[\"']?v?\d+(?:\.\d+){1,3}[\"']?\b",
+    re.I,
+)
+_HOTFIX_ONLY_SCOPE_RE = re.compile(
+    r"\b(?:this\s+)?ticket\s+is\s+created\s+for\s+[^\n]{0,80}\bhotfix\s+only\b",
+    re.I,
+)
+_MAINLINE_UAC_SCOPE_RE = re.compile(
+    r"\bUAC\b[^.\n]{0,120}\b(?:is\s+)?(?:done|applies?|scoped)\s+for\s+"
+    r"(?:\d{4}|\d+(?:\.\d+){1,3})\b",
+    re.I,
+)
+_HOTFIX_POINT_FIX_RE = re.compile(
+    r"\bfor\s+(?:the\s+)?hotfix\b[^.\n]{0,260}\b(?:point\s+fix|just\s+(?:done|includes?)|only)\b",
+    re.I,
+)
+_COMMENT_ENTRY_START_RE = re.compile(r"(?m)^\[[^\]\n]{4,100}\]\s+[^:\n]{1,180}:\s*")
+_COMMENT_TIMESTAMP_RE = re.compile(r"^\[(?P<timestamp>\d{4}-\d{2}-\d{2}(?:[T ][^\]]+)?)\]")
+_FINAL_SCOPE_HEADER_RE = re.compile(r"(?im)^\s*(?:(?:final|accepted|agreed)\s+)?scope\s*:\s*(?:.*)$")
+_FINAL_SCOPE_PHRASE_RE = re.compile(
+    r"\b(?:final|accepted|agreed)\s+scope\b|"
+    r"\bscope\s+of\s+(?:this\s+)?(?:bug|ticket|fix|change|jira)\s+"
+    r"(?:is|was)\s+(?:limited|restricted|narrowed)\s+to\b",
+    re.I,
+)
+_COMMENT_FOOTER_RE = re.compile(r"^\s*(?:cc\b|regards\b|pin\b)", re.I)
 _UAC_DESCRIPTION_MARKER_RE = re.compile(
     r"(?is)##\s*UAC\s+Criteria\s*\(custom\s+field\)\s*\n(?P<uac>.+)$"
 )
@@ -190,10 +260,65 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("editor_parity", re.compile(r"\b(?:old\s+editor|new\s+editor|both\s+editors?|web\s*editor|ckeditor|markup\s*editor)\b", re.I)),
     ("versioning", re.compile(r"\b(?:version|checkpoint|working\s+copy|purge|rollback|revert)\b", re.I)),
     ("conditions", re.compile(r"\b(?:conditions?|ditaval|conditional)\b", re.I)),
+    (
+        "condition_groups",
+        re.compile(
+            r"\b(?:condition\s+groups?|grouped\s+conditions?|condition\s+grouping|"
+            r"existing\s+conditions?[^.;\n]{0,80}\bgroups?|its\s+group)\b",
+            re.I,
+        ),
+    ),
+    ("condition_color", re.compile(r"\b(?:condition\s+)?colou?r\b|\byellow\b", re.I)),
+    ("folder_profile", re.compile(r"\b(?:folder\s+profile|FP)\b", re.I)),
+    ("add_condition", re.compile(r"\b(?:add|adding|create|creating)\s+(?:a\s+)?new\s+conditions?\b", re.I)),
+    ("edit_condition", re.compile(r"\b(?:edit|editing|update|updating)\s+(?:an?\s+)?existing\s+conditions?\b", re.I)),
     ("ditaval_asset", re.compile(r"\bditaval(?:\s+files?)?\b", re.I)),
     ("repository_search", re.compile(r"\brepository\s+search\b|\brepository\b[^.;]{0,80}\bfilter", re.I)),
     ("creation_dialog", re.compile(r"\bditaval\s+creation\b|\bnew\s+topic\b|\bcreat(?:e|es|ed|ing)\b[^.;]{0,80}\bditaval\b", re.I)),
     ("reports", re.compile(r"\b(?:metadata\s+reports?|reports?)\b", re.I)),
+    ("metadata_report", re.compile(r"\bmetadata\s+report\b", re.I)),
+    ("metadata_manage", re.compile(r"\b(?:manage\s+(?:button|dialog|functionality)|reports?\s*>\s*metadata|metadata\s+(?:center|panel))\b", re.I)),
+    ("manage_button", re.compile(r"\bmanage\s+button\b", re.I)),
+    ("common_tags", re.compile(r"\bcommon\s+tags?\b", re.I)),
+    ("document_state", re.compile(r"\b(?:document|doc)\s+state\b", re.I)),
+    ("select_all", re.compile(r"\b(?:select\s+all|allAssets\s*=\s*true)\b", re.I)),
+    ("selective_assets", re.compile(r"\b(?:selective\s+(?:list\s+of\s+)?(?:assets?|files?)|selected\s+(?:assets?|files?))\b", re.I)),
+    ("dita_asset", re.compile(r"\bDITA\s+(?:files?|assets?)\b", re.I)),
+    ("non_dita_asset", re.compile(r"\bnon[-\s]?DITA(?:\s+(?:files?|assets?))?\b", re.I)),
+    ("cloud", re.compile(r"\bcloud\b", re.I)),
+    ("on_prem", re.compile(r"\bon[-\s]?prem(?:ise)?\b", re.I)),
+    ("custom_tags", re.compile(r"\bcustom\s+tags?\b", re.I)),
+    ("ootb_tags", re.compile(r"\b(?:OOTB|out[-\s]?of[-\s]?the[-\s]?box)\s+tags?\b", re.I)),
+    ("bulk_operation", re.compile(r"\bbulk\s+operation\b", re.I)),
+    ("updated_count", re.compile(r"\b(?:files?\s+updated|updated\s+(?:files?|count))\b", re.I)),
+    ("skipped_count", re.compile(r"\b(?:files?\s+skipped|skipped(?:\s+files?)?[^.;\n]{0,60}\bcount(?:ed)?)\b", re.I)),
+    ("error_message", re.compile(r"\b(?:proper|actionable|correct)\s+error\s+message\b", re.I)),
+    ("timeout", re.compile(r"\btime(?:d)?\s*out|\btimeout\b", re.I)),
+    ("loader", re.compile(r"\b(?:loader|progress\s+(?:bar|indicator))\b", re.I)),
+    ("disabled_state", re.compile(r"\b(?:button\s+)?(?:is|be|gets?|remain(?:s)?)?\s*disabled\b", re.I)),
+    ("enabled_state", re.compile(r"\b(?:button\s+)?(?:is|be|gets?|remain(?:s)?)?\s*enabled\b", re.I)),
+    ("loading_shimmer", re.compile(r"\bloading\s+shimmer\b|\bshimmer\b", re.I)),
+    ("broken_links", re.compile(r"\bbroken\s+links?\b", re.I)),
+    ("fix_links", re.compile(r"\bfix\s+links?\b|\bfix\s+link\s+button\b", re.I)),
+    ("filter_scope", re.compile(r"\bfilters?\s+(?:panel|applied|should\s+work|work\s+as\s+is)\b", re.I)),
+    ("visible_assets", re.compile(r"\b(?:files?|assets?)\s+(?:present|visible)\b", re.I)),
+    ("api_response", re.compile(r"\bAPI\s+response\b", re.I)),
+    ("all_assets", re.compile(r"\ballAssets\b|\ball\s+assets\b", re.I)),
+    ("uuid_to_path", re.compile(r"\bconvert(?:ing)?\s+UUID\s+to\s+path\b|\bUUID[-\s]?to[-\s]?path\b", re.I)),
+    ("full_scan", re.compile(r"\b(?:scann?ing\s+(?:of\s+)?all\s+data|full\s+(?:repository|data)\s+scan)\b", re.I)),
+    ("http_503", re.compile(r"\b503\b", re.I)),
+    ("resource_stability", re.compile(r"\b(?:CPU|memory|pod|environment)\b[^.;\n]{0,100}\b(?:spike|crash|usage|load)\b", re.I)),
+    ("duplicate_trigger_prevention", re.compile(r"\b(?:multiple|duplicate)\s+(?:triggers?|API\s+calls?)\b", re.I)),
+    ("api_path", re.compile(r"\bbin/guides/v1/map/reports/metadata/tags/common\b", re.I)),
+    ("file_type_filter", re.compile(r"\b(?:file\s+type|type)\s+filter(?:ing)?\b|\bDITA\s+Topic\b", re.I)),
+    ("custom_namespace", re.compile(r"\b(?:custom\s+namespace|namespaced\s+propert(?:y|ies)|test:type)\b", re.I)),
+    ("type_filter", re.compile(r"\bTypeFilter\b", re.I)),
+    ("oak_index", re.compile(r"\b(?:Oak\s+index|Lucene\s+index|custom\s+index|indexing)\b", re.I)),
+    ("dam_asset_lucene", re.compile(r"\bdamAssetLucene\b", re.I)),
+    ("reindexing", re.compile(r"\bre-?index(?:ing|ed)?\b", re.I)),
+    ("environment_specific", re.compile(r"\benvironment[-\s]specific\b", re.I)),
+    ("filter_union", re.compile(r"\b(?:both|combined?|combining)\b[^.;]{0,80}\b(?:filters?|DITA\s+Topic|Others)\b", re.I)),
+    ("result_count", re.compile(r"\b\d[\d,]*\s+(?:files?|results?|assets?)\b", re.I)),
     (
         "file_type_taxonomy",
         re.compile(
@@ -210,6 +335,33 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.I,
         ),
     ),
+    ("navtitle", re.compile(r"\b(?:navtitle|navigation\s+title)\b", re.I)),
+    ("toolbar_customization", re.compile(r"\b(?:toolbar|top\s+toolbar|relationship\s+table)\b", re.I)),
+    ("custom_button", re.compile(r"\b(?:custom\s+(?:button|action)|Export\s+PDF)\b", re.I)),
+    ("preview_mode", re.compile(r"\bpreview\s+mode\b", re.I)),
+    ("locked_state", re.compile(r"\b(?:file\s+is\s+locked|locked\s+file|lock\s+scenario|locked)\b", re.I)),
+    ("unlocked_state", re.compile(r"\b(?:file\s+is\s+unlocked|unlocked\s+file|unlock\s+scenario|unlocked)\b", re.I)),
+    (
+        "editor_toolbar_configuration",
+        re.compile(r"\beditor_toolbar\.(?:js|json)\b", re.I),
+    ),
+    (
+        "configuration_migration",
+        re.compile(r"\b(?:port(?:ed|ing)?|migrat(?:e|ed|ing))\b[^.;\n]{0,120}\beditor_toolbar\.(?:js|json)\b", re.I),
+    ),
+    (
+        "ui_configuration",
+        re.compile(r"\b(?:ui[_\s-]*config(?:\.json)?|ditaAttributes|required\s+navtitle)\b", re.I),
+    ),
+    (
+        "configuration_visibility",
+        re.compile(
+            r"\b(?:show\s*/\s*hide|show(?:s|n|ing)?|hide(?:s|den)?|absent|visible|visibility|"
+            r"button\s+(?:comes?\s+up|appears?|disappears?|is\s+removed))\b",
+            re.I,
+        ),
+    ),
+    ("documentation_gap", re.compile(r"\b(?:documentation|documented|deprecat(?:e|ed|ion|ing))\b", re.I)),
     ("ditavalref", re.compile(r"\bditavalrefs?\b", re.I)),
     ("conditional_preset", re.compile(r"\bconditional\s+presets?\b", re.I)),
     ("references", re.compile(r"\b(?:direct\s+references?|indirect\s+references?|references?|topic-?refs?|href|xref|conref)\b", re.I)),
@@ -245,6 +397,8 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("reference_integrity", re.compile(r"\b(?:broken\s+references?|breaks?\s+the\s+refs?|resolve\s+correctly|not\s+broken)\b", re.I)),
     ("guid_identity", re.compile(r"\b(?:original\s+guid|new\s+guid|guid\s+assigned|guid\s+minted|spurious\s+new\s+guid)\b", re.I)),
     ("uuid_property", re.compile(r"\buuid\s+property\b", re.I)),
+    ("uuid_variant", re.compile(r"\buuid\b", re.I)),
+    ("non_uuid_variant", re.compile(r"\bnon[-\s]?uuid\b", re.I)),
     ("translation", re.compile(r"\btranslat(?:e|ed|ion|ing)\b", re.I)),
     ("translation_v1", re.compile(r"\bv1(?:\s+translation|\s*/\s*translation|\s+workflow)?\b", re.I)),
     ("translation_v2", re.compile(r"\bv2(?:\s+translation|\s+workflow)?\b", re.I)),
@@ -390,6 +544,7 @@ class HistoricalUacAnalysis:
     jira_key: str
     source_hash: str
     source_authority: str
+    source_origin: str
     reuse_tier: str
     historical_outcome: str
     issue_closed: bool
@@ -404,6 +559,9 @@ class HistoricalUacAnalysis:
     explicit_test_evidence: bool
     root_cause_source: str
     test_evidence_source: str
+    release_scope_evidence: str
+    release_scope_source: str
+    release_scope_split: bool
 
     @property
     def in_scope_clauses(self) -> tuple[HistoricalUacClause, ...]:
@@ -457,6 +615,12 @@ def _normalize_source_text(raw_text: str) -> str:
     return text.strip()
 
 
+def is_no_uac_sentinel(value: Any) -> bool:
+    """Return true only for a whole-field marker that explicitly says no UAC exists."""
+    normalized = _clean(_normalize_source_text(str(value or ""))).strip()
+    return bool(normalized and _NO_ACCEPTED_UAC_RE.fullmatch(normalized))
+
+
 def extract_historical_uac_text(
     *,
     description: str = "",
@@ -493,6 +657,147 @@ def _extract_comment_section(document: str, labels_pattern: str) -> str:
     return _clean(match.group("body"))[:2400]
 
 
+def _comment_entries(comment_documents: list[str] | tuple[str, ...]) -> list[str]:
+    entries: list[str] = []
+    for document in comment_documents:
+        text = _normalize_source_text(document)
+        if not text:
+            continue
+        starts = list(_COMMENT_ENTRY_START_RE.finditer(text))
+        if not starts:
+            entries.append(text)
+            continue
+        for index, start in enumerate(starts):
+            end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
+            entry = text[start.start() : end].strip()
+            if entry:
+                entries.append(entry)
+    return entries
+
+
+def is_explicit_final_scope_comment(value: Any) -> bool:
+    """Return true only for comments that explicitly declare a final/scoped contract."""
+    text = _normalize_source_text(str(value or ""))
+    if not text:
+        return False
+    if _FINAL_SCOPE_PHRASE_RE.search(text):
+        return True
+    header = _FINAL_SCOPE_HEADER_RE.search(text)
+    if not header:
+        return False
+    header_remainder = header.group(0).split(":", 1)[1].strip() if ":" in header.group(0) else ""
+    scoped_lines = [header_remainder, *text[header.end() :].splitlines()]
+    return any(
+        len(_TOKEN_RE.findall(line)) >= 3
+        and not _PENDING_LINKED_SCOPE_RE.search(line)
+        and not _COMMENT_FOOTER_RE.match(line)
+        for line in scoped_lines
+        if line.strip()
+    )
+
+
+def _comment_body(entry: str) -> str:
+    text = _normalize_source_text(entry)
+    text = _COMMENT_ENTRY_START_RE.sub("", text, count=1).strip()
+    if text.casefold().startswith("discussion:"):
+        text = text.split(":", 1)[1].strip()
+    return text
+
+
+def _comment_recency_key(entry: str, index: int) -> tuple[int, str, int]:
+    match = _COMMENT_TIMESTAMP_RE.match(entry.strip())
+    if match:
+        return 1, match.group("timestamp"), index
+    return 0, "", index
+
+
+def _extract_final_scope_text(entry: str) -> str:
+    body = _comment_body(entry)
+    if not body or not is_explicit_final_scope_comment(body):
+        return ""
+    lines = body.splitlines()
+    header_indexes = [index for index, line in enumerate(lines) if _FINAL_SCOPE_HEADER_RE.match(line)]
+    if header_indexes:
+        start = header_indexes[-1]
+    else:
+        start = next(
+            (index for index, line in enumerate(lines) if _FINAL_SCOPE_PHRASE_RE.search(line)),
+            0,
+        )
+    scoped_lines: list[str] = []
+    for line in lines[start:]:
+        if scoped_lines and _COMMENT_FOOTER_RE.match(line):
+            break
+        scoped_lines.append(line.rstrip())
+    preceding_out_of_scope = [
+        line.strip()
+        for line in lines[:start]
+        if line.strip() and _OUT_OF_SCOPE_RE.search(line)
+    ]
+    text = "\n".join(scoped_lines).strip()
+    if preceding_out_of_scope:
+        text += "\nOut of Scope:\n" + "\n".join(preceding_out_of_scope)
+    return text.strip()
+
+
+def extract_comment_accepted_uac(
+    *,
+    labels: list[str] | tuple[str, ...] = (),
+    comment_documents: list[str] | tuple[str, ...] = (),
+) -> tuple[str, str]:
+    """Recover a final scoped UAC comment only when Jira explicitly marks UAC accepted."""
+    normalized_labels = {_normalized_label(label) for label in labels}
+    if not normalized_labels & _ACCEPTED_UAC_LABELS:
+        return "", "missing"
+    candidates: list[tuple[tuple[int, str, int], str]] = []
+    for index, entry in enumerate(_comment_entries(comment_documents)):
+        scope_text = _extract_final_scope_text(entry)
+        if scope_text:
+            candidates.append((_comment_recency_key(entry, index), scope_text))
+    if not candidates:
+        return "", "missing"
+    candidates.sort(key=lambda candidate: candidate[0])
+    return candidates[-1][1], "jira_comment_accepted_scope"
+
+
+def resolve_historical_uac_text(
+    *,
+    acceptance_criteria: str = "",
+    labels: list[str] | tuple[str, ...] = (),
+    description: str = "",
+    raw_text: str = "",
+    fallback_documents: list[str] | tuple[str, ...] = (),
+    comment_documents: list[str] | tuple[str, ...] = (),
+) -> tuple[str, str]:
+    """Resolve accepted UAC deterministically, preferring the native field over comments."""
+    field_text = str(acceptance_criteria or "").strip() or extract_historical_uac_text(
+        description=description,
+        raw_text=raw_text,
+        fallback_documents=fallback_documents,
+    )
+    if field_text:
+        if is_no_uac_sentinel(field_text):
+            return "", "jira_no_uac_sentinel"
+        return field_text, "jira_acceptance_field"
+    return extract_comment_accepted_uac(labels=labels, comment_documents=comment_documents)
+
+
+def _root_cause_candidate_score(text: str, source: str) -> int:
+    confirmed_count = len(_CONFIRMED_CAUSAL_EVIDENCE_RE.findall(text))
+    if _TENTATIVE_CAUSAL_EVIDENCE_RE.search(text) and confirmed_count == 0:
+        return -1
+    score = {
+        "jira_comment_root_cause": 6,
+        "jira_comment_explicit_analysis": 5,
+        "jira_comment_confirmed_root_cause": 4,
+    }[source]
+    score += confirmed_count * 3
+    score += int(bool(_CAUSAL_EVIDENCE_RE.search(text)))
+    score += 2 * int(bool(re.search(r"\binitial\s+assumption\b.+\binvalid\b", text, re.I)))
+    score += 2 * int(bool(re.search(r"\bdamAssetLucene\b|\benvironment[-\s]specific\b", text, re.I)))
+    return score
+
+
 def extract_explicit_root_cause_evidence(
     *,
     field_value: str = "",
@@ -501,13 +806,26 @@ def extract_explicit_root_cause_evidence(
     field_text = _clean(field_value)
     if field_text:
         return field_text[:2400], "jira_root_cause_field"
-    for document in comment_documents:
-        section = _extract_comment_section(document, r"root\s+cause")
+    candidates: list[tuple[int, int, str, str]] = []
+    for index, document in enumerate(_comment_entries(comment_documents)):
+        section = _extract_comment_section(document, r"root\s+cause|rca")
         if section:
-            return section, "jira_comment_root_cause"
+            score = _root_cause_candidate_score(section, "jira_comment_root_cause")
+            if score >= 0:
+                candidates.append((score, index, section, "jira_comment_root_cause"))
         section = _extract_comment_section(document, r"analysis")
         if section and _CAUSAL_EVIDENCE_RE.search(section):
-            return section, "jira_comment_explicit_analysis"
+            score = _root_cause_candidate_score(section, "jira_comment_explicit_analysis")
+            if score >= 0:
+                candidates.append((score, index, section, "jira_comment_explicit_analysis"))
+        text = _clean(document)[:2400]
+        if _CONFIRMED_CAUSAL_EVIDENCE_RE.search(text):
+            score = _root_cause_candidate_score(text, "jira_comment_confirmed_root_cause")
+            if score >= 0:
+                candidates.append((score, index, text, "jira_comment_confirmed_root_cause"))
+    if candidates:
+        _, _, evidence, source = max(candidates, key=lambda item: (item[0], item[1]))
+        return evidence, source
     return "", "missing"
 
 
@@ -519,13 +837,16 @@ def extract_explicit_test_evidence(
     field_text = _clean(field_value)
     if field_text:
         return field_text[:2400], "jira_test_plan_field"
-    for document in comment_documents:
+    candidates: list[tuple[int, int, str, str]] = []
+    version_validations: list[str] = []
+    entries = _comment_entries(comment_documents)
+    for index, document in enumerate(entries):
         section = _extract_comment_section(document, r"qa\s+verification|verification")
         if section and _VERIFICATION_RESULT_RE.search(section):
-            return section, "jira_comment_qa_verification"
+            candidates.append((12, index, section, "jira_comment_qa_verification"))
         section = _extract_comment_section(document, r"after\s+fix")
         if section and _VERIFICATION_RESULT_RE.search(section):
-            return section, "jira_comment_after_fix"
+            candidates.append((11, index, section, "jira_comment_after_fix"))
         text = _normalize_source_text(document)
         match = re.search(
             rf"(?is)\bverified\s+on\s+build[^\n]*(?:\n(?P<body>.+?))?(?=\n\s*(?:{_COMMENT_SECTION_HEADERS})\s*:?|\Z)",
@@ -534,7 +855,70 @@ def extract_explicit_test_evidence(
         if match:
             evidence = _clean(match.group(0))[:2400]
             if _VERIFICATION_RESULT_RE.search(evidence):
-                return evidence, "jira_comment_verified_build"
+                candidates.append((12, index, evidence, "jira_comment_verified_build"))
+        normalized = _clean(document)[:2400]
+        if (
+            _VERIFIED_VERSION_RE.search(normalized)
+            or _HOTFIX_VERSION_VALIDATION_RE.search(normalized)
+        ) and normalized not in version_validations:
+            version_validations.append(normalized)
+        acceptance_score = 0
+        if _ACCEPTANCE_EXECUTION_RE.search(normalized):
+            acceptance_score += 10
+        if _EXECUTED_TEST_RE.search(normalized):
+            acceptance_score += 12
+        if acceptance_score:
+            acceptance_score += 2 * int(bool(_VERIFICATION_RESULT_RE.search(normalized)))
+            acceptance_score += 2 * int(
+                bool(re.search(r"\b(?:disabled|progress\s+bar|common\s+tags?|select\s+all)\b", normalized, re.I))
+            )
+            candidates.append(
+                (acceptance_score, index, normalized, "jira_comment_acceptance_validation")
+            )
+        if _CUSTOMER_VALIDATION_RE.search(normalized):
+            candidates.append((9, index, normalized, "jira_comment_customer_validation"))
+    if version_validations:
+        candidates.append(
+            (
+                10,
+                len(entries),
+                " | ".join(version_validations)[:2400],
+                "jira_comment_version_validation",
+            )
+        )
+    if candidates:
+        _, _, evidence, source = max(candidates, key=lambda item: (item[0], item[1]))
+        return evidence, source
+    return "", "missing"
+
+
+def extract_release_scope_evidence(
+    *,
+    comment_documents: list[str] | tuple[str, ...] = (),
+) -> tuple[str, str]:
+    """Return an explicit mainline-UAC versus hotfix point-fix boundary."""
+    candidates: list[tuple[int, str]] = []
+    entries = _comment_entries(comment_documents)
+    for index, document in enumerate(entries):
+        normalized = _normalize_source_text(document)
+        if not (
+            _HOTFIX_ONLY_SCOPE_RE.search(normalized)
+            and _MAINLINE_UAC_SCOPE_RE.search(normalized)
+            and _HOTFIX_POINT_FIX_RE.search(normalized)
+        ):
+            continue
+        relevant_lines = [
+            _clean(line)
+            for line in normalized.splitlines()
+            if _HOTFIX_ONLY_SCOPE_RE.search(line)
+            or _MAINLINE_UAC_SCOPE_RE.search(line)
+            or _HOTFIX_POINT_FIX_RE.search(line)
+        ]
+        evidence = _clean(" ".join(relevant_lines))[:1200]
+        if evidence:
+            candidates.append((index, evidence))
+    if candidates:
+        return candidates[-1][1], "jira_comment_release_scope"
     return "", "missing"
 
 
@@ -625,6 +1009,7 @@ def _source_fragments(raw_text: str) -> tuple[list[tuple[str, str]], bool]:
         if pending_parent is not None and pending_parent[3] in {"numbered", "example"}:
             is_section_header = bool(
                 _ACCEPTANCE_HEADER_RE.match(line)
+                or _FUNCTIONAL_SCOPE_HEADER_RE.match(line)
                 or _CONTEXT_HEADER_RE.match(line)
                 or _OUT_OF_SCOPE_HEADER_RE.match(line)
                 or _IN_SCOPE_HEADER_RE.match(line)
@@ -639,6 +1024,10 @@ def _source_fragments(raw_text: str) -> tuple[list[tuple[str, str]], bool]:
                 pending_parent[2].append(line)
                 continue
         if _ACCEPTANCE_HEADER_RE.match(line):
+            flush_parent()
+            mode = "in_scope"
+            continue
+        if _FUNCTIONAL_SCOPE_HEADER_RE.match(line):
             flush_parent()
             mode = "in_scope"
             continue
@@ -929,9 +1318,12 @@ def analyze_historical_uac(
     test_evidence: str = "",
     root_cause_source: str = "",
     test_evidence_source: str = "",
+    release_scope_evidence: str = "",
+    release_scope_source: str = "",
+    acceptance_source: str = "",
 ) -> HistoricalUacAnalysis | None:
     source_text = _normalize_source_text(acceptance_criteria)
-    if not jira_key.strip() or not source_text:
+    if not jira_key.strip() or not source_text or is_no_uac_sentinel(source_text):
         return None
     source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     fragments, source_truncated = _source_fragments(source_text)
@@ -984,6 +1376,19 @@ def analyze_historical_uac(
     clauses = _apply_scope_target_gaps(clauses)
     clauses = _apply_numbered_scope_gaps(clauses, source_text)
     contradictions = _contradictions(clauses)
+    resolved_release_scope_source = release_scope_source.strip() or (
+        "jira_comment_release_scope" if _clean(release_scope_evidence) else "missing"
+    )
+    release_scope_split = bool(_clean(release_scope_evidence)) and resolved_release_scope_source != "missing"
+    if release_scope_split:
+        contradictions = tuple(
+            dict.fromkeys(
+                (
+                    *contradictions,
+                    "Accepted UAC is scoped to a separate mainline release; this Jira is explicitly limited to a hotfix point fix.",
+                )
+            )
+        )
     all_dimensions = tuple(sorted({dimension for clause in clauses for dimension in clause.dimensions}))
     performance_clauses = [clause for clause in clauses if "performance" in clause.dimensions]
     unresolved_in_scope = [clause for clause in clauses if clause.kind == "in_scope" and clause.unresolved]
@@ -1010,14 +1415,18 @@ def analyze_historical_uac(
         reuse_tier = "supporting"
     else:
         reuse_tier = "candidate"
+    if release_scope_split:
+        reuse_tier = "candidate"
     normalized_labels = {_normalized_label(label) for label in labels or []}
     source_authority = (
         "jira_accepted_uac" if normalized_labels & _ACCEPTED_UAC_LABELS else "jira_acceptance_field"
     )
+    source_origin = acceptance_source.strip() or "jira_acceptance_field"
     return HistoricalUacAnalysis(
         jira_key=jira_key.strip().upper(),
         source_hash=source_hash,
         source_authority=source_authority,
+        source_origin=source_origin,
         reuse_tier=reuse_tier,
         historical_outcome=outcome,
         issue_closed=issue_closed,
@@ -1033,6 +1442,9 @@ def analyze_historical_uac(
         explicit_test_evidence=explicit_test_evidence,
         root_cause_source=resolved_root_cause_source,
         test_evidence_source=resolved_test_evidence_source,
+        release_scope_evidence=_clean(release_scope_evidence)[:1200],
+        release_scope_source=resolved_release_scope_source,
+        release_scope_split=release_scope_split,
     )
 
 
@@ -1043,6 +1455,7 @@ def _base_metadata(analysis: HistoricalUacAnalysis) -> dict[str, Any]:
         "uac_llm_used": False,
         "uac_source_hash": analysis.source_hash,
         "uac_source_authority": analysis.source_authority,
+        "uac_source_origin": analysis.source_origin,
         "uac_reuse_tier": analysis.reuse_tier,
         "uac_source_truncated": analysis.source_truncated,
         "uac_contract_complete": analysis.contract_complete,
@@ -1058,6 +1471,8 @@ def _base_metadata(analysis: HistoricalUacAnalysis) -> dict[str, Any]:
         "uac_performance_complete": analysis.performance_contract_complete,
         "uac_root_cause_source": analysis.root_cause_source,
         "uac_test_evidence_source": analysis.test_evidence_source,
+        "uac_release_scope_split": analysis.release_scope_split,
+        "uac_release_scope_source": analysis.release_scope_source,
     }
 
 
@@ -1092,6 +1507,12 @@ def build_historical_uac_chunks(analysis: HistoricalUacAnalysis) -> list[dict[st
         )
     if analysis.contradictions:
         contract_lines.append("Contradictions: " + " | ".join(analysis.contradictions))
+    if analysis.release_scope_split:
+        contract_lines.append(
+            "Release-scope boundary: the accepted UAC belongs to a separate mainline release; only the explicitly listed hotfix point fix may be reused for this Jira."
+        )
+        contract_lines.append(f"Release-scope source: {analysis.release_scope_source}")
+        contract_lines.append(f"Release-scope evidence: {analysis.release_scope_evidence}")
     if analysis.source_truncated:
         contract_lines.append(
             "Source truncation: more than 200 unique clauses were present; this contract is incomplete and cannot be reused."

@@ -183,6 +183,14 @@ def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) ->
 
     confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
     outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
+    resolution_mechanism = str(
+        metadata.get("resolution_mechanism") or evidence_value("resolution mechanism") or "legacy_unknown"
+    ).strip()
+    resolution_evidence_source = str(
+        metadata.get("resolution_evidence_source")
+        or evidence_value("resolution evidence source")
+        or "legacy_unknown"
+    ).strip()
     contract_complete = (
         _metadata_bool(metadata.get("behavior_contract_complete"))
         if "behavior_contract_complete" in metadata
@@ -222,6 +230,8 @@ def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) ->
         "chunk_type": "learning_behavior_chunk",
         "learning_confidence": confidence,
         "historical_outcome": outcome,
+        "resolution_mechanism": resolution_mechanism,
+        "resolution_evidence_source": resolution_evidence_source,
         "is_verified_fix": verified_fix,
         "reuse_mode": "verified_regression_contract" if reusable_fix else "risk_signal_only",
         "behavior_contract_source": behavior_contract_source,
@@ -263,7 +273,10 @@ def extract_structured_uac_evidence(row: RetrievedJira | dict[str, Any]) -> dict
             break
     tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
     contract_complete = _metadata_bool(metadata.get("uac_contract_complete"))
-    if tier == "historical_verified" and contract_complete:
+    release_scope_split = _metadata_bool(metadata.get("uac_release_scope_split"))
+    if release_scope_split:
+        reuse_mode = "risk_signal_only"
+    elif tier == "historical_verified" and contract_complete:
         reuse_mode = "historical_verified_contract"
     elif tier == "supporting" and contract_complete:
         reuse_mode = "supporting_uac_contract"
@@ -286,6 +299,8 @@ def extract_structured_uac_evidence(row: RetrievedJira | dict[str, Any]) -> dict
         "source_text": source_text,
         "performance_matters": _metadata_bool(metadata.get("uac_performance_matters")),
         "performance_complete": _metadata_bool(metadata.get("uac_performance_complete")),
+        "release_scope_split": release_scope_split,
+        "release_scope_source": str(metadata.get("uac_release_scope_source") or ""),
     }
 
 
@@ -293,7 +308,11 @@ def _chunk_utility_bonus(chunk_type: str, metadata: dict[str, Any]) -> float:
     bonus = _CHUNK_TYPE_WEIGHT.get(chunk_type, 0.0)
     if chunk_type.startswith("historical_uac_"):
         tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
-        if _metadata_bool(metadata.get("uac_clause_unresolved")) or tier == "candidate":
+        if (
+            _metadata_bool(metadata.get("uac_clause_unresolved"))
+            or _metadata_bool(metadata.get("uac_release_scope_split"))
+            or tier == "candidate"
+        ):
             return min(bonus, 0.01)
         if tier == "historical_verified" and _metadata_bool(metadata.get("uac_contract_complete")):
             return bonus + 0.02

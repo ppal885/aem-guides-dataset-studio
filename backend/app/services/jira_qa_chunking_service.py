@@ -135,13 +135,14 @@ def _build_base_metadata(
     pr = fields.get("priority") or {}
     priority = str(pr.get("name") or "") if isinstance(pr, dict) else ""
 
+    active_components = _components_list(fields)
     csv_raw_components = fields.get("_components_raw")
     raw_components = (
         [str(value).strip() for value in csv_raw_components if str(value).strip()]
         if isinstance(csv_raw_components, list)
-        else _components_list(fields)
+        else active_components
     )
-    components = canonical_component_names(raw_components)
+    components = canonical_component_names(active_components)
     labels = _labels_list(fields)
     meta: dict[str, Any] = {
         "source_type": "jira",
@@ -159,6 +160,9 @@ def _build_base_metadata(
         "components_raw": _json_meta(raw_components),
         "component_primary": component_primary_from_names(components),
         "component_filter_schema_version": COMPONENT_FILTER_SCHEMA_VERSION,
+        "component_assignment_method": str(
+            fields.get("_component_assignment_method") or "source"
+        )[:80],
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
         "affected_versions": _json_meta(_versions(fields, "versions")),

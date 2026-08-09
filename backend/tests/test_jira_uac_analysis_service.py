@@ -12,8 +12,12 @@ from app.services.jira_uac_analysis_service import (
     UAC_SCHEMA_VERSION,
     analyze_historical_uac,
     build_historical_uac_chunks,
+    extract_comment_accepted_uac,
     extract_explicit_root_cause_evidence,
     extract_explicit_test_evidence,
+    extract_release_scope_evidence,
+    is_no_uac_sentinel,
+    resolve_historical_uac_text,
 )
 from app.services.jira_uac_backfill_service import build_sql_uac_rows
 
@@ -160,6 +164,16 @@ Check for content moved/baseline created before upgrading the server
 No changes in normal workflows for translation asset retrieval, acceptance, rejection, xliff, human and machine
 """
 
+FOLDER_PROFILE_SCOPE_COMMENTS = """
+[2024-11-21T10:00:00.000+0000] developer: Scope:
+Folder Profile will not show groups, but saving must preserve the existing group values.
+[2024-11-26T09:00:00.000+0000] qa: As discussed, the scope of this bug is limited to adding new conditions without altering existing ones.
+Editing an existing condition in Folder Profile can remove its group and reset its color to yellow; this is beyond the scope of this bug and should be handled as an enhancement.
+Scope:
+- Add new conditions via Folder Profile, ensuring existing conditions remain unchanged.
+- Editing existing conditions must be done using XML Editor.
+"""
+
 
 DITAVAL_TOUCHPOINT_CONTEXT = """
 Problem Statement:
@@ -171,6 +185,92 @@ Ditaval is treated as DITA topic file.
 TouchPoint 3 - Reports:
 Ditaval is treated as documents/others Type.
 As per DITA standard Ditaval is Other DITA type document.
+"""
+
+
+NAVTITLE_BUTTON_DECISION_CONTEXT = """
+Problem Statement:
+The enterprise reported that the Refresh Navigation Title Attribute button was absent in 5.0 and asked whether it had been deprecated.
+The final investigation found no product change was required and the feature was working as expected.
+The button is controlled by the existing ui_config ditaAttributes setting.
+The control is rendered in the DITA map toolbar.
+The button is shown when required navtitle is true and the default required object is empty.
+Removing the modified ui_config hides the button again.
+Documentation is required for this configuration behavior.
+"""
+
+
+METADATA_FILTER_TENTATIVE_RCA_COMMENT = """
+[2025-05-06] Support: RCA:
+The root cause could be linked to a custom assetPrefixNodename index, which seems to be impacting the result.
+To confirm, I suggest disabling this index and verifying the result.
+"""
+
+
+METADATA_FILTER_CONFIRMED_RCA_COMMENT = """
+[2025-05-08] Engineering: The query with type=dam:Asset returned one result while the nodename-only query returned the correct result.
+This indicated a problem with indexing of the damAssetLucene index.
+Reindexing this index fixed the filtering results, so the issue is environment-specific where damAssetLucene was not created properly.
+The initial assumption that the customer index or custom namespaced metadata caused the problem is invalid.
+"""
+
+
+METADATA_FILTER_CUSTOMER_VALIDATION_COMMENT = """
+[2025-05-16] Support: KONE IT team has tested and validated that it is fixed after re-indexing.
+"""
+
+
+METADATA_FILTER_DECISION_CONTEXT = """
+Problem Statement:
+The DITA Topic metadata report filter returned 2 files from a corpus of 442 topic files, while combining DITA Topic and Others returned more files.
+The early custom namespace and TypeFilter theory was not confirmed.
+The type=dam:Asset query returned one result while the nodename-only query returned the correct result.
+The final investigation identified an environment-specific damAssetLucene indexing problem.
+Reindexing damAssetLucene fixed the filtering results and KONE validated the remediation.
+"""
+
+
+METADATA_MANAGE_UAC = """
+Overall functionality of manage in reports>metadata should work:
+Tags, document state should be applied on all or selective list of assets.
+Common tags list should be visible in manage dialog and tags should be updated as per the user action.
+It should work for all type of assets (DITA, non-DITA).
+While updating tags or document state, the Manage button should be disabled.
+It should work for both on-prem and cloud versions of Guides.
+Custom tags and OOTB tags should both be updated through Manage.
+For a bulk operation, the report should show files updated and files skipped, including the skipped count.
+Negative scenario dialogs need to be checked.
+If the API does not respond within the timeout, a proper error message should be visible.
+In Fix Links, if a link cannot be fixed, no error dialog is shown and the link remains broken.
+After clicking Manage, a loader should be shown and the button should stay disabled until the API response is received, preventing duplicate API calls.
+The Filters panel should show a loading shimmer until the API response is received.
+The same disabled-state behavior applies to the Fix Link button.
+Other pointers:
+Filters should work as is and Manage should affect only files visible in the Metadata tab.
+Since the API response is being corrected, performance side there will be no change.
+Automation:
+API automation has been added by development.
+UI automation must cover select all, common tags, and Manage disable/enable behavior.
+"""
+
+
+METADATA_MANAGE_RCA_COMMENT = """
+[2025-05-08] Engineering: RCA:
+The feature is broken when allAssets=true. Code is missing the UUID-to-path conversion required while creating the query. This causes null to be passed to the query and scans all data. Common tags are not returned even when present.
+"""
+
+
+METADATA_MANAGE_VALIDATION_COMMENTS = """
+[2025-05-10] Engineering: Acceptance Criteria Looks good to me!
+[2025-05-15] Engineering: The ticket passes all the mentioned points of Acceptance Criteria. EM Review done.
+[2025-06-23] Customer QA: Looks good, Tested for smaller and Bigger file-set. Button gets disabled as the user clicks for the first time and progress bar is shown too.
+"""
+
+
+METADATA_MANAGE_HOTFIX_SCOPE_COMMENT = """
+[2025-05-27] QA: This ticket is created for 5.0.1 hotfix only.
+UAC mentioned in this ticket is done for 2507.
+For hotfix, we have just done the point fix. Manage and broken link buttons are disabled while their process runs and enabled when it completes. Common tags are fixed.
 """
 
 
@@ -236,6 +336,130 @@ def test_problem_statement_only_ditaval_taxonomy_decision_never_becomes_trusted_
     assert all(chunk["uac_reuse_tier"] == "candidate" for chunk in chunks)
     assert "Context statements (not acceptance criteria)" in chunks[0]["chunk_text"]
     assert "candidate clauses may only add open questions or risk coverage" in chunks[0]["chunk_text"]
+
+
+def test_uac_not_required_sentinel_never_creates_historical_acceptance_clauses():
+    assert is_no_uac_sentinel("UAC Not Required") is True
+    assert is_no_uac_sentinel("Acceptance Criteria: N/A") is True
+    assert is_no_uac_sentinel("Navigation title is not required") is False
+
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-30001",
+        acceptance_criteria="UAC Not Required",
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["KONE", "Doc_Required"],
+    )
+
+    assert analysis is None
+
+
+def test_configuration_gated_navtitle_decision_is_candidate_context_not_confirmed_uac():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-30001",
+        acceptance_criteria=NAVTITLE_BUTTON_DECISION_CONTEXT,
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["KONE", "Doc_Required"],
+    )
+
+    assert analysis is not None
+    assert analysis.historical_outcome == "expected_product_behavior"
+    assert analysis.issue_closed is True
+    assert analysis.contract_complete is False
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.in_scope_clauses == ()
+    assert {
+        "configuration",
+        "configuration_visibility",
+        "documentation_gap",
+        "navtitle",
+        "state",
+        "toolbar_customization",
+        "ui",
+        "ui_configuration",
+    }.issubset(set(analysis.dimensions))
+
+    chunks = build_historical_uac_chunks(analysis)
+    assert any(chunk["chunk_type"] == UAC_CONTEXT_CHUNK_TYPE for chunk in chunks)
+    assert not any(chunk["chunk_type"] == UAC_CLAUSE_CHUNK_TYPE for chunk in chunks)
+    assert all(chunk["uac_reuse_tier"] == "candidate" for chunk in chunks)
+
+
+def test_later_confirmed_root_cause_overrides_tentative_metadata_filter_hypothesis():
+    root_cause, source = extract_explicit_root_cause_evidence(
+        comment_documents=[
+            METADATA_FILTER_TENTATIVE_RCA_COMMENT,
+            METADATA_FILTER_CONFIRMED_RCA_COMMENT,
+            METADATA_FILTER_CUSTOMER_VALIDATION_COMMENT,
+        ]
+    )
+
+    assert source == "jira_comment_confirmed_root_cause"
+    assert "damAssetLucene" in root_cause
+    assert "environment-specific" in root_cause
+    assert "initial assumption" in root_cause
+    assert "root cause could be linked" not in root_cause
+
+    tentative_only, tentative_source = extract_explicit_root_cause_evidence(
+        comment_documents=[METADATA_FILTER_TENTATIVE_RCA_COMMENT]
+    )
+    assert tentative_only == ""
+    assert tentative_source == "missing"
+
+
+def test_customer_reindex_validation_is_reusable_verification_evidence():
+    evidence, source = extract_explicit_test_evidence(
+        comment_documents=[METADATA_FILTER_CUSTOMER_VALIDATION_COMMENT]
+    )
+
+    assert source == "jira_comment_customer_validation"
+    assert "tested and validated" in evidence
+    assert "re-indexing" in evidence
+
+
+def test_exact_version_and_hotfix_comments_are_combined_as_validation_evidence():
+    evidence, source = extract_explicit_test_evidence(
+        comment_documents=[
+            '[2025-01-24] QA: Verified on 5.0.207 this has been fixed.',
+            '[2025-03-11] QA: Verified on "4.6.0.164".',
+            '[2025-04-05] QA: This is working fine on hotfix 4.6.4, hence closing this as fixed.',
+        ]
+    )
+
+    assert source == "jira_comment_version_validation"
+    assert "5.0.207" in evidence
+    assert "4.6.0.164" in evidence
+    assert "hotfix 4.6.4" in evidence
+
+
+def test_metadata_filter_index_incident_is_candidate_context_not_product_uac():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-28847",
+        acceptance_criteria=METADATA_FILTER_DECISION_CONTEXT,
+        status="Closed",
+        resolution="",
+        labels=["KONE", "UAC_Not_Required", "Won't_Automate"],
+    )
+
+    assert analysis is not None
+    assert analysis.historical_outcome == "other_resolution"
+    assert analysis.issue_closed is True
+    assert analysis.contract_complete is False
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.in_scope_clauses == ()
+    assert {
+        "dam_asset_lucene",
+        "custom_namespace",
+        "environment_specific",
+        "file_type_filter",
+        "filter_union",
+        "metadata_report",
+        "oak_index",
+        "reindexing",
+        "result_count",
+        "type_filter",
+    }.issubset(set(analysis.dimensions))
 
 
 def test_mathml_uac_separates_reference_and_finds_automation_blocking_gaps():
@@ -620,6 +844,122 @@ HTML5 output is excluded.
     assert caution is not None and caution.reuse_tier == "candidate"
 
 
+def test_bulk_metadata_manage_uac_dedupes_and_preserves_performance_boundary():
+    root_cause, root_cause_source = extract_explicit_root_cause_evidence(
+        comment_documents=[METADATA_MANAGE_RCA_COMMENT]
+    )
+    test_evidence, test_evidence_source = extract_explicit_test_evidence(
+        comment_documents=[METADATA_MANAGE_VALIDATION_COMMENTS]
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-28443",
+        acceptance_criteria=f"{METADATA_MANAGE_UAC}\n{METADATA_MANAGE_UAC}",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+        root_cause=root_cause,
+        root_cause_source=root_cause_source,
+        test_evidence=test_evidence,
+        test_evidence_source=test_evidence_source,
+    )
+
+    assert analysis is not None
+    normalized_clauses = [clause.text.casefold() for clause in analysis.clauses]
+    assert len(normalized_clauses) == len(set(normalized_clauses))
+    assert sum("common tags list" in text for text in normalized_clauses) == 1
+    assert any("api automation" in clause.text.casefold() for clause in analysis.context_clauses)
+    assert analysis.root_cause_source == "jira_comment_root_cause"
+    assert analysis.test_evidence_source == "jira_comment_acceptance_validation"
+    assert "Bigger file-set" in test_evidence
+    assert analysis.performance_matters is True
+    assert analysis.performance_contract_complete is False
+    assert analysis.contract_complete is False
+    assert analysis.reuse_tier == "supporting"
+    assert {
+        "api_response",
+        "bulk_operation",
+        "common_tags",
+        "custom_tags",
+        "disabled_state",
+        "document_state",
+        "fix_links",
+        "loading_shimmer",
+        "metadata_manage",
+        "non_dita_asset",
+        "on_prem",
+        "ootb_tags",
+        "select_all",
+        "skipped_count",
+        "timeout",
+        "visible_assets",
+    }.issubset(set(analysis.dimensions))
+
+
+def test_acceptance_validation_requires_execution_not_signoff_only():
+    evidence, source = extract_explicit_test_evidence(
+        comment_documents=["Acceptance Criteria Looks good to me!"]
+    )
+    assert evidence == ""
+    assert source == "missing"
+
+    evidence, source = extract_explicit_test_evidence(
+        comment_documents=[METADATA_MANAGE_VALIDATION_COMMENTS]
+    )
+    assert source == "jira_comment_acceptance_validation"
+    assert "progress bar is shown" in evidence
+
+
+def test_hotfix_scope_split_blocks_mainline_uac_reuse():
+    release_scope, release_scope_source = extract_release_scope_evidence(
+        comment_documents=[METADATA_MANAGE_HOTFIX_SCOPE_COMMENT]
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-29778",
+        acceptance_criteria=METADATA_MANAGE_UAC,
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+        root_cause="The allAssets query omitted UUID-to-path conversion.",
+        test_evidence="Tested select all, common tags, filters, and broken-link fixing on hotfix 5.0.1.2.",
+        release_scope_evidence=release_scope,
+        release_scope_source=release_scope_source,
+    )
+
+    assert analysis is not None
+    assert analysis.release_scope_split is True
+    assert analysis.release_scope_source == "jira_comment_release_scope"
+    assert "5.0.1 hotfix only" in analysis.release_scope_evidence
+    assert analysis.contract_complete is False
+    assert analysis.reuse_tier == "candidate"
+    assert any("separate mainline release" in warning for warning in analysis.contradictions)
+    contract = build_historical_uac_chunks(analysis)[0]
+    assert contract["uac_release_scope_split"] is True
+    assert contract["uac_release_scope_source"] == "jira_comment_release_scope"
+    assert "only the explicitly listed hotfix point fix may be reused" in contract["chunk_text"]
+
+
+def test_custom_preview_button_contract_has_lock_and_configuration_migration_dimensions():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-28667",
+        acceptance_criteria=(
+            "The custom Export PDF button must be visible in preview mode for both locked and unlocked "
+            "files after porting the configuration to editor_toolbar.json."
+        ),
+        status="Closed",
+        resolution="Fixed",
+    )
+
+    assert analysis is not None
+    assert {
+        "configuration_migration",
+        "custom_button",
+        "editor_toolbar_configuration",
+        "locked_state",
+        "preview_mode",
+        "unlocked_state",
+    }.issubset(set(analysis.dimensions))
+
+
 def test_unspecified_resolution_does_not_make_an_open_issue_closed():
     analysis = analyze_historical_uac(
         jira_key="GUIDES-40001",
@@ -630,6 +970,88 @@ def test_unspecified_resolution_does_not_make_an_open_issue_closed():
 
     assert analysis is not None
     assert analysis.issue_closed is False
+
+
+def test_latest_explicit_scope_comment_becomes_accepted_uac_only_with_accepted_label():
+    text, source = extract_comment_accepted_uac(
+        labels=["KONE", "UAC_Done"],
+        comment_documents=[FOLDER_PROFILE_SCOPE_COMMENTS],
+    )
+
+    assert source == "jira_comment_accepted_scope"
+    assert "Add new conditions via Folder Profile" in text
+    assert "Editing existing conditions must be done using XML Editor" in text
+    assert "beyond the scope of this bug" in text
+    assert "Folder Profile will not show groups" not in text
+
+    unaccepted_text, unaccepted_source = extract_comment_accepted_uac(
+        labels=["KONE"],
+        comment_documents=[FOLDER_PROFILE_SCOPE_COMMENTS],
+    )
+    assert unaccepted_text == ""
+    assert unaccepted_source == "missing"
+
+
+def test_native_no_uac_sentinel_blocks_comment_scope_promotion():
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria="UAC Not Required",
+        labels=["UAC_Done"],
+        comment_documents=[FOLDER_PROFILE_SCOPE_COMMENTS],
+    )
+
+    assert text == ""
+    assert source == "jira_no_uac_sentinel"
+
+
+def test_native_acceptance_field_precedes_comment_scope_and_pending_scope_is_rejected():
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria="Existing condition groups must remain unchanged after save.",
+        labels=["UAC_Done"],
+        comment_documents=[FOLDER_PROFILE_SCOPE_COMMENTS],
+    )
+    assert text == "Existing condition groups must remain unchanged after save."
+    assert source == "jira_acceptance_field"
+
+    pending_text, pending_source = extract_comment_accepted_uac(
+        labels=["UAC_Done"],
+        comment_documents=["[2024-11-27T09:00:00.000+0000] qa: Scope: will be discussed and updated here."],
+    )
+    assert pending_text == ""
+    assert pending_source == "missing"
+
+
+def test_guides_23526_comment_scope_preserves_narrow_final_contract():
+    acceptance_text, acceptance_source = resolve_historical_uac_text(
+        labels=["UAC_Done", "KONE"],
+        comment_documents=[FOLDER_PROFILE_SCOPE_COMMENTS],
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-23526",
+        acceptance_criteria=acceptance_text,
+        acceptance_source=acceptance_source,
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done", "KONE"],
+    )
+
+    assert analysis is not None
+    assert analysis.source_authority == "jira_accepted_uac"
+    assert analysis.source_origin == "jira_comment_accepted_scope"
+    assert {clause.source_id for clause in analysis.in_scope_clauses} == {"UAC-01", "UAC-02"}
+    assert len(analysis.out_of_scope_clauses) == 1
+    assert "Folder Profile will not show groups" not in " ".join(
+        clause.text for clause in analysis.clauses
+    )
+    assert {
+        "add_condition",
+        "condition_color",
+        "condition_groups",
+        "edit_condition",
+        "folder_profile",
+    }.issubset(set(analysis.dimensions))
+    assert analysis.reuse_tier == "supporting"
+    chunks = build_historical_uac_chunks(analysis)
+    assert all(chunk["uac_source_origin"] == "jira_comment_accepted_scope" for chunk in chunks)
 
 
 def test_more_than_two_hundred_unique_clauses_is_explicitly_incomplete():
@@ -717,6 +1139,90 @@ def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
     assert any("final metadata version" in row["document"] for row in rows)
     assert {row["metadata"]["chunk_type"] for row in rows}.issubset(HISTORICAL_UAC_CHUNK_TYPES)
     assert all(row["metadata"]["uac_llm_used"] is False for row in rows)
+
+
+def test_sql_backfill_recovers_accepted_scope_from_comment_when_field_is_missing():
+    issue = JiraEnrichedIssue(
+        id=2,
+        jira_key="GUIDES-23526",
+        summary="Conditional Attribute grouping lost through Folder Profile",
+        description="Folder Profile updates can flatten existing condition groups.",
+        issue_type="Customer Request",
+        status="Closed",
+        priority="Critical",
+        resolution="Fixed",
+        jira_updated_at=datetime(2024, 11, 26, 9, 0, 0),
+        source_type="jira_csv",
+        labels=["UAC_Done", "KONE"],
+        components=["Authoring"],
+        customer_names=["KONE"],
+        domain="authoring",
+        affected_outputs=[],
+        dita_entities=[],
+        qa_risk_tags=["regression"],
+        raw_text="",
+        customer_detection_debug={},
+    )
+    comment = JiraIssueChunk(
+        jira_key=issue.jira_key,
+        chunk_type="comment_chunk",
+        chunk_text="Discussion:\n" + FOLDER_PROFILE_SCOPE_COMMENTS,
+    )
+
+    built = build_sql_uac_rows(issue, [comment])
+
+    assert built is not None
+    analysis, rows = built
+    assert analysis.source_origin == "jira_comment_accepted_scope"
+    assert analysis.source_authority == "jira_accepted_uac"
+    assert any("Add new conditions via Folder Profile" in row["document"] for row in rows)
+    assert all(
+        row["metadata"]["uac_source_origin"] == "jira_comment_accepted_scope"
+        for row in rows
+    )
+
+
+def test_sql_backfill_uses_archived_csv_uac_after_newer_issue_metadata_merge():
+    archived_uac = (
+        "Native PDF output must retain the configured outputclass on MathML.\n"
+        "Out of Scope: iframe outputclass propagation."
+    )
+    issue = JiraEnrichedIssue(
+        id=3,
+        jira_key="GUIDES-22950",
+        summary="MathML outputclass propagation",
+        description="A newer Jira API snapshot without the custom UAC field.",
+        issue_type="Customer Request",
+        status="Closed",
+        priority="Critical",
+        resolution="Fixed",
+        jira_updated_at=datetime(2026, 8, 8, 10, 0, 0),
+        source_type="jira_api",
+        labels=["UAC_Done"],
+        components=["Publishing"],
+        customer_names=["Example Customer"],
+        domain="publishing",
+        affected_outputs=["Native PDF"],
+        dita_entities=["mathml"],
+        qa_risk_tags=["regression"],
+        raw_text="",
+        customer_detection_debug={},
+        evidence_archive={
+            "acceptance_criteria": [archived_uac],
+            "root_causes": [],
+            "test_plans": [],
+            "comments": [],
+        },
+    )
+
+    built = build_sql_uac_rows(issue, [])
+
+    assert built is not None
+    analysis, rows = built
+    assert analysis.source_origin == "jira_acceptance_field"
+    assert analysis.source_authority == "jira_accepted_uac"
+    assert any("configured outputclass" in row["document"] for row in rows)
+    assert any("iframe outputclass" in row["document"] for row in rows)
 
 
 def test_historical_uac_audit_endpoint_is_admin_only_and_returns_stats(client, auth_headers, monkeypatch):
