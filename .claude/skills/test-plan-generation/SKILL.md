@@ -92,6 +92,17 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Split compound requirements when their outcomes can pass or fail independently. Preserve every named enum, mode, project type, provider, state, filter, version boundary, and failure outcome either as its own criterion or as an explicit exhaustive matrix inside one criterion.
 - Convert unclear AC into tester-readable product contracts and keep ambiguity visible. Never infer defaults for omitted filters, duplicate handling, reference classification, rollback, response codes, or status semantics; move undecided behavior to `Open Questions`.
 
+#### Accepted UAC Fidelity Gate
+
+- When Jira or the user supplies final accepted UAC, normalize it instead of independently redesigning it. Preserve 100% of its semantic contract: scope, prerequisites, trigger, expected outcome, ordering, formatting, defaults, exact config names and values, parity targets, and out-of-scope boundaries.
+- Assign internal source IDs (`UAC-01`, `UAC-02`, ...) to every accepted in-scope clause and (`OOS-01`, `OOS-02`, ...) to every out-of-scope clause. Require bidirectional traceability: every accepted in-scope clause maps to at least one `[Confirmed]` AC, and every `[Confirmed]` AC maps back only to accepted clauses.
+- Splitting a compound accepted clause into atomic ACs is allowed; weakening it, broadening it, replacing its oracle, or adding a more specific outcome is not. Preserve exact identifiers such as feature flags, preset arguments, fields, enums, output names, and ordering rules.
+- Treat the newest accepted UAC as higher authority than earlier draft ACs, linked test tickets, RAG, historical Jira, comments, or an earlier generated plan. Keep useful extra coverage `[Proposed]`; never use it to silently change a `[Confirmed]` outcome.
+- When accepted UAC says behaviour must match another surface such as AEM Sites, use that surface as the comparison oracle. Compare the accepted dimensions explicitly: entry presence, visible text, order, formatting, clickability, and destination. Do not invent a more specific result until the reference output has been inspected or Jira states it.
+- When behaviour requires independent controls, such as a server feature flag plus an output-preset argument, keep them separate and cover the configuration truth table. Do not substitute one control for the other or claim the feature is enabled when only one prerequisite is present.
+- Do not turn out-of-scope outputs or behaviours into sign-off ACs. They may appear only as a clearly non-blocking boundary confirmation when needed; a known intentional difference must never be reported as a failure.
+- Record the internal comparison in the evidence manifest under `uac_fidelity` using schema `aem-guides-uac-fidelity-v1`. Set `accepted_uac_present=true`, map every accepted clause, list unresolved clauses, contradictions, and scope expansions, and mark `status=pass` only when all accepted clauses are covered with no unresolved clause, contradiction, or expansion. Keep this audit out of the visible test-plan sections.
+
 ### Phase 2 — Normalize Behaviour
 
 - Convert Jira text into current behaviour, expected behaviour, affected workflow, data shape, error contract, version boundary, configuration boundary, roles/permissions, user impact, and open questions.

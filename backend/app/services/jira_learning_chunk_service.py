@@ -16,6 +16,12 @@ from app.services.jira_component_metadata_service import (
     canonical_component_names,
     component_filter_metadata,
 )
+from app.services.jira_uac_analysis_service import (
+    analyze_historical_uac,
+    extract_explicit_root_cause_evidence,
+    extract_explicit_test_evidence,
+    extract_historical_uac_text,
+)
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, add_documents, is_chroma_available
 
 LEARNING_CHUNK_TYPE = "learning_behavior_chunk"
@@ -61,12 +67,25 @@ def _learning_confidence(
     behavior_contract: str,
     root_cause: str,
     qa_oracle: str,
+    behavior_contract_complete: bool,
+    root_cause_source: str,
+    qa_oracle_source: str,
 ) -> tuple[str, bool]:
     fixed = _clean(resolution, 120).lower() in _FIXED_OUTCOMES
-    verified = bool(fixed and problem and behavior_contract and root_cause and qa_oracle)
+    verified = bool(
+        fixed
+        and problem
+        and behavior_contract
+        and behavior_contract_complete
+        and root_cause
+        and root_cause_source != "missing"
+        and qa_oracle
+        and qa_oracle_source != "generated_fallback"
+        and qa_oracle_source != "missing"
+    )
     if verified:
         return "high", True
-    if fixed and problem and behavior_contract:
+    if fixed and problem and behavior_contract and behavior_contract_complete:
         return "medium", False
     return "caution", False
 
@@ -85,6 +104,10 @@ def build_learning_document(
     root_cause: str,
     qa_oracle: str,
     risks: list[str],
+    behavior_contract_source: str = "jira_expected_behavior_or_uac",
+    behavior_contract_complete: bool = True,
+    root_cause_source: str | None = None,
+    qa_oracle_source: str | None = None,
 ) -> tuple[str, dict[str, Any]] | None:
     """Build one conservative historical-learning chunk without inferring missing facts."""
     resolution = _clean(resolution, 120)
@@ -92,6 +115,8 @@ def build_learning_document(
     behavior_contract = _clean(behavior_contract, 1200)
     root_cause = _clean(root_cause, 900)
     qa_oracle = _clean(qa_oracle, 1000)
+    root_cause_source = root_cause_source or ("jira_root_cause_field" if root_cause else "missing")
+    qa_oracle_source = qa_oracle_source or ("jira_test_plan_field" if qa_oracle else "missing")
     if not resolution or not (problem or behavior_contract):
         return None
 
@@ -101,6 +126,9 @@ def build_learning_document(
         behavior_contract=behavior_contract,
         root_cause=root_cause,
         qa_oracle=qa_oracle,
+        behavior_contract_complete=behavior_contract_complete,
+        root_cause_source=root_cause_source,
+        qa_oracle_source=qa_oracle_source,
     )
     facets = [
         name
@@ -129,9 +157,13 @@ def build_learning_document(
         f"Scope: {' | '.join(scope) if scope else 'not classified'}",
         f"Observed problem: {problem or 'not explicitly captured'}",
         f"Behavior contract: {behavior_contract or 'not explicitly captured'}",
+        f"Behavior contract source: {behavior_contract_source or 'missing'}",
+        f"Behavior contract complete: {str(bool(behavior_contract_complete)).lower()}",
         f"Historical outcome: {resolution}",
         f"Root cause evidence: {root_cause or 'not explicitly captured; do not infer'}",
+        f"Root cause source: {root_cause_source}",
         f"QA oracle: {qa_oracle or 'not explicitly captured; validate independently'}",
+        f"QA oracle source: {qa_oracle_source}",
         f"Regression risks: {', '.join(risks[:10]) if risks else 'not explicitly classified'}",
         (
             "Reuse rule: treat this as historical supporting evidence. "
@@ -144,19 +176,52 @@ def build_learning_document(
         "is_verified_fix": verified_fix,
         "evidence_facets": facets,
         "learning_strategy_version": LEARNING_STRATEGY_VERSION,
+        "behavior_contract_source": behavior_contract_source,
+        "behavior_contract_complete": bool(behavior_contract_complete),
+        "root_cause_source": root_cause_source,
+        "qa_oracle_source": qa_oracle_source,
     }
     return "\n".join(lines)[:6000], metadata
 
 
 def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[str, Any] | None:
-    contract = "\n".join(
-        value.strip()
-        for value in (enriched.expected_behavior, enriched.acceptance_criteria)
-        if value and value.strip()
+    root_cause, root_cause_source = extract_explicit_root_cause_evidence(
+        field_value=enriched.root_cause,
+        comment_documents=[enriched.comments_digest],
     )
-    qa_oracle = enriched.test_plan.strip()
-    if not qa_oracle and contract:
-        qa_oracle = "Verify the captured behavior contract: " + contract
+    qa_oracle, qa_oracle_source = extract_explicit_test_evidence(
+        field_value=enriched.test_plan,
+        comment_documents=[enriched.comments_digest],
+    )
+    uac_analysis = analyze_historical_uac(
+        jira_key=enriched.jira_key,
+        acceptance_criteria=enriched.acceptance_criteria,
+        status=enriched.status,
+        resolution=enriched.resolution,
+        labels=enriched.labels,
+        root_cause=root_cause,
+        test_evidence=qa_oracle,
+        root_cause_source=root_cause_source,
+        test_evidence_source=qa_oracle_source,
+    )
+    uac_contract = ""
+    if uac_analysis is not None:
+        uac_contract = "\n".join(
+            f"{clause.source_id}: {clause.text}" for clause in uac_analysis.in_scope_clauses
+        )
+    contract = "\n".join(
+        value.strip() for value in (enriched.expected_behavior, uac_contract) if value and value.strip()
+    )
+    behavior_contract_complete = uac_analysis.contract_complete if uac_analysis is not None else bool(contract)
+    behavior_contract_source = (
+        "jira_expected_behavior+jira_acceptance_field"
+        if enriched.expected_behavior.strip() and uac_contract
+        else "jira_acceptance_field"
+        if uac_contract
+        else "jira_expected_behavior"
+        if enriched.expected_behavior.strip()
+        else "missing"
+    )
     built = build_learning_document(
         jira_key=enriched.jira_key,
         summary=enriched.summary,
@@ -167,9 +232,13 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
         problem=enriched.description,
         behavior_contract=contract,
         resolution=enriched.resolution,
-        root_cause=enriched.root_cause,
+        root_cause=root_cause,
         qa_oracle=qa_oracle,
         risks=list(enriched.qa_risk_tags or []),
+        behavior_contract_source=behavior_contract_source,
+        behavior_contract_complete=behavior_contract_complete,
+        root_cause_source=root_cause_source,
+        qa_oracle_source=qa_oracle_source,
     )
     if built is None:
         return None
@@ -201,15 +270,40 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
     for chunk in chunks:
         by_type[chunk.chunk_type].append(_chunk_body(chunk.chunk_text))
     resolution_text = "\n".join(by_type.get("resolution_rca_chunk", []))
-    root_cause = ""
+    root_cause_field = ""
     if "Root cause:" in resolution_text:
-        root_cause = resolution_text.split("Root cause:", 1)[1].strip()
-    contract = "\n".join(
-        by_type.get("expected_actual_chunk", []) + by_type.get("acceptance_criteria_chunk", [])
+        root_cause_field = resolution_text.split("Root cause:", 1)[1].strip()
+    root_cause, root_cause_source = extract_explicit_root_cause_evidence(
+        field_value=root_cause_field,
+        comment_documents=by_type.get("comment_chunk", []),
     )
-    qa_oracle = "\n".join(by_type.get("test_evidence_chunk", []))
-    if not qa_oracle and contract:
-        qa_oracle = "Verify the captured behavior contract: " + contract
+    acceptance_text = extract_historical_uac_text(
+        description=issue.description or "",
+        raw_text=issue.raw_text or "",
+        fallback_documents=by_type.get("acceptance_criteria_chunk", []),
+    )
+    qa_oracle, qa_oracle_source = extract_explicit_test_evidence(
+        field_value="\n".join(by_type.get("test_evidence_chunk", [])),
+        comment_documents=by_type.get("comment_chunk", []),
+    )
+    uac_analysis = analyze_historical_uac(
+        jira_key=issue.jira_key,
+        acceptance_criteria=acceptance_text,
+        status=issue.status or "",
+        resolution=issue.resolution or "",
+        labels=_json_list(issue.labels),
+        root_cause=root_cause,
+        test_evidence=qa_oracle,
+        root_cause_source=root_cause_source,
+        test_evidence_source=qa_oracle_source,
+    )
+    uac_contract = ""
+    if uac_analysis is not None:
+        uac_contract = "\n".join(
+            f"{clause.source_id}: {clause.text}" for clause in uac_analysis.in_scope_clauses
+        )
+    expected_contract = "\n".join(by_type.get("expected_actual_chunk", []))
+    contract = "\n".join(value for value in (expected_contract, uac_contract) if value.strip())
     problem = "\n".join(by_type.get("problem_chunk", [])[:2]) or (issue.description or "")
     return build_learning_document(
         jira_key=issue.jira_key,
@@ -224,6 +318,18 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
         root_cause=root_cause,
         qa_oracle=qa_oracle,
         risks=_json_list(issue.qa_risk_tags),
+        behavior_contract_source=(
+            "jira_expected_behavior+jira_acceptance_field"
+            if expected_contract and uac_contract
+            else "jira_acceptance_field"
+            if uac_contract
+            else "jira_expected_behavior"
+            if expected_contract
+            else "missing"
+        ),
+        behavior_contract_complete=uac_analysis.contract_complete if uac_analysis is not None else bool(contract),
+        root_cause_source=root_cause_source,
+        qa_oracle_source=qa_oracle_source,
     )
 
 
@@ -257,6 +363,10 @@ def _learning_chroma_metadata(
         "is_verified_fix": bool(learning_meta["is_verified_fix"]),
         "evidence_facets": json.dumps(learning_meta["evidence_facets"], ensure_ascii=False),
         "learning_strategy_version": LEARNING_STRATEGY_VERSION,
+        "behavior_contract_source": str(learning_meta["behavior_contract_source"]),
+        "behavior_contract_complete": bool(learning_meta["behavior_contract_complete"]),
+        "root_cause_source": str(learning_meta["root_cause_source"]),
+        "qa_oracle_source": str(learning_meta["qa_oracle_source"]),
     }
     metadata.update(component_filter_metadata(components))
     return metadata

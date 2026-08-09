@@ -26,6 +26,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
+from datetime import datetime
 from pathlib import Path
 
 
@@ -62,6 +64,366 @@ REQUIRED_MANIFEST_KEYS = (
     "clones",
 )
 
+PREFLIGHT_SOURCE_KEYS = (
+    "product_rag",
+    "jira_history",
+    "live_jira",
+    "git",
+    "figma",
+)
+PREFLIGHT_STATUSES = {"available", "unavailable", "not_applicable"}
+PREFLIGHT_MODES = {"full", "degraded"}
+PREFLIGHT_READINESS_IMPACTS = {"none", "draft_only", "blocked"}
+UAC_FIDELITY_SCHEMA = "aem-guides-uac-fidelity-v1"
+PREFLIGHT_SOURCE_LABELS = {
+    "product_rag": ("product rag", "ask_dita_expert"),
+    "jira_history": ("jira history", "search_jira_history", "indexed jira"),
+    "live_jira": ("live jira",),
+    "git": ("git", "github", "diff"),
+    "figma": ("figma", "design"),
+}
+
+
+def check_uac_fidelity(data: dict) -> list[str]:
+    if "accepted_uac_present" in data and not isinstance(data["accepted_uac_present"], bool):
+        return ["manifest 'accepted_uac_present' must be a boolean"]
+    contract = data.get("uac_fidelity")
+    if data.get("accepted_uac_present") and contract is None:
+        return ["accepted_uac_present is true but manifest 'uac_fidelity' is missing"]
+    if contract is None:
+        return []
+    if not isinstance(contract, dict):
+        return ["manifest 'uac_fidelity' must be an object"]
+
+    failures: list[str] = []
+    required = (
+        "schema_version", "source_ref", "accepted_clause_ids", "out_of_scope_clause_ids",
+        "clause_to_ac", "confirmed_ac_to_clause", "proposed_ac_ids", "unresolved_clause_ids",
+        "contradictions", "scope_expansions", "status",
+    )
+    missing = [key for key in required if key not in contract]
+    if missing:
+        return ["uac_fidelity is missing required keys: " + ", ".join(missing)]
+    if contract["schema_version"] != UAC_FIDELITY_SCHEMA:
+        failures.append(f"uac_fidelity.schema_version must be {UAC_FIDELITY_SCHEMA}")
+    if not isinstance(contract["source_ref"], str) or not contract["source_ref"].strip():
+        failures.append("uac_fidelity.source_ref must identify the accepted UAC source")
+
+    accepted = contract["accepted_clause_ids"]
+    out_of_scope = contract["out_of_scope_clause_ids"]
+    unresolved = contract["unresolved_clause_ids"]
+    proposed = contract["proposed_ac_ids"]
+    contradictions = contract["contradictions"]
+    expansions = contract["scope_expansions"]
+    list_fields = {
+        "accepted_clause_ids": accepted,
+        "out_of_scope_clause_ids": out_of_scope,
+        "unresolved_clause_ids": unresolved,
+        "proposed_ac_ids": proposed,
+        "contradictions": contradictions,
+        "scope_expansions": expansions,
+    }
+    for name, value in list_fields.items():
+        if not isinstance(value, list):
+            failures.append(f"uac_fidelity.{name} must be a list")
+    if failures:
+        return failures
+    for name, values in (
+        ("accepted_clause_ids", accepted),
+        ("out_of_scope_clause_ids", out_of_scope),
+        ("unresolved_clause_ids", unresolved),
+        ("proposed_ac_ids", proposed),
+    ):
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            failures.append(f"uac_fidelity.{name} must contain non-empty strings")
+    if failures:
+        return failures
+
+    accepted_set = set(accepted)
+    out_of_scope_set = set(out_of_scope)
+    unresolved_set = set(unresolved)
+    proposed_set = set(proposed)
+    if not accepted_set or len(accepted_set) != len(accepted):
+        failures.append("uac_fidelity.accepted_clause_ids must contain unique accepted clauses")
+    if accepted_set & out_of_scope_set:
+        failures.append("accepted and out-of-scope UAC clause IDs must not overlap")
+    if not unresolved_set <= accepted_set:
+        failures.append("uac_fidelity.unresolved_clause_ids contains an unknown accepted clause")
+    if any(not isinstance(ac, str) or not re.fullmatch(r"AC-\d{2}", ac) for ac in proposed):
+        failures.append("uac_fidelity.proposed_ac_ids must contain canonical AC-## IDs")
+
+    clause_to_ac = contract["clause_to_ac"]
+    confirmed_to_clause = contract["confirmed_ac_to_clause"]
+    if not isinstance(clause_to_ac, dict) or not isinstance(confirmed_to_clause, dict):
+        failures.append("uac_fidelity clause mappings must be objects")
+        return failures
+    if any(not isinstance(key, str) or not key for key in clause_to_ac):
+        failures.append("uac_fidelity.clause_to_ac keys must be non-empty clause IDs")
+    if any(not isinstance(key, str) or not key for key in confirmed_to_clause):
+        failures.append("uac_fidelity.confirmed_ac_to_clause keys must be non-empty AC IDs")
+    if failures:
+        return failures
+    unknown_clauses = set(clause_to_ac) - accepted_set
+    if unknown_clauses:
+        failures.append("uac_fidelity.clause_to_ac contains unknown clauses: " + ", ".join(sorted(unknown_clauses)))
+    for clause_id in sorted(accepted_set - unresolved_set):
+        ac_ids = clause_to_ac.get(clause_id)
+        if not isinstance(ac_ids, list) or not ac_ids:
+            failures.append(f"accepted clause {clause_id} has no Confirmed AC mapping")
+            continue
+        if any(not isinstance(ac, str) or not re.fullmatch(r"AC-\d{2}", ac) for ac in ac_ids):
+            failures.append(f"accepted clause {clause_id} has a noncanonical AC mapping")
+
+    confirmed_set = set(confirmed_to_clause)
+    if confirmed_set & proposed_set:
+        failures.append("an AC cannot be both Confirmed and Proposed in uac_fidelity")
+    for ac_id, clause_ids in confirmed_to_clause.items():
+        if not re.fullmatch(r"AC-\d{2}", str(ac_id)):
+            failures.append(f"uac_fidelity has noncanonical Confirmed AC ID {ac_id}")
+            continue
+        if not isinstance(clause_ids, list) or not clause_ids:
+            failures.append(f"Confirmed {ac_id} has no accepted UAC source clause")
+            continue
+        invalid = set(clause_ids) - accepted_set
+        if invalid:
+            failures.append(f"Confirmed {ac_id} references unknown clauses: " + ", ".join(sorted(invalid)))
+        for clause_id in set(clause_ids) & accepted_set:
+            if ac_id not in (clause_to_ac.get(clause_id) or []):
+                failures.append(f"uac_fidelity mapping is not bidirectional for {clause_id} and {ac_id}")
+    for clause_id, ac_ids in clause_to_ac.items():
+        if isinstance(ac_ids, list):
+            for ac_id in ac_ids:
+                if ac_id not in confirmed_set:
+                    failures.append(f"accepted clause {clause_id} maps to {ac_id}, but it is not declared Confirmed")
+
+    status = contract["status"]
+    if status not in ("pass", "blocked"):
+        failures.append("uac_fidelity.status must be 'pass' or 'blocked'")
+    if status == "blocked":
+        failures.append("uac_fidelity.status is blocked; resolve accepted-UAC questions before final delivery")
+    if status == "pass" and (unresolved or contradictions or expansions):
+        failures.append("uac_fidelity.status cannot be pass with unresolved clauses, contradictions, or scope expansions")
+    return failures
+PREFLIGHT_RESTRICTION_TERMS = {
+    "product_rag": ("behaviour", "behavior", "product documentation", "documented product"),
+    "jira_history": ("similar", "historical", "history", "regression learning"),
+    "live_jira": ("status", "resolution", "fix version", "comment", "attachment", "mutable"),
+    "git": ("implementation", "changed file", "changed line", "root cause", "fix impact", "diff"),
+    "figma": ("layout", "interaction", "visual", "prototype", "design behaviour", "design behavior"),
+}
+PREFLIGHT_CHECK_ACTIONS = (
+    "call",
+    "fetch",
+    "query",
+    "search",
+    "inspect",
+    "read",
+    "download",
+    "probe",
+    "sync",
+    "diff",
+    "ask_dita_expert",
+    "search_jira_history",
+    "check_rag_status",
+)
+PREFLIGHT_FAILURE_MARKERS = (
+    "failed",
+    "failure",
+    "error",
+    "exception",
+    "unavailable",
+    "denied",
+    "timeout",
+    "timed out",
+    "connection refused",
+    "http 401",
+    "http 403",
+    "returned 401",
+    "returned 403",
+)
+PREFLIGHT_CONFIGURATION_SUCCESS_MARKERS = (
+    "succeed",
+    "returned",
+    "response received",
+    "completed",
+    "verified",
+    "inspected",
+    "fetched",
+    "queried",
+    "searched",
+    "downloaded",
+    "probe result",
+    " ran",
+)
+
+
+def _is_timezone_aware_iso8601(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+
+def _validate_evidence_preflight(data: dict) -> list[str]:
+    failures: list[str] = []
+    preflight = data.get("evidence_preflight")
+    if not isinstance(preflight, dict):
+        return ["evidence_preflight must be an object"]
+
+    mode = str(preflight.get("mode", "")).strip()
+    if mode not in PREFLIGHT_MODES:
+        failures.append("evidence_preflight.mode must be 'full' or 'degraded'")
+
+    if not _is_timezone_aware_iso8601(preflight.get("checked_at")):
+        failures.append("evidence_preflight.checked_at must be a timezone-aware ISO-8601 timestamp")
+
+    sources = preflight.get("sources")
+    unavailable_sources: list[str] = []
+    if not isinstance(sources, dict):
+        failures.append("evidence_preflight.sources must be an object containing all five source checks")
+        sources = {}
+    source_keys = set(sources)
+    missing_sources = set(PREFLIGHT_SOURCE_KEYS) - source_keys
+    unexpected_sources = source_keys - set(PREFLIGHT_SOURCE_KEYS)
+    if missing_sources:
+        failures.append(
+            "evidence_preflight.sources is missing: " + ", ".join(sorted(missing_sources))
+        )
+    if unexpected_sources:
+        failures.append(
+            "evidence_preflight.sources has unsupported keys: " + ", ".join(sorted(unexpected_sources))
+        )
+
+    for source_key in PREFLIGHT_SOURCE_KEYS:
+        source = sources.get(source_key)
+        if not isinstance(source, dict):
+            if source_key not in missing_sources:
+                failures.append(f"evidence_preflight.sources.{source_key} must be an object")
+            continue
+        status = str(source.get("status", "")).strip()
+        checked_via = str(source.get("checked_via", "")).strip()
+        reason = str(source.get("reason", "")).strip()
+        if status not in PREFLIGHT_STATUSES:
+            failures.append(
+                f"evidence_preflight.sources.{source_key}.status must be available, unavailable, or not_applicable"
+            )
+        if not checked_via:
+            failures.append(f"evidence_preflight.sources.{source_key}.checked_via is required")
+        elif status == "available":
+            checked_lower = checked_via.lower()
+            if any(marker in checked_lower for marker in PREFLIGHT_FAILURE_MARKERS):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key} cannot be available when checked_via records a failed check"
+                )
+            elif "configur" in checked_lower and not any(
+                marker in checked_lower for marker in PREFLIGHT_CONFIGURATION_SUCCESS_MARKERS
+            ):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key}.checked_via must describe a successful call or inspection, not configuration alone"
+                )
+            elif not any(action in checked_lower for action in PREFLIGHT_CHECK_ACTIONS):
+                failures.append(
+                    f"evidence_preflight.sources.{source_key}.checked_via must describe a successful call or inspection, not configuration alone"
+                )
+        if status in {"unavailable", "not_applicable"} and not reason:
+            failures.append(
+                f"evidence_preflight.sources.{source_key}.reason is required when status is {status}"
+            )
+        if status == "unavailable":
+            unavailable_sources.append(source_key)
+
+    expected_mode = "degraded" if unavailable_sources else "full"
+    if mode in PREFLIGHT_MODES and mode != expected_mode:
+        failures.append(
+            f"evidence_preflight.mode must be '{expected_mode}' for the recorded source statuses"
+        )
+
+    restrictions = preflight.get("claim_restrictions")
+    if not isinstance(restrictions, list) or any(
+        not isinstance(item, str) or not item.strip() for item in restrictions
+    ):
+        failures.append("evidence_preflight.claim_restrictions must be a list of non-empty strings")
+        restrictions = []
+    if mode == "degraded" and not restrictions:
+        failures.append("degraded evidence_preflight requires at least one claim restriction")
+    restriction_text = " ".join(restrictions).lower()
+    for source_key in unavailable_sources:
+        if not any(term in restriction_text for term in PREFLIGHT_RESTRICTION_TERMS[source_key]):
+            failures.append(
+                f"evidence_preflight.claim_restrictions must cover unavailable source '{source_key}'"
+            )
+
+    readiness_impact = str(preflight.get("readiness_impact", "")).strip()
+    if readiness_impact not in PREFLIGHT_READINESS_IMPACTS:
+        failures.append("evidence_preflight.readiness_impact must be none, draft_only, or blocked")
+    readiness_reason = str(preflight.get("readiness_impact_reason", "")).strip()
+    if readiness_impact in {"draft_only", "blocked"} and not readiness_reason:
+        failures.append(
+            "evidence_preflight.readiness_impact_reason is required when readiness impact is not none"
+        )
+    return failures
+
+
+def _validate_preflight_plan_alignment(data: dict, plan_text: str) -> list[str]:
+    preflight = data.get("evidence_preflight")
+    if not isinstance(preflight, dict):
+        return []
+    mode = str(preflight.get("mode", "")).strip()
+    sources = preflight.get("sources") if isinstance(preflight.get("sources"), dict) else {}
+    readiness_impact = str(preflight.get("readiness_impact", "")).strip()
+    boundary = next(
+        (
+            line.strip()
+            for line in plan_text.splitlines()
+            if line.strip().lower().startswith("- evidence boundary:")
+        ),
+        "",
+    )
+    if not boundary:
+        return ["plan must contain an Evidence boundary bullet aligned with evidence_preflight"]
+    boundary_lower = boundary.lower()
+    if mode in PREFLIGHT_MODES and f"evidence mode: {mode}" not in boundary_lower:
+        return [f"Evidence boundary must state 'Evidence mode: {mode}'"]
+
+    failures: list[str] = []
+    unavailable_sources = [
+        key
+        for key in PREFLIGHT_SOURCE_KEYS
+        if isinstance(sources.get(key), dict) and sources[key].get("status") == "unavailable"
+    ]
+    if mode == "degraded":
+        for source_key in unavailable_sources:
+            if not any(label in boundary_lower for label in PREFLIGHT_SOURCE_LABELS[source_key]):
+                failures.append(
+                    f"degraded Evidence boundary must name unavailable source '{source_key}'"
+                )
+        if not any(
+            marker in boundary_lower
+            for marker in ("unavailable", "unverified", "not verified", "cannot", "restricted")
+        ):
+            failures.append(
+                "degraded Evidence boundary must state what is unavailable or remains unverified"
+            )
+
+    plan_lower = plan_text.lower()
+    git_unavailable = "git" in unavailable_sources
+    if "lifecycle understood as: implementation review" in plan_lower and git_unavailable:
+        if readiness_impact not in {"draft_only", "blocked"}:
+            failures.append(
+                "Implementation Review with unavailable Git evidence must have draft_only or blocked readiness impact"
+            )
+    if "lifecycle understood as: post-fix validation" in plan_lower and git_unavailable:
+        if readiness_impact != "blocked":
+            failures.append(
+                "Post-Fix Validation with unavailable Git/fix evidence must have blocked readiness impact"
+            )
+    return failures
 
 def _validate_dual_source_evidence(data: dict) -> list[str]:
     failures: list[str] = []
@@ -160,6 +522,7 @@ def check_manifest_completeness(path: str | None) -> list[str]:
                 )
     elif clones is not None:
         failures.append("manifest 'clones' must be a list")
+    failures.extend(check_uac_fidelity(data))
     return failures
 
 

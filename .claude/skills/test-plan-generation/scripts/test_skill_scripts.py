@@ -502,6 +502,250 @@ def test_run_gates() -> None:
         }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
 
+        base = {
+            **dual_source,
+            "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+            "accepted_uac_present": True,
+        }
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("accepted UAC requires fidelity audit", any("uac_fidelity" in failure for failure in failures))
+
+        contract = {
+            "schema_version": "aem-guides-uac-fidelity-v1",
+            "source_ref": "Jira GUIDES-38333 final accepted UAC",
+            "accepted_clause_ids": ["UAC-01", "UAC-02"],
+            "out_of_scope_clause_ids": ["OOS-01"],
+            "clause_to_ac": {"UAC-01": ["AC-01"], "UAC-02": ["AC-02"]},
+            "confirmed_ac_to_clause": {"AC-01": ["UAC-01"], "AC-02": ["UAC-02"]},
+            "proposed_ac_ids": ["AC-03"],
+            "unresolved_clause_ids": [],
+            "contradictions": [],
+            "scope_expansions": [],
+            "status": "pass",
+        }
+        base["uac_fidelity"] = contract
+        path.write_text(json.dumps(base), encoding="utf-8")
+        check("complete UAC fidelity audit passes", run_gates.check_manifest_completeness(str(path)) == [])
+
+        contract["clause_to_ac"].pop("UAC-02")
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "unmapped accepted UAC clause is rejected",
+            any("UAC-02" in failure and "no Confirmed AC" in failure for failure in failures),
+        )
+        contract["clause_to_ac"]["UAC-02"] = ["AC-02"]
+
+        contract["scope_expansions"] = ["DITA-OT output added despite OOS-01"]
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("passing audit cannot hide scope expansion", any("scope expansions" in failure for failure in failures))
+
+        contract["scope_expansions"] = []
+        contract["unresolved_clause_ids"] = ["UAC-02"]
+        contract["status"] = "blocked"
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("blocked UAC fidelity audit cannot pass final gate", any("status is blocked" in failure for failure in failures))
+
+        configured_only = json.loads(json.dumps(dual_source))
+        configured_only["clones"] = []
+        configured_only["evidence_preflight"]["sources"]["live_jira"]["checked_via"] = "Jira MCP configured"
+        path.write_text(json.dumps(configured_only), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects configuration as proof of availability",
+            any("configuration alone" in failure for failure in failures),
+        )
+
+        failed_but_available = json.loads(json.dumps(dual_source))
+        failed_but_available["clones"] = []
+        failed_but_available["evidence_preflight"]["sources"]["live_jira"]["checked_via"] = (
+            "Jira issue fetch returned HTTP 403"
+        )
+        path.write_text(json.dumps(failed_but_available), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects a failed call labelled available",
+            any("records a failed check" in failure for failure in failures),
+        )
+
+        naive_timestamp = json.loads(json.dumps(dual_source))
+        naive_timestamp["clones"] = []
+        naive_timestamp["evidence_preflight"]["checked_at"] = "2026-08-08T15:30:00"
+        path.write_text(json.dumps(naive_timestamp), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects a timestamp without timezone",
+            any("timezone-aware" in failure for failure in failures),
+        )
+
+        missing_reason = json.loads(json.dumps(dual_source))
+        missing_reason["clones"] = []
+        missing_reason["evidence_preflight"]["sources"]["figma"]["reason"] = ""
+        path.write_text(json.dumps(missing_reason), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight requires a not-applicable reason",
+            any("figma.reason" in failure for failure in failures),
+        )
+
+        false_full = json.loads(json.dumps(dual_source))
+        false_full["clones"] = []
+        false_full["evidence_preflight"]["sources"]["live_jira"] = {
+            "status": "unavailable",
+            "checked_via": "Jira issue fetch returned HTTP 403",
+            "reason": "The authenticated user lacks Browse permission.",
+        }
+        false_full["evidence_preflight"]["claim_restrictions"] = [
+            "Current Jira status, resolution, and fix version remain unverified."
+        ]
+        path.write_text(json.dumps(false_full), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "preflight rejects full mode when a source is unavailable",
+            any("mode must be 'degraded'" in failure for failure in failures),
+        )
+
+        degraded = json.loads(json.dumps(false_full))
+        degraded["evidence_preflight"]["mode"] = "degraded"
+        path.write_text(json.dumps(degraded), encoding="utf-8")
+        check(
+            "preflight accepts a complete degraded manifest",
+            run_gates.check_manifest_completeness(str(path)) == [],
+        )
+
+        no_restrictions = json.loads(json.dumps(degraded))
+        no_restrictions["evidence_preflight"]["claim_restrictions"] = []
+        path.write_text(json.dumps(no_restrictions), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "degraded preflight requires claim restrictions",
+            any("requires at least one claim restriction" in failure for failure in failures),
+        )
+
+        check(
+            "full preflight aligns with the visible evidence boundary",
+            run_gates._validate_preflight_plan_alignment(dual_source, GOOD_PLAN) == [],
+        )
+        failures = run_gates._validate_preflight_plan_alignment(degraded, GOOD_PLAN)
+        check(
+            "degraded preflight rejects a falsely full evidence boundary",
+            any("Evidence mode: degraded" in failure for failure in failures),
+        )
+        degraded_plan = _replace(
+            GOOD_PLAN,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; live Jira is unavailable after HTTP 403, so current status and resolution remain unverified; indexed Jira and backend clone evidence were used.",
+        )
+        check(
+            "degraded preflight aligns when unavailable sources and limits are visible",
+            run_gates._validate_preflight_plan_alignment(degraded, degraded_plan) == [],
+        )
+
+        unnamed_source_plan = _replace(
+            GOOD_PLAN,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; one source is unavailable, so current status remains unverified.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(degraded, unnamed_source_plan)
+        check(
+            "degraded evidence boundary must name each unavailable source",
+            any("live_jira" in failure for failure in failures),
+        )
+
+        git_degraded = json.loads(json.dumps(dual_source))
+        git_degraded["evidence_preflight"]["mode"] = "degraded"
+        git_degraded["evidence_preflight"]["sources"]["git"] = {
+            "status": "unavailable",
+            "checked_via": "local clone inspection failed",
+            "reason": "No clone, diff, branch, commit, or GitHub connection was available.",
+        }
+        git_degraded["evidence_preflight"]["claim_restrictions"] = [
+            "Current implementation, changed files, changed lines, and fix impact remain unverified."
+        ]
+        implementation_plan = _replace(
+            GOOD_PLAN,
+            "- Lifecycle understood as: Pre-Development UAC with no PR yet.",
+            "- Lifecycle understood as: Implementation Review with a claimed fix.",
+        )
+        implementation_plan = _replace(
+            implementation_plan,
+            "- Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.",
+            "- Evidence boundary: Evidence mode: degraded; Git is unavailable, so implementation and changed-code claims remain unverified.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(git_degraded, implementation_plan)
+        check(
+            "implementation review cannot stay ready when Git is unavailable",
+            any("draft_only or blocked" in failure for failure in failures),
+        )
+
+        git_degraded["evidence_preflight"]["readiness_impact"] = "draft_only"
+        git_degraded["evidence_preflight"]["readiness_impact_reason"] = "Implementation evidence is unavailable."
+        check(
+            "implementation review accepts explicit degraded readiness",
+            run_gates._validate_preflight_plan_alignment(git_degraded, implementation_plan) == [],
+        )
+
+        post_fix_plan = implementation_plan.replace(
+            "Lifecycle understood as: Implementation Review with a claimed fix.",
+            "Lifecycle understood as: Post-Fix Validation for candidate sign-off.",
+        )
+        failures = run_gates._validate_preflight_plan_alignment(git_degraded, post_fix_plan)
+        check(
+            "post-fix validation is blocked when Git fix evidence is unavailable",
+            any("blocked readiness impact" in failure for failure in failures),
+        )
+
+def test_uac_fidelity_reference() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    skill_text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    reference_path = skill_root / "references" / "uac-reference-examples.md"
+    reference_text = reference_path.read_text(encoding="utf-8")
+    checklist_text = (skill_root / "references" / "quality-gate-checklist.md").read_text(encoding="utf-8")
+
+    for marker in (
+        "#### Accepted UAC Fidelity Gate",
+        "aem-guides-uac-fidelity-v1",
+        "bidirectional traceability",
+        "configuration truth table",
+    ):
+        check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
+    for marker in (
+        "## Gold Reference: GUIDES-38333 Native PDF Reltable Parity",
+        "ENABLE_RELATED_LINKS_FOR_NATIVE_PDF",
+        "-Dargs.rellinks=nofamily",
+        "OOS-03",
+        "AC-06 [Confirmed]",
+        "## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata",
+        "NATIVE_AEMSITE",
+        "Baseline_v2.0",
+        "metadatalist",
+        "GUIDES-53306",
+        "AC-12 [Confirmed]",
+        "## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview",
+        "UAC-16",
+        "AC-10 [Proposed]",
+        "dynamic/static loader behavior while OOS-01 excludes dynamic baselines",
+    ):
+        check(f"UAC reference retains marker {marker}", marker in reference_text)
+    check(
+        "quality gate enforces accepted UAC fidelity",
+        "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
+    )
+
+    repo_root = Path(__file__).resolve().parents[4]
+    counterpart_root = (
+        repo_root
+        / (".claude" if skill_root.parts[-3] == ".codex" else ".codex")
+        / "skills"
+        / "test-plan-generation"
+    )
+    counterpart = counterpart_root / "references" / "uac-reference-examples.md"
+    if counterpart.is_file():
+        check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
+
 
 def test_extract_acs() -> None:
     extract_mod = _load("extract_acs", "extract_acs.py")
@@ -526,6 +770,7 @@ def main() -> int:
     test_git_ref_citations()
     test_attachment_manifest()
     test_run_gates()
+    test_uac_fidelity_reference()
     test_extract_acs()
     print("\nALL SELF-TESTS PASSED")
     return 0
