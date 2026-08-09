@@ -657,6 +657,7 @@ def test_uac_fidelity_reference() -> None:
         "aem-guides-uac-fidelity-v1",
         "bidirectional traceability",
         "configuration truth table",
+        "Do not convert a working-as-designed complaint into Confirmed AC",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -675,6 +676,11 @@ def test_uac_fidelity_reference() -> None:
         "UAC-16",
         "AC-10 [Proposed]",
         "dynamic/static loader behavior while OOS-01 excludes dynamic baselines",
+        "## Caution Reference: GUIDES-31711 DITAVAL Taxonomy Complaint Closed as Working as Designed",
+        "The DITA standard does not prescribe AEM Guides UI taxonomy",
+        "No Confirmed AC is justified by GUIDES-31711",
+        "AC-04 [Proposed]: (Reports)",
+        "cross_touchpoint_taxonomy",
     ):
         check(f"UAC reference retains marker {marker}", marker in reference_text)
     check(

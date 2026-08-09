@@ -190,6 +190,26 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("editor_parity", re.compile(r"\b(?:old\s+editor|new\s+editor|both\s+editors?|web\s*editor|ckeditor|markup\s*editor)\b", re.I)),
     ("versioning", re.compile(r"\b(?:version|checkpoint|working\s+copy|purge|rollback|revert)\b", re.I)),
     ("conditions", re.compile(r"\b(?:conditions?|ditaval|conditional)\b", re.I)),
+    ("ditaval_asset", re.compile(r"\bditaval(?:\s+files?)?\b", re.I)),
+    ("repository_search", re.compile(r"\brepository\s+search\b|\brepository\b[^.;]{0,80}\bfilter", re.I)),
+    ("creation_dialog", re.compile(r"\bditaval\s+creation\b|\bnew\s+topic\b|\bcreat(?:e|es|ed|ing)\b[^.;]{0,80}\bditaval\b", re.I)),
+    ("reports", re.compile(r"\b(?:metadata\s+reports?|reports?)\b", re.I)),
+    (
+        "file_type_taxonomy",
+        re.compile(
+            r"\b(?:file\s+type|non[-\s]?dita|dita\s+topic\s+file|documents?\s*/\s*others?|"
+            r"other\s+dita(?:\s+type)?(?:\s+document)?)\b",
+            re.I,
+        ),
+    ),
+    (
+        "cross_touchpoint_taxonomy",
+        re.compile(
+            r"\b(?:touch\s*points?|treated\s+(?:differently|as)|inconsistent(?:ly|cy)?|"
+            r"consistent\s+(?:classification|taxonomy))\b",
+            re.I,
+        ),
+    ),
     ("ditavalref", re.compile(r"\bditavalrefs?\b", re.I)),
     ("conditional_preset", re.compile(r"\bconditional\s+presets?\b", re.I)),
     ("references", re.compile(r"\b(?:direct\s+references?|indirect\s+references?|references?|topic-?refs?|href|xref|conref)\b", re.I)),

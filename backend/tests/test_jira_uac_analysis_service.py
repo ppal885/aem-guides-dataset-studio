@@ -6,6 +6,8 @@ from datetime import datetime
 from app.db.jira_enrichment_models import JiraEnrichedIssue, JiraIssueChunk
 from app.services.jira_uac_analysis_service import (
     HISTORICAL_UAC_CHUNK_TYPES,
+    UAC_CLAUSE_CHUNK_TYPE,
+    UAC_CONTEXT_CHUNK_TYPE,
     UAC_REFERENCE_CHUNK_TYPE,
     UAC_SCHEMA_VERSION,
     analyze_historical_uac,
@@ -159,6 +161,19 @@ No changes in normal workflows for translation asset retrieval, acceptance, reje
 """
 
 
+DITAVAL_TOUCHPOINT_CONTEXT = """
+Problem Statement:
+Enterprise complaint that ditaval is treated differently at different touch points in AEM Guides.
+TouchPoint 1 - Repository Search:
+Ditaval is treated as non-DITA file.
+TouchPoint 2 - Ditaval Creation:
+Ditaval is treated as DITA topic file.
+TouchPoint 3 - Reports:
+Ditaval is treated as documents/others Type.
+As per DITA standard Ditaval is Other DITA type document.
+"""
+
+
 def test_human_uac_is_split_into_traceable_gaps_without_inference():
     analysis = analyze_historical_uac(
         jira_key="GUIDES-10878",
@@ -186,6 +201,41 @@ def test_human_uac_is_split_into_traceable_gaps_without_inference():
         "performance_metric_missing",
         "performance_workload_missing",
     }.issubset(reasons)
+
+
+def test_problem_statement_only_ditaval_taxonomy_decision_never_becomes_trusted_uac():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-31711",
+        acceptance_criteria=DITAVAL_TOUCHPOINT_CONTEXT,
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["KONE"],
+    )
+
+    assert analysis is not None
+    assert analysis.historical_outcome == "expected_product_behavior"
+    assert analysis.issue_closed is True
+    assert analysis.source_authority == "jira_acceptance_field"
+    assert analysis.contract_complete is False
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.in_scope_clauses == ()
+    assert len(analysis.context_clauses) == 8
+    assert {
+        "conditions",
+        "creation_dialog",
+        "cross_touchpoint_taxonomy",
+        "ditaval_asset",
+        "file_type_taxonomy",
+        "reports",
+        "repository_search",
+    }.issubset(set(analysis.dimensions))
+
+    chunks = build_historical_uac_chunks(analysis)
+    assert any(chunk["chunk_type"] == UAC_CONTEXT_CHUNK_TYPE for chunk in chunks)
+    assert not any(chunk["chunk_type"] == UAC_CLAUSE_CHUNK_TYPE for chunk in chunks)
+    assert all(chunk["uac_reuse_tier"] == "candidate" for chunk in chunks)
+    assert "Context statements (not acceptance criteria)" in chunks[0]["chunk_text"]
+    assert "candidate clauses may only add open questions or risk coverage" in chunks[0]["chunk_text"]
 
 
 def test_mathml_uac_separates_reference_and_finds_automation_blocking_gaps():
