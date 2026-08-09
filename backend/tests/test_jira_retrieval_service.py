@@ -15,6 +15,7 @@ from app.services.jira_retrieval_service import (
     _candidate_rejection_reasons,
     _metadata_where_plan,
     extract_structured_learning_evidence,
+    extract_structured_uac_evidence,
     extract_hybrid_filters_from_issue_rows,
     retrieve_similar_jiras,
     retrieve_similar_jiras_debug,
@@ -242,6 +243,70 @@ def test_extract_structured_learning_evidence_enforces_outcome_guardrail():
     assert caution["reuse_mode"] == "risk_signal_only"
     assert caution["behavior_contract"] == ""
     assert caution["qa_oracle"] == ""
+
+
+def test_generated_fallback_oracle_is_never_returned_as_historical_test_evidence():
+    evidence = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Observed problem: Publishing queue stalls.\n"
+                "Behavior contract: The queue must resume after cleanup.\n"
+                "Root cause evidence: Concurrent commits targeted the same node.\n"
+                "QA oracle: Verify the captured behavior contract after applying the fix."
+            ),
+            "metadata": {
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+                "is_verified_fix": True,
+                "behavior_contract_complete": True,
+                "root_cause_source": "jira_root_cause_field",
+            },
+        }
+    )
+
+    assert evidence["reuse_mode"] == "verified_regression_contract"
+    assert evidence["is_verified_fix"] is False
+    assert evidence["behavior_contract"]
+    assert evidence["qa_oracle"] == ""
+    assert evidence["qa_oracle_source"] == "generated_fallback"
+
+
+def test_extract_structured_uac_evidence_preserves_source_and_blocks_candidates():
+    supporting = extract_structured_uac_evidence(
+        {
+            "chunk_type": "historical_uac_clause_chunk",
+            "document": "Historical Jira UAC clause: GUIDES-1 UAC-01\nSource text: Map links must render first.",
+            "metadata": {
+                "uac_schema_version": "historical-uac-v1",
+                "uac_source_hash": "abc123",
+                "uac_source_authority": "jira_accepted_uac",
+                "uac_reuse_tier": "supporting",
+                "uac_contract_complete": True,
+                "uac_clause_id": "UAC-01",
+                "uac_clause_stable_key": "jira:GUIDES-1:uac:abc",
+                "uac_clause_kind": "in_scope",
+                "uac_dimensions": '["ordering", "output"]',
+            },
+        }
+    )
+    candidate = extract_structured_uac_evidence(
+        {
+            "chunk_type": "historical_uac_clause_chunk",
+            "document": "Source text: Check performance impact. TBD",
+            "metadata": {
+                "uac_reuse_tier": "candidate",
+                "uac_contract_complete": False,
+                "uac_clause_unresolved": True,
+            },
+        }
+    )
+
+    assert supporting["reuse_mode"] == "supporting_uac_contract"
+    assert supporting["source_text"] == "Map links must render first."
+    assert supporting["dimensions"] == ["ordering", "output"]
+    assert candidate["reuse_mode"] == "risk_signal_only"
+    assert candidate["clause_unresolved"] is True
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

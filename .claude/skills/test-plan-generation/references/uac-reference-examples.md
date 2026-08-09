@@ -745,6 +745,279 @@ Use this example as a quality bar for report tickets where key references, conte
 - Are both UI report and backend/export APIs in scope?
 - Is Cloud/on-prem parity required for key resolution and report export?
 
+## Gold Reference: GUIDES-38333 Native PDF Reltable Parity
+
+Use this example when final accepted UAC defines output parity, ordering, independent enablement controls, defaults, and explicit non-goals. The quality bar is semantic fidelity to the accepted Jira contract, not independent AC invention.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Scope is Native PDF only. Map-level `<reltable>` related links must be added; existing topic-level `<related-links>` already work and must remain working.
+- `UAC-02` - Match AEM Sites: map-level reltable entries appear first, topic-level entries appear afterward, both are shown under `Related Information`, and current formatting remains unchanged.
+- `UAC-03` - For valid present/absent combinations of `<title>`, `<navtitle>`, and `<topichead>`, Native PDF behavior must match AEM Sites.
+- `UAC-04` - Broken related-link entries must be shown the same way AEM Sites shows them.
+- `UAC-05` - Default behavior does not generate map-level reltable links. The Native PDF preset must include `-Dargs.rellinks=nofamily` to request them.
+- `UAC-06` - Floodgate feature flag `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` must be enabled on the server.
+- `OOS-01` - Do not add DITA-OT-style `Related Concepts` or `Related Tasks` grouping.
+- `OOS-02` - HTML5 output is intentionally different from Native PDF and AEM Sites; do not treat that difference as a failure.
+- `OOS-03` - DITA-OT output validation is disabled for this ticket.
+
+### Fidelity Lessons
+
+- Do not replace `-Dargs.rellinks=nofamily` with the Floodgate flag. They are independent prerequisites and require separate negative configurations.
+- Do not turn the accepted AEM Sites parity oracle into an invented broken-link result such as `plain text` or `not clickable` unless the AEM Sites reference output has been inspected or Jira states that result.
+- Do not leave accepted ordering, unchanged formatting, `<topichead>`, or default-disabled behavior as `[Proposed]`; they are `[Confirmed]` because the final UAC approves them.
+- Do not promote conditional-key, DITAVAL, deduplication, localization, performance, or historical-ticket behavior into `[Confirmed]` ACs unless the accepted UAC is updated. Keep evidence-backed additions `[Proposed]` or in `Open Questions`.
+- Do not add HTML5 or DITA-OT parity as a sign-off regression. AEM Sites is the accepted comparison oracle; HTML5 difference and DITA-OT execution are explicit non-goals.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Basic) Given `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` is enabled, the Native PDF preset contains `-Dargs.rellinks=nofamily`, and the map contains valid `<reltable>` relationships | When the map is published using Native PDF | Then map-level related-link entries appear under `Related Information` with working destinations | Evidence: `UAC-01`, `UAC-05`, and `UAC-06` from the final accepted UAC for GUIDES-38333.
+- AC-02 [Confirmed]: (Integration) Given a topic receives relationships from both the map `<reltable>` and its existing topic-level `<related-links>` | When Native PDF is generated with both prerequisites enabled | Then map-level entries appear first, topic-level entries appear afterward, and current `Related Information` formatting remains unchanged as in AEM Sites | Evidence: `UAC-01` and `UAC-02` from the final accepted UAC for GUIDES-38333.
+- AC-03 [Confirmed]: (Integration) Given valid map variants covering `<title>`, `<navtitle>`, and `<topichead>` as present or absent, plus AEM Sites output generated from the same inputs | When each variant is published using Native PDF with both prerequisites enabled | Then entry presence, visible labels, order, formatting, and destinations match the corresponding AEM Sites output | Evidence: `UAC-03` from the final accepted UAC for GUIDES-38333.
+- AC-04 [Confirmed]: (Negative) Given a broken related-link fixture and AEM Sites output generated from that same fixture | When Native PDF is generated with both prerequisites enabled | Then the entry's presence, visible text, formatting, clickability, and destination state match AEM Sites | Evidence: `UAC-04` from the final accepted UAC for GUIDES-38333.
+- AC-05 [Confirmed]: (Negative) Given the Floodgate flag is enabled but the Native PDF preset does not contain `-Dargs.rellinks=nofamily` | When the map is published | Then map-level reltable entries are not generated and existing topic-level related links retain their current behavior | Evidence: `UAC-01` and `UAC-05` from the final accepted UAC for GUIDES-38333.
+- AC-06 [Confirmed]: (Negative) Given the Native PDF preset contains `-Dargs.rellinks=nofamily` but `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` is disabled | When the map is published | Then map-level reltable processing is not activated and existing topic-level related links retain their current behavior | Evidence: `UAC-01` and `UAC-06` from the final accepted UAC for GUIDES-38333.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "Jira GUIDES-38333 final accepted UAC",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01", "AC-02", "AC-05", "AC-06"],
+      "UAC-02": ["AC-02"],
+      "UAC-03": ["AC-03"],
+      "UAC-04": ["AC-04"],
+      "UAC-05": ["AC-01", "AC-05"],
+      "UAC-06": ["AC-01", "AC-06"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-05", "UAC-06"],
+      "AC-02": ["UAC-01", "UAC-02"],
+      "AC-03": ["UAC-03"],
+      "AC-04": ["UAC-04"],
+      "AC-05": ["UAC-01", "UAC-05"],
+      "AC-06": ["UAC-01", "UAC-06"]
+    },
+    "proposed_ac_ids": [],
+    "unresolved_clause_ids": [],
+    "contradictions": [],
+    "scope_expansions": [],
+    "status": "pass"
+  }
+}
+```
+
+Customer statements about a large migrated reltable corpus are a performance-risk signal, not a numeric oracle. Until an approved workload and threshold exist, keep performance conditional in `Open Questions`; do not invent a `(Performance)` AC.
+
+## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata
+
+Use this example when accepted UAC covers version-aware content and metadata propagation during Native AEM Site publishing. It demonstrates that a human UAC can have strong functional breadth while still requiring execution-level clarification before an automation draft is safe.
+
+### What The Human UAC Gets Right
+
+- Limits scope to `NATIVE_AEMSITE` and explicitly excludes Old AEM Site, chunked `by-topic` or `to-content` output, and multimedia metadata.
+- Defines the central invariant: topic content and propagated metadata must resolve from the same selected baseline version instead of mixing baseline content with current working-copy metadata.
+- Preserves existing working-copy behavior and the output preset's `metadatalist` allowlist.
+- Includes custom metadata, static and dynamic baselines, incremental publishing, Copy To, map-properties fallback, and old-versus-new baseline regression coverage.
+- Supplies a discriminating version fixture: the same map and topics have labels `v1.0` through `v4.0`, while `Baseline_v2.0` pins `v2.0` and current metadata differs at `v4.0`.
+
+### Execution Gaps Normalization Must Expose
+
+- The description alternates between generated-page `jcr:content/*` properties and `jcr:content/metadata`; automation needs the exact destination node and property path for each `metadatalist` entry.
+- `Static baseline` and `Dynamic baseline` are named but their creation method, selection rule, and observable distinction are not defined.
+- `Copy To scenario` does not specify the source, destination, copied version state, baseline membership, or expected post-copy repository/output oracle.
+- `New baseline` and `old baseline` do not state whether age means creation time, selected version label, or regeneration order.
+- `Use map properties` implies topic metadata wins when present and map metadata fills only missing fields, but the precedence oracle should be explicit for single-value, multi-value, boolean, and date/custom properties.
+- Incremental publishing needs a deterministic mutation between runs and an exact assertion for republished versus untouched pages; otherwise a full publish could accidentally satisfy the test.
+- These gaps do not authorize invented behavior. Keep the accepted semantic outcome `[Confirmed]`, carry the missing setup/oracle decisions to `Open Questions`, and mark the fidelity audit `blocked` until resolved.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Metadata resolves from the baseline selected by the Native AEM Site preset.
+- `UAC-02` - Working-copy publishing behavior remains unchanged.
+- `UAC-03` - Only fields listed in the preset's `metadatalist` propagate.
+- `UAC-04` - Custom metadata is supported.
+- `UAC-05` - Validate static and dynamic baselines.
+- `UAC-06` - Incremental publishing with a baseline keeps resolving metadata from that baseline and never falls back to the current working copy.
+- `UAC-07` - Cover Copy To.
+- `UAC-08` - Topic content and metadata resolve from the same version.
+- `UAC-09` - With `Use map properties` enabled, map metadata fills a topic field only when that field is absent on the topic.
+- `UAC-10` - Validate metadata propagation with both a new baseline and an old baseline.
+- `OOS-01` - Old AEM Site is excluded.
+- `OOS-02` - Chunked output using `by-topic` or `to-content` is excluded and tracked separately by GUIDES-53306.
+- `OOS-03` - Multimedia metadata is excluded.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Basic) Given the publication map and referenced topics have distinct `v2.0` and current `v4.0` content and metadata, `Baseline_v2.0` pins `v2.0`, and the `NATIVE_AEMSITE` preset selects that baseline | When output is generated | Then generated topic content and every propagated property named by `metadatalist` use the `v2.0` values and no `v4.0` working-copy value is substituted | Evidence: `UAC-01` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-02 [Confirmed]: (Basic) Given the same publication map is generated through the existing working-copy flow without a baseline | When Native AEM Site output is generated | Then content and configured metadata continue to resolve from the current working copy exactly as before this fix | Evidence: `UAC-02` from the accepted UAC for GUIDES-49325.
+- AC-03 [Confirmed]: (Negative) Given the selected `v2.0` map version contains metadata properties both inside and outside the preset's `metadatalist` | When Native AEM Site output is generated against `Baseline_v2.0` | Then only properties listed in `metadatalist` propagate to the generated page | Evidence: `UAC-03` from the accepted UAC for GUIDES-49325.
+- AC-04 [Confirmed]: (Basic) Given a custom property such as `custom-product-status` is listed in `metadatalist` with different values at `v2.0` and `v4.0` | When output is generated against `Baseline_v2.0` | Then the generated page receives the custom property's `v2.0` value | Evidence: `UAC-01` and `UAC-04` from the accepted UAC for GUIDES-49325.
+- AC-05 [Confirmed]: (Integration) Given a static baseline pins the publication map and referenced topics to `v2.0` | When Native AEM Site output is generated from that baseline | Then both content and configured metadata resolve from `v2.0` | Evidence: `UAC-05` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-06 [Confirmed]: (Integration) Given a dynamic baseline resolves the publication map and referenced topics to `v2.0` under the accepted dynamic-baseline rule | When Native AEM Site output is generated from that baseline | Then both content and configured metadata resolve from `v2.0` | Evidence: `UAC-05` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-07 [Confirmed]: (Integration) Given an initial Native AEM Site publish used `Baseline_v2.0` and the current working-copy content and metadata are subsequently changed to distinct `v4.0` values | When incremental publishing runs again with `Baseline_v2.0` | Then every republished page continues to use `v2.0` content and metadata and does not fall back to `v4.0` | Evidence: `UAC-06` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-08 [Confirmed]: (Integration) Given a topic participates in the accepted Copy To workflow and the output preset selects a baseline version | When Native AEM Site output is generated after Copy To | Then the copied topic's published content and configured metadata resolve from the same selected baseline version | Evidence: `UAC-07` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-09 [Confirmed]: (Negative) Given baseline content is `v2.0` while map or topic working-copy metadata is `v4.0` | When Native AEM Site output is generated against `Baseline_v2.0` | Then no generated page combines `v2.0` topic content with `v4.0` metadata or `v4.0` content with `v2.0` metadata | Evidence: `UAC-01` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-10 [Confirmed]: (Integration) Given `Use map properties` is enabled, a listed metadata field is absent from the topic's `v2.0` version, the map's `v2.0` version defines it, and the current map version has a different value | When output is generated against `Baseline_v2.0` | Then the generated topic receives the map's `v2.0` value | Evidence: `UAC-01` and `UAC-09` from the accepted UAC for GUIDES-49325.
+- AC-11 [Confirmed]: (Negative) Given `Use map properties` is enabled and both the topic's and map's selected baseline versions define different values for the same listed metadata field | When output is generated | Then the topic's selected-baseline value is retained and the map value does not overwrite it | Evidence: `UAC-09` from the accepted UAC for GUIDES-49325.
+- AC-12 [Confirmed]: (Integration) Given one baseline targets old label `v2.0` and another targets current label `v4.0` using metadata values that differ by version | When output is generated for both baselines and the old baseline is regenerated after the new one | Then each output consistently contains content and configured metadata from its own selected version without cache or working-copy fallback | Evidence: `UAC-01`, `UAC-08`, and `UAC-10` from the accepted UAC for GUIDES-49325.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "User-supplied GUIDES-49325 accepted UAC and Jira screenshot",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06", "UAC-07", "UAC-08", "UAC-09", "UAC-10"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01", "AC-04", "AC-09", "AC-10", "AC-12"],
+      "UAC-02": ["AC-02"],
+      "UAC-03": ["AC-03"],
+      "UAC-04": ["AC-04"],
+      "UAC-05": ["AC-05", "AC-06"],
+      "UAC-06": ["AC-07"],
+      "UAC-07": ["AC-08"],
+      "UAC-08": ["AC-01", "AC-05", "AC-06", "AC-07", "AC-08", "AC-09", "AC-12"],
+      "UAC-09": ["AC-10", "AC-11"],
+      "UAC-10": ["AC-12"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-08"],
+      "AC-02": ["UAC-02"],
+      "AC-03": ["UAC-03"],
+      "AC-04": ["UAC-01", "UAC-04"],
+      "AC-05": ["UAC-05", "UAC-08"],
+      "AC-06": ["UAC-05", "UAC-08"],
+      "AC-07": ["UAC-06", "UAC-08"],
+      "AC-08": ["UAC-07", "UAC-08"],
+      "AC-09": ["UAC-01", "UAC-08"],
+      "AC-10": ["UAC-01", "UAC-09"],
+      "AC-11": ["UAC-09"],
+      "AC-12": ["UAC-01", "UAC-08", "UAC-10"]
+    },
+    "proposed_ac_ids": [],
+    "unresolved_clause_ids": ["UAC-01", "UAC-05", "UAC-07", "UAC-10"],
+    "contradictions": [],
+    "scope_expansions": [],
+    "status": "blocked"
+  }
+}
+```
+
+Resolve four questions before automation handoff: the exact generated metadata node/property path (`UAC-01`), static versus dynamic baseline setup (`UAC-05`), the Copy To fixture and oracle (`UAC-07`), and the definition plus execution order of old/new baselines (`UAC-10`). No performance AC is justified by the supplied UAC because it provides no workload, latency, concurrency, or resource-risk signal.
+
+## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview
+
+Use this human-authored UAC as the reference for a UI feature whose accepted contract mixes baseline versioning, editor parity, preview state, reference resolution, lifecycle safety, and an acknowledged but undecided performance requirement. The Jira screenshot shows the issue still in `Stage` with no final resolution, so implementation comments, linked test cases, and observed defects remain supporting evidence rather than replacements for the accepted UAC.
+
+### What The Human UAC Gets Right
+
+- It names the primary contract: map Preview must render the selected baseline instead of always rendering the latest working version.
+- It places the switch in a specific UI surface and defines when `Show diff` becomes unavailable.
+- It distinguishes static from dynamic baselines and map preview from topic preview.
+- It calls out both old and new editors, mode-switch retention, working-copy refresh differences, selected-baseline deletion, and version-purge safety.
+- It identifies conditions, direct and indirect references, keys, loader behavior, and performance as integration dimensions instead of testing only the happy-path toggle.
+- It records customer and migration motivation without automatically turning every requested future capability into this ticket's scope.
+
+### Normalization Gaps And Authority Boundaries
+
+- `Dynamic baseline not in scope` conflicts with the later request for a loader in `dynamic/static baseline`; do not silently choose one interpretation.
+- `Old and new Baseline` does not define whether this means creation UI, storage model, migrated data, or baseline age; the fixture and expected distinction must be confirmed.
+- `Validate conditions`, `Verify direct and indirect references`, and `Check/Test for keys` are test intents, not complete product oracles. Ask which selected versions, key scopes, condition outcomes, and broken-reference behavior are expected.
+- Loader behavior lacks trigger, placement, dismissal, timeout, failure, and rapid-switch expectations.
+- `Check performance impact. TBD` proves performance matters but supplies no dataset size, percentile, latency budget, cache state, concurrency, or resource ceiling. Keep the performance AC proposed and blocked until these values are approved.
+- The business-capability bullets about reverting baseline versions and editing version-specific metadata are future/customer context. A later Jira comment explicitly excludes revert/rollback from this feature; do not promote either capability into a Confirmed AC.
+- A later Jira comment says Reports are not part of this requirement. Related bugs, subtasks, and linked test cases provide regression and automation evidence, not new accepted behavior.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01`: Map Preview displays content from the selected baseline rather than always displaying the latest working version.
+- `UAC-02`: Preview filter panel shows a baseline on/off switch.
+- `UAC-03`: The feature applies to both old and new baselines.
+- `UAC-04`: Static baselines are in scope; dynamic baselines are not in scope.
+- `UAC-05`: The feature applies only to map preview, not topic preview.
+- `UAC-06`: `Show diff` is hidden while the baseline switch is on and a baseline is selected.
+- `UAC-07`: Conditions must be validated with baseline-aware preview.
+- `UAC-08`: Direct and indirect references must be validated.
+- `UAC-09`: The behavior applies to both old and new editors.
+- `UAC-10`: A loader matching Author-mode loading is requested for dynamic/static baseline preview.
+- `UAC-11`: Baseline selection and preview state are retained while switching among Author, Source, and Preview.
+- `UAC-12`: Keys must be validated.
+- `UAC-13`: A version referenced by a baseline cannot be purged.
+- `UAC-14`: If the selected baseline is deleted, the existing preview remains unchanged until another baseline is selected or the switch is turned off.
+- `UAC-15`: Working-copy updates refresh automatically in the new editor; the old editor requires its refresh action.
+- `UAC-16`: Performance impact must be checked, with acceptance values still TBD.
+- `OOS-01`: Dynamic baseline behavior is outside this ticket.
+- `OOS-02`: Topic preview is outside this ticket.
+- `OOS-03`: Revert or rollback to a baseline version is outside this ticket according to the later scope clarification.
+- `OOS-04`: Reports behavior is outside this ticket according to the later scope clarification.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Functional) Given a map has a valid static baseline and that baseline is selected in Preview | When map Preview finishes loading | Then the rendered map content represents the versions selected by that baseline rather than the latest working-copy versions | Evidence: `UAC-01`, `UAC-04`, and `UAC-05` from the accepted UAC for GUIDES-10878.
+- AC-02 [Confirmed]: (UI) Given a map is open in Preview | When the user opens the filter panel | Then a baseline on/off switch is available for baseline-aware map preview | Evidence: `UAC-02` from the accepted UAC for GUIDES-10878.
+- AC-03 [Confirmed]: (Negative) Given a topic rather than a map is open in Preview | When the user opens the filter panel | Then the baseline-preview switch is not shown | Evidence: `UAC-05` and `OOS-02` from the accepted UAC for GUIDES-10878.
+- AC-04 [Confirmed]: (UI) Given the baseline switch is on and a baseline is selected | When the Preview filter controls are displayed | Then `Show diff` is hidden | Evidence: `UAC-06` from the accepted UAC for GUIDES-10878.
+- AC-05 [Confirmed]: (Compatibility) Given the same eligible map and static baseline are available in the old and new editors | When baseline-aware map Preview is used in each editor | Then each editor renders the selected-baseline content | Evidence: `UAC-09` from the accepted UAC for GUIDES-10878.
+- AC-06 [Confirmed]: (State) Given a baseline is selected and its map content is displayed in Preview | When the user switches among Author, Source, and Preview and returns to Preview | Then the baseline selection and baseline-aware preview state are retained | Evidence: `UAC-11` from the accepted UAC for GUIDES-10878.
+- AC-07 [Confirmed]: (Negative) Given a repository version is referenced by a baseline | When version purge is attempted for that version | Then the purge is refused and the baseline-referenced version remains available | Evidence: `UAC-13` from the accepted UAC for GUIDES-10878.
+- AC-08 [Confirmed]: (Lifecycle) Given a selected baseline is currently rendered in Preview | When that baseline is deleted elsewhere | Then the current preview remains unchanged until the user selects another baseline or turns off the baseline switch | Evidence: `UAC-14` from the accepted UAC for GUIDES-10878.
+- AC-09 [Confirmed]: (Compatibility) Given working-copy content changes while working-copy Preview is active | When the change is saved | Then the new editor refreshes the working-copy preview automatically, while the old editor shows the update only after its refresh action | Evidence: `UAC-15` from the accepted UAC for GUIDES-10878.
+- AC-10 [Proposed]: (Performance) Given the approved large-map fixture, cache state, editor matrix, and baseline-preview latency budget recorded in Jira | When a user selects a static baseline and Preview resolves content, conditions, references, and keys | Then loader behavior, response latency, and resource use remain within those approved limits without stale or partially mixed-version content | Evidence: performance risk acknowledged by `UAC-16`; Blocker: workload, percentile, latency, concurrency, and resource thresholds are TBD.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "User-supplied GUIDES-10878 accepted UAC and Jira screenshot",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06", "UAC-07", "UAC-08", "UAC-09", "UAC-10", "UAC-11", "UAC-12", "UAC-13", "UAC-14", "UAC-15", "UAC-16"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03", "OOS-04"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01"],
+      "UAC-02": ["AC-02"],
+      "UAC-04": ["AC-01"],
+      "UAC-05": ["AC-01", "AC-03"],
+      "UAC-06": ["AC-04"],
+      "UAC-09": ["AC-05"],
+      "UAC-11": ["AC-06"],
+      "UAC-13": ["AC-07"],
+      "UAC-14": ["AC-08"],
+      "UAC-15": ["AC-09"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-04", "UAC-05"],
+      "AC-02": ["UAC-02"],
+      "AC-03": ["UAC-05"],
+      "AC-04": ["UAC-06"],
+      "AC-05": ["UAC-09"],
+      "AC-06": ["UAC-11"],
+      "AC-07": ["UAC-13"],
+      "AC-08": ["UAC-14"],
+      "AC-09": ["UAC-15"]
+    },
+    "proposed_ac_ids": ["AC-10"],
+    "unresolved_clause_ids": ["UAC-03", "UAC-07", "UAC-08", "UAC-10", "UAC-12", "UAC-16"],
+    "contradictions": ["UAC-10 requests dynamic/static loader behavior while OOS-01 excludes dynamic baselines"],
+    "scope_expansions": [],
+    "status": "blocked"
+  }
+}
+```
+
+Before automation handoff, define old/new baseline fixtures (`UAC-03`), the selected-version oracles for conditions, direct/indirect references, and keys (`UAC-07`, `UAC-08`, `UAC-12`), resolve the dynamic-loader contradiction (`UAC-10`), and approve measurable performance limits (`UAC-16`). Keep revert/rollback, version-specific metadata editing, Reports, and linked implementation defects outside Confirmed AC unless a newer accepted Jira clause explicitly adds them.
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
@@ -766,6 +1039,12 @@ Use this example as a quality bar for report tickets where key references, conte
 - For UI config JSON upgrade tickets, always separate upgraded-instance retained values from fresh-install defaults; verify custom CSS, custom `ui-config.json` components, shortcut keys, custom DITA attributes/elements, default templates, snippets, labels, Show Tags, Display Attributes, XML Comments, and Quick Insert Menu.
 - For DB/Splunk logging tickets, always separate noisy JCR/on-prem DB warning/info logs from valid Cloud DB errors, verify exact unwanted logger strings are absent, preserve actionable error logging, test authoring and reference add/update regressions, capture Splunk query evidence, and keep automation as a gap until Splunk-query setup exists.
 - For key-resolution report tickets, always test root map, key map, nested-map scope, valid versus missing keys, `keyref` versus `conkeyref` link types, correct linked file, post-processing/index refresh, create/rename/delete updates, no false positives, `Used In` title/path accuracy, Topic/Map file type, CSV/Excel export parity, and existing cross-link/reusable-content regressions.
+- For Native AEM Site baseline-metadata tickets, always separate selected-baseline values from current working-copy values; cover `metadatalist` allowlisting, custom metadata, static/dynamic baselines, incremental publishing, Copy To, content/metadata version consistency, map-to-topic fallback precedence, and old/new baseline regeneration while preserving the ticket's explicit Old AEM Site, chunking, and multimedia exclusions.
+- For baseline-aware Web Editor preview tickets, separate map from topic preview and static from dynamic baselines; cover selected-version rendering, filter-panel controls, Show diff visibility, editor parity, mode-switch retention, loader lifecycle, conditions, direct/indirect references, keys, selected-baseline deletion, version-purge protection, working-copy refresh behavior, and measurable large-map performance without promoting revert, metadata editing, Reports, or linked defects into scope.
+- For Native PDF map-title inline-content tickets, separate map, project, and topic title scope; distinguish direct map-title `conref`/`conkeyref` exclusions from supported nested `<ph>`/`<keyword>` `keyref`, `conref`, and `conkeyref` paths; cover `<tm>`, inline emphasis, text decoration, `<image>`, `ditavalref`, conditional presets, DITA-OT enabled/disabled behavior, and text-only metadata titles; keep topic-title and unsupported video/object content outside scope, and require an explicit result for each DITA-OT state before creating Confirmed ACs.
+- For GUID/UUID reference-insertion tickets, validate repository drag/drop and toolbar browse independently by inspecting source XML; require a GUID-backed `topicref/@href` and the accepted default `scope`, preserve the reference when another user moves the target before the map is saved, retain the target's original GUID without minting a replacement, test every stated UUID-property state, and run the same matrix in CKEditor and MarkupEditor; keep explicitly rejected external-scope path conversion outside sign-off and reconcile any editor-parity range that still includes an excluded UAC point.
+- For translation v1/v2 first-run tickets, require the exact config name and default plus enabled/disabled outcomes; separate first translation from later buffer-copy runs; cover source-copy replacement after approval, translated-reference integrity, language-folder versus global assets, every named reference type, language-code GUID rules, mixed in-sync/missing-copy languages, machine/human/XLIFF/multilingual/baseline/API matrices, and related-asset no-copy/no-link behavior in both v1 and v2 while proving the config does not alter v1. Treat `work as is`, missing move/version outcomes, and pending linked-ticket scope as unresolved; when incident prose conflicts with final accepted UAC, keep the accepted UAC as sign-off authority and surface the conflict in `Open Questions` rather than merging both outcomes.
+- For baseline-export asset-relocation tickets, test image and `topicref` moves from language to global, global back to language, and assets created globally without a language code then moved through both locations; require the exported baseline to resolve the current canonical asset path and the exact version created after the move without obsolete language-specific copies or missing-asset errors. Cover baselines/content created before upgrade and preserve translation asset retrieval, acceptance, rejection, XLIFF, human, and machine workflows. Treat `baseline export should work`, `no changes in normal workflows`, and upgrade checks without source/target builds or observable package/version outcomes as unresolved automation contracts.
 - For on-premise release tickets, always ask upgrade-impact open questions about source/target versions, retained custom configs, changed defaults, manual post-upgrade steps, Cloud parity, and backward compatibility.
 - Convert each UAC bullet into one practical `P0`, `P1`, or `P2` scenario with action and expected result.
 - Keep file-type matrices compact; do not create a table unless the user explicitly asks.

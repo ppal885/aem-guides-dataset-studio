@@ -392,6 +392,53 @@ def test_run_gates() -> None:
         }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
 
+        base = {
+            **dual_source,
+            "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+            "accepted_uac_present": True,
+        }
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("accepted UAC requires fidelity audit", any("uac_fidelity" in failure for failure in failures))
+
+        contract = {
+            "schema_version": "aem-guides-uac-fidelity-v1",
+            "source_ref": "Jira GUIDES-38333 final accepted UAC",
+            "accepted_clause_ids": ["UAC-01", "UAC-02"],
+            "out_of_scope_clause_ids": ["OOS-01"],
+            "clause_to_ac": {"UAC-01": ["AC-01"], "UAC-02": ["AC-02"]},
+            "confirmed_ac_to_clause": {"AC-01": ["UAC-01"], "AC-02": ["UAC-02"]},
+            "proposed_ac_ids": ["AC-03"],
+            "unresolved_clause_ids": [],
+            "contradictions": [],
+            "scope_expansions": [],
+            "status": "pass",
+        }
+        base["uac_fidelity"] = contract
+        path.write_text(json.dumps(base), encoding="utf-8")
+        check("complete UAC fidelity audit passes", run_gates.check_manifest_completeness(str(path)) == [])
+
+        contract["clause_to_ac"].pop("UAC-02")
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "unmapped accepted UAC clause is rejected",
+            any("UAC-02" in failure and "no Confirmed AC" in failure for failure in failures),
+        )
+        contract["clause_to_ac"]["UAC-02"] = ["AC-02"]
+
+        contract["scope_expansions"] = ["DITA-OT output added despite OOS-01"]
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("passing audit cannot hide scope expansion", any("scope expansions" in failure for failure in failures))
+
+        contract["scope_expansions"] = []
+        contract["unresolved_clause_ids"] = ["UAC-02"]
+        contract["status"] = "blocked"
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("blocked UAC fidelity audit cannot pass final gate", any("status is blocked" in failure for failure in failures))
+
         configured_only = json.loads(json.dumps(dual_source))
         configured_only["clones"] = []
         configured_only["evidence_preflight"]["sources"]["live_jira"]["checked_via"] = "Jira MCP configured"
@@ -542,11 +589,61 @@ def test_run_gates() -> None:
         )
 
 
+def test_uac_fidelity_reference() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    skill_text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    reference_path = skill_root / "references" / "uac-reference-examples.md"
+    reference_text = reference_path.read_text(encoding="utf-8")
+    checklist_text = (skill_root / "references" / "quality-gate-checklist.md").read_text(encoding="utf-8")
+
+    for marker in (
+        "#### Accepted UAC Fidelity Gate",
+        "aem-guides-uac-fidelity-v1",
+        "bidirectional traceability",
+        "configuration truth table",
+    ):
+        check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
+    for marker in (
+        "## Gold Reference: GUIDES-38333 Native PDF Reltable Parity",
+        "ENABLE_RELATED_LINKS_FOR_NATIVE_PDF",
+        "-Dargs.rellinks=nofamily",
+        "OOS-03",
+        "AC-06 [Confirmed]",
+        "## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata",
+        "NATIVE_AEMSITE",
+        "Baseline_v2.0",
+        "metadatalist",
+        "GUIDES-53306",
+        "AC-12 [Confirmed]",
+        "## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview",
+        "UAC-16",
+        "AC-10 [Proposed]",
+        "dynamic/static loader behavior while OOS-01 excludes dynamic baselines",
+    ):
+        check(f"UAC reference retains marker {marker}", marker in reference_text)
+    check(
+        "quality gate enforces accepted UAC fidelity",
+        "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
+    )
+
+    repo_root = Path(__file__).resolve().parents[4]
+    counterpart_root = (
+        repo_root
+        / (".claude" if skill_root.parts[-3] == ".codex" else ".codex")
+        / "skills"
+        / "test-plan-generation"
+    )
+    counterpart = counterpart_root / "references" / "uac-reference-examples.md"
+    if counterpart.is_file():
+        check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
+
+
 def main() -> int:
     test_validator()
     test_verifier()
     test_attachment_manifest()
     test_run_gates()
+    test_uac_fidelity_reference()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

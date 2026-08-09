@@ -14,6 +14,13 @@ from app.services.jira_enrichment_service import (
     enrichment_embed_prefix,
     enrichment_metadata_json,
 )
+from app.services.jira_uac_analysis_service import (
+    HISTORICAL_UAC_CHUNK_TYPES,
+    analyze_historical_uac,
+    build_historical_uac_chunks,
+    extract_explicit_root_cause_evidence,
+    extract_explicit_test_evidence,
+)
 
 SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
     {
@@ -31,6 +38,7 @@ SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
         "linked_issue_chunk",
         "attachment_signal_chunk",
         "learning_behavior_chunk",
+        *HISTORICAL_UAC_CHUNK_TYPES,
     }
 )
 
@@ -248,6 +256,40 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
             chunk_text="Acceptance criteria:\n" + e.acceptance_criteria.strip(),
             enriched=e,
         )
+        uac_root_cause, uac_root_cause_source = extract_explicit_root_cause_evidence(
+            field_value=e.root_cause,
+            comment_documents=[e.comments_digest],
+        )
+        uac_test_evidence, uac_test_evidence_source = extract_explicit_test_evidence(
+            field_value=e.test_plan,
+            comment_documents=[e.comments_digest],
+        )
+        uac_analysis = analyze_historical_uac(
+            jira_key=e.jira_key,
+            acceptance_criteria=e.acceptance_criteria,
+            status=e.status,
+            resolution=e.resolution,
+            labels=e.labels,
+            root_cause=uac_root_cause,
+            test_evidence=uac_test_evidence,
+            root_cause_source=uac_root_cause_source,
+            test_evidence_source=uac_test_evidence_source,
+        )
+        if uac_analysis is not None:
+            for uac_chunk in build_historical_uac_chunks(uac_analysis):
+                _append_chunk(
+                    out,
+                    chunk_type=str(uac_chunk["chunk_type"]),
+                    chunk_text=str(uac_chunk["chunk_text"]),
+                    enriched=e,
+                )
+                out[-1].update(
+                    {
+                        key: value
+                        for key, value in uac_chunk.items()
+                        if key not in {"chunk_type", "chunk_text"}
+                    }
+                )
 
     resolution_parts = []
     if e.resolution.strip():
@@ -393,8 +435,49 @@ def smart_chunks_to_chroma_rows(
                 "is_verified_fix": bool(sc.get("is_verified_fix") or False),
                 "evidence_facets": _json_meta(sc.get("evidence_facets") or []),
                 "learning_strategy_version": str(sc.get("learning_strategy_version") or ""),
+                "behavior_contract_source": str(sc.get("behavior_contract_source") or ""),
+                "behavior_contract_complete": bool(sc.get("behavior_contract_complete") or False),
+                "root_cause_source": str(sc.get("root_cause_source") or ""),
+                "qa_oracle_source": str(sc.get("qa_oracle_source") or ""),
             }
         )
+        for key in (
+            "uac_schema_version",
+            "uac_analysis_method",
+            "uac_source_hash",
+            "uac_source_authority",
+            "uac_reuse_tier",
+            "uac_historical_outcome",
+            "uac_root_cause_source",
+            "uac_test_evidence_source",
+            "uac_clause_id",
+            "uac_clause_stable_key",
+            "uac_clause_kind",
+            "uac_clause_reuse_tier",
+            "uac_dimension",
+        ):
+            meta[key] = str(sc.get(key) or "")
+        for key in (
+            "uac_llm_used",
+            "uac_source_truncated",
+            "uac_contract_complete",
+            "uac_issue_closed",
+            "uac_performance_matters",
+            "uac_performance_complete",
+            "uac_clause_unresolved",
+            "uac_dimension_has_unresolved",
+        ):
+            meta[key] = bool(sc.get(key) or False)
+        for key in (
+            "uac_clause_count",
+            "uac_out_of_scope_count",
+            "uac_reference_count",
+            "uac_context_count",
+            "uac_unresolved_count",
+            "uac_contradiction_count",
+        ):
+            meta[key] = int(sc.get(key) or 0)
+        meta["uac_dimensions"] = _json_meta(sc.get("uac_dimensions") or [])
         cid = f"{issue_key}::{ctype}::{idx}"
         rows.append({"chunk_id": cid, "document": doc, "metadata": meta})
     return rows

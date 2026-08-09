@@ -100,6 +100,63 @@ def rebuild_jira_learning_chunks(
     return result
 
 
+@router.get("/jira-rag/uac-chunks/audit")
+def audit_historical_uac_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 100_000,
+    page_size: int = 200,
+    closed_only: bool = True,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.services.jira_uac_backfill_service import backfill_historical_uac_chunks
+
+    return backfill_historical_uac_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 500_000)),
+        page_size=max(1, min(page_size, 1000)),
+        closed_only=closed_only,
+        dry_run=True,
+    )
+
+
+@router.post("/jira-rag/uac-chunks/rebuild")
+def rebuild_historical_uac_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 100_000,
+    page_size: int = 200,
+    closed_only: bool = True,
+    dry_run: bool = True,
+    refresh_learning: bool = True,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.services.jira_uac_backfill_service import backfill_historical_uac_chunks
+
+    result = backfill_historical_uac_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 500_000)),
+        page_size=max(1, min(page_size, 1000)),
+        closed_only=closed_only,
+        dry_run=dry_run,
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    if not dry_run and result.get("valid") and refresh_learning:
+        from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
+
+        learning = backfill_jira_learning_chunks(
+            source_type=source_type.strip()[:80],
+            limit=min(limit, 100_000),
+        )
+        result["learning_refresh"] = learning
+        if learning.get("error") or learning.get("failed_issues"):
+            result["valid"] = False
+    if not dry_run and not result.get("valid"):
+        raise HTTPException(status_code=500, detail=result)
+    return result
+
+
 @router.post("/jira-rag/reconcile")
 def reconcile_jira_rag(
     dry_run: bool = True,

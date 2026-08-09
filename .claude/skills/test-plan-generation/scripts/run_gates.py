@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +74,7 @@ PREFLIGHT_SOURCE_KEYS = (
 PREFLIGHT_STATUSES = {"available", "unavailable", "not_applicable"}
 PREFLIGHT_MODES = {"full", "degraded"}
 PREFLIGHT_READINESS_IMPACTS = {"none", "draft_only", "blocked"}
+UAC_FIDELITY_SCHEMA = "aem-guides-uac-fidelity-v1"
 PREFLIGHT_SOURCE_LABELS = {
     "product_rag": ("product rag", "ask_dita_expert"),
     "jira_history": ("jira history", "search_jira_history", "indexed jira"),
@@ -80,6 +82,128 @@ PREFLIGHT_SOURCE_LABELS = {
     "git": ("git", "github", "diff"),
     "figma": ("figma", "design"),
 }
+
+
+def check_uac_fidelity(data: dict) -> list[str]:
+    if "accepted_uac_present" in data and not isinstance(data["accepted_uac_present"], bool):
+        return ["manifest 'accepted_uac_present' must be a boolean"]
+    contract = data.get("uac_fidelity")
+    if data.get("accepted_uac_present") and contract is None:
+        return ["accepted_uac_present is true but manifest 'uac_fidelity' is missing"]
+    if contract is None:
+        return []
+    if not isinstance(contract, dict):
+        return ["manifest 'uac_fidelity' must be an object"]
+
+    failures: list[str] = []
+    required = (
+        "schema_version", "source_ref", "accepted_clause_ids", "out_of_scope_clause_ids",
+        "clause_to_ac", "confirmed_ac_to_clause", "proposed_ac_ids", "unresolved_clause_ids",
+        "contradictions", "scope_expansions", "status",
+    )
+    missing = [key for key in required if key not in contract]
+    if missing:
+        return ["uac_fidelity is missing required keys: " + ", ".join(missing)]
+    if contract["schema_version"] != UAC_FIDELITY_SCHEMA:
+        failures.append(f"uac_fidelity.schema_version must be {UAC_FIDELITY_SCHEMA}")
+    if not isinstance(contract["source_ref"], str) or not contract["source_ref"].strip():
+        failures.append("uac_fidelity.source_ref must identify the accepted UAC source")
+
+    accepted = contract["accepted_clause_ids"]
+    out_of_scope = contract["out_of_scope_clause_ids"]
+    unresolved = contract["unresolved_clause_ids"]
+    proposed = contract["proposed_ac_ids"]
+    contradictions = contract["contradictions"]
+    expansions = contract["scope_expansions"]
+    list_fields = {
+        "accepted_clause_ids": accepted,
+        "out_of_scope_clause_ids": out_of_scope,
+        "unresolved_clause_ids": unresolved,
+        "proposed_ac_ids": proposed,
+        "contradictions": contradictions,
+        "scope_expansions": expansions,
+    }
+    for name, value in list_fields.items():
+        if not isinstance(value, list):
+            failures.append(f"uac_fidelity.{name} must be a list")
+    if failures:
+        return failures
+    for name, values in (
+        ("accepted_clause_ids", accepted),
+        ("out_of_scope_clause_ids", out_of_scope),
+        ("unresolved_clause_ids", unresolved),
+        ("proposed_ac_ids", proposed),
+    ):
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            failures.append(f"uac_fidelity.{name} must contain non-empty strings")
+    if failures:
+        return failures
+
+    accepted_set = set(accepted)
+    out_of_scope_set = set(out_of_scope)
+    unresolved_set = set(unresolved)
+    proposed_set = set(proposed)
+    if not accepted_set or len(accepted_set) != len(accepted):
+        failures.append("uac_fidelity.accepted_clause_ids must contain unique accepted clauses")
+    if accepted_set & out_of_scope_set:
+        failures.append("accepted and out-of-scope UAC clause IDs must not overlap")
+    if not unresolved_set <= accepted_set:
+        failures.append("uac_fidelity.unresolved_clause_ids contains an unknown accepted clause")
+    if any(not isinstance(ac, str) or not re.fullmatch(r"AC-\d{2}", ac) for ac in proposed):
+        failures.append("uac_fidelity.proposed_ac_ids must contain canonical AC-## IDs")
+
+    clause_to_ac = contract["clause_to_ac"]
+    confirmed_to_clause = contract["confirmed_ac_to_clause"]
+    if not isinstance(clause_to_ac, dict) or not isinstance(confirmed_to_clause, dict):
+        failures.append("uac_fidelity clause mappings must be objects")
+        return failures
+    if any(not isinstance(key, str) or not key for key in clause_to_ac):
+        failures.append("uac_fidelity.clause_to_ac keys must be non-empty clause IDs")
+    if any(not isinstance(key, str) or not key for key in confirmed_to_clause):
+        failures.append("uac_fidelity.confirmed_ac_to_clause keys must be non-empty AC IDs")
+    if failures:
+        return failures
+    unknown_clauses = set(clause_to_ac) - accepted_set
+    if unknown_clauses:
+        failures.append("uac_fidelity.clause_to_ac contains unknown clauses: " + ", ".join(sorted(unknown_clauses)))
+    for clause_id in sorted(accepted_set - unresolved_set):
+        ac_ids = clause_to_ac.get(clause_id)
+        if not isinstance(ac_ids, list) or not ac_ids:
+            failures.append(f"accepted clause {clause_id} has no Confirmed AC mapping")
+            continue
+        if any(not isinstance(ac, str) or not re.fullmatch(r"AC-\d{2}", ac) for ac in ac_ids):
+            failures.append(f"accepted clause {clause_id} has a noncanonical AC mapping")
+
+    confirmed_set = set(confirmed_to_clause)
+    if confirmed_set & proposed_set:
+        failures.append("an AC cannot be both Confirmed and Proposed in uac_fidelity")
+    for ac_id, clause_ids in confirmed_to_clause.items():
+        if not re.fullmatch(r"AC-\d{2}", str(ac_id)):
+            failures.append(f"uac_fidelity has noncanonical Confirmed AC ID {ac_id}")
+            continue
+        if not isinstance(clause_ids, list) or not clause_ids:
+            failures.append(f"Confirmed {ac_id} has no accepted UAC source clause")
+            continue
+        invalid = set(clause_ids) - accepted_set
+        if invalid:
+            failures.append(f"Confirmed {ac_id} references unknown clauses: " + ", ".join(sorted(invalid)))
+        for clause_id in set(clause_ids) & accepted_set:
+            if ac_id not in (clause_to_ac.get(clause_id) or []):
+                failures.append(f"uac_fidelity mapping is not bidirectional for {clause_id} and {ac_id}")
+    for clause_id, ac_ids in clause_to_ac.items():
+        if isinstance(ac_ids, list):
+            for ac_id in ac_ids:
+                if ac_id not in confirmed_set:
+                    failures.append(f"accepted clause {clause_id} maps to {ac_id}, but it is not declared Confirmed")
+
+    status = contract["status"]
+    if status not in ("pass", "blocked"):
+        failures.append("uac_fidelity.status must be 'pass' or 'blocked'")
+    if status == "blocked":
+        failures.append("uac_fidelity.status is blocked; resolve accepted-UAC questions before final delivery")
+    if status == "pass" and (unresolved or contradictions or expansions):
+        failures.append("uac_fidelity.status cannot be pass with unresolved clauses, contradictions, or scope expansions")
+    return failures
 PREFLIGHT_RESTRICTION_TERMS = {
     "product_rag": ("behaviour", "behavior", "product documentation", "documented product"),
     "jira_history": ("similar", "historical", "history", "regression learning"),
@@ -404,6 +528,7 @@ def check_manifest_completeness(path: str | None) -> list[str]:
                 )
     elif clones is not None:
         failures.append("manifest 'clones' must be a list")
+    failures.extend(check_uac_fidelity(data))
     return failures
 
 

@@ -23,6 +23,11 @@ Use this before calling a test plan review-ready.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
 - Jira UAC/acceptance criteria are treated as the primary acceptance and sign-off contract for scope, out-of-scope, expected behaviour, integrations, regression boundaries, and open questions.
+- When final accepted UAC exists, `accepted_uac_present=true` and a valid `aem-guides-uac-fidelity-v1` manifest audit maps every accepted clause to `[Confirmed]` ACs and every `[Confirmed]` AC back to accepted clauses.
+- Normalization preserves exact config names and values, defaults, ordering, formatting, parity targets, and non-goals; linked tests, RAG, history, or generated coverage remain `[Proposed]` unless the accepted UAC approves them.
+- Parity requirements use the named comparison surface as the oracle across entry presence, visible text, order, formatting, clickability, and destination; the plan does not invent a more specific result without inspecting that reference output.
+- Independent controls such as a feature flag and preset argument remain separate and have positive plus one-control-missing configurations; one control is never substituted for the other.
+- Out-of-scope behaviour is not converted into a sign-off AC or a blocking regression, and an intentional output difference is not reported as a defect.
 - Conflict priority is applied when evidence disagrees: Jira/UAC > PR implementation > accepted RAG docs > Figma UI intent > cloned repo/team memory.
 - Edge cases are derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, and similar Jira history.
 - Integration impact identifies adjacent workflows, shared APIs/components, configs, roles, output types, and automation areas that can break.
@@ -70,6 +75,9 @@ Use this before calling a test plan review-ready.
 
 - Issue facts from Jira, Dynamics/support, customer escalation, logs, screenshots, or investigation notes are missing or too vague for the declared stage.
 - UAC scope or out-of-scope is ignored, softened, or contradicted without a visible blocker.
+- Final accepted UAC exists but its fidelity audit is missing, an accepted clause is unmapped, a `[Confirmed]` AC has no accepted source clause, or the audit reports an unresolved contradiction or scope expansion.
+- A parity clause is rewritten as a more specific expected result without an inspected reference output or explicit accepted Jira wording.
+- Independent enablement controls are conflated, or an out-of-scope HTML5/DITA-OT behavior is treated as a Native PDF sign-off failure.
 - RAG is down, noisy, unrelated, or unavailable and the affected behaviour claim lacks another authoritative evidence source.
 - RAG was queried only with broad prose and not tightened with exact API/config/UI/construct terms when the first results were noisy.
 - RAG relies on older release-note chunks while newer/current exact docs are available for the same behaviour.
