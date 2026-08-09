@@ -16,9 +16,8 @@ from app.services.jira_enrichment_service import (
     enrichment_metadata_json,
 )
 from app.services.jira_component_metadata_service import (
-    COMPONENT_FILTER_SCHEMA_VERSION,
     canonical_component_names,
-    component_primary_from_names,
+    component_filter_metadata,
 )
 
 JIRA_QA_CUSTOMER_FIELD_ID = (os.getenv("JIRA_QA_CUSTOMER_FIELD_ID") or "").strip()
@@ -141,7 +140,9 @@ def _build_base_metadata(
         if isinstance(csv_raw_components, list)
         else _components_list(fields)
     )
-    components = canonical_component_names(raw_components)
+    components = canonical_component_names(_components_list(fields))
+    if not components:
+        components = canonical_component_names(raw_components)
     labels = _labels_list(fields)
     meta: dict[str, Any] = {
         "source_type": "jira",
@@ -155,10 +156,19 @@ def _build_base_metadata(
         "jira_updated_at": str(fields.get("updated") or "")[:80],
         "import_source_type": str(fields.get("_source_type") or "jira_api")[:80],
         "source_file_hash": str(fields.get("_source_file_hash") or "")[:64],
+        "source_evidence_mode": str(
+            fields.get("_csv_source_evidence_mode") or "full_jira"
+        )[:40],
         "components": _json_meta(components),
         "components_raw": _json_meta(raw_components),
-        "component_primary": component_primary_from_names(components),
-        "component_filter_schema_version": COMPONENT_FILTER_SCHEMA_VERSION,
+        "component_classification_source": str(
+            fields.get("_component_classification_source") or "jira_component"
+        )[:80],
+        "component_inference_signals": _json_meta(
+            fields.get("_component_inference_signals")
+            if isinstance(fields.get("_component_inference_signals"), list)
+            else []
+        ),
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
         "affected_versions": _json_meta(_versions(fields, "versions")),
@@ -168,6 +178,7 @@ def _build_base_metadata(
         "qa_domain": "UAC",
         "automation_candidate": automation_candidate,
     }
+    meta.update(component_filter_metadata(components))
     if customer_index is not None:
         ci = customer_index
     else:
@@ -257,6 +268,8 @@ def build_jira_qa_chunks(
                 "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
+                "enrich_features": _json_meta(enriched.affected_features[:40]),
+                "editor_variant": "new_editor" if "new_editor" in enriched.affected_features else "",
                 "enrich_automation_fit": enriched.automation_fit[:200],
                 "enrich_profile_json": je_profile,
             }

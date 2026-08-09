@@ -68,8 +68,34 @@ def test_chunking_emits_types(monkeypatch):
     assert "similar_ticket_signals" in types
     assert "attachment_log_signals" in types
     assert {c["metadata"]["component_primary"] for c in chunks} == {"publishing"}
-    assert {c["metadata"]["component_filter_schema_version"] for c in chunks} == {2}
+    assert {c["metadata"]["component_filter_schema_version"] for c in chunks} == {5}
+    assert {c["metadata"]["component_publishing"] for c in chunks} == {True}
+    assert {c["metadata"]["component_editor"] for c in chunks} == {False}
     assert {c["metadata"]["components_raw"] for c in chunks} == {'["Publishing"]'}
+
+
+def test_new_editor_multi_component_chunks_have_membership_flags(monkeypatch):
+    monkeypatch.setenv("JIRA_SMART_CHUNKING", "true")
+    issue = {
+        "fields": {
+            "summary": "New Editor table paste regression",
+            "description": "Pasting a table drops colwidth values.",
+            "issuetype": {"name": "Customer Request"},
+            "status": {"name": "Closed"},
+            "priority": {"name": "Critical"},
+            "components": [{"name": "Authoring"}, {"name": "Editor"}],
+            "labels": ["ABS"],
+            "updated": "2026-08-08T00:00:00.000+0000",
+        }
+    }
+
+    chunks = build_jira_qa_chunks("GUIDES-52916", issue, comments=[], linked_issues=[])
+
+    assert chunks
+    assert {chunk["metadata"]["component_authoring"] for chunk in chunks} == {True}
+    assert {chunk["metadata"]["component_editor"] for chunk in chunks} == {True}
+    assert {chunk["metadata"]["editor_variant"] for chunk in chunks} == {"new_editor"}
+    assert all("new_editor" in chunk["metadata"]["enrich_features"] for chunk in chunks)
 
 
 def test_automation_rubric_range():
@@ -95,6 +121,30 @@ def test_customer_names_are_inferred_from_free_text_query():
     assert _customer_names_from_query("PwC publishing issues") == ["PwC"]
     assert _customer_names_from_query("LinkedIn authoring issues") == ["LinkedIn"]
     assert _customer_names_from_query("Sonova and Demant publishing issues") == ["Sonova", "Demant"]
+    assert _customer_names_from_query(
+        "American Bureau of Shipping and AstraZeneca New Editor issues"
+    ) == ["American Bureau of Shipping", "AstraZeneca"]
+    assert _customer_names_from_query("Gulfstream, Workday, and Zebra editor bugs") == [
+        "Gulfstream",
+        "Workday",
+        "Zebra",
+    ]
+    assert _customer_names_from_query(
+        "Sub-Zero, Crown Equipment, and Rockwell Automation Native PDF bugs"
+    ) == ["Crown Equipment", "Rockwell Automation", "Sub-Zero"]
+    assert _customer_names_from_query(
+        "Cisco, EY, Qualcomm, Micron, Verizon, and Kogei Intec regressions"
+    ) == ["Cisco", "EY", "Kogei Intec Corporation", "Micron", "Qualcomm", "Verizon"]
+    assert _customer_names_from_query(
+        "Centene, Kyndryl, Cloud Software Group, Haas Automation, Splunk, and STIHL publishing"
+    ) == [
+        "Centene",
+        "Cloud Software Group",
+        "Haas Automation",
+        "Kyndryl",
+        "Splunk",
+        "STIHL",
+    ]
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

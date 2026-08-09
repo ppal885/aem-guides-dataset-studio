@@ -29,6 +29,10 @@ customer_detection:
     - epic
 
 feature_signals:
+  new_editor:
+    - new editor
+    - guides ui 2.0
+    - neweditorphase2
   translation:
     - translation
     - worldserver

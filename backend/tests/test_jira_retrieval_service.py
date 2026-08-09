@@ -21,7 +21,7 @@ from app.services.jira_retrieval_service import (
 )
 
 
-def test_all_canonical_components_build_exact_scalar_filters():
+def test_all_canonical_components_build_exact_membership_filters():
     for component in (
         "Editor",
         "Authoring",
@@ -38,8 +38,8 @@ def test_all_canonical_components_build_exact_scalar_filters():
             components=[component],
         ) == [
             {
-                "label": "component_primary_filtered",
-                "where": {"component_primary": component.casefold()},
+                "label": "component_membership_filtered",
+                "where": {f"component_{component.casefold()}": True},
             }
         ]
 
@@ -65,7 +65,7 @@ def test_component_uses_strict_chroma_filter_without_unfiltered_fallback(
 
     assert rows == []
     mock_query.assert_called_once()
-    assert mock_query.call_args.kwargs["where"] == {"component_primary": "editor"}
+    assert mock_query.call_args.kwargs["where"] == {"component_editor": True}
     assert debug["chroma"]["component_chroma_filter_applied"] is True
     assert debug["chroma"]["unfiltered_fallback_query"] is False
 

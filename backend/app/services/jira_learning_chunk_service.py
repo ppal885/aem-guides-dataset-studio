@@ -12,6 +12,10 @@ from app.core.schemas_jira_enrichment import JiraEnrichedDocument
 from app.db.jira_enrichment_models import JiraEnrichedIssue, JiraIssueChunk
 from app.db.session import SessionLocal
 from app.services.embedding_service import embed_texts_batched, is_embedding_available
+from app.services.jira_component_metadata_service import (
+    canonical_component_names,
+    component_filter_metadata,
+)
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, add_documents, is_chroma_available
 
 LEARNING_CHUNK_TYPE = "learning_behavior_chunk"
@@ -223,7 +227,47 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
     )
 
 
-def backfill_jira_learning_chunks(*, source_type: str = "jira_csv", limit: int = 10_000) -> dict[str, Any]:
+def _learning_chroma_metadata(
+    issue: JiraEnrichedIssue,
+    learning_meta: dict[str, Any],
+) -> dict[str, Any]:
+    components = canonical_component_names(_json_list(issue.components))
+    customers = list(dict.fromkeys(
+        _json_list(issue.customer_cohorts) + _json_list(issue.customer_names)
+    ))
+    features = _json_list(issue.affected_features)
+    metadata = {
+        "source_type": "jira_learning",
+        "jira_key": issue.jira_key,
+        "title": (issue.summary or "")[:500],
+        "chunk_type": LEARNING_CHUNK_TYPE,
+        "status": (issue.status or "")[:120],
+        "resolution": (issue.resolution or "")[:120],
+        "enrich_domain": (issue.domain or "unknown")[:120],
+        "components": json.dumps(components, ensure_ascii=False)[:4000],
+        "customer_names": json.dumps(customers, ensure_ascii=False)[:4000],
+        "customer_cohorts": json.dumps(_json_list(issue.customer_cohorts), ensure_ascii=False)[:4000],
+        "enrich_customers": json.dumps(customers, ensure_ascii=False)[:4000],
+        "enrich_outputs": json.dumps(_json_list(issue.affected_outputs), ensure_ascii=False)[:4000],
+        "enrich_entities": json.dumps(_json_list(issue.dita_entities), ensure_ascii=False)[:4000],
+        "enrich_features": json.dumps(features, ensure_ascii=False)[:4000],
+        "editor_variant": "new_editor" if "new_editor" in features else "",
+        "learning_confidence": str(learning_meta["learning_confidence"]),
+        "historical_outcome": str(learning_meta["historical_outcome"]),
+        "is_verified_fix": bool(learning_meta["is_verified_fix"]),
+        "evidence_facets": json.dumps(learning_meta["evidence_facets"], ensure_ascii=False),
+        "learning_strategy_version": LEARNING_STRATEGY_VERSION,
+    }
+    metadata.update(component_filter_metadata(components))
+    return metadata
+
+
+def backfill_jira_learning_chunks(
+    *,
+    source_type: str = "jira_csv",
+    limit: int = 10_000,
+    jira_keys: list[str] | None = None,
+) -> dict[str, Any]:
     """Build and upsert one learning chunk per eligible resolved Jira issue."""
     if not is_chroma_available():
         return {"error": "ChromaDB is not available", "indexed_issues": 0, "chunks": 0}
@@ -235,6 +279,11 @@ def backfill_jira_learning_chunks(*, source_type: str = "jira_csv", limit: int =
         query = db.query(JiraEnrichedIssue)
         if source_type:
             query = query.filter(JiraEnrichedIssue.source_type == source_type)
+        requested_keys = list(dict.fromkeys(
+            str(key or "").strip().upper() for key in (jira_keys or []) if str(key or "").strip()
+        ))
+        if requested_keys:
+            query = query.filter(JiraEnrichedIssue.jira_key.in_(requested_keys))
         issues = query.order_by(JiraEnrichedIssue.jira_key).limit(max(1, min(limit, 100_000))).all()
         keys = [issue.jira_key for issue in issues]
         chunk_rows = db.query(JiraIssueChunk).filter(JiraIssueChunk.jira_key.in_(keys)).all() if keys else []
@@ -266,27 +315,10 @@ def backfill_jira_learning_chunks(*, source_type: str = "jira_csv", limit: int =
             errors.extend(f"{issue.jira_key}: embedding failed" for issue, _, _ in batch)
             continue
         ids = [f"{issue.jira_key}::{LEARNING_CHUNK_TYPE}::0" for issue, _, _ in batch]
-        metadatas = []
-        for issue, _, learning_meta in batch:
-            metadatas.append(
-                {
-                    "source_type": "jira_learning",
-                    "jira_key": issue.jira_key,
-                    "title": (issue.summary or "")[:500],
-                    "chunk_type": LEARNING_CHUNK_TYPE,
-                    "status": (issue.status or "")[:120],
-                    "resolution": (issue.resolution or "")[:120],
-                    "enrich_domain": (issue.domain or "unknown")[:120],
-                    "components": json.dumps(_json_list(issue.components), ensure_ascii=False)[:4000],
-                    "enrich_outputs": json.dumps(_json_list(issue.affected_outputs), ensure_ascii=False)[:4000],
-                    "enrich_entities": json.dumps(_json_list(issue.dita_entities), ensure_ascii=False)[:4000],
-                    "learning_confidence": str(learning_meta["learning_confidence"]),
-                    "historical_outcome": str(learning_meta["historical_outcome"]),
-                    "is_verified_fix": bool(learning_meta["is_verified_fix"]),
-                    "evidence_facets": json.dumps(learning_meta["evidence_facets"], ensure_ascii=False),
-                    "learning_strategy_version": LEARNING_STRATEGY_VERSION,
-                }
-            )
+        metadatas = [
+            _learning_chroma_metadata(issue, learning_meta)
+            for issue, _, learning_meta in batch
+        ]
         vectors = [embeddings[index].tolist() for index in range(len(batch))]
         stored = False
         for attempt in range(1, 4):
@@ -329,6 +361,7 @@ def backfill_jira_learning_chunks(*, source_type: str = "jira_csv", limit: int =
 
     return {
         "source_type": source_type,
+        "requested_keys": len(requested_keys),
         "eligible_issues": len(candidates),
         "indexed_issues": indexed,
         "chunks": indexed,

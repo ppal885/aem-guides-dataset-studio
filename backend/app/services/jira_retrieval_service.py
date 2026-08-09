@@ -14,7 +14,7 @@ from app.core.structured_logging import get_structured_logger
 from app.services.customer_tokens import clean_customer_tokens
 from app.services.embedding_service import embed_query, is_embedding_available
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
-from app.services.jira_component_metadata_service import normalize_component_token
+from app.services.jira_component_metadata_service import component_filter_field, normalize_component_token
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
 
 logger = get_structured_logger(__name__)
@@ -930,8 +930,8 @@ def _metadata_where_plan(
     Domain and sub-domain are always soft reranking signals and are never sent
     as Chroma ``where`` filters. JSON-list fields such as enrich_entities/enrich_outputs are scored
     after retrieval because exact Chroma filters cannot reliably query inside
-    encoded arrays across all deployed Chroma versions. Components use the
-    normalized scalar ``component_primary`` field and therefore are hard-filtered.
+    encoded arrays across all deployed Chroma versions. Components use one
+    scalar membership flag per canonical component, so secondary components are searchable too.
     """
     passes: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -948,12 +948,8 @@ def _metadata_where_plan(
         token for token in (normalize_component_token(value) for value in (components or [])) if token
     ))
     if component_tokens:
-        where = (
-            {"component_primary": component_tokens[0]}
-            if len(component_tokens) == 1
-            else {"component_primary": {"$in": component_tokens}}
-        )
-        add("component_primary_filtered", where)
+        for token in component_tokens:
+            add("component_membership_filtered", {component_filter_field(token): True})
         return passes
 
     issue_f = str(issue_type or "").strip()
@@ -1212,7 +1208,8 @@ def retrieve_similar_jiras(
             ),
             "domain_policy": "soft_boost_only",
             "component_chroma_filter_applied": any(
-                (plan.get("where") or {}).get("component_primary") for plan in metadata_query_plan
+                str(plan.get("label") or "") == "component_membership_filtered"
+                for plan in metadata_query_plan
             ),
             "unfiltered_fallback_query": unfiltered_fallback,
             "merged_hit_count": len(raw_rows),

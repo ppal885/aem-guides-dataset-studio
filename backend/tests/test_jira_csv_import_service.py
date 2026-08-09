@@ -3,12 +3,14 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 import numpy as np
 
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
+    classify_jira_import_profile,
     create_import_run,
     parse_jira_csv_bytes,
     merge_parsed_issues,
@@ -60,7 +62,9 @@ def test_parse_repeated_headers_redacts_direct_identifiers_and_preserves_signals
         "Closed",
         "Fixed",
         "Critical",
-        "Contact owner@example.com in 6AAB041762B261FF0A495E40@AdobeOrg and [~owner].",
+        "Contact owner@example.com in 6AAB041762B261FF0A495E40@AdobeOrg and [~owner].\n"
+        "admin/nHP!oCYZa34jh@^p\n"
+        "https://api-user:Strong!Pass23@example.invalid/private",
         "31/Jul/26 05:30 PM",
         "publishing",
         "regression",
@@ -90,6 +94,9 @@ def test_parse_repeated_headers_redacts_direct_identifiers_and_preserves_signals
     assert "owner@example.com" not in privacy_blob
     assert "@AdobeOrg" not in privacy_blob
     assert "secret-value" not in privacy_blob
+    assert "nHP!oCYZa34jh" not in privacy_blob
+    assert "Strong!Pass23" not in privacy_blob
+    assert privacy_blob.count("[redacted-credentials]") == 2
     assert "https://jira.example" not in " ".join(issue.attachment_filenames)
 
 
@@ -236,6 +243,200 @@ def test_preview_enforces_six_canonical_components_and_preserves_multi_component
         )
 
 
+def test_legacy_customer_history_components_map_to_canonical_taxonomy(monkeypatch):
+    legacy_components = [
+        "Asset Management",
+        "Learning",
+        "Baseline_UI",
+        "Citation Management",
+        "Reports",
+        "Oxygen",
+        "Translation",
+        "Homepage",
+    ]
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Component/s"],
+        [
+            [
+                f"Legacy {component}",
+                f"GUIDES-{100 + index}",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "Behavior evidence",
+                "2026-08-08",
+                "Cisco",
+                component,
+            ]
+            for index, component in enumerate(legacy_components)
+        ],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+
+    parsed = parse_jira_csv_bytes(payload, "legacy-components.csv")
+    preview = preview_jira_csv_files([("legacy-components.csv", payload)])
+
+    assert preview["valid"] is True
+    assert preview["rows_without_canonical_component"] == 0
+    assert preview["rows_with_noncanonical_component"] == 0
+    assert {component["name"] for issue in parsed.issues for component in issue.issue["fields"]["components"]} == {
+        "Editor",
+        "Authoring",
+        "Publishing",
+        "Platform",
+        "Integration",
+    }
+
+
+def test_miscellaneous_component_uses_auditable_text_inference(monkeypatch):
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Component/s"],
+        [
+            [
+                "Native PDF output fails",
+                "GUIDES-240",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "Publishing stops before the PDF is produced.",
+                "2026-08-08",
+                "Cisco",
+                "Miscellaneous",
+            ],
+            [
+                "Please apply the fix for Guides",
+                "GUIDES-241",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "The deployment pipeline fails because an Oak index conflicts.",
+                "2026-08-08",
+                "Cisco",
+                "Miscellaneous",
+            ],
+        ],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+
+    parsed = parse_jira_csv_bytes(payload, "miscellaneous-components.csv")
+    preview = preview_jira_csv_files([("miscellaneous-components.csv", payload)])
+
+    assert preview["valid"] is True
+    assert preview["rows_without_canonical_component"] == 0
+    assert [issue.issue["fields"]["components"] for issue in parsed.issues] == [
+        [{"name": "Publishing"}],
+        [{"name": "Platform"}],
+    ]
+    assert {issue.component_classification_source for issue in parsed.issues} == {
+        "component-text-v1"
+    }
+    assert all(issue.component_inference_signals for issue in parsed.issues)
+    chunks = build_jira_qa_chunks(
+        parsed.issues[0].issue_key,
+        parsed.issues[0].issue,
+    )
+    assert chunks
+    assert {chunk["metadata"]["component_publishing"] for chunk in chunks} == {True}
+    assert {
+        chunk["metadata"]["component_classification_source"] for chunk in chunks
+    } == {"component-text-v1"}
+
+
+@pytest.mark.parametrize(
+    ("label", "customer"),
+    [
+        ("Cisco", "Cisco"),
+        ("EYCOM", "EY"),
+        ("KOGEI-INTEC-CORP", "Kogei Intec Corporation"),
+        ("ISUZU-INTEC-CORP", "Isuzu Intec Corporation"),
+        ("Qualcomm", "Qualcomm"),
+        ("Micron", "Micron"),
+        ("Verizon", "Verizon"),
+        ("RaymondCorp", "Raymond Corporation"),
+        ("HunterDouglas", "Hunter Douglas"),
+        ("TxDOT", "TxDOT"),
+        ("FAA", "FAA"),
+        ("KONE-production-files", "KONE"),
+        ("Centene", "Centene"),
+        ("Kyndryl", "Kyndryl"),
+        ("CSG", "Cloud Software Group"),
+        ("HaasAutomation", "Haas Automation"),
+        ("Translation.com", "Translation.com"),
+        ("TR", "Thomson Reuters"),
+        ("STIHL", "STIHL"),
+        ("USMC", "USMC"),
+    ],
+)
+def test_customer_history_labels_are_deterministic(label, customer):
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Labels", "Component/s"],
+        [[
+            "Customer history",
+            "GUIDES-250",
+            "Customer Request",
+            "Closed",
+            "Fixed",
+            "Major",
+            "Behavior evidence",
+            "2026-08-08",
+            label,
+            "Authoring",
+        ]],
+    )
+
+    parsed = parse_jira_csv_bytes(payload, "customer-label.csv")
+
+    assert parsed.issues[0].customer_cohorts == [customer]
+
+
+def test_explicit_customer_names_in_summary_are_deterministic():
+    payload = _csv_bytes(
+        BASE_HEADERS + ["Component/s"],
+        [
+            ["Cisco baseline issue", "GUIDES-251", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-08", "Baseline"],
+            ["Sub-Zero table issue", "GUIDES-252", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-08", "Authoring"],
+            ["Red Hat editor issue", "GUIDES-253", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-08", "Editor"],
+        ],
+    )
+
+    parsed = parse_jira_csv_bytes(payload, "summary-customers.csv")
+
+    assert [issue.customer_cohorts for issue in parsed.issues] == [
+        ["Cisco"],
+        ["Sub-Zero"],
+        ["Red Hat"],
+    ]
+
+
+def test_auto_profile_distinguishes_broad_history_from_native_pdf_majority():
+    headers = ["Issue Type", "Issue key", "Status", "Summary", "Component/s"]
+    editor = _csv_bytes(
+        headers,
+        [["Customer Request", "GUIDES-260", "Closed", "New Editor toolbar issue", "Editor"]],
+    )
+    native_pdf = _csv_bytes(
+        headers,
+        [
+            ["Customer Request", f"GUIDES-{261 + index}", "Closed", "PDF issue", component]
+            for index, component in enumerate(["Native_PDF", "Native_PDF", "Native_PDF", "Platform"])
+        ],
+    )
+    mixed = _csv_bytes(
+        headers,
+        [
+            ["Customer Request", f"GUIDES-{271 + index}", "Closed", "Mixed issue", component]
+            for index, component in enumerate(["Native_PDF", "Authoring", "Platform", "Editor"])
+        ],
+    )
+
+    assert classify_jira_import_profile(parse_jira_csv_bytes(editor, "editor.csv")) == "editor-new"
+    assert classify_jira_import_profile(parse_jira_csv_bytes(native_pdf, "pdf.csv")) == "native-pdf"
+    assert classify_jira_import_profile(parse_jira_csv_bytes(mixed, "mixed.csv")) == "customer-history"
+
+
 def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
     headers = BASE_HEADERS + [
         "Labels",
@@ -374,6 +575,198 @@ def test_mixed_sonova_demant_file_detection():
 
     assert parsed.detected_customer == "Mixed (row-level cohorts)"
     assert [issue.customer_cohorts for issue in merged] == [["Sonova"], ["Demant"], ["Sonova", "Demant"]]
+
+
+def test_editor_customer_export_preserves_new_customer_cohorts_and_ignores_triaged_component(monkeypatch):
+    headers = BASE_HEADERS + [
+        "Labels",
+        "Custom field (Customer Names)",
+        "Component/s",
+        "Component/s",
+    ]
+    payload = _csv_bytes(
+        headers,
+        [
+            ["ABS editor issue", "GUIDES-51", "Customer Request", "Closed", "Fixed", "Critical", "Body", "2026-08-08", "", "AMERICAN BUREAU OF SHIPPING", "Editor", ""],
+            ["Gulfstream editor issue", "GUIDES-52", "Customer Request", "Open", "", "Major", "Body", "2026-08-08", "Gulfstream", "", "Editor", "Triaged"],
+            ["Composite cohort issue", "GUIDES-53", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-08", "", "ABS UBS SWIFT", "Authoring", "Editor"],
+            ["AstraZeneca editor issue", "GUIDES-54", "Customer Request", "Closed", "Fixed", "Major", "Body", "2026-08-08", "", "AstraZeneca", "Editor", ""],
+            ["Workday editor issue", "GUIDES-55", "Customer Request", "Open", "", "Major", "Body", "2026-08-08", "Workday", "", "Editor", ""],
+        ],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+
+    parsed = parse_jira_csv_bytes(payload, "editor-customers.csv")
+    preview = preview_jira_csv_files([("editor-customers.csv", payload)])
+    merged = merge_parsed_issues(
+        [parsed],
+        {parsed.file_hash: "Mixed (row-level cohorts)"},
+    )
+
+    assert preview["valid"] is True
+    assert preview["files"][0]["component_counts"]["Editor"] == 5
+    assert preview["files"][0]["rows_with_noncanonical_component"] == 0
+    assert preview["files"][0]["rows_with_ignored_component_value"] == 1
+    assert preview["files"][0]["ignored_component_values"] == ["Triaged"]
+    assert parsed.detected_customer == "Mixed (row-level cohorts)"
+    assert [issue.customer_cohorts for issue in merged] == [
+        ["American Bureau of Shipping"],
+        ["Gulfstream"],
+        ["American Bureau of Shipping", "UBS", "Swift"],
+        ["AstraZeneca"],
+        ["Workday"],
+    ]
+
+
+def test_metadata_only_native_pdf_export_is_indexed_as_scope_evidence(monkeypatch):
+    headers = [
+        "Issue Type",
+        "Issue key",
+        "Status",
+        "Summary",
+        "Component/s",
+        "Component/s",
+        "Labels",
+    ]
+    payload = _csv_bytes(
+        headers,
+        [[
+            "Customer Request",
+            "GUIDES-56",
+            "Closed",
+            "Native PDF customer regression",
+            "Native_PDF",
+            "Miscellaneous",
+            "SubZero",
+        ]],
+    )
+    monkeypatch.setattr("app.services.jira_csv_import_service._completed_file_hashes", lambda: set())
+
+    parsed = parse_jira_csv_bytes(payload, "native-pdf-sparse.csv")
+    preview = preview_jira_csv_files(
+        [("native-pdf-sparse.csv", payload)],
+        {parsed.file_hash: "Mixed (row-level cohorts)"},
+    )
+    issue = parsed.issues[0]
+    enriched = enrich_jira(issue.issue)
+    chunks = build_jira_qa_chunks(issue.issue_key, issue.issue, enriched=enriched)
+
+    assert parsed.source_evidence_mode == "metadata_only"
+    assert parsed.missing_behavior_columns == ["Description", "Resolution", "Updated"]
+    assert issue.source_evidence_mode == "metadata_only"
+    assert issue.issue["fields"]["description"] == ""
+    assert issue.issue["fields"]["components"] == [{"name": "Publishing"}]
+    assert issue.customer_cohorts == ["Sub-Zero"]
+    assert parsed.ignored_component_values == ["Miscellaneous"]
+    assert preview["valid"] is True
+    assert preview["metadata_only_rows"] == 1
+    assert preview["files"][0]["source_evidence_mode"] == "metadata_only"
+    assert all(chunk["metadata"]["source_evidence_mode"] == "metadata_only" for chunk in chunks)
+
+
+def test_metadata_only_summary_customer_evidence_is_deterministic():
+    payload = _csv_bytes(
+        ["Issue Type", "Issue key", "Status", "Summary", "Component/s"],
+        [[
+            "Customer Request",
+            "GUIDES-57",
+            "Closed",
+            "DB Instance Provisioning for Crown Equipment",
+            "Database",
+        ]],
+    )
+
+    parsed = parse_jira_csv_bytes(payload, "crown-db.csv")
+
+    assert parsed.issues[0].customer_cohorts == ["Crown Equipment"]
+    assert parsed.issues[0].issue["fields"]["components"] == [{"name": "Platform"}]
+
+
+def test_metadata_only_export_cannot_replace_dated_existing_evidence():
+    existing = datetime(2026, 8, 8, 12, 0, 0)
+
+    assert should_skip_existing(existing, "") is True
+
+
+def test_metadata_only_merge_preserves_rich_content_and_updates_scope(monkeypatch):
+    from app.services import jira_csv_import_service as service
+
+    payload = _csv_bytes(
+        ["Issue Type", "Issue key", "Status", "Summary", "Component/s", "Labels"],
+        [[
+            "Customer Request",
+            "GUIDES-59",
+            "Closed",
+            "Native PDF regression",
+            "Native_PDF",
+            "SubZero",
+        ]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "metadata-only.csv").issues[0]
+    row = SimpleNamespace(
+        jira_key="GUIDES-59",
+        summary="Authoritative existing summary",
+        description="Authoritative existing description",
+        company_names=[],
+        customer_names=[],
+        customer_cohorts=[],
+        affected_features=[],
+        affected_outputs=[],
+        domain="unknown",
+        sub_domain="",
+        components=[],
+        resolutions=[],
+        source_file_hashes=[],
+        import_provenance=[],
+        evidence_archive={},
+        updated_at=None,
+    )
+    captured: dict = {}
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def first(self):
+            return row
+
+        def update(self, values, **_kwargs):
+            captured["sql_chunk_update"] = values
+            return 1
+
+    class FakeSession:
+        def query(self, model):
+            return FakeQuery(model)
+
+        def commit(self):
+            captured["committed"] = True
+
+        def rollback(self):
+            captured["rolled_back"] = True
+
+        def close(self):
+            captured["closed"] = True
+
+    def update_metadata(_collection, where, updates):
+        captured["where"] = where
+        captured["updates"] = updates
+        return 3
+
+    monkeypatch.setattr(service, "SessionLocal", FakeSession)
+    monkeypatch.setattr(service, "update_documents_metadata", update_metadata)
+
+    assert service._metadata_only_merge(parsed) is True
+    assert row.summary == "Authoritative existing summary"
+    assert row.description == "Authoritative existing description"
+    assert row.customer_cohorts == ["Sub-Zero"]
+    assert row.components == ["Publishing"]
+    assert row.affected_outputs == ["Native PDF"]
+    assert captured["updates"]["component_publishing"] is True
+    assert captured["updates"]["enrich_outputs"] == '["Native PDF"]'
+    assert captured["committed"] is True
 
 
 def test_newest_updated_timestamp_wins():

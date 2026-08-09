@@ -98,9 +98,16 @@ def search_jira_history_evidence(
         metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
         learning = hit.get("learning") if isinstance(hit.get("learning"), dict) else {}
         matching_components = hit.get("matching_components") or []
-        raw_customers = _json_list(metadata.get("customer_names")) or _json_list(
-            metadata.get("customer")
-        )
+        raw_customers: list[str] = []
+        for field in (
+            "customer_cohorts",
+            "enrich_customers",
+            "customer_names",
+            "smart_customer_names",
+            "customer_labels",
+        ):
+            raw_customers.extend(_json_list(metadata.get(field)))
+        raw_customers.extend(_json_list(metadata.get("customer")))
         clean_customers = clean_customer_tokens(raw_customers)
         scalar_customer = clean_customer_tokens([metadata.get("customer") or ""])
         returned_customers = list(

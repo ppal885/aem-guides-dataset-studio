@@ -764,12 +764,26 @@ def enrich_jira(jira: dict[str, Any]) -> JiraEnrichedDocument:
         for c in comps_raw:
             if isinstance(c, dict) and c.get("name"):
                 raw_components.append(str(c["name"]).strip())
+    csv_raw_components = fields.get("_components_raw") or []
+    if isinstance(csv_raw_components, list):
+        raw_components = list(dict.fromkeys(
+            raw_components
+            + [str(component).strip() for component in csv_raw_components if str(component).strip()]
+        ))
     components = canonical_component_names(raw_components)
     noncanonical_components = [
         component for component in raw_components if not canonical_component_name(component)
     ]
 
-    blob = "\n".join([summary, desc_plain, " ".join(labels), " ".join(components)])
+    blob = "\n".join(
+        [
+            summary,
+            desc_plain,
+            " ".join(labels),
+            " ".join(re.sub(r"[_-]+", " ", component) for component in raw_components),
+            " ".join(components),
+        ]
+    )
 
     cls = classify_domain(blob, labels)
     classified_domain = str(cls.get("domain") or "unknown")

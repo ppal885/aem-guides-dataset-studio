@@ -12,7 +12,6 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = PROJECT_ROOT / "backend"
-DEFAULT_ENV_FILE = PROJECT_ROOT / ".env.docker"
 for candidate in (PROJECT_ROOT, BACKEND_DIR):
     value = str(candidate)
     if value not in sys.path:
@@ -46,18 +45,30 @@ def _load_env_file(path: Path) -> str | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    parser.add_argument("--env-file", type=Path)
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args(argv or sys.argv[1:])
-    env_warning = _load_env_file(args.env_file)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="apply metadata changes")
+    mode.add_argument("--dry-run", action="store_true", help="scan only; this is the default")
+    parser.add_argument(
+        "--require-clean",
+        action="store_true",
+        help="return nonzero when the scan still finds records requiring migration",
+    )
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    env_warning = _load_env_file(args.env_file) if args.env_file else None
 
     from app.services.jira_component_metadata_service import migrate_jira_component_primary
 
-    result = migrate_jira_component_primary(dry_run=args.dry_run, batch_size=max(1, args.batch_size))
+    result = migrate_jira_component_primary(
+        dry_run=not args.apply,
+        batch_size=max(1, min(args.batch_size, 5000)),
+    )
     if env_warning:
         result["warning"] = env_warning
     print(json.dumps(result, indent=2))
+    if args.require_clean and int(result.get("pending") or 0) != 0:
+        return 1
     return 0
 
 

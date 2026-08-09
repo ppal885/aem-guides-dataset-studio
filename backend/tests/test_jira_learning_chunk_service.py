@@ -4,6 +4,7 @@ from app.core.schemas_jira_enrichment import JiraEnrichedDocument
 from app.services.jira_chunking_service import create_jira_chunks
 from app.services.jira_learning_chunk_service import (
     LEARNING_CHUNK_TYPE,
+    _learning_chroma_metadata,
     build_learning_document,
 )
 from app.services.jira_retrieval_service import _CHUNK_TYPE_WEIGHT
@@ -78,6 +79,43 @@ def test_resolved_enriched_jira_emits_learning_chunk_with_retrieval_priority():
     assert len(learning) == 1
     assert learning[0]["learning_confidence"] == "high"
     assert _CHUNK_TYPE_WEIGHT[LEARNING_CHUNK_TYPE] > _CHUNK_TYPE_WEIGHT["comment_chunk"]
+
+
+def test_learning_chroma_metadata_preserves_editor_membership_customers_and_variant():
+    issue = type(
+        "Issue",
+        (),
+        {
+            "jira_key": "GUIDES-50004",
+            "summary": "New Editor customer regression",
+            "status": "Closed",
+            "resolution": "Fixed",
+            "domain": "authoring",
+            "components": ["Authoring", "Editor"],
+            "customer_cohorts": ["IBM", "Swift"],
+            "customer_names": ["IBM"],
+            "affected_outputs": [],
+            "dita_entities": [],
+            "affected_features": ["new_editor"],
+        },
+    )()
+
+    metadata = _learning_chroma_metadata(
+        issue,
+        {
+            "learning_confidence": "high",
+            "historical_outcome": "implemented_fix",
+            "is_verified_fix": True,
+            "evidence_facets": ["problem", "qa_oracle"],
+        },
+    )
+
+    assert metadata["component_primary"] == "authoring"
+    assert metadata["component_authoring"] is True
+    assert metadata["component_editor"] is True
+    assert metadata["component_filter_schema_version"] == 5
+    assert metadata["customer_cohorts"] == '["IBM", "Swift"]'
+    assert metadata["editor_variant"] == "new_editor"
 
 
 def test_learning_rebuild_endpoint_is_admin_only_and_returns_stats(client, auth_headers, monkeypatch):

@@ -383,6 +383,8 @@ def smart_chunks_to_chroma_rows(
                 "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
+                "enrich_features": _json_meta(enriched.affected_features[:40]),
+                "editor_variant": "new_editor" if "new_editor" in enriched.affected_features else "",
                 "enrich_automation_fit": enriched.automation_fit[:200],
                 "enrich_profile_json": je_profile,
                 "smart_customer_names": _json_meta(clean_customer_tokens(sc.get("customer_names") or [])),

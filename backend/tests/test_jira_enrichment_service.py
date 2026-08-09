@@ -20,6 +20,24 @@ def test_classify_domain_native_pdf():
     assert r["domain"] == "native_pdf"
 
 
+def test_csv_raw_native_pdf_component_is_preserved_for_output_enrichment():
+    enriched = enrich_jira(
+        {
+            "key": "GUIDES-58",
+            "fields": {
+                "summary": "Customer publishing regression",
+                "description": "",
+                "components": [{"name": "Publishing"}],
+                "_components_raw": ["Native_PDF"],
+                "labels": [],
+            },
+        }
+    )
+
+    assert "Publishing" in enriched.components
+    assert "Native PDF" in enriched.affected_outputs
+
+
 def test_classify_domain_keyref_over_publishing():
     r = classify_domain("keyref does not resolve in web editor preview", [])
     assert r["domain"] == "keyref"
@@ -73,6 +91,23 @@ def test_enrich_jira_uses_component_as_authoritative_primary_area():
         "noncanonical": [],
     }
     assert doc.enrichment_debug["domain_classification"]["source"] == "jira_component"
+
+
+def test_enrich_jira_classifies_explicit_new_editor_feature():
+    issue = {
+        "key": "GUIDES-52916",
+        "fields": {
+            "summary": "New Editor 2.0 strips colwidth during table paste",
+            "description": "The issue appears after the Guides UI 2.0 upgrade.",
+            "labels": [],
+            "components": [{"name": "Editor"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert "new_editor" in doc.affected_features
+    assert "new_editor" in doc.enrichment_debug["detected_features"]
 
 
 def test_enrich_jira_rejects_noncanonical_component_metadata():

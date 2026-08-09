@@ -82,3 +82,34 @@ def test_history_search_returns_sanitized_deduplicated_rows(monkeypatch):
     assert result["results"][0]["jira_key"] == "GUIDES-101"
     assert result["results"][0]["root_cause"] == "Scope omitted by serializer"
     assert result["results"][0]["qa_oracle"] == "Published xref remains clickable"
+
+
+def test_history_search_matches_customer_cohort_metadata(monkeypatch):
+    monkeypatch.setattr("app.services.vector_store_service.is_chroma_available", lambda: True)
+    monkeypatch.setattr("app.services.vector_store_service.get_collection_count", lambda name: 10)
+    monkeypatch.setattr("app.services.embedding_service.is_embedding_available", lambda: True)
+    monkeypatch.setattr(
+        "app.services.jira_qa_retrieval_service.semantic_search_jira_qa",
+        lambda query, **kwargs: [
+            {
+                "jira_key": "GUIDES-52916",
+                "title": "New Editor table paste regression",
+                "score": 0.9,
+                "metadata": {
+                    "customer": "",
+                    "customer_cohorts": '["American Bureau of Shipping"]',
+                    "enrich_customers": '["American Bureau of Shipping", "Triaged"]',
+                    "components": '["Editor"]',
+                },
+            }
+        ],
+    )
+
+    result = service.search_jira_history_evidence(
+        "new editor table paste",
+        component="Editor",
+        customer="American Bureau of Shipping",
+    )
+
+    assert result["match_count"] == 1
+    assert result["results"][0]["customers"] == ["American Bureau of Shipping"]
