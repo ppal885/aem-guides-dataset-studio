@@ -138,6 +138,8 @@ def search_jira_history_evidence(
                 "score": round(float(hit.get("score") or 0.0), 4),
                 "why_similar": hit.get("why_similar") or "",
                 "historical_outcome": learning.get("historical_outcome") or "",
+                "resolution_mechanism": learning.get("resolution_mechanism") or "",
+                "resolution_evidence_source": learning.get("resolution_evidence_source") or "",
                 "is_verified_fix": learning.get("is_verified_fix"),
                 "root_cause": learning.get("root_cause") or "",
                 "qa_oracle": learning.get("qa_oracle") or "",

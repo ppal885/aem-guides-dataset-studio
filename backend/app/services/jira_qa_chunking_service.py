@@ -134,11 +134,12 @@ def _build_base_metadata(
     pr = fields.get("priority") or {}
     priority = str(pr.get("name") or "") if isinstance(pr, dict) else ""
 
+    active_components = _components_list(fields)
     csv_raw_components = fields.get("_components_raw")
     raw_components = (
         [str(value).strip() for value in csv_raw_components if str(value).strip()]
         if isinstance(csv_raw_components, list)
-        else _components_list(fields)
+        else active_components
     )
     components = canonical_component_names(_components_list(fields))
     if not components:
@@ -169,6 +170,9 @@ def _build_base_metadata(
             if isinstance(fields.get("_component_inference_signals"), list)
             else []
         ),
+        "component_assignment_method": str(
+            fields.get("_component_assignment_method") or "source"
+        )[:80],
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
         "affected_versions": _json_meta(_versions(fields, "versions")),

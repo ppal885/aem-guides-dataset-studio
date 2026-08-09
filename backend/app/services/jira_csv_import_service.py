@@ -32,6 +32,12 @@ from app.services.jira_component_metadata_service import (
     infer_component_names,
 )
 from app.services.jira_enrichment_service import enrich_jira
+from app.services.jira_historical_uac_import_service import (
+    COMPONENT_ASSIGNMENT_EVIDENCE_HEADER,
+    COMPONENT_ASSIGNMENT_METHOD_HEADER,
+    SOURCE_COMPONENTS_HEADER,
+    SOURCE_FILE_HASH_HEADER,
+)
 from app.services.jira_qa_chunking_service import build_jira_qa_chunks
 from app.services.vector_store_service import (
     CHROMA_COLLECTION_JIRA_QA,
@@ -209,6 +215,7 @@ _MIXED_CUSTOMER = "Mixed (row-level cohorts)"
 _MULTI_CUSTOMER_ALIASES = {
     "abs ubs swift": ("American Bureau of Shipping", "UBS", "Swift"),
 }
+MIXED_CUSTOMER_ASSIGNMENT = _MIXED_CUSTOMER
 _CUSTOMER_LABELS = {
     "3m": "3M",
     "abs": "American Bureau of Shipping",
@@ -357,6 +364,8 @@ class ParsedCsvIssue:
     raw_components: list[str]
     component_classification_source: str
     component_inference_signals: list[str]
+    source_components: list[str]
+    component_assignment_method: str
     noncanonical_components: list[str]
     resolutions: list[str]
     source_file_hashes: list[str]
@@ -433,6 +442,50 @@ def _ignored_component_value(value: str) -> bool:
 def _customers_from_summary(value: str) -> list[str]:
     text = re.sub(r"\s+", " ", str(value or "").strip())
     return [customer for pattern, customer in _SUMMARY_CUSTOMER_PATTERNS if pattern.search(text)]
+
+
+def _customer_label_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+
+def _safe_customer_label_registry(issues: list[ParsedCsvIssue]) -> dict[str, str]:
+    """Build exact, source-backed label aliases from safe customer/company fields."""
+    registry: dict[str, str] = {}
+    legal_suffixes = {
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "llc",
+        "ltd",
+        "limited",
+        "plc",
+    }
+    acronym_stopwords = {"and", "of", "the"}
+    for issue in issues:
+        for raw_value in issue.customer_names + issue.company_names:
+            display = _canonical_customer(raw_value)
+            token = _customer_label_token(display)
+            if token:
+                registry.setdefault(token, display)
+            words = re.findall(r"[A-Za-z0-9]+", display)
+            trimmed = list(words)
+            while trimmed and trimmed[-1].casefold() in legal_suffixes:
+                trimmed.pop()
+            if trimmed and len(trimmed) < len(words):
+                trimmed_token = _customer_label_token(" ".join(trimmed))
+                if trimmed_token:
+                    registry.setdefault(trimmed_token, display)
+            acronym_words = [
+                word
+                for word in words
+                if word.casefold() not in acronym_stopwords and word
+            ]
+            acronym = "".join(word[0] for word in acronym_words)
+            if 2 <= len(acronym) <= 6:
+                registry.setdefault(acronym.casefold(), display)
+    return registry
 
 
 def _safe_customer_values(values: list[str]) -> tuple[list[str], int]:
@@ -569,6 +622,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
         positions[header].append(index)
     duplicate_headers = {key: len(indexes) for key, indexes in positions.items() if len(indexes) > 1}
 
+    normalized_file_hash = hashlib.sha256(data).hexdigest()
     issues: list[ParsedCsvIssue] = []
     resolution_counts: Counter[str] = Counter()
     total_redactions = 0
@@ -609,6 +663,21 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
 
         labels = _dedupe(values(row, "Labels"))
         raw_components = _dedupe(values(row, "Component/s"))
+        source_components = list(raw_components)
+        encoded_source_components = first(row, SOURCE_COMPONENTS_HEADER)
+        if encoded_source_components:
+            try:
+                decoded_source_components = json.loads(encoded_source_components)
+            except (json.JSONDecodeError, TypeError):
+                decoded_source_components = []
+            if isinstance(decoded_source_components, list):
+                source_components = _dedupe(
+                    [str(value) for value in decoded_source_components if str(value).strip()]
+                )
+        component_assignment_method = first(row, COMPONENT_ASSIGNMENT_METHOD_HEADER)[:80]
+        source_file_hash = first(row, SOURCE_FILE_HASH_HEADER).strip().casefold()
+        if not re.fullmatch(r"[a-f0-9]{64}", source_file_hash):
+            source_file_hash = normalized_file_hash
         components = canonical_component_names(raw_components)
         component_classification_source = "jira_component" if components else "unclassified"
         component_inference_signals: list[str] = []
@@ -683,9 +752,10 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             "priority": {"name": first(row, "Priority")},
             "labels": labels,
             "components": [{"name": item} for item in components],
-            "_components_raw": raw_components,
+            "_components_raw": source_components,
             "_component_classification_source": component_classification_source,
             "_component_inference_signals": component_inference_signals,
+            "_component_assignment_method": component_assignment_method,
             "fixVersions": [{"name": item} for item in fix_versions],
             "versions": [{"name": item} for item in affected_versions],
             "created": first(row, "Created"),
@@ -694,7 +764,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             "customfield_13400": sanitized["Custom field (Acceptance Criteria)"],
             "_csv_resolution": resolution,
             "_source_type": "jira_csv",
-            "_source_file_hash": hashlib.sha256(data).hexdigest(),
+            "_source_file_hash": source_file_hash,
             "_csv_source_evidence_mode": source_evidence_mode,
         }
         issues.append(
@@ -713,16 +783,20 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 raw_components=raw_components,
                 component_classification_source=component_classification_source,
                 component_inference_signals=component_inference_signals,
+                source_components=source_components,
+                component_assignment_method=component_assignment_method,
                 noncanonical_components=noncanonical_components,
                 resolutions=[resolution] if resolution else [],
-                source_file_hashes=[hashlib.sha256(data).hexdigest()],
+                source_file_hashes=_dedupe([source_file_hash, normalized_file_hash], limit=50),
                 import_provenance=[
                     {
                         "filename": Path(filename).name,
-                        "file_hash": hashlib.sha256(data).hexdigest(),
+                        "file_hash": source_file_hash,
+                        "normalized_file_hash": normalized_file_hash,
                         "jira_updated_at": first(row, "Updated")[:80],
                         "source_evidence_mode": source_evidence_mode,
                         "component_classification_source": component_classification_source,
+                        "component_assignment_method": component_assignment_method,
                     }
                 ],
                 evidence_archive={
@@ -735,6 +809,11 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                     "comments": [comment["body_text"] for comment in comments if comment.get("body_text")],
                     "linked_issue_refs": _dedupe(linked_refs, limit=200),
                     "attachment_filenames": attachment_filenames,
+                    "component_normalization": [
+                        first(row, COMPONENT_ASSIGNMENT_EVIDENCE_HEADER)
+                    ]
+                    if first(row, COMPONENT_ASSIGNMENT_EVIDENCE_HEADER)
+                    else [],
                 },
                 linked_issue_refs=_dedupe(linked_refs, limit=200),
                 attachment_filenames=attachment_filenames,
@@ -744,6 +823,20 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
         )
         total_redactions += redactions
 
+    safe_label_registry = _safe_customer_label_registry(issues)
+    for issue in issues:
+        labels = issue.issue.get("fields", {}).get("labels") or []
+        verified_label_customers = [
+            safe_label_registry[token]
+            for label in labels
+            for token in [_customer_label_token(str(label))]
+            if token in safe_label_registry
+        ]
+        issue.customer_cohorts = _dedupe(
+            issue.customer_cohorts + verified_label_customers,
+            limit=20,
+        )
+
     component_counts = Counter(
         str(component.get("name") or "")
         for issue in issues
@@ -752,7 +845,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
     )
     parsed_file = ParsedCsvFile(
         filename=Path(filename).name,
-        file_hash=hashlib.sha256(data).hexdigest(),
+        file_hash=normalized_file_hash,
         headers=headers,
         issues=issues,
         duplicate_headers=duplicate_headers,
@@ -926,6 +1019,13 @@ def merge_parsed_issues(
             else "unclassified"
         )
         output.component_inference_signals = union("component_inference_signals", 50)
+        output.source_components = union("source_components")
+        output.component_assignment_method = ",".join(
+            _dedupe(
+                [snapshot.component_assignment_method for snapshot in snapshots],
+                limit=20,
+            )
+        )[:80]
         output.noncanonical_components = union("noncanonical_components")
         fields["components"] = [
             {"name": value}
@@ -937,9 +1037,10 @@ def merge_parsed_issues(
                 ]
             )
         ]
-        fields["_components_raw"] = output.raw_components
+        fields["_components_raw"] = output.source_components or output.raw_components
         fields["_component_classification_source"] = output.component_classification_source
         fields["_component_inference_signals"] = output.component_inference_signals
+        fields["_component_assignment_method"] = output.component_assignment_method
         fields["fixVersions"] = field_union("fixVersions", object_values=True)
         fields["versions"] = field_union("versions", object_values=True)
         output.company_names = union("company_names", 100)
@@ -1200,6 +1301,34 @@ def _union_values(existing: Any, incoming: list[str], *, limit: int = 200) -> li
     return _dedupe([str(value) for value in current] + incoming, limit=limit)
 
 
+def _trusted_csv_customer_names(
+    existing: Any,
+    parsed_issue: ParsedCsvIssue,
+) -> list[str]:
+    """Persist only explicit CSV customer fields and allowlisted row cohorts."""
+    trusted = _dedupe(
+        parsed_issue.customer_names + parsed_issue.customer_cohorts,
+        limit=100,
+    )
+    trusted_tokens = {_customer_label_token(value) for value in trusted}
+    label_tokens = {
+        _customer_label_token(str(label))
+        for label in parsed_issue.issue.get("fields", {}).get("labels") or []
+    }
+    current = existing if isinstance(existing, list) else []
+    retained_existing = [
+        str(value)
+        for value in current
+        if _customer_label_token(str(value)) not in label_tokens
+        or _customer_label_token(str(value)) in trusted_tokens
+    ]
+    return _union_values(
+        retained_existing,
+        trusted,
+        limit=100,
+    )
+
+
 def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
     """Union cohort/provenance evidence into a newer SQL/Chroma issue without replacing its content."""
     db = SessionLocal()
@@ -1209,11 +1338,7 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
             return False
         parsed_enriched = enrich_jira(parsed_issue.issue)
         row.company_names = _union_values(row.company_names, parsed_issue.company_names, limit=100)
-        row.customer_names = _union_values(
-            row.customer_names,
-            parsed_issue.customer_names + parsed_issue.customer_cohorts,
-            limit=100,
-        )
+        row.customer_names = _trusted_csv_customer_names(row.customer_names, parsed_issue)
         row.customer_cohorts = _union_values(row.customer_cohorts, parsed_issue.customer_cohorts, limit=20)
         row.affected_features = _union_values(
             row.affected_features,
@@ -1234,9 +1359,16 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
             for component in parsed_issue.issue.get("fields", {}).get("components", [])
             if isinstance(component, dict) and str(component.get("name") or "")
         ]
-        raw_components = _dedupe(existing_components + parsed_issue.raw_components)
+        raw_components = _dedupe(
+            existing_components
+            + parsed_issue.source_components
+            + parsed_issue.raw_components
+        )
         row.components = canonical_component_names(
-            existing_components + parsed_components + parsed_issue.raw_components
+            existing_components
+            + parsed_components
+            + parsed_issue.source_components
+            + parsed_issue.raw_components
         )
         component_classification_source = (
             "existing_component_metadata"
@@ -1469,10 +1601,9 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                             "company_names": _union_values(
                                 existing_metadata.get("company_names"), parsed_issue.company_names, limit=100
                             ),
-                            "customer_names": _union_values(
+                            "customer_names": _trusted_csv_customer_names(
                                 existing_metadata.get("customer_names"),
-                                parsed_issue.customer_names + parsed_issue.customer_cohorts + list(enriched.customer_names or []),
-                                limit=100,
+                                parsed_issue,
                             ),
                             "customer_cohorts": _union_values(
                                 existing_metadata.get("customer_cohorts"), parsed_issue.customer_cohorts, limit=20

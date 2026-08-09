@@ -33,6 +33,19 @@ feature_signals:
     - new editor
     - guides ui 2.0
     - neweditorphase2
+  conditional_authoring:
+    - folder profile
+    - condition group
+    - conditional attribute group
+    - conditional panel
+    - group column
+  image_authoring:
+    - drag and drop an image
+    - drag and drop images
+    - drag-drop image
+    - image reference
+    - image ref
+    - image breaks
   translation:
     - translation
     - worldserver
@@ -63,6 +76,7 @@ domains:
       - insert element
       - validation errors in editor
     entities:
+      - { label: "image", regex: "<\\s*image\\b|\\bimages?\\b" }
       - navtitle
       - topicref
       - mapref

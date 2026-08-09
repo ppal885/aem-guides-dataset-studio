@@ -21,7 +21,8 @@ from app.services.jira_uac_analysis_service import (
     build_historical_uac_chunks,
     extract_explicit_root_cause_evidence,
     extract_explicit_test_evidence,
-    extract_historical_uac_text,
+    extract_release_scope_evidence,
+    resolve_historical_uac_text,
 )
 from app.services.vector_store_service import (
     CHROMA_COLLECTION_JIRA_QA,
@@ -38,6 +39,8 @@ _SOURCE_CHUNK_TYPES = {
     "test_evidence_chunk",
     "comment_chunk",
 }
+
+
 def _json_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
@@ -50,6 +53,14 @@ def _json_list(value: Any) -> list[str]:
     return []
 
 
+def _archive_values(issue: JiraEnrichedIssue, key: str) -> list[str]:
+    archive = issue.evidence_archive if isinstance(issue.evidence_archive, dict) else {}
+    values = archive.get(key) if isinstance(archive, dict) else []
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
 def _chunk_body(document: str) -> str:
     text = str(document or "").strip()
     if "\n\n" in text:
@@ -57,13 +68,23 @@ def _chunk_body(document: str) -> str:
     return text
 
 
-def _acceptance_criteria_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -> str:
-    return extract_historical_uac_text(
+def _acceptance_criteria_from_sql(
+    issue: JiraEnrichedIssue,
+    chunks: list[JiraIssueChunk],
+) -> tuple[str, str]:
+    archived_acceptance = _archive_values(issue, "acceptance_criteria")
+    return resolve_historical_uac_text(
+        acceptance_criteria=archived_acceptance[-1] if archived_acceptance else "",
+        labels=_json_list(issue.labels),
         description=issue.description or "",
         raw_text=issue.raw_text or "",
         fallback_documents=[
             chunk.chunk_text for chunk in chunks if chunk.chunk_type == "acceptance_criteria_chunk"
         ],
+        comment_documents=[
+            chunk.chunk_text for chunk in chunks if chunk.chunk_type == "comment_chunk"
+        ]
+        + _archive_values(issue, "comments"),
     )
 
 
@@ -82,6 +103,20 @@ def _root_cause_from_chunks(chunks: list[JiraIssueChunk]) -> tuple[str, str]:
     )
 
 
+def _root_cause_from_issue(
+    issue: JiraEnrichedIssue,
+    chunks: list[JiraIssueChunk],
+) -> tuple[str, str]:
+    archived = _archive_values(issue, "root_causes")
+    if archived:
+        return extract_explicit_root_cause_evidence(
+            field_value=archived[-1],
+            comment_documents=_archive_values(issue, "comments")
+            + [chunk.chunk_text for chunk in chunks if chunk.chunk_type == "comment_chunk"],
+        )
+    return _root_cause_from_chunks(chunks)
+
+
 def _test_evidence_from_chunks(chunks: list[JiraIssueChunk]) -> tuple[str, str]:
     bodies = []
     for chunk in chunks:
@@ -98,15 +133,49 @@ def _test_evidence_from_chunks(chunks: list[JiraIssueChunk]) -> tuple[str, str]:
     )
 
 
+def _test_evidence_from_issue(
+    issue: JiraEnrichedIssue,
+    chunks: list[JiraIssueChunk],
+) -> tuple[str, str]:
+    archived = _archive_values(issue, "test_plans")
+    if archived:
+        return extract_explicit_test_evidence(
+            field_value=archived[-1],
+            comment_documents=_archive_values(issue, "comments")
+            + [chunk.chunk_text for chunk in chunks if chunk.chunk_type == "comment_chunk"],
+        )
+    return _test_evidence_from_chunks(chunks)
+
+
+def _release_scope_from_chunks(chunks: list[JiraIssueChunk]) -> tuple[str, str]:
+    return extract_release_scope_evidence(
+        comment_documents=[chunk.chunk_text for chunk in chunks if chunk.chunk_type == "comment_chunk"],
+    )
+
+
+def _release_scope_from_issue(
+    issue: JiraEnrichedIssue,
+    chunks: list[JiraIssueChunk],
+) -> tuple[str, str]:
+    archived_comments = _archive_values(issue, "comments")
+    if archived_comments:
+        return extract_release_scope_evidence(
+            comment_documents=archived_comments
+            + [chunk.chunk_text for chunk in chunks if chunk.chunk_type == "comment_chunk"],
+        )
+    return _release_scope_from_chunks(chunks)
+
+
 def analyze_sql_uac_issue(
     issue: JiraEnrichedIssue,
     chunks: list[JiraIssueChunk],
 ) -> tuple[HistoricalUacAnalysis, str, str, str] | None:
-    acceptance_criteria = _acceptance_criteria_from_sql(issue, chunks)
+    acceptance_criteria, acceptance_source = _acceptance_criteria_from_sql(issue, chunks)
     if not acceptance_criteria:
         return None
-    root_cause, root_cause_source = _root_cause_from_chunks(chunks)
-    test_evidence, test_evidence_source = _test_evidence_from_chunks(chunks)
+    root_cause, root_cause_source = _root_cause_from_issue(issue, chunks)
+    test_evidence, test_evidence_source = _test_evidence_from_issue(issue, chunks)
+    release_scope, release_scope_source = _release_scope_from_issue(issue, chunks)
     analysis = analyze_historical_uac(
         jira_key=issue.jira_key,
         acceptance_criteria=acceptance_criteria,
@@ -117,6 +186,9 @@ def analyze_sql_uac_issue(
         test_evidence=test_evidence,
         root_cause_source=root_cause_source,
         test_evidence_source=test_evidence_source,
+        release_scope_evidence=release_scope,
+        release_scope_source=release_scope_source,
+        acceptance_source=acceptance_source,
     )
     if analysis is None:
         return None
@@ -275,6 +347,7 @@ def backfill_historical_uac_chunks(
     page_size: int = 200,
     closed_only: bool = True,
     dry_run: bool = True,
+    jira_keys: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     if not dry_run and not is_chroma_available():
         return {"available": False, "valid": False, "error": "ChromaDB is not available"}
@@ -283,6 +356,20 @@ def backfill_historical_uac_chunks(
 
     capped_limit = max(1, min(int(limit), 500_000))
     capped_page_size = max(1, min(int(page_size), 1000))
+    requested_keys = tuple(
+        dict.fromkeys(
+            str(key or "").strip().upper()
+            for key in (jira_keys or [])
+            if str(key or "").strip()
+        )
+    )
+    if len(requested_keys) > 10_000:
+        return {
+            "available": True,
+            "valid": False,
+            "dry_run": bool(dry_run),
+            "error": "Historical UAC key filter exceeds 10,000 issues",
+        }
     last_id = 0
     exhausted = False
     scanned = 0
@@ -308,6 +395,7 @@ def backfill_historical_uac_chunks(
     explicit_root_cause_count = 0
     explicit_test_evidence_count = 0
     source_authorities: Counter[str] = Counter()
+    source_origins: Counter[str] = Counter()
 
     while analyzed_count < capped_limit:
         db = SessionLocal()
@@ -315,6 +403,8 @@ def backfill_historical_uac_chunks(
             query = db.query(JiraEnrichedIssue).filter(JiraEnrichedIssue.id > last_id)
             if source_type:
                 query = query.filter(JiraEnrichedIssue.source_type == source_type)
+            if requested_keys:
+                query = query.filter(JiraEnrichedIssue.jira_key.in_(requested_keys))
             issues = query.order_by(JiraEnrichedIssue.id).limit(capped_page_size).all()
             if not issues:
                 exhausted = True
@@ -350,6 +440,7 @@ def backfill_historical_uac_chunks(
             planned_chunks += len(rows)
             reuse_tiers[analysis.reuse_tier] += 1
             source_authorities[analysis.source_authority] += 1
+            source_origins[analysis.source_origin] += 1
             outcome_counts[analysis.historical_outcome] += 1
             dimensions.update(analysis.dimensions)
             contract_complete_count += int(analysis.contract_complete)
@@ -396,6 +487,7 @@ def backfill_historical_uac_chunks(
         "applied": not dry_run and indexed_issues > 0,
         "schema_version": UAC_SCHEMA_VERSION,
         "source_type": source_type,
+        "jira_key_filter_count": len(requested_keys),
         "closed_only": bool(closed_only),
         "scan_complete": scan_complete,
         "limit_reached": limit_reached,
@@ -419,6 +511,7 @@ def backfill_historical_uac_chunks(
         "performance_issues": performance_issue_count,
         "performance_contracts_complete": performance_complete_count,
         "source_authorities": dict(sorted(source_authorities.items())),
+        "source_origins": dict(sorted(source_origins.items())),
         "reuse_tiers": dict(sorted(reuse_tiers.items())),
         "historical_outcomes": dict(sorted(outcome_counts.items())),
         "dimensions": dict(sorted(dimensions.items())),

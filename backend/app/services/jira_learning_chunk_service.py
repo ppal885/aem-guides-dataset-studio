@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -20,12 +21,13 @@ from app.services.jira_uac_analysis_service import (
     analyze_historical_uac,
     extract_explicit_root_cause_evidence,
     extract_explicit_test_evidence,
-    extract_historical_uac_text,
+    extract_release_scope_evidence,
+    resolve_historical_uac_text,
 )
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, add_documents, is_chroma_available
 
 LEARNING_CHUNK_TYPE = "learning_behavior_chunk"
-LEARNING_STRATEGY_VERSION = "jira-history-v1"
+LEARNING_STRATEGY_VERSION = "jira-history-v4"
 _FIXED_OUTCOMES = {"fixed", "done", "complete", "partially complete", "documentation complete"}
 _CAUTION_OUTCOMES = {
     "duplicate",
@@ -41,13 +43,109 @@ _CAUTION_OUTCOMES = {
     "question answered",
     "transfer to product",
 }
+_NON_PRODUCT_RESOLUTION_MECHANISMS = {
+    "configuration_migration",
+    "documentation_only",
+    "workaround",
+}
+_WORKAROUND_NOT_FIX_RE = re.compile(
+    r"\b(?:still\s+a\s+workaround(?:\s+and\s+not\s+a\s+fix)?|"
+    r"workaround\s+and\s+not\s+a\s+fix|not\s+a\s+(?:product\s+)?fix|"
+    r"no\s+(?:product\s+)?code\s+changes?\s+(?:were\s+)?(?:required|made|delivered))\b",
+    re.I,
+)
+_CONFIGURATION_MIGRATION_RE = re.compile(
+    r"\b(?:"
+    r"custom\s+buttons?[^.\n]{0,220}ui[_-]?config\.json[^.\n]{0,220}"
+    r"(?:would\s+not\s+work|need(?:ed)?\s+to\s+be\s+ported)|"
+    r"port(?:ed|ing)?[^.\n]{0,120}editor_toolbar\.(?:js|json)|"
+    r"editor_toolbar\.(?:js|json)[^.\n]{0,180}"
+    r"(?:both\s+(?:lock|locked)[^.\n]{0,30}(?:unlock|unlocked)|lock\s*(?:&|and)\s*unlock)"
+    r")\b",
+    re.I,
+)
+_DOCUMENTATION_CLOSURE_RE = re.compile(
+    r"\b(?:"
+    r"closing\s+this[^.\n]{0,180}no\s+further\s+action[^.\n]{0,180}documentation|"
+    r"no\s+further\s+action[^.\n]{0,180}documentation\s+(?:will\s+be|is\s+being)\s+tracked|"
+    r"documentation\s+(?:will\s+be|is\s+being)\s+tracked[^.\n]{0,160}GUIDES-\d+"
+    r")\b",
+    re.I,
+)
+_EXPLICIT_PRODUCT_FIX_RE = re.compile(
+    r"\b(?:"
+    r"(?:product|code)\s+(?:fix|change)\s+(?:has\s+been|was|is)\s+"
+    r"(?:implemented|merged|released|delivered)|"
+    r"fix\s+(?:has\s+been|was)\s+(?:implemented|merged|released|delivered)|"
+    r"(?:already\s+)?fixed\s+in\s+(?:develop|development|main|master)(?:\s+branch)?|"
+    r"cherry[-\s]?picked\s+(?:for|into)\s+(?:the\s+)?(?:[\w.-]+\s+)?hotfix|"
+    r"verified\s+on\s+build"
+    r")\b",
+    re.I,
+)
 
 
 def _clean(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split()).strip()[:limit]
 
 
-def _outcome_kind(resolution: str) -> str:
+def _last_match(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
+    matches = list(pattern.finditer(text))
+    return matches[-1] if matches else None
+
+
+def _match_excerpt(text: str, match: re.Match[str] | None, limit: int = 500) -> str:
+    if match is None:
+        return ""
+    start = text.rfind("\n", 0, match.start()) + 1
+    end = text.find("\n", match.end())
+    if end < 0:
+        end = len(text)
+    return _clean(text[start:end], limit)
+
+
+def _resolution_classification(
+    resolution: str,
+    resolution_context: str,
+) -> tuple[str, str, str]:
+    """Classify how a Jira was resolved without equating ``Fixed`` to a code fix."""
+    context = str(resolution_context or "")
+    normalized_resolution = _clean(resolution, 120).lower()
+    workaround = _last_match(_WORKAROUND_NOT_FIX_RE, context)
+    migration = _last_match(_CONFIGURATION_MIGRATION_RE, context)
+    documentation = _last_match(_DOCUMENTATION_CLOSURE_RE, context)
+    product_fix = _last_match(_EXPLICIT_PRODUCT_FIX_RE, context)
+    latest_non_product = max(
+        (match.end() for match in (workaround, migration, documentation) if match is not None),
+        default=-1,
+    )
+    if product_fix is not None and product_fix.end() > latest_non_product:
+        return "product_fix", "jira_comment_product_fix", _match_excerpt(context, product_fix)
+
+    evidence_parts: list[str] = []
+    for match in (workaround, migration, documentation):
+        excerpt = _match_excerpt(context, match)
+        if excerpt and excerpt not in evidence_parts:
+            evidence_parts.append(excerpt)
+    evidence = " | ".join(evidence_parts)[:1200]
+    if migration is not None:
+        return "configuration_migration", "jira_comment_configuration_migration", evidence
+    if workaround is not None and documentation is not None:
+        return "documentation_only", "jira_comment_documentation_closure", evidence
+    if workaround is not None:
+        return "workaround", "jira_comment_workaround", evidence
+    if normalized_resolution == "documentation complete":
+        return "documentation_only", "jira_resolution_field", ""
+    if normalized_resolution in _FIXED_OUTCOMES:
+        return "resolution_field_only", "jira_resolution_field", ""
+    return "non_fix_or_other", "jira_resolution_field", ""
+
+
+def _outcome_kind(resolution: str, resolution_mechanism: str = "") -> str:
+    if resolution_mechanism in _NON_PRODUCT_RESOLUTION_MECHANISMS:
+        return resolution_mechanism
+    if resolution_mechanism == "product_fix":
+        return "implemented_fix"
     normalized = _clean(resolution, 120).lower()
     if normalized in _FIXED_OUTCOMES:
         return "implemented_fix"
@@ -70,7 +168,10 @@ def _learning_confidence(
     behavior_contract_complete: bool,
     root_cause_source: str,
     qa_oracle_source: str,
+    resolution_mechanism: str,
 ) -> tuple[str, bool]:
+    if resolution_mechanism in _NON_PRODUCT_RESOLUTION_MECHANISMS:
+        return "caution", False
     fixed = _clean(resolution, 120).lower() in _FIXED_OUTCOMES
     verified = bool(
         fixed
@@ -108,6 +209,7 @@ def build_learning_document(
     behavior_contract_complete: bool = True,
     root_cause_source: str | None = None,
     qa_oracle_source: str | None = None,
+    resolution_context: str = "",
 ) -> tuple[str, dict[str, Any]] | None:
     """Build one conservative historical-learning chunk without inferring missing facts."""
     resolution = _clean(resolution, 120)
@@ -117,6 +219,10 @@ def build_learning_document(
     qa_oracle = _clean(qa_oracle, 1000)
     root_cause_source = root_cause_source or ("jira_root_cause_field" if root_cause else "missing")
     qa_oracle_source = qa_oracle_source or ("jira_test_plan_field" if qa_oracle else "missing")
+    resolution_mechanism, resolution_evidence_source, resolution_evidence = _resolution_classification(
+        resolution,
+        resolution_context,
+    )
     if not resolution or not (problem or behavior_contract):
         return None
 
@@ -129,7 +235,10 @@ def build_learning_document(
         behavior_contract_complete=behavior_contract_complete,
         root_cause_source=root_cause_source,
         qa_oracle_source=qa_oracle_source,
+        resolution_mechanism=resolution_mechanism,
     )
+    if verified_fix and resolution_mechanism == "resolution_field_only":
+        resolution_mechanism = "product_fix"
     facets = [
         name
         for name, value in (
@@ -138,6 +247,7 @@ def build_learning_document(
             ("resolution", resolution),
             ("root_cause", root_cause),
             ("qa_oracle", qa_oracle),
+            ("resolution_evidence", resolution_evidence),
         )
         if value
     ]
@@ -160,6 +270,9 @@ def build_learning_document(
         f"Behavior contract source: {behavior_contract_source or 'missing'}",
         f"Behavior contract complete: {str(bool(behavior_contract_complete)).lower()}",
         f"Historical outcome: {resolution}",
+        f"Resolution mechanism: {resolution_mechanism}",
+        f"Resolution evidence source: {resolution_evidence_source}",
+        f"Resolution evidence: {resolution_evidence or 'not explicitly captured beyond the Jira resolution field'}",
         f"Root cause evidence: {root_cause or 'not explicitly captured; do not infer'}",
         f"Root cause source: {root_cause_source}",
         f"QA oracle: {qa_oracle or 'not explicitly captured; validate independently'}",
@@ -172,7 +285,7 @@ def build_learning_document(
     ]
     metadata = {
         "learning_confidence": confidence,
-        "historical_outcome": _outcome_kind(resolution),
+        "historical_outcome": _outcome_kind(resolution, resolution_mechanism),
         "is_verified_fix": verified_fix,
         "evidence_facets": facets,
         "learning_strategy_version": LEARNING_STRATEGY_VERSION,
@@ -180,6 +293,8 @@ def build_learning_document(
         "behavior_contract_complete": bool(behavior_contract_complete),
         "root_cause_source": root_cause_source,
         "qa_oracle_source": qa_oracle_source,
+        "resolution_mechanism": resolution_mechanism,
+        "resolution_evidence_source": resolution_evidence_source,
     }
     return "\n".join(lines)[:6000], metadata
 
@@ -193,9 +308,19 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
         field_value=enriched.test_plan,
         comment_documents=[enriched.comments_digest],
     )
+    release_scope, release_scope_source = extract_release_scope_evidence(
+        comment_documents=[enriched.comments_digest],
+    )
+    acceptance_text, acceptance_source = resolve_historical_uac_text(
+        acceptance_criteria=enriched.acceptance_criteria,
+        labels=enriched.labels,
+        description=enriched.description,
+        raw_text=enriched.raw_text,
+        comment_documents=[enriched.comments_digest],
+    )
     uac_analysis = analyze_historical_uac(
         jira_key=enriched.jira_key,
-        acceptance_criteria=enriched.acceptance_criteria,
+        acceptance_criteria=acceptance_text,
         status=enriched.status,
         resolution=enriched.resolution,
         labels=enriched.labels,
@@ -203,6 +328,9 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
         test_evidence=qa_oracle,
         root_cause_source=root_cause_source,
         test_evidence_source=qa_oracle_source,
+        release_scope_evidence=release_scope,
+        release_scope_source=release_scope_source,
+        acceptance_source=acceptance_source,
     )
     uac_contract = ""
     if uac_analysis is not None:
@@ -214,9 +342,9 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
     )
     behavior_contract_complete = uac_analysis.contract_complete if uac_analysis is not None else bool(contract)
     behavior_contract_source = (
-        "jira_expected_behavior+jira_acceptance_field"
+        f"jira_expected_behavior+{acceptance_source}"
         if enriched.expected_behavior.strip() and uac_contract
-        else "jira_acceptance_field"
+        else acceptance_source
         if uac_contract
         else "jira_expected_behavior"
         if enriched.expected_behavior.strip()
@@ -239,6 +367,7 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
         behavior_contract_complete=behavior_contract_complete,
         root_cause_source=root_cause_source,
         qa_oracle_source=qa_oracle_source,
+        resolution_context=enriched.comments_digest,
     )
     if built is None:
         return None
@@ -277,13 +406,18 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
         field_value=root_cause_field,
         comment_documents=by_type.get("comment_chunk", []),
     )
-    acceptance_text = extract_historical_uac_text(
+    acceptance_text, acceptance_source = resolve_historical_uac_text(
+        labels=_json_list(issue.labels),
         description=issue.description or "",
         raw_text=issue.raw_text or "",
         fallback_documents=by_type.get("acceptance_criteria_chunk", []),
+        comment_documents=by_type.get("comment_chunk", []),
     )
     qa_oracle, qa_oracle_source = extract_explicit_test_evidence(
         field_value="\n".join(by_type.get("test_evidence_chunk", [])),
+        comment_documents=by_type.get("comment_chunk", []),
+    )
+    release_scope, release_scope_source = extract_release_scope_evidence(
         comment_documents=by_type.get("comment_chunk", []),
     )
     uac_analysis = analyze_historical_uac(
@@ -296,6 +430,9 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
         test_evidence=qa_oracle,
         root_cause_source=root_cause_source,
         test_evidence_source=qa_oracle_source,
+        release_scope_evidence=release_scope,
+        release_scope_source=release_scope_source,
+        acceptance_source=acceptance_source,
     )
     uac_contract = ""
     if uac_analysis is not None:
@@ -319,9 +456,9 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
         qa_oracle=qa_oracle,
         risks=_json_list(issue.qa_risk_tags),
         behavior_contract_source=(
-            "jira_expected_behavior+jira_acceptance_field"
+            f"jira_expected_behavior+{acceptance_source}"
             if expected_contract and uac_contract
-            else "jira_acceptance_field"
+            else acceptance_source
             if uac_contract
             else "jira_expected_behavior"
             if expected_contract
@@ -330,6 +467,7 @@ def _learning_from_sql(issue: JiraEnrichedIssue, chunks: list[JiraIssueChunk]) -
         behavior_contract_complete=uac_analysis.contract_complete if uac_analysis is not None else bool(contract),
         root_cause_source=root_cause_source,
         qa_oracle_source=qa_oracle_source,
+        resolution_context="\n".join(by_type.get("comment_chunk", [])),
     )
 
 
@@ -367,6 +505,8 @@ def _learning_chroma_metadata(
         "behavior_contract_complete": bool(learning_meta["behavior_contract_complete"]),
         "root_cause_source": str(learning_meta["root_cause_source"]),
         "qa_oracle_source": str(learning_meta["qa_oracle_source"]),
+        "resolution_mechanism": str(learning_meta["resolution_mechanism"]),
+        "resolution_evidence_source": str(learning_meta["resolution_evidence_source"]),
     }
     metadata.update(component_filter_metadata(components))
     return metadata

@@ -20,6 +20,10 @@ from app.services.jira_uac_analysis_service import (
     build_historical_uac_chunks,
     extract_explicit_root_cause_evidence,
     extract_explicit_test_evidence,
+    extract_release_scope_evidence,
+    is_explicit_final_scope_comment,
+    is_no_uac_sentinel,
+    resolve_historical_uac_text,
 )
 
 SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
@@ -33,6 +37,7 @@ SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
         "customer_signal_chunk",
         "domain_entity_chunk",
         "acceptance_criteria_chunk",
+        "uac_status_chunk",
         "resolution_rca_chunk",
         "test_evidence_chunk",
         "linked_issue_chunk",
@@ -68,8 +73,9 @@ def build_comments_digest(comments: list[dict[str, Any]] | None, *, max_chars: i
     """Compact, meaningful-only comment text for ``comments_digest``."""
     if not comments:
         return ""
-    lines: list[str] = []
-    for c in comments[:40]:
+    regular_lines: list[str] = []
+    scope_lines: list[tuple[str, int, str]] = []
+    for index, c in enumerate(comments):
         if not isinstance(c, dict):
             continue
         body = str(c.get("body_text") or "").strip()
@@ -77,14 +83,23 @@ def build_comments_digest(comments: list[dict[str, Any]] | None, *, max_chars: i
             body = _adf_to_plain_text(c["body"]).strip()
         if len(body) < _COMMENT_MIN_LEN:
             continue
+        explicit_scope = is_explicit_final_scope_comment(body)
+        if index >= 40 and not explicit_scope:
+            continue
         blob = body.lower()
-        if not any(h in blob for h in _MEANINGFUL_HINTS) and len(body) < 120:
+        if not explicit_scope and not any(h in blob for h in _MEANINGFUL_HINTS) and len(body) < 120:
             continue
         author = str(c.get("author") or "").strip()
         created = str(c.get("created") or "").strip()
-        lines.append(f"[{created}] {author}: {body[:900]}")
-        if sum(len(x) + 1 for x in lines) >= max_chars:
-            break
+        line = f"[{created}] {author}: {body[:max_chars if explicit_scope else 900]}"
+        if explicit_scope:
+            scope_lines.append((created, index, line))
+        else:
+            regular_lines.append(line)
+    lines: list[str] = []
+    if scope_lines:
+        lines.append(max(scope_lines, key=lambda item: (item[0], item[1]))[2])
+    lines.extend(regular_lines)
     return "\n".join(lines)[:max_chars].strip()
 
 
@@ -249,13 +264,21 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
         syn += f" Feature hints: {feats}."
     _append_chunk(out, chunk_type="domain_entity_chunk", chunk_text=syn, enriched=e)
 
-    if e.acceptance_criteria.strip():
+    resolved_uac_text, resolved_uac_source = resolve_historical_uac_text(
+        acceptance_criteria=e.acceptance_criteria,
+        labels=e.labels,
+        description=e.description,
+        raw_text=e.raw_text,
+        comment_documents=[e.comments_digest],
+    )
+    if resolved_uac_text:
         _append_chunk(
             out,
             chunk_type="acceptance_criteria_chunk",
-            chunk_text="Acceptance criteria:\n" + e.acceptance_criteria.strip(),
+            chunk_text="Acceptance criteria:\n" + resolved_uac_text,
             enriched=e,
         )
+        out[-1]["uac_source_origin"] = resolved_uac_source
         uac_root_cause, uac_root_cause_source = extract_explicit_root_cause_evidence(
             field_value=e.root_cause,
             comment_documents=[e.comments_digest],
@@ -264,9 +287,12 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
             field_value=e.test_plan,
             comment_documents=[e.comments_digest],
         )
+        uac_release_scope, uac_release_scope_source = extract_release_scope_evidence(
+            comment_documents=[e.comments_digest],
+        )
         uac_analysis = analyze_historical_uac(
             jira_key=e.jira_key,
-            acceptance_criteria=e.acceptance_criteria,
+            acceptance_criteria=resolved_uac_text,
             status=e.status,
             resolution=e.resolution,
             labels=e.labels,
@@ -274,6 +300,9 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
             test_evidence=uac_test_evidence,
             root_cause_source=uac_root_cause_source,
             test_evidence_source=uac_test_evidence_source,
+            release_scope_evidence=uac_release_scope,
+            release_scope_source=uac_release_scope_source,
+            acceptance_source=resolved_uac_source,
         )
         if uac_analysis is not None:
             for uac_chunk in build_historical_uac_chunks(uac_analysis):
@@ -290,6 +319,15 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
                         if key not in {"chunk_type", "chunk_text"}
                     }
                 )
+    elif resolved_uac_source == "jira_no_uac_sentinel" or (
+        e.acceptance_criteria.strip() and is_no_uac_sentinel(e.acceptance_criteria)
+    ):
+        _append_chunk(
+            out,
+            chunk_type="uac_status_chunk",
+            chunk_text="Acceptance criteria status: no accepted UAC is required for this Jira.",
+            enriched=e,
+        )
 
     resolution_parts = []
     if e.resolution.strip():
@@ -441,6 +479,8 @@ def smart_chunks_to_chroma_rows(
                 "behavior_contract_complete": bool(sc.get("behavior_contract_complete") or False),
                 "root_cause_source": str(sc.get("root_cause_source") or ""),
                 "qa_oracle_source": str(sc.get("qa_oracle_source") or ""),
+                "resolution_mechanism": str(sc.get("resolution_mechanism") or ""),
+                "resolution_evidence_source": str(sc.get("resolution_evidence_source") or ""),
             }
         )
         for key in (
@@ -448,6 +488,7 @@ def smart_chunks_to_chroma_rows(
             "uac_analysis_method",
             "uac_source_hash",
             "uac_source_authority",
+            "uac_source_origin",
             "uac_reuse_tier",
             "uac_historical_outcome",
             "uac_root_cause_source",

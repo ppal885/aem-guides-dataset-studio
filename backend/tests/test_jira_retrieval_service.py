@@ -244,6 +244,27 @@ def test_extract_structured_learning_evidence_enforces_outcome_guardrail():
     assert caution["behavior_contract"] == ""
     assert caution["qa_oracle"] == ""
 
+    migration = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Historical Jira learning: GUIDES-28667\n"
+                "Resolution mechanism: configuration_migration\n"
+                "Resolution evidence source: jira_comment_configuration_migration\n"
+                "Behavior contract: The button appears in both states.\n"
+                "QA oracle: Inspect preview."
+            ),
+            "metadata": {
+                "learning_confidence": "caution",
+                "historical_outcome": "configuration_migration",
+            },
+        }
+    )
+    assert migration["reuse_mode"] == "risk_signal_only"
+    assert migration["resolution_mechanism"] == "configuration_migration"
+    assert migration["resolution_evidence_source"] == "jira_comment_configuration_migration"
+    assert migration["behavior_contract"] == ""
+
 
 def test_generated_fallback_oracle_is_never_returned_as_historical_test_evidence():
     evidence = extract_structured_learning_evidence(
@@ -287,6 +308,8 @@ def test_extract_structured_uac_evidence_preserves_source_and_blocks_candidates(
                 "uac_clause_stable_key": "jira:GUIDES-1:uac:abc",
                 "uac_clause_kind": "in_scope",
                 "uac_dimensions": '["ordering", "output"]',
+                "uac_release_scope_split": True,
+                "uac_release_scope_source": "jira_comment_release_scope",
             },
         }
     )
@@ -302,9 +325,11 @@ def test_extract_structured_uac_evidence_preserves_source_and_blocks_candidates(
         }
     )
 
-    assert supporting["reuse_mode"] == "supporting_uac_contract"
+    assert supporting["reuse_mode"] == "risk_signal_only"
     assert supporting["source_text"] == "Map links must render first."
     assert supporting["dimensions"] == ["ordering", "output"]
+    assert supporting["release_scope_split"] is True
+    assert supporting["release_scope_source"] == "jira_comment_release_scope"
     assert candidate["reuse_mode"] == "risk_signal_only"
     assert candidate["clause_unresolved"] is True
 

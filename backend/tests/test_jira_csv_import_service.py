@@ -11,6 +11,7 @@ import numpy as np
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_csv_import_service import (
     classify_jira_import_profile,
+    _trusted_csv_customer_names,
     create_import_run,
     parse_jira_csv_bytes,
     merge_parsed_issues,
@@ -471,6 +472,88 @@ def test_customer_detection_privacy_and_cross_cohort_association(monkeypatch):
     assert merged[0].company_names == ["IBM"]
     assert "@AdobeOrg" not in " ".join(merged[0].customer_names)
     assert {item["name"] for item in merged[0].issue["fields"]["components"]} == {"Schematron", "Publishing"}
+
+
+def test_csv_persistence_does_not_promote_generic_labels_to_customers():
+    headers = BASE_HEADERS + ["Labels", "Labels", "Labels", "Labels", "Component/s"]
+    payload = _csv_bytes(
+        headers,
+        [[
+            "Customer label with workflow labels",
+            "GUIDES-9001",
+            "Customer Request",
+            "Closed",
+            "Fixed",
+            "Major",
+            "Body",
+            "2026-08-01",
+            "KONE",
+            "Automated",
+            "Triaged",
+            "UAC_Done",
+            "Authoring",
+        ]],
+    )
+    parsed = parse_jira_csv_bytes(payload, "mixed-history.csv")
+    merged = merge_parsed_issues(
+        [parsed],
+        {parsed.file_hash: "Mixed (row-level cohorts)"},
+    )
+
+    assert merged[0].customer_names == []
+    assert merged[0].customer_cohorts == ["KONE"]
+    assert _trusted_csv_customer_names([], merged[0]) == ["KONE"]
+    assert _trusted_csv_customer_names(
+        ["KONE", "Automated", "Triaged", "UAC_Done", "Legacy Customer"],
+        merged[0],
+    ) == ["KONE", "Legacy Customer"]
+
+
+def test_csv_customer_labels_can_be_verified_by_safe_fields_in_the_same_file():
+    headers = BASE_HEADERS + [
+        "Labels",
+        "Custom field (Customer Names)",
+        "Custom field (Company)",
+        "Component/s",
+    ]
+    payload = _csv_bytes(
+        headers,
+        [
+            [
+                "Exact customer label",
+                "GUIDES-9002",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "Body",
+                "2026-08-01",
+                "Workday",
+                "Workday",
+                "",
+                "Authoring",
+            ],
+            [
+                "Legal suffix customer label",
+                "GUIDES-9003",
+                "Customer Request",
+                "Closed",
+                "Fixed",
+                "Major",
+                "Body",
+                "2026-08-01",
+                "Broadcom",
+                "",
+                "BROADCOM CORPORATION",
+                "Editor",
+            ],
+        ],
+    )
+
+    parsed = parse_jira_csv_bytes(payload, "safe-customer-labels.csv")
+
+    assert parsed.issues[0].customer_cohorts == ["Workday"]
+    assert parsed.issues[1].customer_cohorts == ["BROADCOM CORPORATION"]
 
 
 def test_row_level_customer_labels_are_preserved_with_file_cohort():
