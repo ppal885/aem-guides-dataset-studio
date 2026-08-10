@@ -1099,3 +1099,136 @@ def process_info(user: UserIdentity = AdminUser):
         "dotenv_loaded": os.environ.get("_DOTENV_LOADED", ""),
         "env_docker_path": str(Path(sys.executable).parent.parent / "backend" / ".env.docker"),
     }
+
+
+# ── UAC evaluation endpoints ──────────────────────────────────────────────────
+
+@router.post("/uac-eval/backfill")
+async def trigger_uac_backfill(
+    jql: str = (
+        'project in (DXML, GUIDES) AND status in (Closed, Resolved, Done) '
+        'AND resolution in (Fixed, "Done", Implemented) ORDER BY updated DESC'
+    ),
+    batch_size: int = 50,
+    max_issues: int | None = None,
+    dry_run: bool = False,
+    user: UserIdentity = AdminUser,
+):
+    """Backfill closed UAC Jira issues into the jira_qa ChromaDB index.
+
+    Run async — returns immediately with job metadata; check logs for progress.
+    """
+    import asyncio
+    from app.core.structured_logging import get_structured_logger as _gsl
+
+    _log = _gsl(__name__)
+    _log.info_structured("UAC backfill triggered", extra_fields={"jql": jql[:120], "dry_run": dry_run})
+
+    async def _run():
+        import sys
+        from pathlib import Path as _P
+        _scripts = _P(__file__).resolve().parent.parent.parent.parent.parent / "scripts"
+        sys.path.insert(0, str(_scripts))
+        from scripts.backfill_uac_index import run_backfill
+        try:
+            result = await asyncio.to_thread(
+                run_backfill,
+                jql=jql,
+                batch_size=batch_size,
+                dry_run=dry_run,
+                max_issues=max_issues,
+            )
+            _log.info_structured("UAC backfill complete", extra_fields=result)
+        except Exception as exc:
+            _log.error_structured("UAC backfill failed", extra_fields={"error": str(exc)}, exc_info=True)
+
+    asyncio.create_task(_run())
+    return {
+        "status": "started",
+        "jql": jql[:120],
+        "dry_run": dry_run,
+        "max_issues": max_issues,
+        "message": "Backfill running in background — check server logs for progress.",
+    }
+
+
+@router.post("/uac-eval/benchmark")
+async def run_uac_benchmark(
+    keys: str | None = None,
+    user: UserIdentity = AdminUser,
+):
+    """Run the UAC golden benchmark for the specified ticket keys (or all golden tickets).
+
+    `keys` — comma-separated Jira keys, e.g. "DXML-62001,DXML-61540".
+    Leave blank to run all 20 golden tickets (may take 20–40 minutes).
+    """
+    import asyncio
+
+    key_list = [k.strip() for k in keys.split(",")] if keys else None
+
+    async def _run():
+        from app.evaluation.uac_eval.runner import run_benchmark
+        try:
+            report = await asyncio.to_thread(run_benchmark, keys=key_list, verbose=False)
+            logger.info_structured(
+                "UAC benchmark complete",
+                extra_fields={
+                    "run_id": report.run_id,
+                    "mean_f1": report.similarity.mean_f1,
+                    "mean_coverage": report.similarity.mean_coverage,
+                    **report.audit_summary,
+                },
+            )
+        except Exception as exc:
+            logger.error_structured("UAC benchmark failed", extra_fields={"error": str(exc)}, exc_info=True)
+
+    asyncio.create_task(_run())
+    return {
+        "status": "started",
+        "keys": key_list,
+        "message": "Benchmark running in background — results logged when complete.",
+    }
+
+
+@router.get("/uac-eval/golden-set")
+def get_golden_set(user: UserIdentity = AdminUser):
+    """Return the current golden benchmark set (jira_key + metadata only, no reference ACs)."""
+    from pathlib import Path
+    import yaml
+
+    golden_path = Path(__file__).resolve().parent.parent.parent.parent / "evaluation" / "uac_eval" / "golden_set.yaml"
+    try:
+        with open(golden_path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        entries = [
+            {
+                "jira_key": e["jira_key"],
+                "summary": e.get("summary", ""),
+                "domain": e.get("domain", ""),
+                "risk_level": e.get("risk_level", ""),
+                "tags": e.get("tags", []),
+                "reference_scenario_count": len(e.get("reference_scenarios", [])),
+            }
+            for e in data.get("golden", [])
+        ]
+        return {"count": len(entries), "entries": entries}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="golden_set.yaml not found")
+
+
+@router.post("/uac-eval/score-single")
+async def score_single_ticket(
+    jira_key: str,
+    user: UserIdentity = AdminUser,
+):
+    """Generate UAC for one ticket from the golden set and return similarity + audit scores."""
+    from app.evaluation.uac_eval.runner import load_golden_set, evaluate_ticket
+
+    entries = load_golden_set()
+    entry = next((e for e in entries if e.jira_key.upper() == jira_key.upper()), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"{jira_key} not found in golden set")
+
+    import asyncio
+    result = await asyncio.to_thread(evaluate_ticket, entry)
+    return result.to_dict()
