@@ -470,6 +470,64 @@ Use this example as a quality bar for Native PDF preset UI tickets that affect t
 - Which PDF inspection tool should QA use to verify output intent, simulation profile visibility, and ICC profile behavior?
 - Which PDFReactor versions are mandatory in CI, local QA, Cloud, and on-prem validation?
 
+## Accepted User-Provided Reference: Native PDF ICC Profile Color Conversion
+
+Use this reference when a Native PDF defect mixes two different failure classes: resolving an ICC profile from DAM or a remote URL, and actually applying that profile during CMYK conversion. The final UAC was supplied directly by the user, but the primary Jira key was not supplied. Only the exact profile-application contract is confirmed; source-specific resolution, picker behavior, failure handling, migration, and performance remain proposed until the ticket scope or implementation evidence confirms them.
+
+**Accepted UAC (Verbatim)**
+
+- CMYK ICC Profile color conversion will now be applied correctly
+
+**Evidence Classification**
+
+- The user-provided evidence describes a Native PDF Print preset configured with Color Space `CMYK`, an identifier name, and a custom ICC profile.
+- `uac_source_origin=user_provided_final_uac`; the exact accepted behavior is ICC-backed CMYK color conversion, not every surrounding source-selection or preset-lifecycle behavior.
+- The primary Jira key is still missing, so the accepted wording must be retained as user-provided evidence and must not be attributed to any related Jira.
+- The reproducible DAM fixture is `Coated_Fogra39L_VIGC_300.icc`, stored at a path such as `/content/dam/archive/Coated_Fogra39L_VIGC_300.icc`.
+- The evidence identifies two independent failure mechanisms: a DAM profile path causes publishing to fail, while a direct profile URL permits publishing but does not apply the expected CMYK profile.
+- `GUIDES-25967`, `GUIDES-25017`, and `GUIDES-14741` are related-history candidates only. Their current status, accepted scope, workaround validity, fix version, and same-mechanism strength must be checked through indexed history and live Jira before they influence a plan.
+- A workaround recorded on an older ticket is not an expected-behaviour oracle when current reproduction shows that it no longer works.
+
+**Normalized Acceptance Criteria**
+
+- AC-01 [Confirmed]: (Publishing) Given a Native PDF preset configured with Color Space CMYK, Convert Colors enabled, and a valid selected ICC profile, when Native PDF output is generated, then the selected ICC profile is applied during color conversion; PDF inspection must confirm the selected profile/output intent and conversion behavior, and the profiled output must not be equivalent to the no-profile control where the fixture is designed to expose a conversion difference.
+- AC-02 [Proposed]: (DAM Profile Resolution) Given an accessible `.icc` or `.icm` asset selected from DAM and a Native PDF preset configured for CMYK conversion, when output is generated, then the publishing job completes without a profile-resolution error and uses the selected DAM asset rather than treating the JCR path as a local filesystem path or unsupported URL.
+- AC-03 [Proposed]: (Remote Profile Resolution) Given a valid reachable ICC profile URL and the URL profile mode enabled, when Native PDF output is generated, then publishing completes and the fetched profile is passed to the renderer; a successful job without profile application does not satisfy this AC.
+- AC-04 [Proposed]: (Configuration Consistency) Given a saved custom ICC configuration, when the preset is reopened and output is generated, then the UI state, persisted preset data, generated renderer input, publishing logs, and final PDF identify the same source mode, profile, identifier name, color space, and Convert Colors state.
+- AC-05 [Proposed]: (DAM Selection) Given the custom profile file mode, when Browse Profile is used, then eligible `.icc` and `.icm` DAM assets can be selected and the selected repository path is retained after save and reopen.
+- AC-06 [Proposed]: (Failure Handling) Given a missing, unreadable, unauthorized, malformed, unsupported, or unreachable profile source, when publishing is attempted, then the job fails deterministically with a useful profile-specific error and never reports success while silently producing an unprofiled PDF.
+- AC-07 [Proposed]: (Preset Lifecycle) Given a working DAM-path or URL profile configuration, when the preset is edited, duplicated, cloned through a template, or migrated from an older preset shape, then the intended source mode and profile values are preserved without stale file/URL precedence.
+- AC-08 [Proposed]: (Historical Regression) Given environments where the earlier Browse Profile or direct-URL behavior was previously fixed or documented, when the current flow is validated, then both source selection and actual profile application are retested; the result must not rely solely on the former `GUIDES-25967` workaround.
+
+**Test Data And Oracles**
+
+- Prepare one known-good ICC profile in DAM, the same profile from a reachable URL, one invalid ICC payload, one missing DAM path, one inaccessible DAM asset, one unreachable URL, and one URL returning a redirect or non-ICC response if redirects are supported.
+- Prepare a CMYK-sensitive image or vector fixture whose expected conversion under `Coated_Fogra39L_VIGC_300.icc` is known, plus a no-profile control output generated from identical content.
+- Verify the publishing job state and profile-specific logs first; a generic successful job is insufficient.
+- Verify persisted preset properties and generated renderer configuration to prove that the selected source reached the publishing pipeline.
+- Use an approved PDF preflight/inspection tool to verify output intent, embedded or referenced ICC identity, color space, and separation/conversion behavior. Visual comparison is supporting evidence only and must not be the sole proof that CMYK conversion occurred.
+- Compare DAM-path and URL-mode outputs produced from the same fixture. Equivalent profile sources should produce equivalent profile metadata and materially equivalent color conversion within the approved comparison tolerance.
+
+**Regression Areas To Carry Forward**
+
+- DAM path resolution, repository permissions, asset rendition/original-binary access, spaces or encoded characters in paths, and `.icc` versus `.icm` filtering.
+- URL validation, redirects, proxy/network access, timeout behavior, non-ICC content, and unreachable hosts.
+- Output Identifier Name, Convert Colors, Rendering Intent, RGB/CMYK mismatch warning, and file-versus-URL precedence.
+- Saved preset reopen, duplicate preset, template clone, upgrade/migration, and stale values left after switching source modes.
+- Generated renderer input, PDFReactor version compatibility, publishing logs, output intent, color conversion, and no-profile control comparison.
+- Related regressions from `GUIDES-25967`, `GUIDES-25017`, and `GUIDES-14741`, but only after live scope and outcome validation.
+
+**Open Questions To Carry Forward**
+
+- What is the primary Jira key, and is the text supplied here the final accepted UAC or only defect/reproduction evidence?
+- Which DAM property or persisted preset field stores the selected profile, and should it hold a JCR path, asset identifier, binary URL, or resolved repository resource?
+- Must remote profile URLs support redirects, authentication, proxies, caching, and offline reuse, and what timeout or retry contract applies?
+- What exact error message and job status should appear for missing, unreadable, unauthorized, malformed, or unreachable profiles?
+- Which PDFReactor and Guides versions are in scope, and is PDFReactor 11 expected to apply the profile or only remain backward compatible without failing?
+- Which PDF inspection tool, expected output-intent identity, color-space assertions, and visual/numeric comparison tolerance are approved as the sign-off oracle?
+- Is Browse Profile selection itself in the current ticket scope, or should `GUIDES-25017` remain a separate dependency/regression?
+- Does profile download or conversion require a performance AC, and if so what publish-time, timeout, cache, memory, and concurrency thresholds must be met?
+
 ## Gold Reference: Old AEM Site Ditavalref Keydef Publishing
 
 Use this example as a quality bar for Old AEM Site publishing tickets involving `ditavalref`, key definitions, `conkeyref`, resource-only behavior, and DITA-OT parity. The important quality signal is that key definitions support reference resolution without generating unwanted published pages.
@@ -742,6 +800,372 @@ Use this example as a quality bar for report tickets where key references, conte
 - Are both UI report and backend/export APIs in scope?
 - Is Cloud/on-prem parity required for key resolution and report export?
 
+## Accepted Reference: GUIDES-52343 HTML Topic Title Selector Precedence
+
+Use this example for HTML topic-creation defects where a template offers both a product-specific title container and the legacy top-level `<h1>` fallback. The accepted contract is selector precedence, not a general license to populate every heading in the template.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=jira_acceptance_field`; `accepted_uac_present=true`; customer, tenant, environment, attachment, and person data are intentionally omitted.
+- Preserve the Jira source component independently. For test-plan retrieval, classify the mechanism under Authoring, HTML topic initialization, template selector resolution, and title fallback.
+- Historical UAC can seed a proposed AC for a new ticket, but it is never current-ticket authority by itself.
+- No performance AC is justified because the accepted UAC contains no workload, latency, concurrency, or resource contract.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - During HTML topic creation, the supplied title is populated at `/html/body/header[1][@data-rhwidget='TopicHeader']/h1[1][@data-rhwidget='TopicTitle']` when that exact product header/title structure exists.
+- `UAC-02` - If that header title is not present, the title is populated at the legacy fallback `/html/body/h1[1]`.
+
+### Fidelity Lessons
+
+- Treat `UAC-01` and `UAC-02` as an ordered selector contract: exact `TopicHeader`/`TopicTitle` target first, legacy `/html/body/h1[1]` only as fallback.
+- Do not invent simultaneous writes to both selectors, duplicate headings, or a broader descendant search.
+- `Header title is not present` does not define whether the header node, nested `<h1>`, one `data-rhwidget` attribute, or all of them are missing. Keep those variants in `Open Questions` until implementation or accepted Jira evidence defines them.
+- Existing non-empty title replacement, multiple matching headers, malformed templates, namespaces, and localization are not Confirmed by this UAC.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Basic) Given a new HTML topic template contains `/html/body/header[1][@data-rhwidget='TopicHeader']/h1[1][@data-rhwidget='TopicTitle']` | When the user creates the topic with a title | Then that exact `<h1>` contains the supplied title after creation, save, and reopen | Evidence: `UAC-01` from GUIDES-52343.
+- AC-02 [Confirmed]: (Fallback) Given the exact `TopicHeader`/`TopicTitle` target is absent and `/html/body/h1[1]` exists | When the user creates the topic with a title | Then `/html/body/h1[1]` contains the supplied title after creation, save, and reopen | Evidence: `UAC-02` from GUIDES-52343.
+- AC-03 [Proposed]: (Negative) Given both the exact custom target and legacy fallback exist | When the topic is created | Then only the approved precedence target is populated and no duplicate title is introduced | Evidence needed: inspected implementation or an accepted Jira clarification.
+
+### Required Open Questions
+
+- Which missing-node and missing-attribute combinations qualify as `header title is not present`?
+- If both selectors exist, must the legacy `<h1>` remain empty, retain template text, or be removed?
+- Should creation overwrite a non-empty title already present in the template?
+- What is the expected error or fallback when neither selector exists or when more than one matching custom header exists?
+- Which HTML topic/template types and old/new editor creation surfaces share this initialization path?
+
+### Regression Areas
+
+- HTML topic creation from default and custom templates.
+- Exact `data-rhwidget='TopicHeader'` and `data-rhwidget='TopicTitle'` matching.
+- Legacy `/html/body/h1[1]` behavior.
+- Save, reopen, source/author view parity, and duplicate-title prevention.
+- Templates with missing nodes, missing attributes, multiple headers, and pre-populated title text.
+- Existing DITA topic creation must not inherit HTML selector behavior.
+
+## Accepted Reference: GUIDES-50143 Baseline Label Autocomplete Input Parity
+
+Use this example for autocomplete defects where filtering is bound to keyboard events instead of the input value. The mechanism is event parity: typing, paste, clear, and repeated interactions must drive one deterministic filter path.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=jira_acceptance_field`; `accepted_uac_present=true`; AVAYA tenant, environment, case, recording, and investigation identifiers are intentionally omitted.
+- Classify the mechanism under Authoring, Baseline, label selector, autocomplete filtering, and input-event handling while preserving the imported Jira component separately.
+- `Real time` is a functional responsiveness phrase, not an approved numeric performance SLA.
+- Historical UAC can support regression discovery for a new ticket but cannot replace current Jira, implementation, or design evidence.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Typing the first letter filters the list to items containing or starting with that value.
+- `UAC-02` - Typing additional characters further narrows the filtered results in real time.
+- `UAC-03` - Pasting a complete word triggers the same filtering logic as typing it.
+- `UAC-04` - A no-match value produces an empty dropdown; it must not display the full list.
+- `UAC-05` - Clearing the field restores the full list.
+- `UAC-06` - Filtering is case-insensitive unless a newer accepted contract specifies otherwise.
+- `UAC-07` - Typing or pasting updates the list without an extra click, key-down, blur, focus change, or other user action.
+
+### Fidelity Lessons
+
+- Preserve typing/paste equivalence; do not write separate expected option sets for the same value.
+- The phrase `containing/starting with` is ambiguous. A discriminating fixture cannot be automated until product, implementation, or design evidence selects contains, prefix, or a documented hybrid rule.
+- No-match and clear are distinct state transitions. Do not allow no-match to fall back to the unfiltered list.
+- The reported repeat-paste sequence is a high-value regression case, but do not invent debounce duration or network timing thresholds.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Basic) Given the Baseline label dropdown is open with a known label fixture | When the user types one character and then additional characters | Then the visible options are recomputed after every input value change and narrow according to the approved matching rule | Evidence: `UAC-01` and `UAC-02` from GUIDES-50143.
+- AC-02 [Confirmed]: (Integration) Given the same label value and initial dropdown state | When the user enters the value once by typing and once by paste | Then both interactions produce the same filtered option set without another action | Evidence: `UAC-03` and `UAC-07` from GUIDES-50143.
+- AC-03 [Confirmed]: (Negative) Given an input value matches no label | When filtering completes | Then the dropdown is empty or shows the approved empty state and does not show the full list | Evidence: `UAC-04` from GUIDES-50143.
+- AC-04 [Confirmed]: (State) Given the dropdown is filtered | When the user clears the complete input value | Then the full label list is restored without an extra action | Evidence: `UAC-05` and `UAC-07` from GUIDES-50143.
+- AC-05 [Confirmed]: (Compatibility) Given labels differ only by input letter case | When each case variant is typed or pasted | Then filtering returns the same option set unless a newer accepted contract explicitly defines case-sensitive behavior | Evidence: `UAC-06` from GUIDES-50143.
+- AC-06 [Proposed]: (Regression) Given the user has pasted, cleared, blurred/reopened, and pasted again | When the second and later input events occur | Then every interaction recomputes the list with no stale result | Evidence: issue reproduction plus historical defect context; confirm against current implementation before promoting.
+
+### Required Open Questions
+
+- Is the approved matching rule prefix, substring, token, fuzzy, or another documented algorithm?
+- What ordering rule applies after filtering, and must the current selection remain visible when it no longer matches?
+- Does clearing mean backspace, select-all-delete, clear icon, programmatic reset, and dialog reopen?
+- Are keyboard navigation, screen-reader announcements, loading states, and remote pagination part of this component's contract?
+- Is the behavior required in Create Baseline, Edit Baseline, static/dynamic baseline flows, and both old/new editor surfaces?
+
+### Regression Areas
+
+- `input`, `paste`, change, keyboard, clear, focus, blur, reopen, and repeated-paste event paths.
+- Prefix-versus-contains matching once clarified, case normalization, no-match state, and full-list restoration.
+- Stale results during rapid value replacement or delayed responses.
+- Keyboard selection, mouse selection, Escape, Enter, focus management, and ARIA option state.
+- Create/Edit Baseline parity and existing selected-label retention.
+
+## Accepted Reference: GUIDES-49144 Table-Cell Inline Whitespace Preservation
+
+Use this example for editor parser/serializer regressions where user-authored whitespace around inline DITA elements is confused with structural indentation. The accepted oracle is paragraph parity plus explicit exceptions, not blanket whitespace preservation.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=jira_acceptance_field`; `accepted_uac_present=true`; IBM tenant, environment, case, attachment, and investigation identifiers are intentionally omitted.
+- Preserve source component `Editor`; classify the mechanism under mixed-content parsing, table-cell whitespace, inline DITA, serialization, and round-trip integrity.
+- A Jira engineering comment attributes the regression to the custom table-cell parser omitting the preserve-whitespace flag. Store this only as `root_cause_source=jira_comment_engineering_rca`; it is historical implementation evidence, not an OASIS DITA rule.
+- The issue description reports HTML/PDF impact, but the accepted UAC does not define an output matrix. Keep publishing-output checks proposed unless current Jira or inspected code explicitly includes them.
+- No performance AC is justified by the accepted UAC.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Preserve a user-authored space before an inline tag in CALS `table`, `simpletable`, and `reltable`, in both body and header cells.
+- `UAC-02` - Cell behavior matches `<p>` for leading, trailing, and inter-element spaces around inline tags.
+- `UAC-03` - Cover leading, trailing, inter-element, before/after inline, before newline, before a block child, and structural indentation between `row`/`entry`; the block-child boundary is intentionally trimmed.
+- `UAC-04` - Multiple consecutive regular spaces collapse to one; NBSP never collapses or drops, including alternating regular-space/NBSP runs.
+- `UAC-05` - Do not add unnecessary preservation to text-forbidden tags.
+- `UAC-06` - Pretty-printed structural indentation must not leak into cell text.
+
+### Fidelity Lessons
+
+- Distinguish authored mixed-content whitespace from source-formatting indentation. Preserving all whitespace would violate `UAC-03` and `UAC-06`.
+- Do not generalize CALS `entry` behavior to every XML node without DITA grammar or implementation evidence.
+- `Text-forbidden tags` is not an executable matrix until the exact element list is supplied; keep that source clause accepted but automation handoff blocked for that sub-case.
+- NBSP is a distinct character oracle. Do not normalize it into a regular space in fixtures, logs, or expected output.
+- GUIDES-28188 is a candidate same-mechanism regression reference; validate mechanism and version boundaries before reusing its oracle.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Matrix) Given CALS `table`, `simpletable`, and `reltable` fixtures with body and header cells containing text followed by an inline DITA element | When each topic is opened, saved, and reopened | Then the authored space before the inline element remains present and visible | Evidence: `UAC-01` from GUIDES-49144.
+- AC-02 [Confirmed]: (Parity) Given equivalent mixed-content fixtures in `<p>` and each supported table cell | When leading, trailing, and inter-element spaces surround inline tags | Then cell normalization matches the approved paragraph behavior | Evidence: `UAC-02` from GUIDES-49144.
+- AC-03 [Confirmed]: (Boundary) Given fixtures for leading, trailing, inter-element, before/after inline, before newline, before block child, and structural `row`/`entry` indentation | When the editor parses and serializes them | Then authored inline-boundary whitespace is preserved, the approved block-child boundary is trimmed, and structural indentation is not introduced as cell text | Evidence: `UAC-03` and `UAC-06` from GUIDES-49144.
+- AC-04 [Confirmed]: (Normalization) Given runs of multiple regular spaces | When the content is round-tripped | Then each run collapses to one regular space according to the accepted paragraph rule | Evidence: `UAC-04` from GUIDES-49144.
+- AC-05 [Confirmed]: (Character Integrity) Given one or more NBSP characters, including alternating regular-space/NBSP runs | When the content is round-tripped | Then every NBSP remains present and is not collapsed or dropped | Evidence: `UAC-04` from GUIDES-49144.
+- AC-06 [Proposed]: (Schema Boundary) Given the approved list of text-forbidden elements | When those elements occur in table structures | Then the parser does not introduce preserved text whitespace where text is forbidden | Evidence needed: exact element matrix for `UAC-05`.
+- AC-07 [Proposed]: (Publishing Regression) Given a validated author/source round-trip fixture | When supported HTML and PDF outputs are generated | Then visible word boundaries match the saved source without concatenation | Evidence needed: current-ticket output scope or inspected publishing implementation.
+
+### Required Open Questions
+
+- Which exact inline elements form the minimum matrix: `xref`, `keyword`, `uicontrol`, `wintitle`, and which additional mixed-content elements?
+- Which exact DITA elements are meant by `text-forbidden tags`?
+- Does paragraph parity refer to source XML, Author view, Preview, persisted DAM content, or all of them?
+- Which block children intentionally trim preceding whitespace, and is trailing whitespace after a block child governed by the same rule?
+- Are HTML5, Native PDF, DITA-OT PDF, and AEM Sites outputs in accepted scope or regression-only scope?
+- Which old/new editor and upgrade paths define the regression boundary?
+
+### Regression Areas
+
+- CALS body/header `entry`, `simpletable` cells, and `reltable` cells.
+- Inline mixed-content parsing and serialization around `xref`, `keyword`, `uicontrol`, `wintitle`, and the approved element matrix.
+- Author/Source/Preview save-reopen parity and undo/redo around whitespace edits.
+- Regular-space collapse, NBSP preservation, mixed runs, newline boundaries, and block-child boundaries.
+- Pretty-printed XML indentation and text-forbidden structural elements.
+- Candidate regression GUIDES-28188 after mechanism verification.
+- Publishing outputs only when current scope confirms them.
+
+## Accepted Reference: GUIDES-48587 Alphanumeric User-Dictionary Spellcheck
+
+Use this example for spell-check defects where dictionary matching and tokenization differ for alphabetic, numeric-boundary, and special-character terms. The accepted behavior is position-sensitive and must be tested in both editor generations without broadening it into an unspecified punctuation policy.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=jira_acceptance_field`; `accepted_uac_present=true`; CIENA tenant, IMS Org, program/environment, case, attachment, person, and investigation identifiers are intentionally omitted.
+- Classify the mechanism under Editor, spell check, user dictionary, tokenization, alphanumeric terms, and old/new editor parity while preserving the imported Jira component separately.
+- The support statement that filtering `appears to drop tokens containing digits` is a candidate investigation hypothesis, not a verified RCA. Record `root_cause_source=missing` until code or an explicit engineering conclusion confirms it.
+- No performance AC is justified because the accepted UAC contains no workload, latency, throughput, concurrency, or resource contract.
+- Historical UAC may seed regression coverage for a new ticket, but it is never current-ticket authority by itself.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - The accepted spell-check behavior applies to both the old editor and the new editor.
+- `UAC-02` - A string with numeric characters at its starting or ending boundary must not be shown as misspelled when that exact string is present in the user dictionary.
+- `UAC-03` - The existing behavior for special characters does not change; applicable special-character strings continue to be shown as misspelled.
+- `UAC-04` - If a special character occurs in the middle of a word, the spell checker ignores that word.
+
+### Fidelity Lessons
+
+- Do not reduce `UAC-02` to trailing digits only because the supplied incident examples are suffix-number acronyms. The accepted wording also names the starting boundary.
+- Do not infer behavior for digits in the middle, numeric-only tokens, decimals, version strings, or multiple numeric runs; those positions are not defined by the accepted UAC.
+- `Special character` has no approved character set. Hyphen, underscore, slash, period, apostrophe, colon, symbols, and Unicode punctuation cannot be treated as equivalent without a fixture matrix.
+- `Ignore the word` must not be silently rewritten as dictionary acceptance. It describes a tokenizer/spell-check bypass whose exact UI oracle requires clarification.
+- Dictionary deployment, cache refresh, editor restart, save/reopen, language, and case-sensitivity behavior come from incident context, not the four accepted clauses; keep them proposed until current evidence confirms them.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Compatibility) Given the same user dictionary is active in the old editor and new editor | When the same accepted spell-check fixture is evaluated in each editor | Then both editors return the same misspelled or ignored state for every accepted clause | Evidence: `UAC-01` from GUIDES-48587.
+- AC-02 [Confirmed]: (Boundary) Given an exact user-dictionary entry containing a numeric character at the accepted starting or ending boundary | When spell check evaluates the matching token in either editor | Then the token is not shown as misspelled | Evidence: `UAC-02` from GUIDES-48587.
+- AC-03 [Confirmed]: (Negative) Given a fixture from the approved special-character set that is covered by the unchanged misspelled rule | When spell check evaluates it in either editor | Then it continues to be shown as misspelled | Evidence: `UAC-03` from GUIDES-48587; automation remains blocked until the character/position matrix is approved.
+- AC-04 [Confirmed]: (Tokenizer Boundary) Given a fixture from the approved special-character set with that character in the middle of the word | When spell check evaluates it in either editor | Then the word is ignored according to the approved visible/UI oracle | Evidence: `UAC-04` from GUIDES-48587; automation remains blocked until `ignored` and the character set are defined.
+- AC-05 [Proposed]: (Persistence) Given an alphanumeric term is added to `/apps/fmdita/config/user_dictionary.txt` and the supported dictionary-refresh action completes | When the topic is saved, reopened, and the editor is restarted | Then the accepted non-misspelled result persists | Evidence needed: current implementation or accepted Jira scope for refresh/cache lifecycle.
+
+### Required Open Questions
+
+- Does `starting and ending` mean either boundary independently, both boundaries in one token, or both categories as separate fixtures?
+- What is the expected behavior for digits in the middle, multiple digit runs, numeric-only values, dotted versions, and decimal-like tokens?
+- Which exact ASCII and Unicode characters are `special characters`, and which positions are covered by the unchanged misspelled rule?
+- What exact observable defines `ignored`: no underline, no correction menu, no dictionary lookup, no telemetry entry, or all of these?
+- Must a middle-special-character word be ignored whether or not it exists in the user dictionary?
+- Is dictionary matching case-sensitive, locale-specific, normalized for Unicode, or based on exact code points?
+- What supported deployment/reload event makes a changed user dictionary active in old and new editors?
+
+### Regression Areas
+
+- Old editor and new editor spell-check parity.
+- Existing alphabetic user-dictionary terms and unknown alphabetic words.
+- Numeric prefix, numeric suffix, both-boundary, middle-digit, multiple-digit, and numeric-only tokenization once clarified.
+- Special characters at start, middle, and end using the approved ASCII/Unicode matrix.
+- User-dictionary exact matching, case handling, language handling, load/reload, cache invalidation, and editor restart.
+- Underline state, correction suggestions, right-click behavior, save/reopen persistence, and repeated spell-check runs.
+- Candidate implementation flow `SpellCheckFeature` to `AEMSpellChecker` only after inspected code confirms it is the active path.
+
+## Accepted Reference: GUIDES-48450 DITA Element Predicate Request Serialization
+
+Use this example for Assets Admin Search Rail defects where a custom predicate renders correctly but omits the selected value from the QueryBuilder request. The accepted contract spans request serialization, server submission, result filtering, applied-filter chip lifecycle, and search-text tokenization; a UI-only assertion or backend-only assertion is insufficient.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=jira_acceptance_field_and_user_transcription`; `accepted_uac_present=true`; customer, IMS Org, program/environment, author URLs, case, Slack, person, and attachment identifiers are intentionally omitted.
+- Preserve source Jira component `Asset Management`; classify the mechanism under Assets Admin Search Rail, DITA Element Predicate, QueryBuilder serialization, applied filters, and search tokenization.
+- The issue evidence shows that DITA metadata extraction and indexing work, and that a manually completed QueryBuilder request filters correctly. Guides Editor Repository search is a control, not proof that the Assets Admin predicate is fixed.
+- The supplied investigation does not contain an inspected implementation or explicit engineering RCA. Record `root_cause_source=missing`; do not infer the faulty UI class, event handler, or serializer.
+- Status, resolution, fix version, branch, and commit facts shown in a screenshot are mutable and must be validated through live Jira/Git before use in a current plan.
+- No performance AC is justified by the accepted UAC because it defines no workload, latency, throughput, concurrency, or resource threshold.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Applying the DITA Element filter sends the actual value selected by the user instead of an empty value.
+- `UAC-02` - Applying the filter sends a proper search request to the server with all DITA Element filter details.
+- `UAC-03` - The results list updates to contain only items matching the DITA Element filter.
+- `UAC-04` - An applied-filter chip appears and visibly represents the active DITA Element filter.
+- `UAC-05` - Removing the applied-filter chip clears the DITA Element filter and refreshes the results to the unfiltered state.
+- `UAC-06` - Search text is tokenized first and the form is submitted again so the returned results match the text entered by the user.
+
+### Fidelity Lessons
+
+- Preserve the exact request contract. For an Element `title` and Value `difference`, the request evidence expects `211_group.1_property=jcr:content/ditameta/title`, `211_group.1_property.operation=like`, and `211_group.1_property.value=difference`; a request containing only the first two parameters is an empty skeleton and fails `UAC-01` and `UAC-02`.
+- Do not collapse request correctness, filtered results, and filter-chip state into one assertion. Each is independently observable and each can regress while the others appear correct.
+- Do not invent tokenization semantics from `UAC-06`. Word splitting, quoting, punctuation, case normalization, wildcard insertion, debounce, and submit timing remain unresolved until current implementation or product scope defines them.
+- Do not promote the working Guides Editor Repository search into accepted scope. It is a control proving metadata/index readiness and a regression signal only.
+- Cloud and on-prem reproduction broadens the validation matrix, but it does not establish a Confirmed parity AC unless current Jira scope explicitly requires both.
+- Do not treat a populated chip as proof that the server received `property.value`; inspect the actual network request and returned result set.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Integration) Given DITA metadata extraction and indexing are configured and the user selects Element `title` with Value `difference` in the Assets Admin DITA Element filter | When the user applies the filter | Then the submitted QueryBuilder predicate includes the mapped `property`, its `property.operation`, and the non-empty selected `property.value` rather than an empty skeleton | Evidence: `UAC-01` and `UAC-02` from GUIDES-48450.
+- AC-02 [Confirmed]: (Basic) Given indexed DITA assets where only a known subset matches the selected element/value pair | When the DITA Element filter request completes | Then the results list contains only the matching assets and excludes known nonmatching controls | Evidence: `UAC-03` from GUIDES-48450.
+- AC-03 [Confirmed]: (UI State) Given a DITA Element filter is successfully applied | When the filtered results are shown | Then an applied-filter chip is visible and represents the active DITA Element filter | Evidence: `UAC-04` from GUIDES-48450.
+- AC-04 [Confirmed]: (Reset) Given a DITA Element filter chip is active and the results are filtered | When the user removes that chip | Then the predicate value is removed from the next request and the results refresh to the corresponding unfiltered state | Evidence: `UAC-05` from GUIDES-48450.
+- AC-05 [Confirmed]: (Tokenization) Given the user enters search text for the DITA Element predicate | When the supported text-processing event completes | Then the text is tokenized before submission, the form submits again with the processed value, and the returned results match the entered text under the approved tokenization rule | Evidence: `UAC-06` from GUIDES-48450; automation requires the exact tokenization rule.
+- AC-06 [Proposed]: (Composition) Given DITA Element, full-text, path, file-type, and other Assets filters are active together | When the combined search is submitted and individual chips are removed | Then each predicate retains its own value and the approved AND/OR semantics without clearing unrelated filters | Evidence needed: accepted combined-filter contract or inspected implementation.
+- AC-07 [Proposed]: (Regression Control) Given the same indexed DITA fixture | When Guides Editor Repository search and Assets Admin Search Rail are exercised independently | Then the existing Repository search behavior remains unchanged while the Assets Admin predicate satisfies AC-01 through AC-05 | Evidence needed: current-ticket regression scope.
+
+### Required Open Questions
+
+- What exact element-name-to-`jcr:content/ditameta/*` mapping is supported, including namespaced, specialized, mixed-case, invalid, and unknown element names?
+- What are the approved `property.operation`, wildcard, escaping, URL-encoding, case-sensitivity, and multi-value rules?
+- What does `tokenized` mean for multiple words, quoted phrases, punctuation, Unicode, repeated spaces, pasted text, and empty tokens?
+- Which event triggers the second submission, and what debounce, cancellation, stale-response, or duplicate-request behavior is expected?
+- What exact label/value must the chip display, and must chip state survive browser back/forward, page refresh, saved search, or deep-link reuse?
+- What is the empty-value and no-match behavior: block submission, omit the predicate, show zero results, or restore the unfiltered list?
+- How does the DITA Element predicate combine with multiple DITA Element rows and other Assets filters?
+- Are Cloud and on-prem both release-blocking scope, and which AEM/Guides versions define the compatibility matrix?
+
+### Regression Areas
+
+- Search Forms configuration, DITA metadata extraction, DAM index readiness, and element-to-property mapping.
+- QueryBuilder group numbering, `property`, `property.operation`, `property.value`, URL encoding, empty values, and repeated predicates.
+- Filter application, response/result replacement, pagination, sorting, no-match state, and known matching/nonmatching controls.
+- Applied-filter chip creation, displayed label/value, removal, clear-all, browser navigation, and refresh behavior.
+- Typing, paste, tokenization, resubmission, debounce, stale responses, and duplicate network requests.
+- Composition with full-text, path, file type, tags, and multiple DITA Element filters once semantics are approved.
+- Guides Editor Repository search as a non-regression control, not as a substitute for Assets Admin Search Rail validation.
+
+## Accepted User-Provided Reference: Per-Topic Review Completion
+
+Use this example for review-workflow enhancements that add reviewer-specific completion per topic without silently changing task-level completion. The accepted contract is binary per-topic state keyed by reviewer and current topic version, plus an explicit task-completion action; it is not a three-state workflow and it does not treat merely opening a topic as completion.
+
+### Sanitized Evidence Boundary
+
+- `uac_source_origin=user_provided_final_uac`; `accepted_uac_present=true`; `primary_jira_key=missing`. Do not invent or infer a Jira key until the current issue is supplied and validated.
+- Customer, tenant, environment, case, investigation, attachment, and person identifiers are intentionally omitted. They are not required to preserve the reusable behavior contract.
+- The final human-written UAC is sign-off authority. Earlier incident requests for `Not Started / In Progress / Done`, task auto-completion, notifications, and topic-status API payloads are proposal history only and are not Confirmed by this reference.
+- A Figma node was supplied, but the connected Figma source required reauthentication during ingestion. Record `figma_source_status=degraded_reauthentication_required` and `figma_visual_contract_verified=false`; only the textual requirement to use the approved Figma progress-bar design is accepted, not colors, dimensions, spacing, animation, or responsive behavior.
+- No inspected implementation, persistence schema, endpoint contract, or explicit engineering RCA was supplied. Record `root_cause_source=missing` and keep storage, concurrency, notification, and API-shape claims open.
+- Incident workload observations such as 5-20 topics and estimated cycle-time impact are not performance SLAs. No Confirmed latency, throughput, concurrency, or resource AC is justified without measurable thresholds.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Each topic has a `Mark topic as done` checkbox.
+- `UAC-02` - There is no separate `Not Done` state; unchecked means not done.
+- `UAC-03` - A reviewer manually checks or unchecks the checkbox, whose default state is unchecked.
+- `UAC-04` - Completion is reviewer-specific; one reviewer's action does not change another reviewer's state.
+- `UAC-05` - With the feature flag enabled, the task-level button is named `Complete review task`; with the flag disabled, existing `Mark as Done` behavior remains unchanged.
+- `UAC-06` - A topic not assigned to the current reviewer shows a disabled, unchecked checkbox.
+- `UAC-07` - When an author changes a topic version after completion, the completion state resets to unchecked.
+- `UAC-08` - After reassignment, the new assignee sees their own completion state for the topic's current version; their prior completion of that same version remains checked regardless of the previous assignee.
+- `UAC-09` - Completed topics show a green dot in the left panel; incomplete topics show no completion indicator.
+- `UAC-10` - The header shows `Topics viewed` as `Completed/Assigned` with the approved Figma progress bar.
+- `UAC-11` - The completed numerator counts topics marked done by the current reviewer for the current topic version.
+- `UAC-12` - The assigned denominator counts review-enabled topics assigned to the reviewer, or all review-enabled topics when the review allows any reviewer to review any topic.
+- `UAC-13` - `Topics viewed` does not track whether a topic has merely been opened; it tracks current-version completion.
+- `UAC-14` - Per-topic completion is available in Preview and non-Preview edit/review modes.
+- `UAC-15` - The backend validates that the acting user is a reviewer of the review before allowing a completion-state update, independent of client-side state.
+- `UAC-16` - The checkbox, green dot, and progress UI are visible only to users who currently have access to the existing `Mark as Done` action; view-only authors and administrators do not see them.
+- `UAC-17` - Any topic version change clears all previous completion status for that topic for every reviewer, and reverting to a previously completed version does not restore the prior checked state.
+- `UAC-18` - Completion history is not retained across versions, and the whole capability is released behind a feature flag.
+
+### Fidelity Lessons
+
+- Preserve the binary state model. Do not generate `Not Started`, `In Progress`, or a separate `Not Done` state from the earlier customer proposal.
+- Do not rename `Topics viewed` in generated criteria and do not interpret it literally. Its numerator is topics marked done for the current reviewer and current version, not topics opened, focused, scrolled, or commented on.
+- Treat reviewer identity and current topic version as independent state dimensions. One reviewer's completion cannot leak to another, and any version transition invalidates every reviewer's prior completion for that topic.
+- Do not resurrect completion when content returns to an older version. The accepted round trip is checked on v1.0, reset on v1.1, checked on v1.1, and still unchecked after reverting to v1.0.
+- Reassignment does not copy the previous assignee's state. It resolves the newly assigned reviewer's own state for the current version, including a prior completion by that same reviewer.
+- Keep task completion explicit. The final UAC names `Complete review task`; it does not authorize automatic task completion when the numerator reaches the denominator.
+- Keep feature-flag-off behavior byte-for-behavior compatible with the existing `Mark as Done` flow. Do not expose partial new UI when the flag is disabled.
+- UI visibility is not authorization. A hidden or disabled control does not satisfy `UAC-15`; the backend must reject an unauthorized mutation and preserve stored state.
+- Do not promote email/AEM notifications, review-dashboard three-state status, or a topic-status API response into Confirmed ACs. Those appear only in earlier proposal text.
+- Incident workload observations are not performance SLAs; keep performance thresholds as an open question unless current scope supplies measurable pass/fail values.
+
+### Normalized Acceptance Criteria
+
+- AC-01 [Confirmed]: (Basic) Given an assigned review-enabled topic has no completion recorded for the current reviewer and current version | When the reviewer opens the review in Preview or non-Preview mode | Then a `Mark topic as done` checkbox is visible and unchecked, and no separate `Not Done` state is displayed | Evidence: `UAC-01`, `UAC-02`, `UAC-03`, and `UAC-14`.
+- AC-02 [Confirmed]: (State Change) Given the current reviewer can act on an assigned topic at its current version | When the reviewer checks and then unchecks `Mark topic as done` | Then only that reviewer's binary completion state for that topic version changes to checked and then unchecked | Evidence: `UAC-03` and `UAC-04`.
+- AC-03 [Confirmed]: (Reviewer Isolation) Given two reviewers can review the same current topic version | When one reviewer changes their completion checkbox | Then the other reviewer's completion state and displayed checkbox remain unchanged | Evidence: `UAC-04`.
+- AC-04 [Confirmed]: (Feature Flag) Given the feature flag is enabled | When an eligible reviewer opens the review | Then per-topic completion UI is available and the task-level action is labeled `Complete review task`; given the flag is disabled, the new capability is unavailable and existing `Mark as Done` behavior remains unchanged | Evidence: `UAC-05` and `UAC-18`.
+- AC-05 [Confirmed]: (Assignment Boundary) Given a review-enabled topic is not assigned to the current reviewer | When the reviewer views that topic | Then the per-topic checkbox is visible only if the reviewer otherwise meets the visibility rule, remains unchecked, is disabled, and cannot mutate completion | Evidence: `UAC-06` and `UAC-16`.
+- AC-06 [Confirmed]: (Version Invalidation) Given one or more reviewers marked a topic version done | When the author changes the topic to any different version, including a later revert to an older version | Then completion is unchecked for every reviewer, prior completion is not restored, and no completion history carries across the version change | Evidence: `UAC-07`, `UAC-17`, and `UAC-18`.
+- AC-07 [Confirmed]: (Reassignment) Given a topic is reassigned | When the newly assigned reviewer opens its current version | Then the checkbox reflects that reviewer's own state for the current version, preserves their own earlier completion of that same version, and does not inherit the previous assignee's state | Evidence: `UAC-08`.
+- AC-08 [Confirmed]: (Left Panel) Given the current reviewer marks an assigned topic's current version done | When the left navigation refreshes | Then that topic shows a green dot; when it is not done for that reviewer and version, no completion indicator is shown | Evidence: `UAC-09`.
+- AC-09 [Confirmed]: (Progress Numerator) Given the review contains assigned topics across completed, incomplete, and changed versions | When the `Topics viewed` progress is calculated for the current reviewer | Then the numerator counts only topics marked done by that reviewer at each topic's current version and does not increase merely because a topic was opened | Evidence: `UAC-10`, `UAC-11`, and `UAC-13`.
+- AC-10 [Confirmed]: (Progress Denominator) Given assignment-restricted and any-reviewer review fixtures | When `Topics viewed` is calculated | Then the denominator is the review-enabled topics assigned to the current reviewer for an assignment-restricted review, or all review-enabled topics for an any-reviewer review, and the UI renders `Completed/Assigned` with the approved progress design | Evidence: `UAC-10` and `UAC-12`; exact visual styling requires restored Figma access.
+- AC-11 [Confirmed]: (Mode Parity) Given an eligible reviewer and the same review/topic/version state | When the reviewer uses Preview and non-Preview edit/review modes | Then checkbox state, left-panel indicator, progress counts, assignment behavior, and version-reset behavior are consistent in both modes | Evidence: `UAC-14`.
+- AC-12 [Confirmed]: (Authorization) Given a user is not a verified reviewer of the review | When that user submits or replays a per-topic completion request regardless of manipulated client state | Then the backend rejects the update and no reviewer/topic/version completion state changes | Evidence: `UAC-15`.
+- AC-13 [Confirmed]: (Visibility) Given an eligible reviewer, a view-only author, and a view-only administrator | When each opens the same review | Then only users who currently qualify for the existing `Mark as Done` action see the checkbox, green dot, and `Topics viewed` progress UI | Evidence: `UAC-16`.
+- AC-14 [Proposed]: (Task Completion Guard) Given fewer than all eligible topics are complete or the set changes during review | When the reviewer invokes `Complete review task` | Then the system follows an explicitly approved enablement, warning, blocking, or completion rule without silently auto-completing the task | Evidence needed: final task-level completion semantics.
+- AC-15 [Proposed]: (Performance) Given an approved large-review fixture and concurrent reviewer workload | When per-topic completion and progress recalculation run | Then UI latency, API latency, throughput, and resource use remain within approved measurable thresholds | Evidence needed: a signed performance contract.
+- AC-16 [Proposed]: (Accessibility) Given keyboard-only and assistive-technology users | When they inspect and operate completion controls and progress | Then checkbox label, disabled state, focus order, status indication, and progress semantics are programmatically exposed without relying on green color alone | Evidence needed: approved accessibility/design contract.
+
+### Required Open Questions
+
+- What is the primary Jira key, exact feature-flag key, default state, rollout environment, and rollback behavior?
+- Can `Complete review task` be invoked before every eligible topic is done, and is the action enabled, blocked, warned, or always available? The final UAC does not approve auto-completion.
+- What persistent identifier represents the current topic version, and which operations count as a version change: save, checkpoint, label, revert, restore, or source replacement?
+- How are concurrent updates, stale tabs, retries, duplicate requests, network failure, and optimistic UI rollback handled without losing or resurrecting completion?
+- How are reassignment, unassignment, topic deletion, review-disabled topics, duplicate references, and assignment changes reflected in the denominator and left-panel state?
+- What response codes, error payloads, audit fields, and idempotency rules apply to authorized and unauthorized completion requests?
+- After Figma reauthentication, what exact progress-bar states, colors, dimensions, empty/zero state, loading state, error state, overflow behavior, and responsive rules are approved?
+- What keyboard, screen-reader, contrast, tooltip, and non-color indicator requirements apply to the checkbox, green dot, progress, and task button?
+- Do notifications, dashboard state, or public APIs change? No Confirmed AC is justified for notification payloads or topic-status API shape from the final UAC.
+- If performance sign-off matters, what topic counts, reviewer counts, repetitions, percentile, maximum UI/API latency, and CPU/memory ceilings define pass/fail?
+
+### Regression Areas
+
+- Single-topic and multi-topic reviews; one reviewer, multiple reviewers, assignment-restricted reviews, and any-reviewer reviews.
+- Check, uncheck, repeated toggle, refresh, reopen, browser back/forward, stale tab, retry, duplicate request, and failed request rollback.
+- Topic version advance, revert, restore, multiple sequential versions, and reset across every reviewer without history resurrection.
+- Assignment, reassignment, unassignment, reviewer removal/re-add, current-version prior completion, and isolation from the previous assignee.
+- Preview and non-Preview mode parity, topic navigation, left-panel green-dot lifecycle, and `Topics viewed` numerator/denominator reconciliation.
+- Feature flag on/off, task-button label, legacy `Mark as Done` behavior, rollout rollback, and no partial new UI while disabled.
+- Reviewer, view-only author, view-only administrator, removed reviewer, direct API replay, and client-state tampering.
+- Existing review comments, replies, attachments, side-by-side diff, task navigation, current/closed review state, and final task completion remain unchanged unless explicitly included.
+- Notifications, dashboard aggregation, API payloads, accessibility, localization, and large-review performance remain targeted gaps until their contracts are approved.
+
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
@@ -750,8 +1174,12 @@ Use this example as a quality bar for report tickets where key references, conte
 - Use UAC integration notes to decide what nearby workflows can break and must be listed under `Regression Areas`.
 - Put cloud/on-premise parity, status, cancel/abort/resume, versioning, and configuration rules under `Expected Behaviour`.
 - For review-functionality tickets, put impacted pages, no feature flag, doc impact, automation impact, and no-regression expectations under `Scope From Git`, `Test Scenarios`, and `Regression Areas` as applicable.
+- For per-topic review-completion tickets, preserve the binary checked/unchecked model, reviewer-and-current-version isolation, reset-without-history on every version change, reassignment to the new reviewer's own state, assignment-aware `Completed/Assigned` counting, Preview/non-Preview parity, feature-flag-off legacy behavior, explicit task completion, and backend reviewer authorization; do not infer three-state status, opened-topic progress, auto-completion, notifications, API payloads, or Figma styling.
 - For live filter tickets, always test typed input, pasted input, no-match empty state, clearing input, case-insensitive matching, stale results, and no-extra-action behaviour.
+- For Assets Admin DITA Element Predicate tickets, inspect the real QueryBuilder request and require mapped `property`, `property.operation`, and non-empty `property.value`; independently verify filtered results, applied-filter chip creation/removal, tokenization-before-resubmit, and Repository-search control behavior without inventing tokenization or combined-filter semantics.
 - For DITA table whitespace tickets, always test CALS table, `simpletable`, `reltable`, body/header cells, inline-tag boundaries, NBSP, regular-space collapse, block-child trimming, text-forbidden tags, and structural indentation leakage.
+- For HTML topic-title initialization tickets, verify exact custom selector precedence, legacy `<h1>` fallback, missing-selector combinations, duplicate prevention, and save/reopen persistence without applying HTML rules to DITA topics.
+- For user-dictionary spell-check tickets, separate alphabetic, numeric-prefix, numeric-suffix, middle-digit, and special-character positions; verify old/new editor parity and never invent a punctuation set, dictionary-refresh rule, or definition of `ignored`.
 - For asset-status path parsing tickets, always test comma literals in `paths` and `excludedPaths`, folders, file names, `.ditamap`, multiple paths, mixed comma/non-comma batches, folder expansion, state mapping, duplicate paths, invalid relative paths, not-found paths, consecutive commas, spaces, special characters, and trailing commas.
 - For Schematron validation tickets, always separate empty no-rule files from malformed/broken `.sch` files, verify save is not blocked, verify no UI message is introduced for empty files, keep real rule violations intact, and ask whether the fix is endpoint-side, editor-side, on-prem, Cloud, or all of them.
 - For Schematron role-severity tickets, always test `<sch:assert>` and `<sch:report>`, fixed severities `fatal/error/warn/info`, accepted aliases `warning/information`, case-sensitive matching, unsupported-role fallback, missing-role backward compatibility, Fatal/Error save blocking, Warn/Info non-blocking, visual design parity, filtering/tooltips, and many-message performance.
