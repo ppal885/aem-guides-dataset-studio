@@ -7,11 +7,12 @@ description: "Generate evidence-backed, plain-English AEM Guides QA test plans f
 
 ## Goal
 
-Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Use RAG to learn product behaviour, but do not let RAG replace Jira facts or PR diff evidence.
+Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Preserve the full analysis as an eleven-section Markdown record, while showing a compact four-section view by default. Use RAG to learn product behaviour, but do not let RAG replace Jira facts or PR diff evidence.
 
 ## Operating Mode
 
 - Work evidence-first: collect facts, normalize behaviour, retrieve RAG, inspect diff, then write scenarios.
+- Preserve direct evidence collection: run three focused `ask_dita_expert` probes and both same-customer and cross-customer `search_jira_history` calls before querying the evidence graph.
 - Keep the final answer short and tester-facing; keep raw evidence, chunk scores, backend traces, and reasoning audits internal.
 - Treat the plan as `Draft` unless current Jira facts, accepted behaviour evidence, past-similar-ticket search, and required Git/PR evidence are present.
 - Ask for the missing Jira text, PR URL, branch, commit, or pasted diff only when that evidence is required and unavailable.
@@ -20,6 +21,8 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
+- Use `search_jira_history` for indexed Jira history; never treat it as product documentation or current mutable Jira truth.
+- Call `query_test_evidence_graph` after direct RAG and Jira retrieval. Default to shadow influence unless deployment explicitly enables augment; shadow output cannot change the plan. Graph paths are traceability only; only underlying leaf citations can support a claim.
 - Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira details and mark the Jira evidence gap.
 - Use GitHub MCP to inspect a PR when Jira includes one; if Jira has no PR link, use GitHub MCP to search likely repos by Jira key, summary terms, branch names, commit messages, and PR body before asking the user for a PR.
 - Do not use or expect `/aem-guides-test-plan`, `guides_test_plan_generator`, `test_plan_pipeline`, or any generated test-plan MCP tool.
@@ -32,6 +35,11 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/output-template.md` before writing the final test plan.
 - Read `references/quality-gate-checklist.md` before marking a plan review-ready.
+- Read `references/evidence-graph-contract.md` before using graph-connected findings.
+- Read `references/performance-assessment-contract.md` before deciding whether the ticket needs a Performance AC.
+- Read `references/golden-benchmark.md` only when participating in a prepared skill or evidence-pipeline release benchmark. Do not run it for an ordinary plan request.
+- Before automation drafting, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>` and stop if it exits nonzero.
+- Before the default chat response, run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
 
 ## Lifecycle
 
@@ -52,12 +60,15 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 2 — Normalize Behaviour
 
 - Convert Jira text into current behaviour, expected behaviour, affected workflow, data shape, error contract, version boundary, configuration boundary, roles/permissions, user impact, and open questions.
+- Complete the internal `aem-guides-performance-assessment-v1` review across all seven canonical risk categories and store it in the evidence manifest. Never add a Performance Analysis section or standalone plan bullet.
+- A `required` decision emits quantified, evidence-backed `(Performance)` ACs and mapped performance scenarios. A `conditional` decision emits no Performance AC and adds a QA-impact Open Question for the missing workload/SLA/baseline. A `not_required` decision emits no Performance AC and no visible filler.
 - Label inferred ownership, impacted code, or workflow assumptions as inferred unless PR/repo evidence confirms them.
 - Build three concise search intents: exact failure, expected workflow, and configuration/boundary.
 
 ### Phase 3 — Retrieve Behaviour RAG
 
 - Call `ask_dita_expert` with focused questions from normalized behaviour, not raw keyword spam.
+- Run at least three focused probes when behaviour matters and record their exact questions.
 - Use RAG to ground expected behaviour, workflow rules, product constraints, release-note behaviour, configuration effects, and regression areas.
 - Reject chunks that only share broad vocabulary such as `topic`, `map`, `assets`, `metadata`, `cloud`, `report`, `translation`, or `workflow` without proving the actual behaviour.
 - Never use attribute-only DITA evidence as proof for an exact element behaviour, or generic DITA docs as proof for AEM Guides UI behaviour.
@@ -66,9 +77,18 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ### Phase 4 — Find Past Similar Tickets
 
 - Use Jira MCP/JQL if available; otherwise use only user-provided related tickets or available team memory.
+- Run `search_jira_history` twice with the canonical component: once with the current customer and once without a customer filter. Retain only same-mechanism results.
 - Search by exact error text, workflow, API route, component, UI label, data shape, version boundary, and likely code area.
 - Keep at most five past tickets. For each, explain why similar and what coverage it adds.
 - Reject broad results that match only generic words.
+
+### Phase 4.5 — Connect Evidence Graph
+
+- Query `query_test_evidence_graph` with the normalized failure shape and exact Jira/customer/component/output/DITA selectors after direct retrieval.
+- Record `influence_mode`, `used_for_plan`, duration, and cache status. In `shadow`, `used_for_plan=false` and graph output cannot change plan content, scoring, citations, repository scope, or automation verdicts.
+- Reject candidate-only, area-only, and path-only findings. Deduplicate graph and direct evidence by leaf/source ID.
+- Only in explicit `augment` mode, fold trusted graph findings into existing sections; never add an Evidence Graph section.
+- Record status, generation, query, path IDs, leaf citations, and degraded reason in the evidence manifest. Graph unavailability alone is not a Draft blocker when direct authoritative evidence covers behaviour.
 
 ### Phase 5 — Inspect Git/PR Evidence
 
@@ -94,35 +114,52 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ## Output Contract
 
+- Always generate and retain the complete eleven-section plan as the `.md` record artifact. Do not skip evidence collection or hidden sections merely because chat uses a compact view.
+- The default Claude/Codex chat view contains exactly `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order. It is a deterministic projection of the full record, not a rewritten summary.
+- Performance analysis never adds a fifth section; it appears only as a justified Performance AC or, while conditional, a QA-impact Open Question.
+- Show the complete record or any named hidden section only when the user explicitly requests it.
 - Output Markdown bullets only.
 - Do not use tables.
 - Do not output JSON unless explicitly requested.
 - Do not include raw RAG chunks, chunk scores, backend traces, evidence matrices, or long citations.
 - Use exactly these sections, in this order:
-  1. `Acceptance Criteria`
-  2. `Expected Behaviour`
-  3. `Scope From Git`
-  4. `Code Touched`
-  5. `Lines Changed`
-  6. `Test Scenarios`
-  7. `Past Similar Tickets`
-  8. `Regression Areas`
+  1. `Understanding From Jira`
+  2. `Acceptance Criteria`
+  3. `Expected Behaviour`
+  4. `Scope From Git`
+  5. `Code Touched`
+  6. `Lines Changed`
+  7. `Test Scenarios`
+  8. `Known Jira Bugs / Past Similar Tickets`
+  9. `Regression Areas`
+  10. `Automation Coverage & Gaps`
+  11. `Open Questions`
 
 ## Section Rules
 
-- **Acceptance Criteria**: Rewrite Jira AC/sign-off conditions as tester-readable bullets. If unclear, add `Draft blocker: acceptance criteria missing or unclear`.
+- **Acceptance Criteria**: Use only canonical `aem-guides-ac-v1` lines: `- AC-## [Confirmed|Proposed]: (Basic|Negative|Integration|Performance) Given <precondition/input> | When <single trigger/action> | Then <observable outcome> | Evidence: <underlying source>.` IDs are unique, contiguous from AC-01, and every AC has an underlying citation. A graph path alone is invalid.
+- **Acceptance Criteria - performance**: Emit `(Performance)` only when the internal decision is `required`; `Given` contains a numeric workload, `Then` contains a numeric metric threshold with units, and manifest `performance_ac_ids` exactly matches the visible IDs.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` evidence. If unsupported, write `Unknown from current evidence`.
 - **Scope From Git**: List Jira development-link source, GitHub MCP PR-discovery result, PR/branch/commit, repo sync state, changed product area, and whether diff was inspected.
 - **Code Touched**: List only real files/functions/classes/components touched or directly implicated by PR/repo scan, with short QA impact.
 - **Lines Changed**: Summarize added/deleted line counts and key hunks by file. If unavailable, add `Draft blocker: line-level diff not inspected`.
 - **Test Scenarios**: Keep 6-10 practical P0/P1/P2 bullets, each with action + expected result.
-- **Past Similar Tickets**: List up to five Jira keys with similarity reason and coverage impact. If unavailable, say so directly.
+- **Known Jira Bugs / Past Similar Tickets**: List up to five Jira keys with similarity reason and coverage impact. If unavailable, say so directly.
 - **Regression Areas**: List nearby workflows, APIs, configs, roles, browsers, data shapes, upgrade paths, and automation gaps likely to break.
+- **Automation Coverage & Gaps**: Give every AC a Covered, Partially covered, Not covered, or Not suitable verdict backed by inspected evidence.
+- **Open Questions**: State each unresolved decision and its QA impact; write `No open questions from current evidence` when none remain.
 
 ## Hard Rules
 
 - Keep acceptance criteria in the plan.
+- Reject decorated, reordered, multiline, duplicate, evidence-free, or otherwise noncanonical ACs; the automation agent consumes extractor JSON instead of reparsing prose.
 - Do not add extra headings such as `What can break`, `Likely bugs`, `Fix safety`, `Important combinations`, `Automation`, or `Draft blockers`.
+- Do not add `Performance Analysis`, `Performance Assessment`, or an equivalent heading/bullet; the structured analysis remains internal.
 - Put likely bugs, fix-safety, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
 - Never call a plan `proper RAG-backed` when evidence is generic, unrelated, unavailable, or only keyword-matched.
 - Never mark review-ready when required Jira, RAG, past-ticket, PR/diff, line-count, or repo-sync evidence is missing.
+
+## Golden Benchmark Release Qualification
+
+- Follow only the blinded candidate files supplied by the evaluator; never inspect golden answers or prior reports.
+- Seeded goldens cannot establish a production baseline, and a benchmark failure must not alter the normal single-ticket workflow.

@@ -14,7 +14,7 @@ from app.core.structured_logging import get_structured_logger
 from app.services.customer_tokens import clean_customer_tokens
 from app.services.embedding_service import embed_query, is_embedding_available
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
-from app.services.jira_component_metadata_service import normalize_component_token
+from app.services.jira_component_metadata_service import component_filter_field, normalize_component_token
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
 
 logger = get_structured_logger(__name__)
@@ -22,6 +22,12 @@ logger = get_structured_logger(__name__)
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{3,}", re.I)
 _CHUNK_TYPE_WEIGHT: dict[str, float] = {
     "learning_behavior_chunk": 0.06,
+    "historical_uac_contract_chunk": 0.055,
+    "historical_uac_clause_chunk": 0.05,
+    "historical_uac_dimension_chunk": 0.045,
+    "historical_uac_out_of_scope_chunk": 0.03,
+    "historical_uac_reference_chunk": 0.025,
+    "historical_uac_context_chunk": 0.025,
     "acceptance_criteria_chunk": 0.05,
     "resolution_rca_chunk": 0.05,
     "test_evidence_chunk": 0.045,
@@ -177,8 +183,38 @@ def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) ->
 
     confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
     outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
-    verified_fix = _metadata_bool(metadata.get("is_verified_fix"))
+    resolution_mechanism = str(
+        metadata.get("resolution_mechanism") or evidence_value("resolution mechanism") or "legacy_unknown"
+    ).strip()
+    resolution_evidence_source = str(
+        metadata.get("resolution_evidence_source")
+        or evidence_value("resolution evidence source")
+        or "legacy_unknown"
+    ).strip()
+    contract_complete = (
+        _metadata_bool(metadata.get("behavior_contract_complete"))
+        if "behavior_contract_complete" in metadata
+        else True
+    )
     behavior_contract = evidence_value("behavior contract")
+    behavior_contract_source = str(
+        metadata.get("behavior_contract_source") or evidence_value("behavior contract source") or "legacy_unknown"
+    ).strip()
+    root_cause_source = str(
+        metadata.get("root_cause_source") or evidence_value("root cause source") or "legacy_unknown"
+    ).strip()
+    qa_oracle = evidence_value("qa oracle")
+    qa_oracle_source = str(
+        metadata.get("qa_oracle_source") or evidence_value("qa oracle source") or "legacy_unknown"
+    ).strip()
+    if qa_oracle.lower().startswith("verify the captured behavior contract"):
+        qa_oracle_source = "generated_fallback"
+    verified_fix = bool(
+        _metadata_bool(metadata.get("is_verified_fix"))
+        and contract_complete
+        and root_cause_source not in {"missing", "generated_fallback"}
+        and qa_oracle_source not in {"missing", "generated_fallback"}
+    )
     contract_is_only_actual = behavior_contract.lower().startswith("actual:") and not re.search(
         r"\b(expected|acceptance criteria|must|should)\b",
         behavior_contract,
@@ -187,25 +223,100 @@ def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) ->
     reusable_fix = (
         outcome == "implemented_fix"
         and confidence in {"high", "medium"}
+        and contract_complete
         and bool(verified_fix or (behavior_contract and not contract_is_only_actual))
     )
     return {
         "chunk_type": "learning_behavior_chunk",
         "learning_confidence": confidence,
         "historical_outcome": outcome,
+        "resolution_mechanism": resolution_mechanism,
+        "resolution_evidence_source": resolution_evidence_source,
         "is_verified_fix": verified_fix,
         "reuse_mode": "verified_regression_contract" if reusable_fix else "risk_signal_only",
+        "behavior_contract_source": behavior_contract_source,
+        "behavior_contract_complete": contract_complete,
         "observed_problem": evidence_value("observed problem"),
         "behavior_contract": behavior_contract if reusable_fix else "",
-        "root_cause": evidence_value("root cause evidence") if reusable_fix else "",
-        "qa_oracle": evidence_value("qa oracle") if reusable_fix else "",
+        "root_cause": (
+            evidence_value("root cause evidence")
+            if reusable_fix and root_cause_source not in {"missing", "generated_fallback"}
+            else ""
+        ),
+        "root_cause_source": root_cause_source,
+        "qa_oracle": (
+            qa_oracle
+            if reusable_fix and qa_oracle_source not in {"missing", "generated_fallback"}
+            else ""
+        ),
+        "qa_oracle_source": qa_oracle_source,
         "regression_risks": evidence_value("regression risks"),
         "reuse_rule": evidence_value("reuse rule"),
     }
 
 
+def extract_structured_uac_evidence(row: RetrievedJira | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(row, RetrievedJira):
+        chunk_type = row.chunk_type
+        document = row.document
+        metadata = row.metadata
+    else:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        chunk_type = str(row.get("chunk_type") or metadata.get("chunk_type") or "")
+        document = str(row.get("document") or row.get("document_excerpt") or "")
+    if not chunk_type.startswith("historical_uac_"):
+        return {}
+    source_text = ""
+    for line in str(document or "").splitlines():
+        if line.startswith("Source text:"):
+            source_text = line.split(":", 1)[1].strip()
+            break
+    tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
+    contract_complete = _metadata_bool(metadata.get("uac_contract_complete"))
+    release_scope_split = _metadata_bool(metadata.get("uac_release_scope_split"))
+    if release_scope_split:
+        reuse_mode = "risk_signal_only"
+    elif tier == "historical_verified" and contract_complete:
+        reuse_mode = "historical_verified_contract"
+    elif tier == "supporting" and contract_complete:
+        reuse_mode = "supporting_uac_contract"
+    else:
+        reuse_mode = "risk_signal_only"
+    return {
+        "schema_version": str(metadata.get("uac_schema_version") or ""),
+        "chunk_type": chunk_type,
+        "source_hash": str(metadata.get("uac_source_hash") or ""),
+        "source_authority": str(metadata.get("uac_source_authority") or ""),
+        "source_truncated": _metadata_bool(metadata.get("uac_source_truncated")),
+        "reuse_tier": tier,
+        "reuse_mode": reuse_mode,
+        "contract_complete": contract_complete,
+        "clause_id": str(metadata.get("uac_clause_id") or ""),
+        "clause_stable_key": str(metadata.get("uac_clause_stable_key") or ""),
+        "clause_kind": str(metadata.get("uac_clause_kind") or ""),
+        "clause_unresolved": _metadata_bool(metadata.get("uac_clause_unresolved")),
+        "dimensions": _parse_json_list_preserve(str(metadata.get("uac_dimensions") or "[]")),
+        "source_text": source_text,
+        "performance_matters": _metadata_bool(metadata.get("uac_performance_matters")),
+        "performance_complete": _metadata_bool(metadata.get("uac_performance_complete")),
+        "release_scope_split": release_scope_split,
+        "release_scope_source": str(metadata.get("uac_release_scope_source") or ""),
+    }
+
+
 def _chunk_utility_bonus(chunk_type: str, metadata: dict[str, Any]) -> float:
     bonus = _CHUNK_TYPE_WEIGHT.get(chunk_type, 0.0)
+    if chunk_type.startswith("historical_uac_"):
+        tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
+        if (
+            _metadata_bool(metadata.get("uac_clause_unresolved"))
+            or _metadata_bool(metadata.get("uac_release_scope_split"))
+            or tier == "candidate"
+        ):
+            return min(bonus, 0.01)
+        if tier == "historical_verified" and _metadata_bool(metadata.get("uac_contract_complete")):
+            return bonus + 0.02
+        return bonus
     if chunk_type != "learning_behavior_chunk":
         return bonus
     confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
@@ -930,8 +1041,8 @@ def _metadata_where_plan(
     Domain and sub-domain are always soft reranking signals and are never sent
     as Chroma ``where`` filters. JSON-list fields such as enrich_entities/enrich_outputs are scored
     after retrieval because exact Chroma filters cannot reliably query inside
-    encoded arrays across all deployed Chroma versions. Components use the
-    normalized scalar ``component_primary`` field and therefore are hard-filtered.
+    encoded arrays across all deployed Chroma versions. Components use one
+    scalar membership flag per canonical component, so secondary components are searchable too.
     """
     passes: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -948,12 +1059,8 @@ def _metadata_where_plan(
         token for token in (normalize_component_token(value) for value in (components or [])) if token
     ))
     if component_tokens:
-        where = (
-            {"component_primary": component_tokens[0]}
-            if len(component_tokens) == 1
-            else {"component_primary": {"$in": component_tokens}}
-        )
-        add("component_primary_filtered", where)
+        for token in component_tokens:
+            add("component_membership_filtered", {component_filter_field(token): True})
         return passes
 
     issue_f = str(issue_type or "").strip()
@@ -1212,7 +1319,8 @@ def retrieve_similar_jiras(
             ),
             "domain_policy": "soft_boost_only",
             "component_chroma_filter_applied": any(
-                (plan.get("where") or {}).get("component_primary") for plan in metadata_query_plan
+                str(plan.get("label") or "") == "component_membership_filtered"
+                for plan in metadata_query_plan
             ),
             "unfiltered_fallback_query": unfiltered_fallback,
             "merged_hit_count": len(raw_rows),
@@ -1455,7 +1563,9 @@ def retrieve_similar_jiras(
                 jira_key=jk,
                 title=str(meta.get("title") or "")[:500],
                 chunk_type=ct,
-                document=doc[:6000] if ct == "learning_behavior_chunk" else doc[:1200],
+                document=doc[:6000]
+                if ct in {"learning_behavior_chunk", "historical_uac_contract_chunk"}
+                else doc[:1200],
                 metadata=meta,
                 vector_score=round(vector_score, 4),
                 keyword_score=round(kw, 4),
@@ -1986,6 +2096,7 @@ def retrieved_to_legacy_hit(r: RetrievedJira) -> dict[str, Any]:
         "score_breakdown": dict(r.score_breakdown or {}),
         "rejection_reasons": list(r.rejection_reasons or []),
         "learning": extract_structured_learning_evidence(r),
+        "uac_evidence": extract_structured_uac_evidence(r),
         "retrieval": {
             "vector_score": r.vector_score,
             "keyword_score": r.keyword_score,

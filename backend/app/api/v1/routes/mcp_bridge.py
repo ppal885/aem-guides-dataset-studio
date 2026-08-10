@@ -55,6 +55,8 @@ class GuidesTestPlanRequest(BaseModel):
     max_repo_matches: int = 30
     skip_uac_label_gate: bool = False
     full_rag: bool = False
+    include_evidence_graph: bool = True
+    graph_max_paths: int = 20
 
 
 class TestPlanPipelineBridgeRequest(BaseModel):
@@ -65,6 +67,8 @@ class TestPlanPipelineBridgeRequest(BaseModel):
     max_repo_matches: int = 30
     skip_uac_label_gate: bool = False
     full_rag: bool = True
+    include_evidence_graph: bool = True
+    graph_max_paths: int = 20
     include_uac_intelligence: bool = True
     compose_draft_plan: bool = True
     write_starling_artifacts: bool = False
@@ -291,15 +295,21 @@ def search_jira(body: JiraSearchRequest, user: UserIdentity = CurrentUser):
 def guides_test_plan_generator(body: GuidesTestPlanRequest, user: UserIdentity = CurrentUser):
     """Build the evidence packet for `/guides-test-plan-generator GUIDES-12345`."""
     from app.services.guides_test_plan_generator_service import build_guides_test_plan_packet
+    from app.services.tenant_service import ensure_user_can_access_tenant
 
+    tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)
+    roles = {str(role).strip().casefold() for role in user.roles}
     return build_guides_test_plan_packet(
         body.jira_key,
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         evidence_k=max(3, min(body.evidence_k, 12)),
         include_repository_evidence=body.include_repository_evidence,
         max_repo_matches=body.max_repo_matches,
         skip_uac_label_gate=body.skip_uac_label_gate,
         full_rag=body.full_rag,
+        include_evidence_graph=body.include_evidence_graph,
+        graph_max_paths=max(1, min(body.graph_max_paths, 50)),
+        allow_cross_customer_graph_details=user.is_admin or "knowledge_reader" in roles,
     )
 
 
@@ -312,15 +322,19 @@ def test_plan_pipeline(body: TestPlanPipelineBridgeRequest, user: UserIdentity =
     """Run the unified test-plan pipeline (RAG + UAC + score + draft plan + QE handoff)."""
     from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
     from app.services.test_plan_pipeline_service import run_test_plan_pipeline
+    from app.services.tenant_service import ensure_user_can_access_tenant
 
+    tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)
     request = TestPlanPipelineRequest(
         jira_key=body.jira_key,
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         evidence_k=max(3, min(body.evidence_k, 12)),
         include_repository_evidence=body.include_repository_evidence,
         max_repo_matches=body.max_repo_matches,
         skip_uac_label_gate=body.skip_uac_label_gate,
         full_rag=body.full_rag,
+        include_evidence_graph=body.include_evidence_graph,
+        graph_max_paths=max(1, min(body.graph_max_paths, 50)),
         include_uac_intelligence=body.include_uac_intelligence,
         compose_draft_plan=body.compose_draft_plan,
         write_starling_artifacts=body.write_starling_artifacts,
@@ -328,7 +342,7 @@ def test_plan_pipeline(body: TestPlanPipelineBridgeRequest, user: UserIdentity =
         publish_to_team_ui=body.publish_to_team_ui,
         human_review_threshold=max(0, min(body.human_review_threshold, 100)),
     )
-    return run_test_plan_pipeline(request)
+    return run_test_plan_pipeline(request, user=user)
 
 
 # ---------------------------------------------------------------------------

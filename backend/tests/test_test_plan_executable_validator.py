@@ -28,7 +28,7 @@ def _valid_plan() -> str:
 - Evidence boundary: Supplied Jira evidence supports the problem; implementation and retry policy remain unverified.
 
 **Acceptance Criteria**
-- AC-01 [Proposed]: A concurrent publish completes successfully without leaving a job in a non-terminal state.
+- AC-01 [Proposed]: (Integration) Given two valid maps target the same AEM Sites output | When two overlapping publish jobs are submitted | Then both jobs reach a terminal outcome without corrupting generated output | Evidence: JIRA:GUIDES-1.
 
 **Expected Behaviour**
 - Jira and current remote code support the proposed outcome; implementation choice remains open.
@@ -70,7 +70,7 @@ def test_validator_accepts_complete_plan():
 
 def test_validator_rejects_response_quality_failures():
     bad = _valid_plan().replace(
-        "- AC-01 [Proposed]: A concurrent publish completes successfully without leaving a job in a non-terminal state.",
+        "- AC-01 [Proposed]: (Integration) Given two valid maps target the same AEM Sites output | When two overlapping publish jobs are submitted | Then both jobs reach a terminal outcome without corrupting generated output | Evidence: JIRA:GUIDES-1.",
         "- AC-01 [Confirmed - historical]: Engineering must delete the tracker node.",
     )
     bad = "Jira requires authorization. Live Jira fetched successfully.\n" + bad
@@ -87,7 +87,7 @@ def test_validator_rejects_response_quality_failures():
 
     assert any("outside the required sections" in error for error in errors)
     assert any("authorization warning contradicts" in error for error in errors)
-    assert any("exact AC-##" in error for error in errors)
+    assert any("exact machine-readable format" in error for error in errors)
     assert any("missing an AC mapping" in error for error in errors)
     assert any("ellipsis" in error for error in errors)
     assert any("automation recipe is missing" in error for error in errors)

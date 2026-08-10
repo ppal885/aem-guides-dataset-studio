@@ -1,0 +1,238 @@
+schema_version: aem-guides-test-plan-golden-v1
+benchmark_id: aem-guides-test-plan-core-18-v1
+golden_status: seeded
+approved_by: ""
+approved_at: null
+thresholds:
+  required_case_count: 18
+  minimum_cases_per_component: 3
+  minimum_case_pass_rate: 1.0
+  minimum_gate_pass_rate: 1.0
+  minimum_ac_contract_rate: 1.0
+  minimum_history_precision_at_5: 1.0
+  minimum_history_recall_at_5: 0.75
+  minimum_retrieval_recall_at_10: 0.75
+  minimum_citation_accuracy: 1.0
+  minimum_performance_decision_accuracy: 1.0
+  minimum_history_version_accuracy: 1.0
+  minimum_fingerprint_integrity_rate: 1.0
+  minimum_hallucination_free_rate: 1.0
+cases:
+  - id: editor-multi-table-performance
+    jira_key: GUIDES-8633
+    component: Editor
+    customer: Qualcomm
+    query: Editor performance degrades when a topic contains multiple tables.
+    expected_history_keys: [GUIDES-8674]
+    expected_performance_decision: conditional
+    required_query_terms: [tables, performance]
+    source_basis:
+      - Explicit Jira Duplicate relationship to GUIDES-8674.
+      - Ticket is performance-sensitive but the indexed evidence does not provide an approved numeric pass threshold.
+
+  - id: editor-custom-toolbar-pdf-action
+    jira_key: GUIDES-47402
+    component: Editor
+    customer: IBM
+    query: New Editor custom toolbar Export as PDF button renders but performs no action.
+    expected_history_keys: [GUIDES-47525]
+    expected_performance_decision: not_required
+    required_query_terms: [toolbar, PDF]
+    source_basis:
+      - Jira resolution and explicit Duplicate relationship identify GUIDES-47525 as the same defect.
+      - Failure is a functional action contract without a scale, latency, throughput, or resource-risk signal.
+
+  - id: editor-table-cell-conref-state
+    jira_key: GUIDES-8083
+    component: Editor
+    customer: Grundfos
+    query: A ph conref inserted in a table cell is rendered in an erroneous red state.
+    expected_history_keys: [GUIDES-8130]
+    expected_performance_decision: not_required
+    required_query_terms: [conref, table]
+    source_basis:
+      - Explicit Jira Duplicate relationship to GUIDES-8130.
+      - Failure concerns deterministic editor rendering, not performance.
+
+  - id: authoring-map-panel-bulk-save-latency
+    jira_key: GUIDES-14481
+    component: Authoring
+    customer: Gulfstream
+    query: Map panel bulk check-in and save-version is slow for a map with 20 to 30 topics.
+    expected_history_keys: [GUIDES-16120]
+    expected_performance_decision: conditional
+    required_query_terms: [bulk, topics]
+    source_basis:
+      - Explicit Jira Cloners relationship to GUIDES-16120.
+      - Workload and observed latency exist, but no approved release SLA is recorded in the indexed ticket.
+
+  - id: authoring-bookmap-duplicate-filenames
+    jira_key: GUIDES-8483
+    component: Authoring
+    customer: Qualcomm
+    query: Bookmap download fails when two same-named topics exist in different folders.
+    expected_history_keys: [GUIDES-8386, GUIDES-8482]
+    expected_performance_decision: not_required
+    required_query_terms: [bookmap, folders]
+    source_basis:
+      - Explicit Jira Cloners and Duplicate relationships identify GUIDES-8386 and GUIDES-8482.
+      - Failure mechanism is filename collision and packaging integrity, not response-time behavior.
+
+  - id: authoring-topics-tab-navtitle-latency
+    jira_key: GUIDES-4224
+    component: Authoring
+    customer: Broadcom
+    query: Topics tab loads slowly when a referenced topic has no navtitle.
+    expected_history_keys: [GUIDES-4226, GUIDES-4231]
+    expected_performance_decision: conditional
+    required_query_terms: [topics, navtitle]
+    source_basis:
+      - Explicit Jira Cloners and Duplicate relationships identify GUIDES-4226 and GUIDES-4231.
+      - Slowness is explicit but an approved latency threshold is absent from the indexed contract.
+
+  - id: publishing-fmps-timeout-contract
+    jira_key: GUIDES-10929
+    component: Publishing
+    customer: Banner Engineering
+    query: FMPS publishing must stop at the configured 600 second timeout instead of completing and reporting timeout afterward.
+    expected_history_keys: []
+    expect_no_strong_history: true
+    expected_performance_decision: required
+    required_query_terms: [FMPS, timeout]
+    source_basis:
+      - No explicit Duplicate or Cloners relationship exists in the indexed Jira evidence.
+      - Ticket records a configured 600 second timeout and an observable timeout contract suitable for a quantified Performance AC.
+
+  - id: publishing-exportditamap-bottleneck
+    jira_key: GUIDES-8940
+    component: Publishing
+    customer: Qualcomm
+    query: GET /bin/fmdita/exportditamap has a reproducible request bottleneck.
+    expected_history_keys: [GUIDES-8492]
+    expected_performance_decision: conditional
+    required_query_terms: [exportditamap, bottleneck]
+    source_basis:
+      - Jira is a duplicate/clone of GUIDES-8492.
+      - Performance risk is explicit but the indexed contract lacks an approved numeric release oracle.
+
+  - id: publishing-object-media-download
+    jira_key: GUIDES-8538
+    component: Publishing
+    customer: Qualcomm
+    query: Bookmap download API omits media files referenced through object elements.
+    expected_history_keys: [GUIDES-8057, GUIDES-8070]
+    expected_performance_decision: not_required
+    required_query_terms: [object, media]
+    source_basis:
+      - Explicit Jira Cloners and Duplicate relationships identify GUIDES-8057 and GUIDES-8070.
+      - Failure is output completeness, not scale or latency.
+
+  - id: platform-concurrent-user-load
+    jira_key: GUIDES-22834
+    component: Platform
+    customer: IBM
+    query: Assess AEM Guides stability for 200 concurrent users performing authoring and build operations.
+    expected_history_keys: []
+    expect_no_strong_history: true
+    expected_performance_decision: conditional
+    required_query_terms: ["200", users]
+    source_basis:
+      - No explicit Duplicate or Cloners relationship exists in the indexed Jira evidence.
+      - Numeric workload is present, but acceptable latency, throughput, error, and resource thresholds remain undecided.
+
+  - id: platform-download-map-guid-filenames
+    jira_key: GUIDES-8912
+    component: Platform
+    customer: IBM
+    query: Download Map creates a ZIP containing GUID filenames instead of original filenames.
+    expected_history_keys: [GUIDES-15368, GUIDES-27395, GUIDES-28644]
+    expected_performance_decision: not_required
+    required_query_terms: [ZIP, filenames]
+    source_basis:
+      - Jira Duplicate and Cloners relationships identify the three historical tickets.
+      - Failure concerns archive naming and content integrity, not performance.
+
+  - id: platform-content-fragment-copy-paste
+    jira_key: GUIDES-11318
+    component: Platform
+    customer: Aetna
+    query: Content Fragment copy and paste fails when AEM Guides is installed on an AEM SDK.
+    expected_history_keys: [GUIDES-11315]
+    expected_performance_decision: not_required
+    required_query_terms: [Content Fragment, SDK]
+    source_basis:
+      - Explicit Jira Duplicate relationship to GUIDES-11315.
+      - Failure is an integration compatibility contract without a performance mechanism.
+
+  - id: schematron-validation-popup
+    jira_key: GUIDES-37534
+    component: Schematron
+    customer: Workday
+    query: Editor validation shows a Schematron files missing or invalid popup for configured files.
+    expected_history_keys: [GUIDES-33731]
+    expected_performance_decision: not_required
+    required_query_terms: [Schematron, validation]
+    source_basis:
+      - Explicit Jira Cloners relationship to GUIDES-33731.
+      - Failure concerns validation state and messaging, not execution performance.
+
+  - id: schematron-role-attribute
+    jira_key: GUIDES-14505
+    component: Schematron
+    customer: Red Hat
+    query: Schematron role attribute must be supported consistently by the editor validation flow.
+    expected_history_keys: [GUIDES-41789]
+    expected_performance_decision: not_required
+    required_query_terms: [Schematron, role]
+    source_basis:
+      - Explicit Jira Cloners relationship to GUIDES-41789.
+      - Failure concerns attribute applicability and result rendering, not performance.
+
+  - id: schematron-text-node-context
+    jira_key: GUIDES-14500
+    component: Schematron
+    customer: ""
+    query: Schematron rules using context //text() do not execute in the editor.
+    expected_history_keys: []
+    expect_no_strong_history: true
+    expected_performance_decision: not_required
+    required_query_terms: [Schematron, text]
+    source_basis:
+      - Indexed links are test-case or generic related-work links, not an explicit same-defect Duplicate or Cloners relationship.
+      - Failure concerns deterministic XPath context support, not performance.
+
+  - id: integration-translation-timeout
+    jira_key: GUIDES-45508
+    component: Integration
+    customer: Workday
+    query: Translation processing fails because the integration operation reaches a timeout.
+    expected_history_keys: [GUIDES-46543]
+    expected_performance_decision: conditional
+    required_query_terms: [translation, timeout]
+    source_basis:
+      - Explicit Jira Cloners relationship to GUIDES-46543.
+      - Timeout risk is explicit but the indexed acceptance contract does not supply an approved duration oracle.
+
+  - id: integration-language-file-property
+    jira_key: GUIDES-10931
+    component: Integration
+    customer: Grundfos
+    query: File Properties must expose the content language during authoring integration workflows.
+    expected_history_keys: [GUIDES-11501]
+    expected_performance_decision: not_required
+    required_query_terms: [language, properties]
+    source_basis:
+      - Explicit Jira Duplicate relationship to GUIDES-11501.
+      - Failure is metadata visibility, not performance.
+
+  - id: integration-active-translation-duplicate-topic
+    jira_key: GUIDES-7688
+    component: Integration
+    customer: KONE
+    query: Updating an active translation project creates a duplicate topic and fails the operation.
+    expected_history_keys: [GUIDES-18077]
+    expected_performance_decision: not_required
+    required_query_terms: [translation, duplicate]
+    source_basis:
+      - Explicit Jira Cloners relationship to GUIDES-18077.
+      - Failure is idempotency and duplicate-state integrity, not a performance contract.

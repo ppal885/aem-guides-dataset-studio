@@ -25,12 +25,19 @@ from app.services.embedding_service import embed_texts_batched, is_embedding_ava
 from app.services.jira_chunking_service import build_comments_digest
 from app.services.jira_component_metadata_service import (
     CANONICAL_JIRA_COMPONENTS,
-    COMPONENT_FILTER_SCHEMA_VERSION,
+    COMPONENT_TEXT_CLASSIFIER_VERSION,
     canonical_component_name,
     canonical_component_names,
-    component_primary_from_names,
+    component_filter_metadata,
+    infer_component_names,
 )
 from app.services.jira_enrichment_service import enrich_jira
+from app.services.jira_historical_uac_import_service import (
+    COMPONENT_ASSIGNMENT_EVIDENCE_HEADER,
+    COMPONENT_ASSIGNMENT_METHOD_HEADER,
+    SOURCE_COMPONENTS_HEADER,
+    SOURCE_FILE_HASH_HEADER,
+)
 from app.services.jira_qa_chunking_service import build_jira_qa_chunks
 from app.services.vector_store_service import (
     CHROMA_COLLECTION_JIRA_QA,
@@ -44,8 +51,12 @@ logger = get_structured_logger(__name__)
 
 MAX_CSV_BYTES = 25 * 1024 * 1024
 MAX_CSV_ROWS = 10_000
-IMPORTER_VERSION = "customer-intelligence-v10"
-REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status", "Resolution", "Description", "Updated"}
+IMPORTER_VERSION = "customer-intelligence-v14"
+SUPPORTED_IMPORT_PROFILES = ("auto", "editor-new", "native-pdf", "customer-history")
+NATIVE_PDF_PROFILE_MIN_RATIO = 0.75
+CORE_REQUIRED_HEADERS = {"Summary", "Issue key", "Issue Type", "Status"}
+BEHAVIORAL_EVIDENCE_HEADERS = {"Resolution", "Description", "Updated"}
+REQUIRED_HEADERS = CORE_REQUIRED_HEADERS
 _JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 _IMS_ORG_RE = re.compile(r"\b[A-Z0-9]{8,}@AdobeOrg\b", re.I)
@@ -53,14 +64,73 @@ _MENTION_RE = re.compile(r"\[~[^\]]+\]")
 _SECRET_RE = re.compile(
     r"(?i)\b(client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|api[_ -]?token|password)\b\s*[:=]\s*\S+"
 )
+_URL_CREDENTIAL_RE = re.compile(r"(?i)(https?://)[^\s/:@]+:[^\s/@]+@")
+_STRONG_CREDENTIAL_PAIR_RE = re.compile(
+    r"(?im)^\s*(?:[*_~]|[-+]\s*)?[A-Z0-9._-]{2,64}/(?=\S{8,}\s*$)"
+    r"(?=\S*[A-Z])(?=\S*[a-z])(?=\S*\d)(?=\S*[^A-Z0-9])\S+\s*$"
+)
 _LINK_HEADER_RE = re.compile(r"issue link", re.I)
 _RUN_TASKS: set[asyncio.Task[Any]] = set()
 _CUSTOMER_ALIASES = {
+    "3m": "3M",
+    "aetna": "Aetna",
+    "abs": "American Bureau of Shipping",
+    "american express": "American Express",
+    "american bureau of shipping": "American Bureau of Shipping",
+    "amex": "American Express",
+    "ariel cop": "Ariel Corporation",
+    "ariel corp": "Ariel Corporation",
+    "ariel corporation": "Ariel Corporation",
+    "astrazeneca": "AstraZeneca",
+    "avaya": "Avaya",
+    "banner engineering": "Banner Engineering",
+    "basco": "BASCO",
+    "benq": "BenQ",
+    "blackberry": "BlackBerry",
+    "bretting": "Bretting",
+    "broadcom": "Broadcom",
+    "centene": "Centene",
+    "citrix": "Citrix",
+    "cisco": "Cisco",
+    "cloud software group": "Cloud Software Group",
+    "ciena": "Ciena",
+    "ciena corporation": "Ciena",
+    "cmr surgical": "CMR Surgical",
+    "crown": "Crown Equipment",
+    "crown equipment": "Crown Equipment",
+    "dfs": "DFS",
+    "deluxe": "Deluxe",
+    "dow": "Dow",
+    "dsv": "DSV",
+    "eaton": "Eaton",
+    "emerson": "Emerson",
+    "emerson process management": "Emerson",
+    "enbridge": "Enbridge",
+    "erie": "Erie Insurance",
+    "erie insurance": "Erie Insurance",
+    "ey": "EY",
+    "eycom": "EY",
+    "faa": "FAA",
+    "gm": "GM",
+    "greenbytes": "GreenBytes",
+    "gulfstream": "Gulfstream",
+    "grundfos": "Grundfos",
+    "haas equipment": "Haas Equipment",
+    "haas automation": "Haas Automation",
+    "hyundai": "Hyundai",
+    "hunter douglas": "Hunter Douglas",
+    "ibm dx platforms": "IBM",
+    "lanl": "LANL",
+    "lloyds": "Lloyds",
     "red hat": "Red Hat",
     "redhat": "Red Hat",
     "red_hat": "Red Hat",
     "ibm": "IBM",
     "international business machines": "IBM",
+    "intel": "Intel",
+    "informatica": "Informatica",
+    "isuzu intec corp": "Isuzu Intec Corporation",
+    "isuzu intec corporation": "Isuzu Intec Corporation",
     "swift": "Swift",
     "s.w.i.f.t": "Swift",
     "lexmark": "Lexmark",
@@ -71,9 +141,24 @@ _CUSTOMER_ALIASES = {
     "jpmorgan": "JPMC",
     "jpmorgan chase": "JPMC",
     "kone": "KONE",
+    "kyndryl": "Kyndryl",
+    "kogei intec corp": "Kogei Intec Corporation",
+    "kogei intec corporation": "Kogei Intec Corporation",
+    "kyocera": "Kyocera",
     "mayo clinic": "Mayo Clinic",
     "mayoclinic": "Mayo Clinic",
     "mayo foundation for medical education and research": "Mayo Clinic",
+    "marriott": "Marriott",
+    "micron": "Micron",
+    "navico": "Navico",
+    "nutanix": "Nutanix",
+    "optum": "Optum",
+    "pan": "PAN",
+    "piaggio": "Piaggio",
+    "qualcomm": "Qualcomm",
+    "raymond corp": "Raymond Corporation",
+    "raymond corporation": "Raymond Corporation",
+    "rbs": "RBS",
     "thomson reuters": "Thomson Reuters",
     "thomsonreuters": "Thomson Reuters",
     "pwc": "PwC",
@@ -82,17 +167,102 @@ _CUSTOMER_ALIASES = {
     "linkedin": "LinkedIn",
     "linked in": "LinkedIn",
     "sonova": "Sonova",
+    "resmed": "ResMed",
+    "ringcentral": "RingCentral",
+    "rockwell automation": "Rockwell Automation",
+    "samsung": "Samsung",
+    "sandia": "Sandia",
+    "signify": "Signify",
+    "splunk": "Splunk",
+    "stihl": "STIHL",
+    "servicenow": "ServiceNow",
+    "signify": "Signify",
+    "sub zero": "Sub-Zero",
+    "ttc": "TTC",
+    "toyota": "Toyota",
+    "txdot": "TxDOT",
     "demant": "Demant",
+    "transunion": "TransUnion",
+    "transunion, llc": "TransUnion",
+    "translation.com": "Translation.com",
+    "ubs": "UBS",
+    "usmc": "USMC",
+    "workday": "Workday",
+    "zebra": "Zebra",
+    "zebra technologies": "Zebra",
+    "verizon": "Verizon",
+    "volkswagen": "Volkswagen",
 }
 _SUPPORTED_CUSTOMERS = {
-    "Red Hat", "IBM", "Swift", "Lexmark", "Topcon", "Fidelity", "JPMC", "KONE",
-    "Mayo Clinic", "Thomson Reuters", "PwC", "LinkedIn", "Sonova", "Demant",
+    "3M", "Aetna", "American Bureau of Shipping", "American Express",
+    "Ariel Corporation", "AstraZeneca", "Avaya", "Banner Engineering", "BASCO",
+    "BenQ", "BlackBerry", "Bretting", "Broadcom", "Centene", "Ciena", "Cisco",
+    "Citrix", "Cloud Software Group", "CMR Surgical", "Crown Equipment", "Deluxe",
+    "Demant", "DFS", "Dow", "DSV", "Eaton", "Emerson",
+    "Enbridge", "Erie Insurance", "EY", "FAA", "Fidelity", "Grundfos", "Gulfstream",
+    "GM", "GreenBytes", "Haas Automation", "Haas Equipment", "Hunter Douglas",
+    "Hyundai", "IBM", "Informatica", "Intel", "Isuzu Intec Corporation", "JPMC",
+    "Kogei Intec Corporation", "KONE", "Kyndryl", "Kyocera",
+    "LANL", "Lexmark", "LinkedIn", "Lloyds", "Marriott", "Mayo Clinic", "Micron",
+    "Navico", "Nutanix", "Optum", "PAN", "Piaggio", "PwC", "Qualcomm",
+    "Raymond Corporation", "RBS", "Red Hat", "ResMed", "RingCentral",
+    "Rockwell Automation", "Samsung", "Sandia", "ServiceNow", "Signify", "Sonova",
+    "Splunk", "STIHL", "Sub-Zero", "Swift", "Thomson Reuters", "Topcon",
+    "Translation.com", "TransUnion", "TTC", "Toyota", "TxDOT", "UBS", "USMC",
+    "Verizon", "Volkswagen", "Workday", "Zebra",
 }
 _MIXED_CUSTOMER = "Mixed (row-level cohorts)"
+_MULTI_CUSTOMER_ALIASES = {
+    "abs ubs swift": ("American Bureau of Shipping", "UBS", "Swift"),
+}
+MIXED_CUSTOMER_ASSIGNMENT = _MIXED_CUSTOMER
 _CUSTOMER_LABELS = {
+    "3m": "3M",
+    "abs": "American Bureau of Shipping",
+    "aetna": "Aetna",
+    "amex": "American Express",
+    "arielcop": "Ariel Corporation",
+    "arielcorp": "Ariel Corporation",
+    "astrazeneca": "AstraZeneca",
+    "avaya": "Avaya",
+    "bannerengineering": "Banner Engineering",
+    "basco": "BASCO",
+    "benq": "BenQ",
+    "blackberry": "BlackBerry",
+    "bretting": "Bretting",
+    "broadcom": "Broadcom",
+    "centene": "Centene",
+    "citrix": "Citrix",
+    "cisco": "Cisco",
+    "csg": "Cloud Software Group",
+    "ciena": "Ciena",
+    "cmrsurgical": "CMR Surgical",
+    "crown": "Crown Equipment",
+    "deluxe": "Deluxe",
+    "dfs": "DFS",
+    "dow": "Dow",
+    "dsv": "DSV",
+    "eaton": "Eaton",
+    "emerson": "Emerson",
+    "enbridge": "Enbridge",
+    "erie": "Erie Insurance",
+    "erieinsurance": "Erie Insurance",
+    "ey": "EY",
+    "eycom": "EY",
+    "faa": "FAA",
+    "gm": "GM",
+    "greenbytes": "GreenBytes",
+    "gulfstream": "Gulfstream",
+    "grundfos": "Grundfos",
+    "haasautomation": "Haas Automation",
+    "hyundai": "Hyundai",
+    "hunterdouglas": "Hunter Douglas",
     "redhat": "Red Hat",
     "red_hat": "Red Hat",
     "ibm": "IBM",
+    "informatica": "Informatica",
+    "intel": "Intel",
+    "isuzu-intec-corp": "Isuzu Intec Corporation",
     "swift": "Swift",
     "lexmark": "Lexmark",
     "topcon": "Topcon",
@@ -101,15 +271,78 @@ _CUSTOMER_LABELS = {
     "jpmorgan": "JPMC",
     "jp_morgan": "JPMC",
     "kone": "KONE",
+    "kone-production-files": "KONE",
+    "kyndryl": "Kyndryl",
+    "kogei-intec-corp": "Kogei Intec Corporation",
+    "kyocera": "Kyocera",
+    "marriott": "Marriott",
     "mayoclinic": "Mayo Clinic",
     "mayo_clinic": "Mayo Clinic",
+    "micron": "Micron",
+    "navico": "Navico",
+    "nutanix": "Nutanix",
+    "optum": "Optum",
+    "pan": "PAN",
+    "piaggio": "Piaggio",
+    "qualcomm": "Qualcomm",
+    "raymondcorp": "Raymond Corporation",
+    "rbs": "RBS",
     "thomsonreuters": "Thomson Reuters",
     "thomson_reuters": "Thomson Reuters",
     "pwc": "PwC",
     "linkedin": "LinkedIn",
     "sonova": "Sonova",
+    "resmed": "ResMed",
+    "ringcentral": "RingCentral",
+    "rockwellautomation": "Rockwell Automation",
+    "samsung": "Samsung",
+    "sandia": "Sandia",
+    "splunk": "Splunk",
+    "stihl": "STIHL",
+    "servicenow": "ServiceNow",
+    "subzero": "Sub-Zero",
+    "transunionllc": "TransUnion",
+    "ttc": "TTC",
+    "toyota": "Toyota",
+    "tr": "Thomson Reuters",
+    "translation.com": "Translation.com",
+    "txdot": "TxDOT",
     "demant": "Demant",
+    "transunion": "TransUnion",
+    "ubs": "UBS",
+    "usmc": "USMC",
+    "workday": "Workday",
+    "zebra": "Zebra",
+    "banner": "Banner Engineering",
+    "verizon": "Verizon",
+    "volkswagen": "Volkswagen",
 }
+_IGNORED_COMPONENT_TOKENS = {"miscellaneous", "triaged"}
+_SUMMARY_CUSTOMER_PATTERNS = (
+    (re.compile(r"\bJPMC\b", re.I), "JPMC"),
+    (re.compile(r"\bCloud Software Group\b", re.I), "Cloud Software Group"),
+    (re.compile(r"\bHaas Automation\b", re.I), "Haas Automation"),
+    (re.compile(r"\bSignify\b", re.I), "Signify"),
+    (re.compile(r"\bKyndryl\b", re.I), "Kyndryl"),
+    (re.compile(r"\bCiena(?: Corp)?\b", re.I), "Ciena"),
+    (re.compile(r"\bEnbridge\b", re.I), "Enbridge"),
+    (re.compile(r"\bAetna\b", re.I), "Aetna"),
+    (re.compile(r"\bServiceNow\b", re.I), "ServiceNow"),
+    (re.compile(r"\bSonova\b", re.I), "Sonova"),
+    (re.compile(r"\bCentene\b", re.I), "Centene"),
+    (re.compile(r"\bBroadcom\b", re.I), "Broadcom"),
+    (re.compile(r"\bCisco\b", re.I), "Cisco"),
+    (re.compile(r"\bSub[- ]Zero\b", re.I), "Sub-Zero"),
+    (re.compile(r"\bRed Hat\b", re.I), "Red Hat"),
+    (re.compile(r"\bDB Instance Provisioning for HAAS Equipment\b", re.I), "Haas Equipment"),
+    (re.compile(r"\bDB Instance Provisioning for Lexmark\b", re.I), "Lexmark"),
+    (re.compile(r"\bDB Instance Provisioning for Workday\b", re.I), "Workday"),
+    (re.compile(r"\bDB Instance Provisioning for Red\s*Hat\b", re.I), "Red Hat"),
+    (re.compile(r"\bDB Instance Provisioning for Avaya\b", re.I), "Avaya"),
+    (re.compile(r"\bDB Instance Provisioning for LinkedIn\b", re.I), "LinkedIn"),
+    (re.compile(r"\bDB Instance Provisioning for Crown Equipment\b", re.I), "Crown Equipment"),
+    (re.compile(r"\bIBM\b", re.I), "IBM"),
+)
 _UNSAFE_CUSTOMER_RE = re.compile(
     r"(?i)(?:https?://|@AdobeOrg|\[~|client[_ -]?secret|access[_ -]?token|oauth[_ -]?token|password|feature[_ -]?flag)"
 )
@@ -129,6 +362,10 @@ class ParsedCsvIssue:
     customer_names: list[str]
     customer_cohorts: list[str]
     raw_components: list[str]
+    component_classification_source: str
+    component_inference_signals: list[str]
+    source_components: list[str]
+    component_assignment_method: str
     noncanonical_components: list[str]
     resolutions: list[str]
     source_file_hashes: list[str]
@@ -137,6 +374,7 @@ class ParsedCsvIssue:
     linked_issue_refs: list[str]
     attachment_filenames: list[str]
     redacted_fields: int
+    source_evidence_mode: str
 
 
 @dataclass
@@ -152,6 +390,10 @@ class ParsedCsvFile:
     rows_without_canonical_component: int
     rows_with_noncanonical_component: int
     noncanonical_component_values: list[str]
+    rows_with_ignored_component_value: int
+    ignored_component_values: list[str]
+    source_evidence_mode: str
+    missing_behavior_columns: list[str]
     detected_customer: str = ""
     detection_confidence: str = "none"
     detection_signals: list[str] | None = None
@@ -161,11 +403,14 @@ class ParsedCsvFile:
 def _sanitize_text(value: Any) -> tuple[str, int]:
     text = str(value or "").replace("\x00", "").strip()
     redactions = 0
+    text, count = _URL_CREDENTIAL_RE.subn(r"\1[redacted-credentials]@", text)
+    redactions += count
     for pattern, replacement in (
         (_EMAIL_RE, "[redacted-email]"),
         (_IMS_ORG_RE, "[redacted-ims-org]"),
         (_MENTION_RE, "[redacted-mention]"),
         (_SECRET_RE, "[redacted-secret]"),
+        (_STRONG_CREDENTIAL_PAIR_RE, "[redacted-credentials]"),
     ):
         text, count = pattern.subn(replacement, text)
         redactions += count
@@ -182,6 +427,67 @@ def _canonical_customer(value: str) -> str:
     return _CUSTOMER_ALIASES.get(key, clean)
 
 
+def _canonical_customer_values(value: str) -> list[str]:
+    clean = re.sub(r"\s+", " ", str(value or "").strip())
+    key = re.sub(r"[-_]+", " ", clean).casefold()
+    values = _MULTI_CUSTOMER_ALIASES.get(key)
+    return list(values) if values else [_canonical_customer(clean)]
+
+
+def _ignored_component_value(value: str) -> bool:
+    token = re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+    return token in _IGNORED_COMPONENT_TOKENS
+
+
+def _customers_from_summary(value: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return [customer for pattern, customer in _SUMMARY_CUSTOMER_PATTERNS if pattern.search(text)]
+
+
+def _customer_label_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+
+def _safe_customer_label_registry(issues: list[ParsedCsvIssue]) -> dict[str, str]:
+    """Build exact, source-backed label aliases from safe customer/company fields."""
+    registry: dict[str, str] = {}
+    legal_suffixes = {
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "llc",
+        "ltd",
+        "limited",
+        "plc",
+    }
+    acronym_stopwords = {"and", "of", "the"}
+    for issue in issues:
+        for raw_value in issue.customer_names + issue.company_names:
+            display = _canonical_customer(raw_value)
+            token = _customer_label_token(display)
+            if token:
+                registry.setdefault(token, display)
+            words = re.findall(r"[A-Za-z0-9]+", display)
+            trimmed = list(words)
+            while trimmed and trimmed[-1].casefold() in legal_suffixes:
+                trimmed.pop()
+            if trimmed and len(trimmed) < len(words):
+                trimmed_token = _customer_label_token(" ".join(trimmed))
+                if trimmed_token:
+                    registry.setdefault(trimmed_token, display)
+            acronym_words = [
+                word
+                for word in words
+                if word.casefold() not in acronym_stopwords and word
+            ]
+            acronym = "".join(word[0] for word in acronym_words)
+            if 2 <= len(acronym) <= 6:
+                registry.setdefault(acronym.casefold(), display)
+    return registry
+
+
 def _safe_customer_values(values: list[str]) -> tuple[list[str], int]:
     output: list[str] = []
     redactions = 0
@@ -196,13 +502,14 @@ def _safe_customer_values(values: list[str]) -> tuple[list[str], int]:
         redactions += count
         if not clean or clean.startswith("[redacted-"):
             continue
-        output.append(_canonical_customer(clean))
+        output.extend(_canonical_customer_values(clean))
     return _dedupe(output, limit=100), redactions
 
 
 def _detect_file_customer(item: ParsedCsvFile) -> tuple[str, str, list[str], list[str]]:
     label_counts: Counter[str] = Counter()
     field_counts: Counter[str] = Counter()
+    summary_counts: Counter[str] = Counter()
     total = max(len(item.issues), 1)
     for issue in item.issues:
         labels = issue.issue.get("fields", {}).get("labels") or []
@@ -213,11 +520,15 @@ def _detect_file_customer(item: ParsedCsvFile) -> tuple[str, str, list[str], lis
             canonical = _canonical_customer(customer)
             if canonical in _SUPPORTED_CUSTOMERS:
                 field_counts[canonical] += 1
+        for customer in set(_customers_from_summary(issue.issue.get("fields", {}).get("summary") or "")):
+            summary_counts[customer] += 1
     signals: list[str] = []
-    candidates = set(label_counts) | set(field_counts)
+    candidates = set(label_counts) | set(field_counts) | set(summary_counts)
     for customer in sorted(candidates):
         signals.append(
-            f"{customer}: label rows {label_counts[customer]}/{total}; safe customer-field rows {field_counts[customer]}/{total}"
+            f"{customer}: label rows {label_counts[customer]}/{total}; "
+            f"safe customer-field rows {field_counts[customer]}/{total}; "
+            f"explicit summary rows {summary_counts[customer]}/{total}"
         )
     unanimous = [customer for customer, count in label_counts.items() if count == total]
     warnings: list[str] = []
@@ -231,7 +542,7 @@ def _detect_file_customer(item: ParsedCsvFile) -> tuple[str, str, list[str], lis
     if row_covered == total and len(row_cohorts) > 1:
         signals.append(f"Mixed row-level cohort coverage: {row_covered}/{total} rows; {', '.join(row_cohorts)}")
         return _MIXED_CUSTOMER, "high", signals, warnings
-    ranked = (label_counts + field_counts).most_common()
+    ranked = (label_counts + field_counts + summary_counts).most_common()
     if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
         warnings.append("Customer was inferred from majority evidence; confirm before import.")
         return ranked[0][0], "medium", signals, warnings
@@ -273,9 +584,9 @@ def _parse_datetime(value: str) -> datetime | None:
 
 
 def should_skip_existing(existing_updated: datetime | None, incoming_updated: str) -> bool:
-    """Skip only when the indexed Jira record is strictly newer than the CSV row."""
+    """Protect dated evidence when an incoming CSV timestamp is older or absent."""
     incoming = _parse_datetime(incoming_updated)
-    return bool(existing_updated and incoming and existing_updated > incoming)
+    return bool(existing_updated and (incoming is None or existing_updated > incoming))
 
 
 def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
@@ -295,15 +606,23 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
         headers = next(reader)
     except StopIteration as exc:
         raise ValueError("CSV file has no header row") from exc
-    missing = sorted(REQUIRED_HEADERS - set(headers))
+    missing = sorted(CORE_REQUIRED_HEADERS - set(headers))
     if missing:
         raise ValueError("Missing required Jira columns: " + ", ".join(missing))
+    missing_behavior_columns = sorted(BEHAVIORAL_EVIDENCE_HEADERS - set(headers))
+    if not missing_behavior_columns:
+        source_evidence_mode = "behavioral"
+    elif len(missing_behavior_columns) == len(BEHAVIORAL_EVIDENCE_HEADERS):
+        source_evidence_mode = "metadata_only"
+    else:
+        source_evidence_mode = "partial"
 
     positions: dict[str, list[int]] = defaultdict(list)
     for index, header in enumerate(headers):
         positions[header].append(index)
     duplicate_headers = {key: len(indexes) for key, indexes in positions.items() if len(indexes) > 1}
 
+    normalized_file_hash = hashlib.sha256(data).hexdigest()
     issues: list[ParsedCsvIssue] = []
     resolution_counts: Counter[str] = Counter()
     total_redactions = 0
@@ -344,9 +663,35 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
 
         labels = _dedupe(values(row, "Labels"))
         raw_components = _dedupe(values(row, "Component/s"))
+        source_components = list(raw_components)
+        encoded_source_components = first(row, SOURCE_COMPONENTS_HEADER)
+        if encoded_source_components:
+            try:
+                decoded_source_components = json.loads(encoded_source_components)
+            except (json.JSONDecodeError, TypeError):
+                decoded_source_components = []
+            if isinstance(decoded_source_components, list):
+                source_components = _dedupe(
+                    [str(value) for value in decoded_source_components if str(value).strip()]
+                )
+        component_assignment_method = first(row, COMPONENT_ASSIGNMENT_METHOD_HEADER)[:80]
+        source_file_hash = first(row, SOURCE_FILE_HASH_HEADER).strip().casefold()
+        if not re.fullmatch(r"[a-f0-9]{64}", source_file_hash):
+            source_file_hash = normalized_file_hash
         components = canonical_component_names(raw_components)
+        component_classification_source = "jira_component" if components else "unclassified"
+        component_inference_signals: list[str] = []
+        if not components:
+            components, component_inference_signals = infer_component_names(
+                sanitized["Summary"],
+                sanitized["Description"],
+            )
+            if components:
+                component_classification_source = COMPONENT_TEXT_CLASSIFIER_VERSION
         noncanonical_components = [
-            component for component in raw_components if not canonical_component_name(component)
+            component
+            for component in raw_components
+            if not canonical_component_name(component) and not _ignored_component_value(component)
         ]
         fix_versions = _dedupe(values(row, "Fix Version/s"))
         affected_versions = _dedupe(values(row, "Affects Version/s"))
@@ -365,6 +710,7 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 for customer in (
                     [_CUSTOMER_LABELS.get(str(label).strip().casefold(), "") for label in labels]
                     + [_canonical_customer(value) for value in customer_names + company_names]
+                    + _customers_from_summary(sanitized["Summary"])
                 )
                 if customer in _SUPPORTED_CUSTOMERS
             ],
@@ -406,7 +752,10 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             "priority": {"name": first(row, "Priority")},
             "labels": labels,
             "components": [{"name": item} for item in components],
-            "_components_raw": raw_components,
+            "_components_raw": source_components,
+            "_component_classification_source": component_classification_source,
+            "_component_inference_signals": component_inference_signals,
+            "_component_assignment_method": component_assignment_method,
             "fixVersions": [{"name": item} for item in fix_versions],
             "versions": [{"name": item} for item in affected_versions],
             "created": first(row, "Created"),
@@ -415,7 +764,8 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             "customfield_13400": sanitized["Custom field (Acceptance Criteria)"],
             "_csv_resolution": resolution,
             "_source_type": "jira_csv",
-            "_source_file_hash": hashlib.sha256(data).hexdigest(),
+            "_source_file_hash": source_file_hash,
+            "_csv_source_evidence_mode": source_evidence_mode,
         }
         issues.append(
             ParsedCsvIssue(
@@ -431,14 +781,22 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 customer_names=customer_names,
                 customer_cohorts=row_customer_cohorts,
                 raw_components=raw_components,
+                component_classification_source=component_classification_source,
+                component_inference_signals=component_inference_signals,
+                source_components=source_components,
+                component_assignment_method=component_assignment_method,
                 noncanonical_components=noncanonical_components,
                 resolutions=[resolution] if resolution else [],
-                source_file_hashes=[hashlib.sha256(data).hexdigest()],
+                source_file_hashes=_dedupe([source_file_hash, normalized_file_hash], limit=50),
                 import_provenance=[
                     {
                         "filename": Path(filename).name,
-                        "file_hash": hashlib.sha256(data).hexdigest(),
+                        "file_hash": source_file_hash,
+                        "normalized_file_hash": normalized_file_hash,
                         "jira_updated_at": first(row, "Updated")[:80],
+                        "source_evidence_mode": source_evidence_mode,
+                        "component_classification_source": component_classification_source,
+                        "component_assignment_method": component_assignment_method,
                     }
                 ],
                 evidence_archive={
@@ -451,22 +809,43 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                     "comments": [comment["body_text"] for comment in comments if comment.get("body_text")],
                     "linked_issue_refs": _dedupe(linked_refs, limit=200),
                     "attachment_filenames": attachment_filenames,
+                    "component_normalization": [
+                        first(row, COMPONENT_ASSIGNMENT_EVIDENCE_HEADER)
+                    ]
+                    if first(row, COMPONENT_ASSIGNMENT_EVIDENCE_HEADER)
+                    else [],
                 },
                 linked_issue_refs=_dedupe(linked_refs, limit=200),
                 attachment_filenames=attachment_filenames,
                 redacted_fields=redactions,
+                source_evidence_mode=source_evidence_mode,
             )
         )
         total_redactions += redactions
 
+    safe_label_registry = _safe_customer_label_registry(issues)
+    for issue in issues:
+        labels = issue.issue.get("fields", {}).get("labels") or []
+        verified_label_customers = [
+            safe_label_registry[token]
+            for label in labels
+            for token in [_customer_label_token(str(label))]
+            if token in safe_label_registry
+        ]
+        issue.customer_cohorts = _dedupe(
+            issue.customer_cohorts + verified_label_customers,
+            limit=20,
+        )
+
     component_counts = Counter(
-        component
+        str(component.get("name") or "")
         for issue in issues
-        for component in canonical_component_names(issue.raw_components)
+        for component in issue.issue.get("fields", {}).get("components", [])
+        if isinstance(component, dict) and str(component.get("name") or "")
     )
     parsed_file = ParsedCsvFile(
         filename=Path(filename).name,
-        file_hash=hashlib.sha256(data).hexdigest(),
+        file_hash=normalized_file_hash,
         headers=headers,
         issues=issues,
         duplicate_headers=duplicate_headers,
@@ -477,7 +856,9 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
             for component in CANONICAL_JIRA_COMPONENTS
         },
         rows_without_canonical_component=sum(
-            1 for issue in issues if not canonical_component_names(issue.raw_components)
+            1
+            for issue in issues
+            if not issue.issue.get("fields", {}).get("components")
         ),
         rows_with_noncanonical_component=sum(
             1 for issue in issues if issue.noncanonical_components
@@ -489,6 +870,21 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
                 for component in issue.noncanonical_components
             ]
         ),
+        rows_with_ignored_component_value=sum(
+            1
+            for issue in issues
+            if any(_ignored_component_value(component) for component in issue.raw_components)
+        ),
+        ignored_component_values=_dedupe(
+            [
+                component
+                for issue in issues
+                for component in issue.raw_components
+                if _ignored_component_value(component)
+            ]
+        ),
+        source_evidence_mode=source_evidence_mode,
+        missing_behavior_columns=missing_behavior_columns,
     )
     detected, confidence, signals, warnings = _detect_file_customer(parsed_file)
     parsed_file.detected_customer = detected
@@ -496,6 +892,44 @@ def parse_jira_csv_bytes(data: bytes, filename: str) -> ParsedCsvFile:
     parsed_file.detection_signals = signals
     parsed_file.detection_warnings = warnings
     return parsed_file
+
+
+def classify_jira_import_profile(
+    parsed: ParsedCsvFile, requested_profile: str = "auto"
+) -> str:
+    """Classify a CSV without treating a few Native PDF rows as a PDF-only corpus."""
+    requested = str(requested_profile or "auto").strip().casefold()
+    if requested not in SUPPORTED_IMPORT_PROFILES:
+        raise ValueError(f"Unsupported Jira import profile: {requested_profile}")
+    if requested != "auto":
+        return requested
+
+    total = len(parsed.issues)
+    editor_rows = 0
+    new_editor_rows = 0
+    native_pdf_rows = 0
+    for issue in parsed.issues:
+        components = {
+            str(component.get("name") or "")
+            for component in issue.issue.get("fields", {}).get("components", [])
+            if isinstance(component, dict)
+        }
+        if "Editor" in components:
+            editor_rows += 1
+        if "new_editor" in enrich_jira(issue.issue).affected_features:
+            new_editor_rows += 1
+        if any(
+            re.sub(r"[_-]+", " ", str(component or "").strip()).casefold()
+            == "native pdf"
+            for component in issue.raw_components
+        ):
+            native_pdf_rows += 1
+
+    if total and editor_rows == total and new_editor_rows:
+        return "editor-new"
+    if total and native_pdf_rows / total >= NATIVE_PDF_PROFILE_MIN_RATIO:
+        return "native-pdf"
+    return "customer-history"
 
 
 def _normalize_customer_assignments(
@@ -566,7 +1000,32 @@ def merge_parsed_issues(
             return [{"name": value} for value in clean] if object_values else clean
 
         fields["labels"] = field_union("labels")
+        output.source_evidence_mode = max(
+            (snapshot.source_evidence_mode for snapshot in snapshots),
+            key={"metadata_only": 0, "partial": 1, "behavioral": 2}.get,
+        )
+        fields["_csv_source_evidence_mode"] = output.source_evidence_mode
         output.raw_components = union("raw_components")
+        classification_sources = {
+            snapshot.component_classification_source
+            for snapshot in snapshots
+            if snapshot.component_classification_source
+        }
+        output.component_classification_source = (
+            "jira_component"
+            if "jira_component" in classification_sources
+            else COMPONENT_TEXT_CLASSIFIER_VERSION
+            if COMPONENT_TEXT_CLASSIFIER_VERSION in classification_sources
+            else "unclassified"
+        )
+        output.component_inference_signals = union("component_inference_signals", 50)
+        output.source_components = union("source_components")
+        output.component_assignment_method = ",".join(
+            _dedupe(
+                [snapshot.component_assignment_method for snapshot in snapshots],
+                limit=20,
+            )
+        )[:80]
         output.noncanonical_components = union("noncanonical_components")
         fields["components"] = [
             {"name": value}
@@ -578,7 +1037,10 @@ def merge_parsed_issues(
                 ]
             )
         ]
-        fields["_components_raw"] = output.raw_components
+        fields["_components_raw"] = output.source_components or output.raw_components
+        fields["_component_classification_source"] = output.component_classification_source
+        fields["_component_inference_signals"] = output.component_inference_signals
+        fields["_component_assignment_method"] = output.component_assignment_method
         fields["fixVersions"] = field_union("fixVersions", object_values=True)
         fields["versions"] = field_union("versions", object_values=True)
         output.company_names = union("company_names", 100)
@@ -663,6 +1125,15 @@ def preview_jira_csv_files(
         "redacted_fields": sum(item.redacted_fields for item in parsed),
         "rows_without_canonical_component": rows_without_canonical_component,
         "rows_with_noncanonical_component": rows_with_noncanonical_component,
+        "source_evidence_modes": dict(
+            Counter(issue.source_evidence_mode for item in parsed for issue in item.issues)
+        ),
+        "metadata_only_rows": sum(
+            1
+            for item in parsed
+            for issue in item.issues
+            if issue.source_evidence_mode == "metadata_only"
+        ),
         "files": [
             {
                 "filename": item.filename,
@@ -675,6 +1146,10 @@ def preview_jira_csv_files(
                 "rows_without_canonical_component": item.rows_without_canonical_component,
                 "rows_with_noncanonical_component": item.rows_with_noncanonical_component,
                 "noncanonical_component_values": item.noncanonical_component_values,
+                "rows_with_ignored_component_value": item.rows_with_ignored_component_value,
+                "ignored_component_values": item.ignored_component_values,
+                "source_evidence_mode": item.source_evidence_mode,
+                "missing_behavior_columns": item.missing_behavior_columns,
                 "already_imported": item.file_hash in completed_hashes,
                 "detected_customer": item.detected_customer,
                 "assigned_customer": assignment_map.get(item.file_hash, ""),
@@ -694,6 +1169,23 @@ def preview_jira_csv_files(
                         + ", ".join(item.noncanonical_component_values)
                     ]
                     if item.noncanonical_component_values
+                    else []
+                )
+                + (
+                    [
+                        "Ignored non-taxonomy values found in Component/s: "
+                        + ", ".join(item.ignored_component_values)
+                    ]
+                    if item.ignored_component_values
+                    else []
+                )
+                + (
+                    [
+                        "Metadata-only Jira export: missing "
+                        + ", ".join(item.missing_behavior_columns)
+                        + "; rows are indexed as scope/history signals only."
+                    ]
+                    if item.source_evidence_mode == "metadata_only"
                     else []
                 ),
             }
@@ -809,6 +1301,34 @@ def _union_values(existing: Any, incoming: list[str], *, limit: int = 200) -> li
     return _dedupe([str(value) for value in current] + incoming, limit=limit)
 
 
+def _trusted_csv_customer_names(
+    existing: Any,
+    parsed_issue: ParsedCsvIssue,
+) -> list[str]:
+    """Persist only explicit CSV customer fields and allowlisted row cohorts."""
+    trusted = _dedupe(
+        parsed_issue.customer_names + parsed_issue.customer_cohorts,
+        limit=100,
+    )
+    trusted_tokens = {_customer_label_token(value) for value in trusted}
+    label_tokens = {
+        _customer_label_token(str(label))
+        for label in parsed_issue.issue.get("fields", {}).get("labels") or []
+    }
+    current = existing if isinstance(existing, list) else []
+    retained_existing = [
+        str(value)
+        for value in current
+        if _customer_label_token(str(value)) not in label_tokens
+        or _customer_label_token(str(value)) in trusted_tokens
+    ]
+    return _union_values(
+        retained_existing,
+        trusted,
+        limit=100,
+    )
+
+
 def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
     """Union cohort/provenance evidence into a newer SQL/Chroma issue without replacing its content."""
     db = SessionLocal()
@@ -816,12 +1336,45 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
         row = db.query(JiraEnrichedIssue).filter(JiraEnrichedIssue.jira_key == parsed_issue.issue_key).first()
         if row is None:
             return False
+        parsed_enriched = enrich_jira(parsed_issue.issue)
         row.company_names = _union_values(row.company_names, parsed_issue.company_names, limit=100)
-        row.customer_names = _union_values(row.customer_names, parsed_issue.customer_names, limit=100)
+        row.customer_names = _trusted_csv_customer_names(row.customer_names, parsed_issue)
         row.customer_cohorts = _union_values(row.customer_cohorts, parsed_issue.customer_cohorts, limit=20)
+        row.affected_features = _union_values(
+            row.affected_features,
+            list(parsed_enriched.affected_features or []),
+            limit=40,
+        )
+        row.affected_outputs = _union_values(
+            row.affected_outputs,
+            list(parsed_enriched.affected_outputs or []),
+            limit=30,
+        )
+        if str(row.domain or "").strip().casefold() in {"", "unknown"}:
+            row.domain = parsed_enriched.domain or "unknown"
+            row.sub_domain = parsed_enriched.sub_domain or ""
         existing_components = list(row.components or [])
-        raw_components = _dedupe(existing_components + parsed_issue.raw_components)
-        row.components = canonical_component_names(raw_components)
+        parsed_components = [
+            str(component.get("name") or "")
+            for component in parsed_issue.issue.get("fields", {}).get("components", [])
+            if isinstance(component, dict) and str(component.get("name") or "")
+        ]
+        raw_components = _dedupe(
+            existing_components
+            + parsed_issue.source_components
+            + parsed_issue.raw_components
+        )
+        row.components = canonical_component_names(
+            existing_components
+            + parsed_components
+            + parsed_issue.source_components
+            + parsed_issue.raw_components
+        )
+        component_classification_source = (
+            "existing_component_metadata"
+            if existing_components
+            else parsed_issue.component_classification_source
+        )
         row.resolutions = _union_values(row.resolutions, parsed_issue.resolutions, limit=50)
         row.source_file_hashes = _union_values(row.source_file_hashes, parsed_issue.source_file_hashes, limit=50)
         provenance = list(row.import_provenance or [])
@@ -841,7 +1394,8 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
             {JiraIssueChunk.customer_names: row.customer_names}, synchronize_session=False
         )
         db.commit()
-        update_documents_metadata(
+        component_metadata = component_filter_metadata(row.components)
+        updated_chunks = update_documents_metadata(
             CHROMA_COLLECTION_JIRA_QA,
             {"jira_key": parsed_issue.issue_key},
             {
@@ -852,12 +1406,24 @@ def _metadata_only_merge(parsed_issue: ParsedCsvIssue) -> bool:
                 "source_file_hashes": json.dumps(row.source_file_hashes, ensure_ascii=False)[:4000],
                 "components": json.dumps(row.components, ensure_ascii=False)[:4000],
                 "components_raw": json.dumps(raw_components, ensure_ascii=False)[:4000],
-                "component_primary": component_primary_from_names(row.components),
-                "component_filter_schema_version": COMPONENT_FILTER_SCHEMA_VERSION,
+                "component_classification_source": component_classification_source[:80],
+                "component_inference_signals": json.dumps(
+                    parsed_issue.component_inference_signals,
+                    ensure_ascii=False,
+                )[:4000],
+                **component_metadata,
+                "enrich_domain": (row.domain or "unknown")[:120],
+                "enrich_outputs": json.dumps(row.affected_outputs, ensure_ascii=False)[:4000],
+                "enrich_features": json.dumps(row.affected_features, ensure_ascii=False)[:4000],
+                "editor_variant": "new_editor" if "new_editor" in row.affected_features else "",
                 "metadata_only_merge": True,
                 "import_evidence_archive": json.dumps(row.evidence_archive, ensure_ascii=False)[:4000],
             },
         )
+        if updated_chunks <= 0:
+            raise RuntimeError(
+                f"no Chroma chunks were updated for metadata-only Jira {parsed_issue.issue_key}"
+            )
         return True
     except Exception:
         db.rollback()
@@ -969,6 +1535,17 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                     } if existing else {}
                 finally:
                     db.close()
+                if existing is not None and parsed_issue.source_evidence_mode == "metadata_only":
+                    try:
+                        if _metadata_only_merge(parsed_issue):
+                            metadata_merged += 1
+                        else:
+                            skipped += 1
+                    except Exception as exc:
+                        failed += 1
+                        errors.append(f"{parsed_issue.issue_key}: metadata-only merge failed: {exc}")
+                    processed += source_row_count
+                    continue
                 if should_skip_existing(existing_updated, parsed_issue.jira_updated_at):
                     try:
                         if _metadata_only_merge(parsed_issue):
@@ -1024,10 +1601,9 @@ def run_import(run_id: str, paths: list[Path]) -> None:
                             "company_names": _union_values(
                                 existing_metadata.get("company_names"), parsed_issue.company_names, limit=100
                             ),
-                            "customer_names": _union_values(
+                            "customer_names": _trusted_csv_customer_names(
                                 existing_metadata.get("customer_names"),
-                                parsed_issue.customer_names + parsed_issue.customer_cohorts + list(enriched.customer_names or []),
-                                limit=100,
+                                parsed_issue,
                             ),
                             "customer_cohorts": _union_values(
                                 existing_metadata.get("customer_cohorts"), parsed_issue.customer_cohorts, limit=20

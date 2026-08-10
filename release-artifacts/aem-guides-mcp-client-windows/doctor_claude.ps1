@@ -65,6 +65,45 @@ Write-Check "server.py" (Test-Path -LiteralPath $ServerPath) $ServerPath
 Write-Check ".mcp.json" (Test-Path -LiteralPath $McpJson) $McpJson
 Write-Check "claude-mcp-server.json" (Test-Path -LiteralPath $ClaudeServerJson) $ClaudeServerJson
 Write-Check "local AEM upload config" (Test-Path -LiteralPath $AemUploadConfig) "$AemUploadConfig (or pass credentials as tool args)"
+$GraphContract = Join-Path $ClientDir ".claude\skills\test-plan-generation\references\evidence-graph-contract.md"
+$graphContractReady = $false
+if (Test-Path -LiteralPath $GraphContract) {
+    $graphContractText = Get-Content -LiteralPath $GraphContract -Raw
+    $graphContractReady = $graphContractText.Contains("shadow") -and $graphContractText.Contains("augment") -and $graphContractText.Contains("used_for_plan")
+}
+Write-Check "Phase B skill contract" $graphContractReady $GraphContract
+$SkillRoot = Join-Path $ClientDir ".claude\skills\test-plan-generation"
+$SkillFile = Join-Path $SkillRoot "SKILL.md"
+$AcContract = Join-Path $SkillRoot "scripts\ac_contract.py"
+$AcExtractor = Join-Path $SkillRoot "scripts\extract_acs.py"
+$PerformanceContract = Join-Path $SkillRoot "scripts\performance_contract.py"
+$PerformanceReference = Join-Path $SkillRoot "references\performance-assessment-contract.md"
+$GoldenBenchmarkReference = Join-Path $SkillRoot "references\golden-benchmark.md"
+$CompactRenderer = Join-Path $SkillRoot "scripts\render_compact_view.py"
+$canonicalContractReady = $false
+if (
+    (Test-Path -LiteralPath $SkillFile) -and
+    (Test-Path -LiteralPath $AcContract) -and
+    (Test-Path -LiteralPath $AcExtractor) -and
+    (Test-Path -LiteralPath $PerformanceContract) -and
+    (Test-Path -LiteralPath $PerformanceReference) -and
+    (Test-Path -LiteralPath $GoldenBenchmarkReference) -and
+    (Test-Path -LiteralPath $CompactRenderer)
+) {
+    $skillText = Get-Content -LiteralPath $SkillFile -Raw
+    $canonicalContractReady = @(
+        "aem-guides-ac-v1",
+        "aem-guides-performance-assessment-v1",
+        "Performance Analysis",
+        "Acceptance Criteria",
+        "Regression Areas",
+        "Past Jiras",
+        "Open Questions",
+        "golden-benchmark.md"
+    ) | ForEach-Object { $skillText.Contains($_) } | Where-Object { -not $_ } | Measure-Object | Select-Object -ExpandProperty Count
+    $canonicalContractReady = ($canonicalContractReady -eq 0)
+}
+Write-Check "Canonical AC and compact UI contract" $canonicalContractReady $SkillRoot
 
 $nodeOk = $false
 if (Get-Command node -ErrorAction SilentlyContinue) {
@@ -99,6 +138,18 @@ try {
     Write-Check "VM /mcp/health" $false $_.Exception.Message
 }
 
+try {
+    $headers = @{ Authorization = "Bearer $Token"; "Content-Type" = "application/json" }
+    $payload = @{ jsonrpc = "2.0"; id = 1; method = "tools/list"; params = @{} } | ConvertTo-Json -Depth 5
+    $toolResponse = Invoke-RestMethod -Method Post -Uri "$BackendUrl/mcp" -Headers $headers -Body $payload -TimeoutSec 30
+    $remoteNames = @($toolResponse.result.tools | ForEach-Object { $_.name })
+    $requiredRemote = @("ask_dita_expert", "search_jira_history", "query_test_evidence_graph", "check_rag_status")
+    $missingRemote = @($requiredRemote | Where-Object { $_ -notin $remoteNames })
+    Write-Check "VM evidence MCP tools" ($missingRemote.Count -eq 0) $(if ($missingRemote.Count) { "missing=$($missingRemote -join ',')" } else { "all required tools exposed" })
+} catch {
+    Write-Check "VM evidence MCP tools" $false $_.Exception.Message
+}
+
 if (Get-Command claude -ErrorAction SilentlyContinue) {
     Write-Host ""
     Write-Host "claude mcp list:"
@@ -125,7 +176,13 @@ async def main():
     tools = await mod.list_tools()
     names = [tool.name for tool in tools]
     print("tool_count:", len(names))
-    expected = ["ask_dita_expert", "upload_dataset_to_aem"]
+    expected = [
+        "ask_dita_expert",
+        "search_jira_history",
+        "query_test_evidence_graph",
+        "check_rag_status",
+        "upload_dataset_to_aem",
+    ]
     print("exact_minimal_surface:", names == expected)
     for required in expected:
         print(f"{required}:", required in names)

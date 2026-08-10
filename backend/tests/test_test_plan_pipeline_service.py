@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
 from app.services import test_plan_pipeline_service as pipeline
 
@@ -177,3 +179,188 @@ def test_run_pipeline_full_stages(monkeypatch, tmp_path):
     assert result.state_history
     assert "pipeline_memory" in result.stages_completed
     assert artifacts.list_pipeline_memory("GUIDES-49065")
+
+
+def test_graph_and_direct_sources_are_deduplicated_by_leaf_identifier():
+    packet = _stub_packet()
+    packet["evidence_graph_influence_mode"] = "augment"
+    packet["evidence_graph_evaluation"] = {"used_for_plan": True}
+    packet["experience_league_evidence"] = [
+        {"source_url": "https://experienceleague.adobe.com/en/docs/example/"}
+    ]
+    packet["learned_behavior_evidence"] = {
+        "results": [{"canonical_url": "https://experienceleague.adobe.com/en/docs/example"}]
+    }
+    packet["jira_history_searches"] = {
+        "same_customer": {
+            "results": [{"jira_key": "GUIDES-30456", "why_similar": "Direct search"}]
+        },
+        "cross_customer": {"results": []},
+    }
+    packet["evidence_graph"] = {
+        "available": True,
+        "same_mechanism_jira_history": [
+            {
+                "jira_key": "GUIDES-30456",
+                "shared_mechanisms": ["api route"],
+                "leaf_citations": [
+                    {
+                        "source_type": "jira_enriched",
+                        "source_ref": "GUIDES-30456",
+                        "source_record_id": "GUIDES-30456",
+                        "source_hash": "sha256:test",
+                        "trust_tier": "historical_verified",
+                    }
+                ],
+            }
+        ],
+        "evidence_paths": [
+            {
+                "path_id": "path:must-not-be-evidence",
+                "leaf_citations": [
+                    {
+                        "leaf_id": "doc:1",
+                        "source_type": "aem_guides",
+                        "source_ref": "https://experienceleague.adobe.com/en/docs/example",
+                        "source_record_id": "doc-1",
+                        "source_hash": "sha256:doc",
+                        "trust_tier": "authoritative",
+                    },
+                    {
+                        "leaf_id": "jira:1",
+                        "source_type": "jira_enriched",
+                        "source_ref": "GUIDES-30456",
+                        "source_record_id": "GUIDES-30456",
+                        "source_hash": "sha256:jira",
+                        "trust_tier": "historical_verified",
+                    },
+                ],
+            }
+        ],
+    }
+
+    refs = pipeline._collect_evidence_refs(packet)
+    history = pipeline._combined_historical_jira_evidence(packet, _stub_uac())
+
+    assert refs.count("DOC:https://experienceleague.adobe.com/en/docs/example") == 1
+    assert refs.count("JIRA:GUIDES-30456") == 1
+    assert all("GRAPH" not in ref and "path:must-not-be-evidence" not in ref for ref in refs)
+    assert len([row for row in history if row["jira_key"] == "GUIDES-30456"]) == 1
+    assert set(history[0]["evidence_origins"]) == {
+        "uac_intelligence",
+        "search_jira_history",
+        "evidence_graph",
+    }
+
+
+def test_shadow_graph_cannot_change_plan_content_history_or_citations():
+    packet = _stub_packet()
+    packet["evidence_graph_influence_mode"] = "shadow"
+    packet["evidence_graph_evaluation"] = {"used_for_plan": False}
+    packet["evidence_graph"] = {
+        "available": True,
+        "status": "ready",
+        "documented_behaviors": [
+            {
+                "behavior": "Graph-only expected behavior must stay out",
+                "trust_tier": "authoritative",
+                "leaf_citations": [
+                    {"source_type": "aem_guides", "source_ref": "https://example.test/graph-only"}
+                ],
+            }
+        ],
+        "same_mechanism_jira_history": [
+            {
+                "jira_key": "GUIDES-99999",
+                "shared_mechanisms": ["graph-only mechanism"],
+                "leaf_citations": [
+                    {"source_type": "jira_enriched", "source_ref": "GUIDES-99999"}
+                ],
+            }
+        ],
+        "regression_signals": [{"signal": "Graph-only regression must stay out"}],
+        "evidence_paths": [
+            {
+                "path_id": "graph-only-path",
+                "leaf_citations": [
+                    {"source_type": "jira_enriched", "source_ref": "GUIDES-99999"}
+                ],
+            }
+        ],
+    }
+    brief = pipeline.build_ticket_brief(packet)
+    score = pipeline.score_pipeline_readiness(packet, _stub_uac())
+
+    refs = pipeline._collect_evidence_refs(packet)
+    history = pipeline._combined_historical_jira_evidence(packet, _stub_uac())
+    draft = pipeline.compose_draft_test_plan(packet, _stub_uac(), score, brief)
+
+    assert "JIRA:GUIDES-99999" not in refs
+    assert all(row["jira_key"] != "GUIDES-99999" for row in history)
+    assert "Graph-only expected behavior must stay out" not in draft
+    assert "Graph-only regression must stay out" not in draft
+
+
+def test_shadow_graph_is_byte_equivalent_to_graph_off_for_plan_driving_output():
+    graph_off = _stub_packet()
+    graph_off["include_evidence_graph"] = False
+    graph_off["evidence_graph_influence_mode"] = "off"
+    graph_off["evidence_graph_evaluation"] = {"used_for_plan": False}
+    graph_off["evidence_graph"] = {"available": False, "status": "skipped"}
+    shadow = copy.deepcopy(graph_off)
+    shadow["include_evidence_graph"] = True
+    shadow["evidence_graph_influence_mode"] = "shadow"
+    shadow["evidence_graph_evaluation"] = {"used_for_plan": False}
+    shadow["evidence_graph"] = {
+        "available": True,
+        "status": "ready",
+        "documented_behaviors": [
+            {"behavior": "shadow-only behavior", "trust_tier": "authoritative"}
+        ],
+        "same_mechanism_jira_history": [
+            {"jira_key": "GUIDES-88888", "shared_mechanisms": ["shadow-only"]}
+        ],
+        "regression_signals": [{"signal": "shadow-only regression"}],
+        "evidence_paths": [{"path_id": "shadow-path", "leaf_citations": []}],
+    }
+    brief = pipeline.build_ticket_brief(graph_off)
+    off_score = pipeline.score_pipeline_readiness(graph_off, _stub_uac())
+    shadow_score = pipeline.score_pipeline_readiness(shadow, _stub_uac())
+
+    assert off_score.model_dump() == shadow_score.model_dump()
+    assert pipeline._collect_evidence_refs(graph_off) == pipeline._collect_evidence_refs(shadow)
+    assert pipeline._combined_historical_jira_evidence(
+        graph_off, _stub_uac()
+    ) == pipeline._combined_historical_jira_evidence(shadow, _stub_uac())
+    assert pipeline.compose_draft_test_plan(
+        graph_off, _stub_uac(), off_score, brief
+    ) == pipeline.compose_draft_test_plan(shadow, _stub_uac(), shadow_score, brief)
+
+
+def test_graph_unavailability_is_warning_not_draft_blocker():
+    packet = _stub_packet()
+    packet["include_evidence_graph"] = True
+    packet["evidence_graph"] = {"available": False, "status": "degraded"}
+    brief = pipeline.build_ticket_brief(packet)
+    criteria = pipeline.build_evidence_grounded_acceptance_criteria(packet, _stub_uac(), brief, None)
+    cases = pipeline.build_grounded_test_cases(packet, criteria, brief, None)
+    coverage = pipeline.build_requirement_test_coverage(criteria, cases)
+
+    score = pipeline.score_pipeline_readiness(
+        packet,
+        _stub_uac(),
+        ticket_brief=brief,
+        acceptance_criteria=criteria,
+        coverage_matrix=coverage,
+    )
+
+    assert not any("graph" in blocker.casefold() for blocker in score.blockers)
+    assert any("graph unavailable" in warning.casefold() for warning in score.warnings)
+
+
+def test_final_plan_has_no_evidence_graph_section():
+    import inspect
+
+    source = inspect.getsource(pipeline.compose_draft_test_plan)
+
+    assert "## Evidence graph" not in source

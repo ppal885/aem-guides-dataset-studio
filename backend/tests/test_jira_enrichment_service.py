@@ -20,6 +20,24 @@ def test_classify_domain_native_pdf():
     assert r["domain"] == "native_pdf"
 
 
+def test_csv_raw_native_pdf_component_is_preserved_for_output_enrichment():
+    enriched = enrich_jira(
+        {
+            "key": "GUIDES-58",
+            "fields": {
+                "summary": "Customer publishing regression",
+                "description": "",
+                "components": [{"name": "Publishing"}],
+                "_components_raw": ["Native_PDF"],
+                "labels": [],
+            },
+        }
+    )
+
+    assert "Publishing" in enriched.components
+    assert "Native PDF" in enriched.affected_outputs
+
+
 def test_classify_domain_keyref_over_publishing():
     r = classify_domain("keyref does not resolve in web editor preview", [])
     assert r["domain"] == "keyref"
@@ -70,9 +88,28 @@ def test_enrich_jira_uses_component_as_authoritative_primary_area():
     assert doc.enrichment_debug["jira_components"] == {
         "canonical": ["Editor"],
         "raw": ["Editor"],
+        "source_raw": ["Editor"],
         "noncanonical": [],
+        "assignment_method": "source",
     }
     assert doc.enrichment_debug["domain_classification"]["source"] == "jira_component"
+
+
+def test_enrich_jira_classifies_explicit_new_editor_feature():
+    issue = {
+        "key": "GUIDES-52916",
+        "fields": {
+            "summary": "New Editor 2.0 strips colwidth during table paste",
+            "description": "The issue appears after the Guides UI 2.0 upgrade.",
+            "labels": [],
+            "components": [{"name": "Editor"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert "new_editor" in doc.affected_features
+    assert "new_editor" in doc.enrichment_debug["detected_features"]
 
 
 def test_enrich_jira_rejects_noncanonical_component_metadata():
@@ -119,6 +156,30 @@ def test_extract_dita_entities_order_unique():
     assert "keyref" in got
     assert "topicref" in got
     assert got == list(dict.fromkeys(got))
+
+
+def test_image_drag_drop_issue_gets_authoring_mechanism_signals():
+    issue = {
+        "key": "GUIDES-25769",
+        "fields": {
+            "summary": "Unable to Drag and Drop Images from one place to another within a topic",
+            "description": (
+                "Open a topic in Author View. Drag and drop an image to a new location within the "
+                "same topic and the image breaks. In Source view the image reference no longer "
+                "exists, which causes data loss."
+            ),
+            "labels": ["KONE", "UAC_Not_Required", "Won't_Automate"],
+            "components": [{"name": "Authoring"}],
+        },
+    }
+
+    enriched = enrich_jira(issue)
+
+    assert enriched.domain == "authoring"
+    assert "image" in enriched.dita_entities
+    assert "image_authoring" in enriched.affected_features
+    assert "data-loss" in enriched.qa_risk_tags
+    assert "KONE" in enriched.customer_names
 
 
 def test_detect_customers_labels_and_text():
@@ -188,6 +249,22 @@ def test_enrich_jira_performance_bson():
     lowered = [e.lower() for e in doc.dita_entities]
     assert any("bson" in e for e in lowered)
     assert any("validatexml" in e for e in lowered)
+
+
+def test_enrich_jira_detects_folder_profile_condition_group_feature():
+    issue = {
+        "key": "GUIDES-23526",
+        "fields": {
+            "summary": "Conditional Attribute grouping lost through Folder Profile",
+            "description": "Adding a new condition must preserve every existing condition group.",
+            "labels": ["KONE", "UAC_Done"],
+            "components": [{"name": "Authoring"}],
+        },
+    }
+
+    doc = enrich_jira(issue)
+
+    assert "conditional_authoring" in doc.affected_features
 
 
 def test_detect_customers_dynamic_prefixed_labels():

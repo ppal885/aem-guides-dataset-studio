@@ -33,8 +33,8 @@ GOOD_PLAN = """**Understanding From Jira**
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.
 **Acceptance Criteria**
-- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output.
-- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.
+- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.
+- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.
 **Expected Behaviour**
 - Unknown from current evidence.
 **Scope From Git**
@@ -59,6 +59,47 @@ GOOD_PLAN = """**Understanding From Jira**
 - No open questions from current evidence
 """
 
+PERFORMANCE_SIGNAL_CATEGORIES = (
+    "data_volume_or_cardinality_growth",
+    "concurrency_or_contention",
+    "repetition_or_long_duration",
+    "latency_timeout_or_throughput",
+    "cpu_memory_gc_or_storage",
+    "queue_backlog_or_external_dependency",
+    "persistence_cleanup_or_stale_state",
+)
+
+NOT_REQUIRED_PERFORMANCE = {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "not_required",
+    "risk_rating": "low",
+    "signal_review": {
+        category: {
+            "status": "absent",
+            "finding": "The reviewed Jira, product evidence, and historical evidence contain no signal for this risk category.",
+            "evidence_refs": ["Jira description GUIDES-100"],
+        }
+        for category in PERFORMANCE_SIGNAL_CATEGORIES
+    },
+    "workload_model": {
+        "operation": "Not applicable after reviewing the functional operation.",
+        "cardinality": "Not applicable because no scale or cardinality risk was found.",
+        "concurrency": "Not applicable because no concurrent execution risk was found.",
+        "repetition": "Not applicable because no repeated-operation risk was found.",
+        "duration": "Not applicable because no long-running workflow risk was found.",
+    },
+    "metrics": [],
+    "oracle": {
+        "status": "not_applicable",
+        "source_ref": "Jira description GUIDES-100",
+        "thresholds": [],
+    },
+    "test_types": [],
+    "performance_ac_ids": [],
+    "rationale": "No evidence-backed performance mechanism exists, so dedicated performance testing would add noise rather than risk coverage.",
+}
+
+
 
 def _replace(plan: str, old: str, new: str) -> str:
     assert old in plan, f"fixture anchor not found: {old!r}"
@@ -74,6 +115,30 @@ def check(name: str, condition: bool) -> None:
 def test_validator() -> None:
     check("good plan passes", validate_mod.validate(GOOD_PLAN) == [])
 
+    ac_without_source = _replace(
+        GOOD_PLAN,
+        " | Evidence: Jira UAC GUIDES-100.",
+        "",
+    )
+    errs = validate_mod.validate(ac_without_source)
+    check("acceptance criterion without source is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_with_only_graph_path = _replace(
+        GOOD_PLAN,
+        "Evidence: Jira UAC GUIDES-100.",
+        "Evidence: graph path path-123.",
+    )
+    errs = validate_mod.validate(ac_with_only_graph_path)
+    check("graph path alone cannot support P0 acceptance", any("never only a graph path" in e for e in errs))
+
+    graph_path_with_jira_shaped_token = _replace(
+        GOOD_PLAN,
+        "Evidence: Jira UAC GUIDES-100.",
+        "Evidence: path:GUIDES-100.",
+    )
+    errs = validate_mod.validate(graph_path_with_jira_shaped_token)
+    check("graph path containing a Jira key is still rejected", any("never only a graph path" in e for e in errs))
+
     missing_strength = _replace(
         GOOD_PLAN,
         "Similarity: strongest match — same failure shape of wrong output.",
@@ -84,19 +149,93 @@ def test_validator() -> None:
 
     ac_no_sphere = _replace(
         GOOD_PLAN,
-        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output.",
-        "- AC-01 [Proposed]: Given an input | When the system runs | Then it produces the correct observable output.",
+        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
+        "- AC-01 [Proposed]: Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
     )
     errs = validate_mod.validate(ac_no_sphere)
-    check("AC missing the sphere tag is rejected", any("sphere-tagged Given|When|Then" in e for e in errs))
+    check("AC missing the sphere tag is rejected", any("machine-readable format" in e for e in errs))
 
     ac_no_gwt = _replace(
         GOOD_PLAN,
-        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.",
-        "- AC-02 [Proposed]: (Negative) the system should retain valid prior state.",
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+        "- AC-02 [Proposed]: (Negative) the system should retain valid prior state | Evidence: Jira description GUIDES-100.",
     )
     errs = validate_mod.validate(ac_no_gwt)
-    check("AC missing Given|When|Then is rejected", any("sphere-tagged Given|When|Then" in e for e in errs))
+    check("AC missing Given|When|Then is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_invalid_sphere = _replace(
+        GOOD_PLAN,
+        "(Basic) Given an input",
+        "(Security) Given an input",
+    )
+    errs = validate_mod.validate(ac_invalid_sphere)
+    check("AC with an uncontrolled sphere is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_reordered = _replace(
+        GOOD_PLAN,
+        "Given a second input | When the system runs | Then it retains valid prior state",
+        "When the system runs | Given a second input | Then it retains valid prior state",
+    )
+    errs = validate_mod.validate(ac_reordered)
+    check("AC with reordered fields is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_embedded_label = _replace(
+        GOOD_PLAN,
+        "Given a second input | When the system runs",
+        "Given a second input Then a hidden assertion | When the system runs",
+    )
+    errs = validate_mod.validate(ac_embedded_label)
+    check("AC with an embedded field label is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_missing_period = _replace(
+        GOOD_PLAN,
+        "Evidence: Jira description GUIDES-100.",
+        "Evidence: Jira description GUIDES-100",
+    )
+    errs = validate_mod.validate(ac_missing_period)
+    check("AC without terminal punctuation is rejected", any("machine-readable format" in e for e in errs))
+
+    ac_extra_field = _replace(
+        GOOD_PLAN,
+        " | Evidence: Jira description GUIDES-100.",
+        " | Oracle: hidden | Evidence: Jira description GUIDES-100.",
+    )
+    errs = validate_mod.validate(ac_extra_field)
+    check("AC with an extra field is rejected", any("machine-readable format" in e for e in errs))
+
+    duplicate_id = _replace(GOOD_PLAN, "AC-02 [Proposed]", "AC-01 [Proposed]")
+    errs = validate_mod.validate(duplicate_id)
+    check("duplicate AC IDs are rejected", any("IDs must be unique" in e for e in errs))
+
+    unquantified_performance = _replace(
+        GOOD_PLAN,
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+        "- AC-02 [Proposed]: (Performance) Given a large dataset | When the system runs | Then it remains fast | Evidence: Jira comment GUIDES-100.",
+    )
+    errs = validate_mod.validate(unquantified_performance)
+    check(
+        "Performance AC without quantified workload is rejected",
+        any("Performance Given must define a quantified workload" in e for e in errs),
+    )
+    check(
+        "Performance AC without measurable oracle is rejected",
+        any("Performance Then must define a measurable numeric oracle" in e for e in errs),
+    )
+
+    quantified_performance = _replace(
+        GOOD_PLAN,
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+        "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms and timeout error rate remains at 0% | Evidence: Jira comment GUIDES-100.",
+    )
+    quantified_performance = _replace(
+        quantified_performance,
+        "- P1 [AC-02]: do the second thing and observe prior state retained.",
+        "- P1 [AC-02]: run the cleanup load benchmark for 10,000 topics and confirm p95 latency is at or below 2000 ms with a 0% timeout error rate.",
+    )
+    check(
+        "quantified evidence-backed Performance AC passes",
+        validate_mod.validate(quantified_performance) == [],
+    )
 
     ac_no_scenario = _replace(
         GOOD_PLAN,
@@ -408,7 +547,193 @@ def test_run_gates() -> None:
                 {"scope": "cross_customer", "query": "failure shape", "component": "Schematron"},
             ],
             "indexed_history_run": True,
+            "evidence_graph": {
+                "requested": True,
+                "tool": "query_test_evidence_graph",
+                "status": "ready",
+                "influence_mode": "shadow",
+                "used_for_plan": False,
+                "generation_id": "generation-1",
+                "queries": [
+                    {
+                        "query": "same error signature and output mechanism",
+                        "duration_ms": 42,
+                        "cache_hit": False,
+                        "path_ids": ["path-1"],
+                        "leaf_citations": [
+                            {
+                                "leaf_id": "jira_chroma:GUIDES-100:chunk-1:sha256:abc",
+                                "source_type": "jira_chroma",
+                                "source_ref": "GUIDES-100",
+                                "trust_tier": "historical_verified",
+                            }
+                        ],
+                    }
+                ],
+            },
+            "performance_assessment": NOT_REQUIRED_PERFORMANCE,
         }
+
+        check(
+            "principal performance assessment accepts an evidence-backed not-required decision",
+            run_gates.performance_mod.validate_performance_assessment(dual_source) == [],
+        )
+        check(
+            "not-required performance assessment aligns with a plan containing no Performance AC",
+            run_gates.performance_mod.validate_plan_alignment(dual_source, GOOD_PLAN) == [],
+        )
+
+        invalid_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        invalid_performance["signal_review"].pop("persistence_cleanup_or_stale_state")
+        invalid_manifest = {
+            **dual_source,
+            "performance_assessment": invalid_performance,
+            "clones": [],
+        }
+        path.write_text(json.dumps(invalid_manifest), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects an incomplete principal performance risk review",
+            any("seven canonical risk categories" in failure for failure in failures),
+        )
+
+        malformed_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        malformed_performance["metrics"] = [{}]
+        malformed_performance["performance_ac_ids"] = [{}]
+        malformed_performance["oracle"]["thresholds"] = [{}]
+        malformed_failures = run_gates.performance_mod.validate_performance_assessment(
+            {"performance_assessment": malformed_performance}
+        )
+        check(
+            "malformed performance arrays fail closed without crashing",
+            any("unsupported value" in failure for failure in malformed_failures)
+            and any("invalid AC ID" in failure for failure in malformed_failures),
+        )
+
+        required_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        required_performance.update(
+            {
+                "decision": "required",
+                "risk_rating": "high",
+                "workload_model": {
+                    "operation": "Delete maps and clean parent-map references from affected topics.",
+                    "cardinality": "10,000 topics with accumulated parent-map references.",
+                    "concurrency": "5 concurrent map-deletion jobs.",
+                    "repetition": "10 cleanup iterations per dataset.",
+                    "duration": "30 minutes of sustained cleanup activity.",
+                },
+                "metrics": ["latency_p95", "timeout_rate", "heap_usage", "reference_cardinality"],
+                "oracle": {
+                    "status": "quantified",
+                    "source_ref": "Jira comment GUIDES-100",
+                    "thresholds": [
+                        "p95 cleanup latency <= 2000 ms",
+                        "timeout error rate = 0%",
+                    ],
+                },
+                "test_types": ["load", "soak", "concurrency"],
+                "performance_ac_ids": ["AC-02"],
+                "rationale": "The Jira reports unbounded parent-map reference growth and timeout risk on a cleanup path, creating a high-impact scalability and resource-retention mechanism.",
+            }
+        )
+        required_performance["signal_review"]["persistence_cleanup_or_stale_state"] = {
+            "status": "present",
+            "finding": "Deleted maps leave stale parent-map references that increase reference cardinality over time.",
+            "evidence_refs": ["Jira description GUIDES-100"],
+        }
+        required_performance["signal_review"]["latency_timeout_or_throughput"] = {
+            "status": "present",
+            "finding": "The Jira reports timeout risk on the cleanup and report-read paths.",
+            "evidence_refs": ["Jira comment GUIDES-100"],
+        }
+        required_manifest = {
+            **dual_source,
+            "performance_assessment": required_performance,
+        }
+        check(
+            "required principal performance assessment passes schema validation",
+            run_gates.performance_mod.validate_performance_assessment(required_manifest) == [],
+        )
+        check(
+            "required performance decision fails when the plan omits a Performance AC",
+            any(
+                "must exactly match visible Performance ACs" in failure
+                or "must include a Performance AC" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(required_manifest, GOOD_PLAN)
+            ),
+        )
+
+        performance_plan = _replace(
+            GOOD_PLAN,
+            "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+            "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms and timeout error rate remains at 0% | Evidence: Jira comment GUIDES-100.",
+        )
+        performance_plan = _replace(
+            performance_plan,
+            "- P1 [AC-02]: do the second thing and observe prior state retained.",
+            "- P1 [AC-02]: run a 30-minute cleanup load and concurrency benchmark for 10,000 topics and confirm p95 latency remains at or below 2000 ms with a 0% timeout error rate.",
+        )
+        check(
+            "required performance decision aligns with a quantitative Performance AC",
+            run_gates.performance_mod.validate_plan_alignment(required_manifest, performance_plan) == [],
+        )
+        check(
+            "not-required decision rejects an invented Performance AC",
+            any(
+                "no Performance AC may be emitted" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(dual_source, performance_plan)
+            ),
+        )
+
+        conditional_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        conditional_performance.update(
+            {
+                "decision": "conditional",
+                "risk_rating": "medium",
+                "workload_model": {
+                    "operation": "Run the affected cleanup workflow.",
+                    "cardinality": "Production-equivalent topic cardinality is not yet supplied.",
+                    "concurrency": "Expected concurrent job count is not yet supplied.",
+                    "repetition": "Expected repeated-operation count is not yet supplied.",
+                    "duration": "Required soak duration is not yet supplied.",
+                },
+                "oracle": {
+                    "status": "unresolved",
+                    "source_ref": "Jira description GUIDES-100",
+                    "thresholds": [],
+                },
+                "rationale": "A plausible scale-sensitive cleanup mechanism exists, but the production workload and approved pass-fail threshold are missing, so an AC would otherwise hallucinate its oracle.",
+            }
+        )
+        conditional_performance["signal_review"]["persistence_cleanup_or_stale_state"] = {
+            "status": "unknown",
+            "finding": "The available evidence does not quantify whether stale-state growth is material at production scale.",
+            "evidence_refs": ["Jira description GUIDES-100"],
+        }
+        conditional_manifest = {
+            **dual_source,
+            "performance_assessment": conditional_performance,
+        }
+        check(
+            "conditional principal performance assessment passes schema validation",
+            run_gates.performance_mod.validate_performance_assessment(conditional_manifest) == [],
+        )
+        check(
+            "conditional performance decision requires a QA-impact Open Question",
+            any(
+                "requires an Open Questions bullet" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(conditional_manifest, GOOD_PLAN)
+            ),
+        )
+        conditional_plan = _replace(
+            GOOD_PLAN,
+            "- No open questions from current evidence",
+            "- Performance sign-off: confirm production topic cardinality, concurrent cleanup jobs, and the approved p95 latency SLA. QA impact: without these values no Performance AC can be emitted safely; with them QA can define the load, soak, and pass-fail oracle.",
+        )
+        check(
+            "conditional performance decision aligns after its QA-impact question is visible",
+            run_gates.performance_mod.validate_plan_alignment(conditional_manifest, conditional_plan) == [],
+        )
 
         path.write_text(json.dumps({**dual_source, "clones": [{"path": "C:/x"}]}), encoding="utf-8")
         failures = run_gates.check_manifest_completeness(str(path))
@@ -439,11 +764,105 @@ def test_run_gates() -> None:
             any("component must be one of" in failure for failure in failures),
         )
 
+        paths_without_leaves = {
+            **dual_source,
+            "evidence_graph": {
+                **dual_source["evidence_graph"],
+                "queries": [{"query": "same mechanism", "duration_ms": 42, "cache_hit": False, "path_ids": ["path-1"], "leaf_citations": []}],
+            },
+            "clones": [],
+        }
+        path.write_text(json.dumps(paths_without_leaves), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects graph paths without leaf citations",
+            any("without underlying leaf citations" in failure for failure in failures),
+        )
+
+        shadow_influence = {
+            **dual_source,
+            "evidence_graph": {**dual_source["evidence_graph"], "used_for_plan": True},
+            "clones": [],
+        }
+        path.write_text(json.dumps(shadow_influence), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "run_gates rejects shadow graph influence",
+            any("must be false in shadow mode" in failure for failure in failures),
+        )
+
+        degraded_graph = {
+            **dual_source,
+            "evidence_graph": {
+                "requested": True,
+                "tool": "query_test_evidence_graph",
+                "status": "degraded",
+                "influence_mode": "shadow",
+                "used_for_plan": False,
+                "generation_id": None,
+                "queries": [],
+                "degraded_reason": "graph service unavailable; direct evidence retained",
+            },
+            "clones": [],
+        }
+        path.write_text(json.dumps(degraded_graph), encoding="utf-8")
+        check(
+            "run_gates allows explicit graph degraded mode",
+            run_gates.check_manifest_completeness(str(path)) == [],
+        )
+
         path.write_text(json.dumps({
             **dual_source,
             "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
         }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
+
+        base = {
+            **dual_source,
+            "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+            "accepted_uac_present": True,
+        }
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("accepted UAC requires fidelity audit", any("uac_fidelity" in failure for failure in failures))
+
+        contract = {
+            "schema_version": "aem-guides-uac-fidelity-v1",
+            "source_ref": "Jira GUIDES-38333 final accepted UAC",
+            "accepted_clause_ids": ["UAC-01", "UAC-02"],
+            "out_of_scope_clause_ids": ["OOS-01"],
+            "clause_to_ac": {"UAC-01": ["AC-01"], "UAC-02": ["AC-02"]},
+            "confirmed_ac_to_clause": {"AC-01": ["UAC-01"], "AC-02": ["UAC-02"]},
+            "proposed_ac_ids": ["AC-03"],
+            "unresolved_clause_ids": [],
+            "contradictions": [],
+            "scope_expansions": [],
+            "status": "pass",
+        }
+        base["uac_fidelity"] = contract
+        path.write_text(json.dumps(base), encoding="utf-8")
+        check("complete UAC fidelity audit passes", run_gates.check_manifest_completeness(str(path)) == [])
+
+        contract["clause_to_ac"].pop("UAC-02")
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "unmapped accepted UAC clause is rejected",
+            any("UAC-02" in failure and "no Confirmed AC" in failure for failure in failures),
+        )
+        contract["clause_to_ac"]["UAC-02"] = ["AC-02"]
+
+        contract["scope_expansions"] = ["DITA-OT output added despite OOS-01"]
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("passing audit cannot hide scope expansion", any("scope expansions" in failure for failure in failures))
+
+        contract["scope_expansions"] = []
+        contract["unresolved_clause_ids"] = ["UAC-02"]
+        contract["status"] = "blocked"
+        path.write_text(json.dumps(base), encoding="utf-8")
+        failures = run_gates.check_manifest_completeness(str(path))
+        check("blocked UAC fidelity audit cannot pass final gate", any("status is blocked" in failure for failure in failures))
 
         configured_only = json.loads(json.dumps(dual_source))
         configured_only["clones"] = []
@@ -594,21 +1013,155 @@ def test_run_gates() -> None:
             any("blocked readiness impact" in failure for failure in failures),
         )
 
-
 def test_extract_acs() -> None:
     extract_mod = _load("extract_acs", "extract_acs.py")
-    acs, problems = extract_mod.extract(GOOD_PLAN)
-    check("extract_acs parses both good ACs", len(acs) == 2 and problems == [])
-    check("extract_acs maps sphere/given/when/then", acs[0]["sphere"] == "Basic"
-          and acs[0]["id"] == "AC-01" and acs[0]["given"] and acs[0]["when"] and acs[0]["then"])
-    check("extract_acs second AC sphere is Negative", acs[1]["sphere"] == "Negative")
+    criteria, problems = extract_mod.extract(GOOD_PLAN)
+    check("extract_acs parses both canonical ACs", len(criteria) == 2 and problems == [])
+    check(
+        "extract_acs maps stable automation fields",
+        criteria[0]["schema_version"] == "aem-guides-ac-v1"
+        and criteria[0]["id"] == "AC-01"
+        and criteria[0]["sphere"] == "Basic"
+        and criteria[0]["given"]
+        and criteria[0]["when"]
+        and criteria[0]["then"]
+        and criteria[0]["evidence"] == "Jira UAC GUIDES-100",
+    )
     malformed = _replace(
         GOOD_PLAN,
-        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state.",
-        "- AC-02 [Proposed]: the system retains prior state.",
+        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+        "- AC-02 [Proposed]: the system retains prior state | Evidence: Jira description GUIDES-100.",
     )
-    acs2, problems2 = extract_mod.extract(malformed)
-    check("extract_acs reports a malformed AC line", len(acs2) == 1 and any("unparseable" in p for p in problems2))
+    _, malformed_problems = extract_mod.extract(malformed)
+    check("extract_acs fails closed on malformed input", any("unparseable" in p for p in malformed_problems))
+
+
+def test_compact_view() -> None:
+    compact_mod = _load("render_compact_view", "render_compact_view.py")
+    compact, problems = compact_mod.project(GOOD_PLAN)
+    check("compact view renders without problems", problems == [])
+    check(
+        "compact view exposes exactly the requested headings",
+        [line for line in compact.splitlines() if line.startswith("**")]
+        == ["**Acceptance Criteria**", "**Regression Areas**", "**Past Jiras**", "**Open Questions**"],
+    )
+    check(
+        "compact view does not leak hidden record sections",
+        all(
+            hidden not in compact
+            for hidden in (
+                "Understanding From Jira",
+                "Expected Behaviour",
+                "Scope From Git",
+                "Code Touched",
+                "Lines Changed",
+                "Test Scenarios",
+                "Automation Coverage & Gaps",
+            )
+        ),
+    )
+    check("compact view keeps validated past Jira", "GUIDES-100" in compact)
+    check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
+
+    no_match_plan = _replace(
+        GOOD_PLAN,
+        "- GUIDES-100 — Some bug. Similarity: strongest match — same failure shape of wrong output. Status: Closed. Resolution: Fixed. Affected version: not available in current evidence. Fix version: 2609. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: reuse its oracle.\n",
+        "",
+    )
+    no_match_compact, no_match_problems = compact_mod.project(no_match_plan)
+    check(
+        "compact view renders a deterministic no-Jira result",
+        no_match_problems == [] and "No same-defect-class past Jira" in no_match_compact,
+    )
+
+
+def test_uac_fidelity_reference() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    skill_text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    reference_path = skill_root / "references" / "uac-reference-examples.md"
+    reference_text = reference_path.read_text(encoding="utf-8")
+    checklist_text = (skill_root / "references" / "quality-gate-checklist.md").read_text(encoding="utf-8")
+
+    for marker in (
+        "#### Accepted UAC Fidelity Gate",
+        "aem-guides-uac-fidelity-v1",
+        "bidirectional traceability",
+        "configuration truth table",
+        "Do not convert a working-as-designed complaint into Confirmed AC",
+        "Do not treat a configuration-gated control as removed or deprecated",
+        "Respect investigation chronology",
+        "Do not equate `Resolution: Fixed` with a verified product-code fix",
+        "Never merge a mainline accepted UAC into a hotfix ticket",
+        "Collapse repeated identical UAC blocks deterministically",
+        "Incident workload observations are not performance SLAs",
+        "Product-fix chronology without accepted UAC remains candidate regression evidence",
+        "jira_comment_accepted_scope",
+        "Preserve contradictory automation labels",
+    ):
+        check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
+    for marker in (
+        "## Gold Reference: GUIDES-38333 Native PDF Reltable Parity",
+        "ENABLE_RELATED_LINKS_FOR_NATIVE_PDF",
+        "-Dargs.rellinks=nofamily",
+        "OOS-03",
+        "AC-06 [Confirmed]",
+        "## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata",
+        "NATIVE_AEMSITE",
+        "Baseline_v2.0",
+        "metadatalist",
+        "GUIDES-53306",
+        "AC-12 [Confirmed]",
+        "## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview",
+        "UAC-16",
+        "AC-10 [Proposed]",
+        "dynamic/static loader behavior while OOS-01 excludes dynamic baselines",
+        "## Caution Reference: GUIDES-31711 DITAVAL Taxonomy Complaint Closed as Working as Designed",
+        "The DITA standard does not prescribe AEM Guides UI taxonomy",
+        "No Confirmed AC is justified by GUIDES-31711",
+        "## Caution Reference: GUIDES-30001 Configuration-Gated Navtitle Button",
+        '"required": {"navtitle": true}',
+        "No Confirmed AC is justified by GUIDES-30001",
+        "## Caution Reference: GUIDES-28847 Metadata Filter Index Incident",
+        "damAssetLucene",
+        "No Confirmed AC is justified by GUIDES-28847",
+        "## Caution Reference: GUIDES-28667 Custom Preview Button Configuration Migration",
+        "jira_comment_configuration_migration",
+        "No Confirmed AC is justified by GUIDES-28667",
+        "## Accepted Reference: GUIDES-28443 Bulk Metadata Manage Recovery",
+        "bin/guides/v1/map/reports/metadata/tags/common",
+        "allAssets=true",
+        "GUIDES-29778",
+        "performance_contract_complete=false",
+        "release_scope_source=jira_comment_release_scope",
+        "The supplied screenshot shows a service-outage banner only",
+        "## Product-Fix Reference: GUIDES-25769 Author-View Image Move Data Loss",
+        "No Confirmed AC is justified by GUIDES-25769",
+        "jira_comment_version_validation",
+        "behavior_contract_complete=false",
+        "both `Automated` and `Won't_Automate`",
+        "## Accepted Comment-Scope Reference: GUIDES-23526 Folder-Profile Condition Preservation",
+        "uac_source_origin=jira_comment_accepted_scope",
+        "Existing-condition boundary",
+        "group removal and yellow color reset",
+        "AC-04 [Proposed]: (Reports)",
+        "cross_touchpoint_taxonomy",
+    ):
+        check(f"UAC reference retains marker {marker}", marker in reference_text)
+    check(
+        "quality gate enforces accepted UAC fidelity",
+        "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
+    )
+
+    repo_root = Path(__file__).resolve().parents[4]
+    counterpart_root = (
+        repo_root
+        / (".claude" if skill_root.parts[-3] == ".codex" else ".codex")
+        / "skills"
+        / "test-plan-generation"
+    )
+    counterpart = counterpart_root / "references" / "uac-reference-examples.md"
+    if counterpart.is_file():
+        check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
 
 
 def main() -> int:
@@ -617,7 +1170,9 @@ def main() -> int:
     test_git_ref_citations()
     test_attachment_manifest()
     test_run_gates()
+    test_uac_fidelity_reference()
     test_extract_acs()
+    test_compact_view()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

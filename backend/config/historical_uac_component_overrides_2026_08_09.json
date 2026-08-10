@@ -1,0 +1,80 @@
+{
+  "schema_version": "historical-uac-component-overrides-v1",
+  "source_file_sha256": "c91738563f6a6e690b97c871aeef2c2192e7dabf7fdd2e1ef2a10375704d920b",
+  "expected_normalization": {
+    "total_rows": 481,
+    "normalized_rows": 481,
+    "unresolved_rows": 0,
+    "override_count": 29,
+    "component_counts": {
+      "Editor": 20,
+      "Authoring": 225,
+      "Publishing": 138,
+      "Platform": 74,
+      "Schematron": 7,
+      "Integration": 37
+    },
+    "assignment_method_counts": {
+      "explicit_issue_override": 29,
+      "legacy_alias": 144,
+      "source_canonical": 288,
+      "source_canonical_and_legacy_alias": 20
+    }
+  },
+  "expected_preview": {
+    "total_rows": 481,
+    "unique_issue_keys": 481,
+    "redacted_fields": 12865
+  },
+  "expected_uac_audit": {
+    "with_trusted_uac": 281,
+    "without_trusted_uac": 200,
+    "closed_uac": 274,
+    "open_uac": 7,
+    "contract_complete": 44,
+    "contract_incomplete": 237,
+    "performance_matters": 33,
+    "performance_complete": 1,
+    "reuse_tiers": {
+      "candidate": 20,
+      "supporting": 261
+    },
+    "source_origins": {
+      "jira_acceptance_field": 280,
+      "jira_comment_accepted_scope": 1,
+      "jira_no_uac_sentinel": 1,
+      "missing": 199
+    }
+  },
+  "assignments": {
+    "GUIDES-22414": ["Editor"],
+    "GUIDES-22212": ["Editor"],
+    "GUIDES-20107": ["Platform"],
+    "GUIDES-19385": ["Platform"],
+    "GUIDES-19067": ["Authoring"],
+    "GUIDES-18826": ["Authoring"],
+    "GUIDES-18775": ["Editor"],
+    "GUIDES-18488": ["Platform"],
+    "GUIDES-18373": ["Integration"],
+    "GUIDES-18308": ["Platform"],
+    "GUIDES-17601": ["Integration"],
+    "GUIDES-17331": ["Editor"],
+    "GUIDES-17107": ["Platform"],
+    "GUIDES-16891": ["Integration"],
+    "GUIDES-16836": ["Platform"],
+    "GUIDES-16517": ["Platform"],
+    "GUIDES-15160": ["Platform"],
+    "GUIDES-14852": ["Platform"],
+    "GUIDES-14787": ["Integration"],
+    "GUIDES-14767": ["Platform"],
+    "GUIDES-13486": ["Authoring"],
+    "GUIDES-11147": ["Platform"],
+    "GUIDES-11045": ["Platform"],
+    "GUIDES-10463": ["Platform"],
+    "GUIDES-20082": ["Integration"],
+    "GUIDES-17824": ["Integration"],
+    "GUIDES-15062": ["Publishing"],
+    "GUIDES-14741": ["Publishing"],
+    "GUIDES-3740": ["Platform"]
+  }
+}

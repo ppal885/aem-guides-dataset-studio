@@ -4,6 +4,13 @@ import re
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from ac_contract import AC_EXACT_FORMAT, parse_ac_line, validate_ac_sequence
+from performance_contract import QUANTIFIED_VALUE_RE, QUANTIFIED_WORKLOAD_RE
+
 
 SECTIONS = (
     "Understanding From Jira",
@@ -19,18 +26,16 @@ SECTIONS = (
     "Open Questions",
 )
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
-AC_RE = re.compile(r"^- AC-\d{2} \[(Confirmed|Proposed)\]:\s+\S")
-ANY_AC_RE = re.compile(r"^- AC-\d{2} \[([^]]+)\]")
-# Every AC must be a sphere-tagged Given|When|Then contract so a downstream
-# automation-drafting step can parse it deterministically (Sphere->category,
-# Given->fixtures, When->action, Then->assertion) instead of guessing.
-AC_SPHERE_GWT_RE = re.compile(
-    r"^- AC-\d{2} \[(?:Confirmed|Proposed)\]: "
-    r"\((?:Basic|Negative|Integration|Performance)\) "
-    r"Given .+ \| When .+ \| Then .+"
-)
 SCENARIO_RE = re.compile(r"^- P[012]\b")
 AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
+UNDERLYING_SOURCE_RE = re.compile(
+    r"(?i:https?)://|\b[A-Z][A-Z0-9]+-\d+\b|(?i:\b(?:Jira (?:UAC|description|comment)|"
+    r"RAG (?:URL|chunk)|DITA (?:spec|source)|Figma (?:node|frame)|attachment(?: ID)?|"
+    r"source file|commit [0-9a-f]{7,40})\b)|(?i:\b(?:DOC|SPEC|CHUNK|SOURCE):\S+)|[A-Za-z]:[\\/]",
+)
+GRAPH_PATH_ONLY_RE = re.compile(
+    r"(?i)^(?:graph[- ]?)?path(?:\s+id)?(?:\s*[:=]\s*|\s+)\S+$"
+)
 JIRA_RE = re.compile(r"^- (?:[A-Z][A-Z0-9]+-\d+)\b")
 WINDOWS_PATH_RE = re.compile(r"(?<![\w])([A-Za-z]:\\[^`\n;,]+)")
 MOJIBAKE = ("\u00e2\u20ac", "\u00e2\u2030", "\u00c3", "\u00c2", "\ufffd")
@@ -107,37 +112,55 @@ def validate(text: str) -> list[str]:
         r"retry the commit|serialize|path-level lock|reconcil(?:e|ing)|clear(?:ing)? .*node)",
         re.IGNORECASE,
     )
+    parsed_acceptance: list[tuple[int, dict[str, str]]] = []
     for number, line in acceptance:
-        match = ANY_AC_RE.match(line)
-        if not match or not AC_RE.match(line):
-            errors.append(f"line {number}: acceptance criterion must use exact AC-## [Confirmed|Proposed]: syntax")
-            continue
-        if not AC_SPHERE_GWT_RE.match(line):
+        criterion = parse_ac_line(line)
+        if criterion is None:
             errors.append(
-                f"line {number}: acceptance criterion must be sphere-tagged Given|When|Then - "
-                f"`AC-## [Confirmed|Proposed]: (Basic|Negative|Integration|Performance) "
-                f"Given ... | When ... | Then ...` - so the automation-drafting step can parse it"
+                f"line {number}: acceptance criterion must use the exact machine-readable format `{AC_EXACT_FORMAT}`"
             )
-        if native_ac_empty and match.group(1) == "Confirmed":
+            continue
+        parsed_acceptance.append((number, criterion))
+        if criterion["sphere"] == "Performance":
+            if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
+                errors.append(
+                    f"line {number}: Performance Given must define a quantified workload "
+                    "(for example topic count, user count, job count, or iterations)"
+                )
+            if not QUANTIFIED_VALUE_RE.search(criterion["then"]):
+                errors.append(
+                    f"line {number}: Performance Then must define a measurable numeric oracle with units; "
+                    "if no approved threshold exists, keep performance conditional in Open Questions"
+                )
+        if native_ac_empty and criterion["status"] == "Confirmed":
             errors.append(f"line {number}: derived criterion cannot be Confirmed when Jira AC is empty")
         if destructive.search(line):
             errors.append(f"line {number}: destructive operational procedure is not a product acceptance criterion")
         if prescribed.search(line):
             errors.append(f"line {number}: acceptance criterion prescribes an unapproved implementation choice")
+        evidence = criterion["evidence"]
+        if GRAPH_PATH_ONLY_RE.fullmatch(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite the graph leaf's underlying Jira, URL/chunk, "
+                "DITA source, Figma node, attachment, or inspected code - never only a graph path"
+            )
+        elif not UNDERLYING_SOURCE_RE.search(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite an underlying Jira, URL/chunk, DITA source, Figma node, "
+                "attachment, inspected code path, or graph leaf - never only a graph path"
+            )
+    errors.extend(validate_ac_sequence([criterion for _, criterion in parsed_acceptance]))
 
     for number, line in sections["Test Scenarios"]:
         if SCENARIO_RE.match(line) and "Incident recovery validation" not in line and not AC_LINK_RE.search(line):
             errors.append(f"line {number}: P0/P1/P2 scenario is missing an AC mapping")
 
-    defined_acs: set[str] = set()
-    for _, line in acceptance:
-        match = re.match(r"- (AC-\d{2}) \[", line)
-        if match:
-            defined_acs.add(match.group(1))
+    defined_acs = {criterion["id"] for _, criterion in parsed_acceptance}
     scenario_acs: set[str] = set()
     for _, line in sections["Test Scenarios"]:
         for group in AC_LINK_RE.findall(line):
-            scenario_acs.update(re.findall(r"AC-\d{2}", group))
+            linked = set(re.findall(r"AC-\d{2}", group))
+            scenario_acs.update(linked)
     automation_text = "\n".join(line for _, line in sections["Automation Coverage & Gaps"])
     automation_acs = set(re.findall(r"AC-\d{2}", automation_text))
     for ac in sorted(defined_acs):

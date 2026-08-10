@@ -2,9 +2,8 @@
 """Minimal Claude MCP client for VM RAG and local-machine AEM upload.
 
 This client intentionally contains no dataset-studio repo, corpus, ChromaDB,
-or backend app code. It exposes only the team-approved Claude surface:
-`ask_dita_expert` for VM-backed RAG evidence and `upload_dataset_to_aem` for
-uploading files/folders that exist on the teammate's local machine.
+or backend app code. It exposes the team-approved evidence surface through the
+VM `/mcp` gateway plus local-machine AEM upload.
 """
 
 from __future__ import annotations
@@ -123,6 +122,28 @@ async def _safe_post(path: str, body: dict[str, Any]) -> Any:
         return await _post(path, body)
     except Exception as exc:
         return {"error": str(exc), "query": body}
+
+
+async def _remote_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": f"team-wrapper-{name}",
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+    response = await _post("/mcp", payload)
+    if response.get("error"):
+        error = response["error"]
+        raise RuntimeError(str(error.get("message") if isinstance(error, dict) else error))
+    result = response.get("result") or {}
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list) and content:
+        text = str(content[0].get("text") or "") if isinstance(content[0], dict) else str(content[0])
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+    return result
 
 
 def _fmt(result: Any) -> str:
@@ -309,6 +330,49 @@ async def list_tools() -> list[types.Tool]:
             ["question"],
         ),
         _text_tool(
+            "search_jira_history",
+            "Search indexed Jira history directly for same-customer and cross-customer defect evidence.",
+            {
+                "query": {"type": "string"},
+                "component": {
+                    "type": "string",
+                    "enum": ["", "Editor", "Authoring", "Publishing", "Platform", "Schematron", "Integration"],
+                    "default": "",
+                },
+                "customer": {"type": "string", "default": ""},
+                "exclude_jira_key": {"type": "string", "default": ""},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+            },
+            ["query"],
+        ),
+        _text_tool(
+            "query_test_evidence_graph",
+            "Connect direct evidence through the audited graph; path IDs are traceability only and leaf citations are evidence.",
+            {
+                "query": {"type": "string"},
+                "jira_key": {"type": "string", "default": ""},
+                "customer": {"type": "string", "default": ""},
+                "component": {
+                    "type": "string",
+                    "enum": ["", "Editor", "Authoring", "Publishing", "Platform", "Schematron", "Integration"],
+                    "default": "",
+                },
+                "outputs": {"type": "array", "items": {"type": "string"}, "default": []},
+                "dita_entities": {"type": "array", "items": {"type": "string"}, "default": []},
+                "include_cross_customer": {"type": "boolean", "default": True},
+                "max_depth": {"type": "integer", "minimum": 1, "maximum": 2, "default": 2},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
+                "max_paths": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+                "tenant_id": {"type": "string", "default": "kone"},
+            },
+            ["query"],
+        ),
+        _text_tool(
+            "check_rag_status",
+            "Return graph-aware VM RAG readiness and indexed corpus counts through `/mcp`.",
+            {"tenant_id": {"type": "string", "default": "kone"}},
+        ),
+        _text_tool(
             "upload_dataset_to_aem",
             (
                 "Upload a local file or folder from this teammate machine directly to AEM Assets. "
@@ -353,6 +417,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:
+    if name in {"search_jira_history", "query_test_evidence_graph", "check_rag_status"}:
+        return await _remote_mcp_tool(name, args)
+
     if name == "ask_dita_expert":
         question = str(args.get("question") or "").strip()
         if not question:

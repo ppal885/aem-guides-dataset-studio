@@ -7,6 +7,9 @@ This package does **not** contain the full dataset-studio repo, RAG corpus, Chro
 ## What This Package Installs
 
 - MCP tool `ask_dita_expert` for VM-backed RAG knowledge.
+- MCP tool `search_jira_history` for indexed same-customer and cross-customer Jira learning.
+- MCP tool `query_test_evidence_graph` for audited same-mechanism evidence connections with leaf citations.
+- MCP tool `check_rag_status` for graph-aware corpus readiness through Nginx `/mcp`.
 - MCP tool `upload_dataset_to_aem` for direct local-machine upload to AEM Assets.
 - Claude skill `test-plan-generation` for plain-English QA test-plan writing guidance.
 - No slash commands are installed.
@@ -107,6 +110,7 @@ Expected:
 - `aem-guides-dataset-studio` appears in `claude mcp list`.
 - `doctor_claude.sh` shows `exact_minimal_surface: True`.
 - `doctor_claude.sh` shows `ask_dita_expert: True`.
+- `doctor_claude.sh` shows `search_jira_history`, `query_test_evidence_graph`, and `check_rag_status` in the exact local surface.
 - `doctor_claude.sh` shows `upload_dataset_to_aem: True`.
 - `doctor_claude.sh` shows `removed_tools_exposed: []`.
 - `doctor_claude.sh` shows Node.js and `@adobe/aem-upload` as available.
@@ -123,7 +127,11 @@ Ask Claude naturally:
 Use $test-plan-generation to create a test plan for GUIDES-12345. Jira details are: ...
 ```
 
-The skill can use `ask_dita_expert` for RAG-backed product behavior facts. Jira/GitHub evidence must come from user-provided context or separately connected Jira/GitHub MCPs.
+The skill uses `ask_dita_expert` for product behavior, `search_jira_history` for indexed historical tickets, and `query_test_evidence_graph` only after those direct calls. Graph influence defaults to shadow, so graph output is recorded but cannot alter the test plan unless the deployment explicitly enables augment. Mutable Jira facts and GitHub evidence still require live Jira/GitHub connectors or supplied evidence.
+
+Claude keeps the complete eleven-section plan in the Markdown artifact but shows only Acceptance Criteria, Regression Areas, Past Jiras, and Open Questions by default. Acceptance Criteria use the fixed `aem-guides-ac-v1` Given/When/Then contract; `scripts/extract_acs.py` emits the deterministic JSON input for an automation-draft agent.
+
+Every ticket also receives an internal principal-performance-QA review. It never adds a plan section: only a `required` decision emits a quantified Performance AC; unresolved performance risk appears as a QA-impact Open Question.
 
 ## Important Rules
 

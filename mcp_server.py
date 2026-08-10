@@ -232,6 +232,32 @@ def index_jira_issues(jql: str, limit: int = 100) -> str:
         return f"Error indexing issues: {e}"
 
 
+@mcp.tool()
+def search_jira_history(
+    query: str,
+    component: str = "",
+    customer: str = "",
+    exclude_jira_key: str = "",
+    top_k: int = 10,
+) -> str:
+    """Search the indexed Jira corpus for same-mechanism historical defects."""
+    try:
+        from app.api.routes.remote_mcp import _search_jira_history
+
+        result = _search_jira_history(
+            {
+                "query": query,
+                "component": component,
+                "customer": customer,
+                "exclude_jira_key": exclude_jira_key,
+                "top_k": top_k,
+            }
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {e}"}, indent=2)
+
+
 # =============================================================================
 # SECTION 2 — RAG TOOLS (Experience League + DITA Spec)
 # =============================================================================
@@ -243,18 +269,53 @@ def check_rag_status() -> str:
     Always run this first before using RAG query tools.
     """
     try:
-        from backend.app.services.doc_retriever_service import check_rag_readiness
-        status = check_rag_readiness()
-        return f"""
-RAG Status:
-  Experience League (AEM Guides): {'✅ Ready' if status['aem_guides_ready'] else '❌ Not indexed — run crawl_experience_league'}
-  DITA Spec (1.2 / 1.3 PDFs):    {'✅ Ready' if status['dita_spec_ready'] else '❌ Not indexed — run index_dita_spec_pdfs'}
-  Any ready:                       {'✅ Yes' if status['any_ready'] else '❌ No'}
+        from app.api.routes.remote_mcp import _check_rag_status
 
-{status['message']}
-"""
+        return json.dumps(_check_rag_status({"tenant_id": "kone"}), indent=2, ensure_ascii=False, default=str)
     except Exception as e:
         return f"Error checking RAG status: {e}"
+
+
+@mcp.tool()
+def query_test_evidence_graph(
+    query: str,
+    jira_key: str = "",
+    customer: str = "",
+    component: str = "",
+    outputs: list | None = None,
+    dita_entities: list | None = None,
+    include_cross_customer: bool = True,
+    max_depth: int = 2,
+    top_k: int = 10,
+    max_paths: int = 20,
+    tenant_id: str = "kone",
+) -> str:
+    """Connect direct test evidence through the active audited knowledge graph."""
+    try:
+        from app.services.evidence_graph_query_service import query_test_evidence_graph as query_graph
+
+        allow_cross_customer_details = (
+            os.getenv("AEM_STUDIO_TOKEN", "").strip() == "dev-bypass"
+            or os.getenv("EVIDENCE_GRAPH_LOCAL_ADMIN", "false").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        result = query_graph(
+            query,
+            jira_key=jira_key,
+            customer=customer,
+            component=component,
+            outputs=[str(value) for value in (outputs or [])],
+            dita_entities=[str(value) for value in (dita_entities or [])],
+            include_cross_customer=include_cross_customer,
+            max_depth=max_depth,
+            top_k=top_k,
+            max_paths=max_paths,
+            tenant_id=tenant_id,
+            allow_cross_customer_details=allow_cross_customer_details,
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {e}"}, indent=2)
 
 
 @mcp.tool()

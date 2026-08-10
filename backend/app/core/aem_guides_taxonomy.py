@@ -31,6 +31,7 @@ def _fallback_taxonomy() -> dict[str, Any]:
         "defaults": {"keyword_weight": 2.5},
         "customer_detection": {"label_exclude_extras": ["regression", "automation", "qa", "bug", "smoke"]},
         "feature_signals": {
+            "new_editor": ["new editor", "guides ui 2.0", "neweditorphase2"],
             "translation": ["translation", "xliff"],
             "review": ["review", "annotation"],
             "search": ["search", "solr"],

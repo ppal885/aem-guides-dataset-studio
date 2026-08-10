@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from app.core.schemas_test_plan_pipeline import (
     ConfidenceDimension,
@@ -34,6 +36,7 @@ from app.services.guides_test_plan_generator_service import (
 logger = get_structured_logger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_JIRA_KEY_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+")
 _VALIDATOR = (
     _PROJECT_ROOT
     / "claude-skills"
@@ -43,7 +46,10 @@ _VALIDATOR = (
 )
 
 
-def run_test_plan_pipeline(request: TestPlanPipelineRequest) -> TestPlanPipelineResult:
+def run_test_plan_pipeline(
+    request: TestPlanPipelineRequest,
+    user: Any | None = None,
+) -> TestPlanPipelineResult:
     """Run all pipeline stages synchronously and return a structured result."""
     started = time.perf_counter()
     cid = str(uuid.uuid4())
@@ -66,6 +72,10 @@ def run_test_plan_pipeline(request: TestPlanPipelineRequest) -> TestPlanPipeline
         extra_fields={"jira_key": key, "correlation_id": cid},
     )
 
+    roles = {str(role).strip().casefold() for role in getattr(user, "roles", [])}
+    allow_cross_customer_graph_details = bool(
+        getattr(user, "is_admin", False) or "knowledge_reader" in roles
+    )
     packet = build_guides_test_plan_packet(
         key,
         tenant_id=request.tenant_id,
@@ -74,6 +84,9 @@ def run_test_plan_pipeline(request: TestPlanPipelineRequest) -> TestPlanPipeline
         max_repo_matches=request.max_repo_matches,
         skip_uac_label_gate=request.skip_uac_label_gate,
         full_rag=request.full_rag,
+        include_evidence_graph=request.include_evidence_graph,
+        graph_max_paths=request.graph_max_paths,
+        allow_cross_customer_graph_details=allow_cross_customer_graph_details,
     )
     stages.append("rag")
     mark("RETRIEVING_EVIDENCE")
@@ -213,9 +226,19 @@ def run_test_plan_pipeline(request: TestPlanPipelineRequest) -> TestPlanPipeline
         stages.append("publish_team_ui")
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+    evidence_snapshot = packet.get("evidence_snapshot") or {}
+    plan_fingerprint = _plan_fingerprint(
+        key,
+        evidence_snapshot,
+        acceptance_criteria,
+        test_cases,
+        draft_md,
+    )
     result = TestPlanPipelineResult(
         jira_key=key,
         correlation_id=cid,
+        evidence_snapshot_id=str(evidence_snapshot.get("snapshot_id") or ""),
+        plan_fingerprint=plan_fingerprint,
         stages_completed=stages,
         ticket_brief=ticket_brief,
         ticket_workflow=_workflow_summary(workflow),
@@ -385,23 +408,99 @@ def build_evidence_grounded_acceptance_criteria(
 ) -> list[dict[str, Any]]:
     """Produce deterministic UAC rows; never rely on commit-only evidence."""
     uac = uac_intel or {}
-    raw_items = [str(item).strip() for item in (uac.get("acceptance_criteria") or []) if str(item).strip()]
-    if not raw_items and brief.expected_behavior:
-        raw_items = _split_requirement_statements(brief.expected_behavior)
-    if not raw_items:
-        raw_items = ["Clarify expected behaviour before final QE sign-off."]
+    current_contract = (
+        packet.get("current_uac_contract")
+        if isinstance(packet.get("current_uac_contract"), dict)
+        else {}
+    )
+    current_clauses = [
+        clause
+        for clause in current_contract.get("clauses") or []
+        if isinstance(clause, dict)
+        and clause.get("kind") == "in_scope"
+        and str(clause.get("text") or "").strip()
+    ]
+    current_confirmed = bool(current_contract.get("confirmed_ac_eligible"))
+    raw_records: list[dict[str, Any]] = []
+    if current_clauses:
+        raw_records = [
+            {
+                "text": str(clause.get("text") or "").strip(),
+                "source_clause_id": str(clause.get("source_id") or ""),
+                "citation": str(clause.get("citation") or ""),
+                "source_snapshot_id": str(current_contract.get("source_snapshot_id") or ""),
+                "current_ticket": True,
+            }
+            for clause in current_clauses
+        ]
+    else:
+        raw_items = [
+            str(item).strip()
+            for item in (uac.get("acceptance_criteria") or [])
+            if str(item).strip()
+        ]
+        if not raw_items and brief.expected_behavior:
+            raw_items = _split_requirement_statements(brief.expected_behavior)
+        if not raw_items:
+            raw_items = ["Clarify expected behaviour before final QE sign-off."]
+        raw_records = [{"text": item, "current_ticket": False} for item in raw_items[:8]]
 
     refs = _collect_evidence_refs(packet)
     authoritative_refs = [
         ref for ref in refs if ref.startswith(("JIRA:", "DOC:", "SPEC:", "PRE-UAC:"))
     ] or refs[:3]
     criteria: list[dict[str, Any]] = []
-    for idx, item in enumerate(raw_items[:8], 1):
-        needs_clarification = "clarify" in item.lower() or not brief.expected_behavior
+    for idx, record in enumerate(raw_records, 1):
+        item = str(record.get("text") or "").strip()
+        is_current_clause = bool(record.get("current_ticket"))
+        confirmed = bool(is_current_clause and current_confirmed)
+        needs_clarification = "clarify" in item.lower() or (
+            not confirmed and not brief.expected_behavior
+        )
         category = _classify_requirement_category(item, brief)
+        evidence_refs = (
+            [str(record.get("citation"))]
+            if record.get("citation")
+            else authoritative_refs[:4]
+            or [f"JIRA:{brief.jira_key}:description"]
+        )
+        source_snapshot_ids = (
+            [str(record.get("source_snapshot_id"))]
+            if record.get("source_snapshot_id")
+            else [
+                "derived:"
+                + hashlib.sha256(
+                    json.dumps(
+                        {"jira_key": brief.jira_key, "text": item, "evidence_refs": evidence_refs},
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+            ]
+        )
+        status = "Confirmed" if confirmed else "Proposed"
+        sphere = _acceptance_sphere(item, category)
+        derivation = (
+            "TICKET_CONFIRMED"
+            if confirmed
+            else "HUMAN_CLARIFICATION_REQUIRED"
+            if needs_clarification
+            else "REASONABLE_ASSUMPTION"
+        )
+        fingerprint_payload = {
+            "schema_version": "aem-guides-ac-v1",
+            "jira_key": brief.jira_key,
+            "status": status,
+            "sphere": sphere,
+            "text": item,
+            "source_snapshot_ids": source_snapshot_ids,
+            "source_clause_id": str(record.get("source_clause_id") or ""),
+        }
         criteria.append(
             {
+                "schema_version": "aem-guides-ac-v1",
                 "uac_id": f"UAC-{idx:02d}",
+                "status": status,
+                "sphere": sphere,
                 "behaviour_statement": item,
                 "given": _given_for_brief(brief),
                 "when": _when_for_brief(brief),
@@ -409,21 +508,26 @@ def build_evidence_grounded_acceptance_criteria(
                 "priority": "P0" if idx == 1 else "P1",
                 "requirement_category": category,
                 "classification": _case_classification(item),
-                "evidence_refs": authoritative_refs[:4],
-                "derivation_classification": (
-                    "HUMAN_CLARIFICATION_REQUIRED"
-                    if needs_clarification
-                    else "TICKET_CONFIRMED"
-                    if brief.expected_behavior
-                    else "REASONABLE_ASSUMPTION"
-                ),
-                "confidence": 35 if needs_clarification else 82 if authoritative_refs else 60,
-                "assumptions": [] if brief.expected_behavior else ["Expected behaviour not explicit in Jira."],
+                "evidence_refs": evidence_refs,
+                "source_snapshot_ids": source_snapshot_ids,
+                "source_clause_id": str(record.get("source_clause_id") or ""),
+                "derivation_classification": derivation,
+                "confidence": 92 if confirmed else 35 if needs_clarification else 65,
+                "assumptions": [] if confirmed else ["Criterion requires current-ticket human approval."],
                 "open_question": (
                     _first_open_question(brief, packet)
                     if needs_clarification
                     else ""
                 ),
+                "automation_consumption": "blocked",
+                "automation_block_reason": (
+                    "Canonical Given/When/Then must be reviewed and exported by extract_acs.py before automation-draft handoff."
+                    if confirmed
+                    else "Proposed criteria require current-ticket approval before automation-draft handoff."
+                ),
+                "fingerprint": hashlib.sha256(
+                    json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest(),
             }
         )
     if pre_uac and pre_uac.known_product_behavior:
@@ -575,8 +679,17 @@ def score_pipeline_readiness(
     if el_count == 0:
         warnings.append("No Experience League documentation hits.")
 
+    graph = packet.get("evidence_graph") or {}
+    graph_status_value = str(graph.get("status") or "").lower()
+    if packet.get("include_evidence_graph") and not graph.get("available"):
+        warnings.append(
+            "Evidence graph unavailable; continuing in degraded mode with direct Jira, documentation, DITA, and repository evidence."
+        )
+    elif graph_status_value == "degraded":
+        warnings.append("Evidence graph is degraded; validate leaf sources directly before using connected findings.")
+
     uac = uac_intel or {}
-    similar_count = len(uac.get("similar_jira_evidence") or [])
+    similar_count = len(_combined_historical_jira_evidence(packet, uac))
     breakdown.similar_jiras = min(15, similar_count * 5)
     if similar_count == 0:
         warnings.append("No similar historical Jira evidence.")
@@ -726,7 +839,7 @@ def compose_draft_test_plan(
     seeds = packet.get("planning_seeds") or {}
     uac = uac_intel or {}
     acceptance = list(uac.get("acceptance_criteria") or [])
-    similar = list(uac.get("similar_jira_evidence") or [])[:5]
+    similar = _combined_historical_jira_evidence(packet, uac)[:5]
     test_areas = list(seeds.get("test_area_seed") or [])[:8]
     blast = list(seeds.get("blast_radius_seed") or [])[:6]
     risks = list(seeds.get("regression_risk_seed") or [])[:6]
@@ -763,11 +876,30 @@ def compose_draft_test_plan(
     step_lines = build_step_lines(scenarios, brief)
     ac_lines = build_ac_lines(acceptance, brief, workflow, scenarios)
     eb_lines = build_eb_lines(brief, uac, workflow, pre_uac)
+    if _graph_can_influence(packet):
+        for item in (packet.get("evidence_graph") or {}).get("documented_behaviors") or []:
+            behavior = str(item.get("behavior") or "").strip()
+            if not behavior or item.get("trust_tier") == "candidate":
+                continue
+            citations = [
+                str(citation.get("source_ref") or citation.get("source_record_id") or "")
+                for citation in (item.get("leaf_citations") or [])
+                if citation.get("source_ref") or citation.get("source_record_id")
+            ]
+            eb_lines.append(
+                f"- Documented reference: {behavior[:500]}"
+                + (f" (source: {citations[0]})" if citations else "")
+            )
     impact_rows = build_blast_rows(blast, scenarios, workflow, pre_uac, brief)
     risk_rows = build_risk_rows(risks, scenarios, workflow, pre_uac)
     hypothesis_rows = build_hypothesis_rows(hypotheses, scenarios, workflow, pre_uac)
     historical_rows = build_historical_rows(similar, key)
     regression_bullets = build_regression_bullets(workflow, pre_uac, brief)
+    if _graph_can_influence(packet):
+        for item in (packet.get("evidence_graph") or {}).get("regression_signals") or []:
+            signal = str(item.get("signal") or "").strip()
+            if signal and signal not in regression_bullets:
+                regression_bullets.append(signal[:500])
 
     repo_status = str(packet.get("repo_evidence_status") or "unknown")
     diff_summary = str((packet.get("implementation_diff_evidence") or {}).get("summary_line") or "unknown")
@@ -1039,6 +1171,7 @@ def build_qe_review_package(
         "revision_history": [],
         "ticket_analysis": ticket_analysis,
         "evidence_snapshot": {
+            "immutable_snapshot": packet.get("evidence_snapshot") or {},
             "rag_packet_summary": summarize_rag_packet(packet),
             "repository_evidence_status": packet.get("repo_evidence_status"),
             "diff_evidence_status": packet.get("diff_evidence_status"),
@@ -1062,6 +1195,26 @@ def build_qe_review_package(
         "validation": validation or {},
         "traceability": coverage_matrix,
     }
+
+
+def _plan_fingerprint(
+    jira_key: str,
+    evidence_snapshot: dict[str, Any],
+    acceptance_criteria: list[dict[str, Any]],
+    test_cases: list[dict[str, Any]],
+    draft_markdown: str | None,
+) -> str:
+    payload = {
+        "schema_version": "test-plan-fingerprint-v1",
+        "jira_key": jira_key,
+        "evidence_snapshot_id": evidence_snapshot.get("snapshot_id") or "",
+        "acceptance_criteria": [row.get("fingerprint") for row in acceptance_criteria],
+        "test_cases": test_cases,
+        "draft_sha256": hashlib.sha256((draft_markdown or "").encode("utf-8")).hexdigest(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def build_qe_handoff(
@@ -1138,11 +1291,13 @@ def build_qe_handoff(
 
 
 def summarize_rag_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    graph = packet.get("evidence_graph") or {}
     return {
         "generation_mode": packet.get("generation_mode"),
         "mcp_fast_mode": packet.get("mcp_fast_mode"),
         "repo_evidence_status": packet.get("repo_evidence_status"),
         "diff_evidence_status": packet.get("diff_evidence_status"),
+        "evidence_snapshot": packet.get("evidence_snapshot") or {},
         "experience_league_hits": len(packet.get("experience_league_evidence") or []),
         "learned_behavior_available": bool((packet.get("learned_behavior_evidence") or {}).get("available")),
         "planning_seed_counts": {
@@ -1155,6 +1310,25 @@ def summarize_rag_packet(packet: dict[str, Any]) -> dict[str, Any]:
             )
         },
         "uac_label_gate": packet.get("uac_label_gate"),
+        "evidence_graph": {
+            "status": graph.get("status"),
+            "available": bool(graph.get("available")),
+            "influence_mode": packet.get("evidence_graph_influence_mode", "shadow"),
+            "used_for_plan": _graph_can_influence(packet),
+            "generation_id": (graph.get("generation") or {}).get("id"),
+            "path_count": len(graph.get("evidence_paths") or []),
+            "leaf_citation_count": len(
+                {
+                    citation.get("leaf_id")
+                    for path in (graph.get("evidence_paths") or [])
+                    for citation in (path.get("leaf_citations") or [])
+                    if citation.get("leaf_id")
+                }
+            ),
+            "coverage_gaps": list(graph.get("coverage_gaps") or [])[:10],
+            "query_runtime": graph.get("query_runtime") or {},
+            "evaluation": packet.get("evidence_graph_evaluation") or {},
+        },
     }
 
 
@@ -1358,8 +1532,20 @@ def _fallback_uac_from_packet(packet: dict[str, Any]) -> dict[str, Any]:
 
     similar = []
     for item in (packet.get("planning_seeds") or {}).get("regression_risk_seed") or []:
-        if isinstance(item, dict) and item.get("id"):
-            similar.append({"jira_key": str(item.get("id")), "why_similar": str(item.get("rationale") or "")[:120]})
+        candidate_key = str(item.get("id") or "").strip().upper() if isinstance(item, dict) else ""
+        if _JIRA_KEY_RE.fullmatch(candidate_key):
+            similar.append(
+                {
+                    "jira_key": candidate_key,
+                    "why_similar": str(item.get("rationale") or "")[:120],
+                    "evidence_origin": "planning_seed",
+                    "evidence_refs": [f"JIRA:{candidate_key}"],
+                }
+            )
+    similar = _combined_historical_jira_evidence(
+        packet,
+        {"similar_jira_evidence": similar},
+    )
 
     clarity = 0.85 if expected else 0.35
     return {
@@ -1582,29 +1768,221 @@ def _first_open_question(brief: TicketBrief, packet: dict[str, Any]) -> str:
     return questions[0] if questions else ""
 
 
+def _graph_can_influence(packet: dict[str, Any]) -> bool:
+    if str(packet.get("evidence_graph_influence_mode") or "shadow").strip().lower() != "augment":
+        return False
+    evaluation = packet.get("evidence_graph_evaluation") or {}
+    if evaluation and not bool(evaluation.get("used_for_plan")):
+        return False
+    return bool((packet.get("evidence_graph") or {}).get("available"))
+
+
 def _collect_evidence_refs(packet: dict[str, Any]) -> list[str]:
     refs: list[str] = []
     key = str(packet.get("jira_key") or (packet.get("issue") or {}).get("issue_key") or "")
     if key:
         refs.append(f"JIRA:{key}")
-    for idx, doc in enumerate(packet.get("experience_league_evidence") or [], 1):
+    for doc in packet.get("experience_league_evidence") or []:
         url = doc.get("source_url") or doc.get("canonical_url") or doc.get("url")
         if url:
-            refs.append(f"DOC:E{idx}:{url}")
-    for idx, doc in enumerate((packet.get("learned_behavior_evidence") or {}).get("results") or [], 1):
+            refs.append(f"DOC:{_canonical_url(str(url))}")
+    for doc in (packet.get("learned_behavior_evidence") or {}).get("results") or []:
         url = doc.get("source_url") or doc.get("canonical_url") or doc.get("url")
         if url:
-            refs.append(f"DOC:LB{idx}:{url}")
-    for idx, doc in enumerate(packet.get("dita_spec_evidence") or [], 1):
+            refs.append(f"DOC:{_canonical_url(str(url))}")
+    for doc in packet.get("dita_spec_evidence") or []:
         url = doc.get("url") or doc.get("source_url")
-        refs.append(f"SPEC:D{idx}:{url or doc.get('title', '')}")
+        stable_source = _canonical_url(str(url)) if url else str(doc.get("chunk_id") or doc.get("title") or "")
+        if stable_source:
+            refs.append(f"SPEC:{stable_source}")
     repo = packet.get("repository_evidence") or {}
     for repo_row in repo.get("repositories") or []:
         for match in (repo_row.get("matches") or [])[:3]:
             path = match.get("path")
             if path:
                 refs.append(f"REPO:{repo_row.get('id')}:{path}:{match.get('line', '')}")
+    if _graph_can_influence(packet):
+        for path in (packet.get("evidence_graph") or {}).get("evidence_paths") or []:
+            for citation in path.get("leaf_citations") or []:
+                if citation.get("trust_tier") == "candidate":
+                    continue
+                evidence_ref = _citation_evidence_ref(citation)
+                if evidence_ref:
+                    refs.append(evidence_ref)
     return list(dict.fromkeys(refs))
+
+
+def _canonical_url(value: str) -> str:
+    text = str(value or "").strip()
+    if not text.startswith(("http://", "https://")):
+        return text
+    parsed = urlsplit(text)
+    normalized_path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), normalized_path, parsed.query, ""))
+
+
+def _citation_evidence_ref(citation: dict[str, Any]) -> str:
+    source_ref = str(citation.get("source_ref") or "").strip()
+    source_kind = str(citation.get("source_type") or "").strip()
+    source_chunk = str(citation.get("source_chunk_id") or "").strip()
+    source_record = str(citation.get("source_record_id") or "").strip()
+    if _JIRA_KEY_RE.fullmatch(source_ref.upper()):
+        return f"JIRA:{source_ref.upper()}"
+    if source_ref.startswith(("http://", "https://")):
+        prefix = "SPEC" if source_kind.startswith("dita_spec") else "DOC"
+        return f"{prefix}:{_canonical_url(source_ref)}"
+    if source_chunk:
+        return f"CHUNK:{source_kind}:{source_chunk}"
+    if source_record:
+        return f"SOURCE:{source_kind}:{source_record}"
+    return ""
+
+
+def _combined_historical_jira_evidence(
+    packet: dict[str, Any],
+    uac_intel: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    current_key = str(packet.get("jira_key") or "").strip().upper()
+    issue = packet.get("issue") if isinstance(packet.get("issue"), dict) else {}
+    current_query = "\n".join(
+        str(value or "")
+        for value in (
+            current_key,
+            issue.get("summary"),
+            issue.get("description"),
+            issue.get("actual_behavior"),
+            issue.get("expected_behavior"),
+        )
+        if str(value or "").strip()
+    )
+    candidates: list[dict[str, Any]] = []
+    for item in (uac_intel or {}).get("similar_jira_evidence") or []:
+        if isinstance(item, dict):
+            candidates.append({**item, "evidence_origin": item.get("evidence_origin") or "uac_intelligence"})
+    searches = packet.get("jira_history_searches") or {}
+    for scope in ("same_customer", "cross_customer"):
+        for item in (searches.get(scope) or {}).get("results") or []:
+            if isinstance(item, dict):
+                candidates.append(
+                    {
+                        **item,
+                        "search_scope": scope,
+                        "evidence_origin": "search_jira_history",
+                    }
+                )
+    if _graph_can_influence(packet):
+        for item in (packet.get("evidence_graph") or {}).get("same_mechanism_jira_history") or []:
+            if not isinstance(item, dict):
+                continue
+            graph_refs = [
+                ref
+                for ref in (_citation_evidence_ref(citation) for citation in item.get("leaf_citations") or [])
+                if ref
+            ]
+            candidates.append(
+                {
+                    **item,
+                    "why_similar": item.get("why_similar")
+                    or "Shared mechanism: " + ", ".join(item.get("shared_mechanisms") or []),
+                    "evidence_origin": "evidence_graph",
+                    "evidence_refs": graph_refs,
+                }
+            )
+
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    pending_unqualified_origins: dict[str, list[dict[str, Any]]] = {}
+    for item in candidates:
+        jira_key = str(item.get("jira_key") or "").strip().upper()
+        if not _JIRA_KEY_RE.fullmatch(jira_key) or jira_key == current_key:
+            continue
+        match_contract = item.get("historical_match")
+        if not isinstance(match_contract, dict) or "qualified" not in match_contract:
+            if (
+                item.get("evidence_origin") == "evidence_graph"
+                and item.get("shared_mechanisms")
+                and item.get("leaf_citations")
+            ):
+                match_contract = {
+                    "schema_version": "jira-history-match-v1",
+                    "qualified": True,
+                    "strength": "structural",
+                    "mechanism_score": 0.9,
+                    "shared_mechanisms": list(item.get("shared_mechanisms") or []),
+                    "area_only_rejected": False,
+                    "domain_is_ranking_only": True,
+                    "customer_component_are_ranking_only": True,
+                    "reason": "Evidence graph already enforced its deterministic same-mechanism path rule.",
+                }
+            else:
+                from app.services.jira_history_match_service import build_historical_match_contract
+
+                match_contract = build_historical_match_contract(current_query, item)
+            item = {**item, "historical_match": match_contract}
+        if not match_contract.get("qualified"):
+            pending_unqualified_origins.setdefault(jira_key, []).append(item)
+            if jira_key in merged:
+                origin = str(item.get("evidence_origin") or "unknown")
+                merged[jira_key]["evidence_origins"] = list(
+                    dict.fromkeys([*(merged[jira_key].get("evidence_origins") or []), origin])
+                )
+            continue
+        version_contract = item.get("version_applicability")
+        if not isinstance(version_contract, dict) or not version_contract.get("schema_version"):
+            from app.services.jira_version_applicability_service import classify_version_applicability
+
+            version_contract = classify_version_applicability(
+                current_affected_versions=issue.get("affected_versions"),
+                current_fix_versions=issue.get("fix_versions"),
+                historical_affected_versions=item.get("affected_versions"),
+                historical_fix_versions=item.get("fix_versions"),
+            )
+            item = {**item, "version_applicability": version_contract}
+        evidence_refs = [str(ref) for ref in item.get("evidence_refs") or [] if str(ref).strip()]
+        evidence_refs.append(f"JIRA:{jira_key}")
+        origin = str(item.get("evidence_origin") or "unknown")
+        if jira_key not in merged:
+            pending = pending_unqualified_origins.pop(jira_key, [])
+            pending_origins = [
+                str(row.get("evidence_origin") or "unknown") for row in pending
+            ]
+            pending_refs = [
+                str(ref)
+                for row in pending
+                for ref in row.get("evidence_refs") or []
+                if str(ref).strip()
+            ]
+            merged[jira_key] = {
+                **item,
+                "jira_key": jira_key,
+                "evidence_origins": list(dict.fromkeys([*pending_origins, origin])),
+                "evidence_refs": list(dict.fromkeys([*pending_refs, *evidence_refs])),
+            }
+            order.append(jira_key)
+            continue
+        existing = merged[jira_key]
+        existing["evidence_origins"] = list(
+            dict.fromkeys([*(existing.get("evidence_origins") or []), origin])
+        )
+        existing["evidence_refs"] = list(
+            dict.fromkeys([*(existing.get("evidence_refs") or []), *evidence_refs])
+        )
+        for field in (
+            "summary",
+            "why_similar",
+            "root_cause",
+            "qa_oracle",
+            "historical_outcome",
+            "historical_match",
+            "historical_uac_contract",
+            "version_applicability",
+            "evidence_snapshot_id",
+            "mutable_facts",
+            "is_verified_fix",
+        ):
+            if not existing.get(field) and item.get(field):
+                existing[field] = item[field]
+    return [merged[jira_key] for jira_key in order]
 
 
 def _classify_requirement_category(text: str, brief: TicketBrief) -> str:
@@ -1627,6 +2005,17 @@ def _case_classification(text: str) -> str:
     if any(token in lowered for token in ("large", "boundary", "limit", "600", "%")):
         return "boundary/scale"
     return "positive"
+
+
+def _acceptance_sphere(text: str, category: str) -> str:
+    lowered = f"{text} {category}".casefold()
+    if "performance" in lowered or "scale" in lowered:
+        return "Performance"
+    if any(token in lowered for token in ("must not", "should not", "invalid", "missing", "broken", "error")):
+        return "Negative"
+    if any(token in lowered for token in ("api", "publishing", "translation", "integration", "output")):
+        return "Integration"
+    return "Basic"
 
 
 def _given_for_brief(brief: TicketBrief) -> str:
