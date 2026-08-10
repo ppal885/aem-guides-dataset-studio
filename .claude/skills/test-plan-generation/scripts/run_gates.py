@@ -5,9 +5,10 @@ simply not invoking a check: the evidence manifest is REQUIRED, and the manifest
 plus the combined plan+appendix are audited together.
 
 It runs, in order:
-  1. Manifest presence + completeness, including separate tool evidence for
-     ask_dita_expert product-documentation probes, search_jira_history queries,
-     and the internal principal-performance-QA assessment.
+  1. Manifest presence + completeness, including the five-source availability
+     preflight and separate tool evidence for ask_dita_expert product-documentation
+     probes, search_jira_history queries, evidence-graph provenance, and the
+     internal principal-performance-QA assessment.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
   3. Deterministic rendering of the four-section chat/UI projection
@@ -434,6 +435,7 @@ def _validate_preflight_plan_alignment(data: dict, plan_text: str) -> list[str]:
             )
     return failures
 
+
 def _validate_dual_source_evidence(data: dict) -> list[str]:
     failures: list[str] = []
     if data.get("rag_tool") != "ask_dita_expert":
@@ -509,20 +511,25 @@ def check_manifest_completeness(path: str | None) -> list[str]:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [f"evidence manifest missing or invalid JSON: {exc}"]
+    if not isinstance(data, dict):
+        return ["evidence manifest must be a JSON object"]
     failures: list[str] = []
     for key in REQUIRED_MANIFEST_KEYS:
         if key not in data:
             failures.append(
                 f"manifest is missing required key '{key}' - every plan must declare "
-                f"both RAG tool paths, their queries, attachments, and clone state"
+                f"preflight status, both RAG tool paths, their queries, attachments, and clone state"
             )
-    failures.extend(_validate_dual_source_evidence(data))
     failures.extend(_validate_evidence_preflight(data))
+    failures.extend(_validate_dual_source_evidence(data))
     failures.extend(graph_manifest_mod.validate_evidence_graph_manifest(data))
     failures.extend(performance_mod.validate_performance_assessment(data))
     clones = data.get("clones")
     if isinstance(clones, list):
-        for entry in clones:
+        for index, entry in enumerate(clones):
+            if not isinstance(entry, dict):
+                failures.append(f"manifest clones[{index}] must be an object")
+                continue
             ident = entry.get("path", "?")
             synced_with_sha = bool(entry.get("synced")) and bool(entry.get("sha"))
             provisional = bool(entry.get("provisional")) and bool(entry.get("note"))
@@ -549,16 +556,17 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     if manifest_path and Path(manifest_path).is_file():
         try:
             manifest_data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             manifest_data = {}
-        failures += [
-            f"[performance] {problem}"
-            for problem in performance_mod.validate_plan_alignment(manifest_data, body)
-        ]
-        failures += [
-            f"[preflight] {problem}"
-            for problem in _validate_preflight_plan_alignment(manifest_data, body)
-        ]
+        if isinstance(manifest_data, dict):
+            failures += [
+                f"[performance] {problem}"
+                for problem in performance_mod.validate_plan_alignment(manifest_data, body)
+            ]
+            failures += [
+                f"[preflight] {problem}"
+                for problem in _validate_preflight_plan_alignment(manifest_data, body)
+            ]
     compact, compact_problems = compact_mod.project(body)
     failures += [f"[compact-view] {problem}" for problem in compact_problems]
     if compact:

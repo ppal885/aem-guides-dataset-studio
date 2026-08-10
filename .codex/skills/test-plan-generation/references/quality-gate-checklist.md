@@ -12,6 +12,10 @@ Use this before calling a test plan review-ready.
 
 ## Evidence Gate
 
+- The manifest contains a timezone-aware `evidence_preflight` for exactly `product_rag`, `jira_history`, `live_jira`, `git`, and `figma`; each status comes from an actual check, not assumed configuration.
+- Preflight mode is derived correctly: any unavailable source means `degraded`, degraded mode has concrete claim restrictions, and readiness impact is lifecycle-aware rather than globally blocking unrelated claims.
+- `Evidence boundary` starts with the manifest's `Evidence mode: full` or `Evidence mode: degraded`; degraded plans name every unavailable source and what remains unverified.
+- Source-specific restrictions are enforced: no unsupported RAG behavior, historical-no-match, live mutable Jira, current/diff Git, or exact Figma design claims survive when their source is unavailable.
 - `Understanding From Jira` appears first and contains the five required confidence-check bullets: issue, impact, requested outcome, lifecycle, and evidence boundary.
 - The Jira understanding is a faithful plain-English synthesis of live Jira or supplied issue evidence; it does not invent code changes, root cause, acceptance, or implementation.
 - `Why it matters` states canonical customer context and its Jira field/label source; multiple customers remain separate and material conflicts remain visible.

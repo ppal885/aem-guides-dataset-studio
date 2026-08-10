@@ -485,6 +485,43 @@ def test_attachment_manifest() -> None:
         check("one probe passes when behaviour_matters is false", failures == [])
 
 
+def _full_preflight() -> dict:
+    return {
+        "mode": "full",
+        "checked_at": "2026-08-08T15:30:00+05:30",
+        "sources": {
+            "product_rag": {
+                "status": "available",
+                "checked_via": "check_rag_status call and ask_dita_expert probes succeeded",
+                "reason": "",
+            },
+            "jira_history": {
+                "status": "available",
+                "checked_via": "search_jira_history queries succeeded",
+                "reason": "",
+            },
+            "live_jira": {
+                "status": "available",
+                "checked_via": "Jira issue fetch succeeded",
+                "reason": "",
+            },
+            "git": {
+                "status": "available",
+                "checked_via": "local backend clone inspected after sync",
+                "reason": "",
+            },
+            "figma": {
+                "status": "not_applicable",
+                "checked_via": "input inspection",
+                "reason": "No design evidence is supplied or required.",
+            },
+        },
+        "readiness_impact": "none",
+        "readiness_impact_reason": "",
+        "claim_restrictions": [],
+    }
+
+
 def test_run_gates() -> None:
     import json
 
@@ -501,40 +538,7 @@ def test_run_gates() -> None:
         dual_source = {
             "issue": "X",
             "attachments": [],
-            "evidence_preflight": {
-                "mode": "full",
-                "checked_at": "2026-08-08T15:30:00+00:00",
-                "sources": {
-                    "product_rag": {
-                        "status": "available",
-                        "checked_via": "ask_dita_expert query returned evidence",
-                        "reason": "",
-                    },
-                    "jira_history": {
-                        "status": "available",
-                        "checked_via": "search_jira_history search returned evidence",
-                        "reason": "",
-                    },
-                    "live_jira": {
-                        "status": "available",
-                        "checked_via": "Jira issue fetch returned issue data",
-                        "reason": "",
-                    },
-                    "git": {
-                        "status": "available",
-                        "checked_via": "Git repository inspected at a verified commit",
-                        "reason": "",
-                    },
-                    "figma": {
-                        "status": "not_applicable",
-                        "checked_via": "Figma relevance inspection completed",
-                        "reason": "No design evidence is relevant to this non-UI fixture.",
-                    },
-                },
-                "claim_restrictions": [],
-                "readiness_impact": "none",
-                "readiness_impact_reason": "",
-            },
+            "evidence_preflight": _full_preflight(),
             "rag_tool": "ask_dita_expert",
             "rag_probes": ["a", "b", "c"],
             "jira_history_tool": "search_jira_history",
@@ -1008,8 +1012,6 @@ def test_run_gates() -> None:
             "post-fix validation is blocked when Git fix evidence is unavailable",
             any("blocked readiness impact" in failure for failure in failures),
         )
-
-
 
 def test_extract_acs() -> None:
     extract_mod = _load("extract_acs", "extract_acs.py")
