@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TestPlanPipelineRequest(BaseModel):
@@ -142,12 +142,63 @@ class PipelineStateTransition(BaseModel):
     elapsed_ms: int | None = None
 
 
+class AcceptanceCriterionContract(BaseModel):
+    """Stable machine contract; chat prose is never an automation-agent input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["aem-guides-ac-v1"] = "aem-guides-ac-v1"
+    uac_id: str = Field(pattern=r"^UAC-\d{2,3}$")
+    status: Literal["Confirmed", "Proposed"]
+    sphere: Literal["Basic", "Negative", "Integration", "Performance"]
+    behaviour_statement: str = Field(min_length=1, max_length=2000)
+    given: str = Field(min_length=1, max_length=2000)
+    when: str = Field(min_length=1, max_length=2000)
+    then: str = Field(min_length=1, max_length=2000)
+    priority: Literal["P0", "P1", "P2"]
+    requirement_category: str
+    classification: str
+    evidence_refs: list[str] = Field(min_length=1)
+    source_snapshot_ids: list[str] = Field(min_length=1)
+    source_clause_id: str = ""
+    derivation_classification: Literal[
+        "TICKET_CONFIRMED",
+        "REASONABLE_ASSUMPTION",
+        "HUMAN_CLARIFICATION_REQUIRED",
+    ]
+    confidence: int = Field(ge=0, le=100)
+    assumptions: list[str] = Field(default_factory=list)
+    open_question: str = ""
+    automation_consumption: Literal["approved", "blocked"] = "blocked"
+    automation_block_reason: str = ""
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def validate_authority(self) -> "AcceptanceCriterionContract":
+        if any(ref.casefold().startswith("graph:") for ref in self.evidence_refs):
+            raise ValueError("graph path IDs cannot be AC evidence")
+        if self.status == "Confirmed":
+            if self.derivation_classification != "TICKET_CONFIRMED":
+                raise ValueError("Confirmed AC requires current-ticket confirmation")
+            if not self.source_clause_id.startswith("UAC-"):
+                raise ValueError("Confirmed AC requires a current Jira UAC clause ID")
+            if not any(snapshot.startswith("jira:") and ":current-uac:" in snapshot for snapshot in self.source_snapshot_ids):
+                raise ValueError("Confirmed AC requires a current Jira UAC snapshot")
+        if self.status == "Proposed" and self.automation_consumption == "approved":
+            raise ValueError("Proposed AC cannot be consumed by automation without human approval")
+        if self.automation_consumption == "blocked" and not self.automation_block_reason:
+            raise ValueError("blocked automation consumption requires a reason")
+        return self
+
+
 class TestPlanPipelineResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workflow: str = "test-plan-pipeline"
     jira_key: str
     correlation_id: str
+    evidence_snapshot_id: str = ""
+    plan_fingerprint: str = Field(default="", pattern=r"^$|^[a-f0-9]{64}$")
     stages_completed: list[str] = Field(default_factory=list)
     ticket_brief: TicketBrief
     ticket_workflow: TicketWorkflowProfileSummary | None = None
@@ -167,3 +218,12 @@ class TestPlanPipelineResult(BaseModel):
     state_history: list[PipelineStateTransition] = Field(default_factory=list)
     artifacts_written: list[str] = Field(default_factory=list)
     elapsed_ms: int = 0
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def validate_acceptance_criteria_contracts(
+        cls, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        for row in rows:
+            AcceptanceCriterionContract.model_validate(row)
+        return rows

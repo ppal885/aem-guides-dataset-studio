@@ -15,6 +15,7 @@ import os
 import asyncio
 import importlib.util
 import shutil
+import sys
 from pathlib import Path
 
 import httpx
@@ -39,6 +40,52 @@ if not node_path:
 print("aem_upload.node_module:", Path("node_modules/@adobe/aem-upload").exists())
 if not Path("node_modules/@adobe/aem-upload").exists():
     raise SystemExit("@adobe/aem-upload missing; rerun setup/install")
+
+skill_root = Path(".claude/skills/test-plan-generation")
+required_skill_files = [
+    skill_root / "SKILL.md",
+    skill_root / "scripts/ac_contract.py",
+    skill_root / "scripts/extract_acs.py",
+    skill_root / "scripts/performance_contract.py",
+    skill_root / "scripts/render_compact_view.py",
+    skill_root / "references/performance-assessment-contract.md",
+    skill_root / "references/golden-benchmark.md",
+]
+missing_skill_files = [str(path) for path in required_skill_files if not path.is_file()]
+if missing_skill_files:
+    raise SystemExit(f"Missing test-plan skill contract files: {missing_skill_files}")
+skill_text = required_skill_files[0].read_text(encoding="utf-8")
+required_markers = (
+    "aem-guides-ac-v1",
+    "aem-guides-performance-assessment-v1",
+    "Performance Analysis",
+    "Acceptance Criteria",
+    "Regression Areas",
+    "Past Jiras",
+    "Open Questions",
+    "golden-benchmark.md",
+)
+missing_markers = [marker for marker in required_markers if marker not in skill_text]
+if missing_markers:
+    raise SystemExit(f"Missing test-plan skill contract markers: {missing_markers}")
+sys.path.insert(0, str((skill_root / "scripts").resolve()))
+from ac_contract import AC_SCHEMA_VERSION
+from performance_contract import PERFORMANCE_SCHEMA_VERSION
+from render_compact_view import SOURCE_SECTIONS
+
+if AC_SCHEMA_VERSION != "aem-guides-ac-v1":
+    raise SystemExit(f"Unexpected AC schema: {AC_SCHEMA_VERSION}")
+if PERFORMANCE_SCHEMA_VERSION != "aem-guides-performance-assessment-v1":
+    raise SystemExit(f"Unexpected performance schema: {PERFORMANCE_SCHEMA_VERSION}")
+if SOURCE_SECTIONS != (
+    "Acceptance Criteria",
+    "Regression Areas",
+    "Known Jira Bugs / Past Similar Tickets",
+    "Open Questions",
+):
+    raise SystemExit(f"Unexpected compact UI source sections: {SOURCE_SECTIONS}")
+print("test_plan_skill.contract:", AC_SCHEMA_VERSION)
+print("test_plan_skill.performance_contract:", PERFORMANCE_SCHEMA_VERSION)
 
 def rpc(client, method, params):
     response = client.post(

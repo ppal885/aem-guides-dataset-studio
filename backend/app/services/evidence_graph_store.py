@@ -39,6 +39,7 @@ from app.services.evidence_graph_contract import (
     NodeSpec,
     contains_sensitive_text,
     deterministic_id,
+    relation_endpoint_allowed,
     sanitize_excerpt,
     sanitize_structured_properties,
 )
@@ -51,6 +52,7 @@ class GraphWriter:
         self.session = session
         self.generation_id = generation_id
         self.node_ids: dict[str, str] = {}
+        self.node_types: dict[str, str] = {}
         self.counts = Counter()
 
     def write(self, nodes: Iterable[NodeSpec], edges: Iterable[EdgeSpec]) -> dict[str, int]:
@@ -82,6 +84,12 @@ class GraphWriter:
         )
         self.counts["redactions"] += label_redactions + property_redactions
         node_id = self.node_ids.get(spec.stable_key)
+        known_type = self.node_types.get(spec.stable_key)
+        if known_type and known_type != spec.node_type:
+            raise ValueError(
+                f"Evidence graph node {spec.stable_key} changed type from {known_type} to {spec.node_type}."
+            )
+        self.node_types[spec.stable_key] = spec.node_type
         if node_id is None:
             node_id = deterministic_id(self.generation_id, "node", spec.stable_key)
             self.node_ids[spec.stable_key] = node_id
@@ -101,6 +109,10 @@ class GraphWriter:
             self.session.add(row)
             self.counts["nodes_created"] += 1
         else:
+            if row.node_type != spec.node_type:
+                raise ValueError(
+                    f"Evidence graph node {spec.stable_key} changed type from {row.node_type} to {spec.node_type}."
+                )
             if row.tenant_id and spec.tenant_id and row.tenant_id != spec.tenant_id:
                 raise ValueError(
                     f"Evidence graph node {spec.stable_key} was assigned to multiple tenants."
@@ -130,6 +142,22 @@ class GraphWriter:
         if not source_id or not target_id:
             raise ValueError(
                 f"Evidence graph edge references an unwritten node: {spec.source_key} -> {spec.target_key}"
+            )
+        source_type = self.node_types.get(spec.source_key)
+        target_type = self.node_types.get(spec.target_key)
+        if not source_type or not target_type:
+            endpoint_rows = {
+                row.id: row.node_type
+                for row in self.session.query(EvidenceGraphNode).filter(
+                    EvidenceGraphNode.id.in_([source_id, target_id])
+                )
+            }
+            source_type = source_type or endpoint_rows.get(source_id)
+            target_type = target_type or endpoint_rows.get(target_id)
+        if not relation_endpoint_allowed(spec.relation, source_type or "", target_type or ""):
+            raise ValueError(
+                "Unsupported evidence graph relationship shape: "
+                f"{source_type or 'unknown'} -[{spec.relation}]-> {target_type or 'unknown'}"
             )
         edge_id = deterministic_id(
             self.generation_id,
@@ -631,6 +659,24 @@ def audit_generation(session: Session, generation_id: str) -> dict:
 
     source_node = aliased(EvidenceGraphNode)
     target_node = aliased(EvidenceGraphNode)
+    invalid_edge_shapes = 0
+    for relation, source_type, target_type in (
+        session.query(
+            EvidenceGraphEdge.relation,
+            source_node.node_type,
+            target_node.node_type,
+        )
+        .join(source_node, EvidenceGraphEdge.source_node_id == source_node.id)
+        .join(target_node, EvidenceGraphEdge.target_node_id == target_node.id)
+        .filter(
+            EvidenceGraphEdge.generation_id == generation_id,
+            EvidenceGraphEdge.active.is_(True),
+        )
+        .yield_per(500)
+    ):
+        invalid_edge_shapes += int(
+            not relation_endpoint_allowed(relation, source_type, target_type)
+        )
     dangling_edges = (
         session.query(func.count(EvidenceGraphEdge.id))
         .outerjoin(source_node, EvidenceGraphEdge.source_node_id == source_node.id)
@@ -689,6 +735,8 @@ def audit_generation(session: Session, generation_id: str) -> dict:
         errors.append(f"Unsupported node types: {unsupported_nodes}")
     if unsupported_edges:
         errors.append(f"Unsupported edge relations: {unsupported_edges}")
+    if invalid_edge_shapes:
+        errors.append(f"Edges with unsupported endpoint types: {invalid_edge_shapes}")
     if unsupported_trust:
         errors.append(f"Unsupported trust tiers: {unsupported_trust}")
     if unsupported_assertion_trust:
@@ -753,6 +801,7 @@ def audit_generation(session: Session, generation_id: str) -> dict:
         "edges_without_assertions": unproven_edges,
         "nodes_without_assertions": unproven_nodes,
         "dangling_edges": dangling_edges,
+        "invalid_edge_shapes": invalid_edge_shapes,
         "sensitive_labels": sensitive_labels,
         "sensitive_stable_keys": sensitive_stable_keys,
         "sensitive_properties": sensitive_properties,

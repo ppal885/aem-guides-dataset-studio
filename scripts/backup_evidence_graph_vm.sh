@@ -62,38 +62,36 @@ if [[ -e "$OUTPUT_DIR" ]]; then
 fi
 
 mapfile -t STORAGE_PATHS < <(
-  ROOT_DIR="$ROOT_DIR" BACKEND_DIR="$BACKEND_DIR" "$PYTHON_BIN" - <<'PY'
+  ROOT_DIR="$ROOT_DIR" BACKEND_DIR="$BACKEND_DIR" PYTHONPATH="$BACKEND_DIR" "$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
 
 root = Path(os.environ["ROOT_DIR"]).resolve()
 backend = Path(os.environ["BACKEND_DIR"]).resolve()
-values = dict(os.environ)
 
 try:
-    from dotenv import dotenv_values
+    from dotenv import load_dotenv
 except ImportError:
-    dotenv_values = None
+    load_dotenv = None
 
-if dotenv_values is not None:
+if load_dotenv is not None:
     for env_path in (root / ".env", backend / ".env"):
         if env_path.exists():
-            for key, value in dotenv_values(env_path, encoding="utf-8-sig").items():
-                if value is not None:
-                    values[key] = value
+            load_dotenv(env_path, override=True, encoding="utf-8-sig")
 
-database_url = values.get("DATABASE_URL", "").strip() or "sqlite:///storage/app.db"
-if not database_url.lower().startswith("sqlite"):
+from app.db.session import engine
+
+if engine.dialect.name != "sqlite":
     raise SystemExit("ERROR: backup helper supports SQLite only; use the database-native backup tool for DATABASE_URL.")
 
-database_path = database_url.replace("sqlite:///", "", 1).replace("sqlite://", "", 1)
-if database_path == ":memory:":
+database_value = str(engine.url.database or "").strip()
+if database_value == ":memory:":
     raise SystemExit("ERROR: an in-memory SQLite database cannot be backed up.")
-database = Path(database_path)
-if not database.is_absolute():
-    database = backend / database
+if not database_value:
+    raise SystemExit("ERROR: the running application SQLite path could not be resolved.")
+database = Path(database_value)
 
-storage = Path(values.get("STORAGE_PATH", "./storage"))
+storage = Path(os.getenv("STORAGE_PATH", "./storage"))
 if not storage.is_absolute():
     storage = backend / storage
 

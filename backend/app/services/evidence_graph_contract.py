@@ -74,6 +74,63 @@ RELATIONS = frozenset(
     }
 )
 
+RELATION_ENDPOINT_TYPES: dict[str, frozenset[tuple[str, str]]] = {
+    "HAS_CHUNK": frozenset(
+        {
+            ("jira_issue", "source_chunk"),
+            ("documentation_page", "source_chunk"),
+            ("dita_element", "source_chunk"),
+        }
+    ),
+    "REPORTED_BY": frozenset({("jira_issue", "customer")}),
+    "IN_COMPONENT": frozenset({("jira_issue", "component")}),
+    "IN_DOMAIN": frozenset({("jira_issue", "domain")}),
+    "IN_SUBDOMAIN": frozenset({("jira_issue", "subdomain")}),
+    "AFFECTS_FEATURE": frozenset({("jira_issue", "feature")}),
+    "AFFECTS_OUTPUT": frozenset({("jira_issue", "output")}),
+    "AFFECTS_VERSION": frozenset({("jira_issue", "release")}),
+    "FIXED_IN_RELEASE": frozenset({("jira_issue", "release")}),
+    "APPLIES_TO_RELEASE": frozenset({("documentation_page", "release")}),
+    "DOCUMENTS_FEATURE": frozenset({("documentation_page", "feature")}),
+    "DOCUMENTS_OUTPUT": frozenset({("documentation_page", "output")}),
+    "MENTIONS_DITA_ENTITY": frozenset(
+        {
+            ("jira_issue", "dita_element"),
+            ("jira_issue", "dita_attribute"),
+            ("documentation_page", "dita_element"),
+            ("documentation_page", "dita_attribute"),
+        }
+    ),
+    "HAS_EXPECTED_BEHAVIOR": frozenset(
+        {
+            ("jira_issue", "behavior_claim"),
+            ("documentation_page", "behavior_claim"),
+        }
+    ),
+    "HAS_ACTUAL_BEHAVIOR": frozenset({("jira_issue", "symptom")}),
+    "HAS_ROOT_CAUSE": frozenset({("jira_issue", "root_cause")}),
+    "HAS_QA_ORACLE": frozenset({("jira_issue", "qa_oracle")}),
+    "HAS_RISK": frozenset({("jira_issue", "risk")}),
+    "HAS_ERROR_SIGNATURE": frozenset({("jira_issue", "error_signature")}),
+    "USES_API_ROUTE": frozenset({("jira_issue", "api_route")}),
+    "USES_CONFIG_KEY": frozenset({("jira_issue", "config_key")}),
+    "ALLOWS_CHILD": frozenset({("dita_element", "dita_element")}),
+    "HAS_ATTRIBUTE": frozenset({("dita_element", "dita_attribute")}),
+    "SPECIALIZES": frozenset({("dita_element", "dita_element")}),
+    "CONSTRAINS": frozenset({("dita_element", "dita_element")}),
+    "BELONGS_TO_DOMAIN": frozenset(
+        {
+            ("subdomain", "domain"),
+            ("feature", "domain"),
+            ("workflow", "domain"),
+        }
+    ),
+    "MENTIONS_ISSUE": frozenset({("documentation_page", "jira_issue")}),
+}
+
+if frozenset(RELATION_ENDPOINT_TYPES) != RELATIONS:
+    raise RuntimeError("Every evidence graph relation must declare allowed endpoint types.")
+
 TRUST_TIERS = frozenset({"authoritative", "historical_verified", "supporting", "candidate"})
 TRUST_WEIGHTS = {
     "authoritative": 1.0,
@@ -206,6 +263,11 @@ def stable_key(node_type: str, value: Any) -> str:
     if node_type in {"behavior_claim", "symptom", "root_cause", "qa_oracle", "risk", "error_signature"}:
         return f"{node_type}:{stable_digest(text.casefold(), length=40)}"
     return f"{node_type.replace('_', '-')}:{normalized_token(text)}"
+
+
+def relation_endpoint_allowed(relation: str, source_type: str, target_type: str) -> bool:
+    """Return whether a stored directed relationship has an approved semantic shape."""
+    return (source_type, target_type) in RELATION_ENDPOINT_TYPES.get(relation, frozenset())
 
 
 def sanitize_excerpt(value: Any, *, max_chars: int = 1000) -> tuple[str, int]:

@@ -6,7 +6,7 @@
 - A historical Jira is similar only when the graph and direct review establish a shared root cause, behavior contract, error signature, API route, configuration key, or strong symptom plus DITA/output mechanism. Customer, component, domain, and feature overlap are ranking boosts only.
 - Candidate claims, generated fallback oracles, caution outcomes, and area-only links cannot define Expected Behaviour or an acceptance criterion.
 - Fold accepted graph findings into the existing Expected Behaviour, Known Jira Bugs / Past Similar Tickets, Regression Areas, Automation Coverage & Gaps, and Open Questions sections. Never add an Evidence Graph section.
-- Every P0/P1-mapped acceptance criterion must end with `Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>`. Never cite only a graph path.
+- Every acceptance criterion must end with `Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>`. Never cite only a graph path.
 - Deduplicate graph and direct evidence by leaf/source identifier before scoring or counting support.
 - Record one influence mode: `off`, `shadow`, or `augment`. `shadow` is the safe default: query and audit the graph, but never let it change planning seeds, repository scope, scores, citations, Expected Behaviour, acceptance criteria, scenarios, regressions, or automation verdicts.
 - Use `augment` only after the deployment's shadow audits pass. Even then, graph output can supplement direct evidence only when a deduplicated leaf source independently supports the claim; it can never raise source authority.

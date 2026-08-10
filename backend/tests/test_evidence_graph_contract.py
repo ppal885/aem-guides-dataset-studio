@@ -2,6 +2,7 @@ from app.services.evidence_graph_contract import (
     EDGE_PROPERTY_ALLOWLIST,
     NODE_TYPES,
     RELATIONS,
+    RELATION_ENDPOINT_TYPES,
     canonical_url,
     contains_sensitive_text,
     deterministic_id,
@@ -11,6 +12,7 @@ from app.services.evidence_graph_contract import (
     extract_error_signatures,
     normalize_text,
     normalized_token,
+    relation_endpoint_allowed,
     sanitize_excerpt,
     sanitize_structured_properties,
     stable_key,
@@ -41,6 +43,10 @@ def test_normalization_contract_and_allowlists_are_closed():
     assert "HAS_ROOT_CAUSE" in RELATIONS
     assert "random_relation" not in RELATIONS
     assert "requires_live_jira_validation" in EDGE_PROPERTY_ALLOWLIST
+    assert frozenset(RELATION_ENDPOINT_TYPES) == RELATIONS
+    assert relation_endpoint_allowed("HAS_ROOT_CAUSE", "jira_issue", "root_cause")
+    assert not relation_endpoint_allowed("HAS_ROOT_CAUSE", "jira_issue", "component")
+    assert not relation_endpoint_allowed("HAS_ROOT_CAUSE", "root_cause", "jira_issue")
 
 
 def test_redaction_removes_identity_and_secret_material():

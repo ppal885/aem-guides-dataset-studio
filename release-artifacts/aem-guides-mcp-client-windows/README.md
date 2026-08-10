@@ -115,6 +115,10 @@ Use $test-plan-generation to create a test plan for GUIDES-12345. Jira details a
 
 The skill uses `ask_dita_expert` for product behavior, `search_jira_history` for indexed historical tickets, and `query_test_evidence_graph` only after those direct calls. Graph influence defaults to shadow, so graph output is recorded but cannot alter the test plan unless the deployment explicitly enables augment. Mutable Jira facts and GitHub evidence still require live Jira/GitHub connectors or supplied evidence.
 
+Claude keeps the complete eleven-section plan in the Markdown artifact but shows only Acceptance Criteria, Regression Areas, Past Jiras, and Open Questions by default. Acceptance Criteria use the fixed `aem-guides-ac-v1` Given/When/Then contract; `scripts/extract_acs.py` emits the deterministic JSON input for an automation-draft agent.
+
+Every ticket also receives an internal principal-performance-QA review. It never adds a plan section: only a `required` decision emits a quantified Performance AC; unresolved performance risk appears as a QA-impact Open Question.
+
 ## Important Rules
 
 - Do not clone the full dataset-studio repo on teammate laptops.

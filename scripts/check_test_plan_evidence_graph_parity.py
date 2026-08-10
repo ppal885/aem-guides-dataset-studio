@@ -15,7 +15,21 @@ TEAM_PACKAGES = (
 )
 IDENTICAL_FILES = (
     Path("references/evidence-graph-contract.md"),
+    Path("references/golden-benchmark.md"),
+    Path("references/performance-assessment-contract.md"),
+    Path("scripts/ac_contract.py"),
+    Path("scripts/extract_acs.py"),
+    Path("scripts/performance_contract.py"),
+    Path("scripts/render_compact_view.py"),
     Path("scripts/evidence_graph_manifest.py"),
+)
+TEAM_IDENTICAL_FILES = (
+    Path("scripts/ac_contract.py"),
+    Path("scripts/extract_acs.py"),
+    Path("scripts/performance_contract.py"),
+    Path("scripts/render_compact_view.py"),
+    Path("references/performance-assessment-contract.md"),
+    Path("references/golden-benchmark.md"),
 )
 REQUIRED_MARKERS = {
     Path("SKILL.md"): (
@@ -25,6 +39,12 @@ REQUIRED_MARKERS = {
         "graph unavailability alone is not a Draft blocker",
         "default to `shadow`",
         "references/evidence-graph-contract.md",
+        "references/golden-benchmark.md",
+        "aem-guides-ac-v1",
+        "aem-guides-performance-assessment-v1",
+        "do not add a Performance Analysis section",
+        "render_compact_view.py",
+        "`Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`",
     ),
     Path("scripts/evidence_graph_manifest.py"): (
         "GRAPH_INFLUENCE_MODES",
@@ -34,13 +54,36 @@ REQUIRED_MARKERS = {
     ),
     Path("scripts/run_gates.py"): (
         '"evidence_graph"',
+        '"performance_assessment"',
         "validate_evidence_graph_manifest",
+        "validate_performance_assessment",
     ),
     Path("scripts/validate_test_plan.py"): (
-        "AC_EVIDENCE_RE",
+        "AC_EXACT_FORMAT",
+        "parse_ac_line",
+        "QUANTIFIED_WORKLOAD_RE",
         "never only a graph path",
     ),
+    Path("scripts/performance_contract.py"): (
+        "aem-guides-performance-assessment-v1",
+        "SIGNAL_CATEGORIES",
+        "validate_performance_assessment",
+        "validate_plan_alignment",
+        "internal evidence-manifest data",
+    ),
+    Path("references/golden-benchmark.md"): (
+        "18 Jira cases",
+        "historical precision@5",
+        "performance-decision accuracy",
+        "golden_status",
+        "Do not run all 18 cases for an ordinary test-plan request",
+    ),
 }
+
+
+def _canonical_text(path: Path) -> str:
+    """Compare contracts semantically across Windows and Unix packages."""
+    return path.read_text(encoding="utf-8-sig").replace("\r\n", "\n").rstrip() + "\n"
 
 
 def check_parity() -> list[str]:
@@ -51,15 +94,23 @@ def check_parity() -> list[str]:
         if not codex_path.is_file() or not claude_path.is_file():
             failures.append(f"missing parity file: {relative.as_posix()}")
             continue
-        if codex_path.read_bytes() != claude_path.read_bytes():
+        if _canonical_text(codex_path) != _canonical_text(claude_path):
             failures.append(f"Codex/Claude graph contract drift: {relative.as_posix()}")
         if relative == Path("references/evidence-graph-contract.md") and claude_path.is_file():
             for package in TEAM_PACKAGES:
                 package_path = package / relative
                 if not package_path.is_file():
                     failures.append(f"missing team-package graph contract: {package_path}")
-                elif package_path.read_bytes() != claude_path.read_bytes():
+                elif _canonical_text(package_path) != _canonical_text(claude_path):
                     failures.append(f"team-package graph contract drift: {package_path}")
+    for relative in TEAM_IDENTICAL_FILES:
+        claude_path = CLAUDE / relative
+        for package in TEAM_PACKAGES:
+            package_path = package / relative
+            if not package_path.is_file():
+                failures.append(f"missing team-package AC/presentation contract: {package_path}")
+            elif _canonical_text(package_path) != _canonical_text(claude_path):
+                failures.append(f"team-package AC/presentation contract drift: {package_path}")
     for relative, markers in REQUIRED_MARKERS.items():
         for root, label in ((CODEX, "Codex"), (CLAUDE, "Claude")):
             path = root / relative
@@ -69,7 +120,18 @@ def check_parity() -> list[str]:
                     failures.append(f"{label} {relative.as_posix()} missing graph marker: {marker}")
     for package in TEAM_PACKAGES:
         skill_text = (package / "SKILL.md").read_text(encoding="utf-8")
-        for marker in ("shadow", "augment", "used_for_plan"):
+        for marker in (
+            "shadow",
+            "augment",
+            "used_for_plan",
+            "aem-guides-ac-v1",
+            "aem-guides-performance-assessment-v1",
+            "render_compact_view.py",
+            "Past Jiras",
+            "Open Questions",
+            "Performance Analysis",
+            "golden-benchmark.md",
+        ):
             if marker not in skill_text:
                 failures.append(f"team-package SKILL.md missing Phase B marker {marker}: {package}")
     return failures

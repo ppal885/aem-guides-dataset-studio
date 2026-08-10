@@ -7,6 +7,7 @@ does not mutate indexes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -81,6 +82,66 @@ def normalize_jira_key(value: str) -> str:
     return match.group(0)
 
 
+def _normalized_label(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def _build_uac_label_gate(issue: dict[str, Any], *, skip_gate: bool) -> dict[str, Any]:
+    labels = _issue_labels(issue)
+    normalized = {_normalized_label(label) for label in labels}
+    uac_check_present = "uaccheck" in normalized
+    uac_done_present = bool(normalized & {"uacdone", "uacapproved", "uacaccepted", "uacverified"})
+    gate_skipped = bool(skip_gate and not (uac_check_present or uac_done_present))
+    satisfied = bool(uac_check_present or uac_done_present or gate_skipped)
+    contract = issue.get("current_uac_contract") if isinstance(issue.get("current_uac_contract"), dict) else {}
+    instructions = [
+        str(clause.get("text") or "").strip()
+        for clause in contract.get("clauses") or []
+        if clause.get("kind") == "in_scope" and str(clause.get("text") or "").strip()
+    ]
+    return {
+        "uac_check_present": uac_check_present,
+        "uac_done_present": uac_done_present,
+        "gate_skipped": gate_skipped,
+        "satisfied": satisfied,
+        "blocked_reason": "" if satisfied else "UAC_Check or UAC_Done label is required for full generation.",
+        "instructions": instructions,
+        "current_contract_present": bool(contract),
+        "confirmed_ac_eligible": bool(contract.get("confirmed_ac_eligible")),
+        "automation_consumption": str(contract.get("automation_consumption") or "blocked"),
+    }
+
+
+def _build_current_uac_contract(issue: dict[str, Any]) -> dict[str, Any]:
+    acceptance_criteria = str(issue.get("acceptance_criteria") or "").strip()
+    if not acceptance_criteria:
+        return {}
+    from app.services.jira_uac_analysis_service import (
+        analyze_historical_uac,
+        current_uac_contract_dict,
+        has_accepted_uac_label,
+    )
+
+    labels = _issue_labels(issue)
+    analysis = analyze_historical_uac(
+        jira_key=str(issue.get("issue_key") or ""),
+        acceptance_criteria=acceptance_criteria,
+        status=str(issue.get("status") or ""),
+        resolution=str(issue.get("resolution") or ""),
+        labels=labels,
+        acceptance_source=str(issue.get("acceptance_criteria_source") or "jira_acceptance_field"),
+    )
+    if analysis is None:
+        return {}
+    return current_uac_contract_dict(
+        analysis,
+        accepted_label_present=has_accepted_uac_label(labels),
+        field_id=str(issue.get("acceptance_criteria_field_id") or ""),
+        field_name=str(issue.get("acceptance_criteria_field_name") or "Acceptance Criteria"),
+        mutable_fields_verified_live=str(issue.get("source") or "") == "jira_api",
+    )
+
+
 def build_guides_test_plan_packet(
     jira_key: str,
     *,
@@ -97,6 +158,10 @@ def build_guides_test_plan_packet(
     """Return a complete MCP evidence packet for Claude Code plan generation."""
     key = normalize_jira_key(jira_key)
     issue = _lookup_issue(key, tenant_id=tenant_id)
+    current_uac_contract = _build_current_uac_contract(issue)
+    if current_uac_contract:
+        issue["current_uac_contract"] = current_uac_contract
+    uac_label_gate = _build_uac_label_gate(issue, skip_gate=skip_uac_label_gate)
     query_text = _issue_query_text(key, issue)
     docs = _retrieve_aem_docs(query_text, k=evidence_k)
     learned_behavior = _retrieve_learned_behavior_evidence(query_text, k=evidence_k)
@@ -140,6 +205,9 @@ def build_guides_test_plan_packet(
         "jira_key": key,
         "tenant_id": tenant_id,
         "issue": issue,
+        "current_uac_contract": current_uac_contract,
+        "uac_label_gate": uac_label_gate,
+        "generation_mode": "full_rag" if uac_label_gate["satisfied"] else "blocked",
         "experience_league_evidence": docs,
         "learned_behavior_evidence": learned_behavior,
         "planning_seeds": planning_seeds,
@@ -169,6 +237,8 @@ def build_guides_test_plan_packet(
             "Use repository_evidence from local clone scanning; if unavailable, keep the plan Draft and list missing repo evidence.",
             "For publishing/PDF2/HTML/HTML5/DITA-OT tickets, use publishing_transform_context and DITA-OT evidence.",
             "Use JIRA facts only from the returned issue/evidence packet.",
+            "Only current_uac_contract clauses with confirmed_ac_eligible=true may become Confirmed acceptance criteria.",
+            "Historical UAC contracts may seed Proposed criteria and regression coverage only; they can never confirm current-ticket scope.",
             "Use jira_history_searches as the mandatory direct same-customer and cross-customer Jira retrieval; never infer absence when searched_jira_qa=false.",
             "Use evidence_graph only to connect direct findings; cite leaf_citations, never graph path IDs, as evidence.",
             "When evidence_graph_influence_mode=shadow, treat graph output as evaluation telemetry only; it must not change the plan, acceptance criteria, scoring, citations, or repository search scope.",
@@ -179,8 +249,105 @@ def build_guides_test_plan_packet(
             "Validate the final plan with scripts/validate_test_plan.py before calling it review-ready.",
         ],
     }
+    packet["evidence_snapshot"] = _build_packet_evidence_snapshot(packet)
     packet["prompt"] = _render_prompt(packet)
     return packet
+
+
+def _build_packet_evidence_snapshot(packet: dict[str, Any]) -> dict[str, Any]:
+    """Freeze evidence identities so later reviews can reproduce what shaped the plan."""
+    issue = packet.get("issue") if isinstance(packet.get("issue"), dict) else {}
+    graph = packet.get("evidence_graph") if isinstance(packet.get("evidence_graph"), dict) else {}
+    history = packet.get("jira_history_searches") or {}
+    history_rows = [
+        row
+        for scope in ("same_customer", "cross_customer")
+        for row in (history.get(scope) or {}).get("results") or []
+        if isinstance(row, dict)
+    ]
+    doc_ids = sorted(
+        {
+            str(row.get("source_hash") or row.get("chunk_id") or row.get("canonical_url") or row.get("source_url") or "")
+            for row in packet.get("experience_league_evidence") or []
+            if isinstance(row, dict)
+            and str(row.get("source_hash") or row.get("chunk_id") or row.get("canonical_url") or row.get("source_url") or "")
+        }
+    )
+    learned_ids = sorted(
+        {
+            str(row.get("source_hash") or row.get("chunk_id") or row.get("canonical_url") or "")
+            for row in (packet.get("learned_behavior_evidence") or {}).get("results") or []
+            if isinstance(row, dict)
+            and str(row.get("source_hash") or row.get("chunk_id") or row.get("canonical_url") or "")
+        }
+    )
+    graph_leaf_ids = sorted(
+        {
+            str(citation.get("leaf_id") or citation.get("source_hash") or "")
+            for path in graph.get("evidence_paths") or []
+            for citation in path.get("leaf_citations") or []
+            if str(citation.get("leaf_id") or citation.get("source_hash") or "")
+        }
+    )
+    repo_revisions = sorted(
+        {
+            str(
+                repo.get("post_sync_sha")
+                or repo.get("head_sha")
+                or repo.get("commit_sha")
+                or ""
+            )
+            for repo in (packet.get("repository_evidence") or {}).get("repositories") or []
+            if isinstance(repo, dict)
+            and str(
+                repo.get("post_sync_sha")
+                or repo.get("head_sha")
+                or repo.get("commit_sha")
+                or ""
+            )
+        }
+    )
+    issue_payload = {
+        "jira_key": packet.get("jira_key"),
+        "source": issue.get("source") or issue.get("lookup_source"),
+        "status": issue.get("status"),
+        "resolution": issue.get("resolution"),
+        "affected_versions": issue.get("affected_versions") or [],
+        "fix_versions": issue.get("fix_versions") or [],
+        "current_uac_snapshot_id": (packet.get("current_uac_contract") or {}).get("source_snapshot_id"),
+    }
+    snapshot_inputs = {
+        "issue": issue_payload,
+        "documentation_sources": doc_ids,
+        "learned_behavior_sources": learned_ids,
+        "history_query_fingerprints": sorted(
+            {
+                str((history.get(scope) or {}).get("query_fingerprint") or "")
+                for scope in ("same_customer", "cross_customer")
+                if str((history.get(scope) or {}).get("query_fingerprint") or "")
+            }
+        ),
+        "historical_snapshot_ids": sorted(
+            {
+                str(row.get("evidence_snapshot_id") or "")
+                for row in history_rows
+                if str(row.get("evidence_snapshot_id") or "")
+            }
+        ),
+        "graph_generation_id": (graph.get("generation") or {}).get("id"),
+        "graph_leaf_ids": graph_leaf_ids,
+        "repository_revisions": repo_revisions,
+    }
+    canonical = json.dumps(snapshot_inputs, sort_keys=True, separators=(",", ":"), default=str)
+    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return {
+        "schema_version": "test-plan-evidence-snapshot-v1",
+        "fingerprint": fingerprint,
+        "snapshot_id": f"evidence:{packet.get('jira_key')}:{fingerprint}",
+        "inputs": snapshot_inputs,
+        "mutable_jira_facts_verified_live": str(issue.get("source") or "") == "jira_api",
+        "immutable": True,
+    }
 
 
 def render_guides_test_plan_packet_markdown(packet: dict[str, Any]) -> str:
@@ -343,6 +510,8 @@ def _retrieve_direct_jira_history(
                 customer=selected_customer,
                 exclude_jira_key=jira_key,
                 top_k=selected_top_k,
+                current_affected_versions=issue.get("affected_versions"),
+                current_fix_versions=issue.get("fix_versions"),
             )
         except Exception as exc:
             return {
@@ -412,6 +581,15 @@ def _add_direct_jira_history_seeds(
                     "jira_key": jira_key,
                     "summary": item.get("summary") or "",
                     "why_similar": item.get("why_similar") or "",
+                    "historical_match": item.get("historical_match") or {},
+                    "historical_uac_contract": item.get("historical_uac_contract") or {},
+                    "version_applicability": item.get("version_applicability") or {},
+                    "evidence_snapshot_id": item.get("evidence_snapshot_id") or "",
+                    "root_cause": item.get("root_cause") or "",
+                    "qa_oracle": item.get("qa_oracle") or "",
+                    "historical_outcome": item.get("historical_outcome") or "",
+                    "is_verified_fix": item.get("is_verified_fix"),
+                    "mutable_facts": item.get("mutable_facts") or {},
                     "search_scope": scope,
                     "evidence_origin": "search_jira_history",
                     "evidence": [f"JIRA:{jira_key}"],
@@ -583,7 +761,11 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
     if not _JIRA_KEY_RE.fullmatch((jira_key or "").strip().upper()):
         return None
     try:
-        from app.services.jira_client import JiraClient, extract_description_from_issue
+        from app.services.jira_client import (
+            JiraClient,
+            extract_description_from_issue,
+            extract_named_issue_field,
+        )
         from app.services.tenant_service import build_jira_client
 
         client = build_jira_client(tenant_id)
@@ -592,8 +774,24 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
         if not client.is_configured():
             return None
 
-        raw = client.get_issue(jira_key)
+        get_with_names = getattr(client, "get_issue_with_names", None)
+        raw = get_with_names(jira_key) if callable(get_with_names) else client.get_issue(jira_key)
         fields = raw.get("fields") or {}
+        acceptance_criteria, acceptance_field_id, acceptance_field_name = extract_named_issue_field(
+            raw,
+            ("Acceptance Criteria", "Acceptance Criterion", "UAC"),
+            explicit_field_id=os.getenv("JIRA_ACCEPTANCE_CRITERIA_FIELD_ID", "").strip(),
+        )
+        expected_behavior, _, _ = extract_named_issue_field(
+            raw,
+            ("Expected Result", "Expected Behavior", "Expected Behaviour"),
+            explicit_field_id=os.getenv("JIRA_EXPECTED_BEHAVIOR_FIELD_ID", "").strip(),
+        )
+        actual_behavior, _, _ = extract_named_issue_field(
+            raw,
+            ("Actual Result", "Actual Behavior", "Actual Behaviour"),
+            explicit_field_id=os.getenv("JIRA_ACTUAL_BEHAVIOR_FIELD_ID", "").strip(),
+        )
         components = [
             str(item.get("name") or "")
             for item in (fields.get("components") or [])
@@ -606,8 +804,25 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
             "status": (fields.get("status") or {}).get("name", ""),
             "issue_type": (fields.get("issuetype") or {}).get("name", ""),
             "priority": (fields.get("priority") or {}).get("name", ""),
+            "resolution": (fields.get("resolution") or {}).get("name", ""),
             "labels": fields.get("labels") or [],
             "components": components,
+            "fix_versions": [
+                str(item.get("name") or "")
+                for item in (fields.get("fixVersions") or [])
+                if isinstance(item, dict) and item.get("name")
+            ],
+            "affected_versions": [
+                str(item.get("name") or "")
+                for item in (fields.get("versions") or [])
+                if isinstance(item, dict) and item.get("name")
+            ],
+            "acceptance_criteria": acceptance_criteria,
+            "acceptance_criteria_field_id": acceptance_field_id,
+            "acceptance_criteria_field_name": acceptance_field_name,
+            "acceptance_criteria_source": "jira_live_named_field" if acceptance_criteria else "missing",
+            "expected_behavior": expected_behavior,
+            "actual_behavior": actual_behavior,
             "source": "jira_api",
             "lookup_source": "jira_api_direct",
             "lookup_message": f"Fetched `{raw.get('key', jira_key)}` directly from Jira API.",

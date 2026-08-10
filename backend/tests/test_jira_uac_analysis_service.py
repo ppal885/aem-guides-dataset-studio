@@ -16,10 +16,38 @@ from app.services.jira_uac_analysis_service import (
     extract_explicit_root_cause_evidence,
     extract_explicit_test_evidence,
     extract_release_scope_evidence,
+    historical_uac_contract_dict,
     is_no_uac_sentinel,
     resolve_historical_uac_text,
 )
 from app.services.jira_uac_backfill_service import build_sql_uac_rows
+
+
+def test_historical_uac_contract_is_fingerprinted_and_never_current_ticket_authority():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-90001",
+        acceptance_criteria="Outputclass must remain on MathML in merged HTML.",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+        root_cause="The replacement path dropped outputclass.",
+        test_evidence="Verified merged HTML and Native PDF output.",
+        root_cause_source="jira_comment_root_cause",
+        test_evidence_source="jira_comment_qa_verification",
+    )
+
+    assert analysis is not None
+    contract = historical_uac_contract_dict(
+        analysis,
+        acceptance_criteria="Outputclass must remain on MathML in merged HTML.",
+        root_cause="The replacement path dropped outputclass.",
+        test_evidence="Verified merged HTML and Native PDF output.",
+    )
+
+    assert contract["source_snapshot_id"].startswith("jira:GUIDES-90001:uac:")
+    assert contract["confirmed_ac_eligible"] is False
+    assert contract["current_ticket_authority"] is False
+    assert contract["clauses"][0]["citation"].startswith("JIRA:GUIDES-90001:UAC:UAC-01:")
 
 
 BASELINE_PREVIEW_UAC = """

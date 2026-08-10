@@ -11,6 +11,7 @@ from typing import Any
 
 
 UAC_SCHEMA_VERSION = "historical-uac-v3"
+CURRENT_UAC_SCHEMA_VERSION = "current-uac-v1"
 UAC_ANALYSIS_METHOD = "deterministic-rules"
 UAC_CONTRACT_CHUNK_TYPE = "historical_uac_contract_chunk"
 UAC_CLAUSE_CHUNK_TYPE = "historical_uac_clause_chunk"
@@ -590,6 +591,10 @@ def _clean(value: Any) -> str:
 
 def _normalized_label(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def has_accepted_uac_label(labels: list[str] | tuple[str, ...] | set[str]) -> bool:
+    return bool({_normalized_label(label) for label in labels} & _ACCEPTED_UAC_LABELS)
 
 
 def _historical_outcome(resolution: str) -> str:
@@ -1474,6 +1479,139 @@ def _base_metadata(analysis: HistoricalUacAnalysis) -> dict[str, Any]:
         "uac_release_scope_split": analysis.release_scope_split,
         "uac_release_scope_source": analysis.release_scope_source,
     }
+
+
+def historical_uac_contract_dict(
+    analysis: HistoricalUacAnalysis,
+    *,
+    acceptance_criteria: str = "",
+    root_cause: str = "",
+    test_evidence: str = "",
+) -> dict[str, Any]:
+    """Serialize a deterministic, automation-safe historical UAC contract."""
+
+    def clause_payload(clause: HistoricalUacClause) -> dict[str, Any]:
+        return {
+            "source_id": clause.source_id,
+            "stable_key": clause.stable_key,
+            "text": clause.text,
+            "kind": clause.kind,
+            "dimensions": list(clause.dimensions),
+            "unresolved": clause.unresolved,
+            "unresolved_reasons": list(clause.unresolved_reasons),
+            "citation": f"JIRA:{analysis.jira_key}:UAC:{clause.source_id}:{analysis.source_hash}",
+        }
+
+    if analysis.release_scope_split or analysis.reuse_tier == "candidate":
+        allowed_uses = ["regression_signal", "open_question"]
+        reuse_mode = "risk_signal_only"
+    elif analysis.reuse_tier == "historical_verified" and analysis.contract_complete:
+        allowed_uses = ["regression_signal", "proposed_ac_seed", "test_matrix_seed"]
+        reuse_mode = "historical_verified_contract"
+    else:
+        allowed_uses = ["regression_signal", "open_question", "proposed_ac_seed"]
+        reuse_mode = "supporting_uac_contract"
+
+    clauses = [clause_payload(clause) for clause in analysis.clauses]
+    return {
+        "schema_version": UAC_SCHEMA_VERSION,
+        "analysis_method": UAC_ANALYSIS_METHOD,
+        "jira_key": analysis.jira_key,
+        "source_snapshot_id": f"jira:{analysis.jira_key}:uac:{analysis.source_hash}",
+        "source_hash": analysis.source_hash,
+        "source_authority": analysis.source_authority,
+        "source_origin": analysis.source_origin,
+        "historical_outcome": analysis.historical_outcome,
+        "reuse_tier": analysis.reuse_tier,
+        "reuse_mode": reuse_mode,
+        "allowed_uses": allowed_uses,
+        "confirmed_ac_eligible": False,
+        "current_ticket_authority": False,
+        "contract_complete": analysis.contract_complete,
+        "source_truncated": analysis.source_truncated,
+        "issue_closed": analysis.issue_closed,
+        "clauses": clauses,
+        "in_scope_clause_ids": [clause.source_id for clause in analysis.in_scope_clauses],
+        "out_of_scope_clause_ids": [clause.source_id for clause in analysis.out_of_scope_clauses],
+        "reference_clause_ids": [clause.source_id for clause in analysis.reference_clauses],
+        "context_clause_ids": [clause.source_id for clause in analysis.context_clauses],
+        "unresolved_clause_ids": [clause.source_id for clause in analysis.unresolved_clauses],
+        "contradictions": list(analysis.contradictions),
+        "dimensions": list(analysis.dimensions),
+        "performance": {
+            "matters": analysis.performance_matters,
+            "contract_complete": analysis.performance_contract_complete,
+        },
+        "root_cause": {
+            "text": _clean(root_cause)[:1200],
+            "source": analysis.root_cause_source,
+            "explicit": analysis.explicit_root_cause,
+        },
+        "test_evidence": {
+            "text": _clean(test_evidence)[:1200],
+            "source": analysis.test_evidence_source,
+            "explicit": analysis.explicit_test_evidence,
+        },
+        "release_scope": {
+            "split": analysis.release_scope_split,
+            "source": analysis.release_scope_source,
+            "evidence": analysis.release_scope_evidence,
+        },
+        "source_excerpt": _clean(acceptance_criteria)[:1200],
+        "reuse_rule": (
+            "Historical UAC may seed Proposed criteria and regression coverage only. "
+            "It can never create a Confirmed criterion for the current Jira."
+        ),
+    }
+
+
+def current_uac_contract_dict(
+    analysis: HistoricalUacAnalysis,
+    *,
+    accepted_label_present: bool,
+    field_id: str = "",
+    field_name: str = "Acceptance Criteria",
+    mutable_fields_verified_live: bool = True,
+) -> dict[str, Any]:
+    """Serialize current-ticket UAC with a fail-closed automation approval decision."""
+    contract = historical_uac_contract_dict(analysis)
+    confirmed_eligible = bool(
+        accepted_label_present
+        and analysis.contract_complete
+        and not analysis.source_truncated
+        and not analysis.contradictions
+        and not analysis.release_scope_split
+    )
+    contract.update(
+        {
+            "schema_version": CURRENT_UAC_SCHEMA_VERSION,
+            "analysis_schema_version": UAC_SCHEMA_VERSION,
+            "source_authority": "jira_accepted_uac" if accepted_label_present else "jira_draft_uac",
+            "source_field_id": field_id,
+            "source_field_name": field_name,
+            "current_ticket_authority": True,
+            "confirmed_ac_eligible": confirmed_eligible,
+            "automation_consumption": "approved" if confirmed_eligible else "blocked",
+            "approval_status": (
+                "accepted"
+                if confirmed_eligible
+                else "invalid_accepted_contract"
+                if accepted_label_present
+                else "draft"
+            ),
+            "allowed_uses": (
+                ["confirmed_ac", "test_matrix", "regression_boundary"]
+                if confirmed_eligible
+                else ["proposed_ac", "open_question", "regression_boundary"]
+            ),
+            "mutable_fields_verified_live": mutable_fields_verified_live,
+            "reuse_rule": (
+                "Only this current-ticket contract may create Confirmed ACs, and only when "
+                "confirmed_ac_eligible=true. Historical contracts remain Proposed-only."
+            ),
+        }
+    )
+    return contract
 
 
 def build_historical_uac_chunks(analysis: HistoricalUacAnalysis) -> list[dict[str, Any]]:

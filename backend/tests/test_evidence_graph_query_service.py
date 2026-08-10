@@ -408,6 +408,9 @@ def test_query_cache_is_generation_and_permission_aware(graph_session, monkeypat
 
     assert first["query_runtime"]["cache_hit"] is False
     assert second["query_runtime"]["cache_hit"] is True
+    assert first["query_fingerprint"] == second["query_fingerprint"]
+    authorized = _query(graph_session, allow_cross_customer_details=True)
+    assert authorized["query_fingerprint"] != first["query_fingerprint"]
     assert len(status_calls) == 1
     selectors = {
         "jira_key": "GUIDES-100",
@@ -461,3 +464,80 @@ def test_invalid_query_runtime_environment_values_fail_safe(graph_session, monke
 
     assert result["available"] is True
     assert result["query_runtime"]["budget_ms"] == 1500
+
+
+def test_query_rejects_malformed_stored_edge_shape(graph_session):
+    edge = graph_session.query(EvidenceGraphEdge).filter_by(relation="IN_COMPONENT").first()
+    edge.relation = "HAS_ROOT_CAUSE"
+    graph_session.commit()
+    query_service.clear_evidence_graph_query_cache()
+
+    result = _query(graph_session, allow_cross_customer_details=True)
+
+    assert result["traversal_diagnostics"]["unsupported_shape_edges"] >= 1
+    assert any("unsupported relation endpoint types" in gap for gap in result["coverage_gaps"])
+    assert all(
+        not (
+            item["edges"][0]["relation"] == "HAS_ROOT_CAUSE"
+            and item["nodes"][1]["type"] == "component"
+        )
+        for item in result["evidence_paths"]
+    )
+
+
+def test_query_applies_deterministic_per_node_fanout_cap(graph_session, monkeypatch):
+    monkeypatch.setenv("EVIDENCE_GRAPH_MAX_RELATION_FANOUT", "2")
+    generation = graph_session.query(EvidenceGraphGeneration).filter_by(status="active").one()
+    current = graph_session.query(EvidenceGraphNode).filter_by(
+        stable_key=stable_key("jira_issue", "GUIDES-100")
+    ).one()
+    evidence = _evidence("GUIDES-100")
+    writer = GraphWriter(graph_session, generation.id)
+    risk_nodes = [
+        NodeSpec(
+            stable_key=stable_key("risk", f"fanout risk {index}"),
+            node_type="risk",
+            label=f"Fanout risk {index}",
+            evidence=[evidence],
+        )
+        for index in range(8)
+    ]
+    writer.write(
+        [
+            NodeSpec(
+                stable_key=current.stable_key,
+                node_type="jira_issue",
+                label=current.label,
+                properties=dict(current.properties or {}),
+            ),
+            *risk_nodes,
+        ],
+        [
+            EdgeSpec(
+                source_key=current.stable_key,
+                relation="HAS_RISK",
+                target_key=node.stable_key,
+                trust_tier="supporting",
+                confidence=0.5,
+                evidence=[evidence],
+            )
+            for node in risk_nodes
+        ],
+    )
+    graph_session.commit()
+    query_service.clear_evidence_graph_query_cache()
+
+    first = _query(graph_session, allow_cross_customer_details=True, use_cache=False)
+    second = _query(graph_session, allow_cross_customer_details=True, use_cache=False)
+
+    assert first["traversal_diagnostics"]["max_relation_fanout"] == 2
+    assert first["traversal_diagnostics"]["fanout_trimmed_edges"] > 0
+    assert first["evidence_paths"] == second["evidence_paths"]
+
+
+def test_missing_source_timestamps_receive_explicit_freshness_penalty(graph_session):
+    result = _query(graph_session, allow_cross_customer_details=True)
+
+    assert query_service._freshness_score(result["evidence_paths"][0]["leaf_citations"]) == 0.2
+    assert any("no source timestamp" in gap for gap in result["coverage_gaps"])
+    assert any("reduced freshness confidence" in warning for warning in result["warnings"])

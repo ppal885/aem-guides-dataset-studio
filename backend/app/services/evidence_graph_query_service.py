@@ -34,6 +34,7 @@ from app.services.evidence_graph_contract import (
     extract_error_signatures,
     normalize_text,
     normalized_token,
+    relation_endpoint_allowed,
     stable_digest,
     stable_key,
 )
@@ -139,12 +140,14 @@ def _cache_key(
     max_depth: int,
     top_k: int,
     max_paths: int,
+    influence_mode: str = "interactive",
 ) -> str:
     return stable_digest(
-        "evidence-graph-query-v2",
+        "evidence-graph-query-v3",
         generation_id,
         tenant_id,
         allow_cross_customer_details,
+        influence_mode,
         max_depth,
         top_k,
         max_paths,
@@ -367,7 +370,12 @@ def _traverse(
     max_depth: int,
     max_paths: int,
     tenant_id: str,
-) -> tuple[list[TraversedPath], dict[str, EvidenceGraphEdge], dict[str, EvidenceGraphNode]]:
+) -> tuple[
+    list[TraversedPath],
+    dict[str, EvidenceGraphEdge],
+    dict[str, EvidenceGraphNode],
+    dict[str, Any],
+]:
     nodes: dict[str, EvidenceGraphNode] = {
         row.id: row
         for row in session.query(EvidenceGraphNode).filter(
@@ -379,6 +387,20 @@ def _traverse(
     completed: list[TraversedPath] = []
     frontier = [TraversedPath(seed=seed, node_ids=(seed.node_id,), edge_ids=()) for seed in seeds]
     expansion_cap = max(100, max_paths * 40)
+    relation_fanout = _clamp(
+        os.getenv("EVIDENCE_GRAPH_MAX_RELATION_FANOUT"),
+        default=12,
+        minimum=1,
+        maximum=50,
+    )
+    diagnostics: dict[str, Any] = {
+        "contract_version": "evidence-graph-traversal-v2",
+        "max_relation_fanout": relation_fanout,
+        "expansion_cap": expansion_cap,
+        "unsupported_shape_edges": 0,
+        "fanout_trimmed_edges": 0,
+        "expansion_cap_reached": False,
+    }
     for _depth in range(max_depth):
         if not frontier:
             break
@@ -404,9 +426,6 @@ def _traverse(
         by_node: dict[str, list[EvidenceGraphEdge]] = defaultdict(list)
         neighbor_ids: set[str] = set()
         for edge in edges:
-            edge_map[edge.id] = edge
-            by_node[edge.source_node_id].append(edge)
-            by_node[edge.target_node_id].append(edge)
             neighbor_ids.add(edge.source_node_id)
             neighbor_ids.add(edge.target_node_id)
         if neighbor_ids:
@@ -416,6 +435,22 @@ def _traverse(
                 or_(EvidenceGraphNode.tenant_id.is_(None), EvidenceGraphNode.tenant_id == tenant_id),
             ):
                 nodes[row.id] = row
+        for edge in edges:
+            source = nodes.get(edge.source_node_id)
+            target = nodes.get(edge.target_node_id)
+            if source is None or target is None:
+                continue
+            if not relation_endpoint_allowed(edge.relation, source.node_type, target.node_type):
+                diagnostics["unsupported_shape_edges"] += 1
+                continue
+            edge_map[edge.id] = edge
+            by_node[edge.source_node_id].append(edge)
+            by_node[edge.target_node_id].append(edge)
+        for node_id, node_edges in list(by_node.items()):
+            if len(node_edges) <= relation_fanout:
+                continue
+            diagnostics["fanout_trimmed_edges"] += len(node_edges) - relation_fanout
+            by_node[node_id] = node_edges[:relation_fanout]
         next_frontier: list[TraversedPath] = []
         for path in frontier:
             current_id = path.node_ids[-1]
@@ -431,13 +466,15 @@ def _traverse(
                 completed.append(candidate)
                 next_frontier.append(candidate)
                 if len(completed) >= expansion_cap:
+                    diagnostics["expansion_cap_reached"] = True
                     break
             if len(completed) >= expansion_cap:
                 break
         frontier = next_frontier
         if len(completed) >= expansion_cap:
             break
-    return completed, edge_map, nodes
+    diagnostics["paths_expanded"] = len(completed)
+    return completed, edge_map, nodes, diagnostics
 
 
 def _load_assertions(
@@ -543,9 +580,11 @@ def _freshness_score(citations: list[dict[str, Any]]) -> float:
         except ValueError:
             continue
     if not timestamps:
-        return 0.55
+        return 0.2
     age_days = max(0.0, (datetime.now(timezone.utc) - max(timestamps)).total_seconds() / 86400.0)
-    return max(0.25, math.exp(-age_days / 730.0))
+    timestamp_coverage = len(timestamps) / max(1, len(citations))
+    age_score = max(0.25, math.exp(-age_days / 730.0))
+    return max(0.2, age_score * (0.5 + 0.5 * timestamp_coverage))
 
 
 def _path_score(
@@ -902,6 +941,18 @@ def query_test_evidence_graph(
     )
 
     def finish(result: dict[str, Any], *, cache_hit: bool = False) -> dict[str, Any]:
+        generation_id = str((result.get("generation") or {}).get("id") or "none")
+        result["query_fingerprint"] = "sha256:" + _cache_key(
+            generation_id,
+            query=query_text,
+            selectors=selectors,
+            tenant_id=normalized_tenant,
+            allow_cross_customer_details=allow_cross_customer_details,
+            max_depth=depth,
+            top_k=result_limit,
+            max_paths=path_limit,
+            influence_mode=normalized_influence_mode,
+        )
         duration_ms = max(0, int((time.perf_counter() - started_at) * 1000))
         runtime = {
             "duration_ms": duration_ms,
@@ -977,6 +1028,7 @@ def query_test_evidence_graph(
             max_depth=depth,
             top_k=result_limit,
             max_paths=path_limit,
+            influence_mode=normalized_influence_mode,
         )
         if use_cache:
             cached = _cache_get(cache_key)
@@ -998,7 +1050,7 @@ def query_test_evidence_graph(
             keyed_scores,
             normalized_tenant,
         )
-        paths, edge_map, nodes = _traverse(
+        paths, edge_map, nodes, traversal_diagnostics = _traverse(
             db,
             generation.id,
             seeds,
@@ -1245,6 +1297,17 @@ def query_test_evidence_graph(
             coverage_gaps.append(
                 f"Rejected {excluded_area_only} Jira path(s) supported only by customer/component/domain/feature overlap."
             )
+        if traversal_diagnostics["unsupported_shape_edges"]:
+            coverage_gaps.append(
+                "Rejected "
+                f"{traversal_diagnostics['unsupported_shape_edges']} edge(s) with unsupported relation endpoint types."
+            )
+        if traversal_diagnostics["fanout_trimmed_edges"]:
+            coverage_gaps.append(
+                "Traversal fanout cap omitted "
+                f"{traversal_diagnostics['fanout_trimmed_edges']} lower-ranked edge expansion(s); "
+                "refine the query or selectors if more coverage is required."
+            )
         if not documented:
             coverage_gaps.append("No trusted documented behaviour claim was connected within two hops.")
         if not similar:
@@ -1254,6 +1317,23 @@ def query_test_evidence_graph(
         warnings.append(
             "Graph paths are traceability metadata only; use their leaf citations as evidence and validate mutable Jira facts live."
         )
+        leaf_citations = {
+            str(citation.get("leaf_id") or ""): citation
+            for path in rendered_paths
+            for citation in path.get("leaf_citations", [])
+            if str(citation.get("leaf_id") or "")
+        }
+        missing_freshness = sum(
+            not bool(citation.get("source_updated_at"))
+            for citation in leaf_citations.values()
+        )
+        if missing_freshness:
+            coverage_gaps.append(
+                f"{missing_freshness} cited leaf source(s) have no source timestamp and received a freshness penalty."
+            )
+            warnings.append(
+                "Evidence with missing source timestamps is usable only at reduced freshness confidence."
+            )
         redacted_citations = sum(
             1
             for path in rendered_paths
@@ -1287,6 +1367,7 @@ def query_test_evidence_graph(
             else {},
             "coverage_gaps": list(dict.fromkeys(coverage_gaps)),
             "evidence_paths": rendered_paths,
+            "traversal_diagnostics": traversal_diagnostics,
             "graph_freshness": status,
             "redactions": {"citations_with_redactions": redacted_citations},
             "warnings": list(dict.fromkeys(warnings)),

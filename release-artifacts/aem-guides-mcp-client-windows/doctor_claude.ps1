@@ -72,6 +72,38 @@ if (Test-Path -LiteralPath $GraphContract) {
     $graphContractReady = $graphContractText.Contains("shadow") -and $graphContractText.Contains("augment") -and $graphContractText.Contains("used_for_plan")
 }
 Write-Check "Phase B skill contract" $graphContractReady $GraphContract
+$SkillRoot = Join-Path $ClientDir ".claude\skills\test-plan-generation"
+$SkillFile = Join-Path $SkillRoot "SKILL.md"
+$AcContract = Join-Path $SkillRoot "scripts\ac_contract.py"
+$AcExtractor = Join-Path $SkillRoot "scripts\extract_acs.py"
+$PerformanceContract = Join-Path $SkillRoot "scripts\performance_contract.py"
+$PerformanceReference = Join-Path $SkillRoot "references\performance-assessment-contract.md"
+$GoldenBenchmarkReference = Join-Path $SkillRoot "references\golden-benchmark.md"
+$CompactRenderer = Join-Path $SkillRoot "scripts\render_compact_view.py"
+$canonicalContractReady = $false
+if (
+    (Test-Path -LiteralPath $SkillFile) -and
+    (Test-Path -LiteralPath $AcContract) -and
+    (Test-Path -LiteralPath $AcExtractor) -and
+    (Test-Path -LiteralPath $PerformanceContract) -and
+    (Test-Path -LiteralPath $PerformanceReference) -and
+    (Test-Path -LiteralPath $GoldenBenchmarkReference) -and
+    (Test-Path -LiteralPath $CompactRenderer)
+) {
+    $skillText = Get-Content -LiteralPath $SkillFile -Raw
+    $canonicalContractReady = @(
+        "aem-guides-ac-v1",
+        "aem-guides-performance-assessment-v1",
+        "Performance Analysis",
+        "Acceptance Criteria",
+        "Regression Areas",
+        "Past Jiras",
+        "Open Questions",
+        "golden-benchmark.md"
+    ) | ForEach-Object { $skillText.Contains($_) } | Where-Object { -not $_ } | Measure-Object | Select-Object -ExpandProperty Count
+    $canonicalContractReady = ($canonicalContractReady -eq 0)
+}
+Write-Check "Canonical AC and compact UI contract" $canonicalContractReady $SkillRoot
 
 $nodeOk = $false
 if (Get-Command node -ErrorAction SilentlyContinue) {

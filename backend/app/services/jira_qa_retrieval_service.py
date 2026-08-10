@@ -310,6 +310,7 @@ def semantic_search_jira_qa(
     dita_entities: list[str] | None = None,
     affected_outputs: list[str] | None = None,
     customer_names: list[str] | None = None,
+    require_non_vector_evidence: bool = False,
 ) -> list[dict[str, Any]]:
     """Hybrid retrieval over jira_qa (vector + keyword overlap + enrichment metadata + diversity)."""
     from app.services.jira_retrieval_service import retrieve_similar_jiras, retrieved_to_legacy_hit
@@ -345,7 +346,7 @@ def semantic_search_jira_qa(
         base_labels=base_labels,
         base_components=base_components,
         label_expanded_tokens=label_expanded_tokens,
-        require_non_vector_evidence=False,
+        require_non_vector_evidence=require_non_vector_evidence,
     )
     ranked_full = [retrieved_to_legacy_hit(r) for r in retrieved]
     if rerank_base and ranked_full:

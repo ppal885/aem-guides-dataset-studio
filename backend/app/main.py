@@ -433,6 +433,7 @@ async def startup_event():
             from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
             from app.db.llm_models import LLMRun  # noqa: F401
             from app.db.evidence_graph_models import EvidenceGraphGeneration  # noqa: F401
+            from app.db.test_plan_feedback_models import TestPlanQualityFeedback  # noqa: F401
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
                 logger.info_structured(

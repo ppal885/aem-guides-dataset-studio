@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -225,9 +226,19 @@ def run_test_plan_pipeline(
         stages.append("publish_team_ui")
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+    evidence_snapshot = packet.get("evidence_snapshot") or {}
+    plan_fingerprint = _plan_fingerprint(
+        key,
+        evidence_snapshot,
+        acceptance_criteria,
+        test_cases,
+        draft_md,
+    )
     result = TestPlanPipelineResult(
         jira_key=key,
         correlation_id=cid,
+        evidence_snapshot_id=str(evidence_snapshot.get("snapshot_id") or ""),
+        plan_fingerprint=plan_fingerprint,
         stages_completed=stages,
         ticket_brief=ticket_brief,
         ticket_workflow=_workflow_summary(workflow),
@@ -397,23 +408,99 @@ def build_evidence_grounded_acceptance_criteria(
 ) -> list[dict[str, Any]]:
     """Produce deterministic UAC rows; never rely on commit-only evidence."""
     uac = uac_intel or {}
-    raw_items = [str(item).strip() for item in (uac.get("acceptance_criteria") or []) if str(item).strip()]
-    if not raw_items and brief.expected_behavior:
-        raw_items = _split_requirement_statements(brief.expected_behavior)
-    if not raw_items:
-        raw_items = ["Clarify expected behaviour before final QE sign-off."]
+    current_contract = (
+        packet.get("current_uac_contract")
+        if isinstance(packet.get("current_uac_contract"), dict)
+        else {}
+    )
+    current_clauses = [
+        clause
+        for clause in current_contract.get("clauses") or []
+        if isinstance(clause, dict)
+        and clause.get("kind") == "in_scope"
+        and str(clause.get("text") or "").strip()
+    ]
+    current_confirmed = bool(current_contract.get("confirmed_ac_eligible"))
+    raw_records: list[dict[str, Any]] = []
+    if current_clauses:
+        raw_records = [
+            {
+                "text": str(clause.get("text") or "").strip(),
+                "source_clause_id": str(clause.get("source_id") or ""),
+                "citation": str(clause.get("citation") or ""),
+                "source_snapshot_id": str(current_contract.get("source_snapshot_id") or ""),
+                "current_ticket": True,
+            }
+            for clause in current_clauses
+        ]
+    else:
+        raw_items = [
+            str(item).strip()
+            for item in (uac.get("acceptance_criteria") or [])
+            if str(item).strip()
+        ]
+        if not raw_items and brief.expected_behavior:
+            raw_items = _split_requirement_statements(brief.expected_behavior)
+        if not raw_items:
+            raw_items = ["Clarify expected behaviour before final QE sign-off."]
+        raw_records = [{"text": item, "current_ticket": False} for item in raw_items[:8]]
 
     refs = _collect_evidence_refs(packet)
     authoritative_refs = [
         ref for ref in refs if ref.startswith(("JIRA:", "DOC:", "SPEC:", "PRE-UAC:"))
     ] or refs[:3]
     criteria: list[dict[str, Any]] = []
-    for idx, item in enumerate(raw_items[:8], 1):
-        needs_clarification = "clarify" in item.lower() or not brief.expected_behavior
+    for idx, record in enumerate(raw_records, 1):
+        item = str(record.get("text") or "").strip()
+        is_current_clause = bool(record.get("current_ticket"))
+        confirmed = bool(is_current_clause and current_confirmed)
+        needs_clarification = "clarify" in item.lower() or (
+            not confirmed and not brief.expected_behavior
+        )
         category = _classify_requirement_category(item, brief)
+        evidence_refs = (
+            [str(record.get("citation"))]
+            if record.get("citation")
+            else authoritative_refs[:4]
+            or [f"JIRA:{brief.jira_key}:description"]
+        )
+        source_snapshot_ids = (
+            [str(record.get("source_snapshot_id"))]
+            if record.get("source_snapshot_id")
+            else [
+                "derived:"
+                + hashlib.sha256(
+                    json.dumps(
+                        {"jira_key": brief.jira_key, "text": item, "evidence_refs": evidence_refs},
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+            ]
+        )
+        status = "Confirmed" if confirmed else "Proposed"
+        sphere = _acceptance_sphere(item, category)
+        derivation = (
+            "TICKET_CONFIRMED"
+            if confirmed
+            else "HUMAN_CLARIFICATION_REQUIRED"
+            if needs_clarification
+            else "REASONABLE_ASSUMPTION"
+        )
+        fingerprint_payload = {
+            "schema_version": "aem-guides-ac-v1",
+            "jira_key": brief.jira_key,
+            "status": status,
+            "sphere": sphere,
+            "text": item,
+            "source_snapshot_ids": source_snapshot_ids,
+            "source_clause_id": str(record.get("source_clause_id") or ""),
+        }
         criteria.append(
             {
+                "schema_version": "aem-guides-ac-v1",
                 "uac_id": f"UAC-{idx:02d}",
+                "status": status,
+                "sphere": sphere,
                 "behaviour_statement": item,
                 "given": _given_for_brief(brief),
                 "when": _when_for_brief(brief),
@@ -421,21 +508,26 @@ def build_evidence_grounded_acceptance_criteria(
                 "priority": "P0" if idx == 1 else "P1",
                 "requirement_category": category,
                 "classification": _case_classification(item),
-                "evidence_refs": authoritative_refs[:4],
-                "derivation_classification": (
-                    "HUMAN_CLARIFICATION_REQUIRED"
-                    if needs_clarification
-                    else "TICKET_CONFIRMED"
-                    if brief.expected_behavior
-                    else "REASONABLE_ASSUMPTION"
-                ),
-                "confidence": 35 if needs_clarification else 82 if authoritative_refs else 60,
-                "assumptions": [] if brief.expected_behavior else ["Expected behaviour not explicit in Jira."],
+                "evidence_refs": evidence_refs,
+                "source_snapshot_ids": source_snapshot_ids,
+                "source_clause_id": str(record.get("source_clause_id") or ""),
+                "derivation_classification": derivation,
+                "confidence": 92 if confirmed else 35 if needs_clarification else 65,
+                "assumptions": [] if confirmed else ["Criterion requires current-ticket human approval."],
                 "open_question": (
                     _first_open_question(brief, packet)
                     if needs_clarification
                     else ""
                 ),
+                "automation_consumption": "blocked",
+                "automation_block_reason": (
+                    "Canonical Given/When/Then must be reviewed and exported by extract_acs.py before automation-draft handoff."
+                    if confirmed
+                    else "Proposed criteria require current-ticket approval before automation-draft handoff."
+                ),
+                "fingerprint": hashlib.sha256(
+                    json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest(),
             }
         )
     if pre_uac and pre_uac.known_product_behavior:
@@ -1079,6 +1171,7 @@ def build_qe_review_package(
         "revision_history": [],
         "ticket_analysis": ticket_analysis,
         "evidence_snapshot": {
+            "immutable_snapshot": packet.get("evidence_snapshot") or {},
             "rag_packet_summary": summarize_rag_packet(packet),
             "repository_evidence_status": packet.get("repo_evidence_status"),
             "diff_evidence_status": packet.get("diff_evidence_status"),
@@ -1102,6 +1195,26 @@ def build_qe_review_package(
         "validation": validation or {},
         "traceability": coverage_matrix,
     }
+
+
+def _plan_fingerprint(
+    jira_key: str,
+    evidence_snapshot: dict[str, Any],
+    acceptance_criteria: list[dict[str, Any]],
+    test_cases: list[dict[str, Any]],
+    draft_markdown: str | None,
+) -> str:
+    payload = {
+        "schema_version": "test-plan-fingerprint-v1",
+        "jira_key": jira_key,
+        "evidence_snapshot_id": evidence_snapshot.get("snapshot_id") or "",
+        "acceptance_criteria": [row.get("fingerprint") for row in acceptance_criteria],
+        "test_cases": test_cases,
+        "draft_sha256": hashlib.sha256((draft_markdown or "").encode("utf-8")).hexdigest(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def build_qe_handoff(
@@ -1184,6 +1297,7 @@ def summarize_rag_packet(packet: dict[str, Any]) -> dict[str, Any]:
         "mcp_fast_mode": packet.get("mcp_fast_mode"),
         "repo_evidence_status": packet.get("repo_evidence_status"),
         "diff_evidence_status": packet.get("diff_evidence_status"),
+        "evidence_snapshot": packet.get("evidence_snapshot") or {},
         "experience_league_hits": len(packet.get("experience_league_evidence") or []),
         "learned_behavior_available": bool((packet.get("learned_behavior_evidence") or {}).get("available")),
         "planning_seed_counts": {
@@ -1729,6 +1843,18 @@ def _combined_historical_jira_evidence(
     uac_intel: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     current_key = str(packet.get("jira_key") or "").strip().upper()
+    issue = packet.get("issue") if isinstance(packet.get("issue"), dict) else {}
+    current_query = "\n".join(
+        str(value or "")
+        for value in (
+            current_key,
+            issue.get("summary"),
+            issue.get("description"),
+            issue.get("actual_behavior"),
+            issue.get("expected_behavior"),
+        )
+        if str(value or "").strip()
+    )
     candidates: list[dict[str, Any]] = []
     for item in (uac_intel or {}).get("similar_jira_evidence") or []:
         if isinstance(item, dict):
@@ -1765,19 +1891,72 @@ def _combined_historical_jira_evidence(
 
     merged: dict[str, dict[str, Any]] = {}
     order: list[str] = []
+    pending_unqualified_origins: dict[str, list[dict[str, Any]]] = {}
     for item in candidates:
         jira_key = str(item.get("jira_key") or "").strip().upper()
         if not _JIRA_KEY_RE.fullmatch(jira_key) or jira_key == current_key:
             continue
+        match_contract = item.get("historical_match")
+        if not isinstance(match_contract, dict) or "qualified" not in match_contract:
+            if (
+                item.get("evidence_origin") == "evidence_graph"
+                and item.get("shared_mechanisms")
+                and item.get("leaf_citations")
+            ):
+                match_contract = {
+                    "schema_version": "jira-history-match-v1",
+                    "qualified": True,
+                    "strength": "structural",
+                    "mechanism_score": 0.9,
+                    "shared_mechanisms": list(item.get("shared_mechanisms") or []),
+                    "area_only_rejected": False,
+                    "domain_is_ranking_only": True,
+                    "customer_component_are_ranking_only": True,
+                    "reason": "Evidence graph already enforced its deterministic same-mechanism path rule.",
+                }
+            else:
+                from app.services.jira_history_match_service import build_historical_match_contract
+
+                match_contract = build_historical_match_contract(current_query, item)
+            item = {**item, "historical_match": match_contract}
+        if not match_contract.get("qualified"):
+            pending_unqualified_origins.setdefault(jira_key, []).append(item)
+            if jira_key in merged:
+                origin = str(item.get("evidence_origin") or "unknown")
+                merged[jira_key]["evidence_origins"] = list(
+                    dict.fromkeys([*(merged[jira_key].get("evidence_origins") or []), origin])
+                )
+            continue
+        version_contract = item.get("version_applicability")
+        if not isinstance(version_contract, dict) or not version_contract.get("schema_version"):
+            from app.services.jira_version_applicability_service import classify_version_applicability
+
+            version_contract = classify_version_applicability(
+                current_affected_versions=issue.get("affected_versions"),
+                current_fix_versions=issue.get("fix_versions"),
+                historical_affected_versions=item.get("affected_versions"),
+                historical_fix_versions=item.get("fix_versions"),
+            )
+            item = {**item, "version_applicability": version_contract}
         evidence_refs = [str(ref) for ref in item.get("evidence_refs") or [] if str(ref).strip()]
         evidence_refs.append(f"JIRA:{jira_key}")
         origin = str(item.get("evidence_origin") or "unknown")
         if jira_key not in merged:
+            pending = pending_unqualified_origins.pop(jira_key, [])
+            pending_origins = [
+                str(row.get("evidence_origin") or "unknown") for row in pending
+            ]
+            pending_refs = [
+                str(ref)
+                for row in pending
+                for ref in row.get("evidence_refs") or []
+                if str(ref).strip()
+            ]
             merged[jira_key] = {
                 **item,
                 "jira_key": jira_key,
-                "evidence_origins": [origin],
-                "evidence_refs": list(dict.fromkeys(evidence_refs)),
+                "evidence_origins": list(dict.fromkeys([*pending_origins, origin])),
+                "evidence_refs": list(dict.fromkeys([*pending_refs, *evidence_refs])),
             }
             order.append(jira_key)
             continue
@@ -1788,7 +1967,19 @@ def _combined_historical_jira_evidence(
         existing["evidence_refs"] = list(
             dict.fromkeys([*(existing.get("evidence_refs") or []), *evidence_refs])
         )
-        for field in ("summary", "why_similar", "root_cause", "qa_oracle", "historical_outcome"):
+        for field in (
+            "summary",
+            "why_similar",
+            "root_cause",
+            "qa_oracle",
+            "historical_outcome",
+            "historical_match",
+            "historical_uac_contract",
+            "version_applicability",
+            "evidence_snapshot_id",
+            "mutable_facts",
+            "is_verified_fix",
+        ):
             if not existing.get(field) and item.get(field):
                 existing[field] = item[field]
     return [merged[jira_key] for jira_key in order]
@@ -1814,6 +2005,17 @@ def _case_classification(text: str) -> str:
     if any(token in lowered for token in ("large", "boundary", "limit", "600", "%")):
         return "boundary/scale"
     return "positive"
+
+
+def _acceptance_sphere(text: str, category: str) -> str:
+    lowered = f"{text} {category}".casefold()
+    if "performance" in lowered or "scale" in lowered:
+        return "Performance"
+    if any(token in lowered for token in ("must not", "should not", "invalid", "missing", "broken", "error")):
+        return "Negative"
+    if any(token in lowered for token in ("api", "publishing", "translation", "integration", "output")):
+        return "Integration"
+    return "Basic"
 
 
 def _given_for_brief(brief: TicketBrief) -> str:

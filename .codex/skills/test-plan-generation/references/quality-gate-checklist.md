@@ -17,6 +17,8 @@ Use this before calling a test plan review-ready.
 - `Why it matters` states canonical customer context and its Jira field/label source; multiple customers remain separate and material conflicts remain visible.
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
+- Every AC matches the canonical `aem-guides-ac-v1` one-line grammar with contiguous IDs, controlled status/sphere values, ordered `Given | When | Then | Evidence` fields, and no extra or multiline prose.
+- `extract_acs.py` emits complete structured records with no warnings before any AI automation-draft handoff; the downstream agent consumes that JSON rather than reparsing prose.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
 - Jira UAC/acceptance criteria are treated as the primary acceptance and sign-off contract for scope, out-of-scope, expected behaviour, integrations, regression boundaries, and open questions.
 - When final accepted UAC exists, `accepted_uac_present=true` and a valid `aem-guides-uac-fidelity-v1` manifest audit maps every accepted clause to `[Confirmed]` ACs and every `[Confirmed]` AC back to accepted clauses.
@@ -37,11 +39,17 @@ Use this before calling a test plan review-ready.
 - The indexed `jira_qa` history was queried separately through `search_jira_history` for both same-customer and cross-customer scope, recorded under `jira_history_tool`, `jira_history_queries`, and `indexed_history_run`; hits were validated live before citing and only same-mechanism results were retained.
 - `query_test_evidence_graph` ran only after direct RAG/Jira retrieval; influence mode, `used_for_plan`, generation, exact queries, duration/cache status, path IDs, and deduplicated leaf citations are recorded, and graph paths are never treated as source evidence.
 - Shadow mode is observational only: graph output did not change plan content, scoring, citations, repository scope, or automation verdicts. Any graph-connected plan claim requires explicit augment mode and an independently valid leaf source.
-- Every P0/P1-mapped acceptance criterion cites an underlying source through its final `| Evidence:` field; candidate graph claims and path-only citations are rejected.
+- Every acceptance criterion cites an underlying source through its final `| Evidence:` field; candidate graph claims and path-only citations are rejected regardless of scenario priority.
+- The evidence manifest contains a complete `aem-guides-performance-assessment-v1` review of all seven canonical risk categories, with source-backed findings and one `required`, `conditional`, or `not_required` decision.
+- A `required` decision has quantified workload, metrics, test types, approved/controlled numeric thresholds, matching `performance_ac_ids`, and mapped Performance scenarios; each visible Performance AC has numeric workload and outcome units.
+- A `conditional` decision emits no Performance AC and has a performance-related Open Question with QA impact; `not_required` emits no Performance AC or reader-facing filler.
+- No `Performance Analysis` or equivalent plan section/bullet was added; the assessment remains internal and only its justified AC or conditional question is visible.
 - Graph unavailability is recorded as degraded mode and is not a Draft blocker when authoritative direct evidence already covers the behavior.
 - Test Scenarios include concrete `Setup and test data` bullets with real fixtures, identifier formats/example values, property/field/column names, config keys and values, environment matrix, and pass/fail oracles — not just abstract "create a map/topic" steps.
 - Regression Areas are written as senior-QA regression items — each names the specific thing to re-test and the risk (what could break and why), ordered by blast radius with the top risk called out — not bare area names or keyword fragments.
 - Open Questions are written as UAC decisions with the QA impact of each plausible answer (what each answer changes for scenarios, expected results, environment matrix, or sign-off) — not bare questions with no stated consequence.
+- The full eleven-section record and appendix remain available as the `.md` artifact, while the default Claude/Codex view is produced by `render_compact_view.py` and contains only `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order.
+- The compact view contains no manually paraphrased ACs, regression bullets, or open questions and leaks none of the hidden record sections; named hidden sections or the full record are shown only after an explicit user request.
 - Acceptance Criteria are Principal-QA product contracts — each states precondition/input, trigger, and observable outcome with the scope boundary (included vs excluded) and the verification oracle, names exact properties/fields/enums and expected values, and passes/fails independently — not terse labels or generic "Verify..." steps.
 - Every Covered / Partially covered automation item has its real code quoted verbatim (from the actual file, with absolute path, what it proves, and the gap) in an `Appendix A - Automation Evidence` section kept outside the eleven validated bullet-only sections; the combined file was delivered to the user and passed verify_evidence.py. verify_evidence.py hard-fails a Covered/Partially-covered verdict when the file has no fenced code evidence, so this cannot be silently skipped on a re-run - always regenerate Appendix A and run verify on the combined plan+appendix, never on the body alone.
 - Past similar tickets were searched through Jira MCP/JQL, user-provided tickets, or available team memory.
@@ -102,6 +110,7 @@ Use this before calling a test plan review-ready.
 - A destructive cleanup scenario omits ownership/correlation, approval, pre-change inventory/backup, unrelated-state protection, audit evidence, rollback, or post-cleanup verification.
 - A plan marks adjacent happy-path automation as partial coverage of recovery, concurrency, orphan-state, queue-drain, or dashboard-consistency behavior.
 - A performance scenario turns approximate customer timing, topic count, or heap guidance into a hard oracle without an approved SLA or controlled benchmark.
+- The performance assessment is missing, skips a canonical risk category, contradicts visible Performance AC IDs, or labels a ticket `not_required` without proving all reviewed signals absent.
 - On-premise release/upgrade scope exists but source/target versions, retained configs, changed defaults, manual post-upgrade steps, or compatibility expectations are not clarified.
 - Sign-off-critical permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5, or on-premise upgrade-impact questions are unresolved.
 

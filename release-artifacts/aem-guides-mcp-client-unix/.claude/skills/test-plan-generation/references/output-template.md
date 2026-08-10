@@ -1,14 +1,23 @@
 # Output Template
 
-Use this file before writing the final user-facing plan.
+Use this file to create the full validated record artifact.
 
-## Required Shape
+## Full Record Shape
 
-Use exactly these sections. Keep every line as a bullet.
+Use exactly these sections and keep section content as Markdown bullets.
 
 ```markdown
+**Understanding From Jira**
+- Issue understood: <plain-English issue>.
+- Why it matters: <customer/workflow/release impact>.
+- Requested outcome: <observable end state>.
+- Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation>.
+- Evidence boundary: <sources used, contradictions, and material gaps>.
+
 **Acceptance Criteria**
-- AC-01 [Confirmed|Proposed]: <precondition, trigger, and observable outcome> | Evidence: <underlying source; never only a graph path ID>.
+- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <single trigger/action> | Then <observable outcome> | Evidence: <underlying source>.
+- AC-02 [Proposed]: (Negative) Given <invalid input or wrong state> | When <single trigger/action> | Then <observable rejection and unchanged state> | Evidence: <underlying source>.
+- AC-03 [Proposed]: (Integration) Given <evidence-backed coupled workflow> | When <single trigger/action> | Then <observable coupled-system outcome> | Evidence: <underlying source>.
 
 **Expected Behaviour**
 - ...
@@ -23,79 +32,42 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
-- P0: ...
-- P1: ...
-- P2: ...
+- Setup and test data: <fixtures, roles, configs, environments, and oracles>.
+- P0 [AC-01]: Action: <tester action>. Expected: <observable result>.
+- P1 [AC-02, AC-03]: Action: <tester action>. Expected: <observable result>.
 
-**Past Similar Tickets**
-- ...
-
-**Regression Areas**
-- ...
-```
-
-## Writing Style
-
-- Write like a manual QA engineer: direct action, observable result, no implementation jargon unless needed.
-- Prefer “Verify that…” and “Confirm that…” over vague words like “check properly”.
-- Keep bullets short enough to scan.
-- Put missing evidence in the section it affects: `Draft blocker: ...`
-- Fold graph findings into existing sections and retain their leaf citations; do not add an Evidence Graph section.
-- Every AC mapped to P0/P1 ends with `| Evidence:` and cites an underlying source.
-- Do not create extra sections.
-- Do not use tables.
-
-## Scenario Formula
-
-Use:
-
-`- P0: <action/test data/config/user role> -> <expected observable result>.`
-
-Examples:
-
-- `P0: Create a translation project from a map with postprocessing enabled -> project creation completes and generated assets remain under the expected DAM path.`
-- `P1: Repeat the workflow for a child folder ignored for postprocessing -> child and successor folders are skipped consistently.`
-- `P2: Refresh the UI after the operation -> status, toast, and persisted state remain consistent without duplicate actions.`
-
-## Sample Draft
-
-```markdown
-**Acceptance Criteria**
-- Verify that the configured workflow completes for the affected user role.
-- Verify that invalid or unsupported input is blocked with a clear error.
-- Draft blocker: Jira acceptance criteria are incomplete; confirm final sign-off conditions.
-
-**Expected Behaviour**
-- AEM Guides should follow the documented configuration rule returned by accepted RAG evidence.
-- The UI should show the final status without requiring a manual refresh.
-- Unknown from current evidence: exact behaviour for upgraded instances was not confirmed by Jira or RAG.
-
-**Scope From Git**
-- Jira development link: <PR URL or no PR in Jira>.
-- GitHub MCP PR discovery: <PR found by Jira key/search terms, or not found>.
-- PR inspected: <PR URL>; changed area is <component/workflow>.
-- Repo sync state: <Starling/xmleditor/new editor/guides-ui-tests/dxml-it-tests fetched and clean/up to date, or blocker>.
-
-**Code Touched**
-- `<file>`: affects <workflow/API/UI state>, so QA should verify <impact>.
-
-**Lines Changed**
-- `<file>`: +12/-4; key hunk changes validation before save.
-
-**Test Scenarios**
-- P0: Run the primary Jira workflow with valid data -> operation succeeds and expected UI/API state is persisted.
-- P0: Run the workflow with the Jira failure condition -> previous failure does not reproduce.
-- P1: Use invalid or boundary input -> user sees a clear error and no partial state is saved.
-- P1: Repeat after browser refresh/session reload -> state remains consistent.
-- P2: Verify nearby workflow that shares the touched component -> no regression in existing behaviour.
-
-**Past Similar Tickets**
-- `GUIDES-xxxxx`: similar because <reason>; adds coverage for <area>.
-- Draft blocker: historical Jira MCP/JQL was unavailable, so similar-ticket coverage is incomplete.
+**Known Jira Bugs / Past Similar Tickets**
+- GUIDES-xxxxx - <same-mechanism match, status, lesson, and scenario impact>.
 
 **Regression Areas**
-- Shared validation/API path used by <nearby workflow>.
-- Role/permission combinations around <feature>.
-- Config/version boundary around <setting/release>.
-- Automation coverage gaps in `guides-ui-tests` or `dxml-it-tests` for <workflow>.
+- <specific workflow/config/API/data shape to retest and why it is at risk>.
+
+**Automation Coverage & Gaps**
+- AC-01 - <Covered|Partially covered|Not covered|Not suitable for automation>: <evidence or exact gap recipe>.
+
+**Open Questions**
+- <decision>. QA impact: <what each answer changes for tests or sign-off>.
 ```
+
+## Performance AC Rule
+
+- Complete `aem-guides-performance-assessment-v1` internally. Only `required` emits a quantified `(Performance)` AC and mapped performance scenario; `conditional` emits a QA-impact Open Question; `not_required` emits nothing reader-facing.
+- Never add a Performance Analysis section or invent a workload/SLA/baseline threshold.
+
+## Canonical AC Contract
+
+- Schema version is `aem-guides-ac-v1`.
+- IDs are unique and contiguous from `AC-01`.
+- Status is exactly `Confirmed` or `Proposed`.
+- Sphere is exactly `Basic`, `Negative`, `Integration`, or `Performance`.
+- Field order is exactly `Given | When | Then | Evidence`, on one line, ending with a period.
+- Every AC cites an underlying source; graph path IDs alone are invalid.
+- Run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>` before automation handoff. A nonzero exit blocks handoff.
+
+## Default Chat/UI Projection
+
+- Keep the full record in the `.md` artifact.
+- Run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
+- Show only `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order.
+- Show the full record or a hidden section only after the user explicitly requests it.
+- Never manually paraphrase the projected AC, regression, or open-question bullets.

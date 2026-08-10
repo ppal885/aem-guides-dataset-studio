@@ -52,6 +52,27 @@ if [[ -f "$GRAPH_CONTRACT" ]] && grep -q 'shadow' "$GRAPH_CONTRACT" && grep -q '
 else
   check "Phase B skill contract" false "missing shadow/augment/used_for_plan contract markers"
 fi
+SKILL_ROOT=".claude/skills/test-plan-generation"
+SKILL_FILE="$SKILL_ROOT/SKILL.md"
+AC_CONTRACT="$SKILL_ROOT/scripts/ac_contract.py"
+AC_EXTRACTOR="$SKILL_ROOT/scripts/extract_acs.py"
+PERFORMANCE_CONTRACT="$SKILL_ROOT/scripts/performance_contract.py"
+PERFORMANCE_REFERENCE="$SKILL_ROOT/references/performance-assessment-contract.md"
+GOLDEN_BENCHMARK_REFERENCE="$SKILL_ROOT/references/golden-benchmark.md"
+COMPACT_RENDERER="$SKILL_ROOT/scripts/render_compact_view.py"
+if [[ -f "$SKILL_FILE" && -f "$AC_CONTRACT" && -f "$AC_EXTRACTOR" && -f "$PERFORMANCE_CONTRACT" && -f "$PERFORMANCE_REFERENCE" && -f "$GOLDEN_BENCHMARK_REFERENCE" && -f "$COMPACT_RENDERER" ]] \
+    && grep -q 'aem-guides-ac-v1' "$SKILL_FILE" \
+    && grep -q 'aem-guides-performance-assessment-v1' "$SKILL_FILE" \
+    && grep -q 'Performance Analysis' "$SKILL_FILE" \
+    && grep -q 'Acceptance Criteria' "$SKILL_FILE" \
+    && grep -q 'Regression Areas' "$SKILL_FILE" \
+    && grep -q 'Past Jiras' "$SKILL_FILE" \
+    && grep -q 'Open Questions' "$SKILL_FILE" \
+    && grep -q 'golden-benchmark.md' "$SKILL_FILE"; then
+  check "Canonical AC and compact UI contract" true "$CLIENT_DIR/$SKILL_ROOT"
+else
+  check "Canonical AC and compact UI contract" false "missing AC/performance scripts or four-section UI markers"
+fi
 
 if command -v node >/dev/null 2>&1; then
   NODE_VERSION="$(node -p "process.versions.node")"

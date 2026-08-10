@@ -6,14 +6,19 @@ plus the combined plan+appendix are audited together.
 
 It runs, in order:
   1. Manifest presence + completeness, including separate tool evidence for
-     ask_dita_expert product-documentation probes and search_jira_history queries.
+     ask_dita_expert product-documentation probes, search_jira_history queries,
+     and the internal principal-performance-QA assessment.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
-  3. Evidence audit of the combined plan+appendix deliverable and the manifest
+  3. Deterministic rendering of the four-section chat/UI projection
+     (render_compact_view.py).
+  4. Performance manifest-to-plan alignment: required decisions produce only
+     quantified Performance ACs; conditional/not-required decisions do not.
+  5. Evidence audit of the combined plan+appendix deliverable and the manifest
      (verify_evidence.py): source paths on disk, cited line numbers in range,
      attachments downloaded + attested, >=3 RAG probes when behaviour matters,
      and fenced code evidence present when anything is Covered / Partially covered.
-  4. The script self-tests (protect the gates from silent regression).
+  6. The script self-tests (protect the gates from silent regression).
 
 Usage:
   python scripts/run_gates.py --plan <body.md> --combined <plan+appendix.md> --manifest <manifest.json>
@@ -49,18 +54,22 @@ def _load(module_name: str, filename: str):
 
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
+compact_mod = _load("render_compact_view", "render_compact_view.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 graph_manifest_mod = _load("evidence_graph_manifest", "evidence_graph_manifest.py")
+performance_mod = _load("performance_contract", "performance_contract.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
     "attachments",
+    "evidence_preflight",
     "rag_tool",
     "rag_probes",
     "jira_history_tool",
     "jira_history_queries",
     "indexed_history_run",
     "evidence_graph",
+    "performance_assessment",
     "clones",
 )
 
@@ -508,7 +517,9 @@ def check_manifest_completeness(path: str | None) -> list[str]:
                 f"both RAG tool paths, their queries, attachments, and clone state"
             )
     failures.extend(_validate_dual_source_evidence(data))
+    failures.extend(_validate_evidence_preflight(data))
     failures.extend(graph_manifest_mod.validate_evidence_graph_manifest(data))
+    failures.extend(performance_mod.validate_performance_assessment(data))
     clones = data.get("clones")
     if isinstance(clones, list):
         for entry in clones:
@@ -535,6 +546,23 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
 
     body = Path(plan_path).read_text(encoding="utf-8")
     failures += [f"[validate] {e}" for e in validate_mod.validate(body)]
+    if manifest_path and Path(manifest_path).is_file():
+        try:
+            manifest_data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            manifest_data = {}
+        failures += [
+            f"[performance] {problem}"
+            for problem in performance_mod.validate_plan_alignment(manifest_data, body)
+        ]
+        failures += [
+            f"[preflight] {problem}"
+            for problem in _validate_preflight_plan_alignment(manifest_data, body)
+        ]
+    compact, compact_problems = compact_mod.project(body)
+    failures += [f"[compact-view] {problem}" for problem in compact_problems]
+    if compact:
+        notes.append("four-section compact view renderable")
 
     combined = Path(combined_path).read_text(encoding="utf-8")
     jira_keys = verify_mod._load_manifest(jira_keys_path)
@@ -562,6 +590,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_verifier()
             self_tests.test_attachment_manifest()
             self_tests.test_run_gates()
+            self_tests.test_extract_acs()
+            self_tests.test_compact_view()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
@@ -589,7 +619,7 @@ def main() -> int:
             print(f"FAIL: {failure}")
         print(f"\nGATE FAILED ({len(failures)} issue(s)) - do not deliver this plan as validated.")
         return 1
-    print("\nGATE PASSED - manifest complete, structure valid, evidence verified"
+    print("\nGATE PASSED - manifest complete, structure valid, compact view renderable, evidence verified"
           + ("." if args.skip_self_tests else ", self-tests green."))
     return 0
 

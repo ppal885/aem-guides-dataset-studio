@@ -270,6 +270,70 @@ def test_audit_rejects_edges_and_orphan_nodes_without_assertions(tmp_path):
     session.close()
 
 
+def test_writer_and_audit_reject_unsupported_relationship_shapes(tmp_path):
+    Session = _session_factory(tmp_path)
+    session = Session()
+    generation = create_generation(session)
+    evidence = _evidence("GUIDES-3")
+    writer = GraphWriter(session, generation.id)
+    nodes = [
+        NodeSpec(
+            stable_key="jira:GUIDES-3",
+            node_type="jira_issue",
+            label="Issue",
+            evidence=[evidence],
+        ),
+        NodeSpec(
+            stable_key="component:editor",
+            node_type="component",
+            label="Editor",
+            evidence=[evidence],
+        ),
+    ]
+    with pytest.raises(ValueError, match="Unsupported evidence graph relationship shape"):
+        writer.write(
+            nodes,
+            [
+                EdgeSpec(
+                    source_key="jira:GUIDES-3",
+                    relation="HAS_ROOT_CAUSE",
+                    target_key="component:editor",
+                    trust_tier="supporting",
+                    confidence=0.5,
+                    evidence=[evidence],
+                )
+            ],
+        )
+    session.rollback()
+
+    generation = create_generation(session)
+    writer = GraphWriter(session, generation.id)
+    writer.write(
+        nodes,
+        [
+            EdgeSpec(
+                source_key="jira:GUIDES-3",
+                relation="IN_COMPONENT",
+                target_key="component:editor",
+                trust_tier="supporting",
+                confidence=0.5,
+                evidence=[evidence],
+            )
+        ],
+    )
+    session.flush()
+    edge = session.query(EvidenceGraphEdge).filter_by(generation_id=generation.id).one()
+    edge.relation = "HAS_ROOT_CAUSE"
+    session.commit()
+
+    audit = audit_generation(session, generation.id)
+
+    assert audit["valid"] is False
+    assert audit["invalid_edge_shapes"] == 1
+    assert any("unsupported endpoint types" in error for error in audit["errors"])
+    session.close()
+
+
 def test_promote_blue_green_rollback_and_retention(tmp_path):
     Session = _session_factory(tmp_path)
     session = Session()
