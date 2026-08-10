@@ -47,36 +47,45 @@ from services.uac.qa_handoff_service import build_qa_handoff_payload_for_respons
 _UAC_RELEASE_NOTE_LIMIT: int = int(os.getenv("UAC_RELEASE_NOTE_CHUNKS", "3"))
 
 
+_RELEASE_NOTE_URL_SIGNALS = (
+    "release-note", "release-info", "what-is-new", "whats-new", "fixed-issues",
+)
+
+
 def _retrieve_release_note_context(
     query_text: str,
     *,
-    tenant_id: str = "default",
     limit: int = _UAC_RELEASE_NOTE_LIMIT,
 ) -> list[str]:
-    """Return up to `limit` release-note chunk texts from the tenant RAG collection.
+    """Return up to `limit` release-note chunk texts from the aem_guides crawl collection.
 
-    Returns an empty list silently when embeddings are unavailable or the
-    collection has no release-note documents.
+    Crawled release-note pages are stored as doc_type=aem_doc; they are
+    identified by URL patterns such as 'release-note', 'release-info',
+    'what-is-new', or 'fixed-issues'. Returns [] silently on any failure.
     """
     if not query_text or limit <= 0:
         return []
     try:
         from app.services.embedding_service import embed_query, is_embedding_available
-        from app.services.vector_store_service import query_collection
+        from app.services.vector_store_service import query_collection, CHROMA_COLLECTION_AEM_GUIDES
 
         if not is_embedding_available():
             return []
-        collection = f"{tenant_id}_rag"
         qv = embed_query(query_text[:2000])
         if not qv:
             return []
-        rows = query_collection(
-            collection,
-            qv,
-            k=limit,
-            where={"doc_type": {"$eq": "release_notes"}},
-        )
-        return [r["document"] for r in rows if r.get("document")]
+        # Fetch more candidates then post-filter by URL
+        rows = query_collection(CHROMA_COLLECTION_AEM_GUIDES, qv, k=limit * 6)
+        results: list[str] = []
+        for r in rows:
+            url = (r.get("metadata") or {}).get("url", "").lower()
+            if any(sig in url for sig in _RELEASE_NOTE_URL_SIGNALS):
+                doc = r.get("document", "").strip()
+                if doc:
+                    results.append(doc)
+            if len(results) >= limit:
+                break
+        return results
     except Exception:
         return []
 
