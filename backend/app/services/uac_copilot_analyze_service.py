@@ -44,6 +44,42 @@ from services.uac.uac_output_validator import apply_strict_uac_validation, _sync
 from app.services.uac_ui_contract_service import build_uac_ui_contract
 from services.uac.qa_handoff_service import build_qa_handoff_payload_for_response
 
+_UAC_RELEASE_NOTE_LIMIT: int = int(os.getenv("UAC_RELEASE_NOTE_CHUNKS", "3"))
+
+
+def _retrieve_release_note_context(
+    query_text: str,
+    *,
+    tenant_id: str = "default",
+    limit: int = _UAC_RELEASE_NOTE_LIMIT,
+) -> list[str]:
+    """Return up to `limit` release-note chunk texts from the tenant RAG collection.
+
+    Returns an empty list silently when embeddings are unavailable or the
+    collection has no release-note documents.
+    """
+    if not query_text or limit <= 0:
+        return []
+    try:
+        from app.services.embedding_service import embed_query, is_embedding_available
+        from app.services.vector_store_service import query_collection
+
+        if not is_embedding_available():
+            return []
+        collection = f"{tenant_id}_rag"
+        qv = embed_query(query_text[:2000])
+        if not qv:
+            return []
+        rows = query_collection(
+            collection,
+            qv,
+            k=limit,
+            where={"doc_type": {"$eq": "release_notes"}},
+        )
+        return [r["document"] for r in rows if r.get("document")]
+    except Exception:
+        return []
+
 logger = get_structured_logger(__name__)
 
 _UAC_MAX_SCENARIOS: int = int(os.getenv("UAC_MAX_SCENARIOS", "7"))
@@ -598,6 +634,11 @@ async def run_uac_analyze(
             "classification_snapshot": _classification_payload(enriched),
         }
 
+    release_note_chunks: list[str] = []
+    if has_query_evidence:
+        qtext_for_rn = _retrieval_query_text(enriched)
+        release_note_chunks = _retrieve_release_note_context(qtext_for_rn)
+
     def _retrieval_out() -> dict[str, Any]:
         if debug and retrieval_sink:
             return dict(retrieval_sink)
@@ -656,7 +697,7 @@ async def run_uac_analyze(
 
     current_for_score = enriched.model_dump()
     similar_for_score = _similar_payload(similar, enriched)
-    prompt = build_uac_prompt(enriched, similar)
+    prompt = build_uac_prompt(enriched, similar, release_note_chunks=release_note_chunks)
 
     if not is_llm_available():
         logger.warning_structured("uac_analyze_llm_off", extra_fields={"jira_key": jk})
@@ -696,7 +737,7 @@ async def run_uac_analyze(
         ).strip()
         first_quality = score_answer_specificity(draft, current_for_score, similar_for_score)
         if int(first_quality.get("score", 0)) < 70:
-            strict_prompt = build_uac_prompt(enriched, similar, strict_specificity=True)
+            strict_prompt = build_uac_prompt(enriched, similar, strict_specificity=True, release_note_chunks=release_note_chunks)
             draft = (
                 await asyncio.wait_for(
                     generate_text(

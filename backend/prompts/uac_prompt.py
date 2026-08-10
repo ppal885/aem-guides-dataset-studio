@@ -110,6 +110,7 @@ def build_uac_prompt(
     similar_jiras: Sequence[RetrievedJira | dict[str, Any]],
     *,
     strict_specificity: bool = False,
+    release_note_chunks: Sequence[str] | None = None,
 ) -> str:
     """
     Build a single user prompt (or combined instruction block) for UAC generation.
@@ -159,6 +160,18 @@ def build_uac_prompt(
 - **Missing clarifications:** section 5 must reference at least one concrete `missing_info_flags` item verbatim (or state that the array is empty / only `Insufficient evidence` applies).
 """
 
+    _rn_chunks = list(release_note_chunks or [])
+    if _rn_chunks:
+        _rn_text = "\n\n---\n\n".join(f"[RN{i+1}] {c.strip()}" for i, c in enumerate(_rn_chunks[:3]))
+        _rn_block = (
+            "\n\n## Evidence — AEM Guides release notes (use only to confirm fixed-version or version-specific behavior)\n"
+            "If a release note chunk is relevant to the current issue, cite it as `(release note [RN1])` etc. "
+            "Do not invent version numbers or fixed-in versions absent from these chunks.\n"
+            f"```\n{_rn_text}\n```\n"
+        )
+    else:
+        _rn_block = ""
+
     return f"""You are a senior QA analyst for Adobe Experience Manager Guides. Produce a User Acceptance Criteria (UAC) readiness brief using **only** the evidence in the JSON blocks below (current issue + similar tickets). Do not invent CRM/customer names, environments, builds, URLs, or ticket keys that are not present in that evidence.
 {strict_extra}
 {_scope_reminder}
@@ -182,7 +195,7 @@ The `description_excerpt` in the current Jira JSON is the authoritative source o
 ```json
 {similar}
 ```
-
+{_rn_block}
 ---
 
 ## Required output format (use these headings only, in this order)
