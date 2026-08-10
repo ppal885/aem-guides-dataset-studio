@@ -93,7 +93,12 @@ _JIRA_FETCH_FIELDS = (
 
 
 def _jira_client_ready(client: JiraClient) -> bool:
-    has_auth = (client.username and client.password) or (client.email and client.api_token)
+    has_auth = (
+        bool(getattr(client, "bearer_token", ""))
+        or (client.username and client.password)
+        or (client.email and client.api_token)
+        or (client.username and client.api_token)
+    )
     return bool(client.base_url and has_auth)
 
 
