@@ -217,17 +217,37 @@ def get_test_plan_quality_summary(
 
 @router.post("")
 def save_test_plan(body: SaveTestPlanRequest, user: UserIdentity = CurrentUser):
-    """Publish or update a shared test plan visible to all team members in the UI."""
+    """Publish or update a shared test plan and auto-index it into jira_qa for team retrieval."""
+    from app.services.test_plan_index_service import index_test_plan
+
     try:
         saved = artifacts.save_test_plan(body.jira_key, body.markdown)
         validation = artifacts.validate_saved_test_plan(saved["jira_key"])
+        index_result = index_test_plan(saved["jira_key"], markdown=body.markdown)
         return {
             **saved,
             "validation": validation,
-            "message": "Test plan published to shared storage. Open /test-plans in Dataset Studio.",
+            "index": index_result,
+            "message": "Test plan published and indexed. Open /test-plans in Dataset Studio.",
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{jira_key}/index")
+def index_test_plan_route(jira_key: str, user: UserIdentity = CurrentUser):
+    """Re-index a saved test plan into jira_qa ChromaDB (idempotent — safe to re-run)."""
+    from app.services.test_plan_index_service import index_test_plan
+
+    try:
+        result = index_test_plan(jira_key)
+        if not result["indexed"]:
+            raise HTTPException(status_code=503, detail=result.get("reason", "Indexing failed"))
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/{jira_key}/validate")
