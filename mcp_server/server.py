@@ -9,12 +9,21 @@ Prerequisites:
   1. Backend running:  cd backend && python run_local.py   (default port 8001)
   2. backend/.env has:  ALLOW_DEV_AUTH_BYPASS=true
 
-Run (stdio transport — used by Claude Desktop / Cursor / Claude Code):
+Run (stdio — local use, Claude Desktop / Cursor / Claude Code on same machine):
   python mcp_server/server.py
+
+Run (SSE/HTTP — shared team access, exposes on a network port):
+  python mcp_server/server.py --sse
+  MCP_SSE_PORT=4502 python mcp_server/server.py --sse   # custom port
+
+Team members then add to their claude_desktop_config.json:
+  { "mcpServers": { "aem-guides-dataset-studio": { "url": "http://<vm-ip>:4502/sse" } } }
 
 Environment variables:
   AEM_STUDIO_URL    Backend base URL  (default: http://127.0.0.1:8001)
   AEM_STUDIO_TOKEN  Bearer token      (default: dev-bypass — works with ALLOW_DEV_AUTH_BYPASS=true)
+  MCP_SSE_PORT      Port for SSE mode (default: 4502)
+  MCP_SSE_HOST      Bind host for SSE (default: 0.0.0.0)
 """
 
 import asyncio
@@ -378,5 +387,48 @@ async def main() -> None:
         )
 
 
+def run_sse() -> None:
+    """Run as an HTTP/SSE server so the whole team can connect without a local clone."""
+    try:
+        from mcp.server.sse import SseServerTransport
+        from starlette.applications import Starlette
+        from starlette.routing import Mount, Route
+        import uvicorn
+    except ImportError:
+        raise SystemExit(
+            "SSE dependencies missing. Run: pip install starlette uvicorn"
+        )
+
+    host = os.environ.get("MCP_SSE_HOST", "0.0.0.0")
+    port = int(os.environ.get("MCP_SSE_PORT", "4502"))
+
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )
+
+    app = Starlette(
+        routes=[
+            Route("/sse", endpoint=handle_sse),
+            Mount("/messages/", app=sse.handle_post_message),
+        ]
+    )
+    print(f"AEM Guides MCP server (SSE) starting on http://{host}:{port}")
+    print(f"  Backend: {BACKEND_URL}")
+    print(f"  Team config: add url=http://<this-vm-ip>:{port}/sse to claude_desktop_config.json")
+    uvicorn.run(app, host=host, port=port)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    if "--sse" in sys.argv:
+        run_sse()
+    else:
+        asyncio.run(main())
