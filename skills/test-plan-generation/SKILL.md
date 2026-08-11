@@ -173,14 +173,14 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 ### Phase 3 — Retrieve Behaviour RAG
 
-**Decide first: does RAG add value for this ticket?** Make this call explicitly before calling `ask_dita_expert`. Set `behaviour_matters: false` in the evidence manifest with a one-line reason when ANY of the following applies — then skip Phase 3 entirely (zero RAG calls):
+**Decide first: does RAG add value for this ticket?** Make this call explicitly before calling `ask_dita_expert`. Two ticket types never benefit from RAG — set `behaviour_matters: false` in the evidence manifest with a one-line reason and skip Phase 3 entirely (zero RAG calls):
 
-- **New feature request with no existing implementation** — the feature does not exist in AEM Guides yet, so Experience League and DITA-spec docs describe adjacent existing behaviour only; RAG would return tangentially related docs, not the proposed feature's design contract. (Example: GUIDES-52249 baseline freeze — no freeze feature exists, RAG returns baseline list/create/export docs.)
-- **Pure backend/JCR code bug** — the defect is fully deterministic from code (a missing guard, a wrong property write, a lifecycle hook not called); RAG returns documentation, not JCR property lifecycle or Java method behaviour; Starling grep is the correct evidence source.
-- **Complete Jira UAC** — the Jira issue contains explicit, signed-off acceptance criteria that fully define the expected behaviour; RAG cannot add to what is already authoritatively stated in UAC.
-- **RAG has already been run on this component and returned only noise** — if a prior probe set for the same component and behaviour returned only generic vocabulary matches (words like `topic`, `map`, `workflow`, `metadata`) without proving actual product behaviour, do not re-run the same probes; record the prior attempt and move on.
+- **New feature request with no existing implementation** — the feature does not exist in AEM Guides yet; Experience League and DITA-spec docs describe adjacent existing behaviour only, not the proposed design contract. Use Jira UAC + Starling grep as primary evidence instead. Example: a baseline freeze/lock feature UAC where no freeze implementation exists returns only baseline create/export docs — not useful.
+- **Pure deterministic code bug** — the defect is fully explained by reading the code (a missing guard, a wrong property write, a lifecycle hook not called); RAG returns product documentation, not JCR property lifecycle or Java method behaviour. Use Starling grep as primary evidence instead.
 
-**When `behaviour_matters: true` (default — all other tickets):**
+**For all other tickets, set `behaviour_matters: true` (the default) and run RAG.** This includes: existing features with documented behaviour in Experience League or DITA spec; configuration-dependent behaviour (OSGi, output presets, DITA-OT, XML Editor profiles); integration behaviour across AEM Guides workflows (translation, baseline, review, publishing); and any case where expected behaviour is ambiguous or disputed between Jira and product docs.
+
+**When `behaviour_matters: true`:**
 
 - Call `ask_dita_expert` with focused questions from normalized behaviour, not raw keyword spam.
 - Run at least three focused RAG probes: exact API/config/UI/construct terms, expected workflow, and regression/config/version boundary. This is mandatory and front-loaded — do not write the plan until the three probes have run. A single probe that returns noise or off-topic chunks is NOT "RAG unavailable": reformulate with different exact terms and retry to at least three attempts before concluding the behaviour is undocumented, and never let one weak probe stand in for the set.
