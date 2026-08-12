@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-UAC_SCHEMA_VERSION = "historical-uac-v5"
+UAC_SCHEMA_VERSION = "historical-uac-v11"
 CURRENT_UAC_SCHEMA_VERSION = "current-uac-v1"
 UAC_ANALYSIS_METHOD = "deterministic-rules"
 UAC_CONTRACT_CHUNK_TYPE = "historical_uac_contract_chunk"
@@ -291,6 +291,28 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("custom_tags", re.compile(r"\bcustom\s+tags?\b", re.I)),
     ("ootb_tags", re.compile(r"\b(?:OOTB|out[-\s]?of[-\s]?the[-\s]?box)\s+tags?\b", re.I)),
     ("bulk_operation", re.compile(r"\bbulk\s+operation\b", re.I)),
+    (
+        "bulk_asset_overwrite",
+        re.compile(
+            r"\b(?:overwrite|re[-\s]?upload|upload(?:ing|ed)?\s+(?:the\s+)?same|same[-\s]?name)\b"
+            r"[^.\n]{0,180}\b(?:assets?|files?|batch)\b|"
+            r"\b(?:assets?|files?|batch)\b[^.\n]{0,180}\b(?:overwrite|re[-\s]?upload|same[-\s]?name)\b",
+            re.I,
+        ),
+    ),
+    ("same_name_overwrite", re.compile(r"\b(?:same[-\s]?name|same\s+names?)\b[^.\n]{0,100}\b(?:overwrite|re[-\s]?upload|assets?|files?)\b", re.I)),
+    ("fmdita_import_route", re.compile(r"/bin/fmdita/import\b", re.I)),
+    ("forced_logout", re.compile(r"\b(?:forced?\s+logout|logged\s+out|session\s+logout)\b", re.I)),
+    ("login_redirect", re.compile(r"\b(?:redirect(?:ed|s)?\s+to|lands?\s+on)\s+(?:the\s+)?login\b", re.I)),
+    ("csrf_refresh_loop", re.compile(r"\b(?:repeated|loop(?:ing)?|multiple)\b[^.\n]{0,100}\bCSRF(?:\s+token)?\b|\bCSRF(?:\s+token)?\b[^.\n]{0,100}\b(?:repeated|loop(?:ing)?|multiple)\b", re.I)),
+    ("indefinite_loader", re.compile(r"\b(?:indefinite(?:ly)?|stuck|never[-\s]?ending)\b[^.\n]{0,100}\b(?:loader|loading|pending|progress)\b", re.I)),
+    ("processing_terminal_state", re.compile(r"\b(?:observable\s+)?terminal\s+(?:success|failure|state|result)\b", re.I)),
+    ("asset_readback_integrity", re.compile(r"\b(?:read[-\s]?back|read\s+back|verify)\b[^.\n]{0,140}\b(?:(?:every|all)\s+)?(?:targeted\s+)?assets?\b[^.\n]{0,140}\b(?:binary|content|identity|repository\s+state|integrity)\b", re.I)),
+    ("initial_upload_control", re.compile(r"\binitial\s+upload\b[^.\n]{0,120}\b(?:control|complete|success|unchanged|valid)\b", re.I)),
+    ("batch_boundary", re.compile(r"\b(?:batch(?:es)?|under\s+\d+|\d+\+?\s+(?:assets?|files?))\b[^.\n]{0,120}\b(?:compare|boundary|threshold|fixture|overwrite|upload)\b|\b(?:compare|boundary|threshold|fixture)\b[^.\n]{0,120}\b(?:batch(?:es)?|\d+\+?\s+(?:assets?|files?))\b", re.I)),
+    ("upload_limit_configuration", re.compile(r"\b(?:maximum\s+(?:POST\s+Parameter|File\s+Save|File\s+Count)|upload[-\s]+related\s+limits?)\b", re.I)),
+    ("product_assets_upload_process", re.compile(r"\bProduct\s+Assets\s+Upload\s+Process\b", re.I)),
+    ("generic_failure_message", re.compile(r"\bgeneric\s+(?:error|failure)(?:\s+message)?\b", re.I)),
     ("updated_count", re.compile(r"\b(?:files?\s+updated|updated\s+(?:files?|count))\b", re.I)),
     ("skipped_count", re.compile(r"\b(?:files?\s+skipped|skipped(?:\s+files?)?[^.;\n]{0,60}\bcount(?:ed)?)\b", re.I)),
     ("error_message", re.compile(r"\b(?:proper|actionable|correct)\s+error\s+message\b", re.I)),
@@ -304,6 +326,37 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("filter_scope", re.compile(r"\bfilters?\s+(?:panel|applied|should\s+work|work\s+as\s+is)\b", re.I)),
     ("visible_assets", re.compile(r"\b(?:files?|assets?)\s+(?:present|visible)\b", re.I)),
     ("api_response", re.compile(r"\bAPI\s+response\b", re.I)),
+    (
+        "asset_crud_api",
+        re.compile(
+            r"\b(?:CRUD\s+APIs?|CREATE\s+API|UPDATE\s+(?:API|call)|API\s+to\s+(?:create|update))\b",
+            re.I,
+        ),
+    ),
+    (
+        "caller_content_payload",
+        re.compile(r"\b(?:editor\s*data|file\s*content|caller[-\s]?provided\s+(?:topic\s+)?content|topic\s+content\s+passed\s+from\s+API)\b", re.I),
+    ),
+    (
+        "metadata_write",
+        re.compile(
+            r"\b(?:(?:set|pass|take|supply|persist|write|update)\w*[^.;\n]{0,60}\bmetadata|metadata[^.;\n]{0,60}\b(?:same\s+call|create|update|persist|write))\b",
+            re.I,
+        ),
+    ),
+    (
+        "explicit_guid_assignment",
+        re.compile(
+            r"\b(?:(?:desired|explicit|caller[-\s]?supplied)\s+GUID|GUID[^.;\n]{0,80}(?:parameter|assign|supplied|passed))\b",
+            re.I,
+        ),
+    ),
+    ("human_readable_filename", re.compile(r"\bhuman[-\s]?readable\s+file\s*names?\b", re.I)),
+    ("template_content", re.compile(r"\btemplate\s+(?:content|to\s+use)\b|\btemplate[-\s]?only\b", re.I)),
+    ("upsert", re.compile(r"\bUPSERT\b", re.I)),
+    ("force_create", re.compile(r"\b(?:force[-_\s]?creat(?:e|ion)|force\s+creation\s+of\s+file)\b", re.I)),
+    ("external_system_import", re.compile(r"\b(?:external[-\s]+system|importing\s+(?:the\s+)?content)\b", re.I)),
+    ("api_docs_surface", re.compile(r"/libs/fmdita/clientlibs/api-docs/index/page\.html", re.I)),
     ("all_assets", re.compile(r"\ballAssets\b|\ball\s+assets\b", re.I)),
     ("uuid_to_path", re.compile(r"\bconvert(?:ing)?\s+UUID\s+to\s+path\b|\bUUID[-\s]?to[-\s]?path\b", re.I)),
     ("full_scan", re.compile(r"\b(?:scann?ing\s+(?:of\s+)?all\s+data|full\s+(?:repository|data)\s+scan)\b", re.I)),
@@ -378,6 +431,24 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("security_permissions", re.compile(r"\b(?:role|permission|access|authorization|authentication)\b", re.I)),
     ("automation", re.compile(r"\b(?:automation|automated|test\s+case)\b", re.I)),
     ("feature_flag", re.compile(r"\bfeature\s+flag\b", re.I)),
+    (
+        "feature_flag_state_matrix",
+        re.compile(
+            r"\bfeature\s+flag\b[\s\S]{0,300}\b(?:off|disabled)\b[\s\S]{0,180}\b(?:on|enabled)\b|"
+            r"\bfeature\s+flag\b[\s\S]{0,300}\b(?:on|enabled)\b[\s\S]{0,180}\b(?:off|disabled)\b",
+            re.I,
+        ),
+    ),
+    (
+        "control_default_state",
+        re.compile(
+            r"\b(?:default|initial|first[-\s]?render)\b[^.\n]{0,120}"
+            r"\b(?:button|control|action|icon)\b[^.\n]{0,100}\bstate\b|"
+            r"\b(?:button|control|action|icon)\b[^.\n]{0,120}"
+            r"\b(?:default|initial|first[-\s]?render)\s+state\b",
+            re.I,
+        ),
+    ),
     ("dita_ot", re.compile(r"\bdita[-\s]?ot\b", re.I)),
     ("native_pdf", re.compile(r"\bnative\s+pdf\b", re.I)),
     ("map_title", re.compile(r"\b(?:bookmap|map)\s+title\b", re.I)),
@@ -403,7 +474,15 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("translation", re.compile(r"\btranslat(?:e|ed|ion|ing)\b", re.I)),
     ("translation_v1", re.compile(r"\bv1(?:\s+translation|\s*/\s*translation|\s+workflow)?\b", re.I)),
     ("translation_v2", re.compile(r"\bv2(?:\s+translation|\s+workflow)?\b", re.I)),
-    ("translation_first_run", re.compile(r"\b(?:first\s+time|1st\s+translation|first\s+translation)\b", re.I)),
+    (
+        "translation_first_run",
+        re.compile(
+            r"\b(?:1st|first)\s+translation\b|"
+            r"\btranslation\b[^.\n]{0,120}\b(?:first|1st)\s+time\b|"
+            r"\b(?:first|1st)\s+time\b[^.\n]{0,120}\btranslation\b",
+            re.I,
+        ),
+    ),
     ("translation_subsequent_run", re.compile(r"\b(?:2nd\s+(?:time|translation)|second\s+(?:time|translation)|2nd\s+or\s+furthermore)\b", re.I)),
     ("source_language_copy", re.compile(r"\b(?:source\s+language\s+assets?|source\s+content\s+cop(?:y|ies))\b", re.I)),
     ("target_language_folder", re.compile(r"\b(?:target\s+(?:language\s+)?folder|translation\s+language\s+folders?|lang\s+folder|(?:to|from)\s+lang)\b", re.I)),
@@ -505,6 +584,105 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
+        "explorer_sorting",
+        re.compile(
+            r"\b(?:web\s+editor\s+)?explorer(?:\s+(?:panel|view))?\b[^.\n]{0,260}"
+            r"\b(?:sort(?:ed|ing)?|alphabetic(?:al|ally)?|order(?:ed|ing)?|ascending|descending)\b|"
+            r"\b(?:sort(?:ed|ing)?|alphabetic(?:al|ally)?|order(?:ed|ing)?|ascending|descending)\b"
+            r"[^.\n]{0,180}\b(?:web\s+editor\s+)?explorer(?:\s+(?:panel|view))?\b",
+            re.I,
+        ),
+    ),
+    (
+        "display_preference",
+        re.compile(
+            r"\b(?:user\s+preferences?|display\s+preference|file/folder\s+listing)\b"
+            r"[^.\n]{0,160}\b(?:file\s*name|filename|title|display)\b",
+            re.I,
+        ),
+    ),
+    (
+        "display_sort_decoupling",
+        re.compile(
+            r"\b(?:display|label)\b[^.\n]{0,180}\b(?:sort|order)\b[^.\n]{0,120}"
+            r"\b(?:unchanged|does\s+not|remains?|independent|separate)\b|"
+            r"\b(?:sort|order)\b[^.\n]{0,180}\b(?:display|label)\b[^.\n]{0,120}"
+            r"\b(?:unchanged|does\s+not|remains?|independent|separate)\b",
+            re.I,
+        ),
+    ),
+    (
+        "folder_sort_configuration",
+        re.compile(
+            r"\b(?:folder[-\s]+level|folder(?:'s)?\s+(?:underlying\s+)?(?:assets\s+)?sort|"
+            r"assets\s+sort\s+configuration|global\s+sort\s+configuration)\b",
+            re.I,
+        ),
+    ),
+    (
+        "user_sort_override",
+        re.compile(
+            r"\b(?:per[-\s]+user|per[-\s]+session|user[-\s]+selectable|user\s+override|"
+            r"session\s+override)\b[^.\n]{0,160}\b(?:sort|order|override|explorer)\b",
+            re.I,
+        ),
+    ),
+    (
+        "sort_direction",
+        re.compile(r"\b(?:asc(?:ending)?|desc(?:ending)?|ascending\s*/\s*descending)\b", re.I),
+    ),
+    (
+        "explorer_sort_control",
+        re.compile(
+            r"\b(?:explorer\s+)?sort\s+(?:control|icon|action|affordance|button)s?\b|"
+            r"\bexplicit\s+sort\s+controls?\b",
+            re.I,
+        ),
+    ),
+    (
+        "map_view_selection_count",
+        re.compile(
+            r"\bmap\s+view\b[^.\n]{0,240}\b(?:selected\s+(?:items?|maps?|nodes?)|selection\s+count|"
+            r"total\s+(?:number\s+of\s+)?(?:items?|maps?|nodes?)\s+selected|\d+\s+selected)\b|"
+            r"\b(?:selected\s+(?:items?|maps?|nodes?)|selection\s+count)\b[^.\n]{0,160}\bmap\s+view\b",
+            re.I,
+        ),
+    ),
+    (
+        "hierarchy_selection",
+        re.compile(
+            r"\b(?:current|selected|parent)\s+maps?\b[^.\n]{0,180}\b(?:child|descendant)\s+nodes?\b|"
+            r"\b(?:child|descendant)\s+nodes?\b[^.\n]{0,180}\b(?:current|selected|parent)\s+maps?\b",
+            re.I,
+        ),
+    ),
+    (
+        "initial_selection",
+        re.compile(
+            r"\b(?:initial|first)\s+selection\b|\bon\s+(?:the\s+)?initial\s+selection\b|"
+            r"\b(?:only\s+)?for\s+the\s+first\s+time\b",
+            re.I,
+        ),
+    ),
+    (
+        "selected_descendants",
+        re.compile(
+            r"\b(?:include|including|count|counting)\b[^.\n]{0,140}\b(?:all\s+)?(?:child|descendant)\s+nodes?\b|"
+            r"\b(?:all\s+)?(?:child|descendant)\s+nodes?\b[^.\n]{0,140}\b(?:selected|selection|count)",
+            re.I,
+        ),
+    ),
+    (
+        "first_selection_self_recovery",
+        re.compile(
+            r"\b(?:first|initial)\b[^.\n]{0,180}\b(?:incorrect|wrong|shows?|display(?:s|ed)?)\b"
+            r"[^.\n]{0,180}\b(?:subsequent|second|later)\b[^.\n]{0,160}\b(?:correct|recover)|"
+            r"\b(?:only\s+)?for\s+the\s+first\s+time\b[^.\n]{0,200}\b(?:subsequent|later)\b"
+            r"[^.\n]{0,140}\bcorrect\b",
+            re.I,
+        ),
+    ),
+    (
         "authoring_viewport_stability",
         re.compile(
             r"\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas|editing\s+location)\b"
@@ -592,10 +770,12 @@ _CONTRADICTION_BOUNDARY_DIMENSIONS = frozenset({"external_scope", "local_scope"}
 _CONTRADICTION_SPECIFIC_DIMENSIONS = frozenset(
     {
         "absolute_dam_path",
+        "asset_crud_api",
         "baseline",
         "ckeditor",
         "conditional_preset",
         "conditions",
+        "caller_content_payload",
         "diff_validation",
         "dita_image",
         "dita_object",
@@ -606,7 +786,9 @@ _CONTRADICTION_SPECIFIC_DIMENSIONS = frozenset(
         "ditavalref",
         "editor_parity",
         "external_scope",
+        "explicit_guid_assignment",
         "feature_flag",
+        "force_create",
         "foreign",
         "guid_identity",
         "guid_reference",
@@ -618,7 +800,10 @@ _CONTRADICTION_SPECIFIC_DIMENSIONS = frozenset(
         "map_title",
         "markup_editor",
         "mathml",
+        "metadata_write",
         "merged_html",
+        "template_content",
+        "upsert",
         "metadata_title",
         "move_before_save",
         "multimedia",
@@ -1233,6 +1418,8 @@ def _source_fragments(raw_text: str) -> tuple[list[tuple[str, str]], bool]:
 
 def _dimensions(text: str, kind: str) -> tuple[str, ...]:
     found = [name for name, pattern in _DIMENSION_RULES if pattern.search(text)]
+    if "asset_crud_api" in found:
+        found = [name for name in found if name != "authoring_crud"]
     if (
         kind == "out_of_scope"
         or _NOT_APPLICABLE_RE.search(text)
@@ -1242,6 +1429,127 @@ def _dimensions(text: str, kind: str) -> tuple[str, ...]:
     if re.search(r"\b(?:scope|only\s+for|applicable\s+for)\b", text, re.I):
         found.append("scope")
     return tuple(dict.fromkeys(found))
+
+
+def _apply_contract_dimensions(
+    clauses: list[HistoricalUacClause],
+    source_text: str,
+) -> list[HistoricalUacClause]:
+    contract_dimensions: list[str] = []
+    asset_crud_api_contract = bool(
+        re.search(
+            r"\b(?:CRUD\s+APIs?|CREATE\s+API|UPDATE\s+(?:API|call)|API\s+to\s+(?:create|update))\b",
+            source_text,
+            re.I,
+        )
+        and re.search(
+            r"\b(?:file\s*content|topic\s+content|metadata|GUID|UPSERT|force[-_\s]?creat(?:e|ion)|external[-\s]+system)\b",
+            source_text,
+            re.I,
+        )
+    )
+    bulk_asset_overwrite_contract = bool(
+        re.search(
+            r"\b(?:overwrite|re[-\s]?upload|upload(?:ing|ed)?\s+(?:the\s+)?same|same[-\s]?name)\b",
+            source_text,
+            re.I,
+        )
+        and re.search(r"\b(?:assets?|files?|batch|200\+?|two\s+hundred)\b|/bin/fmdita/import\b", source_text, re.I)
+        and re.search(
+            r"\b(?:forced?\s+logout|redirect(?:ed|s)?\s+to\s+(?:the\s+)?login|"
+            r"(?:indefinite|stuck)\s+(?:loader|loading|pending)|generic\s+error|csrf(?:\s+token)?|"
+            r"terminal\s+(?:success|failure|state|result))\b",
+            source_text,
+            re.I,
+        )
+    )
+    bulk_asset_readback_integrity = bool(
+        bulk_asset_overwrite_contract
+        and re.search(
+            r"\bread[-\s]?back\b[\s\S]{0,180}\b(?:(?:every|all)\s+)?(?:targeted\s+)?assets?\b"
+            r"[\s\S]{0,180}\b(?:binary|content|identity|repository\s+state|integrity)\b",
+            source_text,
+            re.I,
+        )
+    )
+    explorer_sort_contract = bool(
+        re.search(r"\b(?:web\s+editor\s+)?explorer(?:\s+(?:panel|view))?\b", source_text, re.I)
+        and re.search(
+            r"\b(?:sort(?:ed|ing)?|alphabetic(?:al|ally)?|order(?:ed|ing)?|ascending|descending)\b",
+            source_text,
+            re.I,
+        )
+    )
+    explorer_feature_flag_contract = bool(
+        explorer_sort_contract and re.search(r"\bfeature\s+flag\b", source_text, re.I)
+    )
+    explorer_flag_state_matrix = bool(
+        explorer_feature_flag_contract
+        and re.search(r"\b(?:feature\s+)?flag\s+(?:is\s+)?(?:off|disabled)\b", source_text, re.I)
+        and re.search(r"\b(?:feature\s+)?flag\s+(?:is\s+)?(?:on|enabled)\b", source_text, re.I)
+    )
+    explorer_control_default_state = bool(
+        explorer_sort_contract
+        and re.search(r"\b(?:default|initial|first[-\s]?render)\b", source_text, re.I)
+        and re.search(r"\b(?:sort\s+)?(?:button|control|action|icon)\b", source_text, re.I)
+    )
+    if (
+        re.search(r"\bmap\s+view\b", source_text, re.I)
+        and re.search(r"\b(?:first|initial)\s+(?:time|selection)\b", source_text, re.I)
+        and re.search(r"\bsubsequent\s+selection\b[^.\n]{0,120}\bcorrect\s+count\b", source_text, re.I)
+    ):
+        contract_dimensions.append("first_selection_self_recovery")
+    if (
+        not contract_dimensions
+        and not asset_crud_api_contract
+        and not bulk_asset_overwrite_contract
+        and not explorer_sort_contract
+    ):
+        return clauses
+
+    adjusted: list[HistoricalUacClause] = []
+    for clause in clauses:
+        dimensions = list(clause.dimensions)
+        if asset_crud_api_contract:
+            dimensions = [dimension for dimension in dimensions if dimension != "authoring_crud"]
+            if not re.search(r"(?:scope\s*=|<\s*(?:xref|topicref)\b)", source_text, re.I):
+                dimensions = [
+                    dimension
+                    for dimension in dimensions
+                    if dimension not in {"external_scope", "local_scope", "scope_attribute"}
+                ]
+        if bulk_asset_overwrite_contract and clause.kind == "in_scope":
+            dimensions.append("bulk_asset_overwrite_session")
+            if bulk_asset_readback_integrity and re.search(
+                r"\bread[-\s]?back\b|\basset\s+(?:binary|content|identity)\b",
+                clause.text,
+                re.I,
+            ):
+                dimensions.append("asset_readback_integrity")
+        if explorer_sort_contract:
+            dimensions = [
+                dimension for dimension in dimensions if dimension != "reference_display_label"
+            ]
+            if clause.kind == "in_scope":
+                dimensions.append("explorer_sorting")
+                if explorer_feature_flag_contract:
+                    dimensions.append("feature_flag")
+                if explorer_flag_state_matrix:
+                    dimensions.append("feature_flag_state_matrix")
+                if explorer_control_default_state:
+                    dimensions.append("control_default_state")
+        if clause.kind == "in_scope" and (
+            "initial_selection" in clause.dimensions
+            or re.search(r"\bsubsequent\s+selection\b|\bcorrect\s+count\b", clause.text, re.I)
+        ):
+            dimensions.extend(contract_dimensions)
+        normalized_dimensions = tuple(dict.fromkeys(dimensions))
+        adjusted.append(
+            replace(clause, dimensions=normalized_dimensions)
+            if normalized_dimensions != clause.dimensions
+            else clause
+        )
+    return adjusted
 
 
 def _has_ambiguous_configuration_limitation(text: str) -> bool:
@@ -1511,6 +1819,7 @@ def analyze_historical_uac(
             else clause
             for clause in clauses
         ]
+    clauses = _apply_contract_dimensions(clauses, source_text)
     clauses = _apply_scope_target_gaps(clauses)
     clauses = _apply_numbered_scope_gaps(clauses, source_text)
     contradictions = _contradictions(clauses)

@@ -66,6 +66,7 @@ GOOD_PLAN = """**Understanding From Jira**
 **Regression Areas**
 - Nearby reporting workflow that reads the same output should be re-run after the change to confirm it still resolves correctly and the fix does not regress the shared read path.
 **Automation Coverage & Gaps**
+- Main feature coverage: Partially covered - AC-01 has direct integration coverage while AC-02 is missing.
 - AC-01: Covered by an existing API test at the integration layer.
 - AC-02: Not covered. Gap recipe at the API layer: setup prior state, poll the async helper with its configured timeout, assert state retained, tag with the suite, and cleanup created assets.
 **Open Questions**
@@ -127,6 +128,17 @@ def check(name: str, condition: bool) -> None:
 
 def test_validator() -> None:
     check("good plan passes", validate_mod.validate(GOOD_PLAN) == [])
+
+    no_main_feature_verdict = _replace(
+        GOOD_PLAN,
+        "- Main feature coverage: Partially covered - AC-01 has direct integration coverage while AC-02 is missing.\n",
+        "",
+    )
+    errs = validate_mod.validate(no_main_feature_verdict)
+    check(
+        "automation requires one main feature coverage verdict",
+        any("Main feature coverage" in error for error in errs),
+    )
 
     ac_without_source = _replace(
         GOOD_PLAN,
@@ -224,7 +236,7 @@ def test_validator() -> None:
     )
     check(
         "Performance AC without measurable oracle is rejected",
-        any("Performance Then must define a measurable numeric oracle" in e for e in errs),
+        any("Performance Then must define a measurable" in e for e in errs),
     )
 
     quantified_performance = _replace(
@@ -653,6 +665,192 @@ def test_run_gates() -> None:
             ),
         )
 
+        passive_historical_performance = _replace(
+            GOOD_PLAN,
+            "- Nearby reporting workflow that reads the same output should be re-run after the change to confirm it still resolves correctly and the fix does not regress the shared read path.",
+            "- GUIDES-37915's enumdefs API performance path on the shared SubjectScheme title-resolution file must not regress.",
+        )
+        check(
+            "manager feedback fails when historical performance Jira is only a passive regression",
+            any(
+                "historical performance Jira GUIDES-37915" in failure
+                and "historical_contracts" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    dual_source, passive_historical_performance
+                )
+            ),
+        )
+
+        current_performance_issue = {
+            **dual_source,
+            "issue": "GUIDES-37915",
+        }
+        check(
+            "current performance Jira is not misclassified as historical evidence",
+            not any(
+                "historical performance Jira GUIDES-37915" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    current_performance_issue, passive_historical_performance
+                )
+            ),
+        )
+
+        subjectscheme_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        subjectscheme_performance.update(
+            {
+                "decision": "required",
+                "risk_rating": "high",
+                "workload_model": {
+                    "operation": "Call GET /bin/aem/guides/xmleditor/subjectscheme/enumdefs through the inspected SubjectScheme title-resolution path.",
+                    "cardinality": "1 production-equivalent SubjectScheme dataset with the recorded enumdefs cardinality.",
+                    "concurrency": "200 concurrent users.",
+                    "repetition": "Run controlled before-fix and after-fix benchmark iterations against the same dataset.",
+                    "duration": "Use the GUIDES-37915 approved benchmark duration for each controlled run.",
+                },
+                "metrics": [
+                    "latency_p50",
+                    "latency_p90",
+                    "latency_p95",
+                    "latency_p99",
+                    "throughput",
+                    "error_rate",
+                    "timeout_rate",
+                    "cpu_utilization",
+                    "memory_usage",
+                    "gc_pause",
+                ],
+                "oracle": {
+                    "status": "quantified",
+                    "source_ref": "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                    "thresholds": [
+                        "p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline"
+                    ],
+                },
+                "test_types": ["load", "concurrency", "benchmark"],
+                "performance_ac_ids": ["AC-02"],
+                "historical_contracts": [
+                    {
+                        "jira_key": "GUIDES-37915",
+                        "relationship": "shared_execution_path",
+                        "retained": True,
+                        "mechanism": "The current change and historical ticket execute the SubjectScheme enumdefs title-resolution request path.",
+                        "workload": "200 concurrent users against the same production-equivalent SubjectScheme dataset.",
+                        "oracle": "At least 2x p95 response-time improvement versus the recorded before-fix same-dataset baseline.",
+                        "evidence_refs": [
+                            "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                            "Inspected SubjectScheme enumdefs title-resolution path",
+                        ],
+                    }
+                ],
+                "rationale": "The current SubjectScheme title-resolution change uses the same enumdefs execution path as GUIDES-37915, whose comments define a controlled same-dataset benchmark, approximately 200 concurrent users, percentile metrics, and a 2x response-time improvement oracle.",
+            }
+        )
+        subjectscheme_performance["signal_review"]["concurrency_or_contention"] = {
+            "status": "present",
+            "finding": "GUIDES-37915 defines an expected workload of approximately 200 concurrent users.",
+            "evidence_refs": ["GUIDES-37915 comment dated 2026-01-28"],
+        }
+        subjectscheme_performance["signal_review"]["latency_timeout_or_throughput"] = {
+            "status": "present",
+            "finding": "GUIDES-37915 records before/after response-time percentiles and a claimed 2x gain.",
+            "evidence_refs": ["GUIDES-37915 comment dated 2026-01-27"],
+        }
+        subjectscheme_manifest = {
+            **dual_source,
+            "performance_assessment": subjectscheme_performance,
+        }
+        check(
+            "same-path historical SubjectScheme performance contract passes schema validation",
+            run_gates.performance_mod.validate_performance_assessment(subjectscheme_manifest) == [],
+        )
+
+        subjectscheme_plan = _replace(
+            GOOD_PLAN,
+            "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+            "- AC-02 [Proposed]: (Performance) Given 200 concurrent users against the same production-equivalent SubjectScheme dataset | When clients call GET /bin/aem/guides/xmleditor/subjectscheme/enumdefs through the inspected title-resolution path | Then p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline | Evidence: GUIDES-37915 comments dated 2026-01-27 and 2026-01-28.",
+        )
+        subjectscheme_plan = _replace(
+            subjectscheme_plan,
+            "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+            "- P1 [AC-02]: Action: run the same-dataset load and concurrency benchmark with 200 concurrent users and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC. Expected: p95 response time improves by at least 2x versus the recorded before-fix baseline without added errors or timeouts.",
+        )
+        check(
+            "retained historical SubjectScheme contract emits a mapped Performance AC",
+            run_gates.performance_mod.validate_plan_alignment(
+                subjectscheme_manifest, subjectscheme_plan
+            )
+            == [],
+        )
+
+        subjectscheme_without_scenario = _replace(
+            subjectscheme_plan,
+            "- P1 [AC-02]: Action: run the same-dataset load and concurrency benchmark with 200 concurrent users and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC. Expected: p95 response time improves by at least 2x versus the recorded before-fix baseline without added errors or timeouts.",
+            "- P1 [AC-01]: Action: rerun the functional path. Expected: the functional result remains correct.",
+        )
+        check(
+            "retained historical performance AC cannot omit its mapped benchmark scenario",
+            any(
+                "must map to a Test Scenarios bullet" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    subjectscheme_manifest, subjectscheme_without_scenario
+                )
+            ),
+        )
+
+        wrong_historical_citation = _replace(
+            subjectscheme_plan,
+            "Evidence: GUIDES-37915 comments dated 2026-01-27 and 2026-01-28.",
+            "Evidence: Jira comment GUIDES-100.",
+        )
+        check(
+            "retained historical performance Jira must be cited by the Performance AC",
+            any(
+                "GUIDES-37915 must be cited" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    subjectscheme_manifest, wrong_historical_citation
+                )
+            ),
+        )
+
+        area_only_history = json.loads(json.dumps(subjectscheme_performance))
+        area_only_history["historical_contracts"][0]["relationship"] = "area_only"
+        check(
+            "area-only historical performance cannot be retained",
+            any(
+                "cannot retain area-only" in failure
+                for failure in run_gates.performance_mod.validate_performance_assessment(
+                    {"performance_assessment": area_only_history}
+                )
+            ),
+        )
+
+        not_required_with_retained_history = json.loads(json.dumps(subjectscheme_performance))
+        not_required_with_retained_history.update(
+            {
+                "decision": "not_required",
+                "risk_rating": "low",
+                "metrics": [],
+                "test_types": [],
+                "performance_ac_ids": [],
+                "oracle": {
+                    "status": "not_applicable",
+                    "source_ref": "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                    "thresholds": [],
+                },
+            }
+        )
+        for category in PERFORMANCE_SIGNAL_CATEGORIES:
+            not_required_with_retained_history["signal_review"][category]["status"] = "absent"
+        check(
+            "retained same-path history cannot be classified not-required",
+            any(
+                "requires decision=required" in failure
+                for failure in run_gates.performance_mod.validate_performance_assessment(
+                    {"performance_assessment": not_required_with_retained_history}
+                )
+            ),
+        )
+
         conditional_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
         conditional_performance.update(
             {
@@ -1016,19 +1214,14 @@ def test_compact_view() -> None:
         == [
             "**Acceptance Criteria**",
             "**Test Scenarios**",
-            "**Regression Areas**",
-            "**Past Jiras**",
+            "**Jira Tickets Worth Checking**",
+            "**Automation Coverage**",
             "**Open Questions**",
         ],
     )
     check(
-        "compact view renders the Jira Understanding card above sections",
-        compact.startswith(
-            "> **What I understood from Jira:** a thing is broken with a visible symptom. "
-            "Requested outcome: the thing should stop being broken.\n"
-            "> **Why it matters:** Customer context resolved from Jira: not identified; "
-            "it hurts customers in a concrete way.\n"
-        ),
+        "compact view keeps analysis in the durable artifact",
+        "What I understood from Jira" not in compact and "Why it matters" not in compact,
     )
     check(
         "compact view does not leak hidden record sections",
@@ -1041,6 +1234,7 @@ def test_compact_view() -> None:
                 "Code Touched",
                 "Lines Changed",
                 "Automation Coverage & Gaps",
+                "**Regression Areas**",
             )
         ),
     )
@@ -1048,22 +1242,30 @@ def test_compact_view() -> None:
         "compact view keeps validated Test Scenarios",
         "**Test Scenarios**" in compact
         and "Test data to prepare:" in compact
-        and "P0 [AC-01]" in compact,
+        and "P0 [AC-01]" in compact
+        and "P3 [Regression]" in compact
+        and "Action:" in compact
+        and "Expected:" in compact,
     )
-    check("compact view keeps validated past Jira", "GUIDES-100" in compact)
-    check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
-
-    missing_impact = _replace(
-        GOOD_PLAN,
-        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
-        "- Why it matters: Not specified.",
-    )
-    missing_impact_compact, missing_impact_problems = compact_mod.project(missing_impact)
     check(
-        "compact view uses the deterministic missing-impact fallback",
-        missing_impact_problems == []
-        and "Impact not specified; QA impact requires confirmation" in missing_impact_compact,
+        "compact ACs are straightforward and hide evidence analysis",
+        "- AC-01: Given an input | When the system runs | Then it produces the correct observable output." in compact
+        and "[Proposed]" not in compact
+        and "Evidence:" not in compact,
     )
+    check(
+        "compact Jira list keeps only key and title",
+        "- GUIDES-100 - Some bug." in compact
+        and "Similarity:" not in compact
+        and "Status:" not in compact
+        and "Worth checking because" not in compact,
+    )
+    check(
+        "compact automation states main coverage and high-level target",
+        "Main feature coverage: Partially covered" in compact
+        and "integration/API test automation" in compact,
+    )
+    check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
 
     no_match_plan = _replace(
         GOOD_PLAN,
@@ -1073,7 +1275,8 @@ def test_compact_view() -> None:
     no_match_compact, no_match_problems = compact_mod.project(no_match_plan)
     check(
         "compact view renders a deterministic no-Jira result",
-        no_match_problems == [] and "No same-defect-class past Jira" in no_match_compact,
+        no_match_problems == []
+        and "No same-mechanism Jira ticket is worth checking" in no_match_compact,
     )
 
 
@@ -1176,8 +1379,12 @@ def test_uac_fidelity_reference() -> None:
         "references/component-routing.md",
         "scripts/component_reference_router.py",
         "references/component-authoring.md",
+        "references/component-integration.md",
         "For GUIDES-34915-style scope pivots",
         "For GUIDES-34580-style Closed/Duplicate history",
+        "For Map View hierarchy-selection counts",
+        "For GUIDES-41093-style Explorer sorting enhancements",
+        "For asset CRUD API requests",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -1226,6 +1433,10 @@ def test_uac_fidelity_reference() -> None:
         "group removal and yellow color reset",
         "AC-04 [Proposed]: (Reports)",
         "cross_touchpoint_taxonomy",
+        "## Deterministic Performance Reference: GUIDES-37722 With GUIDES-37915",
+        "A qualifying historical performance Jira must not remain only under Regression Areas",
+        "approximately 200 concurrent users",
+        "p95 response time improves by at least 2x",
     ):
         check(f"UAC reference retains marker {marker}", marker in reference_text)
     check(
@@ -1312,6 +1523,205 @@ def test_component_reference_routing() -> None:
         "caution_resolution_without_uac_is_proposed_only" in map_xref["warnings"],
     )
 
+    map_selection = component_router_mod.route_references(
+        component="Authoring",
+        summary="Incorrect selected items in Map View",
+        acceptance_criteria=(
+            "In a fresh Guides 4.6 Map View, selecting map2 for the first time must immediately "
+            "display 7 selected rather than 1 selected. The seven-node selected set includes map2 "
+            "and all selected child nodes; later correct selections cannot mask the first failure. "
+            "The hierarchy can contain DITA files, Markdown files, and DITAVAL files."
+        ),
+        resolution="Fixed",
+        labels=["Authoring", "UAC_Done"],
+    )
+    check(
+        "Map View hierarchy count routes to Authoring",
+        map_selection["primary_component"] == "Authoring",
+    )
+    check(
+        "Map View hierarchy count receives the exact mechanism",
+        map_selection["mechanisms"] == ["map_view_hierarchy_selection_count"],
+    )
+    check(
+        "accepted Map View count uses accepted scope",
+        map_selection["scope_mode"] == "accepted_field_primary",
+    )
+
+    explorer_sorting = component_router_mod.route_references(
+        summary="Enable filename-based or user-selectable sorting in Web Editor Explorer",
+        description=(
+            "User Preferences Display File name changes the Explorer label, but the folder-level "
+            "Assets sort order remains unchanged. The requested outcome either honours the display "
+            "preference as the default sort key or exposes explicit sort controls for Name or Title "
+            "with ascending and descending direction plus a per-user session override."
+        ),
+        resolution="Working as Designed",
+        labels=["Red Hat"],
+    )
+    check(
+        "Explorer filename/title sorting routes to Authoring",
+        explorer_sorting["primary_component"] == "Authoring",
+    )
+    check(
+        "Explorer sorting receives the exact mechanism",
+        explorer_sorting["mechanisms"] == ["explorer_filename_title_sorting"],
+    )
+    check(
+        "working-as-designed Explorer request stays Proposed-only",
+        explorer_sorting["scope_mode"] == "proposed_only",
+    )
+    for warning in (
+        "accepted_uac_missing",
+        "caution_resolution_without_uac_is_proposed_only",
+        "explorer_sort_request_without_accepted_uac_is_proposed_only",
+        "explorer_sort_interaction_model_is_unresolved",
+    ):
+        check(f"Explorer sorting warning is retained: {warning}", warning in explorer_sorting["warnings"])
+
+    explorer_sorting_with_mockup = component_router_mod.route_references(
+        summary="Enable filename-based or user-selectable sorting in Web Editor Explorer",
+        description=(
+            "The requested outcome either honours the display preference as the default sort key "
+            "or exposes explicit sort controls for Name or Title with ascending and descending."
+        ),
+        design_evidence=(
+            "The inspected mockup shows a dedicated sort action in the Explorer header to the right "
+            "of Search and Add. Feature flag states must be tested with the flag OFF and ON, and the "
+            "default state of the button must be validated. The flag key, configured default value, "
+            "OFF-state presentation, menu, keys, direction behavior, and persistence are not shown."
+        ),
+        resolution="Working as Designed",
+    )
+    check(
+        "Explorer mockup selects the explicit sort-control direction",
+        explorer_sorting_with_mockup["design_resolution"] == "explicit_sort_control",
+    )
+    check(
+        "Explorer mockup removes the unresolved interaction-model warning",
+        "explorer_sort_interaction_model_is_unresolved"
+        not in explorer_sorting_with_mockup["warnings"],
+    )
+    check(
+        "Explorer mockup records its design-backed resolution",
+        "explorer_sort_explicit_control_selected_by_design"
+        in explorer_sorting_with_mockup["warnings"],
+    )
+    check(
+        "Explorer feature flag requires an OFF/ON matrix",
+        explorer_sorting_with_mockup["feature_flag_matrix_required"] is True,
+    )
+    check(
+        "Explorer sort control requires default-state validation",
+        explorer_sorting_with_mockup["default_control_state_required"] is True,
+    )
+    for warning in (
+        "explorer_sort_feature_flag_state_matrix_required",
+        "explorer_sort_feature_flag_key_unresolved",
+        "explorer_sort_feature_flag_default_value_unresolved",
+        "explorer_sort_flag_off_presentation_unresolved",
+        "explorer_sort_button_default_state_required",
+        "explorer_sort_button_default_state_unresolved",
+    ):
+        check(
+            f"Explorer flag/default warning is retained: {warning}",
+            warning in explorer_sorting_with_mockup["warnings"],
+        )
+    check(
+        "Explorer OFF/ON evidence completes the requested state matrix",
+        "explorer_sort_feature_flag_state_matrix_incomplete"
+        not in explorer_sorting_with_mockup["warnings"],
+    )
+
+    explorer_label_only = component_router_mod.route_references(
+        summary="Explorer displays file name instead of title",
+        description="The visible Explorer label should follow the selected display preference.",
+    )
+    check(
+        "generic Explorer label wording does not trigger sorting learning",
+        "explorer_filename_title_sorting" not in explorer_label_only["mechanisms"],
+    )
+
+    crud_api = component_router_mod.route_references(
+        summary="External-system asset CREATE and UPDATE CRUD APIs",
+        description=(
+            "The CREATE API must accept caller fileContent, metadata, a desired GUID independent "
+            "of the human-readable filename, and the UPDATE call must work like UPSERT with an "
+            "opt-in force creation control."
+        ),
+        resolution="",
+        labels=["ABS", "CrownEquipment"],
+    )
+    check("asset CRUD API routes to Integration", crud_api["primary_component"] == "Integration")
+    check(
+        "asset CRUD API receives the exact mechanism",
+        crud_api["mechanisms"] == ["asset_crud_api_contract"],
+    )
+    check(
+        "asset CRUD API uses the focused Integration pack",
+        crud_api["references"]
+        == ["references/component-routing.md", "references/component-integration.md"]
+        and crud_api["load_full_uac_reference"] is False,
+    )
+    check(
+        "asset CRUD request without accepted UAC stays Proposed",
+        crud_api["scope_mode"] == "description_candidate"
+        and "crud_api_request_without_accepted_uac_is_proposed_only" in crud_api["warnings"],
+    )
+
+    generic_api = component_router_mod.route_references(
+        summary="API returns an error",
+        description="A generic API call fails without an asset CRUD payload contract.",
+    )
+    check(
+        "generic API wording does not trigger asset CRUD learning",
+        "asset_crud_api_contract" not in generic_api["mechanisms"]
+        and generic_api["load_full_uac_reference"] is True,
+    )
+
+    bulk_overwrite = component_router_mod.route_references(
+        summary="Abnormal behavior when overwriting 200+ assets",
+        description=(
+            "The initial upload of 200 assets succeeds, but re-uploading the same-name assets "
+            "through /bin/fmdita/import can remain stuck on a loader or show a generic error "
+            "and redirect the authenticated author to login after repeated CSRF token requests."
+        ),
+        resolution="Cannot Reproduce",
+        labels=["Hyundai"],
+    )
+    check(
+        "bulk overwrite/session failure routes to Platform",
+        bulk_overwrite["primary_component"] == "Platform",
+    )
+    check(
+        "bulk overwrite/session failure receives the exact mechanism",
+        bulk_overwrite["mechanisms"] == ["bulk_asset_overwrite_session"],
+    )
+    check(
+        "bulk overwrite/session failure uses the focused Platform pack",
+        bulk_overwrite["references"]
+        == ["references/component-routing.md", "references/component-platform.md"]
+        and bulk_overwrite["load_full_uac_reference"] is False,
+    )
+    for warning in (
+        "accepted_uac_missing",
+        "caution_resolution_without_uac_is_proposed_only",
+        "bulk_overwrite_without_accepted_uac_is_proposed_only",
+    ):
+        check(
+            f"bulk overwrite caution warning is retained: {warning}",
+            warning in bulk_overwrite["warnings"],
+        )
+
+    generic_upload = component_router_mod.route_references(
+        summary="Large asset upload is slow",
+        description="A generic DAM upload takes a long time without overwrite or session evidence.",
+    )
+    check(
+        "generic upload wording does not trigger bulk overwrite learning",
+        "bulk_asset_overwrite_session" not in generic_upload["mechanisms"],
+    )
+
     skill_root = Path(__file__).resolve().parents[1]
     authoring_reference = (skill_root / "references" / "component-authoring.md").read_text(
         encoding="utf-8"
@@ -1322,8 +1732,71 @@ def test_component_reference_routing() -> None:
         "## Map-Xref Display Label Contract — GUIDES-34580",
         "Closed as Duplicate",
         "`href`, `format`, `scope`, and `type`",
+        "## Map View Hierarchy Selection-Count Contract",
+        "selected map node itself and every descendant node",
+        "visible node occurrences or unique asset identity",
+        "DITA, Markdown, and DITAVAL",
+        "selecting `map2` initially shows `1 selected`",
+        "first selection must immediately show `7 selected`",
+        "warm second selection cannot validate this defect",
+        "## Explorer Filename/Title Sorting Contract — GUIDES-41093",
+        "display label, sort key, sort direction, folder default, and per-user override",
+        "dedicated sort affordance in the Explorer header",
+        "static mockup does not show the opened control",
+        "## Feature-Flag and Default-State Matrix",
+        "feature flag is OFF",
+        "feature flag is ON",
+        "upward arrow in a static mockup is not proof of ascending order",
+        "configured default value separate from the sort button's first-render default state",
+        "do not retain implicit display-preference coupling",
+        "documented workaround and comparison surface",
+        "folder-level Assets configuration only the initial default",
+        "Reject generic repository ordering",
     ):
         check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
+
+    integration_reference = (skill_root / "references" / "component-integration.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Asset CRUD API Import Contract",
+        "### Documented Current API Baseline",
+        "POST /bin/fmdita/xmleditor/create",
+        "operation=getdita",
+        "operation=postDita",
+        "`createrev` controls revision creation",
+        "POST /bin/guides/assets/delete",
+        "delete-only `force` parameter",
+        "template-only CREATE request with `parent`, `name`, `title`, and `template`",
+        "`operation=postDita` with `editorData`, `path`, and `createrev=false` or `true`",
+        "`operation=getdita`, `path`, and `type=UUID`",
+        "no partial new asset, duplicate identity, or partially updated metadata/content remains",
+        "filename, repository path, and GUID",
+        "target `exists` and `missing`",
+        "force-create `omitted`, `false`, and `true`",
+        "every generated criterion remains `[Proposed]`",
+        "a successful HTTP response alone is insufficient",
+        "must not be confused with UPDATE `createrev` or DELETE `force`",
+        "Reject editor CRUD",
+    ):
+        check(f"Integration component pack retains marker {marker}", marker in integration_reference)
+
+    platform_reference = (skill_root / "references" / "component-platform.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Bulk Same-Name Asset Overwrite and Session Contract - GUIDES-30459",
+        "candidate historical learning only",
+        "SP21 versus SP22",
+        "POST /bin/fmdita/import",
+        "never as a supported product threshold or SLA",
+        "observable terminal success or failure state",
+        "verified by reading back every targeted asset",
+        "Product Assets Upload Process",
+        "GUIDES-14743",
+        "Do not claim data loss",
+    ):
+        check(f"Platform component pack retains marker {marker}", marker in platform_reference)
 
     repo_root = _find_repo_root()
     for variant in (".codex", ".claude"):
@@ -1337,6 +1810,16 @@ def test_component_reference_routing() -> None:
             f"{variant} Authoring pack matches canonical",
             (variant_root / "references" / "component-authoring.md").read_bytes()
             == (repo_root / "skills" / "test-plan-generation" / "references" / "component-authoring.md").read_bytes(),
+        )
+        check(
+            f"{variant} Integration pack matches canonical",
+            (variant_root / "references" / "component-integration.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-integration.md").read_bytes(),
+        )
+        check(
+            f"{variant} Platform pack matches canonical",
+            (variant_root / "references" / "component-platform.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-platform.md").read_bytes(),
         )
 
 

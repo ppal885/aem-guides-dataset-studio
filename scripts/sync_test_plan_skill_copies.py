@@ -31,12 +31,11 @@ IGNORED_NAMES = {"__pycache__", ".DS_Store"}
 
 
 def _copy_tree(target: Path) -> None:
-    if target.exists():
-        shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
         SOURCE,
         target,
+        dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"),
     )
 

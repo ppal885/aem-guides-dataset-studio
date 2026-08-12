@@ -1124,6 +1124,125 @@ Display the Title of the MAP reference instead of the file name.
     }.issubset(set(candidate.dimensions))
 
 
+def test_map_view_initial_hierarchy_selection_count_preserves_file_type_matrix():
+    accepted_uac = """Acceptance Criterion:
+In a fresh Guides 4.6 Map View, selecting map2 for the first time currently shows 1 selected although
+the expanded hierarchy contains exactly 7 selected nodes. This happens only for the first time and
+any subsequent selection shows the correct count. The first selection must immediately display
+7 selected, including the selected map and all selected child nodes, without relying on a second selection.
+The hierarchy can contain DITA files, Markdown files, and DITAVAL files.
+"""
+
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria=accepted_uac,
+        labels=["Authoring", "UAC_Done"],
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-MAP-VIEW-SELECTION",
+        acceptance_criteria=text,
+        acceptance_source=source,
+        status="Closed",
+        resolution="Fixed",
+        labels=["Authoring", "UAC_Done"],
+    )
+
+    assert source == "jira_acceptance_field"
+    assert analysis is not None
+    assert {
+        "map_view_selection_count",
+        "hierarchy_selection",
+        "initial_selection",
+        "selected_descendants",
+        "first_selection_self_recovery",
+        "markdown",
+        "ditaval_asset",
+        "dita_asset",
+    }.issubset(set(analysis.dimensions))
+    assert "performance" not in analysis.dimensions
+    assert "translation_first_run" not in analysis.dimensions
+
+
+def test_asset_crud_api_contract_is_not_misclassified_as_editor_crud():
+    proposed_contract = """Scope: External-system asset import through the CRUD APIs.
+The CREATE API accepts caller-provided topic content instead of template-only content.
+The CREATE and UPDATE APIs accept metadata in the same request and persist it with the asset.
+The CREATE API accepts an explicit desired GUID independently of a human-readable filename.
+The UPDATE call uses UPSERT semantics: an existing target is updated once; a missing target is
+not created when force creation is omitted or false, and exactly one asset is created when force
+creation is true and the required creation fields are valid.
+Existing template-only CREATE clients remain backward compatible.
+"""
+
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-ASSET-CRUD-API",
+        acceptance_criteria=proposed_contract,
+        status="Open",
+        resolution="",
+        labels=["Integration"],
+    )
+
+    assert analysis is not None
+    assert {
+        "asset_crud_api",
+        "caller_content_payload",
+        "metadata_write",
+        "explicit_guid_assignment",
+        "human_readable_filename",
+        "template_content",
+        "upsert",
+        "force_create",
+        "external_system_import",
+    }.issubset(set(analysis.dimensions))
+    assert "authoring_crud" not in analysis.dimensions
+    assert all(
+        "crud_operation_matrix_missing" not in clause.unresolved_reasons
+        for clause in analysis.clauses
+    )
+
+
+def test_guides_30459_bulk_overwrite_session_history_stays_candidate():
+    proposed_contract = """Scope: AEM 6.5 On-Prem Guides 5.0 UUID bulk asset overwrite.
+The initial upload control for 200 assets completes, but re-uploading the same-name assets through
+/bin/fmdita/import can remain stuck on an indefinite loader or show a generic error, repeated CSRF
+token requests, and a redirect to login. The overwrite should reach an observable terminal success
+or failure state without forced logout. Success must be verified by read-back of every targeted
+asset binary, content identity, and repository state. Compare a smaller batch with the reported
+200-asset fixture without treating either count as a supported threshold. Maximum POST Parameter,
+File Save, and File Count settings plus Product Assets Upload Process changes are diagnostics only.
+"""
+
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-30459",
+        acceptance_criteria=proposed_contract,
+        status="Closed",
+        resolution="Cannot Reproduce",
+        labels=["Hyundai", "Platform"],
+    )
+
+    assert analysis is not None
+    assert {
+        "bulk_asset_overwrite",
+        "same_name_overwrite",
+        "fmdita_import_route",
+        "indefinite_loader",
+        "generic_failure_message",
+        "csrf_refresh_loop",
+        "login_redirect",
+        "processing_terminal_state",
+        "asset_readback_integrity",
+        "initial_upload_control",
+        "batch_boundary",
+        "upload_limit_configuration",
+        "product_assets_upload_process",
+        "bulk_asset_overwrite_session",
+    }.issubset(set(analysis.dimensions))
+    assert analysis.historical_outcome == "non_fix_decision"
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.performance_matters is False
+    assert analysis.explicit_root_cause is False
+    assert analysis.explicit_test_evidence is False
+
+
 def test_guides_23526_comment_scope_preserves_narrow_final_contract():
     acceptance_text, acceptance_source = resolve_historical_uac_text(
         labels=["UAC_Done", "KONE"],
@@ -1282,6 +1401,42 @@ def test_guides_35437_is_configuration_driven_working_as_designed_not_a_cell_def
     assert "working_as_designed" in analysis.dimensions
     assert "multi_column_delete" not in analysis.dimensions
     assert analysis.performance_matters is False
+
+
+def test_guides_41093_explorer_sorting_keeps_display_and_order_dimensions_separate():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-41093",
+        acceptance_criteria=(
+            "Working as designed: in Web Editor Explorer, User Preferences Display File name changes "
+            "the displayed label, but the sort order remains unchanged and follows the folder-level "
+            "Assets sort configuration. The requested enhancement should either honor the display "
+            "preference as the default sort key or expose explicit sort controls for Name or Title, "
+            "ascending or descending, with a per-user session override. With the feature flag OFF, "
+            "legacy Explorer behavior remains unchanged. With the feature flag ON, the dedicated "
+            "sort control is available. Validate the default state of the sort button on first render."
+        ),
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["Red Hat"],
+    )
+
+    assert analysis is not None
+    assert {
+        "explorer_sorting",
+        "display_preference",
+        "display_sort_decoupling",
+        "folder_sort_configuration",
+        "user_sort_override",
+        "sort_direction",
+        "explorer_sort_control",
+        "feature_flag",
+        "feature_flag_state_matrix",
+        "control_default_state",
+        "working_as_designed",
+    }.issubset(set(analysis.dimensions))
+    assert "reference_display_label" not in analysis.dimensions
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.historical_outcome == "expected_product_behavior"
 
 
 def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
