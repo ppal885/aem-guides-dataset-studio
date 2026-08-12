@@ -48,7 +48,8 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Read `references/git-repo-sync.md` and use `scripts/sync_evidence_repo.py` before treating a local clone as current product or automation evidence.
 - Read `references/design-evidence-flow.md` before using Figma MCP or design screenshots as evidence.
 - Read `references/output-template.md` before writing the final test plan.
-- Read `references/uac-reference-examples.md` when normalizing Jira UAC, writing acceptance criteria, or turning feature notes into test scenarios.
+- Read `references/component-routing.md`, then run `python scripts/component_reference_router.py <jira-json-or-text-file> --out <reference-routing.json>` before loading detailed UAC examples. Load only the returned focused component pack. Read `references/uac-reference-examples.md` only when the router requests the fallback or an exact gold/caution reference is required.
+- Read `references/component-authoring.md` when the router selects Authoring, especially for asset-browser thumbnails or map-Xref display labels.
 - Read `references/authoring-state-uac.md` when Jira mentions Author-canvas scroll/viewport/caret state, Map Preview restoration, CALS multi-column deletion, or `largeFileTagCount`/`GUIDES-35437`.
 - For Author-canvas viewport, Map Preview restoration, CALS multi-column deletion, or `GUIDES-35437` large-file-safeguard issues, run `python scripts/authoring_state_contract.py <jira-text-file> --out <candidate-contract.json>` and use only the matching deterministic route. The helper produces candidate AC/scenario wording; current Jira/UAC remains the scope authority.
 - Read `references/review-workflow-uac.md` when Jira scope mentions review tasks, review comments, review right panel, comment import, side-by-side review diff, task dropdowns, current/closed task state, or author incorporation of review comments.
@@ -78,6 +79,13 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - **CALS multi-column deletion** uses a 6-row by 5-column fixture with distinct cell values. Deleting the two rightmost columns must leave a valid 6-row by 3-column table, preserve retained content/order, produce no blank ghost column, and leave no orphan column/span metadata. Do not add `simpletable` or `reltable` parity unless current evidence names it.
 - **`GUIDES-35437` large-file behavior** is configuration-driven working-as-designed behavior governed by `largeFileTagCount`. Test immediately below and at/above the effective parsed-tag threshold. Never normalize a 411-cell observation into a hard-coded product defect, equate cell count with DITA tag count, or invent a performance SLA.
 - Exact screenshot-only Jira examples may teach a generic candidate pattern but must not be indexed as an exact historical Jira record. Exact UAC indexing requires a live Jira record or Jira CSV provenance with a verified source hash.
+
+### Component-Scoped Reference Routing
+
+- Canonical Jira component labels select the first reference pack. When the component is missing, infer it from accepted UAC, then summary, then description, and record the inference source. Component routing reduces prompt size; it does not establish product behaviour.
+- If the accepted UAC and stale description describe different mechanisms, use accepted UAC for ACs/scenarios and keep the displaced request out of Confirmed scope. Surface it only as an evidence-backed Open Question when QA sign-off depends on its disposition.
+- For GUIDES-34915-style scope pivots, thumbnail UAC does not inherit the description's image multi-selection request. Generic selection wording preserves existing selection only.
+- For GUIDES-34580-style Closed/Duplicate history with no accepted UAC, derive only Proposed map-Xref display-label criteria. Preserve reference destination/source semantics and ask for the duplicate target, affected surfaces, map-type boundary, and missing-title fallback.
 
 ## Lifecycle
 

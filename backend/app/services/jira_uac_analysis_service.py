@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-UAC_SCHEMA_VERSION = "historical-uac-v4"
+UAC_SCHEMA_VERSION = "historical-uac-v5"
 CURRENT_UAC_SCHEMA_VERSION = "current-uac-v1"
 UAC_ANALYSIS_METHOD = "deterministic-rules"
 UAC_CONTRACT_CHUNK_TYPE = "historical_uac_contract_chunk"
@@ -451,6 +451,59 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("iframe", re.compile(r"\biframe\b", re.I)),
     ("image_integrity", re.compile(r"\bimages?\b", re.I)),
     ("diff_validation", re.compile(r"\bdiff\s+comparison\b", re.I)),
+    ("asset_browser_thumbnail", re.compile(r"\bthumbnails?\b", re.I)),
+    (
+        "thumbnail_surfaces",
+        re.compile(
+            r"\b(?:home\s+repository(?:\s+content\s+view)?|bottom\s+search\s+panel|search\s+panel)\b",
+            re.I,
+        ),
+    ),
+    ("thumbnail_format_matrix", re.compile(r"\b(?:png|jpe?g|svg)\b", re.I)),
+    (
+        "thumbnail_freshness",
+        re.compile(r"\bthumbnail\b[^.\n]{0,100}\b(?:latest\s+version|current\s+version)\b", re.I),
+    ),
+    (
+        "thumbnail_fallback",
+        re.compile(
+            r"\b(?:unsupported|invalid)\b[^.\n]{0,100}\b(?:placeholder|broken\s+image|multimedia\s+icon)\b|"
+            r"\b(?:default\s+placeholder|fallback\s+to\s+the\s+original\s+image|no\s+broken\s+UI)\b",
+            re.I,
+        ),
+    ),
+    (
+        "thumbnail_lazy_loading",
+        re.compile(r"\b(?:lazy[-\s]?load(?:ing)?|layout\s+jank|load\s+smoothly)\b", re.I),
+    ),
+    (
+        "asset_picker_multi_selection",
+        re.compile(r"\bmulti[-\s]?selection\b|\bselect\s+multiple\s+images?\b", re.I),
+    ),
+    (
+        "xref_map_display_label",
+        re.compile(
+            r"\b(?:xref|cross[-\s]?reference)\b[^.\n]{0,180}\b(?:map|ditamap)\b"
+            r"[^.\n]{0,180}\b(?:title|file\s*name|filename)\b|"
+            r"\b(?:map|ditamap)\b[^.\n]{0,180}\b(?:xref|cross[-\s]?reference)\b"
+            r"[^.\n]{0,180}\b(?:title|file\s*name|filename)\b|"
+            r"\b(?:map|ditamap)\s+(?:files?\s+)?references?\b[^.\n]{0,180}"
+            r"\b(?:title|file\s*name|filename)\b",
+            re.I,
+        ),
+    ),
+    (
+        "map_reference",
+        re.compile(r"\b(?:map|ditamap)\s+(?:files?\s+)?referenc(?:e|ed|es)\b", re.I),
+    ),
+    (
+        "reference_display_label",
+        re.compile(
+            r"\b(?:display|show|shown|visible)\b[^.\n]{0,100}\b(?:title|file\s*name|filename)\b|"
+            r"\b(?:title|file\s*name|filename)\b[^.\n]{0,100}\b(?:display|show|shown|visible)\b",
+            re.I,
+        ),
+    ),
     (
         "authoring_viewport_stability",
         re.compile(

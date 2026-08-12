@@ -1048,6 +1048,82 @@ def test_native_acceptance_field_precedes_comment_scope_and_pending_scope_is_rej
     assert pending_source == "missing"
 
 
+def test_guides_34915_thumbnail_uac_overrides_stale_multi_selection_description():
+    accepted_uac = """Acceptance Criterion:
+1. Thumbnail should be shown for valid image files at Home Repository content view, Search panel, and Bottom search panel.
+2. Selection of image files should work fine.
+3. Thumbnail should be visible for PNG, JPG, and SVG.
+4. Thumbnail should be the same as the latest version of the image.
+5. Unsupported or invalid images show a default placeholder broken image with no broken UI.
+6. Thumbnails load smoothly using lazy-loading when necessary, without layout jank.
+"""
+    stale_description = """Enterprise Problem Statement:
+Multi-selection is not possible when applying an image to a topic.
+Multi-selection should only be possible within a specific folder.
+"""
+
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria=accepted_uac,
+        description=stale_description,
+        labels=["UAC_Done", "Hyundai"],
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-34915",
+        acceptance_criteria=text,
+        acceptance_source=source,
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done", "Hyundai"],
+    )
+
+    assert source == "jira_acceptance_field"
+    assert "Multi-selection" not in text
+    assert analysis is not None
+    assert {
+        "asset_browser_thumbnail",
+        "thumbnail_surfaces",
+        "thumbnail_format_matrix",
+        "thumbnail_freshness",
+        "thumbnail_fallback",
+        "thumbnail_lazy_loading",
+    }.issubset(set(analysis.dimensions))
+    assert "asset_picker_multi_selection" not in analysis.dimensions
+
+
+def test_guides_34580_duplicate_without_uac_remains_candidate_only():
+    description = """Problem Statement:
+For Topics, an Xref displays the Title. For MAP files, the Xref displays the file name.
+Display the Title of the MAP reference instead of the file name.
+"""
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria="",
+        description=description,
+        labels=["Authoring"],
+    )
+
+    assert text == ""
+    assert source == "missing"
+
+    candidate = analyze_historical_uac(
+        jira_key="GUIDES-34580",
+        acceptance_criteria=(
+            "A MAP file referenced using Xref should display its Title instead of its file name."
+        ),
+        status="Closed",
+        resolution="Duplicate",
+        labels=["Authoring"],
+    )
+
+    assert candidate is not None
+    assert candidate.historical_outcome == "duplicate_reference"
+    assert candidate.reuse_tier == "candidate"
+    assert {
+        "xref_map_display_label",
+        "map_reference",
+        "reference_display_label",
+    }.issubset(set(candidate.dimensions))
+
+
 def test_guides_23526_comment_scope_preserves_narrow_final_contract():
     acceptance_text, acceptance_source = resolve_historical_uac_text(
         labels=["UAC_Done", "KONE"],

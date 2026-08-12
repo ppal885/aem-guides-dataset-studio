@@ -22,9 +22,21 @@ def _load(module_name: str, filename: str):
     return module
 
 
+def _find_repo_root() -> Path:
+    for candidate in Path(__file__).resolve().parents:
+        if (
+            (candidate / ".codex" / "skills" / "test-plan-generation").is_dir()
+            and (candidate / ".claude" / "skills" / "test-plan-generation").is_dir()
+            and (candidate / "skills" / "test-plan-generation").is_dir()
+        ):
+            return candidate
+    raise RuntimeError("Could not locate the repository root for skill parity checks")
+
+
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 authoring_state_mod = _load("authoring_state_contract", "authoring_state_contract.py")
+component_router_mod = _load("component_reference_router", "component_reference_router.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -1161,6 +1173,11 @@ def test_uac_fidelity_reference() -> None:
         "### Deterministic Authoring-State Routing",
         "scripts/authoring_state_contract.py",
         "references/authoring-state-uac.md",
+        "references/component-routing.md",
+        "scripts/component_reference_router.py",
+        "references/component-authoring.md",
+        "For GUIDES-34915-style scope pivots",
+        "For GUIDES-34580-style Closed/Duplicate history",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -1245,6 +1262,84 @@ def test_uac_fidelity_reference() -> None:
         check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
 
 
+def test_component_reference_routing() -> None:
+    thumbnail = component_router_mod.route_references(
+        summary="Thumbnail display for multimedia on homepage repo and new search result panel",
+        description=(
+            "Multi-selection is not possible when applying an image to a topic. "
+            "Multi-selection should only be possible within a specific folder."
+        ),
+        acceptance_criteria=(
+            "Thumbnail should be shown for valid image files in Home Repository content view, "
+            "Search panel, and Bottom search panel. PNG, JPG, and SVG thumbnails should match "
+            "the latest image version and load with lazy-loading without layout jank."
+        ),
+        resolution="Fixed",
+        labels=["UAC_Done", "Hyundai"],
+    )
+    check("thumbnail scope routes to Authoring", thumbnail["primary_component"] == "Authoring")
+    check(
+        "accepted thumbnail scope excludes stale multi-selection mechanism",
+        thumbnail["mechanisms"] == ["asset_browser_thumbnail"],
+    )
+    check(
+        "thumbnail scope pivot emits a deterministic warning",
+        "stale_multi_selection_request_is_not_thumbnail_uac" in thumbnail["warnings"],
+    )
+    check(
+        "Authoring route avoids the full UAC catalog",
+        thumbnail["references"]
+        == ["references/component-routing.md", "references/component-authoring.md"]
+        and thumbnail["load_full_uac_reference"] is False,
+    )
+
+    map_xref = component_router_mod.route_references(
+        summary="Display Title Instead of File Name for MAP References in Xref",
+        description=(
+            "Topics display the Title in Xref, but MAP files display the file name. "
+            "MAP references should display the Title."
+        ),
+        resolution="Duplicate",
+    )
+    check("map Xref routes to Authoring", map_xref["primary_component"] == "Authoring")
+    check(
+        "map Xref receives the exact mechanism",
+        map_xref["mechanisms"] == ["xref_map_display_label"],
+    )
+    check("duplicate without UAC is Proposed-only", map_xref["scope_mode"] == "proposed_only")
+    check(
+        "duplicate warning is explicit",
+        "caution_resolution_without_uac_is_proposed_only" in map_xref["warnings"],
+    )
+
+    skill_root = Path(__file__).resolve().parents[1]
+    authoring_reference = (skill_root / "references" / "component-authoring.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Asset-Browser Thumbnail Contract — GUIDES-34915",
+        "does not prove multi-selection",
+        "## Map-Xref Display Label Contract — GUIDES-34580",
+        "Closed as Duplicate",
+        "`href`, `format`, `scope`, and `type`",
+    ):
+        check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
+
+    repo_root = _find_repo_root()
+    for variant in (".codex", ".claude"):
+        variant_root = repo_root / variant / "skills" / "test-plan-generation"
+        check(
+            f"{variant} component router matches canonical",
+            (variant_root / "scripts" / "component_reference_router.py").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "scripts" / "component_reference_router.py").read_bytes(),
+        )
+        check(
+            f"{variant} Authoring pack matches canonical",
+            (variant_root / "references" / "component-authoring.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-authoring.md").read_bytes(),
+        )
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -1254,6 +1349,7 @@ def main() -> int:
     test_compact_view()
     test_authoring_state_contract()
     test_uac_fidelity_reference()
+    test_component_reference_routing()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
