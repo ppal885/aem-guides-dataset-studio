@@ -2,6 +2,16 @@
 
 Use this before calling a test plan review-ready.
 
+## Component And Mechanism Routing
+
+- [ ] `component_reference_router.py` was run before loading detailed UAC examples, and only the returned focused pack (plus any justified fallback) was read.
+- [ ] A canonical Jira component was used when present; any inferred component records whether it came from accepted UAC, summary, or description.
+- [ ] If accepted UAC changed the ticket mechanism, stale description requirements were not merged into Confirmed ACs.
+- [ ] Generic image-selection wording was not expanded into multi-selection, cross-folder selection, or an invented selection limit.
+- [ ] Closed/Duplicate history without accepted UAC remains Proposed-only and cites neither a verified fix nor a Confirmed behavior contract.
+- [ ] Map-Xref display-label plans preserve `href`, `format`, `scope`, `type`, and destination semantics while changing only the evidenced visible label.
+- [ ] Missing map title, duplicate title, affected UI surfaces, specialized map types, and duplicate-target Jira are Open Questions unless current evidence resolves them.
+
 ## Stage Gate
 
 - Declare exactly one lifecycle stage: `Pre-Development UAC`, `Implementation Review`, or `Post-Fix Validation`.
