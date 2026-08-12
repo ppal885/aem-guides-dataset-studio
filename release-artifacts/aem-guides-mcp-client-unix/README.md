@@ -4,6 +4,8 @@ Lightweight macOS/Linux client for team members who use Claude Code with the cen
 
 This package does **not** contain the full dataset-studio repo, RAG corpus, ChromaDB, JSON chunks, or backend code. Live RAG stays on the VM.
 
+Package version: `2026.08.12`.
+
 ## What This Package Installs
 
 - MCP tool `ask_dita_expert` for VM-backed RAG knowledge.
@@ -129,7 +131,7 @@ Use $test-plan-generation to create a test plan for GUIDES-12345. Jira details a
 
 The skill uses `ask_dita_expert` for product behavior, `search_jira_history` for indexed historical tickets, and `query_test_evidence_graph` only after those direct calls. Graph influence defaults to shadow, so graph output is recorded but cannot alter the test plan unless the deployment explicitly enables augment. Mutable Jira facts and GitHub evidence still require live Jira/GitHub connectors or supplied evidence.
 
-Claude keeps the complete eleven-section plan in the Markdown artifact but shows only Acceptance Criteria, Regression Areas, Past Jiras, and Open Questions by default. Acceptance Criteria use the fixed `aem-guides-ac-v1` Given/When/Then contract; `scripts/extract_acs.py` emits the deterministic JSON input for an automation-draft agent.
+Claude keeps the complete eleven-section plan in the Markdown artifact. The compact UI first shows a Jira Understanding card with `What I understood from Jira` and `Why it matters`, followed by exactly five plan sections: Acceptance Criteria, Test Scenarios, Regression Areas, Past Jiras, and Open Questions. Acceptance Criteria use the fixed `aem-guides-ac-v1` Given/When/Then contract; `scripts/extract_acs.py` emits the deterministic JSON input for an automation-draft agent.
 
 Every ticket also receives an internal principal-performance-QA review. It never adds a plan section: only a `required` decision emits a quantified Performance AC; unresolved performance risk appears as a QA-impact Open Question.
 

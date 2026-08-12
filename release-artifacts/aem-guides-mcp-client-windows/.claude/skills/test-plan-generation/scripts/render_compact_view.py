@@ -1,4 +1,4 @@
-"""Render the four-section chat/UI projection from a validated full plan."""
+"""Render the Jira card and five-section UI projection from a validated plan."""
 
 from __future__ import annotations
 
@@ -19,11 +19,15 @@ PAST_JIRA_RE = re.compile(
     r"^- (?:\*\*)?[A-Z][A-Z0-9]+-\d+(?:\*\*)?(?:\s|$|[-:\u2014])"
 )
 SOURCE_SECTIONS = (
+    "Understanding From Jira",
     "Acceptance Criteria",
+    "Test Scenarios",
     "Regression Areas",
     "Known Jira Bugs / Past Similar Tickets",
     "Open Questions",
 )
+
+IMPACT_FALLBACK = "Impact not specified; QA impact requires confirmation"
 
 
 def _sections(text: str) -> dict[str, list[str]]:
@@ -40,11 +44,41 @@ def _sections(text: str) -> dict[str, list[str]]:
     return sections
 
 
+def _labelled_bullet(lines: list[str], label: str) -> str:
+    prefix = f"- {label}:"
+    for line in lines:
+        stripped = line.strip()
+        if stripped.casefold().startswith(prefix.casefold()):
+            return stripped[len(prefix) :].strip()
+    return ""
+
+
+def _impact_text(lines: list[str]) -> str:
+    impact = _labelled_bullet(lines, "Why it matters")
+    if not impact or re.fullmatch(
+        r"(?:unknown|not specified|not available|requires confirmation)[.!]?",
+        impact,
+        re.I,
+    ):
+        return IMPACT_FALLBACK
+    return impact
+
+
 def project(text: str) -> tuple[str, list[str]]:
     sections = _sections(text)
     problems: list[str] = []
     criteria, ac_problems = extract(text)
     problems.extend(ac_problems)
+    issue = _labelled_bullet(sections["Understanding From Jira"], "Issue understood")
+    requested_outcome = _labelled_bullet(
+        sections["Understanding From Jira"], "Requested outcome"
+    )
+    if not issue:
+        problems.append("Understanding From Jira is missing 'Issue understood'")
+    if not requested_outcome:
+        problems.append("Understanding From Jira is missing 'Requested outcome'")
+    if not sections["Test Scenarios"]:
+        problems.append("Test Scenarios is empty; compact view cannot be rendered")
     if not sections["Regression Areas"]:
         problems.append("Regression Areas is empty; compact view cannot be rendered")
     if not sections["Open Questions"]:
@@ -62,9 +96,18 @@ def project(text: str) -> tuple[str, list[str]]:
         return "", problems
 
     acceptance_lines = [f"- {criterion['raw']}" for criterion in criteria]
+    understood = issue
+    if requested_outcome:
+        understood = f"{understood} Requested outcome: {requested_outcome}"
     output = [
+        f"> **What I understood from Jira:** {understood}",
+        f"> **Why it matters:** {_impact_text(sections['Understanding From Jira'])}",
+        "",
         "**Acceptance Criteria**",
         *acceptance_lines,
+        "",
+        "**Test Scenarios**",
+        *sections["Test Scenarios"],
         "",
         "**Regression Areas**",
         *sections["Regression Areas"],
@@ -80,7 +123,7 @@ def project(text: str) -> tuple[str, list[str]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Project a full validated test plan into the default four-section UI view."
+        description="Project a full validated plan into the Jira card and five-section UI view."
     )
     parser.add_argument("plan_file")
     parser.add_argument("--out")
