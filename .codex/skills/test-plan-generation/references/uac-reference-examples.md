@@ -1455,3 +1455,11 @@ Use this example when Jira's native acceptance field is empty but an accepted-UA
 - Convert each UAC bullet into one practical `P0`, `P1`, or `P2` scenario with action and expected result.
 - Keep file-type matrices compact; do not create a table unless the user explicitly asks.
 - Add RAG-backed AEM configuration links only when `ask_dita_expert` confirms relevant upload restriction, duplicate detection, size, or versioning behaviour.
+
+## Deterministic Reference: Authoring Viewport, Map Preview, CALS Deletion, and Large-File Safeguards
+
+- Route an Author-view scroll-to-top issue to `authoring_viewport_stability` only when evidence names the editing canvas plus active caret/selection/element, reference insertion, or lost editing location. Cover typing, paste, link insert/update, picker cancel, repetition, active-element-relative reflow restoration, one correct reference, and unchanged surrounding content.
+- Keep `map_preview_state` separate. Its contract covers selected topic, relative preview scroll, conditions/right-panel state, refresh, and Edit-return. Reject area-only historical overlap unless evidence identifies shared state restoration or editor-scroll implementation.
+- For CALS multi-column deletion, use a 6-row by 5-column fixture and require a valid 6-row by 3-column result, no blank ghost column, preserved retained-cell order, and no orphan column/span metadata.
+- Learn `GUIDES-35437` as `largeFileTagCount` configuration-driven working-as-designed behavior. Test below and at/above the effective parsed-tag threshold; never turn 411 cells into a hard-coded product defect or performance SLA.
+- Exact screenshot-only records are not historical-UAC evidence. Index exact UAC only from live Jira or Jira CSV with a verified SHA-256 source hash.

@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-UAC_SCHEMA_VERSION = "historical-uac-v3"
+UAC_SCHEMA_VERSION = "historical-uac-v4"
 CURRENT_UAC_SCHEMA_VERSION = "current-uac-v1"
 UAC_ANALYSIS_METHOD = "deterministic-rules"
 UAC_CONTRACT_CHUNK_TYPE = "historical_uac_contract_chunk"
@@ -451,6 +451,86 @@ _DIMENSION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("iframe", re.compile(r"\biframe\b", re.I)),
     ("image_integrity", re.compile(r"\bimages?\b", re.I)),
     ("diff_validation", re.compile(r"\bdiff\s+comparison\b", re.I)),
+    (
+        "authoring_viewport_stability",
+        re.compile(
+            r"\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas|editing\s+location)\b"
+            r"[^.\n]{0,220}\b(?:scroll|viewport|jump|visible|cursor|caret|selection|insertion\s+location)\b|"
+            r"\b(?:cursor|caret|active\s+element|insertion\s+location)\b"
+            r"[^.\n]{0,180}\b(?:remain|restore|visible|viewport|scroll)\b",
+            re.I,
+        ),
+    ),
+    (
+        "map_preview_state",
+        re.compile(
+            r"\bmap\s+preview\b[^.\n]{0,220}\b(?:scroll|refresh|selected\s+topic|condition|"
+            r"right\s+panel|return|edit)\b|\bpreview\b[^.\n]{0,120}\bscroll\s+position\b",
+            re.I,
+        ),
+    ),
+    (
+        "state_restoration",
+        re.compile(
+            r"\b(?:restore|restored|restoration|retain|retained|preserve|preserved|maintain|maintained)\b"
+            r"[^.\n]{0,100}\b(?:state|position|location|selection|scroll|viewport)\b",
+            re.I,
+        ),
+    ),
+    (
+        "editor_scroll",
+        re.compile(
+            r"\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas|editing)\b"
+            r"[^.\n]{0,160}\b(?:scroll|viewport|jump)\b",
+            re.I,
+        ),
+    ),
+    (
+        "active_element",
+        re.compile(r"\b(?:active\s+element|active\s+editing\s+location|intended\s+insertion\s+location)\b", re.I),
+    ),
+    ("caret", re.compile(r"\b(?:caret|cursor|text\s+selection)\b", re.I)),
+    (
+        "reference_insertion",
+        re.compile(
+            r"\b(?:insert|update|adding?)\b[^.\n]{0,80}\b(?:cross[-\s]?reference|reference\s+link|xref)\b|"
+            r"\b(?:cross[-\s]?reference|reference\s+link|xref)\b[^.\n]{0,80}\b(?:picker|dialog|insert|update)\b",
+            re.I,
+        ),
+    ),
+    ("large_topic", re.compile(r"\b(?:large|long|heavy)\s+(?:DITA\s+)?topics?\b", re.I)),
+    ("scroll_to_top", re.compile(r"\b(?:scroll|jump|moves?)\b[^.\n]{0,60}\b(?:document\s+)?top\b", re.I)),
+    ("cals_table", re.compile(r"\b(?:CALS|tgroup|colspec|namest|nameend)\b", re.I)),
+    (
+        "multi_column_delete",
+        re.compile(r"\b(?:delete|deleting|remove|removing)\b[^.\n]{0,100}\b(?:two|2|multiple)\s+columns?\b", re.I),
+    ),
+    (
+        "table_structure_integrity",
+        re.compile(
+            r"\b(?:table\s+structure|structural\s+integrity|ghost\s+column|blank\s+column|"
+            r"tgroup\s*/?@?cols|colspec|namest|nameend)\b",
+            re.I,
+        ),
+    ),
+    ("large_file_tag_count", re.compile(r"\blargeFileTagCount\b", re.I)),
+    (
+        "large_file_safeguard",
+        re.compile(
+            r"\b(?:large[-\s]?file\s+mode|largeFileTagCount|undo/redo[^.\n]{0,80}(?:disabled|unavailable)|"
+            r"dirty\s+marker[^.\n]{0,80}(?:disabled|unavailable|goes\s+away))\b",
+            re.I,
+        ),
+    ),
+    ("working_as_designed", re.compile(r"\bworking\s+as\s+designed\b", re.I)),
+    (
+        "configuration_driven_behavior",
+        re.compile(
+            r"\b(?:configuration[-\s]driven|system\s+configuration|configured\s+threshold|"
+            r"largeFileTagCount)\b",
+            re.I,
+        ),
+    ),
 )
 
 _TITLE_SCOPE_DIMENSIONS = frozenset({"map_title", "project_title", "topic_title"})

@@ -1,25 +1,25 @@
 # Output Template
 
-Use this file before writing the final user-facing plan.
+Use this file before writing the full validated record artifact.
 
 ## Required Shape
 
 Use exactly these sections. Keep every line as a bullet.
 
+After the complete record passes `run_gates.py`, render the compact UI with `render_compact_view.py`. The compact UI has a Jira Understanding card above exactly five sections. The card contains `What I understood from Jira` and `Why it matters`; it is not a section. The five headings are exactly `Acceptance Criteria`, `Test Scenarios`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order. If impact is absent, render `Impact not specified; QA impact requires confirmation`. Keep the eleven-section record below unchanged as the durable artifact.
+
 ```markdown
 **Understanding From Jira**
 - Issue understood: <plain-English statement of the user-visible problem or requested feature>.
-- Why it matters: <customer, workflow, release, data, or business impact stated in Jira/supplied evidence>.
+- Why it matters: Customer context resolved from Jira: <canonical customer(s), sourced from explicit customer fields, labels, both, or not identified>; <workflow, release, data, or business impact>.
 - Requested outcome: <observable end state requested by Jira/UAC or explicitly marked proposed>.
 - Lifecycle understood as: <Pre-Development UAC, Implementation Review, or Post-Fix Validation, with one short reason>.
-- Evidence boundary: <live Jira, indexed Jira, supplied incident, contradictions, and material facts not yet verified>.
+- Evidence boundary: Evidence mode: <full|degraded>; <available evidence sources; every unavailable source and resulting claim restriction; customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
-- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <trigger> | Then <observable outcome>.
-- AC-02 [Proposed]: (Negative) Given <invalid/unsupported input or wrong state> | When <trigger> | Then <blocked with the exact error contract, no partial state>.
-- AC-03 [Proposed]: (Integration) Given <adjacent workflow/API/config/output in scope> | When <trigger> | Then <coupled system behaves consistently>.
-- AC-04 [Proposed]: (Performance) Given <bulk/large/concurrent evidence-backed scale> | When <trigger> | Then <no regression vs baseline / meets approved SLA, no errors or timeouts>.
-(Format: `(<Sphere>) Given | When | Then` — Sphere is one of Basic, Negative, Integration, Performance. Include Integration/Performance ONLY when the evidence shows that dimension; do not manufacture empty spheres. No embedded Scope/Oracle fields — put scope boundary and verification oracle in the mapped Test Scenarios.)
+- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <single trigger/action> | Then <observable outcome> | Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
+- AC-02 [Proposed]: (Negative) Given <invalid/unsupported input or wrong state> | When <single trigger/action> | Then <exact observable rejection and unchanged state> | Evidence: <underlying source, never only a graph path ID>.
+- AC-03 [Proposed]: (Integration) Given <evidence-backed adjacent workflow/API/config/output> | When <single trigger/action> | Then <observable coupled-system outcome> | Evidence: <underlying source>.
 
 **Expected Behaviour**
 - ...
@@ -34,15 +34,19 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Test Scenarios**
+- Test data to prepare: <clear list of maps/topics/assets/references/preset/target path/roles/config/version/scale/failure fixture/expected snapshot/cleanup data>.
 - Incident recovery validation: Confirm target correlation and approved scope; capture pre-change inventory/backup, execute the safe cleanup, preserve unrelated state, retain audit evidence, verify queue/dashboard recovery, and prove rollback readiness.
-- P0 [AC-01]: ...
-- P1 [AC-02, AC-03]: ...
-- P2 [AC-04]: ...
+- P0 [AC-01]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-02, AC-03]: Action: <simple tester action>. Expected: <visible or measurable result>.
+- P1 [AC-##]: Customer-shaped fixture for <customer>, supported by <representative Jira keys>. Action: <simple action using prepared data>. Expected: <observable current-Jira result and cleanup result>.
+- P2 [AC-##]: Customer-derived exploratory coverage for <customer>, supported by <concentration or representative Jira keys>. Action: <adjacent state, boundary, recovery, or integration check>. Expected: <observable no-regression result>.
 
 **Known Jira Bugs / Past Similar Tickets**
+- **Observed Customer Jira Profile: <customer> -** resolved from <Jira customer field/label>; profile <version>, approval <status>, <distinct-key count> Jira keys including <native Bug/Defect count> and <failure-like problem-report count/corpus percentage>, and <classification coverage>; current-Jira-relevant reported-problem taxonomy and concentrations are <types/areas/counts/percentages>; test-data, regression, and exploratory recommendations are <signals>; representative candidate keys are <keys>. Aggregate context only - validate direct Jira evidence before using any assertion. Repeat this bullet separately for every Jira customer; if missing, write `Observed Customer Jira Profile: <customer> - unavailable`.
 - ...
 
 **Regression Areas**
+- Customer-derived regression focus: <customer>; <bug area, corpus count/percentage, representative keys>; overlaps <current Jira/code/shared workflow> and adds <exact regression check/fixture>. Aggregate risk guidance, not product-behaviour proof.
 - ...
 
 **Automation Coverage & Gaps**
@@ -53,6 +57,20 @@ Use exactly these sections. Keep every line as a bullet.
 **Open Questions**
 - ...
 ```
+
+## Performance AC Rule
+
+- Do not copy a Performance AC by default. First complete the internal `aem-guides-performance-assessment-v1` manifest review.
+- Only `required` adds the next contiguous `(Performance)` AC and a mapped load/stress/soak/scalability/concurrency/benchmark scenario. Its `Given` contains a numeric workload and its `Then` contains a numeric metric threshold with units from an approved SLA or controlled benchmark.
+- `conditional` adds only a QA-impact Open Question for the missing workload/SLA/baseline. `not_required` adds nothing reader-facing. Never create a Performance Analysis section.
+
+## Default Chat/UI Projection
+
+- Keep the complete eleven-section body and any appendix in the `.md` record artifact.
+- After `run_gates.py` passes, run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
+- Present only `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order, unless the user explicitly asks to see another section or the complete record.
+- The compact view is copied deterministically from the validated record; never rewrite, summarize, or regenerate its AC, regression, or open-question bullets.
+- Before an automation-draft agent consumes the plan, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff; the agent consumes that JSON rather than reparsing prose.
 
 ## Writing Style
 
@@ -65,17 +83,16 @@ Use exactly these sections. Keep every line as a bullet.
 - In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
+- Resolve customer context from Jira fields and labels without asking the user again; preserve multiple customers and keep each customer profile separate.
 - Do not create extra sections.
 - Do not use tables.
 - Before returning, scan for mojibake (`â€`, `â‰`, `Ã`, `Â`, or `�`) and repair it; use ASCII punctuation if the client encoding is uncertain.
 - Never abbreviate repository or file paths with `...`; include branch, commit SHA, sync state, and dirty/clean state.
-- Windows paths that contain spaces (e.g. `C:\api automation\`, `C:\UI TEST\`) MUST be wrapped in backtick characters as a single unit; an unquoted path with spaces tokenizes on whitespace and the second token fails the absolute-path check.
 - Keep destructive cleanup procedures out of Acceptance Criteria and place them under `Incident recovery validation` in Test Scenarios.
-- In `Automation Coverage & Gaps`, mark ACs that require hardware fault injection, JCR write-fault injection, or OS-level tooling unavailable in the IT framework as "Not suitable for automation: manual test; reason: …" — NOT "Not covered". The seven-term recipe (layer/setup/poll/timeout/assert/cleanup/tag) applies only to "Not covered" bullets, not to "Not suitable for automation" bullets.
-- The `Known Jira Bugs / Past Similar Tickets` historical search status sentence MUST contain the three literal strings `jql`, `error`, and `workflow` (case-insensitive) somewhere in that section — e.g. "JQL intents: (1) … (error pattern); (2) … (workflow regression)."
-- In `Code Touched` and `Automation Coverage & Gaps`, do NOT name a JCR property, method, or constant symbol in a "does NOT assert" or "not found" clause — the evidence verifier checks for the named symbol in the cited file regardless of negation. Instead write "has no post-delete property validation" or "covers the SAVE path only; no delete-path assertion" without naming the specific symbol.
 - Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
 - For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
+- Customer ticket frequencies describe what is frequently represented or affected in the Jira corpus; they do not prove feature usage or product behaviour.
+- Every AC uses the exact `AC-## [Confirmed|Proposed]: (<Sphere>) Given ... | When ... | Then ... | Evidence: <underlying source>.` field order and cites an underlying source. Graph path IDs stay internal traceability metadata.
 
 ## Stage Mapping
 
@@ -87,7 +104,7 @@ Use exactly these sections. Keep every line as a bullet.
 
 Use:
 
-`- P0 [AC-01, AC-02]: <action/test data/config/user role> -> <expected observable result>.`
+`- P0 [AC-01, AC-02]: Action: <what the tester does using prepared data>. Expected: <visible or measurable result>.`
 
 Examples:
 
@@ -104,12 +121,11 @@ Examples:
 - Why it matters: The failure blocks the documented customer or release workflow described in the supplied evidence.
 - Requested outcome: The workflow reaches the Jira-defined observable outcome without the reported failure.
 - Lifecycle understood as: `Pre-Development UAC` because development has not started.
-- Evidence boundary: Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
+- Evidence boundary: Evidence mode: full; Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
 
 **Acceptance Criteria**
-- AC-01 [Proposed]: Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome.
-- AC-02 [Proposed]: Given invalid or unsupported input | When the user submits it to the same workflow | Then the operation is blocked with a clear, specific error and no partial state is written.
-- Draft blocker: Jira acceptance criteria are incomplete; confirm final sign-off conditions.
+- AC-01 [Proposed]: (Basic) Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome | Evidence: Jira UAC GUIDES-xxxxx.
+- AC-02 [Proposed]: (Negative) Given invalid or unsupported input | When the user submits it to the same workflow | Then the operation is blocked with a clear specific error and no partial state is written | Evidence: Jira description GUIDES-xxxxx.
 
 **Expected Behaviour**
 - AEM Guides should follow the documented configuration rule returned by accepted RAG evidence.
@@ -133,13 +149,9 @@ Examples:
 - Not applicable — development has not started.
 
 **Test Scenarios**
-- P0: Run the primary Jira workflow with valid data -> operation succeeds and expected UI/API state is persisted.
-- P0: Run the workflow with the Jira failure condition -> previous failure does not reproduce.
-- P1: Use invalid or boundary input -> user sees a clear error and no partial state is saved.
-- P1: Follow the Figma-observed alternate UI state when applicable -> visible state, copy, and recovery action match the intended flow.
-- P1: Use the Jira-required test fixture, role, config, and platform matrix -> expected behaviour is proven without relying on default setup assumptions.
-- P1: Repeat after browser refresh/session reload -> state remains consistent.
-- P2: Verify nearby workflow that shares the touched component -> no regression in existing behaviour.
+- Test data to prepare: create the Jira-required valid and invalid fixtures, affected role, configuration values, environment matrix, and UI/API/log oracle before execution.
+- P0 [AC-01]: Action: run the primary Jira workflow with valid data. Expected: the operation reaches the AC-01 observable outcome and persists the expected UI/API state.
+- P1 [AC-02]: Action: submit the evidence-backed invalid or boundary input. Expected: the exact AC-02 rejection appears and no partial state is saved.
 
 **Known Jira Bugs / Past Similar Tickets**
 - `GUIDES-xxxxx`: similar because <reason>; adds coverage for <area>.
@@ -152,6 +164,7 @@ Examples:
 - Automation coverage gaps in `guides-ui-tests` or `dxml-it-tests` for <workflow>.
 
 **Open Questions**
+- Sign-off decision: confirm any Jira acceptance condition not represented by AC-01 or AC-02. QA impact: an added condition requires its own canonical AC, mapped scenario, and automation verdict before handoff.
 - Permission/role: Confirm whether admin, author, reviewer, publisher, or restricted users must be covered.
 - Configuration: Confirm whether XML Editor profile, AEM OSGi/DAM setting, or translation configuration changes are required for this Jira.
 - Upgrade impact: For on-premise release/upgrade scope, confirm source/target versions, retained custom configs, changed defaults, manual post-upgrade steps, and backward-compatibility expectations.

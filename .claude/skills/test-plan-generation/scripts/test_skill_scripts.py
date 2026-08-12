@@ -24,11 +24,12 @@ def _load(module_name: str, filename: str):
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
+authoring_state_mod = _load("authoring_state_contract", "authoring_state_contract.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
 - Issue understood: a thing is broken with a visible symptom.
-- Why it matters: it hurts customers in a concrete way.
+- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.
 - Requested outcome: the thing should stop being broken.
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.
@@ -44,9 +45,9 @@ GOOD_PLAN = """**Understanding From Jira**
 **Lines Changed**
 - Not applicable — development has not started.
 **Test Scenarios**
-- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
-- P0 [AC-01]: do the first thing and observe the correct output.
-- P1 [AC-02]: do the second thing and observe prior state retained.
+- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
+- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.
+- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.
 **Known Jira Bugs / Past Similar Tickets**
 - GUIDES-100 — Some bug. Similarity: strongest match — same failure shape of wrong output. Status: Closed. Resolution: Fixed. Affected version: not available in current evidence. Fix version: 2609. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: reuse its oracle.
 - Search status: JQL by exact error text and workflow terms across the project.
@@ -155,14 +156,6 @@ def test_validator() -> None:
     errs = validate_mod.validate(ac_no_sphere)
     check("AC missing the sphere tag is rejected", any("machine-readable format" in e for e in errs))
 
-    ac_no_gwt = _replace(
-        GOOD_PLAN,
-        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
-        "- AC-02 [Proposed]: (Negative) the system should retain valid prior state | Evidence: Jira description GUIDES-100.",
-    )
-    errs = validate_mod.validate(ac_no_gwt)
-    check("AC missing Given|When|Then is rejected", any("machine-readable format" in e for e in errs))
-
     ac_invalid_sphere = _replace(
         GOOD_PLAN,
         "(Basic) Given an input",
@@ -229,8 +222,8 @@ def test_validator() -> None:
     )
     quantified_performance = _replace(
         quantified_performance,
-        "- P1 [AC-02]: do the second thing and observe prior state retained.",
-        "- P1 [AC-02]: run the cleanup load benchmark for 10,000 topics and confirm p95 latency is at or below 2000 ms with a 0% timeout error rate.",
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P1 [AC-02]: Action: run the cleanup load benchmark for 10,000 topics. Expected: p95 latency is at or below 2000 ms with a 0% timeout error rate.",
     )
     check(
         "quantified evidence-backed Performance AC passes",
@@ -239,8 +232,8 @@ def test_validator() -> None:
 
     ac_no_scenario = _replace(
         GOOD_PLAN,
-        "- P1 [AC-02]: do the second thing and observe prior state retained.",
-        "- P1 [AC-01]: do a redundant first thing again.",
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P1 [AC-01]: Action: do a redundant first thing again. Expected: observe the first result.",
     )
     errs = validate_mod.validate(ac_no_scenario)
     check("AC with no scenario mapping is rejected", any("AC-02 has no Test Scenarios" in e for e in errs))
@@ -255,19 +248,35 @@ def test_validator() -> None:
 
     scenario_no_ac = _replace(
         GOOD_PLAN,
-        "- P0 [AC-01]: do the first thing and observe the correct output.",
-        "- P0 do the first thing and observe the correct output.",
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 Action: do the first thing. Expected: observe the correct output.",
     )
     errs = validate_mod.validate(scenario_no_ac)
     check("scenario without AC mapping is rejected", any("missing an AC mapping" in e for e in errs))
 
     no_test_data = _replace(
         GOOD_PLAN,
-        "- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
+        "- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
         "",
     )
     errs = validate_mod.validate(no_test_data)
-    check("Test Scenarios without a Setup and test data bullet is rejected", any("Setup and test data" in e for e in errs))
+    check("Test Scenarios without a Test data to prepare bullet is rejected", any("Test data to prepare" in e for e in errs))
+
+    no_customer_source = _replace(
+        GOOD_PLAN,
+        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
+        "- Why it matters: it hurts customers in a concrete way.",
+    )
+    errs = validate_mod.validate(no_customer_source)
+    check("customer context source is required", any("Customer context resolved from Jira" in e for e in errs))
+
+    no_action_expected = _replace(
+        GOOD_PLAN,
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 [AC-01]: do the first thing and observe the correct output.",
+    )
+    errs = validate_mod.validate(no_action_expected)
+    check("scenario Action and Expected wording is required", any("Action:" in e and "Expected:" in e for e in errs))
 
     terse_regression = _replace(
         GOOD_PLAN,
@@ -314,22 +323,6 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(unvetted_regression_key)
     check("Regression Areas citing a Jira key absent from Known Bugs is rejected", any("GUIDES-777" in e for e in errs))
-
-    # absolute path WITH SPACES in a body section must NOT be flagged when backtick-quoted
-    spaced_abs_ok = _replace(
-        GOOD_PLAN,
-        "- No code changes yet — development has not started.",
-        "- No code changes yet — development has not started.\n- Current implementation in `C:\\\\api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
-    )
-    check("backtick absolute path with spaces is accepted in a body section", validate_mod.validate(spaced_abs_ok) == [])
-
-    rel_path_flagged = _replace(
-        GOOD_PLAN,
-        "- No code changes yet — development has not started.",
-        "- No code changes yet — development has not started.\n- Current implementation in `api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
-    )
-    errs = validate_mod.validate(rel_path_flagged)
-    check("non-absolute backtick path is still flagged in a body section", any("not absolute" in e for e in errs))
 
 
 def test_verifier() -> None:
@@ -400,43 +393,6 @@ def test_verifier() -> None:
         only_not_covered = "**Automation Coverage & Gaps**\n- AC-01: Not covered. Gap recipe here.\n"
         failures, _ = verify_mod.verify(only_not_covered)
         check("only Not-covered needs no code evidence", failures == [])
-
-
-def test_git_ref_citations() -> None:
-    import subprocess
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        def git(*args):
-            subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True)
-        try:
-            git("init", "-q")
-            git("config", "user.email", "t@t")
-            git("config", "user.name", "t")
-        except (OSError, subprocess.CalledProcessError):
-            print("ok: git-ref self-test skipped (git unavailable)")
-            return
-        (root / "pages").mkdir()
-        (root / "pages" / "editor.py").write_text("x = 1\n", encoding="utf-8")
-        git("add", "-A")
-        git("commit", "-qm", "seed")
-
-        # a real ref:path resolves -> no failure (HEAD is branch-name-agnostic).
-        # Avoid the word "Covered" so the unrelated fenced-code rule is not triggered.
-        good = "- Exercised by `HEAD:pages/editor.py` in the automation clone.\n"
-        failures, notes = verify_mod.verify(good, git_ref_roots=[str(root)])
-        check("valid git-ref citation verifies against repo root", failures == []
-              and any("git-ref citations" in n and "1 verified" in n for n in notes))
-
-        # a wrong ref:path is now caught (previously silently skipped)
-        bad = "- Exercised by `HEAD:pages/ghost.py` in the automation clone.\n"
-        failures, _ = verify_mod.verify(bad, git_ref_roots=[str(root)])
-        check("wrong git-ref citation is failed", any("does not resolve" in f for f in failures))
-
-        # with no repo root, it is reported as unverified (a note), not silently ignored
-        failures, notes = verify_mod.verify(good, git_ref_roots=[])
-        check("git-ref with no repo root is surfaced as unverified", failures == []
-              and any("NOT verified" in n for n in notes))
 
 
 def test_attachment_manifest() -> None:
@@ -670,8 +626,8 @@ def test_run_gates() -> None:
         )
         performance_plan = _replace(
             performance_plan,
-            "- P1 [AC-02]: do the second thing and observe prior state retained.",
-            "- P1 [AC-02]: run a 30-minute cleanup load and concurrency benchmark for 10,000 topics and confirm p95 latency remains at or below 2000 ms with a 0% timeout error rate.",
+            "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+            "- P1 [AC-02]: Action: run a 30-minute cleanup load and concurrency benchmark for 10,000 topics. Expected: p95 latency remains at or below 2000 ms with a 0% timeout error rate.",
         )
         check(
             "required performance decision aligns with a quantitative Performance AC",
@@ -1013,6 +969,8 @@ def test_run_gates() -> None:
             any("blocked readiness impact" in failure for failure in failures),
         )
 
+
+
 def test_extract_acs() -> None:
     extract_mod = _load("extract_acs", "extract_acs.py")
     criteria, problems = extract_mod.extract(GOOD_PLAN)
@@ -1043,7 +1001,22 @@ def test_compact_view() -> None:
     check(
         "compact view exposes exactly the requested headings",
         [line for line in compact.splitlines() if line.startswith("**")]
-        == ["**Acceptance Criteria**", "**Regression Areas**", "**Past Jiras**", "**Open Questions**"],
+        == [
+            "**Acceptance Criteria**",
+            "**Test Scenarios**",
+            "**Regression Areas**",
+            "**Past Jiras**",
+            "**Open Questions**",
+        ],
+    )
+    check(
+        "compact view renders the Jira Understanding card above sections",
+        compact.startswith(
+            "> **What I understood from Jira:** a thing is broken with a visible symptom. "
+            "Requested outcome: the thing should stop being broken.\n"
+            "> **Why it matters:** Customer context resolved from Jira: not identified; "
+            "it hurts customers in a concrete way.\n"
+        ),
     )
     check(
         "compact view does not leak hidden record sections",
@@ -1055,13 +1028,30 @@ def test_compact_view() -> None:
                 "Scope From Git",
                 "Code Touched",
                 "Lines Changed",
-                "Test Scenarios",
                 "Automation Coverage & Gaps",
             )
         ),
     )
+    check(
+        "compact view keeps validated Test Scenarios",
+        "**Test Scenarios**" in compact
+        and "Test data to prepare:" in compact
+        and "P0 [AC-01]" in compact,
+    )
     check("compact view keeps validated past Jira", "GUIDES-100" in compact)
     check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
+
+    missing_impact = _replace(
+        GOOD_PLAN,
+        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
+        "- Why it matters: Not specified.",
+    )
+    missing_impact_compact, missing_impact_problems = compact_mod.project(missing_impact)
+    check(
+        "compact view uses the deterministic missing-impact fallback",
+        missing_impact_problems == []
+        and "Impact not specified; QA impact requires confirmation" in missing_impact_compact,
+    )
 
     no_match_plan = _replace(
         GOOD_PLAN,
@@ -1072,6 +1062,77 @@ def test_compact_view() -> None:
     check(
         "compact view renders a deterministic no-Jira result",
         no_match_problems == [] and "No same-defect-class past Jira" in no_match_compact,
+    )
+
+
+def test_authoring_state_contract() -> None:
+    authoring = authoring_state_mod.derive_contract(
+        "In Author view, editing deep inside a large topic or inserting a reference link "
+        "unexpectedly scrolls the editing screen to the top and hides the active cursor."
+    )
+    check(
+        "large-topic authoring issue routes to viewport stability",
+        authoring["route"] == "authoring_viewport_stability",
+    )
+    authoring_text = "\n".join(
+        [*authoring["acceptance_criteria"], *authoring["test_scenarios"]]
+    )
+    for marker in (
+        "active caret or selected element deep in the document",
+        "cross-reference or reference link",
+        "focus returns to the intended insertion location",
+        "relative to the active element rather than to an exact prior pixel offset",
+        "type, paste",
+        "cancel it repeatedly",
+        "no reference or duplicate content is inserted",
+    ):
+        check(f"authoring viewport contract contains {marker}", marker in authoring_text)
+    for unsupported in (
+        "left map tree",
+        "save/reopen",
+        "old editor",
+        "milliseconds",
+        "data loss",
+    ):
+        check(
+            f"authoring viewport contract does not invent {unsupported}",
+            unsupported.lower() not in authoring_text.lower(),
+        )
+
+    preview = authoring_state_mod.derive_contract(
+        "Map Preview scroll position, selected topic, refresh, and condition panel state "
+        "must survive Edit-return behavior."
+    )
+    check("map preview remains a separate route", preview["route"] == "map_preview_state")
+    preview_text = "\n".join(
+        [*preview["acceptance_criteria"], *preview["test_scenarios"]]
+    )
+    check("map preview retains condition state", "condition state" in preview_text)
+    check("map preview does not inherit caret behavior", "caret" not in preview_text.lower())
+
+    cals = authoring_state_mod.derive_contract(
+        "Delete two selected columns from a 6 row and 5 column CALS table."
+    )
+    check("CALS deletion gets the structural route", cals["route"] == "cals_multi_column_delete")
+    cals_text = "\n".join([*cals["acceptance_criteria"], *cals["test_scenarios"]])
+    for marker in ("6 rows and 5 columns", "6 rows and 3 visible columns", "ghost column", "span metadata"):
+        check(f"CALS deletion contract contains {marker}", marker in cals_text)
+
+    large_file = authoring_state_mod.derive_contract(
+        "GUIDES-35437: Ctrl+Z changed after 411 cells; largeFileTagCount controls the large-file safeguard."
+    )
+    check(
+        "GUIDES-35437 is configuration-driven working-as-designed behavior",
+        large_file["route"] == "large_file_configuration"
+        and large_file["classification"] == "working_as_designed_configuration",
+    )
+    large_file_text = "\n".join(
+        [*large_file["acceptance_criteria"], *large_file["test_scenarios"]]
+    )
+    check("large-file contract uses parsed tag threshold", "parsed-tag threshold" in large_file_text)
+    check(
+        "large-file contract does not create a 411-cell AC",
+        all("411" not in criterion for criterion in large_file["acceptance_criteria"]),
     )
 
 
@@ -1097,6 +1158,9 @@ def test_uac_fidelity_reference() -> None:
         "Product-fix chronology without accepted UAC remains candidate regression evidence",
         "jira_comment_accepted_scope",
         "Preserve contradictory automation labels",
+        "### Deterministic Authoring-State Routing",
+        "scripts/authoring_state_contract.py",
+        "references/authoring-state-uac.md",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -1152,6 +1216,23 @@ def test_uac_fidelity_reference() -> None:
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
     )
 
+    authoring_reference = (
+        skill_root / "references" / "authoring-state-uac.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "## Route 1 - Authoring Viewport Stability",
+        "## Route 2 - Map Preview State Restoration",
+        "## Route 3 - CALS Multi-Column Deletion",
+        "## Route 4 - GUIDES-35437 Large-File Safeguard",
+        "6-row by 5-column CALS table",
+        "largeFileTagCount",
+        "Screenshot-only and pasted examples",
+    ):
+        check(
+            f"authoring-state reference retains marker {marker}",
+            marker in authoring_reference,
+        )
+
     repo_root = Path(__file__).resolve().parents[4]
     counterpart_root = (
         repo_root
@@ -1167,12 +1248,12 @@ def test_uac_fidelity_reference() -> None:
 def main() -> int:
     test_validator()
     test_verifier()
-    test_git_ref_citations()
     test_attachment_manifest()
     test_run_gates()
-    test_uac_fidelity_reference()
     test_extract_acs()
     test_compact_view()
+    test_authoring_state_contract()
+    test_uac_fidelity_reference()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

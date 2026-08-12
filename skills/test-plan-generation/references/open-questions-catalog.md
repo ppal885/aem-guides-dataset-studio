@@ -45,10 +45,6 @@ Use this before writing the `Open Questions` section. Ask only questions that af
 - Which logs should appear or not appear, and should validation use UI status, API response, repository state, Splunk, or service logs?
 - Are backward-compatible response shapes required for existing UI callers, automation clients, or integrations?
 
-## Backend / JCR Post-Processing
-
-- Cleanup sync model: Is the [feature] cleanup synchronous within the request chain (assert immediately after response) or asynchronous via a post-processing event listener (must poll)? QA impact: synchronous → IT test asserts property state immediately after the API response; asynchronous → IT test must poll with a timeout oracle and the assert window must account for event propagation delay.
-
 ## Operational Incident And Recovery Questions
 
 - Is the requested outcome immediate cleanup/service restoration, a permanent product safeguard, workflow/config correction, resource increase, or all of these?

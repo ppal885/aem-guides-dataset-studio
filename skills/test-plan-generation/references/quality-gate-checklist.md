@@ -12,14 +12,34 @@ Use this before calling a test plan review-ready.
 
 ## Evidence Gate
 
+- The manifest contains a timezone-aware `evidence_preflight` for exactly `product_rag`, `jira_history`, `live_jira`, `git`, and `figma`; each status comes from an actual check, not assumed configuration.
+- Preflight mode is derived correctly: any unavailable source means `degraded`, degraded mode has concrete claim restrictions, and readiness impact is lifecycle-aware rather than globally blocking unrelated claims.
+- `Evidence boundary` starts with the manifest's `Evidence mode: full` or `Evidence mode: degraded`; degraded plans name every unavailable source and what remains unverified.
+- Source-specific restrictions are enforced: no unsupported RAG behavior, historical-no-match, live mutable Jira, current/diff Git, or exact Figma design claims survive when their source is unavailable.
 - `Understanding From Jira` appears first and contains the five required confidence-check bullets: issue, impact, requested outcome, lifecycle, and evidence boundary.
+- The compact UI begins with a non-section Jira Understanding card and then exactly five headings in order: `Acceptance Criteria`, `Test Scenarios`, `Regression Areas`, `Past Jiras`, and `Open Questions`.
+- The Jira Understanding card states workflow, trigger, failure, requested outcome, and evidence-backed impact; absent impact uses exactly `Impact not specified; QA impact requires confirmation`.
+- `Test Scenarios` remains visible in compact output while the complete eleven-section record remains the durable artifact.
 - The Jira understanding is a faithful plain-English synthesis of live Jira or supplied issue evidence; it does not invent code changes, root cause, acceptance, or implementation.
+- `Why it matters` states canonical customer context and its Jira field/label source; multiple customers remain separate and material conflicts remain visible.
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
+- Every AC matches the canonical `aem-guides-ac-v1` one-line grammar with contiguous IDs, controlled status/sphere values, ordered `Given | When | Then | Evidence` fields, and no extra or multiline prose.
+- `extract_acs.py` emits complete structured records with no warnings before any AI automation-draft handoff; the downstream agent consumes that JSON rather than reparsing prose.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.
 - Jira UAC/acceptance criteria are treated as the primary acceptance and sign-off contract for scope, out-of-scope, expected behaviour, integrations, regression boundaries, and open questions.
+- When final accepted UAC exists, `accepted_uac_present=true` and a valid `aem-guides-uac-fidelity-v1` manifest audit maps every accepted clause to `[Confirmed]` ACs and every `[Confirmed]` AC back to accepted clauses.
+- Normalization preserves exact config names and values, defaults, ordering, formatting, parity targets, and non-goals; linked tests, RAG, history, or generated coverage remain `[Proposed]` unless the accepted UAC approves them.
+- Parity requirements use the named comparison surface as the oracle across entry presence, visible text, order, formatting, clickability, and destination; the plan does not invent a more specific result without inspecting that reference output.
+- Independent controls such as a feature flag and preset argument remain separate and have positive plus one-control-missing configurations; one control is never substituted for the other.
+- Out-of-scope behaviour is not converted into a sign-off AC or a blocking regression, and an intentional output difference is not reported as a defect.
 - Conflict priority is applied when evidence disagrees: Jira/UAC > PR implementation > accepted RAG docs > Figma UI intent > cloned repo/team memory.
 - Edge cases are derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, and similar Jira history.
+- Authoring viewport tickets preserve the active element/caret and insertion location across typing, paste, reference picker close/cancel, repetition, and layout reflow without automatically adding left-panel, save/reopen, editor-parity, data-loss, or performance-SLA claims.
+- Map Preview restoration and Author-canvas viewport stability remain separate historical mechanisms unless direct state-restoration/editor-scroll evidence connects them.
+- CALS multi-column deletion uses a 6-row by 5-column integrity fixture and proves the 6-row by 3-column result, no ghost column, retained content order, and no orphan span/column metadata.
+- `GUIDES-35437` is treated as `largeFileTagCount` configuration behavior and is tested at parsed-tag boundaries rather than converted into a 411-cell defect.
+- Exact screenshot-only Jira records are not indexed; exact historical UAC requires live Jira or hashed Jira CSV provenance.
 - Integration impact identifies adjacent workflows, shared APIs/components, configs, roles, output types, and automation areas that can break.
 - `ask_dita_expert` was used for behaviour facts when available and relevant. If unavailable, exact acceptance-contract, log, current-code, design, or implementation evidence supports each retained claim; unsupported claims remain unknown or blocked.
 - RAG evidence was accepted only when direct and rejected when generic/noisy.
@@ -27,11 +47,21 @@ Use this before calling a test plan review-ready.
 - Accepted RAG came from exact feature/API/config/source overlap; broad release-note or validation-oracle chunks were rejected unless they directly matched the Jira.
 - Latest matching current docs were preferred over older release notes unless the Jira is explicitly about older-release or upgrade behaviour.
 - Every Jira attachment was downloaded and actually analysed (screenshots opened, logs/sample content read), and embedded description/comment snippets (logs, code blocks, tables, pasted images) were mined; any claim about an attachment traces to opening it, not to its filename.
-- At least three focused RAG probes were run before writing (a single noisy probe is not "RAG unavailable"), recorded as `rag_probes` in the evidence manifest, and every grounded finding is folded into `Expected Behaviour` with a RAG label.
-- The indexed `jira_qa` history of already-fixed tickets was queried for the issue's customer/label and problem area, its hits were validated live before citing, kept only when same-mechanism (others named as excluded in search-status), and the run is recorded as `indexed_history_run` in the manifest.
+- At least three focused product-documentation probes were run through `ask_dita_expert` before writing, recorded under `rag_tool` and `rag_probes`, and every grounded finding is folded into `Expected Behaviour` with a RAG label.
+- The indexed `jira_qa` history was queried separately through `search_jira_history` for both same-customer and cross-customer scope, recorded under `jira_history_tool`, `jira_history_queries`, and `indexed_history_run`; hits were validated live before citing and only same-mechanism results were retained.
+- `query_test_evidence_graph` ran only after direct RAG/Jira retrieval; influence mode, `used_for_plan`, generation, exact queries, duration/cache status, path IDs, and deduplicated leaf citations are recorded, and graph paths are never treated as source evidence.
+- Shadow mode is observational only: graph output did not change plan content, scoring, citations, repository scope, or automation verdicts. Any graph-connected plan claim requires explicit augment mode and an independently valid leaf source.
+- Every acceptance criterion cites an underlying source through its final `| Evidence:` field; candidate graph claims and path-only citations are rejected regardless of scenario priority.
+- The evidence manifest contains a complete `aem-guides-performance-assessment-v1` review of all seven canonical risk categories, with source-backed findings and one `required`, `conditional`, or `not_required` decision.
+- A `required` decision has quantified workload, metrics, test types, approved/controlled numeric thresholds, matching `performance_ac_ids`, and mapped Performance scenarios; each visible Performance AC has numeric workload and outcome units.
+- A `conditional` decision emits no Performance AC and has a performance-related Open Question with QA impact; `not_required` emits no Performance AC or reader-facing filler.
+- No `Performance Analysis` or equivalent plan section/bullet was added; the assessment remains internal and only its justified AC or conditional question is visible.
+- Graph unavailability is recorded as degraded mode and is not a Draft blocker when authoritative direct evidence already covers the behavior.
 - Test Scenarios include concrete `Setup and test data` bullets with real fixtures, identifier formats/example values, property/field/column names, config keys and values, environment matrix, and pass/fail oracles — not just abstract "create a map/topic" steps.
 - Regression Areas are written as senior-QA regression items — each names the specific thing to re-test and the risk (what could break and why), ordered by blast radius with the top risk called out — not bare area names or keyword fragments.
 - Open Questions are written as UAC decisions with the QA impact of each plausible answer (what each answer changes for scenarios, expected results, environment matrix, or sign-off) — not bare questions with no stated consequence.
+- The full eleven-section record and appendix remain available as the `.md` artifact, while the default Claude/Codex view is produced by `render_compact_view.py` and contains only `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order.
+- The compact view contains no manually paraphrased ACs, regression bullets, or open questions and leaks none of the hidden record sections; named hidden sections or the full record are shown only after an explicit user request.
 - Acceptance Criteria are Principal-QA product contracts — each states precondition/input, trigger, and observable outcome with the scope boundary (included vs excluded) and the verification oracle, names exact properties/fields/enums and expected values, and passes/fails independently — not terse labels or generic "Verify..." steps.
 - Every Covered / Partially covered automation item has its real code quoted verbatim (from the actual file, with absolute path, what it proves, and the gap) in an `Appendix A - Automation Evidence` section kept outside the eleven validated bullet-only sections; the combined file was delivered to the user and passed verify_evidence.py. verify_evidence.py hard-fails a Covered/Partially-covered verdict when the file has no fenced code evidence, so this cannot be silently skipped on a re-run - always regenerate Appendix A and run verify on the combined plan+appendix, never on the body alone.
 - Past similar tickets were searched through Jira MCP/JQL, user-provided tickets, or available team memory.
@@ -54,6 +84,7 @@ Use this before calling a test plan review-ready.
 - Dirty developer work was stashed only after safety checks, includes tracked and untracked files but not ignored files, remains recoverable with an exact restore command, and was never silently popped or dropped.
 - Open questions are specific to unresolved permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5 output, or on-premise upgrade-impact decisions.
 - Test data, setup preconditions, role/config/platform matrix, and API contract questions are either answered by evidence or captured under `Open Questions`.
+- `Test Scenarios` begins with explicit `Test data to prepare:` bullets, and every P0/P1/P2 scenario uses simple `Action:` and `Expected:` wording.
 - Historical Jira entries include the narrow JQL/search intent, current status/resolution, affected/fix versions, RCA, linked test evidence, and scenario impact; unavailable fields are explicitly marked unavailable.
 - Automation classification is contract-exact: adjacent happy-path coverage is not called partial coverage unless it asserts a named clause of the same AC.
 - Automation gaps name the exact candidate test location, deterministic setup/injection, polling oracle, timeout source, output-integrity assertions, cleanup/rollback, and suite/tags.
@@ -64,6 +95,9 @@ Use this before calling a test plan review-ready.
 
 - Issue facts from Jira, Dynamics/support, customer escalation, logs, screenshots, or investigation notes are missing or too vague for the declared stage.
 - UAC scope or out-of-scope is ignored, softened, or contradicted without a visible blocker.
+- Final accepted UAC exists but its fidelity audit is missing, an accepted clause is unmapped, a `[Confirmed]` AC has no accepted source clause, or the audit reports an unresolved contradiction or scope expansion.
+- A parity clause is rewritten as a more specific expected result without an inspected reference output or explicit accepted Jira wording.
+- Independent enablement controls are conflated, or an out-of-scope HTML5/DITA-OT behavior is treated as a Native PDF sign-off failure.
 - RAG is down, noisy, unrelated, or unavailable and the affected behaviour claim lacks another authoritative evidence source.
 - RAG was queried only with broad prose and not tightened with exact API/config/UI/construct terms when the first results were noisy.
 - RAG relies on older release-note chunks while newer/current exact docs are available for the same behaviour.
@@ -88,6 +122,7 @@ Use this before calling a test plan review-ready.
 - A destructive cleanup scenario omits ownership/correlation, approval, pre-change inventory/backup, unrelated-state protection, audit evidence, rollback, or post-cleanup verification.
 - A plan marks adjacent happy-path automation as partial coverage of recovery, concurrency, orphan-state, queue-drain, or dashboard-consistency behavior.
 - A performance scenario turns approximate customer timing, topic count, or heap guidance into a hard oracle without an approved SLA or controlled benchmark.
+- The performance assessment is missing, skips a canonical risk category, contradicts visible Performance AC IDs, or labels a ticket `not_required` without proving all reviewed signals absent.
 - On-premise release/upgrade scope exists but source/target versions, retained configs, changed defaults, manual post-upgrade steps, or compatibility expectations are not clarified.
 - Sign-off-critical permission, role, XML Editor config, AEM config, translation config, DITA, DITA-OT/PDF/HTML5, or on-premise upgrade-impact questions are unresolved.
 
@@ -128,6 +163,7 @@ Use this before calling a test plan review-ready.
 - Product AC that prescribes node deletion, tracker reconciliation, mandatory workflow-step placement, a single-source-of-truth architecture, or a specific lock/retry/serialization implementation that Jira did not approve.
 - `Not suitable for automation` applied to repeatable post-recovery behavior rather than only the destructive production operation.
 - A Jira authorization warning retained even though another Jira MCP successfully supplied live issue evidence.
+- Asking for customer context already present in Jira, merging multiple customer profiles into synthetic frequencies, or treating Jira-corpus concentration as feature-usage telemetry.
 
 ## Executable Gate
 

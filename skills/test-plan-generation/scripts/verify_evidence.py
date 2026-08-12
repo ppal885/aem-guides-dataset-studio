@@ -5,7 +5,8 @@ checks structure). It confirms that every cited source-file path actually
 exists on disk and that every cited line number is within that file's length.
 
 Scope of what is checked (deliberately narrow to avoid false positives):
-- Only drive-absolute paths (for example C:\\starling\\... or C:/starling/...).
+- Only absolute paths (for example C:\\starling\\..., C:/starling/..., or
+  /home/user/starling/...).
 - Only paths ending in a known source extension. Directory roots, runtime
   paths such as /var/dxml/btree, relative test paths, and proposed new files
   (which are cited relatively by convention) are treated as unverifiable-by-
@@ -25,7 +26,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -44,15 +44,8 @@ SOURCE_EXTENSIONS = (
     ".md",
     ".properties",
 )
-ABS_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s`,;)]+")
-BACKTICK_PATH_RE = re.compile(r"`([A-Za-z]:[\\/][^`\n]+)`")
-# git-ref citations like `main:tests/foo/Bar.py`, `develop:core/X.java`,
-# `<40-hex-sha>:pages/y.py`, `feature/z:core/X.java`. These are NOT disk paths,
-# so the disk checks above skip them; they were previously unverified entirely.
-GIT_REF_RE = re.compile(
-    r"\b((?:main|develop|master|HEAD|[0-9a-f]{7,40}|[A-Za-z][\w.-]*/[\w.-]+)):"
-    r"([\w.\-/]+\.(?:java|py|feature|ts|tsx|js|json|xml|md|yaml|yml|properties))\b"
-)
+ABS_PATH_RE = re.compile(r"(?<![\w.:/-])(?:[A-Za-z]:[\\/]|/)[^\s`,;)]+")
+BACKTICK_PATH_RE = re.compile(r"`((?:[A-Za-z]:[\\/]|/)[^`\n]+)`")
 LINE_REF_RE = re.compile(r"\bL(\d+)")
 JIRA_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
 TRAILING_PUNCT = ".,;:)]}"
@@ -91,45 +84,7 @@ def _line_count(path: Path) -> int:
         return sum(1 for _ in handle)
 
 
-def _is_git_repo(root: str) -> bool:
-    try:
-        r = subprocess.run(
-            ["git", "-C", root, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True, text=True, timeout=15,
-        )
-        return r.returncode == 0 and r.stdout.strip() == "true"
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def _git_ref_status(ref: str, path: str, roots: list[str]) -> str:
-    """Return 'verified', 'failed', or 'unverified' for a <ref>:<path> citation.
-
-    verified  = the ref:path resolves in at least one provided git-repo root.
-    failed    = at least one root IS a git repo but none contain ref:path.
-    unverified= no provided root is a reachable git repo (cannot check).
-    """
-    repo_roots = [r for r in roots if r and _is_git_repo(r)]
-    if not repo_roots:
-        return "unverified"
-    for root in repo_roots:
-        try:
-            r = subprocess.run(
-                ["git", "-C", root, "cat-file", "-e", f"{ref}:{path}"],
-                capture_output=True, text=True, timeout=20,
-            )
-            if r.returncode == 0:
-                return "verified"
-        except (OSError, subprocess.SubprocessError):
-            continue
-    return "failed"
-
-
-def verify(
-    text: str,
-    jira_keys: set[str] | None = None,
-    git_ref_roots: list[str] | None = None,
-) -> tuple[list[str], list[str]]:
+def verify(text: str, jira_keys: set[str] | None = None) -> tuple[list[str], list[str]]:
     """Return (failures, notes). Failures are hard; notes are informational."""
     failures: list[str] = []
     notes: list[str] = []
@@ -184,30 +139,6 @@ def verify(
                     )
 
     notes.append(f"verified {verified} source-file citation(s); skipped {skipped} unverifiable-by-design path(s)")
-
-    # git-ref citations (main:<path>, <sha>:<path>, feature/x:<path>) - previously
-    # invisible to the disk checks. Verify against provided repo roots when available.
-    git_seen = git_verified = git_unverified = 0
-    for number, line in enumerate(text.splitlines(), start=1):
-        for m in GIT_REF_RE.finditer(line):
-            git_seen += 1
-            ref, path = m.group(1), m.group(2)
-            status = _git_ref_status(ref, path, git_ref_roots or [])
-            if status == "verified":
-                git_verified += 1
-            elif status == "failed":
-                failures.append(
-                    f"line {number}: git-ref citation '{ref}:{path}' does not resolve in any "
-                    f"inspected repo root (wrong ref or path)"
-                )
-            else:
-                git_unverified += 1
-    if git_seen:
-        note = f"git-ref citations: {git_seen} seen, {git_verified} verified against a repo"
-        if git_unverified:
-            note += (f", {git_unverified} NOT verified (no reachable repo root - pass clone roots via the "
-                     f"manifest 'clones' to disk-check these instead of trusting them)")
-        notes.append(note)
 
     covered_present = ("Partially covered" in text) or bool(re.search(r"\bCovered\b", text))
     if covered_present and "```" not in text:
@@ -269,6 +200,17 @@ def verify_attachments(manifest_path: str) -> tuple[list[str], list[str]]:
             )
         else:
             notes.append(f"manifest records {len(rag)} RAG probe(s)")
+
+    jira_queries = data.get("jira_history_queries")
+    if jira_queries is not None:
+        if not isinstance(jira_queries, list):
+            failures.append("evidence manifest 'jira_history_queries' must be a list")
+        elif jira_queries:
+            notes.append(f"manifest records {len(jira_queries)} search_jira_history query(s)")
+        elif not str(data.get("jira_history_unavailable_reason", "")).strip():
+            failures.append(
+                "no search_jira_history queries recorded and no jira_history_unavailable_reason supplied"
+            )
 
     attachments = data.get("attachments", [])
     if not isinstance(attachments, list):

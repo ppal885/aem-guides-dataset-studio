@@ -65,6 +65,27 @@ _OUTPUT_PATTERNS = {
     "html5": re.compile(r"\bhtml5\b", re.I),
     "aem-sites": re.compile(r"\b(?:aem\s+sites|native[_\s-]?aemsite)\b", re.I),
 }
+_AUTHORING_VIEWPORT_RE = re.compile(
+    r"\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas|editing\s+location|active\s+element|caret)\b"
+    r"[^.\n]{0,220}\b(?:scroll|viewport|jump|visible|cursor|selection|insertion\s+location)\b|"
+    r"\b(?:scroll|viewport|jump)\b[^.\n]{0,160}\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas)\b",
+    re.I,
+)
+_MAP_PREVIEW_STATE_RE = re.compile(
+    r"\bmap\s+preview\b[^.\n]{0,220}\b(?:scroll|refresh|selected\s+topic|condition|right\s+panel|return|edit)\b|"
+    r"\bpreview\b[^.\n]{0,120}\bscroll\s+position\b",
+    re.I,
+)
+_STATE_RESTORATION_RE = re.compile(
+    r"\b(?:restore|restored|restoration|retain|retained|preserve|preserved|maintain|maintained)\b"
+    r"[^.\n]{0,100}\b(?:state|position|location|selection|scroll|viewport)\b",
+    re.I,
+)
+_EDITOR_SCROLL_RE = re.compile(
+    r"\b(?:author(?:ing)?\s+(?:view|canvas)|editor\s+canvas|editing)\b"
+    r"[^.\n]{0,160}\b(?:scroll|viewport|jump)\b",
+    re.I,
+)
 
 
 def _specific_tokens(value: Any) -> set[str]:
@@ -127,6 +148,24 @@ def _contract_text(candidate: dict[str, Any]) -> str:
     )
 
 
+def _cross_viewport_mismatch(query_text: str, candidate_text: str) -> bool:
+    query_authoring = bool(_AUTHORING_VIEWPORT_RE.search(query_text))
+    candidate_authoring = bool(_AUTHORING_VIEWPORT_RE.search(candidate_text))
+    query_preview = bool(_MAP_PREVIEW_STATE_RE.search(query_text))
+    candidate_preview = bool(_MAP_PREVIEW_STATE_RE.search(candidate_text))
+    cross_surface = (query_authoring and candidate_preview) or (query_preview and candidate_authoring)
+    if not cross_surface:
+        return False
+    shared_restoration = bool(
+        _STATE_RESTORATION_RE.search(query_text)
+        and _STATE_RESTORATION_RE.search(candidate_text)
+    )
+    shared_editor_scroll = bool(
+        _EDITOR_SCROLL_RE.search(query_text) and _EDITOR_SCROLL_RE.search(candidate_text)
+    )
+    return not (shared_restoration or shared_editor_scroll)
+
+
 def _candidate_values(candidate: dict[str, Any], field: str) -> set[str]:
     raw = candidate.get(field) or []
     if isinstance(raw, str):
@@ -179,7 +218,16 @@ def build_historical_match_contract(
     contract_present = bool(contract.get("clauses") or learning.get("behavior_contract"))
 
     evidence_types: list[str] = []
-    if exact_signals:
+    if _cross_viewport_mismatch(query_text, candidate_text):
+        strength = "unproven"
+        qualified = False
+        evidence_types.append("cross_surface_scroll_overlap_only")
+        reason = (
+            "Map Preview state restoration and Author-canvas viewport stability are different "
+            "mechanisms; no shared state-restoration or editor-scroll evidence was established."
+        )
+        mechanism_score = 0.2
+    elif exact_signals:
         strength = "exact"
         qualified = True
         evidence_types.append("exact_technical_identifier")
@@ -215,10 +263,11 @@ def build_historical_match_contract(
 
     mechanisms = list(dict.fromkeys([*exact_signals, *shared_dita, *shared_outputs, *shared_terms[:8]]))
     return {
-        "schema_version": "jira-history-match-v1",
+        "schema_version": "jira-history-match-v2",
         "qualified": qualified,
         "strength": strength,
         "mechanism_score": mechanism_score,
+        "evidence_types": evidence_types,
         "shared_mechanisms": mechanisms,
         "shared_exact_signals": exact_signals,
         "shared_dita_entities": shared_dita,

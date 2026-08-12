@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -39,6 +40,8 @@ _SOURCE_CHUNK_TYPES = {
     "test_evidence_chunk",
     "comment_chunk",
 }
+_EXACT_UAC_SOURCE_TYPES = frozenset({"jira_api", "jira_csv"})
+_SHA256_RE = re.compile(r"^[a-f0-9]{64}$", re.I)
 
 
 def _json_list(value: Any) -> list[str]:
@@ -59,6 +62,32 @@ def _archive_values(issue: JiraEnrichedIssue, key: str) -> list[str]:
     if not isinstance(values, list):
         return []
     return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _uac_provenance_status(issue: JiraEnrichedIssue) -> tuple[bool, str]:
+    source_type = str(issue.source_type or "").strip().casefold()
+    if source_type not in _EXACT_UAC_SOURCE_TYPES:
+        return False, "source_is_not_jira_csv_or_jira_api"
+    if source_type == "jira_api":
+        return True, "jira_api"
+
+    hashes = [str(issue.source_file_hash or "").strip()]
+    hashes.extend(_json_list(issue.source_file_hashes))
+    provenance = issue.import_provenance if isinstance(issue.import_provenance, list) else []
+    hashes.extend(
+        str(entry.get("file_hash") or "").strip()
+        for entry in provenance
+        if isinstance(entry, dict)
+    )
+    if any(_SHA256_RE.fullmatch(value) for value in hashes if value):
+        return True, "jira_csv_hash_verified"
+    return False, "jira_csv_hash_missing"
+
+
+def has_indexable_exact_uac_provenance(issue: JiraEnrichedIssue) -> bool:
+    """Return whether exact historical UAC text came from Jira API or a hashed CSV."""
+
+    return _uac_provenance_status(issue)[0]
 
 
 def _chunk_body(document: str) -> str:
@@ -170,6 +199,8 @@ def analyze_sql_uac_issue(
     issue: JiraEnrichedIssue,
     chunks: list[JiraIssueChunk],
 ) -> tuple[HistoricalUacAnalysis, str, str, str] | None:
+    if not has_indexable_exact_uac_provenance(issue):
+        return None
     acceptance_criteria, acceptance_source = _acceptance_criteria_from_sql(issue, chunks)
     if not acceptance_criteria:
         return None
@@ -396,6 +427,7 @@ def backfill_historical_uac_chunks(
     explicit_test_evidence_count = 0
     source_authorities: Counter[str] = Counter()
     source_origins: Counter[str] = Counter()
+    skipped_provenance: Counter[str] = Counter()
 
     while analyzed_count < capped_limit:
         db = SessionLocal()
@@ -428,6 +460,10 @@ def backfill_historical_uac_chunks(
 
         for issue in issues:
             scanned += 1
+            provenance_ok, provenance_reason = _uac_provenance_status(issue)
+            if not provenance_ok:
+                skipped_provenance[provenance_reason] += 1
+                continue
             built = build_sql_uac_rows(issue, grouped.get(issue.jira_key, []))
             if built is None:
                 continue
@@ -512,6 +548,8 @@ def backfill_historical_uac_chunks(
         "performance_contracts_complete": performance_complete_count,
         "source_authorities": dict(sorted(source_authorities.items())),
         "source_origins": dict(sorted(source_origins.items())),
+        "skipped_untrusted_provenance": sum(skipped_provenance.values()),
+        "skipped_provenance_reasons": dict(sorted(skipped_provenance.items())),
         "reuse_tiers": dict(sorted(reuse_tiers.items())),
         "historical_outcomes": dict(sorted(outcome_counts.items())),
         "dimensions": dict(sorted(dimensions.items())),

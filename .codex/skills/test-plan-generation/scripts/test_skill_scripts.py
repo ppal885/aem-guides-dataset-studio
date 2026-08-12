@@ -24,6 +24,7 @@ def _load(module_name: str, filename: str):
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
+authoring_state_mod = _load("authoring_state_contract", "authoring_state_contract.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -1000,7 +1001,22 @@ def test_compact_view() -> None:
     check(
         "compact view exposes exactly the requested headings",
         [line for line in compact.splitlines() if line.startswith("**")]
-        == ["**Acceptance Criteria**", "**Regression Areas**", "**Past Jiras**", "**Open Questions**"],
+        == [
+            "**Acceptance Criteria**",
+            "**Test Scenarios**",
+            "**Regression Areas**",
+            "**Past Jiras**",
+            "**Open Questions**",
+        ],
+    )
+    check(
+        "compact view renders the Jira Understanding card above sections",
+        compact.startswith(
+            "> **What I understood from Jira:** a thing is broken with a visible symptom. "
+            "Requested outcome: the thing should stop being broken.\n"
+            "> **Why it matters:** Customer context resolved from Jira: not identified; "
+            "it hurts customers in a concrete way.\n"
+        ),
     )
     check(
         "compact view does not leak hidden record sections",
@@ -1012,13 +1028,30 @@ def test_compact_view() -> None:
                 "Scope From Git",
                 "Code Touched",
                 "Lines Changed",
-                "Test Scenarios",
                 "Automation Coverage & Gaps",
             )
         ),
     )
+    check(
+        "compact view keeps validated Test Scenarios",
+        "**Test Scenarios**" in compact
+        and "Test data to prepare:" in compact
+        and "P0 [AC-01]" in compact,
+    )
     check("compact view keeps validated past Jira", "GUIDES-100" in compact)
     check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
+
+    missing_impact = _replace(
+        GOOD_PLAN,
+        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
+        "- Why it matters: Not specified.",
+    )
+    missing_impact_compact, missing_impact_problems = compact_mod.project(missing_impact)
+    check(
+        "compact view uses the deterministic missing-impact fallback",
+        missing_impact_problems == []
+        and "Impact not specified; QA impact requires confirmation" in missing_impact_compact,
+    )
 
     no_match_plan = _replace(
         GOOD_PLAN,
@@ -1029,6 +1062,77 @@ def test_compact_view() -> None:
     check(
         "compact view renders a deterministic no-Jira result",
         no_match_problems == [] and "No same-defect-class past Jira" in no_match_compact,
+    )
+
+
+def test_authoring_state_contract() -> None:
+    authoring = authoring_state_mod.derive_contract(
+        "In Author view, editing deep inside a large topic or inserting a reference link "
+        "unexpectedly scrolls the editing screen to the top and hides the active cursor."
+    )
+    check(
+        "large-topic authoring issue routes to viewport stability",
+        authoring["route"] == "authoring_viewport_stability",
+    )
+    authoring_text = "\n".join(
+        [*authoring["acceptance_criteria"], *authoring["test_scenarios"]]
+    )
+    for marker in (
+        "active caret or selected element deep in the document",
+        "cross-reference or reference link",
+        "focus returns to the intended insertion location",
+        "relative to the active element rather than to an exact prior pixel offset",
+        "type, paste",
+        "cancel it repeatedly",
+        "no reference or duplicate content is inserted",
+    ):
+        check(f"authoring viewport contract contains {marker}", marker in authoring_text)
+    for unsupported in (
+        "left map tree",
+        "save/reopen",
+        "old editor",
+        "milliseconds",
+        "data loss",
+    ):
+        check(
+            f"authoring viewport contract does not invent {unsupported}",
+            unsupported.lower() not in authoring_text.lower(),
+        )
+
+    preview = authoring_state_mod.derive_contract(
+        "Map Preview scroll position, selected topic, refresh, and condition panel state "
+        "must survive Edit-return behavior."
+    )
+    check("map preview remains a separate route", preview["route"] == "map_preview_state")
+    preview_text = "\n".join(
+        [*preview["acceptance_criteria"], *preview["test_scenarios"]]
+    )
+    check("map preview retains condition state", "condition state" in preview_text)
+    check("map preview does not inherit caret behavior", "caret" not in preview_text.lower())
+
+    cals = authoring_state_mod.derive_contract(
+        "Delete two selected columns from a 6 row and 5 column CALS table."
+    )
+    check("CALS deletion gets the structural route", cals["route"] == "cals_multi_column_delete")
+    cals_text = "\n".join([*cals["acceptance_criteria"], *cals["test_scenarios"]])
+    for marker in ("6 rows and 5 columns", "6 rows and 3 visible columns", "ghost column", "span metadata"):
+        check(f"CALS deletion contract contains {marker}", marker in cals_text)
+
+    large_file = authoring_state_mod.derive_contract(
+        "GUIDES-35437: Ctrl+Z changed after 411 cells; largeFileTagCount controls the large-file safeguard."
+    )
+    check(
+        "GUIDES-35437 is configuration-driven working-as-designed behavior",
+        large_file["route"] == "large_file_configuration"
+        and large_file["classification"] == "working_as_designed_configuration",
+    )
+    large_file_text = "\n".join(
+        [*large_file["acceptance_criteria"], *large_file["test_scenarios"]]
+    )
+    check("large-file contract uses parsed tag threshold", "parsed-tag threshold" in large_file_text)
+    check(
+        "large-file contract does not create a 411-cell AC",
+        all("411" not in criterion for criterion in large_file["acceptance_criteria"]),
     )
 
 
@@ -1054,6 +1158,9 @@ def test_uac_fidelity_reference() -> None:
         "Product-fix chronology without accepted UAC remains candidate regression evidence",
         "jira_comment_accepted_scope",
         "Preserve contradictory automation labels",
+        "### Deterministic Authoring-State Routing",
+        "scripts/authoring_state_contract.py",
+        "references/authoring-state-uac.md",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -1109,6 +1216,23 @@ def test_uac_fidelity_reference() -> None:
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
     )
 
+    authoring_reference = (
+        skill_root / "references" / "authoring-state-uac.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "## Route 1 - Authoring Viewport Stability",
+        "## Route 2 - Map Preview State Restoration",
+        "## Route 3 - CALS Multi-Column Deletion",
+        "## Route 4 - GUIDES-35437 Large-File Safeguard",
+        "6-row by 5-column CALS table",
+        "largeFileTagCount",
+        "Screenshot-only and pasted examples",
+    ):
+        check(
+            f"authoring-state reference retains marker {marker}",
+            marker in authoring_reference,
+        )
+
     repo_root = Path(__file__).resolve().parents[4]
     counterpart_root = (
         repo_root
@@ -1128,6 +1252,7 @@ def main() -> int:
     test_run_gates()
     test_extract_acs()
     test_compact_view()
+    test_authoring_state_contract()
     test_uac_fidelity_reference()
     print("\nALL SELF-TESTS PASSED")
     return 0

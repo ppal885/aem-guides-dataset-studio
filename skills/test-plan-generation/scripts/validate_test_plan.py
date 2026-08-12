@@ -4,6 +4,13 @@ import re
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from ac_contract import AC_EXACT_FORMAT, parse_ac_line, validate_ac_sequence
+from performance_contract import QUANTIFIED_VALUE_RE, QUANTIFIED_WORKLOAD_RE
+
 
 SECTIONS = (
     "Understanding From Jira",
@@ -19,18 +26,16 @@ SECTIONS = (
     "Open Questions",
 )
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
-AC_RE = re.compile(r"^- AC-\d{2} \[(Confirmed|Proposed)\]:\s+\S")
-ANY_AC_RE = re.compile(r"^- AC-\d{2} \[([^]]+)\]")
-# Every AC must be a sphere-tagged Given|When|Then contract so a downstream
-# automation-drafting step can parse it deterministically (Sphere->category,
-# Given->fixtures, When->action, Then->assertion) instead of guessing.
-AC_SPHERE_GWT_RE = re.compile(
-    r"^- AC-\d{2} \[(?:Confirmed|Proposed)\]: "
-    r"\((?:Basic|Negative|Integration|Performance)\) "
-    r"Given .+ \| When .+ \| Then .+"
-)
 SCENARIO_RE = re.compile(r"^- P[012]\b")
 AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
+UNDERLYING_SOURCE_RE = re.compile(
+    r"(?i:https?)://|\b[A-Z][A-Z0-9]+-\d+\b|(?i:\b(?:Jira (?:UAC|description|comment)|"
+    r"RAG (?:URL|chunk)|DITA (?:spec|source)|Figma (?:node|frame)|attachment(?: ID)?|"
+    r"source file|commit [0-9a-f]{7,40})\b)|(?i:\b(?:DOC|SPEC|CHUNK|SOURCE):\S+)|[A-Za-z]:[\\/]",
+)
+GRAPH_PATH_ONLY_RE = re.compile(
+    r"(?i)^(?:graph[- ]?)?path(?:\s+id)?(?:\s*[:=]\s*|\s+)\S+$"
+)
 JIRA_RE = re.compile(r"^- (?:[A-Z][A-Z0-9]+-\d+)\b")
 WINDOWS_PATH_RE = re.compile(r"(?<![\w])([A-Za-z]:\\[^`\n;,]+)")
 MOJIBAKE = ("\u00e2\u20ac", "\u00e2\u2030", "\u00c3", "\u00c2", "\ufffd")
@@ -92,6 +97,14 @@ def validate(text: str) -> list[str]:
     for prefix in UNDERSTANDING_PREFIXES:
         if not any(line.startswith(prefix) and line[len(prefix) :].strip() for line in understanding_lines):
             errors.append(f"Understanding From Jira is missing required bullet '{prefix}'")
+    why_it_matters = next(
+        (line for line in understanding_lines if line.startswith("- Why it matters:")),
+        "",
+    )
+    if "customer context resolved from jira:" not in why_it_matters.lower():
+        errors.append(
+            "Why it matters must state 'Customer context resolved from Jira:' and its Jira field/label source"
+        )
 
     acceptance = sections["Acceptance Criteria"]
     native_ac_empty = any(
@@ -99,7 +112,7 @@ def validate(text: str) -> list[str]:
         for phrase in ("native acceptance criteria field is empty", "no jira-authored ac", "jira ac field is empty")
     )
     destructive = re.compile(
-        r"\b(delete|deleting|remove|removing|clear|clearing|terminate|restart)\b\s+(?:all\s+)?(?:the\s+)?\b(node|workflow|pod|tracker)s?\b",
+        r"\b(delete|deleting|remove|removing|clear|clearing|terminate|restart)\b.*\b(node|workflow|pod|tracker)",
         re.IGNORECASE,
     )
     prescribed = re.compile(
@@ -107,38 +120,60 @@ def validate(text: str) -> list[str]:
         r"retry the commit|serialize|path-level lock|reconcil(?:e|ing)|clear(?:ing)? .*node)",
         re.IGNORECASE,
     )
+    parsed_acceptance: list[tuple[int, dict[str, str]]] = []
     for number, line in acceptance:
-        match = ANY_AC_RE.match(line)
-        if not match or not AC_RE.match(line):
-            errors.append(f"line {number}: acceptance criterion must use exact AC-## [Confirmed|Proposed]: syntax")
-            continue
-        if not AC_SPHERE_GWT_RE.match(line):
+        criterion = parse_ac_line(line)
+        if criterion is None:
             errors.append(
-                f"line {number}: acceptance criterion must be sphere-tagged Given|When|Then - "
-                f"`AC-## [Confirmed|Proposed]: (Basic|Negative|Integration|Performance) "
-                f"Given ... | When ... | Then ...` - so the automation-drafting step can parse it"
+                f"line {number}: acceptance criterion must use the exact machine-readable format `{AC_EXACT_FORMAT}`"
             )
-        if native_ac_empty and match.group(1) == "Confirmed":
+            continue
+        parsed_acceptance.append((number, criterion))
+        if criterion["sphere"] == "Performance":
+            if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
+                errors.append(
+                    f"line {number}: Performance Given must define a quantified workload "
+                    "(for example topic count, user count, job count, or iterations)"
+                )
+            if not QUANTIFIED_VALUE_RE.search(criterion["then"]):
+                errors.append(
+                    f"line {number}: Performance Then must define a measurable numeric oracle with units; "
+                    "if no approved threshold exists, keep performance conditional in Open Questions"
+                )
+        if native_ac_empty and criterion["status"] == "Confirmed":
             errors.append(f"line {number}: derived criterion cannot be Confirmed when Jira AC is empty")
-        when_clause = re.search(r"\bWhen\b", line, re.IGNORECASE)
-        if destructive.search(line) and not when_clause:
+        if destructive.search(line):
             errors.append(f"line {number}: destructive operational procedure is not a product acceptance criterion")
         if prescribed.search(line):
             errors.append(f"line {number}: acceptance criterion prescribes an unapproved implementation choice")
+        evidence = criterion["evidence"]
+        if GRAPH_PATH_ONLY_RE.fullmatch(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite the graph leaf's underlying Jira, URL/chunk, "
+                "DITA source, Figma node, attachment, or inspected code - never only a graph path"
+            )
+        elif not UNDERLYING_SOURCE_RE.search(evidence):
+            errors.append(
+                f"line {number}: Evidence must cite an underlying Jira, URL/chunk, DITA source, Figma node, "
+                "attachment, inspected code path, or graph leaf - never only a graph path"
+            )
+    errors.extend(validate_ac_sequence([criterion for _, criterion in parsed_acceptance]))
 
-    for number, line in sections["Test Scenarios"]:
+    scenarios = sections["Test Scenarios"]
+    if not any(line.startswith("- Test data to prepare:") for _, line in scenarios):
+        errors.append("Test Scenarios must begin with explicit 'Test data to prepare:' guidance")
+    for number, line in scenarios:
         if SCENARIO_RE.match(line) and "Incident recovery validation" not in line and not AC_LINK_RE.search(line):
             errors.append(f"line {number}: P0/P1/P2 scenario is missing an AC mapping")
+        if SCENARIO_RE.match(line) and ("Action:" not in line or "Expected:" not in line):
+            errors.append(f"line {number}: P0/P1/P2 scenario must use plain-English Action: and Expected: wording")
 
-    defined_acs: set[str] = set()
-    for _, line in acceptance:
-        match = re.match(r"- (AC-\d{2}) \[", line)
-        if match:
-            defined_acs.add(match.group(1))
+    defined_acs = {criterion["id"] for _, criterion in parsed_acceptance}
     scenario_acs: set[str] = set()
     for _, line in sections["Test Scenarios"]:
         for group in AC_LINK_RE.findall(line):
-            scenario_acs.update(re.findall(r"AC-\d{2}", group))
+            linked = set(re.findall(r"AC-\d{2}", group))
+            scenario_acs.update(linked)
     automation_text = "\n".join(line for _, line in sections["Automation Coverage & Gaps"])
     automation_acs = set(re.findall(r"AC-\d{2}", automation_text))
     for ac in sorted(defined_acs):
@@ -149,10 +184,11 @@ def validate(text: str) -> list[str]:
 
     scenario_lines = sections["Test Scenarios"]
     if scenario_lines and not any(
-        line.lower().startswith("- setup and test data") for _, line in scenario_lines
+        line.lower().startswith(("- setup and test data", "- test data to prepare:"))
+        for _, line in scenario_lines
     ):
         errors.append(
-            "Test Scenarios must include at least one 'Setup and test data' bullet with concrete "
+            "Test Scenarios must include at least one 'Test data to prepare:' bullet with concrete "
             "fixtures, identifier/example values, config, environment, and oracles"
         )
 
@@ -215,23 +251,15 @@ def validate(text: str) -> list[str]:
 
     for section_name in ("Code Touched", "Automation Coverage & Gaps"):
         for number, line in sections[section_name]:
-            if "\\" not in line:
-                continue
-            # Backtick-quoted paths are checked as whole units so a legitimate
-            # absolute path containing spaces (e.g. `C:\api automation\...`) is
-            # not falsely flagged as relative just because it has a space.
-            for candidate in re.findall(r"`([^`]+)`", line):
-                if "\\" not in candidate or candidate.startswith(("<", "/")):
-                    continue
-                if not re.match(r"^[A-Za-z]:\\", candidate):
-                    errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
-            # Bare (unquoted) path tokens cannot contain spaces, so split on whitespace.
-            stripped = re.sub(r"`[^`]+`", "", line)
-            for candidate in re.findall(r"([^\s,;`]+\\[^\s,;`]+)", stripped):
-                if candidate.startswith(("<", "/")):
-                    continue
-                if not re.match(r"^[A-Za-z]:\\", candidate):
-                    errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
+            if "\\" in line:
+                quoted_candidates = re.findall(r"`([^`]*\\[^`]*)`", line)
+                unquoted_text = re.sub(r"`[^`]*`", "", line)
+                unquoted_candidates = re.findall(r"([^`\s,;]+\\[^`\s,;]+)", unquoted_text)
+                for candidate in quoted_candidates + unquoted_candidates:
+                    if candidate.startswith(("<", "/")):
+                        continue
+                    if not re.match(r"^[A-Za-z]:\\", candidate):
+                        errors.append(f"line {number}: cited Windows path is not absolute: {candidate}")
 
     automation = sections["Automation Coverage & Gaps"]
     recipe_terms = ("layer", "setup", "poll", "timeout", "assert", "cleanup", "tag")
@@ -263,6 +291,26 @@ def validate(text: str) -> list[str]:
                         f"or keyword-only matches are not padded into this section"
                     )
     history_text = "\n".join(line for _, line in sections["Known Jira Bugs / Past Similar Tickets"])
+    for number, line in sections["Known Jira Bugs / Past Similar Tickets"]:
+        if "Observed Customer Jira Profile:" not in line:
+            continue
+        if not re.search(r"Observed Customer Jira Profile:\s*[^-]+\s+-", line):
+            errors.append(f"line {number}: customer profile must name the resolved customer")
+        if "unavailable" not in line.lower():
+            required_profile_terms = (
+                "resolved from",
+                "profile",
+                "approval",
+                "Jira keys",
+                "Bug/Defect",
+                "problem-report",
+                "test-data",
+                "representative",
+                "Aggregate context",
+            )
+            missing = [term for term in required_profile_terms if term.lower() not in line.lower()]
+            if missing:
+                errors.append(f"line {number}: customer profile evidence is missing {', '.join(missing)}")
     if history_text and not all(term in history_text.lower() for term in ("jql", "error", "workflow")):
         errors.append("historical search must report multiple narrow JQL intents including error and workflow searches")
 

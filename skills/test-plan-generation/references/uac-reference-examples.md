@@ -745,6 +745,685 @@ Use this example as a quality bar for report tickets where key references, conte
 - Are both UI report and backend/export APIs in scope?
 - Is Cloud/on-prem parity required for key resolution and report export?
 
+## Gold Reference: GUIDES-38333 Native PDF Reltable Parity
+
+Use this example when final accepted UAC defines output parity, ordering, independent enablement controls, defaults, and explicit non-goals. The quality bar is semantic fidelity to the accepted Jira contract, not independent AC invention.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Scope is Native PDF only. Map-level `<reltable>` related links must be added; existing topic-level `<related-links>` already work and must remain working.
+- `UAC-02` - Match AEM Sites: map-level reltable entries appear first, topic-level entries appear afterward, both are shown under `Related Information`, and current formatting remains unchanged.
+- `UAC-03` - For valid present/absent combinations of `<title>`, `<navtitle>`, and `<topichead>`, Native PDF behavior must match AEM Sites.
+- `UAC-04` - Broken related-link entries must be shown the same way AEM Sites shows them.
+- `UAC-05` - Default behavior does not generate map-level reltable links. The Native PDF preset must include `-Dargs.rellinks=nofamily` to request them.
+- `UAC-06` - Floodgate feature flag `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` must be enabled on the server.
+- `OOS-01` - Do not add DITA-OT-style `Related Concepts` or `Related Tasks` grouping.
+- `OOS-02` - HTML5 output is intentionally different from Native PDF and AEM Sites; do not treat that difference as a failure.
+- `OOS-03` - DITA-OT output validation is disabled for this ticket.
+
+### Fidelity Lessons
+
+- Do not replace `-Dargs.rellinks=nofamily` with the Floodgate flag. They are independent prerequisites and require separate negative configurations.
+- Do not turn the accepted AEM Sites parity oracle into an invented broken-link result such as `plain text` or `not clickable` unless the AEM Sites reference output has been inspected or Jira states that result.
+- Do not leave accepted ordering, unchanged formatting, `<topichead>`, or default-disabled behavior as `[Proposed]`; they are `[Confirmed]` because the final UAC approves them.
+- Do not promote conditional-key, DITAVAL, deduplication, localization, performance, or historical-ticket behavior into `[Confirmed]` ACs unless the accepted UAC is updated. Keep evidence-backed additions `[Proposed]` or in `Open Questions`.
+- Do not add HTML5 or DITA-OT parity as a sign-off regression. AEM Sites is the accepted comparison oracle; HTML5 difference and DITA-OT execution are explicit non-goals.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Basic) Given `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` is enabled, the Native PDF preset contains `-Dargs.rellinks=nofamily`, and the map contains valid `<reltable>` relationships | When the map is published using Native PDF | Then map-level related-link entries appear under `Related Information` with working destinations | Evidence: `UAC-01`, `UAC-05`, and `UAC-06` from the final accepted UAC for GUIDES-38333.
+- AC-02 [Confirmed]: (Integration) Given a topic receives relationships from both the map `<reltable>` and its existing topic-level `<related-links>` | When Native PDF is generated with both prerequisites enabled | Then map-level entries appear first, topic-level entries appear afterward, and current `Related Information` formatting remains unchanged as in AEM Sites | Evidence: `UAC-01` and `UAC-02` from the final accepted UAC for GUIDES-38333.
+- AC-03 [Confirmed]: (Integration) Given valid map variants covering `<title>`, `<navtitle>`, and `<topichead>` as present or absent, plus AEM Sites output generated from the same inputs | When each variant is published using Native PDF with both prerequisites enabled | Then entry presence, visible labels, order, formatting, and destinations match the corresponding AEM Sites output | Evidence: `UAC-03` from the final accepted UAC for GUIDES-38333.
+- AC-04 [Confirmed]: (Negative) Given a broken related-link fixture and AEM Sites output generated from that same fixture | When Native PDF is generated with both prerequisites enabled | Then the entry's presence, visible text, formatting, clickability, and destination state match AEM Sites | Evidence: `UAC-04` from the final accepted UAC for GUIDES-38333.
+- AC-05 [Confirmed]: (Negative) Given the Floodgate flag is enabled but the Native PDF preset does not contain `-Dargs.rellinks=nofamily` | When the map is published | Then map-level reltable entries are not generated and existing topic-level related links retain their current behavior | Evidence: `UAC-01` and `UAC-05` from the final accepted UAC for GUIDES-38333.
+- AC-06 [Confirmed]: (Negative) Given the Native PDF preset contains `-Dargs.rellinks=nofamily` but `ENABLE_RELATED_LINKS_FOR_NATIVE_PDF` is disabled | When the map is published | Then map-level reltable processing is not activated and existing topic-level related links retain their current behavior | Evidence: `UAC-01` and `UAC-06` from the final accepted UAC for GUIDES-38333.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "Jira GUIDES-38333 final accepted UAC",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01", "AC-02", "AC-05", "AC-06"],
+      "UAC-02": ["AC-02"],
+      "UAC-03": ["AC-03"],
+      "UAC-04": ["AC-04"],
+      "UAC-05": ["AC-01", "AC-05"],
+      "UAC-06": ["AC-01", "AC-06"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-05", "UAC-06"],
+      "AC-02": ["UAC-01", "UAC-02"],
+      "AC-03": ["UAC-03"],
+      "AC-04": ["UAC-04"],
+      "AC-05": ["UAC-01", "UAC-05"],
+      "AC-06": ["UAC-01", "UAC-06"]
+    },
+    "proposed_ac_ids": [],
+    "unresolved_clause_ids": [],
+    "contradictions": [],
+    "scope_expansions": [],
+    "status": "pass"
+  }
+}
+```
+
+Customer statements about a large migrated reltable corpus are a performance-risk signal, not a numeric oracle. Until an approved workload and threshold exist, keep performance conditional in `Open Questions`; do not invent a `(Performance)` AC.
+
+## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata
+
+Use this example when accepted UAC covers version-aware content and metadata propagation during Native AEM Site publishing. It demonstrates that a human UAC can have strong functional breadth while still requiring execution-level clarification before an automation draft is safe.
+
+### What The Human UAC Gets Right
+
+- Limits scope to `NATIVE_AEMSITE` and explicitly excludes Old AEM Site, chunked `by-topic` or `to-content` output, and multimedia metadata.
+- Defines the central invariant: topic content and propagated metadata must resolve from the same selected baseline version instead of mixing baseline content with current working-copy metadata.
+- Preserves existing working-copy behavior and the output preset's `metadatalist` allowlist.
+- Includes custom metadata, static and dynamic baselines, incremental publishing, Copy To, map-properties fallback, and old-versus-new baseline regression coverage.
+- Supplies a discriminating version fixture: the same map and topics have labels `v1.0` through `v4.0`, while `Baseline_v2.0` pins `v2.0` and current metadata differs at `v4.0`.
+
+### Execution Gaps Normalization Must Expose
+
+- The description alternates between generated-page `jcr:content/*` properties and `jcr:content/metadata`; automation needs the exact destination node and property path for each `metadatalist` entry.
+- `Static baseline` and `Dynamic baseline` are named but their creation method, selection rule, and observable distinction are not defined.
+- `Copy To scenario` does not specify the source, destination, copied version state, baseline membership, or expected post-copy repository/output oracle.
+- `New baseline` and `old baseline` do not state whether age means creation time, selected version label, or regeneration order.
+- `Use map properties` implies topic metadata wins when present and map metadata fills only missing fields, but the precedence oracle should be explicit for single-value, multi-value, boolean, and date/custom properties.
+- Incremental publishing needs a deterministic mutation between runs and an exact assertion for republished versus untouched pages; otherwise a full publish could accidentally satisfy the test.
+- These gaps do not authorize invented behavior. Keep the accepted semantic outcome `[Confirmed]`, carry the missing setup/oracle decisions to `Open Questions`, and mark the fidelity audit `blocked` until resolved.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01` - Metadata resolves from the baseline selected by the Native AEM Site preset.
+- `UAC-02` - Working-copy publishing behavior remains unchanged.
+- `UAC-03` - Only fields listed in the preset's `metadatalist` propagate.
+- `UAC-04` - Custom metadata is supported.
+- `UAC-05` - Validate static and dynamic baselines.
+- `UAC-06` - Incremental publishing with a baseline keeps resolving metadata from that baseline and never falls back to the current working copy.
+- `UAC-07` - Cover Copy To.
+- `UAC-08` - Topic content and metadata resolve from the same version.
+- `UAC-09` - With `Use map properties` enabled, map metadata fills a topic field only when that field is absent on the topic.
+- `UAC-10` - Validate metadata propagation with both a new baseline and an old baseline.
+- `OOS-01` - Old AEM Site is excluded.
+- `OOS-02` - Chunked output using `by-topic` or `to-content` is excluded and tracked separately by GUIDES-53306.
+- `OOS-03` - Multimedia metadata is excluded.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Basic) Given the publication map and referenced topics have distinct `v2.0` and current `v4.0` content and metadata, `Baseline_v2.0` pins `v2.0`, and the `NATIVE_AEMSITE` preset selects that baseline | When output is generated | Then generated topic content and every propagated property named by `metadatalist` use the `v2.0` values and no `v4.0` working-copy value is substituted | Evidence: `UAC-01` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-02 [Confirmed]: (Basic) Given the same publication map is generated through the existing working-copy flow without a baseline | When Native AEM Site output is generated | Then content and configured metadata continue to resolve from the current working copy exactly as before this fix | Evidence: `UAC-02` from the accepted UAC for GUIDES-49325.
+- AC-03 [Confirmed]: (Negative) Given the selected `v2.0` map version contains metadata properties both inside and outside the preset's `metadatalist` | When Native AEM Site output is generated against `Baseline_v2.0` | Then only properties listed in `metadatalist` propagate to the generated page | Evidence: `UAC-03` from the accepted UAC for GUIDES-49325.
+- AC-04 [Confirmed]: (Basic) Given a custom property such as `custom-product-status` is listed in `metadatalist` with different values at `v2.0` and `v4.0` | When output is generated against `Baseline_v2.0` | Then the generated page receives the custom property's `v2.0` value | Evidence: `UAC-01` and `UAC-04` from the accepted UAC for GUIDES-49325.
+- AC-05 [Confirmed]: (Integration) Given a static baseline pins the publication map and referenced topics to `v2.0` | When Native AEM Site output is generated from that baseline | Then both content and configured metadata resolve from `v2.0` | Evidence: `UAC-05` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-06 [Confirmed]: (Integration) Given a dynamic baseline resolves the publication map and referenced topics to `v2.0` under the accepted dynamic-baseline rule | When Native AEM Site output is generated from that baseline | Then both content and configured metadata resolve from `v2.0` | Evidence: `UAC-05` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-07 [Confirmed]: (Integration) Given an initial Native AEM Site publish used `Baseline_v2.0` and the current working-copy content and metadata are subsequently changed to distinct `v4.0` values | When incremental publishing runs again with `Baseline_v2.0` | Then every republished page continues to use `v2.0` content and metadata and does not fall back to `v4.0` | Evidence: `UAC-06` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-08 [Confirmed]: (Integration) Given a topic participates in the accepted Copy To workflow and the output preset selects a baseline version | When Native AEM Site output is generated after Copy To | Then the copied topic's published content and configured metadata resolve from the same selected baseline version | Evidence: `UAC-07` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-09 [Confirmed]: (Negative) Given baseline content is `v2.0` while map or topic working-copy metadata is `v4.0` | When Native AEM Site output is generated against `Baseline_v2.0` | Then no generated page combines `v2.0` topic content with `v4.0` metadata or `v4.0` content with `v2.0` metadata | Evidence: `UAC-01` and `UAC-08` from the accepted UAC for GUIDES-49325.
+- AC-10 [Confirmed]: (Integration) Given `Use map properties` is enabled, a listed metadata field is absent from the topic's `v2.0` version, the map's `v2.0` version defines it, and the current map version has a different value | When output is generated against `Baseline_v2.0` | Then the generated topic receives the map's `v2.0` value | Evidence: `UAC-01` and `UAC-09` from the accepted UAC for GUIDES-49325.
+- AC-11 [Confirmed]: (Negative) Given `Use map properties` is enabled and both the topic's and map's selected baseline versions define different values for the same listed metadata field | When output is generated | Then the topic's selected-baseline value is retained and the map value does not overwrite it | Evidence: `UAC-09` from the accepted UAC for GUIDES-49325.
+- AC-12 [Confirmed]: (Integration) Given one baseline targets old label `v2.0` and another targets current label `v4.0` using metadata values that differ by version | When output is generated for both baselines and the old baseline is regenerated after the new one | Then each output consistently contains content and configured metadata from its own selected version without cache or working-copy fallback | Evidence: `UAC-01`, `UAC-08`, and `UAC-10` from the accepted UAC for GUIDES-49325.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "User-supplied GUIDES-49325 accepted UAC and Jira screenshot",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06", "UAC-07", "UAC-08", "UAC-09", "UAC-10"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01", "AC-04", "AC-09", "AC-10", "AC-12"],
+      "UAC-02": ["AC-02"],
+      "UAC-03": ["AC-03"],
+      "UAC-04": ["AC-04"],
+      "UAC-05": ["AC-05", "AC-06"],
+      "UAC-06": ["AC-07"],
+      "UAC-07": ["AC-08"],
+      "UAC-08": ["AC-01", "AC-05", "AC-06", "AC-07", "AC-08", "AC-09", "AC-12"],
+      "UAC-09": ["AC-10", "AC-11"],
+      "UAC-10": ["AC-12"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-08"],
+      "AC-02": ["UAC-02"],
+      "AC-03": ["UAC-03"],
+      "AC-04": ["UAC-01", "UAC-04"],
+      "AC-05": ["UAC-05", "UAC-08"],
+      "AC-06": ["UAC-05", "UAC-08"],
+      "AC-07": ["UAC-06", "UAC-08"],
+      "AC-08": ["UAC-07", "UAC-08"],
+      "AC-09": ["UAC-01", "UAC-08"],
+      "AC-10": ["UAC-01", "UAC-09"],
+      "AC-11": ["UAC-09"],
+      "AC-12": ["UAC-01", "UAC-08", "UAC-10"]
+    },
+    "proposed_ac_ids": [],
+    "unresolved_clause_ids": ["UAC-01", "UAC-05", "UAC-07", "UAC-10"],
+    "contradictions": [],
+    "scope_expansions": [],
+    "status": "blocked"
+  }
+}
+```
+
+Resolve four questions before automation handoff: the exact generated metadata node/property path (`UAC-01`), static versus dynamic baseline setup (`UAC-05`), the Copy To fixture and oracle (`UAC-07`), and the definition plus execution order of old/new baselines (`UAC-10`). No performance AC is justified by the supplied UAC because it provides no workload, latency, concurrency, or resource-risk signal.
+
+## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview
+
+Use this human-authored UAC as the reference for a UI feature whose accepted contract mixes baseline versioning, editor parity, preview state, reference resolution, lifecycle safety, and an acknowledged but undecided performance requirement. The Jira screenshot shows the issue still in `Stage` with no final resolution, so implementation comments, linked test cases, and observed defects remain supporting evidence rather than replacements for the accepted UAC.
+
+### What The Human UAC Gets Right
+
+- It names the primary contract: map Preview must render the selected baseline instead of always rendering the latest working version.
+- It places the switch in a specific UI surface and defines when `Show diff` becomes unavailable.
+- It distinguishes static from dynamic baselines and map preview from topic preview.
+- It calls out both old and new editors, mode-switch retention, working-copy refresh differences, selected-baseline deletion, and version-purge safety.
+- It identifies conditions, direct and indirect references, keys, loader behavior, and performance as integration dimensions instead of testing only the happy-path toggle.
+- It records customer and migration motivation without automatically turning every requested future capability into this ticket's scope.
+
+### Normalization Gaps And Authority Boundaries
+
+- `Dynamic baseline not in scope` conflicts with the later request for a loader in `dynamic/static baseline`; do not silently choose one interpretation.
+- `Old and new Baseline` does not define whether this means creation UI, storage model, migrated data, or baseline age; the fixture and expected distinction must be confirmed.
+- `Validate conditions`, `Verify direct and indirect references`, and `Check/Test for keys` are test intents, not complete product oracles. Ask which selected versions, key scopes, condition outcomes, and broken-reference behavior are expected.
+- Loader behavior lacks trigger, placement, dismissal, timeout, failure, and rapid-switch expectations.
+- `Check performance impact. TBD` proves performance matters but supplies no dataset size, percentile, latency budget, cache state, concurrency, or resource ceiling. Keep the performance AC proposed and blocked until these values are approved.
+- The business-capability bullets about reverting baseline versions and editing version-specific metadata are future/customer context. A later Jira comment explicitly excludes revert/rollback from this feature; do not promote either capability into a Confirmed AC.
+- A later Jira comment says Reports are not part of this requirement. Related bugs, subtasks, and linked test cases provide regression and automation evidence, not new accepted behavior.
+
+### Accepted Source-Clause Inventory
+
+- `UAC-01`: Map Preview displays content from the selected baseline rather than always displaying the latest working version.
+- `UAC-02`: Preview filter panel shows a baseline on/off switch.
+- `UAC-03`: The feature applies to both old and new baselines.
+- `UAC-04`: Static baselines are in scope; dynamic baselines are not in scope.
+- `UAC-05`: The feature applies only to map preview, not topic preview.
+- `UAC-06`: `Show diff` is hidden while the baseline switch is on and a baseline is selected.
+- `UAC-07`: Conditions must be validated with baseline-aware preview.
+- `UAC-08`: Direct and indirect references must be validated.
+- `UAC-09`: The behavior applies to both old and new editors.
+- `UAC-10`: A loader matching Author-mode loading is requested for dynamic/static baseline preview.
+- `UAC-11`: Baseline selection and preview state are retained while switching among Author, Source, and Preview.
+- `UAC-12`: Keys must be validated.
+- `UAC-13`: A version referenced by a baseline cannot be purged.
+- `UAC-14`: If the selected baseline is deleted, the existing preview remains unchanged until another baseline is selected or the switch is turned off.
+- `UAC-15`: Working-copy updates refresh automatically in the new editor; the old editor requires its refresh action.
+- `UAC-16`: Performance impact must be checked, with acceptance values still TBD.
+- `OOS-01`: Dynamic baseline behavior is outside this ticket.
+- `OOS-02`: Topic preview is outside this ticket.
+- `OOS-03`: Revert or rollback to a baseline version is outside this ticket according to the later scope clarification.
+- `OOS-04`: Reports behavior is outside this ticket according to the later scope clarification.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (Functional) Given a map has a valid static baseline and that baseline is selected in Preview | When map Preview finishes loading | Then the rendered map content represents the versions selected by that baseline rather than the latest working-copy versions | Evidence: `UAC-01`, `UAC-04`, and `UAC-05` from the accepted UAC for GUIDES-10878.
+- AC-02 [Confirmed]: (UI) Given a map is open in Preview | When the user opens the filter panel | Then a baseline on/off switch is available for baseline-aware map preview | Evidence: `UAC-02` from the accepted UAC for GUIDES-10878.
+- AC-03 [Confirmed]: (Negative) Given a topic rather than a map is open in Preview | When the user opens the filter panel | Then the baseline-preview switch is not shown | Evidence: `UAC-05` and `OOS-02` from the accepted UAC for GUIDES-10878.
+- AC-04 [Confirmed]: (UI) Given the baseline switch is on and a baseline is selected | When the Preview filter controls are displayed | Then `Show diff` is hidden | Evidence: `UAC-06` from the accepted UAC for GUIDES-10878.
+- AC-05 [Confirmed]: (Compatibility) Given the same eligible map and static baseline are available in the old and new editors | When baseline-aware map Preview is used in each editor | Then each editor renders the selected-baseline content | Evidence: `UAC-09` from the accepted UAC for GUIDES-10878.
+- AC-06 [Confirmed]: (State) Given a baseline is selected and its map content is displayed in Preview | When the user switches among Author, Source, and Preview and returns to Preview | Then the baseline selection and baseline-aware preview state are retained | Evidence: `UAC-11` from the accepted UAC for GUIDES-10878.
+- AC-07 [Confirmed]: (Negative) Given a repository version is referenced by a baseline | When version purge is attempted for that version | Then the purge is refused and the baseline-referenced version remains available | Evidence: `UAC-13` from the accepted UAC for GUIDES-10878.
+- AC-08 [Confirmed]: (Lifecycle) Given a selected baseline is currently rendered in Preview | When that baseline is deleted elsewhere | Then the current preview remains unchanged until the user selects another baseline or turns off the baseline switch | Evidence: `UAC-14` from the accepted UAC for GUIDES-10878.
+- AC-09 [Confirmed]: (Compatibility) Given working-copy content changes while working-copy Preview is active | When the change is saved | Then the new editor refreshes the working-copy preview automatically, while the old editor shows the update only after its refresh action | Evidence: `UAC-15` from the accepted UAC for GUIDES-10878.
+- AC-10 [Proposed]: (Performance) Given the approved large-map fixture, cache state, editor matrix, and baseline-preview latency budget recorded in Jira | When a user selects a static baseline and Preview resolves content, conditions, references, and keys | Then loader behavior, response latency, and resource use remain within those approved limits without stale or partially mixed-version content | Evidence: performance risk acknowledged by `UAC-16`; Blocker: workload, percentile, latency, concurrency, and resource thresholds are TBD.
+
+### Internal Fidelity Mapping
+
+```json
+{
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "User-supplied GUIDES-10878 accepted UAC and Jira screenshot",
+    "accepted_clause_ids": ["UAC-01", "UAC-02", "UAC-03", "UAC-04", "UAC-05", "UAC-06", "UAC-07", "UAC-08", "UAC-09", "UAC-10", "UAC-11", "UAC-12", "UAC-13", "UAC-14", "UAC-15", "UAC-16"],
+    "out_of_scope_clause_ids": ["OOS-01", "OOS-02", "OOS-03", "OOS-04"],
+    "clause_to_ac": {
+      "UAC-01": ["AC-01"],
+      "UAC-02": ["AC-02"],
+      "UAC-04": ["AC-01"],
+      "UAC-05": ["AC-01", "AC-03"],
+      "UAC-06": ["AC-04"],
+      "UAC-09": ["AC-05"],
+      "UAC-11": ["AC-06"],
+      "UAC-13": ["AC-07"],
+      "UAC-14": ["AC-08"],
+      "UAC-15": ["AC-09"]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": ["UAC-01", "UAC-04", "UAC-05"],
+      "AC-02": ["UAC-02"],
+      "AC-03": ["UAC-05"],
+      "AC-04": ["UAC-06"],
+      "AC-05": ["UAC-09"],
+      "AC-06": ["UAC-11"],
+      "AC-07": ["UAC-13"],
+      "AC-08": ["UAC-14"],
+      "AC-09": ["UAC-15"]
+    },
+    "proposed_ac_ids": ["AC-10"],
+    "unresolved_clause_ids": ["UAC-03", "UAC-07", "UAC-08", "UAC-10", "UAC-12", "UAC-16"],
+    "contradictions": ["UAC-10 requests dynamic/static loader behavior while OOS-01 excludes dynamic baselines"],
+    "scope_expansions": [],
+    "status": "blocked"
+  }
+}
+```
+
+Before automation handoff, define old/new baseline fixtures (`UAC-03`), the selected-version oracles for conditions, direct/indirect references, and keys (`UAC-07`, `UAC-08`, `UAC-12`), resolve the dynamic-loader contradiction (`UAC-10`), and approve measurable performance limits (`UAC-16`). Keep revert/rollback, version-specific metadata editing, Reports, and linked implementation defects outside Confirmed AC unless a newer accepted Jira clause explicitly adds them.
+
+## Caution Reference: GUIDES-31711 DITAVAL Taxonomy Complaint Closed as Working as Designed
+
+Use this example to prevent a customer complaint, screenshots, or a standards interpretation from being promoted into accepted UAC when Jira contains no accepted criteria and the product decision is `Working as Designed`. It is valuable historical context and regression evidence, but it is not a trusted behavior contract for a taxonomy-changing enhancement.
+
+### Verified Current Evidence
+
+- Repository Search shows `Ditaval Files` as a dedicated filter under `Non-DITA Files`.
+- The DITAVAL creation flow uses the generic `New topic` dialog and a `Ditaval` template.
+- Reports display a `.ditaval` asset with file type `Others`.
+- The closed Jira clarification says all three choices are intentional: Repository Search uses a dedicated DITAVAL filter, the creation surface uses `topic` as a generic editable-piece abstraction, and Reports uses `Others` unless a separate enhancement requests a new category.
+- The same clarification says a distinct Reports category or harmonized taxonomy requires an enhancement request rather than a bug fix.
+
+### Standards And Authority Boundary
+
+- OASIS DITA defines DITAVAL as a document type for conditional-processing profiles. It is not a DITA topic or DITA map.
+- The DITA standard does not prescribe AEM Guides UI taxonomy, search-facet placement, creation-dialog labels, or Reports categories.
+- `Other DITA type document` in the complaint is a requested interpretation, not accepted AEM Guides UI copy.
+- The problem statement and screenshots prove the observed differences; they do not prove that the differences are defects.
+- The Jira has no accepted UAC. Therefore `accepted_uac_present=false`, no clause may become `[Confirmed]`, and historical reuse remains `candidate`/non-fix caution.
+
+### What The Analyzer Must Learn
+
+- Keep the complaint lines as context statements, not acceptance clauses.
+- Tag the evidence with `ditaval_asset`, `repository_search`, `creation_dialog`, `reports`, `file_type_taxonomy`, and `cross_touchpoint_taxonomy` so similar tickets can retrieve the decision.
+- Preserve the historical outcome as `expected_product_behavior` or non-fix decision.
+- Use the decision to challenge a new plan that assumes all three surfaces must use the same label without approved enhancement UAC.
+- Never use this ticket alone to define a new canonical DITAVAL enum, UI label, migration rule, API value, or report-export value.
+
+### Proposed Enhancement ACs Only
+
+- No Confirmed AC is justified by GUIDES-31711.
+- AC-01 [Proposed]: (Scope) Given product management has approved an exact canonical DITAVAL taxonomy and label in a new enhancement Jira | When that enhancement is implemented | Then its accepted UAC explicitly identifies which of Repository Search, creation, Reports, APIs, and exports must adopt the taxonomy and which current surface semantics remain unchanged.
+- AC-02 [Proposed]: (Repository Search) Given the approved enhancement keeps the dedicated DITAVAL search capability | When a user filters repository assets for DITAVAL | Then only matching `.ditaval` assets are returned under the approved category without reducing the current filter's discoverability.
+- AC-03 [Proposed]: (Creation UI) Given the approved enhancement defines DITAVAL creation terminology | When a user selects the `Ditaval` template | Then the dialog uses the approved DITAVAL wording and creates the same valid `.ditaval` asset without changing topic, map, or Markdown creation behavior.
+- AC-04 [Proposed]: (Reports) Given the approved enhancement defines the Reports file-type value for DITAVAL | When a report contains a `.ditaval` asset | Then the row displays and filters by that exact approved value instead of silently inheriting a different surface's label.
+
+### Required Open Questions Before Automation Handoff
+
+- What exact canonical display label and persisted enum are approved, and are they intentionally different?
+- Is Repository Search expected to remain under `Non-DITA Files` because that grouping serves search behavior, or must only its display label change?
+- Must the creation dialog stop using the generic `topic` abstraction, or is only helper text/template labeling changing?
+- Does Reports scope include the UI table only, or also downloaded CSV, APIs, saved filters, sorting, and analytics?
+- Must existing `.ditaval` assets be reindexed or migrated, and what is the backward-compatible value for older records?
+- Which AEM Guides versions, old/new editor surfaces, locales, roles, and upgrade paths are in scope?
+- No performance AC is justified by the supplied ticket because it contains no workload, latency, scale, concurrency, or resource-risk signal.
+
+### Regression Areas
+
+- Repository Search filter counts, combined filters, clear/reset behavior, and `.ditaval`-only result accuracy.
+- DITAVAL template selection, filename/extension handling, validation, save, reopen, and editing.
+- Reports file-type display, filtering, sorting, refresh, and download behavior if the enhancement includes those surfaces.
+- Existing DITA topic, DITA map, Markdown, image, multimedia, document, and JSON classifications must not move unintentionally.
+- Customer-specific permissions and KONE content must not change the taxonomy outcome unless the enhancement explicitly introduces tenant configuration.
+
+## Caution Reference: GUIDES-30001 Configuration-Gated Navtitle Button
+
+Use this example to distinguish a feature that is hidden by configuration from a removed or deprecated feature. The Jira was closed as `Working as Designed`, has `UAC Not Required`, has no fix version, and records no product code change. Its value is configuration, documentation, automation, and regression evidence only.
+
+### Verified Final Jira Evidence
+
+- The customer screenshot shows the earlier `Refresh Navigation Title Attribute` control on a DITA map.
+- Live Jira comments establish that the capability still exists and is controlled by the existing `ui_config` `ditaAttributes` setting.
+- The value recorded by engineering to enable the capability is:
+
+```json
+"ditaAttributes": {
+  "attributes": [],
+  "constraint": false,
+  "required": {"navtitle": true}
+}
+```
+
+- The default `required` object is empty, so the button is hidden unless the configuration explicitly requires `navtitle`.
+- The final product decision says the functionality works as expected, no product change was made, only automation was added, and the ticket was closed.
+- The `Doc_Required` label and comments establish a documentation gap; they do not establish that the button was deprecated.
+- Earlier comments disagree about whether the capability worked in 4.6 and propose a different label, `Reset navtitle`. Those superseded comments must not override the final no-change decision or be treated as accepted UI copy.
+
+### Answers To The Enterprise Questions
+
+- Why was the button not visible in 5.0? The 5.0 behavior correctly honored the existing UI configuration; the required `navtitle` entry was absent from the default configuration, so the control remained hidden.
+- Was the button deprecated? This Jira provides no deprecation evidence. It concludes that the capability still exists and is configuration-gated.
+- How is the functionality retained? Add the verified `ditaAttributes.required.navtitle=true` configuration, then validate the existing map behavior. Do not claim a product patch is required from this ticket.
+- Where is the documentation? The Jira requests documentation but does not supply an authoritative published documentation URL. A generated plan must keep the final documentation location as an open question unless current official documentation is inspected.
+
+### What The Analyzer Must Learn
+
+- Treat whole-field markers such as `UAC Not Required`, `Acceptance Criteria: N/A`, or `None` as absence of accepted UAC, not as acceptance clauses.
+- Preserve `Working as Designed` as `expected_product_behavior` with `candidate` reuse.
+- Tag the historical context with `navtitle`, `ui_configuration`, `configuration_visibility`, `toolbar_customization`, and `documentation_gap`.
+- Exact configuration evidence may support setup and regression coverage, but it must not become a `[Confirmed]` AC when the Jira explicitly has no UAC.
+- Do not infer that a missing button means removal, deprecation, permission loss, feature-flag disablement, or unsupported release.
+- Do not infer unverified behavior for `navtitle=false`, malformed JSON, conflicting overlays, toolbar position, UI label, editor variants, or upgrade migration.
+
+### Proposed ACs Only For A New Change Ticket
+
+- No Confirmed AC is justified by GUIDES-30001.
+- AC-01 [Proposed]: (Configured visibility) Given an approved UI configuration contains `ditaAttributes.required.navtitle=true` | When a supported DITA map authoring surface loads | Then the navigation-title refresh control is visible in every explicitly approved view and position.
+- AC-02 [Proposed]: (Default visibility) Given the effective UI configuration has an empty `required` object and no higher-priority overlay requires `navtitle` | When the same map surface loads | Then the navigation-title refresh control is not displayed.
+- AC-03 [Proposed]: (Configuration removal) Given the control is visible through a custom configuration | When that customization is removed and the effective configuration returns to the supported default | Then the control is hidden after the documented configuration reload lifecycle.
+- AC-04 [Proposed]: (Functional oracle) Given the control is visible and a map contains a testable stale `navtitle` case | When the user activates the control | Then the exact approved navigation-title update behavior occurs without changing unrelated map references or content.
+
+### Required Open Questions Before Automation Handoff
+
+- What is the authoritative file or configuration service, overlay precedence, deployment path, and reload/cache lifecycle for `ui_config`?
+- Which views are supported: map Author, Layout, Preview, Read view, old editor, new editor, or a defined subset?
+- What is the final visible label and icon: `Refresh Navigation Title Attribute`, `Reset navtitle`, or another approved design?
+- What exact source XML and UI result should occur when the action runs for missing, stale, explicit, inherited, or locked `navtitle` values?
+- Is `navtitle=false` valid, and how do malformed, duplicate, or conflicting configuration values fail?
+- Does the same behavior apply to fresh 5.0 installs, upgrades from 4.3/4.6, 5.1+, Cloud, and on-premise?
+- Which official documentation page records the setting, default, supported views, and rollback steps?
+- No performance AC is justified by this Jira because it contains no workload, latency, scale, concurrency, or resource-risk signal.
+
+### Regression Areas
+
+- Effective configuration precedence, JSON validation, cache invalidation, and rollback to the default hidden state.
+- DITA map Author/Layout view loading, toolbar composition, control duplication, localization, keyboard accessibility, and role/permission parity.
+- Navigation-title refresh behavior for topicrefs with explicit, missing, stale, inherited, key-based, and subject-scheme-related values.
+- Author/Preview switching, repository drag/drop, topic-reference insertion, reusable content, save/reopen, lock/check-out, and map refresh.
+- Upgrade retention for custom UI configuration and the absence of accidental changes to unrelated `ditaAttributes` controls.
+- Automation must assert both visibility states and the resulting source/content behavior; a visibility-only test is insufficient.
+
+## Caution Reference: GUIDES-28847 Metadata Filter Index Incident
+
+Use this example to prevent an early support hypothesis from becoming a trusted root cause. The issue has `UAC_Not_Required` and `Won't_Automate` labels, so it supplies historical incident, remediation, and regression evidence rather than accepted product UAC.
+
+### Screenshot And Symptom Evidence
+
+- The customer reported 442 DITA topic files, but applying only the `DITA Topic` file-type filter returned 2 files.
+- Selecting both `DITA Topic` and `Others` returned more files, which exposed incorrect filtering or index results.
+- The supplied screenshot verifies the combined `DITA Topic` plus `Others` filter state and a paginated view showing `50 of 442 files`.
+- The screenshot does not by itself prove why the records were missing, whether the filter uses OR or union semantics internally, or whether custom metadata changed the stored file type.
+
+### Superseded Investigation Hypotheses
+
+- The description initially proposed that recent retrieval API changes, custom namespaced metadata such as `test:type`, or the `TypeFilter` class could be responsible.
+- Those statements use tentative language and were not confirmed.
+- Engineering later established that namespaced properties are not used by Reports file-type filtering.
+- The early custom-index assumption was explicitly marked invalid.
+- These theories may be retained only as disproved investigation history. They must never be returned as the root cause, current expected behaviour, or a Confirmed AC.
+
+### Confirmed RCA And Remediation
+
+- The query including `nodename=*.dita`, `type=dam:Asset`, and the target path returned one result, while the equivalent query without `type=dam:Asset` returned the correct set.
+- All inspected DITA assets still had the expected `jcr:primaryType=dam:Asset`; the content itself was not reclassified by the custom namespace.
+- The discrepancy identified an environment-specific problem with the `damAssetLucene` index, which had not been created correctly.
+- Reindexing `damAssetLucene` restored the filtering results in the clone environment.
+- KONE IT subsequently tested and validated that the issue was fixed after reindexing.
+- Root-cause provenance is the later confirmed Jira comment, not the earlier SC hypothesis. Customer validation is remediation evidence, not an accepted product behavior contract.
+
+### What The Analyzer Must Learn
+
+- Split chronological comment digests into individual comments before extracting RCA; otherwise an early `RCA:` heading can incorrectly absorb later comments.
+- Reject tentative causal sections containing `could`, `may`, `seems`, `hypothesis`, `suggest disabling`, or `to confirm` unless the same evidence contains a later explicit confirmation.
+- Rank confirmed causal evidence above tentative sections and retain explicit invalidation text so the disproved theory cannot reappear as the answer.
+- Tag the context with `metadata_report`, `file_type_filter`, `custom_namespace`, `type_filter`, `oak_index`, `dam_asset_lucene`, `reindexing`, `environment_specific`, `filter_union`, and `result_count`.
+- Store `UAC Not Required` as status evidence, not as an acceptance-criteria chunk.
+- Keep the Jira at `candidate` reuse unless a separate fixed product ticket provides accepted UAC, implementation evidence, and a reusable QA oracle.
+
+### Proposed ACs Only For A New Product Change
+
+- No Confirmed AC is justified by GUIDES-28847.
+- AC-01 [Proposed]: (DITA Topic accuracy) Given a healthy supported index and a report scope containing a known number of DITA topics plus non-topic assets | When the user applies only `File type = DITA Topic` | Then every and only the expected DITA topic assets are returned across all result pages and the displayed total equals the independently calculated oracle.
+- AC-02 [Proposed]: (Combined filters) Given the same fixture contains DITA topics and assets classified as `Others` | When the user selects both values | Then the result set follows the explicitly approved union semantics with no missing or duplicate assets and an exact count oracle.
+- AC-03 [Proposed]: (Namespace independence) Given equivalent DITA topic assets with and without an extended metadata-schema property such as `test:type` | When the same file-type filter runs on a healthy index | Then both assets retain the same approved file-type classification and result inclusion unless an accepted requirement explicitly maps that namespace into file type.
+- AC-04 [Proposed]: (Index recovery) Given a reproducible unsupported or stale `damAssetLucene` state and an approved recovery procedure | When reindexing completes successfully | Then the same query and UI filter return the expected full result set without requiring content edits or metadata removal.
+
+### Required Open Questions Before Automation Handoff
+
+- What exact Jira resolution was selected, and was any product fix, hotfix, index-definition update, or only operational reindexing delivered?
+- What is the supported `damAssetLucene` definition and health oracle for the affected AEM/Guides version?
+- What exact expected counts apply to `DITA Topic`, `Others`, and their combined selection after deduplication?
+- Are file-type selections defined as OR/union, and does the same rule apply to downloaded CSV, pagination, sorting, and refreshed results?
+- Which custom namespaces and extended schemas must be included as negative controls?
+- What is the supported reindex procedure, required role, expected duration, failure handling, and production rollback?
+- Does the issue reproduce on a clean environment, after upgrade, or only in the affected KONE index state?
+- The 442-file corpus is a useful functional scale fixture, but no performance AC is justified because Jira supplies no latency, throughput, concurrency, or resource threshold.
+- `Won't_Automate` records this ticket's historical automation decision; it does not prove that a future product change is inherently unautomatable.
+
+### Regression Areas
+
+- File-type filters for DITA Topic, DITA Map, DITAVAL/Others, images, multimedia, documents, and mixed selections.
+- Exact totals across pagination, refresh, sorting, no-result states, filter removal, and downloaded report data.
+- Assets with no custom metadata, simple metadata, and multiple custom namespaced properties.
+- Query consistency with and without `type=dam:Asset`, plus index health before and after an approved reindex.
+- Document-state, reference-type, tag, and file-type filter intersections must not hide or duplicate valid results.
+- Environment upgrades, index recreation, custom index overlays, and reindex completion must not leave stale result counts.
+
+## Caution Reference: GUIDES-28667 Custom Preview Button Configuration Migration
+
+Use this example to distinguish a Jira field value of `Resolution: Fixed` from a verified product-code fix. Live Jira chronology shows that the customer was unblocked through custom-toolbar configuration, the result was explicitly called a workaround rather than a fix, and the remaining action moved to documentation.
+
+### Verified Historical Evidence
+
+- In AEM Guides 5.0, KONE reported that its custom `Export PDF` action for DITA-OT PDF was visible in Preview mode only while the file was locked; the earlier customization had allowed use in locked and unlocked states.
+- The Jira description identifies the supplied customization as `KONEui_config.json`.
+- An engineering comment says an updated `editor_toolbar.json` added the button for both lock and unlock scenarios.
+- Support explicitly states that this configuration unblocked the customer but was still a workaround and not a fix.
+- A later engineering comment says custom buttons configured in `ui_config.json` would not work in Preview and needed to be ported to `editor_toolbar.js` with explanatory documentation.
+- The Jira was then closed because no further action remained on it, while documentation was tracked in GUIDES-28909.
+- The evidence conflicts on the supported target filename: the attachment and one comment say `editor_toolbar.json`, while the migration comment says `editor_toolbar.js`. A generated plan must preserve this conflict as an open question until current product code or official documentation resolves it.
+
+### What The Analyzer Must Learn
+
+- Classify this history as `historical_outcome=configuration_migration`, `resolution_mechanism=configuration_migration`, and `resolution_evidence_source=jira_comment_configuration_migration`.
+- Keep `learning_confidence=caution` and `is_verified_fix=false`; the Jira resolution field alone does not prove a product implementation.
+- Preserve the workaround, configuration migration, and documentation closure as short provenance excerpts without copying full comments into the learning chunk.
+- If a later comment explicitly records a merged, released, implemented, or build-verified product fix, that later evidence may override the earlier workaround classification.
+- Tag comparable contracts with `custom_button`, `preview_mode`, `locked_state`, `unlocked_state`, `editor_toolbar_configuration`, `configuration_migration`, `ui_configuration`, `dita_ot`, `output`, and `documentation_gap`.
+- No accepted UAC is present. The symptom and workaround are historical regression evidence only and must not define current supported behaviour.
+- No Confirmed AC is justified by GUIDES-28667.
+
+### Proposed ACs Only For A New Supported-Configuration Change
+
+- AC-01 [Proposed]: (Visibility state matrix) Given the exact supported custom-toolbar file and schema contain one valid `Export PDF` action for Preview mode | When an authorized user opens the same supported DITA asset while it is locked and while it is unlocked | Then exactly one enabled action is visible in each approved state, with no duplicate or stale action after the state changes.
+- AC-02 [Proposed]: (Action result) Given the action is visible in each approved lock state | When the user invokes it | Then the configured DITA-OT PDF operation starts once for the current asset and exposes the approved success or failure feedback without changing the asset lock state.
+- AC-03 [Proposed]: (Upgrade migration) Given a supported pre-5.0 customization and the approved 5.0-or-later migration procedure | When the configuration is migrated and caches are refreshed as documented | Then the action retains its approved Preview visibility and invocation behaviour without changing unrelated toolbar actions or authoring modes.
+
+### Required Open Questions Before Automation Handoff
+
+- Is the supported target `editor_toolbar.json`, `editor_toolbar.js`, or a generated JavaScript artifact sourced from JSON? QA impact: the answer changes the fixture, deployment path, schema validation, and cache-refresh oracle.
+- Which action keys, command handler, target asset types, Preview variants, and DITA-OT PDF preset are officially supported? QA impact: without them, visibility can be checked but invocation and output correctness cannot be deterministic.
+- Are locked and unlocked the complete state matrix, or must testing also cover another user's lock, read-only access, checkout, insufficient permission, and stale lock transitions? QA impact: each supported state requires an explicit visibility and enabled-state expectation.
+- Was `ui_config.json` support intentionally removed, deprecated, or never supported for Preview in 5.0? QA impact: this determines whether legacy behavior is a migration boundary, backward-compatibility defect, or unsupported customization.
+- What official page under GUIDES-28909 documents migration, rollback, cache invalidation, and release applicability? QA impact: documentation is the authority for upgrade and supportability checks because GUIDES-28667 delivered no verified product patch.
+- Does the action apply to maps, topics, Markdown, locked read-only previews, old/new editor, and every supported browser? QA impact: each included surface expands the functional and automation matrix.
+- No performance AC is justified by this Jira; it provides no latency, job-start, throughput, concurrency, or resource threshold.
+
+### Regression Areas
+
+- Re-test custom Preview actions in locked, unlocked, lock-transition, reopen, and refresh flows because toolbar conditions can leave stale visibility or duplicate controls.
+- Re-test Author, Source, and Preview mode switching because moving a customization into the editor-toolbar configuration can unintentionally expose the action in unsupported modes.
+- Re-test DITA maps, topics, and any explicitly supported Markdown surface because related tickets show Preview action availability can vary by asset type.
+- Re-test built-in Download/PDF actions alongside the custom action because overriding a toolbar command must not hide, duplicate, or redirect the product-provided action.
+- Re-test configuration overlay precedence, syntax failure, cache invalidation, upgrade retention, and rollback because the historical resolution depended on moving the customization between configuration mechanisms.
+- Re-test permissions and lock ownership because a visibility rule that only checks `locked` can expose the action to the wrong user or hide it for a valid unlocked workflow.
+
+## Accepted Reference: GUIDES-28443 Bulk Metadata Manage Recovery
+
+Use this example for report operations that combine a backend query correction, asynchronous UI state, bulk-result accounting, Cloud/on-premise parity, and a performance-shaped incident without an approved performance SLA. The full accepted UAC belongs to GUIDES-28443 and the 2507 delivery. GUIDES-29778 is a separate 5.0.1 hotfix point-fix and must not inherit the complete 2507 contract.
+
+### Verified Defect And Root Cause
+
+- The failing workflow is `Map Console > Reports > Metadata > Manage`, especially `Select all` where `allAssets=true`.
+- The affected endpoint is `bin/guides/v1/map/reports/metadata/tags/common`.
+- Engineering confirmed that the query-building path omitted UUID-to-path conversion. A null path was then passed into the query, causing a scan of all data and preventing common tags from being returned.
+- This confirmed RCA supersedes the earlier question about a potentially missing index; do not return the index theory as the root cause.
+- Customer-impact evidence includes a repository with approximately 20,000 DITA files, maps with 10-15 or more dependencies, multiple API triggers, CPU/memory pressure, pod instability, and a Cloud observation where seven files exceeded one minute and ended in HTTP 503.
+- Those observations prove `performance_matters=true`; they do not define an approved performance pass/fail threshold.
+- The supplied screenshot shows a service-outage banner only. It is incident evidence, not proof of Manage-button state, loader behavior, query results, or the accepted UI oracle.
+
+### Full Accepted 2507 Contract
+
+- Manage must apply tags and document state to all selected assets or a selective set of assets.
+- The Manage dialog must show common tags and apply the user's tag changes.
+- The workflow covers DITA and non-DITA assets, Custom tags and OOTB tags, and both Cloud and on-premise Guides deployments.
+- A bulk operation must report the files updated and files skipped; any skipped file must be counted.
+- Negative dialogs must be validated, and a timeout must surface a proper error message.
+- After Manage is triggered, a loader/progress indication is shown and the Manage button remains disabled until the API response completes, preventing duplicate triggers; it becomes available again after completion.
+- The Filters panel shows a loading shimmer and withholds details until the API response is available.
+- The same disabled/in-progress state applies to the Fix Link button in Broken Links.
+- If Fix Links cannot repair a link, the accepted behavior keeps it broken and does not show a separate error dialog.
+- Existing filters continue to work, and Manage applies only to the files present or visible in the Metadata tab.
+- The accepted UAC explicitly says the API correction does not introduce a separate performance change. Therefore `performance_contract_complete=false` until an approved latency, timeout, throughput, concurrency, and resource contract is supplied.
+
+### Release-Scope Boundary
+
+- GUIDES-29778 states: the ticket is for the 5.0.1 hotfix only, while the copied UAC is for 2507.
+- Its explicit hotfix scope is limited to Manage/Broken Link button disable-enable behavior plus the common-tags point fix.
+- Hotfix validation covered select-all common tags, tag/document-state updates for all and selective files, filters, and Broken Links on builds 5.0.0.211 and 5.0.1.2.
+- The hotfix comment records a known issue: closing the Fix Link dialog without fixing a link while filters are applied refreshes the tab and clears the filters. Preserve this as a known regression signal, not an accepted expected behavior.
+- Set `release_scope_split=true`, `release_scope_source=jira_comment_release_scope`, `contract_complete=false`, and `reuse_tier=candidate` for the copied UAC on GUIDES-29778. Never generate the entire 2507 plan as 5.0.1 hotfix sign-off scope.
+
+### Verification And Automation Provenance
+
+- `Acceptance Criteria Looks good to me` is sign-off only and is not execution evidence.
+- `The ticket passes all the mentioned points of Acceptance Criteria. EM Review done` is explicit acceptance-validation evidence.
+- The later customer validation is stronger: smaller and larger file sets were tested, the button disabled on first click, and a progress bar was shown.
+- Engineering added API automation for common tags across all assets.
+- The accepted automation gap is UI coverage for Select all, common tags, and Manage disable/enable behavior.
+- Automation notes are context and coverage evidence; they must not become extra product UAC clauses.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (All/selective update) Given the Metadata report contains supported visible assets | When an authorized user applies tags or document state through Manage to all selected files or a selective set | Then every eligible targeted file is updated according to the action and untargeted files remain unchanged.
+- AC-02 [Confirmed]: (Common tags) Given all targeted assets share one or more tags | When Manage loads for that selection | Then the dialog returns the common tags and persists the user's supported tag updates.
+- AC-03 [Confirmed]: (Asset and deployment matrix) Given supported DITA and non-DITA assets with Custom and OOTB tags | When the same Manage workflow runs on an approved Cloud or on-premise build | Then the accepted tag and document-state behavior remains equivalent for every included matrix entry.
+- AC-04 [Confirmed]: (Bulk accounting) Given a bulk update contains files that can be updated and files that must be skipped | When processing completes | Then the report identifies the updated files and skipped files and exposes an exact skipped count.
+- AC-05 [Confirmed]: (Single-trigger lifecycle) Given Manage is enabled | When the user triggers it | Then one operation starts, a loader/progress indication appears, Manage remains disabled until the API completes, and it becomes enabled again only after the accepted terminal response.
+- AC-06 [Confirmed]: (Filter loading state) Given the Filters panel depends on the same API response | When loading is in progress | Then the complete panel shows a shimmer and does not expose partial details before the response is available.
+- AC-07 [Confirmed]: (Timeout feedback) Given the API does not respond within the configured timeout | When the request reaches that timeout | Then the user sees the approved error message and the UI exits the in-progress state without accepting duplicate triggers.
+- AC-08 [Confirmed]: (Broken Links state) Given Fix Link processing is started | When it is running | Then the Fix Link button follows the same disable-enable lifecycle; if the link cannot be fixed, it remains broken without a separate error dialog.
+- AC-09 [Confirmed]: (Visible-file scope) Given Metadata filters reduce the visible file set | When Manage runs | Then it applies only to the accepted present/visible set and existing filter behavior remains unchanged.
+
+### Required Open Questions Before Automation Handoff
+
+- What exact request/response schema, pagination behavior, and `allAssets` semantics define the targeted set? QA impact: this is required to prove that visible, selected, and all assets are not mixed.
+- What timeout value, HTTP result, localized error copy, retry rule, and button re-enable behavior are approved? QA impact: `proper error message` is not deterministic without these values.
+- What are the loader and shimmer terminal rules for success, empty response, partial failure, timeout, cancellation, navigation, and component unmount? QA impact: an indefinite disabled state can create a second outage.
+- What exact reason schema and count reconciliation are required for skipped files? QA impact: the report cannot be asserted from a count alone when individual failures are hidden.
+- Which DITA and non-DITA asset subtypes, document states, tag namespaces, permissions, and mixed selections are mandatory? QA impact: `all types` is broader than an executable fixture matrix.
+- Does the accepted visible-file scope include only the current page, all filtered pages, or the complete server-side result set? QA impact: each interpretation changes the `allAssets=true` oracle.
+- Is the GUIDES-29778 filter-reset issue accepted as a 5.0.1 limitation, fixed later, or a blocker for the target build? QA impact: it changes hotfix regression and release-sign-off expectations.
+- If performance sign-off is required, what controlled dataset, warm/cold cache state, repetitions, percentile, maximum API/UI duration, concurrency, CPU, memory, and pod-stability ceilings are approved? Until answered, no Confirmed performance AC or principal-QA pass/fail verdict is valid.
+
+### Regression Areas
+
+- Select all versus selective files, current page versus all filtered pages, pagination, sorting, refresh, empty results, and stale selection.
+- Common/no-common/mixed tags, Custom/OOTB tags, add/remove tags, document-state updates, permissions, locked assets, and partial skips.
+- DITA topics, maps, DITAVAL, images, multimedia, documents, and any approved non-DITA types.
+- Manage and Fix Link loader, disabled/enabled states, double-click, Enter key, retry, timeout, server error, navigation away, and dialog close.
+- Filters-panel shimmer, retained filters, Broken Links filter reset, and visible-file scope after response.
+- API query correctness for `allAssets=true`, UUID-to-path conversion, null-path prevention, exact common-tag response, and absence of full-repository scans.
+- Cloud/on-premise parity, upgrade from affected 2502/5.0 builds, hotfix 5.0.1.2 boundaries, localization of changed error messages, and API/UI automation coverage.
+
+## Product-Fix Reference: GUIDES-25769 Author-View Image Move Data Loss
+
+Use this example when a closed Jira has no accepted UAC but does contain explicit implementation and build-verification chronology. The history is valuable for regression discovery, but it must not be promoted into Confirmed acceptance criteria or an inferred root cause.
+
+### Evidence Boundary
+
+- Jira marks the acceptance field as `UAC Not Required`. No Confirmed AC is justified by GUIDES-25769.
+- The observed defect is narrow and severe: moving an existing image to another location inside the same topic in Author View breaks the image, and Source view no longer contains the image reference, causing data loss.
+- A development comment explicitly says the issue was fixed in develop and cherry-picked for a hotfix, and links `AdobeStarling/xmleditor/pull/5088`. The linked diff was not inspected for this reference, so it proves a discoverable implementation link, not changed symbols or root cause.
+- Jira records successful checks on `5.0.207`, `4.6.0.164`, and hotfix `4.6.4`. Preserve these as exact validation boundaries; do not generalize them to every 5.0 or 4.6 build.
+- No explicit RCA is present. The missing source reference is a symptom and oracle, not proof of why the code removed it.
+- The ticket carries both `Automated` and `Won't_Automate`. This is an unresolved automation-evidence conflict until the linked test or current suite is inspected.
+- The attached recording was not downloaded or analyzed for this reference. Do not claim cursor position, DOM state, exact drag gesture, or visual timing from the attachment.
+
+### Trust Classification
+
+- Set `resolution_mechanism=product_fix` and `historical_outcome=implemented_fix` because the develop fix and hotfix cherry-pick are explicit.
+- Set `qa_oracle_source=jira_comment_version_validation` for the exact version and hotfix validation comments.
+- Set `behavior_contract_source=missing`, `behavior_contract_complete=false`, and `root_cause_source=missing` because Jira supplies neither accepted UAC nor RCA.
+- Keep `learning_confidence=caution`, `is_verified_fix=false`, and reuse mode `risk_signal_only`. The issue may justify regression coverage and open questions, but it cannot independently define current expected behavior.
+
+### Normalized Proposed ACs
+
+- AC-01 [Proposed]: (Reference preservation) Given an existing image in a topic has a known source reference | When the author moves that image to another valid location in the same topic in Author View | Then the image remains rendered and Source view contains exactly one image element with the same reference value.
+- AC-02 [Proposed]: (Persistence) Given the image was moved successfully | When the author saves, switches between Author and Source views, and reopens the topic | Then the moved image remains at the saved location and its reference and content are not deleted, replaced, or duplicated.
+- AC-03 [Proposed]: (Failure safety) Given the requested destination is unsupported or the move cannot complete | When the editor rejects or cancels the operation | Then the original image and its source reference remain unchanged and no partial content loss is persisted.
+
+### Required Open Questions Before Automation Handoff
+
+- Does the fix apply to the old editor, new editor, CKEditor, Markup Editor, or a specific editor/build combination? QA impact: the Jira says Author View but does not define the editor matrix.
+- Which reference forms are supported and must remain byte-equivalent: repository GUID, DAM path, relative path, `keyref`, or `conref`? QA impact: `same reference` is not executable until the accepted forms are named.
+- Which source and destination containers are valid for moving an image, including paragraph, figure, list item, table cell, inline placement, and adjacent block boundaries? QA impact: a single happy-path destination cannot prove structural safety.
+- Is the operation a move only, or are copy, cut/paste, keyboard movement, undo, and redo part of the same contract? QA impact: these paths can use different editor transactions.
+- What is the expected behavior for unsaved topics, locked/read-only topics, concurrent edits, failed save, and browser refresh? QA impact: data-loss recovery and persistence cannot be signed off without state boundaries.
+- Why do the Jira labels contain both `Automated` and `Won't_Automate`, and which repository/test is authoritative? QA impact: automation coverage must remain `Unverified` until direct evidence resolves the conflict.
+- Does related GUIDES-19460 share the same editor transaction or only a similar drag/drop symptom? QA impact: it must be inspected before being treated as a same-mechanism Jira.
+
+### Regression Areas
+
+- Internal image reorder versus repository-panel insertion, toolbar insertion, copy/paste, cut/paste, and drag between topics.
+- Author/Source parity before save, after save, after reopen, after check-in/version creation, and after browser refresh.
+- Preservation of `href`, `alt`, `outputclass`, placement, dimensions/scaling, key/conref state, and adjacent inline or block content.
+- Multiple images, repeated moves, first/last child positions, empty destinations, lists, tables, figures, and nested structures.
+- Undo/redo, cancel, invalid drop targets, failed persistence, locked/read-only state, and prevention of deletion, duplication, broken rendering, or a newly minted reference.
+- Exact fixed-build checks on `5.0.207`, `4.6.0.164`, and hotfix `4.6.4`, plus explicit validation on the current target build rather than inferred release-wide coverage.
+
+## Accepted Comment-Scope Reference: GUIDES-23526 Folder-Profile Condition Preservation
+
+Use this example when Jira's native acceptance field is empty but an accepted-UAC label and a later explicit scope comment establish the sign-off contract. The ticket history contains changing implementation proposals, so chronology and source provenance are mandatory.
+
+### Evidence And Chronology Boundary
+
+- Jira is Closed/Fixed, carries `UAC_Done`, affects 4.6, fixes 2502/4.6.3, and is associated with KONE and Authoring.
+- The defect is that saving conditions through Folder Profile can flatten existing condition groups. A later observed variant also resets an edited condition's color to yellow.
+- An early comment proposed that Folder Profile would not show groups while saving would preserve them. A later discussion considered displaying/editing group data because Folder Profile saves the complete condition object. Neither intermediate proposal overrides the final scoped comment.
+- The final explicit scope comment limits the ticket to adding genuinely new conditions without altering existing conditions. It directs edits of existing conditions to XML Editor.
+- The existing-condition Folder Profile defect—group removal and yellow color reset—is explicitly beyond this ticket and belongs to a separate enhancement.
+- Engineering also stated that a stale Folder Profile page must be refreshed before editing and that reusing the same key/value is an edit because JSON keys are unique. These are implementation/usage notes, not automatically accepted product defaults.
+- QA history records checks on UUID and non-UUID variants, Cloud and on-premise, plus hotfix builds. Preserve those exact validation boundaries as regression evidence; they do not broaden the accepted scope.
+- The linked Starling PR and attached recordings/packages were not inspected for this reference. Do not infer changed symbols, package contents, exact UI controls, or root cause from their existence.
+
+### Trust Classification
+
+- Resolve the accepted behavior from the chronologically latest explicit final-scope comment only when the accepted-UAC label is present.
+- Record `uac_source_authority=jira_accepted_uac` and `uac_source_origin=jira_comment_accepted_scope`.
+- Keep `root_cause_source=missing` unless the PR/diff or a causal Jira statement is inspected. “Folder Profile saves the entire object” is mechanism context, not a confirmed RCA by itself.
+- Keep the reusable tier at `supporting` unless explicit RCA and executed QA-oracle evidence also satisfy the verified-history rules.
+- Never promote this comment path when Jira says `UAC Not Required`, when only a draft/pending scope exists, or when the accepted-UAC label is absent.
+
+### Normalized Confirmed ACs
+
+- AC-01 [Confirmed]: (New-condition preservation) Given the current Folder Profile state contains existing conditions with assigned groups and colors and the user adds a genuinely new key/value condition | When the Folder Profile change is saved | Then the new condition is persisted and every pre-existing condition retains its prior group and color without flattening, deletion, or reset.
+- AC-02 [Confirmed]: (Persistence oracle) Given AC-01 completed successfully | When the condition data is reloaded and inspected through the authoritative stored configuration and XML Editor | Then the new condition is present exactly once and all prior group/color values match their pre-save values.
+- AC-03 [Confirmed]: (Existing-condition boundary) Given an existing condition must be modified | When the user follows the accepted workflow | Then the edit is performed through XML Editor; editing that existing condition through Folder Profile is not a sign-off flow for this ticket.
+
+### Required Open Questions
+
+- Must Folder Profile visibly display existing group values, or is preservation without group editing the supported final UI? QA impact: this changes the UI oracle and whether blank group cells are expected.
+- Is refreshing Folder Profile before adding a condition a product requirement, temporary workaround, or stale-state defect? QA impact: this changes setup and requires a separate stale-page scenario if refresh should not be mandatory.
+- What exactly makes a condition “new”: unique attribute/value, unique JSON key, or another identifier? QA impact: duplicate-key behavior must be deterministic before automation can distinguish add from edit.
+- Which current releases supersede the historical UUID/non-UUID, Cloud/on-premise, 2502, 4.6.3, and hotfix checks? QA impact: the execution matrix must target supported builds rather than infer release-wide coverage.
+- Which PR or code path performs the merge/preservation? QA impact: without inspected implementation, concurrency, stale writes, ordering, and rollback remain targeted regression risks rather than confirmed RCA coverage.
+
+### Regression Areas
+
+- Add one and multiple genuinely new conditions while preserving several existing groups, colors, attributes, and values.
+- Save, reload, browser refresh, XML Editor inspection, Folder Profile reopen, and stale-versus-refreshed page state.
+- Duplicate key/value, blank group, special characters, ordering, concurrent edits, failed save, and rollback/no-partial-write behavior.
+- Existing-condition editing in XML Editor versus the explicitly excluded Folder Profile edit path.
+- UUID/non-UUID and Cloud/on-premise parity on the exact supported target builds; retain the historical hotfix matrix only as evidence.
+- Import/export or configuration serialization that reads or writes the same condition object, ensuring unrelated groups and colors remain byte-equivalent where ordering is not semantically significant.
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
@@ -766,7 +1445,21 @@ Use this example as a quality bar for report tickets where key references, conte
 - For UI config JSON upgrade tickets, always separate upgraded-instance retained values from fresh-install defaults; verify custom CSS, custom `ui-config.json` components, shortcut keys, custom DITA attributes/elements, default templates, snippets, labels, Show Tags, Display Attributes, XML Comments, and Quick Insert Menu.
 - For DB/Splunk logging tickets, always separate noisy JCR/on-prem DB warning/info logs from valid Cloud DB errors, verify exact unwanted logger strings are absent, preserve actionable error logging, test authoring and reference add/update regressions, capture Splunk query evidence, and keep automation as a gap until Splunk-query setup exists.
 - For key-resolution report tickets, always test root map, key map, nested-map scope, valid versus missing keys, `keyref` versus `conkeyref` link types, correct linked file, post-processing/index refresh, create/rename/delete updates, no false positives, `Used In` title/path accuracy, Topic/Map file type, CSV/Excel export parity, and existing cross-link/reusable-content regressions.
+- For Native AEM Site baseline-metadata tickets, always separate selected-baseline values from current working-copy values; cover `metadatalist` allowlisting, custom metadata, static/dynamic baselines, incremental publishing, Copy To, content/metadata version consistency, map-to-topic fallback precedence, and old/new baseline regeneration while preserving the ticket's explicit Old AEM Site, chunking, and multimedia exclusions.
+- For baseline-aware Web Editor preview tickets, separate map from topic preview and static from dynamic baselines; cover selected-version rendering, filter-panel controls, Show diff visibility, editor parity, mode-switch retention, loader lifecycle, conditions, direct/indirect references, keys, selected-baseline deletion, version-purge protection, working-copy refresh behavior, and measurable large-map performance without promoting revert, metadata editing, Reports, or linked defects into scope.
+- For Native PDF map-title inline-content tickets, separate map, project, and topic title scope; distinguish direct map-title `conref`/`conkeyref` exclusions from supported nested `<ph>`/`<keyword>` `keyref`, `conref`, and `conkeyref` paths; cover `<tm>`, inline emphasis, text decoration, `<image>`, `ditavalref`, conditional presets, DITA-OT enabled/disabled behavior, and text-only metadata titles; keep topic-title and unsupported video/object content outside scope, and require an explicit result for each DITA-OT state before creating Confirmed ACs.
+- For GUID/UUID reference-insertion tickets, validate repository drag/drop and toolbar browse independently by inspecting source XML; require a GUID-backed `topicref/@href` and the accepted default `scope`, preserve the reference when another user moves the target before the map is saved, retain the target's original GUID without minting a replacement, test every stated UUID-property state, and run the same matrix in CKEditor and MarkupEditor; keep explicitly rejected external-scope path conversion outside sign-off and reconcile any editor-parity range that still includes an excluded UAC point.
+- For translation v1/v2 first-run tickets, require the exact config name and default plus enabled/disabled outcomes; separate first translation from later buffer-copy runs; cover source-copy replacement after approval, translated-reference integrity, language-folder versus global assets, every named reference type, language-code GUID rules, mixed in-sync/missing-copy languages, machine/human/XLIFF/multilingual/baseline/API matrices, and related-asset no-copy/no-link behavior in both v1 and v2 while proving the config does not alter v1. Treat `work as is`, missing move/version outcomes, and pending linked-ticket scope as unresolved; when incident prose conflicts with final accepted UAC, keep the accepted UAC as sign-off authority and surface the conflict in `Open Questions` rather than merging both outcomes.
+- For baseline-export asset-relocation tickets, test image and `topicref` moves from language to global, global back to language, and assets created globally without a language code then moved through both locations; require the exported baseline to resolve the current canonical asset path and the exact version created after the move without obsolete language-specific copies or missing-asset errors. Cover baselines/content created before upgrade and preserve translation asset retrieval, acceptance, rejection, XLIFF, human, and machine workflows. Treat `baseline export should work`, `no changes in normal workflows`, and upgrade checks without source/target builds or observable package/version outcomes as unresolved automation contracts.
 - For on-premise release tickets, always ask upgrade-impact open questions about source/target versions, retained custom configs, changed defaults, manual post-upgrade steps, Cloud parity, and backward compatibility.
 - Convert each UAC bullet into one practical `P0`, `P1`, or `P2` scenario with action and expected result.
 - Keep file-type matrices compact; do not create a table unless the user explicitly asks.
 - Add RAG-backed AEM configuration links only when `ask_dita_expert` confirms relevant upload restriction, duplicate detection, size, or versioning behaviour.
+
+## Deterministic Reference: Authoring Viewport, Map Preview, CALS Deletion, and Large-File Safeguards
+
+- Route an Author-view scroll-to-top issue to `authoring_viewport_stability` only when evidence names the editing canvas plus active caret/selection/element, reference insertion, or lost editing location. Cover typing, paste, link insert/update, picker cancel, repetition, active-element-relative reflow restoration, one correct reference, and unchanged surrounding content.
+- Keep `map_preview_state` separate. Its contract covers selected topic, relative preview scroll, conditions/right-panel state, refresh, and Edit-return. Reject area-only historical overlap unless evidence identifies shared state restoration or editor-scroll implementation.
+- For CALS multi-column deletion, use a 6-row by 5-column fixture and require a valid 6-row by 3-column result, no blank ghost column, preserved retained-cell order, and no orphan column/span metadata.
+- Learn `GUIDES-35437` as `largeFileTagCount` configuration-driven working-as-designed behavior. Test below and at/above the effective parsed-tag threshold; never turn 411 cells into a hard-coded product defect or performance SLA.
+- Exact screenshot-only records are not historical-UAC evidence. Index exact UAC only from live Jira or Jira CSV with a verified SHA-256 source hash.

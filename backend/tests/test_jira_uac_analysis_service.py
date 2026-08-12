@@ -1127,6 +1127,87 @@ def test_analysis_and_chunks_are_deterministic_and_never_llm_generated():
     assert all(chunk["uac_llm_used"] is False for chunk in chunks)
 
 
+def test_authoring_viewport_contract_is_distinct_and_does_not_invent_performance_scope():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91001",
+        acceptance_criteria="""
+Given a long topic with the active cursor deep in the Author canvas, editing content keeps the active element visible and does not scroll to the document top.
+When the author inserts or updates an xref through the reference picker, closing the dialog restores the caret to the intended insertion location and keeps that location visible.
+Typing, paste, dialog cancel, and repeated reference insertion preserve the selection and surrounding content without duplicate insertion or unintended content mutation.
+When inserted content causes layout reflow, the viewport restores relative to the active element rather than an exact pixel offset.
+""",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "authoring_viewport_stability" in analysis.dimensions
+    assert "active_element" in analysis.dimensions
+    assert "caret" in analysis.dimensions
+    assert "reference_insertion" in analysis.dimensions
+    assert "large_topic" in analysis.dimensions
+    assert "scroll_to_top" in analysis.dimensions
+    assert "map_preview_state" not in analysis.dimensions
+    assert analysis.performance_matters is False
+
+
+def test_map_preview_state_contract_stays_separate_from_author_canvas_scrolling():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91002",
+        acceptance_criteria="""
+Map Preview must retain its scroll position and selected topic when the user returns from Edit.
+Refreshing Map Preview must fetch current topic content while preserving the applied condition and right-panel state.
+""",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "map_preview_state" in analysis.dimensions
+    assert "authoring_viewport_stability" not in analysis.dimensions
+
+
+def test_cals_multi_column_delete_contract_captures_structural_integrity():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91003",
+        acceptance_criteria=(
+            "Deleting two columns from a CALS 6x5 table must remove both selected columns and update "
+            "tgroup/@cols, colspec, namest, and nameend without a blank or ghost column."
+        ),
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "cals_table" in analysis.dimensions
+    assert "multi_column_delete" in analysis.dimensions
+    assert "table_structure_integrity" in analysis.dimensions
+
+
+def test_guides_35437_is_configuration_driven_working_as_designed_not_a_cell_defect():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-35437",
+        acceptance_criteria=(
+            "Working as designed: largeFileTagCount is a system configuration that controls large-file "
+            "mode, where undo/redo and the dirty marker can be disabled above the configured threshold."
+        ),
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "large_file_tag_count" in analysis.dimensions
+    assert "large_file_safeguard" in analysis.dimensions
+    assert "configuration_driven_behavior" in analysis.dimensions
+    assert "working_as_designed" in analysis.dimensions
+    assert "multi_column_delete" not in analysis.dimensions
+    assert analysis.performance_matters is False
+
+
 def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
     full_uac = "\n".join(
         [f"Requirement {index:03d} must retain the selected baseline metadata value." for index in range(90)]
@@ -1143,6 +1224,7 @@ def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
         resolution="Fixed",
         jira_updated_at=datetime(2026, 8, 1, 10, 0, 0),
         source_type="jira_csv",
+        source_file_hash="a" * 64,
         labels=["UAC_Done"],
         components=["Publishing"],
         customer_names=["Example Customer"],
@@ -1181,6 +1263,7 @@ def test_sql_backfill_recovers_accepted_scope_from_comment_when_field_is_missing
         resolution="Fixed",
         jira_updated_at=datetime(2024, 11, 26, 9, 0, 0),
         source_type="jira_csv",
+        source_file_hash="b" * 64,
         labels=["UAC_Done", "KONE"],
         components=["Authoring"],
         customer_names=["KONE"],
@@ -1251,6 +1334,34 @@ def test_sql_backfill_uses_archived_csv_uac_after_newer_issue_metadata_merge():
     assert analysis.source_authority == "jira_accepted_uac"
     assert any("configured outputclass" in row["document"] for row in rows)
     assert any("iframe outputclass" in row["document"] for row in rows)
+
+
+def test_sql_backfill_rejects_screenshot_only_or_unhashed_manual_uac_records():
+    screenshot_issue = JiraEnrichedIssue(
+        id=4,
+        jira_key="GUIDES-99998",
+        summary="Screenshot-only Jira example",
+        description="## UAC Criteria (custom field)\nThe active cursor must remain visible.",
+        issue_type="Customer Request",
+        status="Closed",
+        resolution="Fixed",
+        source_type="screenshot",
+        labels=["UAC_Done"],
+    )
+    unhashed_csv_issue = JiraEnrichedIssue(
+        id=5,
+        jira_key="GUIDES-99999",
+        summary="Unhashed manual Jira example",
+        description="## UAC Criteria (custom field)\nThe active cursor must remain visible.",
+        issue_type="Customer Request",
+        status="Closed",
+        resolution="Fixed",
+        source_type="jira_csv",
+        labels=["UAC_Done"],
+    )
+
+    assert build_sql_uac_rows(screenshot_issue, []) is None
+    assert build_sql_uac_rows(unhashed_csv_issue, []) is None
 
 
 def test_historical_uac_audit_endpoint_is_admin_only_and_returns_stats(client, auth_headers, monkeypatch):

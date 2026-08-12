@@ -11,7 +11,8 @@ It runs, in order:
      internal principal-performance-QA assessment.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
-  3. Deterministic rendering of the four-section chat/UI projection
+  3. Deterministic rendering of the Jira Understanding card and five-section
+     chat/UI projection
      (render_compact_view.py).
   4. Performance manifest-to-plan alignment: required decisions produce only
      quantified Performance ACs; conditional/not-required decisions do not.
@@ -569,7 +570,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     compact, compact_problems = compact_mod.project(body)
     failures += [f"[compact-view] {problem}" for problem in compact_problems]
     if compact:
-        notes.append("four-section compact view renderable")
+        notes.append("Jira Understanding card and five-section compact view renderable")
 
     combined = Path(combined_path).read_text(encoding="utf-8")
     jira_keys = verify_mod._load_manifest(jira_keys_path)

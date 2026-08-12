@@ -6,6 +6,8 @@ Use this file before writing the full validated record artifact.
 
 Use exactly these sections. Keep every line as a bullet.
 
+After the complete record passes `run_gates.py`, render the compact UI with `render_compact_view.py`. The compact UI has a Jira Understanding card above exactly five sections. The card contains `What I understood from Jira` and `Why it matters`; it is not a section. The five headings are exactly `Acceptance Criteria`, `Test Scenarios`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order. If impact is absent, render `Impact not specified; QA impact requires confirmation`. Keep the eleven-section record below unchanged as the durable artifact.
+
 ```markdown
 **Understanding From Jira**
 - Issue understood: <plain-English statement of the user-visible problem or requested feature>.
