@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "test-plan-reference-routing-v1"
+SCHEMA_VERSION = "test-plan-reference-routing-v7"
 CANONICAL_COMPONENTS = (
     "Editor",
     "Authoring",
@@ -27,6 +27,10 @@ _CAUTION_RESOLUTIONS = {
     "rejected",
     "deferred",
     "question answered",
+    "cannot reproduce",
+    "canceled",
+    "no longer applies",
+    "transfer to product",
 }
 _COMPONENT_PATTERNS = {
     "Editor": re.compile(
@@ -35,13 +39,14 @@ _COMPONENT_PATTERNS = {
     ),
     "Authoring": re.compile(
         r"\b(?:xref|cross[-\s]?reference|ditamap|map\s+reference|topic|image\s+files?|thumbnail|"
-        r"repository\s+content\s+view|search\s+panel|asset\s+picker|file\s+browser)\b",
+        r"repository\s+content\s+view|search\s+panel|asset\s+picker|file\s+browser|map\s+view|"
+        r"explorer(?:\s+(?:panel|view))?|selection\s+count|child\s+nodes?)\b",
         re.I,
     ),
     "Publishing": re.compile(r"\b(?:native\s+pdf|aem\s+sites?|html5|dita[-\s]?ot|publish|output\s+preset)\b", re.I),
     "Platform": re.compile(r"\b(?:asset\s+processing|repository|dam|jcr|oak|index|workflow|api)\b", re.I),
     "Schematron": re.compile(r"\b(?:schematron|\.sch\b|validation\s+rule)\b", re.I),
-    "Integration": re.compile(r"\b(?:translation|figma|external\s+system|connector|integration|konnect)\b", re.I),
+    "Integration": re.compile(r"\b(?:translation|figma|external[-\s]+system|connector|integration|konnect)\b", re.I),
 }
 _THUMBNAIL_RE = re.compile(
     r"\b(?:thumbnail|home\s+repository\s+content\s+view|bottom\s+search\s+panel|lazy[-\s]?loading|layout\s+jank)\b",
@@ -51,6 +56,100 @@ _MULTI_SELECTION_RE = re.compile(r"\bmulti[-\s]?selection\b|\bselect\s+multiple\
 _XREF_MAP_RE = re.compile(r"\b(?:xref|cross[-\s]?reference)\b", re.I)
 _MAP_RE = re.compile(r"\b(?:map|ditamap)\b", re.I)
 _DISPLAY_NAME_RE = re.compile(r"\b(?:title|file\s*name|filename|display)\b", re.I)
+_MAP_VIEW_SELECTION_COUNT_RE = re.compile(
+    r"\bmap\s+view\b[^.\n]{0,260}\b(?:selected|selection\s+count|total\s+(?:number\s+of\s+)?"
+    r"(?:items?|maps?|nodes?)\s+selected|child\s+nodes?|descendant\s+nodes?)\b|"
+    r"\b(?:selected|selection\s+count|child\s+nodes?|descendant\s+nodes?)\b[^.\n]{0,180}\bmap\s+view\b",
+    re.I,
+)
+_CRUD_API_OPERATION_RE = re.compile(
+    r"\b(?:crud\s+apis?|create\s+api|update\s+(?:api|call)|api\s+to\s+(?:create|update))\b",
+    re.I,
+)
+_CRUD_API_CONTRACT_RE = re.compile(
+    r"\b(?:assets?|topics?|editor\s*data|file\s*content|metadata|guid|upsert|force\s+creation|"
+    r"external[-\s]+system|human[-\s]?readable\s+file\s*names?)\b",
+    re.I,
+)
+_BULK_ASSET_OVERWRITE_OPERATION_RE = re.compile(
+    r"\b(?:overwrite|re[-\s]?upload|upload(?:ing|ed)?\s+(?:the\s+)?same|same[-\s]?name\s+assets?|"
+    r"bulk\s+(?:asset\s+)?upload)\b",
+    re.I,
+)
+_BULK_ASSET_OVERWRITE_CONTEXT_RE = re.compile(
+    r"\b(?:assets?|files?|batch|200\+?|two\s+hundred)\b|/bin/fmdita/import\b",
+    re.I,
+)
+_BULK_ASSET_OVERWRITE_FAILURE_RE = re.compile(
+    r"\b(?:forced?\s+logout|redirect(?:ed|s)?\s+to\s+(?:the\s+)?login|"
+    r"(?:indefinite|stuck)\s+(?:loader|loading|pending)|generic\s+error|csrf(?:\s+token)?)\b",
+    re.I,
+)
+_EXPLORER_SORT_RE = re.compile(
+    r"\b(?:web\s+editor\s+)?explorer(?:\s+(?:panel|view))?\b[^.\n]{0,320}"
+    r"\b(?:sort(?:ed|ing)?|alphabetic(?:al|ally)?|order(?:ed|ing)?|ascending|descending)\b|"
+    r"\b(?:sort(?:ed|ing)?|alphabetic(?:al|ally)?|order(?:ed|ing)?|ascending|descending)\b"
+    r"[^.\n]{0,220}\b(?:web\s+editor\s+)?explorer(?:\s+(?:panel|view))?\b",
+    re.I,
+)
+_EXPLORER_IMPLICIT_SORT_RE = re.compile(
+    r"\b(?:honou?rs?|use|follow)\b[^.\n]{0,180}\bdisplay\s+preference\b"
+    r"[^.\n]{0,180}\b(?:sort|order|sort\s+key)\b|"
+    r"\b(?:file\s*name|filename|title)\b[^.\n]{0,180}\b(?:default\s+sort\s+key|sort\s+alphabetically)\b",
+    re.I,
+)
+_EXPLORER_EXPLICIT_SORT_RE = re.compile(
+    r"\b(?:explicit|user[-\s]?selectable|per[-\s]?user)\b[^.\n]{0,160}\bsort\s+controls?\b|"
+    r"\bsort\s+controls?\b[^.\n]{0,180}\b(?:name|title|asc(?:ending)?|desc(?:ending)?)\b",
+    re.I,
+)
+_EXPLORER_EXPLICIT_SORT_DESIGN_RE = re.compile(
+    r"\bexplorer\s+header\b[^.\n]{0,180}\b(?:dedicated|standalone|independent)\s+sort\b|"
+    r"\bsort\s+(?:icon|action|affordance|button)\b[^.\n]{0,180}"
+    r"\b(?:right\s+of|beside|next\s+to)\b[^.\n]{0,80}\b(?:search|add)\b",
+    re.I,
+)
+_EXPLORER_SORT_FEATURE_FLAG_RE = re.compile(r"\bfeature\s+flag\b", re.I)
+_EXPLORER_SORT_FLAG_STATE_MATRIX_RE = re.compile(
+    r"\bfeature\s+flag\b[^.\n]{0,180}\b(?:off|disabled)\b[^.\n]{0,100}\b(?:on|enabled)\b|"
+    r"\bfeature\s+flag\b[^.\n]{0,180}\b(?:on|enabled)\b[^.\n]{0,100}\b(?:off|disabled)\b",
+    re.I,
+)
+_EXPLORER_SORT_FLAG_KEY_RE = re.compile(
+    r"\bfeature\s+flag(?:\s+(?:key|name))?\s*(?:is|=|:)?\s*`?[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+`?\b"
+)
+_EXPLORER_SORT_FLAG_DEFAULT_RE = re.compile(
+    r"\bfeature\s+flag\b[^.\n]{0,140}\bdefault(?:\s+value)?\s*(?:is|=|:)?\s*"
+    r"(?:true|false|on|off|enabled|disabled)\b|"
+    r"\bdefault(?:\s+value)?\s*(?:is|=|:)?\s*(?:true|false|on|off|enabled|disabled)\b"
+    r"[^.\n]{0,100}\bfeature\s+flag\b",
+    re.I,
+)
+_EXPLORER_SORT_OFF_PRESENTATION_RE = re.compile(
+    r"\b(?:feature\s+)?flag\s+(?:is\s+)?(?:off|disabled)\b[^.\n]{0,180}"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,100}"
+    r"\b(?:hidden|omitted|absent|disabled|not\s+(?:shown|visible)|unavailable)\b|"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,120}"
+    r"\b(?:hidden|omitted|absent|disabled|not\s+(?:shown|visible)|unavailable)\b[^.\n]{0,120}"
+    r"\b(?:feature\s+)?flag\s+(?:is\s+)?(?:off|disabled)\b",
+    re.I,
+)
+_EXPLORER_SORT_DEFAULT_STATE_REQUEST_RE = re.compile(
+    r"\b(?:default|initial|first[-\s]?render)\b[^.\n]{0,100}"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,80}\bstate\b|"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,100}"
+    r"\b(?:default|initial|first[-\s]?render)\s+state\b",
+    re.I,
+)
+_EXPLORER_SORT_DEFAULT_STATE_VALUE_RE = re.compile(
+    r"\b(?:default|initial|first[-\s]?render)\b[^.\n]{0,100}"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,100}"
+    r"\b(?:visible|hidden|enabled|disabled|active|inactive|selected|unselected)\b|"
+    r"\b(?:sort\s+)?(?:button|control|action|icon)\b[^.\n]{0,100}"
+    r"\b(?:visible|hidden|enabled|disabled|active|inactive|selected|unselected)\b"
+    r"[^.\n]{0,100}\b(?:default|initial|first[-\s]?render)\b",
+    re.I,
+)
 
 
 def _clean(value: Any) -> str:
@@ -73,6 +172,18 @@ def _detect_mechanisms(text: str) -> tuple[str, ...]:
         mechanisms.append("asset_picker_multi_selection")
     if _XREF_MAP_RE.search(text) and _MAP_RE.search(text) and _DISPLAY_NAME_RE.search(text):
         mechanisms.append("xref_map_display_label")
+    if _MAP_VIEW_SELECTION_COUNT_RE.search(text):
+        mechanisms.append("map_view_hierarchy_selection_count")
+    if _CRUD_API_OPERATION_RE.search(text) and _CRUD_API_CONTRACT_RE.search(text):
+        mechanisms.append("asset_crud_api_contract")
+    if (
+        _BULK_ASSET_OVERWRITE_OPERATION_RE.search(text)
+        and _BULK_ASSET_OVERWRITE_CONTEXT_RE.search(text)
+        and _BULK_ASSET_OVERWRITE_FAILURE_RE.search(text)
+    ):
+        mechanisms.append("bulk_asset_overwrite_session")
+    if _EXPLORER_SORT_RE.search(text):
+        mechanisms.append("explorer_filename_title_sorting")
     return tuple(mechanisms)
 
 
@@ -87,6 +198,12 @@ def _infer_component(
         ("jira_summary", summary),
         ("jira_description", description),
     ):
+        if (
+            _BULK_ASSET_OVERWRITE_OPERATION_RE.search(text)
+            and _BULK_ASSET_OVERWRITE_CONTEXT_RE.search(text)
+            and _BULK_ASSET_OVERWRITE_FAILURE_RE.search(text)
+        ):
+            return "Platform", source
         matches = [
             component
             for component, pattern in _COMPONENT_PATTERNS.items()
@@ -95,6 +212,12 @@ def _infer_component(
         if matches:
             if "Authoring" in matches:
                 return "Authoring", source
+            if (
+                "Integration" in matches
+                and _CRUD_API_OPERATION_RE.search(text)
+                and _CRUD_API_CONTRACT_RE.search(text)
+            ):
+                return "Integration", source
             return matches[0], source
     return "", "unclassified"
 
@@ -105,12 +228,14 @@ def route_references(
     summary: str = "",
     description: str = "",
     acceptance_criteria: str = "",
+    design_evidence: str = "",
     resolution: str = "",
     labels: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
     accepted_text = _clean(acceptance_criteria)
     summary_text = _clean(summary)
     description_text = _clean(description)
+    design_text = _clean(design_evidence)
     explicit_component = _canonical_component(component)
     if explicit_component:
         primary_component = explicit_component
@@ -142,10 +267,59 @@ def route_references(
         warnings.append("accepted_uac_missing")
     if not accepted_text and normalized_resolution in _CAUTION_RESOLUTIONS:
         warnings.append("caution_resolution_without_uac_is_proposed_only")
+    if not accepted_text and "asset_crud_api_contract" in mechanisms:
+        warnings.append("crud_api_request_without_accepted_uac_is_proposed_only")
+    if not accepted_text and "explorer_filename_title_sorting" in mechanisms:
+        warnings.append("explorer_sort_request_without_accepted_uac_is_proposed_only")
+    if not accepted_text and "bulk_asset_overwrite_session" in mechanisms:
+        warnings.append("bulk_overwrite_without_accepted_uac_is_proposed_only")
+    explicit_sort_design = bool(
+        "explorer_filename_title_sorting" in mechanisms
+        and _EXPLORER_EXPLICIT_SORT_DESIGN_RE.search(design_text)
+    )
+    sort_contract_text = "\n".join(
+        part for part in (authoritative_scope, design_text) if part
+    )
+    sort_feature_flag_contract = bool(
+        "explorer_filename_title_sorting" in mechanisms
+        and _EXPLORER_SORT_FEATURE_FLAG_RE.search(sort_contract_text)
+    )
+    sort_default_state_contract = bool(
+        "explorer_filename_title_sorting" in mechanisms
+        and _EXPLORER_SORT_DEFAULT_STATE_REQUEST_RE.search(sort_contract_text)
+    )
+    if explicit_sort_design:
+        warnings.append("explorer_sort_explicit_control_selected_by_design")
+    elif (
+        "explorer_filename_title_sorting" in mechanisms
+        and _EXPLORER_IMPLICIT_SORT_RE.search(authoritative_scope)
+        and _EXPLORER_EXPLICIT_SORT_RE.search(authoritative_scope)
+    ):
+        warnings.append("explorer_sort_interaction_model_is_unresolved")
+    if sort_feature_flag_contract:
+        warnings.append("explorer_sort_feature_flag_state_matrix_required")
+        if not _EXPLORER_SORT_FLAG_STATE_MATRIX_RE.search(sort_contract_text):
+            warnings.append("explorer_sort_feature_flag_state_matrix_incomplete")
+        if not _EXPLORER_SORT_FLAG_KEY_RE.search(sort_contract_text):
+            warnings.append("explorer_sort_feature_flag_key_unresolved")
+        if not _EXPLORER_SORT_FLAG_DEFAULT_RE.search(sort_contract_text):
+            warnings.append("explorer_sort_feature_flag_default_value_unresolved")
+        if not _EXPLORER_SORT_OFF_PRESENTATION_RE.search(sort_contract_text):
+            warnings.append("explorer_sort_flag_off_presentation_unresolved")
+    if sort_feature_flag_contract or sort_default_state_contract:
+        warnings.append("explorer_sort_button_default_state_required")
+        if not _EXPLORER_SORT_DEFAULT_STATE_VALUE_RE.search(sort_contract_text):
+            warnings.append("explorer_sort_button_default_state_unresolved")
 
     references = ["references/component-routing.md"]
     if primary_component == "Authoring":
         references.append("references/component-authoring.md")
+        load_full_reference = False
+    elif primary_component == "Integration" and "asset_crud_api_contract" in mechanisms:
+        references.append("references/component-integration.md")
+        load_full_reference = False
+    elif primary_component == "Platform" and "bulk_asset_overwrite_session" in mechanisms:
+        references.append("references/component-platform.md")
         load_full_reference = False
     else:
         references.append("references/uac-reference-examples.md")
@@ -172,6 +346,11 @@ def route_references(
         "scope_mode": scope_mode,
         "accepted_uac_present": bool(accepted_text),
         "accepted_label_present": accepted_label_present,
+        "design_resolution": "explicit_sort_control" if explicit_sort_design else "",
+        "feature_flag_matrix_required": sort_feature_flag_contract,
+        "default_control_state_required": bool(
+            sort_feature_flag_contract or sort_default_state_contract
+        ),
         "references": references,
         "load_full_uac_reference": load_full_reference,
         "warnings": list(dict.fromkeys(warnings)),
@@ -203,6 +382,7 @@ def main() -> int:
         summary=args.summary or payload.get("summary", ""),
         description=payload.get("description", ""),
         acceptance_criteria=payload.get("acceptance_criteria", ""),
+        design_evidence=payload.get("design_evidence", ""),
         resolution=args.resolution or payload.get("resolution", ""),
         labels=[*payload.get("labels", []), *args.label],
     )

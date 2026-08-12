@@ -1424,6 +1424,17 @@ Use this example when Jira's native acceptance field is empty but an accepted-UA
 - UUID/non-UUID and Cloud/on-premise parity on the exact supported target builds; retain the historical hotfix matrix only as evidence.
 - Import/export or configuration serialization that reads or writes the same condition object, ensuring unrelated groups and colors remain byte-equivalent where ordering is not semantically significant.
 
+## Deterministic Performance Reference: GUIDES-37722 With GUIDES-37915
+
+- Treat the current ticket's functional behavior and any same-mechanism historical performance contract as separate evidence decisions. A similar component name alone is not enough.
+- For a SubjectScheme title-resolution change, inspect whether the current implementation executes the same enumdefs API or a verified shared execution path recorded by `GUIDES-37915`.
+- If the overlap is only area-level, classify `GUIDES-37915` as `area_only`, do not retain it, and do not invent a Performance AC.
+- If the same mechanism or shared execution path is verified, retain `GUIDES-37915` in `performance_assessment.historical_contracts`, set the decision to `required`, and cite the Jira's underlying comments in a visible Performance AC.
+- Use the historical controlled workload of approximately 200 concurrent users against the same production-equivalent SubjectScheme dataset. Run controlled before-fix and after-fix iterations and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC.
+- Use the source-backed comparative oracle: p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline, without added errors or timeouts.
+- Map the Performance AC to an explicit P1 load/concurrency/benchmark scenario. A qualifying historical performance Jira must not remain only under Regression Areas or a compact P3 scenario.
+- Keep implementation analysis, metrics rationale, historical relationship classification, and citations in the full artifact. The compact UI shows the direct Performance AC and its executable scenario without a separate analysis section.
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
