@@ -1,4 +1,4 @@
-"""Render the concise five-section UI projection from a validated plan."""
+"""Render the concise four-section UI projection from a validated plan."""
 
 from __future__ import annotations
 
@@ -37,7 +37,6 @@ SOURCE_SECTIONS = (
     "Regression Areas",
     "Known Jira Bugs / Past Similar Tickets",
     "Automation Coverage & Gaps",
-    "Open Questions",
 )
 
 
@@ -196,9 +195,6 @@ def project(text: str) -> tuple[str, list[str]]:
         problems.append("Test Scenarios is empty; compact view cannot be rendered")
     if not sections["Regression Areas"]:
         problems.append("Regression Areas is empty; compact view cannot be rendered")
-    if not sections["Open Questions"]:
-        problems.append("Open Questions is empty; compact view cannot be rendered")
-
     regression_scenarios = [
         _regression_scenario(line) for line in sections["Regression Areas"]
     ]
@@ -232,16 +228,13 @@ def project(text: str) -> tuple[str, list[str]]:
         "",
         "**Automation Coverage**",
         *automation,
-        "",
-        "**Open Questions**",
-        *sections["Open Questions"],
     ]
     return "\n".join(output).rstrip() + "\n", []
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Project a full validated plan into the concise five-section UI view."
+        description="Project a full validated plan into the concise four-section UI view."
     )
     parser.add_argument("plan_file")
     parser.add_argument("--out")

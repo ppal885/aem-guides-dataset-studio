@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "test-plan-reference-routing-v7"
+SCHEMA_VERSION = "test-plan-reference-routing-v8"
 CANONICAL_COMPONENTS = (
     "Editor",
     "Authoring",
@@ -40,7 +40,8 @@ _COMPONENT_PATTERNS = {
     "Authoring": re.compile(
         r"\b(?:xref|cross[-\s]?reference|ditamap|map\s+reference|topic|image\s+files?|thumbnail|"
         r"repository\s+content\s+view|search\s+panel|asset\s+picker|file\s+browser|map\s+view|"
-        r"explorer(?:\s+(?:panel|view))?|selection\s+count|child\s+nodes?)\b",
+        r"explorer(?:\s+(?:panel|view))?|selection\s+count|child\s+nodes?|"
+        r"folder\s+delet(?:e|ion)|delet(?:e|ing)\s+(?:a\s+)?folder)\b",
         re.I,
     ),
     "Publishing": re.compile(r"\b(?:native\s+pdf|aem\s+sites?|html5|dita[-\s]?ot|publish|output\s+preset)\b", re.I),
@@ -150,6 +151,14 @@ _EXPLORER_SORT_DEFAULT_STATE_VALUE_RE = re.compile(
     r"[^.\n]{0,100}\b(?:default|initial|first[-\s]?render)\b",
     re.I,
 )
+_FOLDER_DELETION_RE = re.compile(
+    r"\bfolder\s+delet(?:e|ion)\b|\bdelet(?:e|ing)\s+(?:a\s+)?folders?\b",
+    re.I,
+)
+_FOLDER_RESTORE_RE = re.compile(
+    r"\b(?:restore\s+(?:a\s+)?folders?|trash(?:\s+can)?|recycle\s+bin)\b",
+    re.I,
+)
 
 
 def _clean(value: Any) -> str:
@@ -184,6 +193,8 @@ def _detect_mechanisms(text: str) -> tuple[str, ...]:
         mechanisms.append("bulk_asset_overwrite_session")
     if _EXPLORER_SORT_RE.search(text):
         mechanisms.append("explorer_filename_title_sorting")
+    if _FOLDER_DELETION_RE.search(text):
+        mechanisms.append("folder_deletion")
     return tuple(mechanisms)
 
 
@@ -273,6 +284,12 @@ def route_references(
         warnings.append("explorer_sort_request_without_accepted_uac_is_proposed_only")
     if not accepted_text and "bulk_asset_overwrite_session" in mechanisms:
         warnings.append("bulk_overwrite_without_accepted_uac_is_proposed_only")
+    if not accepted_text and "folder_deletion" in mechanisms:
+        warnings.append("folder_deletion_without_accepted_uac_is_proposed_only")
+    if "folder_deletion" in mechanisms:
+        warnings.append("folder_deletion_surface_and_version_must_be_verified")
+        if _FOLDER_RESTORE_RE.search(authoritative_scope):
+            warnings.append("folder_restore_is_separate_from_delete_contract")
     explicit_sort_design = bool(
         "explorer_filename_title_sorting" in mechanisms
         and _EXPLORER_EXPLICIT_SORT_DESIGN_RE.search(design_text)
@@ -333,6 +350,8 @@ def route_references(
     )
     if accepted_text:
         scope_mode = "accepted_field_primary" if accepted_label_present else "jira_field_requires_acceptance_check"
+    elif "folder_deletion" in mechanisms:
+        scope_mode = "proposed_only"
     elif normalized_resolution in _CAUTION_RESOLUTIONS:
         scope_mode = "proposed_only"
     else:

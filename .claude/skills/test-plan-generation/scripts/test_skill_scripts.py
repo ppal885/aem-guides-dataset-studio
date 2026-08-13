@@ -1216,7 +1216,6 @@ def test_compact_view() -> None:
             "**Test Scenarios**",
             "**Jira Tickets Worth Checking**",
             "**Automation Coverage**",
-            "**Open Questions**",
         ],
     )
     check(
@@ -1265,7 +1264,12 @@ def test_compact_view() -> None:
         "Main feature coverage: Partially covered" in compact
         and "integration/API test automation" in compact,
     )
-    check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
+    check(
+        "compact view hides Open Questions but durable record keeps them",
+        "**Open Questions**" not in compact
+        and "No open questions from current evidence" not in compact
+        and "**Open Questions**" in GOOD_PLAN,
+    )
 
     no_match_plan = _replace(
         GOOD_PLAN,
@@ -1642,6 +1646,45 @@ def test_component_reference_routing() -> None:
         "explorer_filename_title_sorting" not in explorer_label_only["mechanisms"],
     )
 
+    folder_deletion = component_router_mod.route_references(
+        summary="Request to add folder deletion feature in Guides",
+        description=(
+            "Guides has no folder delete action and users currently use Assets UI. "
+            "The customer also asks for restore or trash behavior."
+        ),
+        labels=["Hyundai"],
+    )
+    check(
+        "folder deletion routes to Authoring",
+        folder_deletion["primary_component"] == "Authoring",
+    )
+    check(
+        "folder deletion receives the exact mechanism",
+        folder_deletion["mechanisms"] == ["folder_deletion"],
+    )
+    check(
+        "folder deletion without accepted UAC stays Proposed-only",
+        folder_deletion["scope_mode"] == "proposed_only",
+    )
+    for warning in (
+        "folder_deletion_without_accepted_uac_is_proposed_only",
+        "folder_deletion_surface_and_version_must_be_verified",
+        "folder_restore_is_separate_from_delete_contract",
+    ):
+        check(
+            f"folder deletion warning is retained: {warning}",
+            warning in folder_deletion["warnings"],
+        )
+
+    generic_file_deletion = component_router_mod.route_references(
+        summary="Delete a DITA file",
+        description="An authorized user deletes one topic from the repository.",
+    )
+    check(
+        "generic file deletion does not trigger folder-deletion learning",
+        "folder_deletion" not in generic_file_deletion["mechanisms"],
+    )
+
     crud_api = component_router_mod.route_references(
         summary="External-system asset CREATE and UPDATE CRUD APIs",
         description=(
@@ -1732,6 +1775,8 @@ def test_component_reference_routing() -> None:
         "## Map-Xref Display Label Contract — GUIDES-34580",
         "Closed as Duplicate",
         "`href`, `format`, `scope`, and `type`",
+        '`scope="external"`',
+        "no repository map-title lookup is applied",
         "## Map View Hierarchy Selection-Count Contract",
         "selected map node itself and every descendant node",
         "visible node occurrences or unique asset identity",
@@ -1752,6 +1797,12 @@ def test_component_reference_routing() -> None:
         "documented workaround and comparison surface",
         "folder-level Assets configuration only the initial default",
         "Reject generic repository ordering",
+        "## Folder Deletion Release-Evolution Contract - GUIDES-19345",
+        "not proof of an implemented Guides folder-delete workflow",
+        "governed **file deletion**",
+        "does not, by itself, prove",
+        "Do not infer restore, trash",
+        "Assets UI file deletion as boundary/comparison evidence",
     ):
         check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
 

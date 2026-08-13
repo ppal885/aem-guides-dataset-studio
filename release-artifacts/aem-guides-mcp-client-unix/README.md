@@ -4,7 +4,7 @@ Lightweight macOS/Linux client for team members who use Claude Code with the cen
 
 This package does **not** contain the full dataset-studio repo, RAG corpus, ChromaDB, JSON chunks, or backend code. Live RAG stays on the VM.
 
-Package version: `2026.08.12`.
+Package version: `2026.08.13`.
 
 ## What This Package Installs
 

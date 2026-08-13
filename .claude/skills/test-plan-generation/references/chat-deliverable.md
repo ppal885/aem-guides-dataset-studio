@@ -1,4 +1,4 @@
-# Chat Deliverable - Concise Five-Section QA View
+# Chat Deliverable - Concise Four-Section QA View
 
 Use this contract only after the complete eleven-section Markdown record passes `run_gates.py`.
 
@@ -6,14 +6,14 @@ Use this contract only after the complete eleven-section Markdown record passes 
 
 - Render the compact projection with `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
 - Keep Jira analysis, evidence boundaries, code findings, and detailed reasoning in the full Markdown artifact. Do not expose an analysis card in the default UI.
-- Show exactly five headings in this order:
+- Show exactly four headings in this order:
   1. `Acceptance Criteria`
   2. `Test Scenarios`
   3. `Jira Tickets Worth Checking`
   4. `Automation Coverage`
-  5. `Open Questions`
-- Do not add Understanding, Regression Areas, Expected Behaviour, Code Touched, Performance Analysis, or another heading to compact chat/UI output.
+- Do not add Understanding, Regression Areas, Expected Behaviour, Code Touched, Performance Analysis, Open Questions, or another heading to compact chat/UI output.
 - Keep those details in the full eleven-section Markdown artifact and show them only when the user requests the full plan or a named hidden section.
+- Keep `Open Questions` mandatory in the validated full record, but hide that section from the default compact UI.
 - Do not manually paraphrase the compact result. The renderer is the presentation authority.
 
 ## Fidelity

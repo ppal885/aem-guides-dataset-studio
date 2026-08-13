@@ -12,8 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_DIR = ROOT / "release-artifacts"
 PACKAGE_ROOT = "aem-guides-mcp-client"
-PACKAGE_VERSION = "2026.08.12"
-ARCHIVE_TIMESTAMP = (2026, 8, 12, 0, 0, 0)
+PACKAGE_VERSION = "2026.08.13"
+ARCHIVE_TIMESTAMP = (2026, 8, 13, 0, 0, 0)
 PLATFORMS = ("windows", "unix")
 IGNORED_NAMES = {"__pycache__", ".DS_Store", ".pytest_cache"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}

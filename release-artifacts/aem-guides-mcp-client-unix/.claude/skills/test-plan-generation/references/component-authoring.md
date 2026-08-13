@@ -34,10 +34,11 @@ Use this focused pack for Authoring Jiras involving topic/map references, asset 
 
 ### Proposed Acceptance Pattern
 
-- Given a DITA map has a map title that differs from its file name | When the map is shown as an Xref reference in the affected authoring surface | Then the visible label uses the resolved map title instead of the file name.
+- Given a repository-local DITA map has a map title that differs from its file name | When the map is shown as an Xref reference in the affected authoring surface | Then the visible label uses the resolved map title instead of the file name.
 - Given two map references have identical or similar file names but different titles | When both are shown together | Then each reference remains distinguishable by its own resolved title and still opens the intended map.
 - Given an existing topic is shown as an Xref | When the map-title change is enabled | Then the topic continues to display its title with no regression to topic-reference selection or rendering.
 - Given only the Xref display label changes | When the reference is saved and inspected | Then its destination and source semantics—including `href`, `format`, `scope`, and `type` when present—remain unchanged.
+- Given an Xref has `scope="external"` or targets an external URI | When the Xref is displayed, saved, reopened, or activated | Then no repository map-title lookup is applied and the external URI, explicit link text, `scope`, `format`, and open behavior remain unchanged.
 
 ### Required Open Questions
 
@@ -50,6 +51,7 @@ Use this focused pack for Authoring Jiras involving topic/map references, asset 
 
 - Strong matches share map-Xref label resolution, map-title extraction, or a display-label-versus-destination split.
 - Reject generic Xref, filename, map, search, or title tickets that do not touch the same display-label mechanism.
+- Treat external-link-only URI or navigation defects as boundary evidence, not same-mechanism history, unless they also exercise repository map-title lookup.
 
 ## Map View Hierarchy Selection-Count Contract
 
@@ -148,3 +150,41 @@ Activate only when Jira, code, or API evidence names `subjectdef`, Subject Schem
 
 - Strong matches share Explorer tree/list sort-key selection, display-label-versus-sort decoupling, or folder-level default versus per-user override precedence.
 - Reject generic repository ordering, Collections sorting, search relevance, map-tree selection, Xref display labels, or filename/title tickets without the same Explorer sorting mechanism.
+
+
+## Folder Deletion Release-Evolution Contract - GUIDES-19345
+
+### Evidence Boundary
+
+- `GUIDES-19345` is an open historical feature request, not accepted UAC and not proof of an implemented Guides folder-delete workflow.
+- Jira comments from August 2024 through April 2025 state that folder and bulk-file deletion were not available in Guides Editor; users were directed to AEM Assets UI. A proposed custom extension that opens Assets UI or calls an API is a workaround, not product behavior.
+- The customer's broader request also mentioned multiple-file deletion, a dependency popup, and restore/trash behavior. Keep each as an independent scope item. Folder deletion evidence does not imply bulk deletion or restore.
+- The current official `Manage files and folders` page, updated July 28, 2026, documents governed **file deletion** from the AEM repository. It identifies administrator permissions, checked-out files, and incoming/outgoing references as deletion controls. It does not, by itself, prove that Guides Editor now supports deleting a selected folder.
+- Always verify the target product version, hosting model, and surface: Guides Home Repository, Web Editor Explorer, or AEM Assets UI. Current documentation can supersede historical availability, but only for the behavior and surface it explicitly documents.
+- Never turn the Jira request into Confirmed acceptance criteria unless current Jira/UAC, inspected implementation, or exact official documentation proves the selected folder-delete behavior.
+
+### Proposed Acceptance Pattern
+
+Use only after implementation scope confirms folder deletion in the named Guides surface.
+
+- Given an authorized user selects an empty folder | When the user invokes the approved delete action and confirms it | Then the folder is removed once, the parent listing refreshes, and no unrelated asset changes.
+- Given a selected folder contains files or nested folders | When deletion is requested | Then the UI reports the complete deletion scope before mutation and follows the accepted all-or-nothing or partial-failure contract without silently orphaning content.
+- Given content inside the folder is checked out or has incoming/outgoing references | When deletion is requested | Then configured permission and reference guards are enforced, and the result identifies blocked content or an explicitly authorized force-delete path.
+- Given the user lacks delete privileges | When the folder is selected | Then deletion cannot be completed and the UI returns an actionable authorization result without removing content.
+- Given deletion succeeds or fails | When the operation reaches a terminal state | Then the affected surface refreshes once and reports a deterministic outcome; repeated clicks must not create duplicate delete requests.
+- Given file deletion remains supported through Assets UI | When a Guides folder-delete change is enabled | Then the existing Assets UI path and documented file-level restrictions remain unchanged.
+
+### Scope Guards
+
+- Test empty and non-empty folders, nested folders, mixed DITA/non-DITA contents, checked-out descendants, incoming references, outgoing references, permission groups, cancellation, and server failure only when the accepted implementation exposes those paths.
+- Do not infer restore, trash, soft delete, retention period, undo, dependency visualization, multi-folder deletion, or bulk-file deletion from this Jira. Each requires explicit accepted evidence.
+- Do not use the current file-deletion documentation as proof of folder deletion or of a Guides-specific delete button.
+- Do not claim data loss, reference cleanup, asynchronous processing, or a performance SLA without current evidence.
+- If the release/surface cannot be verified, keep the plan in degraded mode and label all folder-delete criteria `[Proposed]`.
+
+### Same-Mechanism Retrieval
+
+- Strong matches share folder deletion in the same Guides surface plus permission, checkout, reference-integrity, or nested-content handling.
+- Treat Assets UI file deletion as boundary/comparison evidence, not same-mechanism proof of Guides folder deletion.
+- Reject create-folder, folder sorting, move/copy, generic file deletion, repository search, and trash/restore tickets unless they exercise the same folder-delete transaction.
+- Historical `GUIDES-19345` may appear under Past Jiras as product-evolution context; it must not be presented as a fixed bug or current support statement.

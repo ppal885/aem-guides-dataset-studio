@@ -6,13 +6,13 @@ Use this file before writing the full validated record artifact.
 
 Use exactly these sections. Keep every line as a bullet.
 
-After the complete record passes `run_gates.py`, render the compact UI with `render_compact_view.py`. Keep all Jira understanding, evidence analysis, code scope, and detailed automation proof in the eleven-section durable artifact. The compact UI contains exactly five headings, in this order: `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, `Automation Coverage`, and `Open Questions`.
+After the complete record passes `run_gates.py`, render the compact UI with `render_compact_view.py`. Keep all Jira understanding, evidence analysis, code scope, detailed automation proof, and Open Questions in the eleven-section durable artifact. The compact UI contains exactly four headings, in this order: `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`.
 
 - Project Acceptance Criteria into direct `Given | When | Then` statements; hide status, sphere, evidence citations, and analysis only in the compact UI.
 - Append every validated Regression Areas bullet to `Test Scenarios` as a `P3 [Regression]` scenario with an action and observable expected result.
 - Show only the Jira key and title for validated same-mechanism tickets. Do not expose status, resolution, versions, RCA, similarity analysis, or retrieval notes in the compact UI.
 - Show one main-feature automation verdict plus high-level feature-file/UI or integration/API guidance. Keep exact paths, methods, SHAs, code excerpts, and evidence analysis in the durable artifact.
-- Do not add a Jira Understanding card or any sixth heading.
+- Do not add a Jira Understanding card, Open Questions, or any fifth heading.
 
 ```markdown
 **Understanding From Jira**
@@ -75,7 +75,8 @@ After the complete record passes `run_gates.py`, render the compact UI with `ren
 
 - Keep the complete eleven-section body and any appendix in the `.md` record artifact.
 - After `run_gates.py` passes, run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
-- Present only `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, `Automation Coverage`, and `Open Questions`, in that order, unless the user explicitly asks to see another section or the complete record.
+- Present only `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`, in that order, unless the user explicitly asks to see another section or the complete record.
+- Keep `Open Questions` in the validated full record and reveal it only on explicit request.
 - Render Acceptance Criteria as straightforward `Given | When | Then` statements while retaining their canonical status, sphere, and evidence fields only in the durable artifact.
 - Convert validated Regression Areas deterministically into `P3 [Regression]` scenarios under `Test Scenarios`; do not expose a separate Regression Areas heading.
 - Render only Jira key and title for tickets worth checking; keep all similarity, status, resolution, version, RCA, and retrieval details hidden in the durable artifact.

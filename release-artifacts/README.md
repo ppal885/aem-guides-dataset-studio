@@ -2,7 +2,7 @@
 
 ## AEM Guides MCP client and test-plan skill
 
-Team packages version `2026.08.12`:
+Team packages version `2026.08.13`:
 
 - `aem-guides-mcp-client-windows.zip`
 - `aem-guides-mcp-client-unix.zip`
