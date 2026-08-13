@@ -62,7 +62,8 @@ QUANTIFIED_VALUE_RE = re.compile(
     r"errors?|timeouts?)(?=\s|$|[.,;])"
 )
 QUANTIFIED_WORKLOAD_RE = re.compile(
-    r"(?i)\b\d[\d,]*(?:\.\d+)?\s*(?:users?|threads?|jobs?|requests?|operations?|"
+    r"(?i)\b\d[\d,]*(?:\.\d+)?\s*(?:(?:concurrent|simultaneous|parallel|"
+    r"virtual|active)\s+)?(?:users?|threads?|jobs?|requests?|operations?|"
     r"topics?|maps?|assets?|files?|pages?|languages?|outputs?|iterations?|records?|references?)\b"
 )
 PERFORMANCE_SCENARIO_RE = re.compile(
@@ -73,10 +74,42 @@ PERFORMANCE_QUESTION_RE = re.compile(
     r"(?i)\b(?:performance|latency|throughput|scale|volume|concurren(?:cy|t)|"
     r"memory|heap|cpu|queue|backlog|sla|baseline)\b"
 )
+JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]+-\d+$")
+PLAN_JIRA_KEY_RE = re.compile(r"\b(?!AC-)[A-Z][A-Z0-9_]{2,}-\d+\b")
+HISTORICAL_RELATIONSHIPS = ("same_mechanism", "shared_execution_path", "area_only")
+COMPARATIVE_ORACLE_RE = re.compile(
+    r"(?i)(?:\b\d+(?:\.\d+)?\s*x\b|\b\d+(?:\.\d+)?\s*%\b|"
+    r"(?:at\s+least|at\s+most|no\s+more\s+than|no\s+less\s+than|"
+    r"<=|>=|less\s+than\s+or\s+equal|greater\s+than\s+or\s+equal).{0,40}"
+    r"\d+(?:\.\d+)?\s*(?:x|%))"
+)
+HISTORICAL_PERFORMANCE_MENTION_RE = re.compile(
+    r"(?i)\b(?:performance|latency|throughput|load|stress|soak|benchmark|"
+    r"scalability|concurren(?:cy|t)|timeout|response[ -]?time|cpu|memory|gc)\b"
+)
 
 
 def _nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _jira_keys_in_value(value: Any) -> set[str]:
+    """Extract Jira keys from the manifest's current-issue identifier."""
+    if isinstance(value, str):
+        return set(PLAN_JIRA_KEY_RE.findall(value))
+    if isinstance(value, dict):
+        return {
+            key
+            for nested in value.values()
+            for key in _jira_keys_in_value(nested)
+        }
+    if isinstance(value, list):
+        return {
+            key
+            for nested in value
+            for key in _jira_keys_in_value(nested)
+        }
+    return set()
 
 
 def _controlled_list(value: Any, allowed: tuple[str, ...], label: str) -> list[str]:
@@ -88,6 +121,65 @@ def _controlled_list(value: Any, allowed: tuple[str, ...], label: str) -> list[s
     if all(isinstance(item, str) for item in value) and len(value) != len(set(value)):
         failures.append(f"{label} must not contain duplicates")
     return failures
+
+
+def _validate_historical_contracts(value: Any) -> tuple[list[str], int]:
+    """Validate retained same-mechanism performance contracts from Jira history."""
+    if value is None:
+        return [], 0
+    if not isinstance(value, list):
+        return ["performance_assessment.historical_contracts must be a list"], 0
+
+    failures: list[str] = []
+    retained_count = 0
+    seen_keys: set[str] = set()
+    for index, contract in enumerate(value):
+        prefix = f"performance_assessment.historical_contracts[{index}]"
+        if not isinstance(contract, dict):
+            failures.append(f"{prefix} must be an object")
+            continue
+
+        jira_key = contract.get("jira_key")
+        if not isinstance(jira_key, str) or not JIRA_KEY_RE.fullmatch(jira_key):
+            failures.append(f"{prefix}.jira_key must be a valid Jira key")
+        elif jira_key in seen_keys:
+            failures.append(f"{prefix}.jira_key duplicates another historical contract")
+        else:
+            seen_keys.add(jira_key)
+
+        relationship = contract.get("relationship")
+        if relationship not in HISTORICAL_RELATIONSHIPS:
+            failures.append(f"{prefix}.relationship is invalid")
+
+        retained = contract.get("retained")
+        if not isinstance(retained, bool):
+            failures.append(f"{prefix}.retained must be true or false")
+            retained = False
+
+        for field in ("mechanism", "workload", "oracle"):
+            if not _nonempty_string(contract.get(field)):
+                failures.append(f"{prefix}.{field} is required")
+
+        evidence_refs = contract.get("evidence_refs")
+        if (
+            not isinstance(evidence_refs, list)
+            or not evidence_refs
+            or any(not _nonempty_string(item) for item in evidence_refs)
+        ):
+            failures.append(f"{prefix}.evidence_refs must cite at least one underlying source")
+
+        if retained:
+            retained_count += 1
+            if relationship == "area_only":
+                failures.append(f"{prefix} cannot retain area-only performance history")
+            workload = str(contract.get("workload", ""))
+            oracle = str(contract.get("oracle", ""))
+            if not (QUANTIFIED_WORKLOAD_RE.search(workload) or QUANTIFIED_VALUE_RE.search(workload)):
+                failures.append(f"{prefix}.workload must be quantified before retention")
+            if not (QUANTIFIED_VALUE_RE.search(oracle) or COMPARATIVE_ORACLE_RE.search(oracle)):
+                failures.append(f"{prefix}.oracle must contain a measurable numeric or comparative target")
+
+    return failures, retained_count
 
 def validate_performance_assessment(manifest: dict[str, Any]) -> list[str]:
     """Validate the internal principal-QA performance risk decision."""
@@ -158,6 +250,10 @@ def validate_performance_assessment(manifest: dict[str, Any]) -> list[str]:
     failures.extend(
         _controlled_list(assessment.get("test_types"), TEST_TYPES, "performance_assessment.test_types")
     )
+    historical_failures, retained_historical_count = _validate_historical_contracts(
+        assessment.get("historical_contracts")
+    )
+    failures.extend(historical_failures)
 
     oracle = assessment.get("oracle")
     oracle_status = None
@@ -214,9 +310,19 @@ def validate_performance_assessment(manifest: dict[str, Any]) -> list[str]:
         if (
             not thresholds
             or any(not isinstance(item, str) for item in thresholds)
-            or any(not QUANTIFIED_VALUE_RE.search(item) for item in thresholds)
+            or any(
+                not (
+                    QUANTIFIED_VALUE_RE.search(item)
+                    or COMPARATIVE_ORACLE_RE.search(item)
+                )
+                for item in thresholds
+                if isinstance(item, str)
+            )
         ):
-            failures.append("required performance thresholds must contain measurable numeric units")
+            failures.append(
+                "required performance thresholds must contain measurable numeric units or a "
+                "source-backed comparative target"
+            )
         if not performance_ac_ids:
             failures.append("required performance testing must declare Performance AC IDs")
         if not (QUANTIFIED_WORKLOAD_RE.search(workload_text) or QUANTIFIED_VALUE_RE.search(workload_text)):
@@ -249,6 +355,12 @@ def validate_performance_assessment(manifest: dict[str, Any]) -> list[str]:
             failures.append("not_required performance testing must not declare thresholds")
         if performance_ac_ids:
             failures.append("not_required performance testing must not declare Performance AC IDs")
+
+    if retained_historical_count and decision != "required":
+        failures.append(
+            "a retained same-mechanism or shared-execution-path historical performance contract "
+            "requires decision=required and a visible Performance AC"
+        )
 
     return failures
 
@@ -300,6 +412,48 @@ def validate_plan_alignment(manifest: dict[str, Any], text: str) -> list[str]:
             f"performance assessment is {decision}, so no Performance AC may be emitted"
         )
 
+    historical_contracts = assessment.get("historical_contracts")
+    retained_contracts = [
+        contract
+        for contract in historical_contracts
+        if isinstance(contract, dict)
+        and contract.get("retained") is True
+        and contract.get("relationship") in ("same_mechanism", "shared_execution_path")
+    ] if isinstance(historical_contracts, list) else []
+    reviewed_contract_keys = {
+        str(contract.get("jira_key", "")).strip()
+        for contract in historical_contracts
+        if isinstance(contract, dict)
+        and str(contract.get("jira_key", "")).strip()
+    } if isinstance(historical_contracts, list) else set()
+    historical_plan_lines = [
+        *_section_lines(text, "Known Jira Bugs / Past Similar Tickets"),
+        *_section_lines(text, "Regression Areas"),
+    ]
+    mentioned_performance_keys = {
+        key
+        for line in historical_plan_lines
+        if HISTORICAL_PERFORMANCE_MENTION_RE.search(line)
+        for key in PLAN_JIRA_KEY_RE.findall(line)
+    }
+    current_issue_keys = _jira_keys_in_value(manifest.get("issue"))
+    unclassified_history = (
+        mentioned_performance_keys - reviewed_contract_keys - current_issue_keys
+    )
+    for jira_key in sorted(unclassified_history):
+        failures.append(
+            f"historical performance Jira {jira_key} is mentioned in the plan but is missing "
+            "from performance_assessment.historical_contracts; classify it as same_mechanism, "
+            "shared_execution_path, or area_only before release"
+        )
+    for contract in retained_contracts:
+        jira_key = str(contract.get("jira_key", "")).strip()
+        if jira_key and not any(jira_key in criterion["evidence"] for criterion in performance_criteria):
+            failures.append(
+                f"retained historical performance contract {jira_key} must be cited in a visible "
+                "Performance AC Evidence field"
+            )
+
     scenario_lines = _section_lines(text, "Test Scenarios")
     for criterion in performance_criteria:
         if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
@@ -307,9 +461,12 @@ def validate_plan_alignment(manifest: dict[str, Any], text: str) -> list[str]:
                 f"{criterion['id']} Performance Given must contain a quantified workload "
                 "(for example topic count, user count, job count, or iterations)"
             )
-        if not QUANTIFIED_VALUE_RE.search(criterion["then"]):
+        if not (
+            QUANTIFIED_VALUE_RE.search(criterion["then"])
+            or COMPARATIVE_ORACLE_RE.search(criterion["then"])
+        ):
             failures.append(
-                f"{criterion['id']} Performance Then must contain a measurable numeric oracle with units"
+                f"{criterion['id']} Performance Then must contain a measurable numeric or comparative oracle"
             )
         mapped = [
             line
@@ -319,7 +476,9 @@ def validate_plan_alignment(manifest: dict[str, Any], text: str) -> list[str]:
                 line,
             )
         ]
-        if mapped and not any(PERFORMANCE_SCENARIO_RE.search(line) for line in mapped):
+        if not mapped:
+            failures.append(f"{criterion['id']} must map to a Test Scenarios bullet")
+        elif not any(PERFORMANCE_SCENARIO_RE.search(line) for line in mapped):
             failures.append(
                 f"{criterion['id']} must map to a performance/load/soak/concurrency/benchmark scenario"
             )

@@ -1048,6 +1048,201 @@ def test_native_acceptance_field_precedes_comment_scope_and_pending_scope_is_rej
     assert pending_source == "missing"
 
 
+def test_guides_34915_thumbnail_uac_overrides_stale_multi_selection_description():
+    accepted_uac = """Acceptance Criterion:
+1. Thumbnail should be shown for valid image files at Home Repository content view, Search panel, and Bottom search panel.
+2. Selection of image files should work fine.
+3. Thumbnail should be visible for PNG, JPG, and SVG.
+4. Thumbnail should be the same as the latest version of the image.
+5. Unsupported or invalid images show a default placeholder broken image with no broken UI.
+6. Thumbnails load smoothly using lazy-loading when necessary, without layout jank.
+"""
+    stale_description = """Enterprise Problem Statement:
+Multi-selection is not possible when applying an image to a topic.
+Multi-selection should only be possible within a specific folder.
+"""
+
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria=accepted_uac,
+        description=stale_description,
+        labels=["UAC_Done", "Hyundai"],
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-34915",
+        acceptance_criteria=text,
+        acceptance_source=source,
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done", "Hyundai"],
+    )
+
+    assert source == "jira_acceptance_field"
+    assert "Multi-selection" not in text
+    assert analysis is not None
+    assert {
+        "asset_browser_thumbnail",
+        "thumbnail_surfaces",
+        "thumbnail_format_matrix",
+        "thumbnail_freshness",
+        "thumbnail_fallback",
+        "thumbnail_lazy_loading",
+    }.issubset(set(analysis.dimensions))
+    assert "asset_picker_multi_selection" not in analysis.dimensions
+
+
+def test_guides_34580_duplicate_without_uac_remains_candidate_only():
+    description = """Problem Statement:
+For Topics, an Xref displays the Title. For MAP files, the Xref displays the file name.
+Display the Title of the MAP reference instead of the file name.
+"""
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria="",
+        description=description,
+        labels=["Authoring"],
+    )
+
+    assert text == ""
+    assert source == "missing"
+
+    candidate = analyze_historical_uac(
+        jira_key="GUIDES-34580",
+        acceptance_criteria=(
+            "A MAP file referenced using Xref should display its Title instead of its file name."
+        ),
+        status="Closed",
+        resolution="Duplicate",
+        labels=["Authoring"],
+    )
+
+    assert candidate is not None
+    assert candidate.historical_outcome == "duplicate_reference"
+    assert candidate.reuse_tier == "candidate"
+    assert {
+        "xref_map_display_label",
+        "map_reference",
+        "reference_display_label",
+    }.issubset(set(candidate.dimensions))
+
+
+def test_map_view_initial_hierarchy_selection_count_preserves_file_type_matrix():
+    accepted_uac = """Acceptance Criterion:
+In a fresh Guides 4.6 Map View, selecting map2 for the first time currently shows 1 selected although
+the expanded hierarchy contains exactly 7 selected nodes. This happens only for the first time and
+any subsequent selection shows the correct count. The first selection must immediately display
+7 selected, including the selected map and all selected child nodes, without relying on a second selection.
+The hierarchy can contain DITA files, Markdown files, and DITAVAL files.
+"""
+
+    text, source = resolve_historical_uac_text(
+        acceptance_criteria=accepted_uac,
+        labels=["Authoring", "UAC_Done"],
+    )
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-MAP-VIEW-SELECTION",
+        acceptance_criteria=text,
+        acceptance_source=source,
+        status="Closed",
+        resolution="Fixed",
+        labels=["Authoring", "UAC_Done"],
+    )
+
+    assert source == "jira_acceptance_field"
+    assert analysis is not None
+    assert {
+        "map_view_selection_count",
+        "hierarchy_selection",
+        "initial_selection",
+        "selected_descendants",
+        "first_selection_self_recovery",
+        "markdown",
+        "ditaval_asset",
+        "dita_asset",
+    }.issubset(set(analysis.dimensions))
+    assert "performance" not in analysis.dimensions
+    assert "translation_first_run" not in analysis.dimensions
+
+
+def test_asset_crud_api_contract_is_not_misclassified_as_editor_crud():
+    proposed_contract = """Scope: External-system asset import through the CRUD APIs.
+The CREATE API accepts caller-provided topic content instead of template-only content.
+The CREATE and UPDATE APIs accept metadata in the same request and persist it with the asset.
+The CREATE API accepts an explicit desired GUID independently of a human-readable filename.
+The UPDATE call uses UPSERT semantics: an existing target is updated once; a missing target is
+not created when force creation is omitted or false, and exactly one asset is created when force
+creation is true and the required creation fields are valid.
+Existing template-only CREATE clients remain backward compatible.
+"""
+
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-ASSET-CRUD-API",
+        acceptance_criteria=proposed_contract,
+        status="Open",
+        resolution="",
+        labels=["Integration"],
+    )
+
+    assert analysis is not None
+    assert {
+        "asset_crud_api",
+        "caller_content_payload",
+        "metadata_write",
+        "explicit_guid_assignment",
+        "human_readable_filename",
+        "template_content",
+        "upsert",
+        "force_create",
+        "external_system_import",
+    }.issubset(set(analysis.dimensions))
+    assert "authoring_crud" not in analysis.dimensions
+    assert all(
+        "crud_operation_matrix_missing" not in clause.unresolved_reasons
+        for clause in analysis.clauses
+    )
+
+
+def test_guides_30459_bulk_overwrite_session_history_stays_candidate():
+    proposed_contract = """Scope: AEM 6.5 On-Prem Guides 5.0 UUID bulk asset overwrite.
+The initial upload control for 200 assets completes, but re-uploading the same-name assets through
+/bin/fmdita/import can remain stuck on an indefinite loader or show a generic error, repeated CSRF
+token requests, and a redirect to login. The overwrite should reach an observable terminal success
+or failure state without forced logout. Success must be verified by read-back of every targeted
+asset binary, content identity, and repository state. Compare a smaller batch with the reported
+200-asset fixture without treating either count as a supported threshold. Maximum POST Parameter,
+File Save, and File Count settings plus Product Assets Upload Process changes are diagnostics only.
+"""
+
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-30459",
+        acceptance_criteria=proposed_contract,
+        status="Closed",
+        resolution="Cannot Reproduce",
+        labels=["Hyundai", "Platform"],
+    )
+
+    assert analysis is not None
+    assert {
+        "bulk_asset_overwrite",
+        "same_name_overwrite",
+        "fmdita_import_route",
+        "indefinite_loader",
+        "generic_failure_message",
+        "csrf_refresh_loop",
+        "login_redirect",
+        "processing_terminal_state",
+        "asset_readback_integrity",
+        "initial_upload_control",
+        "batch_boundary",
+        "upload_limit_configuration",
+        "product_assets_upload_process",
+        "bulk_asset_overwrite_session",
+    }.issubset(set(analysis.dimensions))
+    assert analysis.historical_outcome == "non_fix_decision"
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.performance_matters is False
+    assert analysis.explicit_root_cause is False
+    assert analysis.explicit_test_evidence is False
+
+
 def test_guides_23526_comment_scope_preserves_narrow_final_contract():
     acceptance_text, acceptance_source = resolve_historical_uac_text(
         labels=["UAC_Done", "KONE"],
@@ -1127,6 +1322,123 @@ def test_analysis_and_chunks_are_deterministic_and_never_llm_generated():
     assert all(chunk["uac_llm_used"] is False for chunk in chunks)
 
 
+def test_authoring_viewport_contract_is_distinct_and_does_not_invent_performance_scope():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91001",
+        acceptance_criteria="""
+Given a long topic with the active cursor deep in the Author canvas, editing content keeps the active element visible and does not scroll to the document top.
+When the author inserts or updates an xref through the reference picker, closing the dialog restores the caret to the intended insertion location and keeps that location visible.
+Typing, paste, dialog cancel, and repeated reference insertion preserve the selection and surrounding content without duplicate insertion or unintended content mutation.
+When inserted content causes layout reflow, the viewport restores relative to the active element rather than an exact pixel offset.
+""",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "authoring_viewport_stability" in analysis.dimensions
+    assert "active_element" in analysis.dimensions
+    assert "caret" in analysis.dimensions
+    assert "reference_insertion" in analysis.dimensions
+    assert "large_topic" in analysis.dimensions
+    assert "scroll_to_top" in analysis.dimensions
+    assert "map_preview_state" not in analysis.dimensions
+    assert analysis.performance_matters is False
+
+
+def test_map_preview_state_contract_stays_separate_from_author_canvas_scrolling():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91002",
+        acceptance_criteria="""
+Map Preview must retain its scroll position and selected topic when the user returns from Edit.
+Refreshing Map Preview must fetch current topic content while preserving the applied condition and right-panel state.
+""",
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "map_preview_state" in analysis.dimensions
+    assert "authoring_viewport_stability" not in analysis.dimensions
+
+
+def test_cals_multi_column_delete_contract_captures_structural_integrity():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-91003",
+        acceptance_criteria=(
+            "Deleting two columns from a CALS 6x5 table must remove both selected columns and update "
+            "tgroup/@cols, colspec, namest, and nameend without a blank or ghost column."
+        ),
+        status="Closed",
+        resolution="Fixed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "cals_table" in analysis.dimensions
+    assert "multi_column_delete" in analysis.dimensions
+    assert "table_structure_integrity" in analysis.dimensions
+
+
+def test_guides_35437_is_configuration_driven_working_as_designed_not_a_cell_defect():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-35437",
+        acceptance_criteria=(
+            "Working as designed: largeFileTagCount is a system configuration that controls large-file "
+            "mode, where undo/redo and the dirty marker can be disabled above the configured threshold."
+        ),
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["UAC_Done"],
+    )
+
+    assert analysis is not None
+    assert "large_file_tag_count" in analysis.dimensions
+    assert "large_file_safeguard" in analysis.dimensions
+    assert "configuration_driven_behavior" in analysis.dimensions
+    assert "working_as_designed" in analysis.dimensions
+    assert "multi_column_delete" not in analysis.dimensions
+    assert analysis.performance_matters is False
+
+
+def test_guides_41093_explorer_sorting_keeps_display_and_order_dimensions_separate():
+    analysis = analyze_historical_uac(
+        jira_key="GUIDES-41093",
+        acceptance_criteria=(
+            "Working as designed: in Web Editor Explorer, User Preferences Display File name changes "
+            "the displayed label, but the sort order remains unchanged and follows the folder-level "
+            "Assets sort configuration. The requested enhancement should either honor the display "
+            "preference as the default sort key or expose explicit sort controls for Name or Title, "
+            "ascending or descending, with a per-user session override. With the feature flag OFF, "
+            "legacy Explorer behavior remains unchanged. With the feature flag ON, the dedicated "
+            "sort control is available. Validate the default state of the sort button on first render."
+        ),
+        status="Closed",
+        resolution="Working as Designed",
+        labels=["Red Hat"],
+    )
+
+    assert analysis is not None
+    assert {
+        "explorer_sorting",
+        "display_preference",
+        "display_sort_decoupling",
+        "folder_sort_configuration",
+        "user_sort_override",
+        "sort_direction",
+        "explorer_sort_control",
+        "feature_flag",
+        "feature_flag_state_matrix",
+        "control_default_state",
+        "working_as_designed",
+    }.issubset(set(analysis.dimensions))
+    assert "reference_display_label" not in analysis.dimensions
+    assert analysis.reuse_tier == "candidate"
+    assert analysis.historical_outcome == "expected_product_behavior"
+
+
 def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
     full_uac = "\n".join(
         [f"Requirement {index:03d} must retain the selected baseline metadata value." for index in range(90)]
@@ -1143,6 +1455,7 @@ def test_sql_backfill_recovers_full_uac_from_description_not_truncated_chunk():
         resolution="Fixed",
         jira_updated_at=datetime(2026, 8, 1, 10, 0, 0),
         source_type="jira_csv",
+        source_file_hash="a" * 64,
         labels=["UAC_Done"],
         components=["Publishing"],
         customer_names=["Example Customer"],
@@ -1181,6 +1494,7 @@ def test_sql_backfill_recovers_accepted_scope_from_comment_when_field_is_missing
         resolution="Fixed",
         jira_updated_at=datetime(2024, 11, 26, 9, 0, 0),
         source_type="jira_csv",
+        source_file_hash="b" * 64,
         labels=["UAC_Done", "KONE"],
         components=["Authoring"],
         customer_names=["KONE"],
@@ -1251,6 +1565,34 @@ def test_sql_backfill_uses_archived_csv_uac_after_newer_issue_metadata_merge():
     assert analysis.source_authority == "jira_accepted_uac"
     assert any("configured outputclass" in row["document"] for row in rows)
     assert any("iframe outputclass" in row["document"] for row in rows)
+
+
+def test_sql_backfill_rejects_screenshot_only_or_unhashed_manual_uac_records():
+    screenshot_issue = JiraEnrichedIssue(
+        id=4,
+        jira_key="GUIDES-99998",
+        summary="Screenshot-only Jira example",
+        description="## UAC Criteria (custom field)\nThe active cursor must remain visible.",
+        issue_type="Customer Request",
+        status="Closed",
+        resolution="Fixed",
+        source_type="screenshot",
+        labels=["UAC_Done"],
+    )
+    unhashed_csv_issue = JiraEnrichedIssue(
+        id=5,
+        jira_key="GUIDES-99999",
+        summary="Unhashed manual Jira example",
+        description="## UAC Criteria (custom field)\nThe active cursor must remain visible.",
+        issue_type="Customer Request",
+        status="Closed",
+        resolution="Fixed",
+        source_type="jira_csv",
+        labels=["UAC_Done"],
+    )
+
+    assert build_sql_uac_rows(screenshot_issue, []) is None
+    assert build_sql_uac_rows(unhashed_csv_issue, []) is None
 
 
 def test_historical_uac_audit_endpoint_is_admin_only_and_returns_stats(client, auth_headers, monkeypatch):

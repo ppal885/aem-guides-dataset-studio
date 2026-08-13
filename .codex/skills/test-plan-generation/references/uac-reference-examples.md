@@ -1424,6 +1424,17 @@ Use this example when Jira's native acceptance field is empty but an accepted-UA
 - UUID/non-UUID and Cloud/on-premise parity on the exact supported target builds; retain the historical hotfix matrix only as evidence.
 - Import/export or configuration serialization that reads or writes the same condition object, ensuring unrelated groups and colors remain byte-equivalent where ordering is not semantically significant.
 
+## Deterministic Performance Reference: GUIDES-37722 With GUIDES-37915
+
+- Treat the current ticket's functional behavior and any same-mechanism historical performance contract as separate evidence decisions. A similar component name alone is not enough.
+- For a SubjectScheme title-resolution change, inspect whether the current implementation executes the same enumdefs API or a verified shared execution path recorded by `GUIDES-37915`.
+- If the overlap is only area-level, classify `GUIDES-37915` as `area_only`, do not retain it, and do not invent a Performance AC.
+- If the same mechanism or shared execution path is verified, retain `GUIDES-37915` in `performance_assessment.historical_contracts`, set the decision to `required`, and cite the Jira's underlying comments in a visible Performance AC.
+- Use the historical controlled workload of approximately 200 concurrent users against the same production-equivalent SubjectScheme dataset. Run controlled before-fix and after-fix iterations and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC.
+- Use the source-backed comparative oracle: p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline, without added errors or timeouts.
+- Map the Performance AC to an explicit P1 load/concurrency/benchmark scenario. A qualifying historical performance Jira must not remain only under Regression Areas or a compact P3 scenario.
+- Keep implementation analysis, metrics rationale, historical relationship classification, and citations in the full artifact. The compact UI shows the direct Performance AC and its executable scenario without a separate analysis section.
+
 ## How To Reuse This Pattern
 
 - Put Jira’s UAC/sign-off conditions under `Acceptance Criteria`; treat them as the primary acceptance contract, not optional background.
@@ -1455,3 +1466,11 @@ Use this example when Jira's native acceptance field is empty but an accepted-UA
 - Convert each UAC bullet into one practical `P0`, `P1`, or `P2` scenario with action and expected result.
 - Keep file-type matrices compact; do not create a table unless the user explicitly asks.
 - Add RAG-backed AEM configuration links only when `ask_dita_expert` confirms relevant upload restriction, duplicate detection, size, or versioning behaviour.
+
+## Deterministic Reference: Authoring Viewport, Map Preview, CALS Deletion, and Large-File Safeguards
+
+- Route an Author-view scroll-to-top issue to `authoring_viewport_stability` only when evidence names the editing canvas plus active caret/selection/element, reference insertion, or lost editing location. Cover typing, paste, link insert/update, picker cancel, repetition, active-element-relative reflow restoration, one correct reference, and unchanged surrounding content.
+- Keep `map_preview_state` separate. Its contract covers selected topic, relative preview scroll, conditions/right-panel state, refresh, and Edit-return. Reject area-only historical overlap unless evidence identifies shared state restoration or editor-scroll implementation.
+- For CALS multi-column deletion, use a 6-row by 5-column fixture and require a valid 6-row by 3-column result, no blank ghost column, preserved retained-cell order, and no orphan column/span metadata.
+- Learn `GUIDES-35437` as `largeFileTagCount` configuration-driven working-as-designed behavior. Test below and at/above the effective parsed-tag threshold; never turn 411 cells into a hard-coded product defect or performance SLA.
+- Exact screenshot-only records are not historical-UAC evidence. Index exact UAC only from live Jira or Jira CSV with a verified SHA-256 source hash.

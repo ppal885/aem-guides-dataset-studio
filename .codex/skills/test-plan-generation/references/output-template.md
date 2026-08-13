@@ -6,6 +6,14 @@ Use this file before writing the full validated record artifact.
 
 Use exactly these sections. Keep every line as a bullet.
 
+After the complete record passes `run_gates.py`, render the compact UI with `render_compact_view.py`. Keep all Jira understanding, evidence analysis, code scope, detailed automation proof, and Open Questions in the eleven-section durable artifact. The compact UI contains exactly four headings, in this order: `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`.
+
+- Project Acceptance Criteria into direct `Given | When | Then` statements; hide status, sphere, evidence citations, and analysis only in the compact UI.
+- Append every validated Regression Areas bullet to `Test Scenarios` as a `P3 [Regression]` scenario with an action and observable expected result.
+- Show only the Jira key and title for validated same-mechanism tickets. Do not expose status, resolution, versions, RCA, similarity analysis, or retrieval notes in the compact UI.
+- Show one main-feature automation verdict plus high-level feature-file/UI or integration/API guidance. Keep exact paths, methods, SHAs, code excerpts, and evidence analysis in the durable artifact.
+- Do not add a Jira Understanding card, Open Questions, or any fifth heading.
+
 ```markdown
 **Understanding From Jira**
 - Issue understood: <plain-English statement of the user-visible problem or requested feature>.
@@ -48,6 +56,7 @@ Use exactly these sections. Keep every line as a bullet.
 - ...
 
 **Automation Coverage & Gaps**
+- Main feature coverage: <Covered|Partially covered|Not covered|Unverified> - <one-sentence verdict based on direct automation evidence>.
 - AC-01 - Covered: `<absolute repo path>:<complete file path>:<test method>` using `<fixture/helper>` at `<branch>@<SHA>`; clone is `<clean/dirty, ahead/behind, fetch result>`.
 - AC-02 - Partially covered: existing test directly proves <named clause of AC-02>; missing <specific clause/boundary/assertion>. Adjacent happy-path tests are reusable infrastructure, not partial coverage.
 - AC-03 - Not covered: add/extend `<exact file/class/method>` in `<UI/API/integration layer>`; reuse `<client/helper/fixture>`, create state through `<deterministic setup/injection>`, poll `<endpoint/state>` with `<timeout source>`, assert `<terminal and output-integrity oracle>`, and clean up or roll back through `<mechanism>` under `<suite/tags>`.
@@ -59,15 +68,19 @@ Use exactly these sections. Keep every line as a bullet.
 ## Performance AC Rule
 
 - Do not copy a Performance AC by default. First complete the internal `aem-guides-performance-assessment-v1` manifest review.
-- Only `required` adds the next contiguous `(Performance)` AC and a mapped load/stress/soak/scalability/concurrency/benchmark scenario. Its `Given` contains a numeric workload and its `Then` contains a numeric metric threshold with units from an approved SLA or controlled benchmark.
+- Only `required` adds the next contiguous `(Performance)` AC and a mapped load/stress/soak/scalability/concurrency/benchmark scenario. Its `Given` contains a numeric workload and its `Then` contains a numeric metric threshold with units or a source-backed comparative controlled-baseline target. A retained same-mechanism/shared-path historical performance contract forces this path and cannot remain only as a regression bullet.
 - `conditional` adds only a QA-impact Open Question for the missing workload/SLA/baseline. `not_required` adds nothing reader-facing. Never create a Performance Analysis section.
 
 ## Default Chat/UI Projection
 
 - Keep the complete eleven-section body and any appendix in the `.md` record artifact.
 - After `run_gates.py` passes, run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
-- Present only `Acceptance Criteria`, `Regression Areas`, `Past Jiras`, and `Open Questions`, in that order, unless the user explicitly asks to see another section or the complete record.
-- The compact view is copied deterministically from the validated record; never rewrite, summarize, or regenerate its AC, regression, or open-question bullets.
+- Present only `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`, in that order, unless the user explicitly asks to see another section or the complete record.
+- Keep `Open Questions` in the validated full record and reveal it only on explicit request.
+- Render Acceptance Criteria as straightforward `Given | When | Then` statements while retaining their canonical status, sphere, and evidence fields only in the durable artifact.
+- Convert validated Regression Areas deterministically into `P3 [Regression]` scenarios under `Test Scenarios`; do not expose a separate Regression Areas heading.
+- Render only Jira key and title for tickets worth checking; keep all similarity, status, resolution, version, RCA, and retrieval details hidden in the durable artifact.
+- Render the declared main-feature automation verdict and high-level target layer; never expose raw source paths, SHAs, code excerpts, or internal analysis in the compact view.
 - Before an automation-draft agent consumes the plan, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff; the agent consumes that JSON rather than reparsing prose.
 
 ## Writing Style
@@ -81,6 +94,7 @@ Use exactly these sections. Keep every line as a bullet.
 - In pre-development `Code Touched`, separate `No code changes yet` from `Current implementation implicated` findings obtained from product clones, logs, APIs, workflows, or exact error strings.
 - Include setup, test data, role, config, platform, and environment matrix details inside the affected bullet instead of adding a new section.
 - In `Automation Coverage & Gaps`, distinguish existing reusable automation from missing coverage and map both to AC IDs.
+- Start `Automation Coverage & Gaps` with exactly one `Main feature coverage: Covered|Partially covered|Not covered|Unverified` verdict based on direct feature-file or integration-test evidence.
 - Resolve customer context from Jira fields and labels without asking the user again; preserve multiple customers and keep each customer profile separate.
 - Do not create extra sections.
 - Do not use tables.

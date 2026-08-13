@@ -35,3 +35,11 @@
 - A catalog entry does not prove itself. Jira citations must resolve to the target or retrieved Jira set; local sources must exist and match their hash; web/DITA/Figma citations must use an approved direct or retrieval method.
 - Graph path IDs never count as underlying evidence. Unknown Jira keys, unverified sources, invented paths, and selected history absent from recorded retrieval fail the run.
 - Run both Codex and Claude skill self-tests and parity checks before release. Benchmark unavailability does not alter normal plan generation; it blocks only release qualification.
+
+## Supplemental Authoring-State Conformance Probes
+
+- **Authoring viewport stability:** a supplied issue says that editing deep in a large Author-view topic and inserting a reference scrolls the canvas to the top. The generated candidate contract must cover active-element visibility, caret/selection, typing, paste, reference insert/update, picker cancel, repetition, relative restoration after reflow, no duplicate insertion, and unchanged surrounding content. It must not add left-panel, save/reopen, old-editor, data-loss, numeric pixel, or performance-SLA claims.
+- **Map Preview separation:** a supplied issue names map-preview scroll, selected topic, refresh, conditions, and Edit-return. It must route to Map Preview state and must not inherit Author-canvas caret/reference-picker requirements. A Map Preview historical Jira must be rejected as area-only for an Author-canvas query unless shared state-restoration or editor-scroll evidence exists.
+- **CALS structural deletion:** a 6-row by 5-column CALS fixture deletes two rightmost columns. The contract must require a valid 6-row by 3-column result, no ghost column, retained cell order, and no orphan column/span metadata.
+- **`GUIDES-35437`:** a report mentions 411 cells and `largeFileTagCount`. The contract must classify configuration-driven working-as-designed behavior, test parsed-tag boundaries, and reject a hard-coded 411-cell defect or invented performance SLA.
+- **Exact-UAC provenance:** screenshot-only input and Jira CSV input without a verified SHA-256 source hash must not create an exact indexed UAC. A hashed Jira CSV or live Jira record may proceed idempotently.

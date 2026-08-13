@@ -9,7 +9,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from ac_contract import AC_EXACT_FORMAT, parse_ac_line, validate_ac_sequence
-from performance_contract import QUANTIFIED_VALUE_RE, QUANTIFIED_WORKLOAD_RE
+from performance_contract import COMPARATIVE_ORACLE_RE, QUANTIFIED_VALUE_RE, QUANTIFIED_WORKLOAD_RE
 
 
 SECTIONS = (
@@ -45,6 +45,14 @@ UNDERSTANDING_PREFIXES = (
     "- Requested outcome:",
     "- Lifecycle understood as:",
     "- Evidence boundary:",
+)
+MAIN_FEATURE_COVERAGE_RE = re.compile(
+    r"^- Main feature coverage:\s*(?:Covered|Partially covered|Not covered|Unverified)\b",
+    re.IGNORECASE,
+)
+AUTOMATION_VERDICT_RE = re.compile(
+    r"\b(?:Covered|Partially covered|Not covered|Unverified)\b",
+    re.IGNORECASE,
 )
 
 
@@ -135,10 +143,14 @@ def validate(text: str) -> list[str]:
                     f"line {number}: Performance Given must define a quantified workload "
                     "(for example topic count, user count, job count, or iterations)"
                 )
-            if not QUANTIFIED_VALUE_RE.search(criterion["then"]):
+            if not (
+                QUANTIFIED_VALUE_RE.search(criterion["then"])
+                or COMPARATIVE_ORACLE_RE.search(criterion["then"])
+            ):
                 errors.append(
-                    f"line {number}: Performance Then must define a measurable numeric oracle with units; "
-                    "if no approved threshold exists, keep performance conditional in Open Questions"
+                    f"line {number}: Performance Then must define a measurable numeric or "
+                    "source-backed comparative oracle; if no approved threshold exists, keep "
+                    "performance conditional in Open Questions"
                 )
         if native_ac_empty and criterion["status"] == "Confirmed":
             errors.append(f"line {number}: derived criterion cannot be Confirmed when Jira AC is empty")
@@ -174,13 +186,28 @@ def validate(text: str) -> list[str]:
         for group in AC_LINK_RE.findall(line):
             linked = set(re.findall(r"AC-\d{2}", group))
             scenario_acs.update(linked)
-    automation_text = "\n".join(line for _, line in sections["Automation Coverage & Gaps"])
-    automation_acs = set(re.findall(r"AC-\d{2}", automation_text))
+    automation_lines = [line for _, line in sections["Automation Coverage & Gaps"]]
+    automation_acs = {
+        ac
+        for line in automation_lines
+        if AUTOMATION_VERDICT_RE.search(line)
+        and not line.lower().startswith("- main feature coverage:")
+        for ac in re.findall(r"AC-\d{2}", line)
+    }
     for ac in sorted(defined_acs):
         if ac not in scenario_acs:
             errors.append(f"acceptance criterion {ac} has no Test Scenarios mapping")
         if ac not in automation_acs:
             errors.append(f"acceptance criterion {ac} has no verdict in Automation Coverage & Gaps")
+
+    main_feature_coverage = [
+        line for line in automation_lines if MAIN_FEATURE_COVERAGE_RE.match(line)
+    ]
+    if len(main_feature_coverage) != 1:
+        errors.append(
+            "Automation Coverage & Gaps must contain exactly one 'Main feature coverage: "
+            "Covered|Partially covered|Not covered|Unverified' bullet"
+        )
 
     scenario_lines = sections["Test Scenarios"]
     if scenario_lines and not any(

@@ -1,5 +1,21 @@
 # Release Artifacts
 
+## AEM Guides MCP client and test-plan skill
+
+Team packages version `2026.08.13`:
+
+- `aem-guides-mcp-client-windows.zip`
+- `aem-guides-mcp-client-unix.zip`
+
+Each archive installs the minimal central-VM MCP client and the synchronized
+`test-plan-generation` skill. The compact UI shows a Jira Understanding card
+and exactly five sections while retaining the complete eleven-section Markdown
+artifact. Rebuild both deterministic archives with:
+
+```bash
+python scripts/package_mcp_client_bundles.py
+```
+
 ## AEM Guides test-plan Claude skill
 
 Download:

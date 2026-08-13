@@ -11,7 +11,7 @@ It runs, in order:
      internal principal-performance-QA assessment.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
-  3. Deterministic rendering of the four-section chat/UI projection
+  3. Deterministic rendering of the concise four-section chat/UI projection
      (render_compact_view.py).
   4. Performance manifest-to-plan alignment: required decisions produce only
      quantified Performance ACs; conditional/not-required decisions do not.

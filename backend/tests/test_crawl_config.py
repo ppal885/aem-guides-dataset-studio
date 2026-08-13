@@ -18,6 +18,21 @@ def test_bundled_crawl_config_includes_customized_map_templates(monkeypatch):
     assert target_url in urls
 
 
+def test_bundled_crawl_config_includes_authoring_file_management(monkeypatch):
+    backend_dir = Path(__file__).resolve().parents[1]
+    config_path = backend_dir / "config" / "aem_guides_crawl_urls.json"
+    target_url = (
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/"
+        "using/user-guide/appendix/manage-content/authoring-file-management"
+    )
+
+    monkeypatch.setattr(crawl_service, "_get_crawl_config_path", lambda: config_path)
+
+    urls = crawl_service._load_crawl_urls()
+
+    assert target_url in urls
+
+
 def test_bundled_crawl_config_includes_keyboard_shortcuts(monkeypatch):
     backend_dir = Path(__file__).resolve().parents[1]
     config_path = backend_dir / "config" / "aem_guides_crawl_urls.json"

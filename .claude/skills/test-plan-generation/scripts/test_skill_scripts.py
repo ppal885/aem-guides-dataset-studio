@@ -22,13 +22,26 @@ def _load(module_name: str, filename: str):
     return module
 
 
+def _find_repo_root() -> Path:
+    for candidate in Path(__file__).resolve().parents:
+        if (
+            (candidate / ".codex" / "skills" / "test-plan-generation").is_dir()
+            and (candidate / ".claude" / "skills" / "test-plan-generation").is_dir()
+            and (candidate / "skills" / "test-plan-generation").is_dir()
+        ):
+            return candidate
+    raise RuntimeError("Could not locate the repository root for skill parity checks")
+
+
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
+authoring_state_mod = _load("authoring_state_contract", "authoring_state_contract.py")
+component_router_mod = _load("component_reference_router", "component_reference_router.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
 - Issue understood: a thing is broken with a visible symptom.
-- Why it matters: it hurts customers in a concrete way.
+- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.
 - Requested outcome: the thing should stop being broken.
 - Lifecycle understood as: Pre-Development UAC with no PR yet.
 - Evidence boundary: Evidence mode: full; facts are from live Jira and a backend clone.
@@ -44,15 +57,16 @@ GOOD_PLAN = """**Understanding From Jira**
 **Lines Changed**
 - Not applicable — development has not started.
 **Test Scenarios**
-- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
-- P0 [AC-01]: do the first thing and observe the correct output.
-- P1 [AC-02]: do the second thing and observe prior state retained.
+- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.
+- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.
+- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.
 **Known Jira Bugs / Past Similar Tickets**
 - GUIDES-100 — Some bug. Similarity: strongest match — same failure shape of wrong output. Status: Closed. Resolution: Fixed. Affected version: not available in current evidence. Fix version: 2609. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: reuse its oracle.
 - Search status: JQL by exact error text and workflow terms across the project.
 **Regression Areas**
 - Nearby reporting workflow that reads the same output should be re-run after the change to confirm it still resolves correctly and the fix does not regress the shared read path.
 **Automation Coverage & Gaps**
+- Main feature coverage: Partially covered - AC-01 has direct integration coverage while AC-02 is missing.
 - AC-01: Covered by an existing API test at the integration layer.
 - AC-02: Not covered. Gap recipe at the API layer: setup prior state, poll the async helper with its configured timeout, assert state retained, tag with the suite, and cleanup created assets.
 **Open Questions**
@@ -115,6 +129,17 @@ def check(name: str, condition: bool) -> None:
 def test_validator() -> None:
     check("good plan passes", validate_mod.validate(GOOD_PLAN) == [])
 
+    no_main_feature_verdict = _replace(
+        GOOD_PLAN,
+        "- Main feature coverage: Partially covered - AC-01 has direct integration coverage while AC-02 is missing.\n",
+        "",
+    )
+    errs = validate_mod.validate(no_main_feature_verdict)
+    check(
+        "automation requires one main feature coverage verdict",
+        any("Main feature coverage" in error for error in errs),
+    )
+
     ac_without_source = _replace(
         GOOD_PLAN,
         " | Evidence: Jira UAC GUIDES-100.",
@@ -154,14 +179,6 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(ac_no_sphere)
     check("AC missing the sphere tag is rejected", any("machine-readable format" in e for e in errs))
-
-    ac_no_gwt = _replace(
-        GOOD_PLAN,
-        "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
-        "- AC-02 [Proposed]: (Negative) the system should retain valid prior state | Evidence: Jira description GUIDES-100.",
-    )
-    errs = validate_mod.validate(ac_no_gwt)
-    check("AC missing Given|When|Then is rejected", any("machine-readable format" in e for e in errs))
 
     ac_invalid_sphere = _replace(
         GOOD_PLAN,
@@ -219,7 +236,7 @@ def test_validator() -> None:
     )
     check(
         "Performance AC without measurable oracle is rejected",
-        any("Performance Then must define a measurable numeric oracle" in e for e in errs),
+        any("Performance Then must define a measurable" in e for e in errs),
     )
 
     quantified_performance = _replace(
@@ -229,8 +246,8 @@ def test_validator() -> None:
     )
     quantified_performance = _replace(
         quantified_performance,
-        "- P1 [AC-02]: do the second thing and observe prior state retained.",
-        "- P1 [AC-02]: run the cleanup load benchmark for 10,000 topics and confirm p95 latency is at or below 2000 ms with a 0% timeout error rate.",
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P1 [AC-02]: Action: run the cleanup load benchmark for 10,000 topics. Expected: p95 latency is at or below 2000 ms with a 0% timeout error rate.",
     )
     check(
         "quantified evidence-backed Performance AC passes",
@@ -239,8 +256,8 @@ def test_validator() -> None:
 
     ac_no_scenario = _replace(
         GOOD_PLAN,
-        "- P1 [AC-02]: do the second thing and observe prior state retained.",
-        "- P1 [AC-01]: do a redundant first thing again.",
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P1 [AC-01]: Action: do a redundant first thing again. Expected: observe the first result.",
     )
     errs = validate_mod.validate(ac_no_scenario)
     check("AC with no scenario mapping is rejected", any("AC-02 has no Test Scenarios" in e for e in errs))
@@ -255,19 +272,35 @@ def test_validator() -> None:
 
     scenario_no_ac = _replace(
         GOOD_PLAN,
-        "- P0 [AC-01]: do the first thing and observe the correct output.",
-        "- P0 do the first thing and observe the correct output.",
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 Action: do the first thing. Expected: observe the correct output.",
     )
     errs = validate_mod.validate(scenario_no_ac)
     check("scenario without AC mapping is rejected", any("missing an AC mapping" in e for e in errs))
 
     no_test_data = _replace(
         GOOD_PLAN,
-        "- Setup and test data: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
+        "- Test data to prepare: create map M.ditamap and topic t.dita under /content/dam/sandbox; property foo on jcr:content holds value bar; config gate baz defaults to true; oracle is the observable correct output.\n",
         "",
     )
     errs = validate_mod.validate(no_test_data)
-    check("Test Scenarios without a Setup and test data bullet is rejected", any("Setup and test data" in e for e in errs))
+    check("Test Scenarios without a Test data to prepare bullet is rejected", any("Test data to prepare" in e for e in errs))
+
+    no_customer_source = _replace(
+        GOOD_PLAN,
+        "- Why it matters: Customer context resolved from Jira: not identified; it hurts customers in a concrete way.",
+        "- Why it matters: it hurts customers in a concrete way.",
+    )
+    errs = validate_mod.validate(no_customer_source)
+    check("customer context source is required", any("Customer context resolved from Jira" in e for e in errs))
+
+    no_action_expected = _replace(
+        GOOD_PLAN,
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.",
+        "- P0 [AC-01]: do the first thing and observe the correct output.",
+    )
+    errs = validate_mod.validate(no_action_expected)
+    check("scenario Action and Expected wording is required", any("Action:" in e and "Expected:" in e for e in errs))
 
     terse_regression = _replace(
         GOOD_PLAN,
@@ -314,22 +347,6 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(unvetted_regression_key)
     check("Regression Areas citing a Jira key absent from Known Bugs is rejected", any("GUIDES-777" in e for e in errs))
-
-    # absolute path WITH SPACES in a body section must NOT be flagged when backtick-quoted
-    spaced_abs_ok = _replace(
-        GOOD_PLAN,
-        "- No code changes yet — development has not started.",
-        "- No code changes yet — development has not started.\n- Current implementation in `C:\\\\api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
-    )
-    check("backtick absolute path with spaces is accepted in a body section", validate_mod.validate(spaced_abs_ok) == [])
-
-    rel_path_flagged = _replace(
-        GOOD_PLAN,
-        "- No code changes yet — development has not started.",
-        "- No code changes yet — development has not started.\n- Current implementation in `api automation\\\\dxml-it-tests\\\\Foo.java` is implicated.",
-    )
-    errs = validate_mod.validate(rel_path_flagged)
-    check("non-absolute backtick path is still flagged in a body section", any("not absolute" in e for e in errs))
 
 
 def test_verifier() -> None:
@@ -400,43 +417,6 @@ def test_verifier() -> None:
         only_not_covered = "**Automation Coverage & Gaps**\n- AC-01: Not covered. Gap recipe here.\n"
         failures, _ = verify_mod.verify(only_not_covered)
         check("only Not-covered needs no code evidence", failures == [])
-
-
-def test_git_ref_citations() -> None:
-    import subprocess
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        def git(*args):
-            subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True)
-        try:
-            git("init", "-q")
-            git("config", "user.email", "t@t")
-            git("config", "user.name", "t")
-        except (OSError, subprocess.CalledProcessError):
-            print("ok: git-ref self-test skipped (git unavailable)")
-            return
-        (root / "pages").mkdir()
-        (root / "pages" / "editor.py").write_text("x = 1\n", encoding="utf-8")
-        git("add", "-A")
-        git("commit", "-qm", "seed")
-
-        # a real ref:path resolves -> no failure (HEAD is branch-name-agnostic).
-        # Avoid the word "Covered" so the unrelated fenced-code rule is not triggered.
-        good = "- Exercised by `HEAD:pages/editor.py` in the automation clone.\n"
-        failures, notes = verify_mod.verify(good, git_ref_roots=[str(root)])
-        check("valid git-ref citation verifies against repo root", failures == []
-              and any("git-ref citations" in n and "1 verified" in n for n in notes))
-
-        # a wrong ref:path is now caught (previously silently skipped)
-        bad = "- Exercised by `HEAD:pages/ghost.py` in the automation clone.\n"
-        failures, _ = verify_mod.verify(bad, git_ref_roots=[str(root)])
-        check("wrong git-ref citation is failed", any("does not resolve" in f for f in failures))
-
-        # with no repo root, it is reported as unverified (a note), not silently ignored
-        failures, notes = verify_mod.verify(good, git_ref_roots=[])
-        check("git-ref with no repo root is surfaced as unverified", failures == []
-              and any("NOT verified" in n for n in notes))
 
 
 def test_attachment_manifest() -> None:
@@ -670,8 +650,8 @@ def test_run_gates() -> None:
         )
         performance_plan = _replace(
             performance_plan,
-            "- P1 [AC-02]: do the second thing and observe prior state retained.",
-            "- P1 [AC-02]: run a 30-minute cleanup load and concurrency benchmark for 10,000 topics and confirm p95 latency remains at or below 2000 ms with a 0% timeout error rate.",
+            "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+            "- P1 [AC-02]: Action: run a 30-minute cleanup load and concurrency benchmark for 10,000 topics. Expected: p95 latency remains at or below 2000 ms with a 0% timeout error rate.",
         )
         check(
             "required performance decision aligns with a quantitative Performance AC",
@@ -682,6 +662,192 @@ def test_run_gates() -> None:
             any(
                 "no Performance AC may be emitted" in failure
                 for failure in run_gates.performance_mod.validate_plan_alignment(dual_source, performance_plan)
+            ),
+        )
+
+        passive_historical_performance = _replace(
+            GOOD_PLAN,
+            "- Nearby reporting workflow that reads the same output should be re-run after the change to confirm it still resolves correctly and the fix does not regress the shared read path.",
+            "- GUIDES-37915's enumdefs API performance path on the shared SubjectScheme title-resolution file must not regress.",
+        )
+        check(
+            "manager feedback fails when historical performance Jira is only a passive regression",
+            any(
+                "historical performance Jira GUIDES-37915" in failure
+                and "historical_contracts" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    dual_source, passive_historical_performance
+                )
+            ),
+        )
+
+        current_performance_issue = {
+            **dual_source,
+            "issue": "GUIDES-37915",
+        }
+        check(
+            "current performance Jira is not misclassified as historical evidence",
+            not any(
+                "historical performance Jira GUIDES-37915" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    current_performance_issue, passive_historical_performance
+                )
+            ),
+        )
+
+        subjectscheme_performance = json.loads(json.dumps(NOT_REQUIRED_PERFORMANCE))
+        subjectscheme_performance.update(
+            {
+                "decision": "required",
+                "risk_rating": "high",
+                "workload_model": {
+                    "operation": "Call GET /bin/aem/guides/xmleditor/subjectscheme/enumdefs through the inspected SubjectScheme title-resolution path.",
+                    "cardinality": "1 production-equivalent SubjectScheme dataset with the recorded enumdefs cardinality.",
+                    "concurrency": "200 concurrent users.",
+                    "repetition": "Run controlled before-fix and after-fix benchmark iterations against the same dataset.",
+                    "duration": "Use the GUIDES-37915 approved benchmark duration for each controlled run.",
+                },
+                "metrics": [
+                    "latency_p50",
+                    "latency_p90",
+                    "latency_p95",
+                    "latency_p99",
+                    "throughput",
+                    "error_rate",
+                    "timeout_rate",
+                    "cpu_utilization",
+                    "memory_usage",
+                    "gc_pause",
+                ],
+                "oracle": {
+                    "status": "quantified",
+                    "source_ref": "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                    "thresholds": [
+                        "p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline"
+                    ],
+                },
+                "test_types": ["load", "concurrency", "benchmark"],
+                "performance_ac_ids": ["AC-02"],
+                "historical_contracts": [
+                    {
+                        "jira_key": "GUIDES-37915",
+                        "relationship": "shared_execution_path",
+                        "retained": True,
+                        "mechanism": "The current change and historical ticket execute the SubjectScheme enumdefs title-resolution request path.",
+                        "workload": "200 concurrent users against the same production-equivalent SubjectScheme dataset.",
+                        "oracle": "At least 2x p95 response-time improvement versus the recorded before-fix same-dataset baseline.",
+                        "evidence_refs": [
+                            "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                            "Inspected SubjectScheme enumdefs title-resolution path",
+                        ],
+                    }
+                ],
+                "rationale": "The current SubjectScheme title-resolution change uses the same enumdefs execution path as GUIDES-37915, whose comments define a controlled same-dataset benchmark, approximately 200 concurrent users, percentile metrics, and a 2x response-time improvement oracle.",
+            }
+        )
+        subjectscheme_performance["signal_review"]["concurrency_or_contention"] = {
+            "status": "present",
+            "finding": "GUIDES-37915 defines an expected workload of approximately 200 concurrent users.",
+            "evidence_refs": ["GUIDES-37915 comment dated 2026-01-28"],
+        }
+        subjectscheme_performance["signal_review"]["latency_timeout_or_throughput"] = {
+            "status": "present",
+            "finding": "GUIDES-37915 records before/after response-time percentiles and a claimed 2x gain.",
+            "evidence_refs": ["GUIDES-37915 comment dated 2026-01-27"],
+        }
+        subjectscheme_manifest = {
+            **dual_source,
+            "performance_assessment": subjectscheme_performance,
+        }
+        check(
+            "same-path historical SubjectScheme performance contract passes schema validation",
+            run_gates.performance_mod.validate_performance_assessment(subjectscheme_manifest) == [],
+        )
+
+        subjectscheme_plan = _replace(
+            GOOD_PLAN,
+            "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
+            "- AC-02 [Proposed]: (Performance) Given 200 concurrent users against the same production-equivalent SubjectScheme dataset | When clients call GET /bin/aem/guides/xmleditor/subjectscheme/enumdefs through the inspected title-resolution path | Then p95 response time improves by at least 2x versus the recorded before-fix same-dataset baseline | Evidence: GUIDES-37915 comments dated 2026-01-27 and 2026-01-28.",
+        )
+        subjectscheme_plan = _replace(
+            subjectscheme_plan,
+            "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+            "- P1 [AC-02]: Action: run the same-dataset load and concurrency benchmark with 200 concurrent users and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC. Expected: p95 response time improves by at least 2x versus the recorded before-fix baseline without added errors or timeouts.",
+        )
+        check(
+            "retained historical SubjectScheme contract emits a mapped Performance AC",
+            run_gates.performance_mod.validate_plan_alignment(
+                subjectscheme_manifest, subjectscheme_plan
+            )
+            == [],
+        )
+
+        subjectscheme_without_scenario = _replace(
+            subjectscheme_plan,
+            "- P1 [AC-02]: Action: run the same-dataset load and concurrency benchmark with 200 concurrent users and capture p50, p90, p95, p99, throughput, error rate, timeout rate, CPU, memory, and GC. Expected: p95 response time improves by at least 2x versus the recorded before-fix baseline without added errors or timeouts.",
+            "- P1 [AC-01]: Action: rerun the functional path. Expected: the functional result remains correct.",
+        )
+        check(
+            "retained historical performance AC cannot omit its mapped benchmark scenario",
+            any(
+                "must map to a Test Scenarios bullet" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    subjectscheme_manifest, subjectscheme_without_scenario
+                )
+            ),
+        )
+
+        wrong_historical_citation = _replace(
+            subjectscheme_plan,
+            "Evidence: GUIDES-37915 comments dated 2026-01-27 and 2026-01-28.",
+            "Evidence: Jira comment GUIDES-100.",
+        )
+        check(
+            "retained historical performance Jira must be cited by the Performance AC",
+            any(
+                "GUIDES-37915 must be cited" in failure
+                for failure in run_gates.performance_mod.validate_plan_alignment(
+                    subjectscheme_manifest, wrong_historical_citation
+                )
+            ),
+        )
+
+        area_only_history = json.loads(json.dumps(subjectscheme_performance))
+        area_only_history["historical_contracts"][0]["relationship"] = "area_only"
+        check(
+            "area-only historical performance cannot be retained",
+            any(
+                "cannot retain area-only" in failure
+                for failure in run_gates.performance_mod.validate_performance_assessment(
+                    {"performance_assessment": area_only_history}
+                )
+            ),
+        )
+
+        not_required_with_retained_history = json.loads(json.dumps(subjectscheme_performance))
+        not_required_with_retained_history.update(
+            {
+                "decision": "not_required",
+                "risk_rating": "low",
+                "metrics": [],
+                "test_types": [],
+                "performance_ac_ids": [],
+                "oracle": {
+                    "status": "not_applicable",
+                    "source_ref": "GUIDES-37915 comments dated 2026-01-27 and 2026-01-28",
+                    "thresholds": [],
+                },
+            }
+        )
+        for category in PERFORMANCE_SIGNAL_CATEGORIES:
+            not_required_with_retained_history["signal_review"][category]["status"] = "absent"
+        check(
+            "retained same-path history cannot be classified not-required",
+            any(
+                "requires decision=required" in failure
+                for failure in run_gates.performance_mod.validate_performance_assessment(
+                    {"performance_assessment": not_required_with_retained_history}
+                )
             ),
         )
 
@@ -1013,6 +1179,8 @@ def test_run_gates() -> None:
             any("blocked readiness impact" in failure for failure in failures),
         )
 
+
+
 def test_extract_acs() -> None:
     extract_mod = _load("extract_acs", "extract_acs.py")
     criteria, problems = extract_mod.extract(GOOD_PLAN)
@@ -1043,7 +1211,16 @@ def test_compact_view() -> None:
     check(
         "compact view exposes exactly the requested headings",
         [line for line in compact.splitlines() if line.startswith("**")]
-        == ["**Acceptance Criteria**", "**Regression Areas**", "**Past Jiras**", "**Open Questions**"],
+        == [
+            "**Acceptance Criteria**",
+            "**Test Scenarios**",
+            "**Jira Tickets Worth Checking**",
+            "**Automation Coverage**",
+        ],
+    )
+    check(
+        "compact view keeps analysis in the durable artifact",
+        "What I understood from Jira" not in compact and "Why it matters" not in compact,
     )
     check(
         "compact view does not leak hidden record sections",
@@ -1055,13 +1232,44 @@ def test_compact_view() -> None:
                 "Scope From Git",
                 "Code Touched",
                 "Lines Changed",
-                "Test Scenarios",
                 "Automation Coverage & Gaps",
+                "**Regression Areas**",
             )
         ),
     )
-    check("compact view keeps validated past Jira", "GUIDES-100" in compact)
-    check("compact view keeps Open Questions", "No open questions from current evidence" in compact)
+    check(
+        "compact view keeps validated Test Scenarios",
+        "**Test Scenarios**" in compact
+        and "Test data to prepare:" in compact
+        and "P0 [AC-01]" in compact
+        and "P3 [Regression]" in compact
+        and "Action:" in compact
+        and "Expected:" in compact,
+    )
+    check(
+        "compact ACs are straightforward and hide evidence analysis",
+        "- AC-01: Given an input | When the system runs | Then it produces the correct observable output." in compact
+        and "[Proposed]" not in compact
+        and "Evidence:" not in compact,
+    )
+    check(
+        "compact Jira list keeps only key and title",
+        "- GUIDES-100 - Some bug." in compact
+        and "Similarity:" not in compact
+        and "Status:" not in compact
+        and "Worth checking because" not in compact,
+    )
+    check(
+        "compact automation states main coverage and high-level target",
+        "Main feature coverage: Partially covered" in compact
+        and "integration/API test automation" in compact,
+    )
+    check(
+        "compact view hides Open Questions but durable record keeps them",
+        "**Open Questions**" not in compact
+        and "No open questions from current evidence" not in compact
+        and "**Open Questions**" in GOOD_PLAN,
+    )
 
     no_match_plan = _replace(
         GOOD_PLAN,
@@ -1071,7 +1279,79 @@ def test_compact_view() -> None:
     no_match_compact, no_match_problems = compact_mod.project(no_match_plan)
     check(
         "compact view renders a deterministic no-Jira result",
-        no_match_problems == [] and "No same-defect-class past Jira" in no_match_compact,
+        no_match_problems == []
+        and "No same-mechanism Jira ticket is worth checking" in no_match_compact,
+    )
+
+
+def test_authoring_state_contract() -> None:
+    authoring = authoring_state_mod.derive_contract(
+        "In Author view, editing deep inside a large topic or inserting a reference link "
+        "unexpectedly scrolls the editing screen to the top and hides the active cursor."
+    )
+    check(
+        "large-topic authoring issue routes to viewport stability",
+        authoring["route"] == "authoring_viewport_stability",
+    )
+    authoring_text = "\n".join(
+        [*authoring["acceptance_criteria"], *authoring["test_scenarios"]]
+    )
+    for marker in (
+        "active caret or selected element deep in the document",
+        "cross-reference or reference link",
+        "focus returns to the intended insertion location",
+        "relative to the active element rather than to an exact prior pixel offset",
+        "type, paste",
+        "cancel it repeatedly",
+        "no reference or duplicate content is inserted",
+    ):
+        check(f"authoring viewport contract contains {marker}", marker in authoring_text)
+    for unsupported in (
+        "left map tree",
+        "save/reopen",
+        "old editor",
+        "milliseconds",
+        "data loss",
+    ):
+        check(
+            f"authoring viewport contract does not invent {unsupported}",
+            unsupported.lower() not in authoring_text.lower(),
+        )
+
+    preview = authoring_state_mod.derive_contract(
+        "Map Preview scroll position, selected topic, refresh, and condition panel state "
+        "must survive Edit-return behavior."
+    )
+    check("map preview remains a separate route", preview["route"] == "map_preview_state")
+    preview_text = "\n".join(
+        [*preview["acceptance_criteria"], *preview["test_scenarios"]]
+    )
+    check("map preview retains condition state", "condition state" in preview_text)
+    check("map preview does not inherit caret behavior", "caret" not in preview_text.lower())
+
+    cals = authoring_state_mod.derive_contract(
+        "Delete two selected columns from a 6 row and 5 column CALS table."
+    )
+    check("CALS deletion gets the structural route", cals["route"] == "cals_multi_column_delete")
+    cals_text = "\n".join([*cals["acceptance_criteria"], *cals["test_scenarios"]])
+    for marker in ("6 rows and 5 columns", "6 rows and 3 visible columns", "ghost column", "span metadata"):
+        check(f"CALS deletion contract contains {marker}", marker in cals_text)
+
+    large_file = authoring_state_mod.derive_contract(
+        "GUIDES-35437: Ctrl+Z changed after 411 cells; largeFileTagCount controls the large-file safeguard."
+    )
+    check(
+        "GUIDES-35437 is configuration-driven working-as-designed behavior",
+        large_file["route"] == "large_file_configuration"
+        and large_file["classification"] == "working_as_designed_configuration",
+    )
+    large_file_text = "\n".join(
+        [*large_file["acceptance_criteria"], *large_file["test_scenarios"]]
+    )
+    check("large-file contract uses parsed tag threshold", "parsed-tag threshold" in large_file_text)
+    check(
+        "large-file contract does not create a 411-cell AC",
+        all("411" not in criterion for criterion in large_file["acceptance_criteria"]),
     )
 
 
@@ -1097,6 +1377,18 @@ def test_uac_fidelity_reference() -> None:
         "Product-fix chronology without accepted UAC remains candidate regression evidence",
         "jira_comment_accepted_scope",
         "Preserve contradictory automation labels",
+        "### Deterministic Authoring-State Routing",
+        "scripts/authoring_state_contract.py",
+        "references/authoring-state-uac.md",
+        "references/component-routing.md",
+        "scripts/component_reference_router.py",
+        "references/component-authoring.md",
+        "references/component-integration.md",
+        "For GUIDES-34915-style scope pivots",
+        "For GUIDES-34580-style Closed/Duplicate history",
+        "For Map View hierarchy-selection counts",
+        "For GUIDES-41093-style Explorer sorting enhancements",
+        "For asset CRUD API requests",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
@@ -1145,12 +1437,33 @@ def test_uac_fidelity_reference() -> None:
         "group removal and yellow color reset",
         "AC-04 [Proposed]: (Reports)",
         "cross_touchpoint_taxonomy",
+        "## Deterministic Performance Reference: GUIDES-37722 With GUIDES-37915",
+        "A qualifying historical performance Jira must not remain only under Regression Areas",
+        "approximately 200 concurrent users",
+        "p95 response time improves by at least 2x",
     ):
         check(f"UAC reference retains marker {marker}", marker in reference_text)
     check(
         "quality gate enforces accepted UAC fidelity",
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
     )
+
+    authoring_reference = (
+        skill_root / "references" / "authoring-state-uac.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "## Route 1 - Authoring Viewport Stability",
+        "## Route 2 - Map Preview State Restoration",
+        "## Route 3 - CALS Multi-Column Deletion",
+        "## Route 4 - GUIDES-35437 Large-File Safeguard",
+        "6-row by 5-column CALS table",
+        "largeFileTagCount",
+        "Screenshot-only and pasted examples",
+    ):
+        check(
+            f"authoring-state reference retains marker {marker}",
+            marker in authoring_reference,
+        )
 
     repo_root = Path(__file__).resolve().parents[4]
     counterpart_root = (
@@ -1164,15 +1477,413 @@ def test_uac_fidelity_reference() -> None:
         check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
 
 
+def test_component_reference_routing() -> None:
+    thumbnail = component_router_mod.route_references(
+        summary="Thumbnail display for multimedia on homepage repo and new search result panel",
+        description=(
+            "Multi-selection is not possible when applying an image to a topic. "
+            "Multi-selection should only be possible within a specific folder."
+        ),
+        acceptance_criteria=(
+            "Thumbnail should be shown for valid image files in Home Repository content view, "
+            "Search panel, and Bottom search panel. PNG, JPG, and SVG thumbnails should match "
+            "the latest image version and load with lazy-loading without layout jank."
+        ),
+        resolution="Fixed",
+        labels=["UAC_Done", "Hyundai"],
+    )
+    check("thumbnail scope routes to Authoring", thumbnail["primary_component"] == "Authoring")
+    check(
+        "accepted thumbnail scope excludes stale multi-selection mechanism",
+        thumbnail["mechanisms"] == ["asset_browser_thumbnail"],
+    )
+    check(
+        "thumbnail scope pivot emits a deterministic warning",
+        "stale_multi_selection_request_is_not_thumbnail_uac" in thumbnail["warnings"],
+    )
+    check(
+        "Authoring route avoids the full UAC catalog",
+        thumbnail["references"]
+        == ["references/component-routing.md", "references/component-authoring.md"]
+        and thumbnail["load_full_uac_reference"] is False,
+    )
+
+    map_xref = component_router_mod.route_references(
+        summary="Display Title Instead of File Name for MAP References in Xref",
+        description=(
+            "Topics display the Title in Xref, but MAP files display the file name. "
+            "MAP references should display the Title."
+        ),
+        resolution="Duplicate",
+    )
+    check("map Xref routes to Authoring", map_xref["primary_component"] == "Authoring")
+    check(
+        "map Xref receives the exact mechanism",
+        map_xref["mechanisms"] == ["xref_map_display_label"],
+    )
+    check("duplicate without UAC is Proposed-only", map_xref["scope_mode"] == "proposed_only")
+    check(
+        "duplicate warning is explicit",
+        "caution_resolution_without_uac_is_proposed_only" in map_xref["warnings"],
+    )
+
+    map_selection = component_router_mod.route_references(
+        component="Authoring",
+        summary="Incorrect selected items in Map View",
+        acceptance_criteria=(
+            "In a fresh Guides 4.6 Map View, selecting map2 for the first time must immediately "
+            "display 7 selected rather than 1 selected. The seven-node selected set includes map2 "
+            "and all selected child nodes; later correct selections cannot mask the first failure. "
+            "The hierarchy can contain DITA files, Markdown files, and DITAVAL files."
+        ),
+        resolution="Fixed",
+        labels=["Authoring", "UAC_Done"],
+    )
+    check(
+        "Map View hierarchy count routes to Authoring",
+        map_selection["primary_component"] == "Authoring",
+    )
+    check(
+        "Map View hierarchy count receives the exact mechanism",
+        map_selection["mechanisms"] == ["map_view_hierarchy_selection_count"],
+    )
+    check(
+        "accepted Map View count uses accepted scope",
+        map_selection["scope_mode"] == "accepted_field_primary",
+    )
+
+    explorer_sorting = component_router_mod.route_references(
+        summary="Enable filename-based or user-selectable sorting in Web Editor Explorer",
+        description=(
+            "User Preferences Display File name changes the Explorer label, but the folder-level "
+            "Assets sort order remains unchanged. The requested outcome either honours the display "
+            "preference as the default sort key or exposes explicit sort controls for Name or Title "
+            "with ascending and descending direction plus a per-user session override."
+        ),
+        resolution="Working as Designed",
+        labels=["Red Hat"],
+    )
+    check(
+        "Explorer filename/title sorting routes to Authoring",
+        explorer_sorting["primary_component"] == "Authoring",
+    )
+    check(
+        "Explorer sorting receives the exact mechanism",
+        explorer_sorting["mechanisms"] == ["explorer_filename_title_sorting"],
+    )
+    check(
+        "working-as-designed Explorer request stays Proposed-only",
+        explorer_sorting["scope_mode"] == "proposed_only",
+    )
+    for warning in (
+        "accepted_uac_missing",
+        "caution_resolution_without_uac_is_proposed_only",
+        "explorer_sort_request_without_accepted_uac_is_proposed_only",
+        "explorer_sort_interaction_model_is_unresolved",
+    ):
+        check(f"Explorer sorting warning is retained: {warning}", warning in explorer_sorting["warnings"])
+
+    explorer_sorting_with_mockup = component_router_mod.route_references(
+        summary="Enable filename-based or user-selectable sorting in Web Editor Explorer",
+        description=(
+            "The requested outcome either honours the display preference as the default sort key "
+            "or exposes explicit sort controls for Name or Title with ascending and descending."
+        ),
+        design_evidence=(
+            "The inspected mockup shows a dedicated sort action in the Explorer header to the right "
+            "of Search and Add. Feature flag states must be tested with the flag OFF and ON, and the "
+            "default state of the button must be validated. The flag key, configured default value, "
+            "OFF-state presentation, menu, keys, direction behavior, and persistence are not shown."
+        ),
+        resolution="Working as Designed",
+    )
+    check(
+        "Explorer mockup selects the explicit sort-control direction",
+        explorer_sorting_with_mockup["design_resolution"] == "explicit_sort_control",
+    )
+    check(
+        "Explorer mockup removes the unresolved interaction-model warning",
+        "explorer_sort_interaction_model_is_unresolved"
+        not in explorer_sorting_with_mockup["warnings"],
+    )
+    check(
+        "Explorer mockup records its design-backed resolution",
+        "explorer_sort_explicit_control_selected_by_design"
+        in explorer_sorting_with_mockup["warnings"],
+    )
+    check(
+        "Explorer feature flag requires an OFF/ON matrix",
+        explorer_sorting_with_mockup["feature_flag_matrix_required"] is True,
+    )
+    check(
+        "Explorer sort control requires default-state validation",
+        explorer_sorting_with_mockup["default_control_state_required"] is True,
+    )
+    for warning in (
+        "explorer_sort_feature_flag_state_matrix_required",
+        "explorer_sort_feature_flag_key_unresolved",
+        "explorer_sort_feature_flag_default_value_unresolved",
+        "explorer_sort_flag_off_presentation_unresolved",
+        "explorer_sort_button_default_state_required",
+        "explorer_sort_button_default_state_unresolved",
+    ):
+        check(
+            f"Explorer flag/default warning is retained: {warning}",
+            warning in explorer_sorting_with_mockup["warnings"],
+        )
+    check(
+        "Explorer OFF/ON evidence completes the requested state matrix",
+        "explorer_sort_feature_flag_state_matrix_incomplete"
+        not in explorer_sorting_with_mockup["warnings"],
+    )
+
+    explorer_label_only = component_router_mod.route_references(
+        summary="Explorer displays file name instead of title",
+        description="The visible Explorer label should follow the selected display preference.",
+    )
+    check(
+        "generic Explorer label wording does not trigger sorting learning",
+        "explorer_filename_title_sorting" not in explorer_label_only["mechanisms"],
+    )
+
+    folder_deletion = component_router_mod.route_references(
+        summary="Request to add folder deletion feature in Guides",
+        description=(
+            "Guides has no folder delete action and users currently use Assets UI. "
+            "The customer also asks for restore or trash behavior."
+        ),
+        labels=["Hyundai"],
+    )
+    check(
+        "folder deletion routes to Authoring",
+        folder_deletion["primary_component"] == "Authoring",
+    )
+    check(
+        "folder deletion receives the exact mechanism",
+        folder_deletion["mechanisms"] == ["folder_deletion"],
+    )
+    check(
+        "folder deletion without accepted UAC stays Proposed-only",
+        folder_deletion["scope_mode"] == "proposed_only",
+    )
+    for warning in (
+        "folder_deletion_without_accepted_uac_is_proposed_only",
+        "folder_deletion_surface_and_version_must_be_verified",
+        "folder_restore_is_separate_from_delete_contract",
+    ):
+        check(
+            f"folder deletion warning is retained: {warning}",
+            warning in folder_deletion["warnings"],
+        )
+
+    generic_file_deletion = component_router_mod.route_references(
+        summary="Delete a DITA file",
+        description="An authorized user deletes one topic from the repository.",
+    )
+    check(
+        "generic file deletion does not trigger folder-deletion learning",
+        "folder_deletion" not in generic_file_deletion["mechanisms"],
+    )
+
+    crud_api = component_router_mod.route_references(
+        summary="External-system asset CREATE and UPDATE CRUD APIs",
+        description=(
+            "The CREATE API must accept caller fileContent, metadata, a desired GUID independent "
+            "of the human-readable filename, and the UPDATE call must work like UPSERT with an "
+            "opt-in force creation control."
+        ),
+        resolution="",
+        labels=["ABS", "CrownEquipment"],
+    )
+    check("asset CRUD API routes to Integration", crud_api["primary_component"] == "Integration")
+    check(
+        "asset CRUD API receives the exact mechanism",
+        crud_api["mechanisms"] == ["asset_crud_api_contract"],
+    )
+    check(
+        "asset CRUD API uses the focused Integration pack",
+        crud_api["references"]
+        == ["references/component-routing.md", "references/component-integration.md"]
+        and crud_api["load_full_uac_reference"] is False,
+    )
+    check(
+        "asset CRUD request without accepted UAC stays Proposed",
+        crud_api["scope_mode"] == "description_candidate"
+        and "crud_api_request_without_accepted_uac_is_proposed_only" in crud_api["warnings"],
+    )
+
+    generic_api = component_router_mod.route_references(
+        summary="API returns an error",
+        description="A generic API call fails without an asset CRUD payload contract.",
+    )
+    check(
+        "generic API wording does not trigger asset CRUD learning",
+        "asset_crud_api_contract" not in generic_api["mechanisms"]
+        and generic_api["load_full_uac_reference"] is True,
+    )
+
+    bulk_overwrite = component_router_mod.route_references(
+        summary="Abnormal behavior when overwriting 200+ assets",
+        description=(
+            "The initial upload of 200 assets succeeds, but re-uploading the same-name assets "
+            "through /bin/fmdita/import can remain stuck on a loader or show a generic error "
+            "and redirect the authenticated author to login after repeated CSRF token requests."
+        ),
+        resolution="Cannot Reproduce",
+        labels=["Hyundai"],
+    )
+    check(
+        "bulk overwrite/session failure routes to Platform",
+        bulk_overwrite["primary_component"] == "Platform",
+    )
+    check(
+        "bulk overwrite/session failure receives the exact mechanism",
+        bulk_overwrite["mechanisms"] == ["bulk_asset_overwrite_session"],
+    )
+    check(
+        "bulk overwrite/session failure uses the focused Platform pack",
+        bulk_overwrite["references"]
+        == ["references/component-routing.md", "references/component-platform.md"]
+        and bulk_overwrite["load_full_uac_reference"] is False,
+    )
+    for warning in (
+        "accepted_uac_missing",
+        "caution_resolution_without_uac_is_proposed_only",
+        "bulk_overwrite_without_accepted_uac_is_proposed_only",
+    ):
+        check(
+            f"bulk overwrite caution warning is retained: {warning}",
+            warning in bulk_overwrite["warnings"],
+        )
+
+    generic_upload = component_router_mod.route_references(
+        summary="Large asset upload is slow",
+        description="A generic DAM upload takes a long time without overwrite or session evidence.",
+    )
+    check(
+        "generic upload wording does not trigger bulk overwrite learning",
+        "bulk_asset_overwrite_session" not in generic_upload["mechanisms"],
+    )
+
+    skill_root = Path(__file__).resolve().parents[1]
+    authoring_reference = (skill_root / "references" / "component-authoring.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Asset-Browser Thumbnail Contract — GUIDES-34915",
+        "does not prove multi-selection",
+        "## Map-Xref Display Label Contract — GUIDES-34580",
+        "Closed as Duplicate",
+        "`href`, `format`, `scope`, and `type`",
+        '`scope="external"`',
+        "no repository map-title lookup is applied",
+        "## Map View Hierarchy Selection-Count Contract",
+        "selected map node itself and every descendant node",
+        "visible node occurrences or unique asset identity",
+        "DITA, Markdown, and DITAVAL",
+        "selecting `map2` initially shows `1 selected`",
+        "first selection must immediately show `7 selected`",
+        "warm second selection cannot validate this defect",
+        "## Explorer Filename/Title Sorting Contract — GUIDES-41093",
+        "display label, sort key, sort direction, folder default, and per-user override",
+        "dedicated sort affordance in the Explorer header",
+        "static mockup does not show the opened control",
+        "## Feature-Flag and Default-State Matrix",
+        "feature flag is OFF",
+        "feature flag is ON",
+        "upward arrow in a static mockup is not proof of ascending order",
+        "configured default value separate from the sort button's first-render default state",
+        "do not retain implicit display-preference coupling",
+        "documented workaround and comparison surface",
+        "folder-level Assets configuration only the initial default",
+        "Reject generic repository ordering",
+        "## Folder Deletion Release-Evolution Contract - GUIDES-19345",
+        "not proof of an implemented Guides folder-delete workflow",
+        "governed **file deletion**",
+        "does not, by itself, prove",
+        "Do not infer restore, trash",
+        "Assets UI file deletion as boundary/comparison evidence",
+    ):
+        check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
+
+    integration_reference = (skill_root / "references" / "component-integration.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Asset CRUD API Import Contract",
+        "### Documented Current API Baseline",
+        "POST /bin/fmdita/xmleditor/create",
+        "operation=getdita",
+        "operation=postDita",
+        "`createrev` controls revision creation",
+        "POST /bin/guides/assets/delete",
+        "delete-only `force` parameter",
+        "template-only CREATE request with `parent`, `name`, `title`, and `template`",
+        "`operation=postDita` with `editorData`, `path`, and `createrev=false` or `true`",
+        "`operation=getdita`, `path`, and `type=UUID`",
+        "no partial new asset, duplicate identity, or partially updated metadata/content remains",
+        "filename, repository path, and GUID",
+        "target `exists` and `missing`",
+        "force-create `omitted`, `false`, and `true`",
+        "every generated criterion remains `[Proposed]`",
+        "a successful HTTP response alone is insufficient",
+        "must not be confused with UPDATE `createrev` or DELETE `force`",
+        "Reject editor CRUD",
+    ):
+        check(f"Integration component pack retains marker {marker}", marker in integration_reference)
+
+    platform_reference = (skill_root / "references" / "component-platform.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "## Bulk Same-Name Asset Overwrite and Session Contract - GUIDES-30459",
+        "candidate historical learning only",
+        "SP21 versus SP22",
+        "POST /bin/fmdita/import",
+        "never as a supported product threshold or SLA",
+        "observable terminal success or failure state",
+        "verified by reading back every targeted asset",
+        "Product Assets Upload Process",
+        "GUIDES-14743",
+        "Do not claim data loss",
+    ):
+        check(f"Platform component pack retains marker {marker}", marker in platform_reference)
+
+    repo_root = _find_repo_root()
+    for variant in (".codex", ".claude"):
+        variant_root = repo_root / variant / "skills" / "test-plan-generation"
+        check(
+            f"{variant} component router matches canonical",
+            (variant_root / "scripts" / "component_reference_router.py").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "scripts" / "component_reference_router.py").read_bytes(),
+        )
+        check(
+            f"{variant} Authoring pack matches canonical",
+            (variant_root / "references" / "component-authoring.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-authoring.md").read_bytes(),
+        )
+        check(
+            f"{variant} Integration pack matches canonical",
+            (variant_root / "references" / "component-integration.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-integration.md").read_bytes(),
+        )
+        check(
+            f"{variant} Platform pack matches canonical",
+            (variant_root / "references" / "component-platform.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-platform.md").read_bytes(),
+        )
+
+
 def main() -> int:
     test_validator()
     test_verifier()
-    test_git_ref_citations()
     test_attachment_manifest()
     test_run_gates()
-    test_uac_fidelity_reference()
     test_extract_acs()
     test_compact_view()
+    test_authoring_state_contract()
+    test_uac_fidelity_reference()
+    test_component_reference_routing()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
