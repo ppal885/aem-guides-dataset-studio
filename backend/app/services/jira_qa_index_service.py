@@ -24,8 +24,10 @@ from app.services.jira_sync_state import (
     JiraQaIndexSyncState,
     build_backfill_jql,
     build_incremental_jql,
+    has_valid_sync_cursor,
     load_jira_qa_sync_state,
     merge_failed_keys,
+    parse_jira_timestamp,
     save_jira_qa_sync_state,
 )
 from app.services.vector_store_service import (
@@ -247,11 +249,15 @@ def fetch_issue_bundle(client: JiraClient, issue_key: str) -> dict[str, Any]:
 
 
 def _cmp_jira_updated(a: str | None, b: str | None) -> bool:
-    """Return True if ``a`` is newer than ``b`` (lexicographic ok for Jira ISO timestamps)."""
+    """Return True if ``a`` is newer than ``b`` across Jira API/CSV formats."""
     if not a:
         return False
     if not b:
         return True
+    parsed_a = parse_jira_timestamp(a)
+    parsed_b = parse_jira_timestamp(b)
+    if parsed_a is not None and parsed_b is not None:
+        return parsed_a > parsed_b
     return str(a) > str(b)
 
 
@@ -313,13 +319,27 @@ def _persist_jira_qa_sync_state_fields(
         last_indexed_jira_key=new_key,
         total_indexed=prior_state.total_indexed + issues_indexed,
         failed_keys=failed_keys,
+        cursor_source="jira_search_index",
+        cursor_bootstrapped_at=prior_state.cursor_bootstrapped_at,
+        corpus_issue_count_at_bootstrap=prior_state.corpus_issue_count_at_bootstrap,
+        corpus_latest_updated_at_at_bootstrap=prior_state.corpus_latest_updated_at_at_bootstrap,
+        bootstrap_overlap_hours=prior_state.bootstrap_overlap_hours,
+        total_indexed_semantics=(
+            "searchable_issue_baseline_plus_successful_index_operations"
+            if prior_state.cursor_source == "indexed_corpus_bootstrap"
+            else "cumulative_successful_index_operations"
+        ),
+        historical_backfill_complete=prior_state.historical_backfill_complete,
     )
     try:
         save_jira_qa_sync_state(sid, new_state)
         return {"sync_state": new_state.model_dump(mode="json"), "sync_state_id": sid}
     except (OSError, ValueError) as exc:
         logger.warning_structured("jira_qa_sync_state_save_failed", extra_fields={"error": str(exc)})
-        return {}
+        return {
+            "sync_state_id": sid,
+            "sync_state_error": f"Cursor state could not be persisted: {exc}",
+        }
 
 
 def index_jql_to_chroma(
@@ -644,10 +664,27 @@ def index_jira_project_incremental(
     jira_client: JiraClient | None = None,
     sync_state_id: str | None = None,
 ) -> dict[str, Any]:
-    """Incremental index using last sync time from state; auto backfill when no prior sync exists."""
+    """Incrementally index from a valid state, bootstrapping from the corpus when safe."""
     sid = sync_state_id or f"project:{project_key.strip()}"
     st = load_jira_qa_sync_state(sid)
-    if not st.last_successful_sync_time:
+    cursor_bootstrap: dict[str, Any] | None = None
+    auto_bootstrap = os.getenv("JIRA_QA_AUTO_BOOTSTRAP_CURSOR", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not has_valid_sync_cursor(st, project_key=project_key) and auto_bootstrap:
+        from app.services.jira_sync_cursor_service import bootstrap_jira_sync_cursor
+
+        cursor_bootstrap = bootstrap_jira_sync_cursor(
+            project_key,
+            sync_state_id=sid,
+            dry_run=False,
+        )
+        if cursor_bootstrap.get("valid"):
+            st = load_jira_qa_sync_state(sid)
+    if not has_valid_sync_cursor(st, project_key=project_key):
         backfill_limit = limit if limit is not None else default_jira_qa_backfill_limit()
         logger.info_structured(
             "jira_qa_incremental_no_state_falling_back_to_backfill",
@@ -665,13 +702,15 @@ def index_jira_project_incremental(
             sync_state_id=sid,
         )
         out["fallback"] = "backfill"
+        if cursor_bootstrap is not None:
+            out["cursor_bootstrap"] = cursor_bootstrap
         out["message"] = (
             out.get("message")
-            or f"No prior sync state; ran backfill for up to {backfill_limit} issues instead of incremental."
+            or f"No valid sync cursor; ran backfill for up to {backfill_limit} issues instead of incremental."
         )
         return out
     jql = build_incremental_jql(project_key, st.last_successful_sync_time)
-    return index_jql_to_chroma(
+    out = index_jql_to_chroma(
         jql,
         limit=limit,
         force_reindex=force_reindex,
@@ -679,6 +718,9 @@ def index_jira_project_incremental(
         persist_sync_state=True,
         sync_state_id=sid,
     )
+    if cursor_bootstrap is not None:
+        out["cursor_bootstrap"] = cursor_bootstrap
+    return out
 
 
 def recover_failed_jira_keys(

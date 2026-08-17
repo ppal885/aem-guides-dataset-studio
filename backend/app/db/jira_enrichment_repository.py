@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Text, func, or_
+from sqlalchemy import Text, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.schemas_jira_enrichment import JiraEnrichedDocument
@@ -138,9 +138,19 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     row.issue_type = data.get("issue_type") or None
     row.status = data.get("status") or None
     row.priority = data.get("priority") or None
+    row.resolution = (data.get("resolution") or "")[:120] or None
+    row.jira_updated_at = _parse_source_datetime(data.get("jira_updated_at"))
+    row.source_type = (data.get("source_type") or "jira_api")[:80]
+    row.source_file_hash = (data.get("source_file_hash") or "")[:64] or None
+    row.source_file_hashes = data.get("source_file_hashes") or []
+    row.import_provenance = data.get("import_provenance") or []
+    row.evidence_archive = data.get("evidence_archive") or {}
     row.labels = data.get("labels") or []
     row.components = data.get("components") or []
+    row.company_names = data.get("company_names") or []
     row.customer_names = data.get("customer_names") or []
+    row.customer_cohorts = data.get("customer_cohorts") or []
+    row.resolutions = data.get("resolutions") or []
     row.domain = (data.get("domain") or "unknown")[:80]
     row.sub_domain = (data.get("sub_domain") or "")[:120] or None
     row.affected_outputs = data.get("affected_outputs") or []
@@ -159,6 +169,21 @@ def upsert_jira_issue(session: Session, enriched_doc: JiraEnrichedDocument) -> J
     session.flush()
     enqueue_weak_enrichment_review(session, enriched_doc)
     return row
+
+
+def _parse_source_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        for fmt in ("%d/%b/%y %I:%M %p", "%d/%b/%y %H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(raw, fmt)
+            except ValueError:
+                continue
+    return None
 
 
 def insert_jira_chunks(
@@ -227,9 +252,19 @@ def get_jira_by_key(session: Session, jira_key: str) -> dict[str, Any] | None:
         "issue_type": row.issue_type,
         "status": row.status,
         "priority": row.priority,
+        "resolution": row.resolution,
+        "jira_updated_at": _iso(row.jira_updated_at),
+        "source_type": row.source_type,
+        "source_file_hash": row.source_file_hash,
+        "source_file_hashes": row.source_file_hashes,
+        "import_provenance": row.import_provenance,
+        "evidence_archive": row.evidence_archive,
         "labels": row.labels,
         "components": row.components,
+        "company_names": row.company_names,
         "customer_names": row.customer_names,
+        "customer_cohorts": row.customer_cohorts,
+        "resolutions": row.resolutions,
         "domain": row.domain,
         "sub_domain": row.sub_domain,
         "affected_outputs": row.affected_outputs,
@@ -308,15 +343,14 @@ def search_jira_kb(
     Keyword + metadata search over the indexed Jira knowledge base.
 
     - ``q``          : substring match on summary, description, dita_entities, affected_outputs, affected_features
-    - ``domain``     : exact domain match (e.g. "native_pdf", "publishing")
+    - ``domain``     : soft ranking boost (e.g. "native_pdf", "publishing"); never excludes other domains
     - ``output``     : substring match inside affected_outputs JSON
     - ``entity``     : substring match inside dita_entities JSON
     - ``issue_type`` : substring match on issue_type
     """
     qr = session.query(JiraEnrichedIssue)
 
-    if domain:
-        qr = qr.filter(JiraEnrichedIssue.domain == domain.strip().lower())
+    domain_normalized = domain.strip().casefold().replace("-", "_").replace(" ", "_") if domain else ""
 
     if issue_type:
         qr = qr.filter(JiraEnrichedIssue.issue_type.ilike(f"%{issue_type.strip()}%"))
@@ -347,7 +381,12 @@ def search_jira_kb(
             func.lower(JiraEnrichedIssue.dita_entities.cast(Text)).like(kw_e)
         )
 
-    rows = qr.order_by(JiraEnrichedIssue.updated_at.desc()).limit(limit).all()
+    ordering = []
+    if domain_normalized and domain_normalized != "unknown":
+        normalized_column = func.replace(func.replace(func.lower(JiraEnrichedIssue.domain), "-", "_"), " ", "_")
+        ordering.append(case((normalized_column == domain_normalized, 1), else_=0).desc())
+    ordering.append(JiraEnrichedIssue.updated_at.desc())
+    rows = qr.order_by(*ordering).limit(limit).all()
 
     result: list[dict[str, Any]] = []
     for row in rows:
@@ -355,6 +394,12 @@ def search_jira_kb(
             "jira_key": row.jira_key,
             "summary": row.summary or "",
             "domain": row.domain or "unknown",
+            "domain_match": bool(
+                domain_normalized
+                and domain_normalized != "unknown"
+                and str(row.domain or "").strip().casefold().replace("-", "_").replace(" ", "_")
+                == domain_normalized
+            ),
             "sub_domain": row.sub_domain or "",
             "issue_type": row.issue_type or "",
             "status": row.status or "",
@@ -382,18 +427,20 @@ def search_by_metadata(
     limit: int = 50,
 ) -> list[JiraEnrichedIssue]:
     """
-    Filter enriched issues. ``entities`` / ``affected_outputs`` match if **any** listed value
-    overlaps stored list (case-insensitive). ``customer`` matches substring against stored
-    customer_names or raw_text.
+    Filter enriched issues. Domain is ordering-only; ``entities`` / ``affected_outputs`` match
+    if **any** listed value overlaps stored list (case-insensitive). ``customer`` matches
+    substring against stored customer_names or raw_text.
     """
     q = session.query(JiraEnrichedIssue)
-    if domain:
-        q = q.filter(JiraEnrichedIssue.domain == domain)
+    domain_normalized = domain.strip().casefold().replace("-", "_").replace(" ", "_") if domain else ""
     # Over-fetch then refine for JSON list overlap (portable across SQLite / PostgreSQL).
     cap = min(max(limit * 20, limit), 2000)
-    candidates: list[JiraEnrichedIssue] = (
-        q.order_by(JiraEnrichedIssue.updated_at.desc()).limit(cap).all()
-    )
+    ordering = []
+    if domain_normalized and domain_normalized != "unknown":
+        normalized_column = func.replace(func.replace(func.lower(JiraEnrichedIssue.domain), "-", "_"), " ", "_")
+        ordering.append(case((normalized_column == domain_normalized, 1), else_=0).desc())
+    ordering.append(JiraEnrichedIssue.updated_at.desc())
+    candidates: list[JiraEnrichedIssue] = q.order_by(*ordering).limit(cap).all()
 
     ent_needles = [e.strip() for e in (entities or []) if e and str(e).strip()]
     out_needles = [e.strip() for e in (affected_outputs or []) if e and str(e).strip()]

@@ -65,11 +65,18 @@ def run_requirement_intelligence(
         similar = list(retrieval.get("similar_jiras") or [])
 
         for s in similar:
+            learning = s.get("learning") if isinstance(s.get("learning"), dict) else {}
             eid = store.add(
                 "similar_jira",
                 (s.get("why_similar") or "")[:500],
                 str(s.get("jira_key") or ""),
-                {"title": s.get("title"), "scores": s.get("scores")},
+                {
+                    "title": s.get("title"),
+                    "scores": s.get("scores"),
+                    "learning_confidence": learning.get("learning_confidence"),
+                    "historical_outcome": learning.get("historical_outcome"),
+                    "reuse_mode": learning.get("reuse_mode"),
+                },
             )
             s["evidence_id"] = eid
             if not s.get("why_similar") and s.get("explanation"):
@@ -156,12 +163,30 @@ def run_requirement_intelligence(
             "key_outputs": list(enriched.affected_outputs or []),
         }
 
+        reusable_learning = [
+            s
+            for s in similar
+            if isinstance(s.get("learning"), dict)
+            and s["learning"].get("reuse_mode") == "verified_regression_contract"
+        ]
+        cautionary_learning = [
+            s
+            for s in similar
+            if isinstance(s.get("learning"), dict)
+            and s["learning"].get("reuse_mode") == "risk_signal_only"
+        ]
         confidence = {
-            "overall": "medium" if similar else "low",
+            "overall": "medium" if reusable_learning or similar else "low",
             "similar_jira_count": len(similar),
+            "reusable_learning_count": len(reusable_learning),
+            "cautionary_learning_count": len(cautionary_learning),
             "documentation_hits_el": len(retrieval.get("experience_league") or []),
             "documentation_hits_dita": len(retrieval.get("dita_spec") or []),
-            "notes": "Low similarity or empty RAG corpora reduces confidence; statements are evidence-tagged.",
+            "notes": (
+                "Only medium/high implemented-fix learning may define regression oracles; cautionary history is risk-only."
+                if similar
+                else "Low similarity or empty RAG corpora reduces confidence; statements are evidence-tagged."
+            ),
         }
 
         quality_score = {
@@ -181,6 +206,8 @@ def run_requirement_intelligence(
                 "scores": s.get("scores"),
                 "evidence_id": s.get("evidence_id"),
                 "excerpt": str(s.get("document_excerpt") or ""),
+                "chunk_type": str(s.get("chunk_type") or ""),
+                "learning": dict(s.get("learning") or {}),
             }
             for s in similar
         ]

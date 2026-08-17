@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from typing import Any
 
 import httpx
@@ -23,6 +24,7 @@ from app.services.jira_retrieval_service import (
     MIN_VECTOR_SCORE,
     RetrievedJira,
     explain_similarity,
+    extract_structured_learning_evidence,
     retrieve_similar_jiras,
 )
 from app.services.jira_client import JiraClient
@@ -42,6 +44,51 @@ from services.uac.uac_output_validator import apply_strict_uac_validation, _sync
 from app.services.uac_ui_contract_service import build_uac_ui_contract
 from services.uac.qa_handoff_service import build_qa_handoff_payload_for_response
 
+_UAC_RELEASE_NOTE_LIMIT: int = int(os.getenv("UAC_RELEASE_NOTE_CHUNKS", "3"))
+
+
+_RELEASE_NOTE_URL_SIGNALS = (
+    "release-note", "release-info", "what-is-new", "whats-new", "fixed-issues",
+)
+
+
+def _retrieve_release_note_context(
+    query_text: str,
+    *,
+    limit: int = _UAC_RELEASE_NOTE_LIMIT,
+) -> list[str]:
+    """Return up to `limit` release-note chunk texts from the aem_guides crawl collection.
+
+    Crawled release-note pages are stored as doc_type=aem_doc; they are
+    identified by URL patterns such as 'release-note', 'release-info',
+    'what-is-new', or 'fixed-issues'. Returns [] silently on any failure.
+    """
+    if not query_text or limit <= 0:
+        return []
+    try:
+        from app.services.embedding_service import embed_query, is_embedding_available
+        from app.services.vector_store_service import query_collection, CHROMA_COLLECTION_AEM_GUIDES
+
+        if not is_embedding_available():
+            return []
+        qv = embed_query(query_text[:2000])
+        if not qv:
+            return []
+        # Fetch more candidates then post-filter by URL
+        rows = query_collection(CHROMA_COLLECTION_AEM_GUIDES, qv, k=limit * 6)
+        results: list[str] = []
+        for r in rows:
+            url = (r.get("metadata") or {}).get("url", "").lower()
+            if any(sig in url for sig in _RELEASE_NOTE_URL_SIGNALS):
+                doc = r.get("document", "").strip()
+                if doc:
+                    results.append(doc)
+            if len(results) >= limit:
+                break
+        return results
+    except Exception:
+        return []
+
 logger = get_structured_logger(__name__)
 
 _UAC_MAX_SCENARIOS: int = int(os.getenv("UAC_MAX_SCENARIOS", "7"))
@@ -55,7 +102,12 @@ _JIRA_FETCH_FIELDS = (
 
 
 def _jira_client_ready(client: JiraClient) -> bool:
-    has_auth = (client.username and client.password) or (client.email and client.api_token)
+    has_auth = (
+        bool(getattr(client, "bearer_token", ""))
+        or (client.username and client.password)
+        or (client.email and client.api_token)
+        or (client.username and client.api_token)
+    )
     return bool(client.base_url and has_auth)
 
 
@@ -195,18 +247,23 @@ def _retrieval_query_text(en: JiraEnrichedDocument) -> str:
         (en.raw_text or "")[:6000],
         " ".join(en.dita_entities or []),
         " ".join(en.affected_outputs or []),
+        " ".join(en.affected_features or []),
+        " ".join(en.components or []),
+        " ".join(en.labels or []),
+        " ".join(en.customer_names or []),
+        " ".join(en.symptoms or []),
+        (en.expected_behavior or "")[:2000],
+        (en.actual_behavior or "")[:2000],
+        " ".join(en.qa_risk_tags or []),
     ]
     return "\n\n".join(p for p in parts if p.strip())
 
 
 def _has_retrieval_anchors(en: JiraEnrichedDocument) -> bool:
-    """Avoid vector-only similar Jira retrieval when the current ticket has no reusable UAC anchors."""
+    """Require meaningful searchable text, never a known domain classification."""
 
-    return bool(
-        (en.domain or "").strip().lower() not in {"", "unknown"}
-        or (en.dita_entities or [])
-        or (en.affected_outputs or [])
-    )
+    tokens = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", _retrieval_query_text(en).lower()))
+    return len(tokens) >= 2
 
 
 def _collect_risk_section_drops(
@@ -262,6 +319,7 @@ def _similar_payload(rows: list[RetrievedJira], enriched: JiraEnrichedDocument) 
                     "overlap_signals": r.evidence_overlap_signals,
                 },
                 "document_excerpt": (r.document or "")[:500],
+                "learning": extract_structured_learning_evidence(r),
             }
         )
     return out
@@ -304,7 +362,13 @@ def _retrieval_debug(en: JiraEnrichedDocument, similar: list[RetrievedJira]) -> 
 def _structured_uac(en: JiraEnrichedDocument, similar: list[RetrievedJira], retrieval_debug: dict[str, Any]) -> dict[str, Any]:
     return generate_uac_recommendations(
         en,
-        [row.model_dump() for row in similar],
+        [
+            {
+                **row.model_dump(),
+                "learning": extract_structured_learning_evidence(row),
+            }
+            for row in similar
+        ],
         retrieval_debug,
     )
 
@@ -536,14 +600,9 @@ async def run_uac_analyze(
 
     similar: list[RetrievedJira] = []
     retrieval_sink: dict[str, Any] = {}
-    # Skip vector retrieval when there are no anchors to search on:
-    # unknown domain + empty entity list + empty output list → query would be noise
-    _has_anchors = (
-        (enriched.domain or "").strip().lower() not in {"", "unknown"}
-        or (enriched.dita_entities or [])
-        or (enriched.affected_outputs or [])
-    )
-    can_retrieve_similar = include_similar and max_similar > 0 and _has_anchors
+    # Use meaningful ticket text even when domain classification is unknown.
+    has_query_evidence = _has_retrieval_anchors(enriched)
+    can_retrieve_similar = include_similar and max_similar > 0 and has_query_evidence
     if can_retrieve_similar:
         qtext = _retrieval_query_text(enriched)
         eff_domain = enriched.domain if enriched.domain != "unknown" else None
@@ -561,6 +620,7 @@ async def run_uac_analyze(
         )
         if debug:
             retrieval_sink.setdefault("uac_effective_domain_for_retrieval", eff_domain)
+            retrieval_sink.setdefault("domain_policy", "soft_boost_only")
             retrieval_sink["classification_snapshot"] = _classification_payload(enriched)
         logger.info_structured(
             "uac_analyze_retrieval",
@@ -580,12 +640,18 @@ async def run_uac_analyze(
                 "exclude_jira_key": jk,
             },
             "note": (
-                "Similar-ticket retrieval was not run because current Jira lacks domain/entity/output anchors."
-                if include_similar and max_similar > 0 and not _has_anchors
+                "Similar-ticket retrieval was not run because current Jira lacks meaningful searchable text."
+                if include_similar and max_similar > 0 and not has_query_evidence
                 else "Similar-ticket retrieval was not run (include_similar=false or max_similar=0)."
             ),
+            "domain_policy": "soft_boost_only",
             "classification_snapshot": _classification_payload(enriched),
         }
+
+    release_note_chunks: list[str] = []
+    if has_query_evidence:
+        qtext_for_rn = _retrieval_query_text(enriched)
+        release_note_chunks = _retrieve_release_note_context(qtext_for_rn)
 
     def _retrieval_out() -> dict[str, Any]:
         if debug and retrieval_sink:
@@ -645,7 +711,7 @@ async def run_uac_analyze(
 
     current_for_score = enriched.model_dump()
     similar_for_score = _similar_payload(similar, enriched)
-    prompt = build_uac_prompt(enriched, similar)
+    prompt = build_uac_prompt(enriched, similar, release_note_chunks=release_note_chunks)
 
     if not is_llm_available():
         logger.warning_structured("uac_analyze_llm_off", extra_fields={"jira_key": jk})
@@ -685,7 +751,7 @@ async def run_uac_analyze(
         ).strip()
         first_quality = score_answer_specificity(draft, current_for_score, similar_for_score)
         if int(first_quality.get("score", 0)) < 70:
-            strict_prompt = build_uac_prompt(enriched, similar, strict_specificity=True)
+            strict_prompt = build_uac_prompt(enriched, similar, strict_specificity=True, release_note_chunks=release_note_chunks)
             draft = (
                 await asyncio.wait_for(
                     generate_text(

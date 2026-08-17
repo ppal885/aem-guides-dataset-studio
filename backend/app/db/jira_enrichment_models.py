@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import JSON
 
 from app.db.base import Base
@@ -37,9 +37,19 @@ class JiraEnrichedIssue(Base):
     issue_type = Column(String(120), nullable=True)
     status = Column(String(120), nullable=True)
     priority = Column(String(120), nullable=True)
+    resolution = Column(String(120), nullable=True, index=True)
+    jira_updated_at = Column(DateTime, nullable=True, index=True)
+    source_type = Column(String(80), nullable=True, index=True)
+    source_file_hash = Column(String(64), nullable=True, index=True)
+    source_file_hashes = Column(JSON, nullable=True)
+    import_provenance = Column(JSON, nullable=True)
+    evidence_archive = Column(JSON, nullable=True)
     labels = Column(JSON, nullable=True)  # list[str]; JSONB on PostgreSQL
     components = Column(JSON, nullable=True)
+    company_names = Column(JSON, nullable=True)
     customer_names = Column(JSON, nullable=True)
+    customer_cohorts = Column(JSON, nullable=True)
+    resolutions = Column(JSON, nullable=True)
     domain = Column(String(80), nullable=False, index=True, default="unknown")
     sub_domain = Column(String(120), nullable=True, index=True)
     affected_outputs = Column(JSON, nullable=True)
@@ -56,6 +66,74 @@ class JiraEnrichedIssue(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     indexed_at = Column(DateTime, nullable=True, index=True)
+
+
+class JiraCsvImportRun(Base):
+    """Restart-safe status and audit metadata for admin Jira CSV imports."""
+
+    __tablename__ = "jira_csv_import_runs"
+
+    id = Column(String(36), primary_key=True)
+    status = Column(String(30), nullable=False, index=True, default="pending")
+    filenames = Column(JSON, nullable=False, default=list)
+    file_hashes = Column(JSON, nullable=False, default=list)
+    importer_version = Column(String(40), nullable=False, default="1")
+    customer_assignments = Column(JSON, nullable=False, default=dict)
+    profile_rebuild = Column(JSON, nullable=False, default=dict)
+    total_rows = Column(Integer, nullable=False, default=0)
+    processed_rows = Column(Integer, nullable=False, default=0)
+    indexed_issues = Column(Integer, nullable=False, default=0)
+    skipped_issues = Column(Integer, nullable=False, default=0)
+    metadata_merged_issues = Column(Integer, nullable=False, default=0)
+    failed_issues = Column(Integer, nullable=False, default=0)
+    chunks_indexed = Column(Integer, nullable=False, default=0)
+    redacted_fields = Column(Integer, nullable=False, default=0)
+    errors = Column(JSON, nullable=False, default=list)
+    created_by = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class JiraCustomerProfile(Base):
+    """Aggregate customer Jira-corpus profile; never direct product-behavior proof."""
+
+    __tablename__ = "jira_customer_profiles"
+
+    customer_key = Column(String(120), primary_key=True)
+    customer_name = Column(String(200), nullable=False, index=True)
+    issue_count = Column(Integer, nullable=False, default=0)
+    bug_issue_count = Column(Integer, nullable=False, default=0)
+    bug_issue_percent = Column(Float, nullable=False, default=0.0)
+    problem_report_count = Column(Integer, nullable=False, default=0)
+    problem_report_percent = Column(Float, nullable=False, default=0.0)
+    issue_types = Column(JSON, nullable=False, default=list)
+    problem_types = Column(JSON, nullable=False, default=list)
+    bug_taxonomy = Column(JSON, nullable=False, default=list)
+    bug_concentrations = Column(JSON, nullable=False, default=dict)
+    components = Column(JSON, nullable=False, default=list)
+    product_areas = Column(JSON, nullable=False, default=list)
+    domains = Column(JSON, nullable=False, default=list)
+    workflows = Column(JSON, nullable=False, default=list)
+    affected_outputs = Column(JSON, nullable=False, default=list)
+    dita_entities = Column(JSON, nullable=False, default=list)
+    content_data_signals = Column(JSON, nullable=False, default=list)
+    classification_quality = Column(JSON, nullable=False, default=dict)
+    failure_areas = Column(JSON, nullable=False, default=list)
+    automation_signals = Column(JSON, nullable=False, default=list)
+    resolution_patterns = Column(JSON, nullable=False, default=list)
+    regression_recommendations = Column(JSON, nullable=False, default=list)
+    test_data_recommendations = Column(JSON, nullable=False, default=list)
+    exploratory_recommendations = Column(JSON, nullable=False, default=list)
+    representative_keys = Column(JSON, nullable=False, default=list)
+    source_file_hashes = Column(JSON, nullable=False, default=list)
+    profile_version = Column(String(40), nullable=False, default="1")
+    profile_hash = Column(String(64), nullable=True)
+    approval_status = Column(String(30), nullable=False, default="draft", index=True)
+    approved_by = Column(String(120), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    review_notes = Column(Text, nullable=True)
+    rebuilt_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class JiraEnrichmentReviewQueue(Base):

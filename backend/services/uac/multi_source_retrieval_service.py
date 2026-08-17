@@ -8,7 +8,13 @@ from app.core.schemas_jira_enrichment import JiraEnrichedDocument
 from app.core.structured_logging import get_structured_logger
 from app.services.doc_retriever_service import retrieve_relevant_docs_with_diagnostics
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
-from app.services.jira_retrieval_service import MIN_FINAL_SCORE, RetrievedJira, explain_similarity, retrieve_similar_jiras
+from app.services.jira_retrieval_service import (
+    MIN_FINAL_SCORE,
+    RetrievedJira,
+    explain_similarity,
+    extract_structured_learning_evidence,
+    retrieve_similar_jiras,
+)
 
 logger = get_structured_logger(__name__)
 
@@ -108,6 +114,7 @@ def retrieve_for_intelligence(
                     "metadata": r.metadata_score,
                 },
                 "document_excerpt": (r.document or "")[:900],
+                "learning": extract_structured_learning_evidence(r),
             }
         )
 

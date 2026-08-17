@@ -30,7 +30,7 @@ def kb_search(
 
     Query params:
     - **q**: keyword substring (matches summary, description, entities, outputs, features)
-    - **domain**: exact domain slug (e.g. `native_pdf`, `publishing`, `unknown`)
+    - **domain**: soft ranking boost; mismatched and unknown-domain tickets remain eligible
     - **output**: substring match inside affected_outputs (e.g. `Native PDF`, `AEM Sites`)
     - **entity**: substring match inside dita_entities (e.g. `conkeyref`, `xref`)
     - **issue_type**: substring match on issue type (e.g. `Bug`, `Customer Request`)
@@ -51,7 +51,7 @@ def kb_search(
         )
     finally:
         db.close()
-    return {"total": len(results), "results": results}
+    return {"total": len(results), "domain_policy": "soft_boost_only", "results": results}
 
 
 @router.get("/domains")

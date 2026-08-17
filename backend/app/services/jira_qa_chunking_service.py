@@ -8,11 +8,16 @@ import re
 from typing import Any
 
 from app.core.schemas_jira_enrichment import JiraEnrichedDocument
+from app.services.customer_tokens import clean_customer_tokens
 from app.services.jira_client import extract_description_from_issue, _adf_to_plain_text
 from app.services.jira_enrichment_service import (
     enrich_jira,
     enrichment_embed_prefix,
     enrichment_metadata_json,
+)
+from app.services.jira_component_metadata_service import (
+    canonical_component_names,
+    component_filter_metadata,
 )
 
 JIRA_QA_CUSTOMER_FIELD_ID = (os.getenv("JIRA_QA_CUSTOMER_FIELD_ID") or "").strip()
@@ -129,7 +134,16 @@ def _build_base_metadata(
     pr = fields.get("priority") or {}
     priority = str(pr.get("name") or "") if isinstance(pr, dict) else ""
 
-    components = _components_list(fields)
+    active_components = _components_list(fields)
+    csv_raw_components = fields.get("_components_raw")
+    raw_components = (
+        [str(value).strip() for value in csv_raw_components if str(value).strip()]
+        if isinstance(csv_raw_components, list)
+        else active_components
+    )
+    components = canonical_component_names(_components_list(fields))
+    if not components:
+        components = canonical_component_names(raw_components)
     labels = _labels_list(fields)
     meta: dict[str, Any] = {
         "source_type": "jira",
@@ -139,7 +153,26 @@ def _build_base_metadata(
         "issue_type": issue_type,
         "status": status,
         "priority": priority,
+        "resolution": str(fields.get("_csv_resolution") or "")[:120],
+        "jira_updated_at": str(fields.get("updated") or "")[:80],
+        "import_source_type": str(fields.get("_source_type") or "jira_api")[:80],
+        "source_file_hash": str(fields.get("_source_file_hash") or "")[:64],
+        "source_evidence_mode": str(
+            fields.get("_csv_source_evidence_mode") or "full_jira"
+        )[:40],
         "components": _json_meta(components),
+        "components_raw": _json_meta(raw_components),
+        "component_classification_source": str(
+            fields.get("_component_classification_source") or "jira_component"
+        )[:80],
+        "component_inference_signals": _json_meta(
+            fields.get("_component_inference_signals")
+            if isinstance(fields.get("_component_inference_signals"), list)
+            else []
+        ),
+        "component_assignment_method": str(
+            fields.get("_component_assignment_method") or "source"
+        )[:80],
         "labels": _json_meta(labels),
         "fix_versions": _json_meta(_versions(fields, "fixVersions")),
         "affected_versions": _json_meta(_versions(fields, "versions")),
@@ -149,6 +182,7 @@ def _build_base_metadata(
         "qa_domain": "UAC",
         "automation_candidate": automation_candidate,
     }
+    meta.update(component_filter_metadata(components))
     if customer_index is not None:
         ci = customer_index
     else:
@@ -232,10 +266,14 @@ def build_jira_qa_chunks(
         meta.update(
             {
                 "enrich_domain": enriched.domain[:120],
+                "domain_ranking_policy": "soft_boost_only",
+                "domain_schema_version": "jira-domain-v2",
                 "enrich_sub_domain": (enriched.sub_domain or "")[:120],
-                "enrich_customers": _json_meta(enriched.customer_names),
+                "enrich_customers": _json_meta(clean_customer_tokens(enriched.customer_names)),
                 "enrich_entities": _json_meta(enriched.dita_entities[:40]),
                 "enrich_outputs": _json_meta(enriched.affected_outputs[:20]),
+                "enrich_features": _json_meta(enriched.affected_features[:40]),
+                "editor_variant": "new_editor" if "new_editor" in enriched.affected_features else "",
                 "enrich_automation_fit": enriched.automation_fit[:200],
                 "enrich_profile_json": je_profile,
             }

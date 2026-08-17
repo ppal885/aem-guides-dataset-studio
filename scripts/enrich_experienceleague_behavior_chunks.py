@@ -149,7 +149,13 @@ class TopicEvidence:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus-root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    parser.add_argument(
+        "--corpus-root",
+        type=Path,
+        action="append",
+        default=None,
+        help="DITA topic corpus root; can be repeated. Defaults to experienceleague-dita-corpus/topics",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=0, help="Limit DITA files read; 0 means all")
     parser.add_argument("--max-chunks", type=int, default=8000)
@@ -161,14 +167,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    dita_files = sorted(args.corpus_root.rglob("*.dita"))
+    corpus_roots = args.corpus_root or [DEFAULT_CORPUS_ROOT]
+    dita_entries: list[tuple[Path, Path]] = []
+    for corpus_root in corpus_roots:
+        dita_entries.extend((path, corpus_root) for path in sorted(corpus_root.rglob("*.dita")))
     if args.limit > 0:
-        dita_files = dita_files[: args.limit]
+        dita_entries = dita_entries[: args.limit]
 
     records: list[dict[str, Any]] = []
     skipped = 0
-    for path in dita_files:
-        evidence = load_topic_evidence(path, args.corpus_root)
+    for path, corpus_root in dita_entries:
+        evidence = load_topic_evidence(path, corpus_root)
         if not evidence or not should_include(evidence):
             skipped += 1
             continue
@@ -189,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "files_seen": len(dita_files),
+                "files_seen": len(dita_entries),
+                "corpus_roots": [str(root) for root in corpus_roots],
                 "files_skipped": skipped,
                 "chunks_written": len(records),
                 "output": str(args.output),
@@ -550,7 +560,12 @@ def build_qa_oracles(constructs: list[str], feature_areas: list[str], output_con
 
 
 def infer_source_product_family(url: str) -> str:
-    segments = [segment for segment in urlparse(str(url or "")).path.split("/") if segment]
+    parsed = urlparse(str(url or ""))
+    if parsed.netloc.lower().endswith("dita-ot.org"):
+        return "dita-ot"
+    if parsed.netloc.lower() == "github.com" and parsed.path.lower().startswith("/dita-ot/dita-ot/"):
+        return "dita-ot"
+    segments = [segment for segment in parsed.path.split("/") if segment]
     try:
         index = segments.index("docs")
         return segments[index + 1] if index + 1 < len(segments) else ""

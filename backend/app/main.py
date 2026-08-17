@@ -43,6 +43,7 @@ from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.api.v1.router import api_router as v1_router
+from app.api.routes.remote_mcp import router as remote_mcp_router
 from app.api.v1.routes.evidence_mcp import router as evidence_mcp_router
 from app.core.runtime_safety import validate_runtime_safety
 from app.core.structured_logging import get_structured_logger, LoggingContext
@@ -66,6 +67,8 @@ app = FastAPI(
     description="API for generating and managing AEM Guides datasets",
     version="1.0.0",
 )
+
+app.include_router(remote_mcp_router)
 
 # Runtime safety snapshot
 _runtime_safety = validate_runtime_safety()
@@ -429,6 +432,8 @@ async def startup_event():
             from app.db.chat_quality_models import ChatAnswerQuality  # noqa: F401
             from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
             from app.db.llm_models import LLMRun  # noqa: F401
+            from app.db.evidence_graph_models import EvidenceGraphGeneration  # noqa: F401
+            from app.db.test_plan_feedback_models import TestPlanQualityFeedback  # noqa: F401
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
                 logger.info_structured(
@@ -505,7 +510,15 @@ async def startup_event():
         jira_url = os.getenv("JIRA_BASE_URL") or os.getenv("JIRA_URL", "")
         jira_user = os.getenv("JIRA_USERNAME", "")
         jira_api_ver = os.getenv("JIRA_API_VERSION", "2")
-        jira_configured = bool(jira_url and (jira_user and os.getenv("JIRA_PASSWORD")) or (os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN")))
+        jira_configured = bool(
+            jira_url
+            and (
+                (jira_user and os.getenv("JIRA_PASSWORD"))
+                or (os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN"))
+                or os.getenv("JIRA_PAT")
+                or os.getenv("JIRA_BEARER_TOKEN")
+            )
+        )
         logger.info_structured(
             "Jira config",
             extra_fields={
@@ -707,6 +720,77 @@ async def startup_event():
                 extra_fields={"cron": dita_pdf_index_schedule},
             )
 
+        evidence_graph_enabled = os.getenv("EVIDENCE_GRAPH_ENABLED", "false").lower() == "true"
+        evidence_graph_sync_enabled = (
+            evidence_graph_enabled
+            and os.getenv("EVIDENCE_GRAPH_SYNC_ENABLED", "false").lower() == "true"
+        )
+        evidence_graph_reconcile_enabled = (
+            evidence_graph_enabled
+            and os.getenv("EVIDENCE_GRAPH_RECONCILE_ENABLED", "true").lower() == "true"
+        )
+
+        def evidence_graph_int(name: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(os.getenv(name, str(default)))
+            except (TypeError, ValueError):
+                value = default
+            return max(minimum, min(value, maximum))
+
+        def run_evidence_graph_sync_job():
+            from app.services.evidence_graph_sync_service import drain_evidence_graph_events
+
+            result = drain_evidence_graph_events(
+                max_events=evidence_graph_int("EVIDENCE_GRAPH_SYNC_MAX_EVENTS", 500, 1, 5000),
+                max_retries=evidence_graph_int("EVIDENCE_GRAPH_SYNC_MAX_RETRIES", 5, 1, 20),
+                batch_size=evidence_graph_int("EVIDENCE_GRAPH_BATCH_SIZE", 500, 10, 5000),
+                created_by="apscheduler-incremental",
+            )
+            if not result.get("success"):
+                raise RuntimeError(f"Evidence graph incremental synchronization failed: {result}")
+            logger.info_structured("Evidence graph incremental synchronization completed", extra_fields=result)
+
+        def run_evidence_graph_reconciliation_job():
+            from app.services.evidence_graph_sync_service import reconcile_evidence_graph
+
+            result = reconcile_evidence_graph(
+                dry_run=False,
+                batch_size=evidence_graph_int("EVIDENCE_GRAPH_BATCH_SIZE", 500, 10, 5000),
+                created_by="apscheduler-nightly",
+            )
+            if not result.get("valid") or not result.get("promoted"):
+                raise RuntimeError(f"Evidence graph reconciliation failed: {result}")
+            logger.info_structured("Evidence graph nightly reconciliation completed", extra_fields=result)
+
+        if evidence_graph_sync_enabled:
+            sync_schedule = os.getenv("EVIDENCE_GRAPH_SYNC_SCHEDULE", "*/5 * * * *")
+            scheduler.add_job(
+                run_evidence_graph_sync_job,
+                trigger=CronTrigger.from_crontab(sync_schedule),
+                id="evidence_graph_incremental_sync",
+                name="Evidence Graph Incremental Sync",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            logger.info_structured("Evidence graph incremental schedule added", extra_fields={"cron": sync_schedule})
+
+        if evidence_graph_reconcile_enabled:
+            reconcile_schedule = os.getenv("EVIDENCE_GRAPH_RECONCILE_SCHEDULE", "30 2 * * *")
+            scheduler.add_job(
+                run_evidence_graph_reconciliation_job,
+                trigger=CronTrigger.from_crontab(reconcile_schedule),
+                id="evidence_graph_nightly_reconciliation",
+                name="Evidence Graph Nightly Reconciliation",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            logger.info_structured(
+                "Evidence graph reconciliation schedule added",
+                extra_fields={"cron": reconcile_schedule},
+            )
+
         cleanup_enabled = os.getenv("CLEANUP_ENABLED", "true").lower() == "true"
         cleanup_schedule = os.getenv("CLEANUP_SCHEDULE", "0 2 * * *")
         
@@ -731,7 +815,14 @@ async def startup_event():
                 extra_fields={"enabled": False}
             )
 
-        if cleanup_enabled or jira_indexing_enabled or aem_docs_crawl_enabled or dita_pdf_index_enabled:
+        if (
+            cleanup_enabled
+            or jira_indexing_enabled
+            or aem_docs_crawl_enabled
+            or dita_pdf_index_enabled
+            or evidence_graph_sync_enabled
+            or evidence_graph_reconcile_enabled
+        ):
             scheduler.start()
             logger.info_structured("Scheduler started", extra_fields={})
         

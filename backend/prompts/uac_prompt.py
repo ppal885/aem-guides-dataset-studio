@@ -110,6 +110,7 @@ def build_uac_prompt(
     similar_jiras: Sequence[RetrievedJira | dict[str, Any]],
     *,
     strict_specificity: bool = False,
+    release_note_chunks: Sequence[str] | None = None,
 ) -> str:
     """
     Build a single user prompt (or combined instruction block) for UAC generation.
@@ -124,6 +125,24 @@ def build_uac_prompt(
     similar = _similar_jira_block(sim, en, max_items=5)
     domain_template = load_uac_domain_template(en.domain)
     domain_template_block = f"\n\n## Domain-specific UAC template\n{domain_template}\n" if domain_template else ""
+
+    # Build an explicit output-scope reminder derived from the enriched data.
+    _affected = en.affected_outputs or []
+    if _affected:
+        _scope_reminder = (
+            f"\n## Output scope (auto-derived — do not ignore)\n"
+            f"The `affected_outputs` field for this issue is: {_affected}.\n"
+            f"Section 4 scenarios MUST stay within these output types. "
+            f"Do not introduce any other output type (Native PDF, AEM Sites, Web Editor, HTML5, EPUB, etc.) "
+            f"that is not in this list and not explicitly named in the description.\n"
+        )
+    else:
+        _scope_reminder = (
+            "\n## Output scope (auto-derived — do not ignore)\n"
+            "`affected_outputs` is empty for this issue. "
+            "Derive the output type(s) strictly from `description_excerpt`. "
+            "Do not assume or add output types not mentioned in the description.\n"
+        )
 
     strict_extra = ""
     if strict_specificity and en.jira_key:
@@ -141,8 +160,21 @@ def build_uac_prompt(
 - **Missing clarifications:** section 5 must reference at least one concrete `missing_info_flags` item verbatim (or state that the array is empty / only `Insufficient evidence` applies).
 """
 
+    _rn_chunks = list(release_note_chunks or [])
+    if _rn_chunks:
+        _rn_text = "\n\n---\n\n".join(f"[RN{i+1}] {c.strip()}" for i, c in enumerate(_rn_chunks[:3]))
+        _rn_block = (
+            "\n\n## Evidence — AEM Guides release notes (use only to confirm fixed-version or version-specific behavior)\n"
+            "If a release note chunk is relevant to the current issue, cite it as `(release note [RN1])` etc. "
+            "Do not invent version numbers or fixed-in versions absent from these chunks.\n"
+            f"```\n{_rn_text}\n```\n"
+        )
+    else:
+        _rn_block = ""
+
     return f"""You are a senior QA analyst for Adobe Experience Manager Guides. Produce a User Acceptance Criteria (UAC) readiness brief using **only** the evidence in the JSON blocks below (current issue + similar tickets). Do not invent CRM/customer names, environments, builds, URLs, or ticket keys that are not present in that evidence.
 {strict_extra}
+{_scope_reminder}
 {domain_template_block}
 
 If the excerpts are too thin to support a claim, write exactly: Insufficient evidence from indexed Jira data.
@@ -163,7 +195,7 @@ The `description_excerpt` in the current Jira JSON is the authoritative source o
 ```json
 {similar}
 ```
-
+{_rn_block}
 ---
 
 ## Required output format (use these headings only, in this order)
@@ -196,6 +228,7 @@ If no similar tickets in evidence, write one line: `Insufficient evidence from i
 
 ### 4. Must-Test Scenarios
 - Maximum **7** scenarios.
+- **Output scope constraint (mandatory):** Only write scenarios for output types that appear in `affected_outputs` **or** are explicitly named in `description_excerpt` or similar ticket evidence. If `affected_outputs` is empty and the description names no specific output, write output-agnostic scenarios or state "Insufficient evidence from indexed Jira data." for the output field. **Do NOT add scenarios for output types absent from evidence** — e.g. do not write a Native PDF scenario if the issue only mentions Web Editor, and do not write an AEM Sites scenario if the issue only mentions Native PDF.
 - For **each** scenario use **exactly** this block (no extra lines inside the block):
 
 ```
@@ -227,6 +260,7 @@ Use this exact substructure:
 3. Prefer short, sharp, actionable phrasing.
 4. Every bullet in section 2 and every scenario in section 4 must be clearly tied to **current** or **similar** evidence via citation or inline mention.
 5. If similar ticket JSON is empty or unhelpful, state that plainly in section 3 and lean on current Jira only where possible — without fabricating history.
+6. **Output-type scope lock:** Never introduce an output type in section 4 that is absent from both `affected_outputs` and `description_excerpt`. If `affected_outputs` lists only `["web_editor"]`, do not write Native PDF, AEM Sites, or any other output scenarios. If `affected_outputs` lists only `["native_pdf"]`, do not write Web Editor scenarios. Violating this rule is a critical quality failure.
 
 Begin your answer with `### 1. Jira Classification` (no title line before it).
 """

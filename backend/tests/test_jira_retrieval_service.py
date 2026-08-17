@@ -9,10 +9,385 @@ from app.services.jira_retrieval_service import (
     MIN_FINAL_SCORE,
     MIN_METADATA_SCORE,
     MIN_VECTOR_SCORE,
+    RetrievedJira,
+    _apply_enterprise_diversity,
+    _candidate_confidence_score,
+    _candidate_rejection_reasons,
+    _metadata_where_plan,
+    extract_structured_learning_evidence,
+    extract_structured_uac_evidence,
     extract_hybrid_filters_from_issue_rows,
     retrieve_similar_jiras,
     retrieve_similar_jiras_debug,
 )
+
+
+def test_all_canonical_components_build_exact_membership_filters():
+    for component in (
+        "Editor",
+        "Authoring",
+        "Publishing",
+        "Platform",
+        "Schematron",
+        "Integration",
+    ):
+        assert _metadata_where_plan(
+            domain=None,
+            sub_domain=None,
+            issue_type=None,
+            customer_names=[],
+            components=[component],
+        ) == [
+            {
+                "label": "component_membership_filtered",
+                "where": {f"component_{component.casefold()}": True},
+            }
+        ]
+
+
+@patch("app.services.jira_retrieval_service.query_collection", return_value=[])
+@patch("app.services.jira_retrieval_service.is_embedding_available", return_value=True)
+@patch("app.services.jira_retrieval_service.is_chroma_available", return_value=True)
+def test_component_uses_strict_chroma_filter_without_unfiltered_fallback(
+    _mock_chroma, _mock_embedding, mock_query
+):
+    debug: dict = {}
+
+    rows = retrieve_similar_jiras(
+        "hotspot link fails in preview",
+        domain=None,
+        dita_entities=[],
+        affected_outputs=[],
+        customer_names=[],
+        base_components=["Editor"],
+        query_embedding=[0.1, 0.2],
+        retrieval_debug_sink=debug,
+    )
+
+    assert rows == []
+    mock_query.assert_called_once()
+    assert mock_query.call_args.kwargs["where"] == {"component_editor": True}
+    assert debug["chroma"]["component_chroma_filter_applied"] is True
+    assert debug["chroma"]["unfiltered_fallback_query"] is False
+
+
+@patch("app.services.jira_retrieval_service.query_collection", return_value=[])
+@patch("app.services.jira_retrieval_service.is_embedding_available", return_value=True)
+@patch("app.services.jira_retrieval_service.is_chroma_available", return_value=True)
+def test_domain_is_never_sent_as_a_chroma_filter(_mock_chroma, _mock_embedding, mock_query):
+    debug: dict = {}
+
+    rows = retrieve_similar_jiras(
+        "publishing timeout during output generation",
+        domain="publishing",
+        dita_entities=[],
+        affected_outputs=[],
+        customer_names=[],
+        query_embedding=[0.1, 0.2],
+        retrieval_debug_sink=debug,
+    )
+
+    assert rows == []
+    mock_query.assert_called_once()
+    assert mock_query.call_args.kwargs["where"] is None
+    assert debug["chroma"]["domain_chroma_filter_applied"] is False
+    assert debug["chroma"]["domain_policy"] == "soft_boost_only"
+
+
+@patch("app.services.jira_retrieval_service.query_collection")
+@patch("app.services.jira_retrieval_service.is_embedding_available", return_value=True)
+@patch("app.services.jira_retrieval_service.is_chroma_available", return_value=True)
+def test_unknown_domain_candidate_remains_retrievable_by_content(
+    _mock_chroma, _mock_embedding, mock_query
+):
+    mock_query.return_value = [
+        {
+            "id": "DXML-900::summary::0",
+            "document": "Publishing timeout during output generation",
+            "metadata": {
+                "jira_key": "DXML-900",
+                "title": "Publishing timeout",
+                "chunk_type": "full_ticket_summary",
+                "enrich_domain": "unknown",
+                "labels": "[]",
+                "components": "[]",
+            },
+            "distance": 0.05,
+        }
+    ]
+
+    rows = retrieve_similar_jiras(
+        "publishing timeout during output generation",
+        domain="publishing",
+        dita_entities=[],
+        affected_outputs=[],
+        customer_names=[],
+        query_embedding=[0.1, 0.2],
+        require_non_vector_evidence=False,
+    )
+
+    assert [row.jira_key for row in rows] == ["DXML-900"]
+    assert mock_query.call_args.kwargs["where"] is None
+
+
+def test_domain_is_not_subject_to_diversity_cap():
+    ranked = [
+        RetrievedJira(
+            jira_key=f"DXML-{index}",
+            title=f"Distinct ticket {index}",
+            document=f"Distinct mechanism token-{index}",
+            metadata={"enrich_domain": "publishing"},
+            final_score=0.9 - (index * 0.01),
+            strong_evidence=True,
+        )
+        for index in range(1, 6)
+    ]
+
+    result = _apply_enterprise_diversity(
+        ranked,
+        limit=5,
+        max_per_customer=2,
+    )
+
+    assert [row.jira_key for row in result] == [f"DXML-{index}" for index in range(1, 6)]
+
+
+def test_domain_match_is_only_a_soft_boost_not_an_evidence_gate():
+    signals = {
+        "domain_match": True,
+        "domain_mismatch": False,
+        "entity_overlap_count": 0,
+        "output_overlap_count": 0,
+        "customer_match": False,
+        "component_overlap_count": 0,
+        "issue_type_match": False,
+        "query_entities": [],
+        "query_outputs": [],
+    }
+
+    reasons = _candidate_rejection_reasons(
+        vector_score=0.9,
+        keyword_score=0.0,
+        metadata_score=0.22,
+        final_score=0.7,
+        gate_signals=signals,
+        evidence_gate_enabled=True,
+        require_non_vector_evidence=True,
+        meaningful_keyword_evidence=False,
+    )
+
+    assert [row["reason"] for row in reasons] == ["vector_only_weak_evidence"]
+
+
+def test_domain_mismatch_does_not_reduce_candidate_confidence():
+    signals = {
+        "domain_match": False,
+        "domain_mismatch": False,
+        "entity_overlap_count": 1,
+        "output_overlap_count": 0,
+        "customer_match": False,
+        "customer_conflict": False,
+        "component_overlap_count": 0,
+        "issue_type_match": False,
+    }
+    mismatch_signals = signals | {"domain_mismatch": True}
+
+    baseline = _candidate_confidence_score(
+        vector_score=0.8,
+        metadata_score=0.4,
+        final_score=0.6,
+        gate_signals=signals,
+        label_component_boost=0.0,
+    )
+    mismatched = _candidate_confidence_score(
+        vector_score=0.8,
+        metadata_score=0.4,
+        final_score=0.6,
+        gate_signals=mismatch_signals,
+        label_component_boost=0.0,
+    )
+
+    assert mismatched == baseline
+
+
+def test_extract_structured_learning_evidence_enforces_outcome_guardrail():
+    fixed = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Historical Jira learning: GUIDES-1\n"
+                "Behavior contract: Queue successors resume after failed job cleanup.\n"
+                "Root cause evidence: Concurrent commits targeted the same node.\n"
+                "QA oracle: Run two publishes and verify terminal states.\n"
+                "Regression risks: queue blockage"
+            ),
+            "metadata": {
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+            },
+        }
+    )
+    caution = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": "Behavior contract: Do not reuse me.\nQA oracle: Do not reuse me.",
+            "metadata": {
+                "learning_confidence": "caution",
+                "historical_outcome": "non_fix_decision",
+            },
+        }
+    )
+
+    assert fixed["reuse_mode"] == "verified_regression_contract"
+    assert "terminal states" in fixed["qa_oracle"]
+    assert caution["reuse_mode"] == "risk_signal_only"
+    assert caution["behavior_contract"] == ""
+    assert caution["qa_oracle"] == ""
+
+    migration = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Historical Jira learning: GUIDES-28667\n"
+                "Resolution mechanism: configuration_migration\n"
+                "Resolution evidence source: jira_comment_configuration_migration\n"
+                "Behavior contract: The button appears in both states.\n"
+                "QA oracle: Inspect preview."
+            ),
+            "metadata": {
+                "learning_confidence": "caution",
+                "historical_outcome": "configuration_migration",
+            },
+        }
+    )
+    assert migration["reuse_mode"] == "risk_signal_only"
+    assert migration["resolution_mechanism"] == "configuration_migration"
+    assert migration["resolution_evidence_source"] == "jira_comment_configuration_migration"
+    assert migration["behavior_contract"] == ""
+
+
+def test_generated_fallback_oracle_is_never_returned_as_historical_test_evidence():
+    evidence = extract_structured_learning_evidence(
+        {
+            "chunk_type": "learning_behavior_chunk",
+            "document": (
+                "Observed problem: Publishing queue stalls.\n"
+                "Behavior contract: The queue must resume after cleanup.\n"
+                "Root cause evidence: Concurrent commits targeted the same node.\n"
+                "QA oracle: Verify the captured behavior contract after applying the fix."
+            ),
+            "metadata": {
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+                "is_verified_fix": True,
+                "behavior_contract_complete": True,
+                "root_cause_source": "jira_root_cause_field",
+            },
+        }
+    )
+
+    assert evidence["reuse_mode"] == "verified_regression_contract"
+    assert evidence["is_verified_fix"] is False
+    assert evidence["behavior_contract"]
+    assert evidence["qa_oracle"] == ""
+    assert evidence["qa_oracle_source"] == "generated_fallback"
+
+
+def test_extract_structured_uac_evidence_preserves_source_and_blocks_candidates():
+    supporting = extract_structured_uac_evidence(
+        {
+            "chunk_type": "historical_uac_clause_chunk",
+            "document": "Historical Jira UAC clause: GUIDES-1 UAC-01\nSource text: Map links must render first.",
+            "metadata": {
+                "uac_schema_version": "historical-uac-v1",
+                "uac_source_hash": "abc123",
+                "uac_source_authority": "jira_accepted_uac",
+                "uac_reuse_tier": "supporting",
+                "uac_contract_complete": True,
+                "uac_clause_id": "UAC-01",
+                "uac_clause_stable_key": "jira:GUIDES-1:uac:abc",
+                "uac_clause_kind": "in_scope",
+                "uac_dimensions": '["ordering", "output"]',
+                "uac_release_scope_split": True,
+                "uac_release_scope_source": "jira_comment_release_scope",
+            },
+        }
+    )
+    candidate = extract_structured_uac_evidence(
+        {
+            "chunk_type": "historical_uac_clause_chunk",
+            "document": "Source text: Check performance impact. TBD",
+            "metadata": {
+                "uac_reuse_tier": "candidate",
+                "uac_contract_complete": False,
+                "uac_clause_unresolved": True,
+            },
+        }
+    )
+
+    assert supporting["reuse_mode"] == "risk_signal_only"
+    assert supporting["source_text"] == "Map links must render first."
+    assert supporting["dimensions"] == ["ordering", "output"]
+    assert supporting["release_scope_split"] is True
+    assert supporting["release_scope_source"] == "jira_comment_release_scope"
+    assert candidate["reuse_mode"] == "risk_signal_only"
+    assert candidate["clause_unresolved"] is True
+
+
+@patch("app.services.jira_retrieval_service.query_collection")
+@patch("app.services.jira_retrieval_service.embed_query")
+@patch("app.services.jira_retrieval_service.is_embedding_available")
+@patch("app.services.jira_retrieval_service.is_chroma_available")
+def test_retrieval_prefers_reusable_learning_when_scores_are_comparable(
+    mock_chroma, mock_emb, mock_embed, mock_q
+):
+    mock_chroma.return_value = True
+    mock_emb.return_value = True
+    mock_vec = MagicMock()
+    mock_vec.tolist.return_value = [0.1] * 8
+    mock_embed.return_value = mock_vec
+    base_meta = {
+        "jira_key": "GUIDES-LEARN",
+        "title": "Publishing queue collision",
+        "enrich_domain": "publishing",
+        "enrich_entities": '["workflow"]',
+        "enrich_outputs": '["AEM Sites"]',
+        "labels": "[]",
+        "components": "[]",
+    }
+    mock_q.return_value = [
+        {
+            "id": "summary",
+            "document": "Publishing workflow queue collision AEM Sites",
+            "metadata": {**base_meta, "chunk_type": "summary_chunk"},
+            "distance": 0.10,
+        },
+        {
+            "id": "learning",
+            "document": "Publishing workflow queue collision AEM Sites",
+            "metadata": {
+                **base_meta,
+                "chunk_type": "learning_behavior_chunk",
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+                "is_verified_fix": False,
+            },
+            "distance": 0.13,
+        },
+    ]
+
+    rows = retrieve_similar_jiras(
+        "publishing workflow queue collision AEM Sites",
+        domain="publishing",
+        dita_entities=["workflow"],
+        affected_outputs=["AEM Sites"],
+        customer_names=[],
+        limit=3,
+        recent_jira_keys=[],
+    )
+
+    assert rows[0].chunk_type == "learning_behavior_chunk"
+    assert rows[0].score_breakdown["ranking_score"] > rows[0].final_score
 
 
 def test_extract_hybrid_filters_from_rows():
@@ -279,7 +654,7 @@ def test_retrieve_similar_jiras_debugs_rejection_reasons(mock_chroma, mock_emb, 
     )
     assert out == []
     reasons = {row["reason"] for row in sink["dropped_candidates"]}
-    assert "domain_gate_failed" in reasons
+    assert "domain_gate_failed" not in reasons
     assert "entity_overlap_gate_failed" in reasons
     assert "output_overlap_gate_failed" in reasons
     scored = sink["candidates_after_scoring"][0]
@@ -297,7 +672,7 @@ def test_retrieve_similar_jiras_debugs_rejection_reasons(mock_chroma, mock_emb, 
 @patch("app.services.jira_retrieval_service.embed_query")
 @patch("app.services.jira_retrieval_service.is_embedding_available")
 @patch("app.services.jira_retrieval_service.is_chroma_available")
-def test_retrieve_similar_jiras_max_per_domain(mock_chroma, mock_emb, mock_embed, mock_q):
+def test_retrieve_similar_jiras_does_not_hard_cap_domain(mock_chroma, mock_emb, mock_embed, mock_q):
     mock_chroma.return_value = True
     mock_emb.return_value = True
     mock_vec = MagicMock()
@@ -320,7 +695,7 @@ def test_retrieve_similar_jiras_max_per_domain(mock_chroma, mock_emb, mock_embed
     rows = [
         {
             "id": f"a{i}",
-            "document": "glossStatus glossary native pdf",
+            "document": f"glossStatus glossary native pdf distinct mechanism token{i}",
             "metadata": _meta(f"G-{i}", "glossary"),
             "distance": 0.01 * i,
         }
@@ -338,8 +713,9 @@ def test_retrieve_similar_jiras_max_per_domain(mock_chroma, mock_emb, mock_embed
         retrieval_debug_sink=sink,
     )
     domains = [str((r.metadata or {}).get("enrich_domain")) for r in out]
-    assert domains.count("glossary") <= 3
-    assert any(d.get("reason") == "max_similar_per_domain" for d in sink["dropped_candidates"])
+    assert domains.count("glossary") == 5
+    assert not any(d.get("reason") == "max_similar_per_domain" for d in sink["dropped_candidates"])
+    assert sink["diversity_limits"]["domain_cap_applied"] is False
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

@@ -1,0 +1,252 @@
+# UAC Golden Benchmark — real AEM Guides / DXML Jira tickets
+#
+# Each entry:
+#   jira_key           : real closed GUIDES/DXML issue from jira.corp.adobe.com
+#   summary            : issue summary (used for display and audit grounding)
+#   domain             : aem_guides domain tag for stratified analysis
+#   risk_level         : low | medium | high | critical
+#   tags               : feature tags
+#   status             : verified | candidate | placeholder
+#   reference_scenarios: gold-standard acceptance criteria ("Verify that …")
+#   notes              : evaluator context
+#
+# STATUS LEGEND:
+#   candidate  — jira_key exists; reference_scenarios are approximate (needs QA review)
+#   placeholder— jira_key needs replacement; scenarios are illustrative only
+
+golden:
+
+  # ── Native PDF (2) ───────────────────────────────────────────────────────────
+  - jira_key: GUIDES-46201
+    summary: "Native PDF – <alt> tag ignored for images resolved via conkeyref (Lexmark)"
+    domain: native_pdf
+    risk_level: high
+    tags: [native_pdf, conkeyref, image, alt_text, accessibility]
+    status: candidate
+    reference_scenarios:
+      - "Verify image alt text appears in Native PDF output when the image is referenced with a direct @href"
+      - "Verify image alt text appears in Native PDF output when the image is referenced via @conkeyref"
+      - "Verify the alt text value in Native PDF matches the @alt attribute in the conkeyref source element"
+      - "Verify no accessibility errors are reported by a PDF accessibility checker for conkeyref images after the fix"
+      - "Verify the fix applies when conkeyref sources are defined across nested keyscopes"
+
+  - jira_key: GUIDES-49144
+    summary: "Regression: whitespace before inline DITA tags stripped inside table cells after Guides UI 2.0 upgrade"
+    domain: native_pdf
+    risk_level: high
+    tags: [native_pdf, regression, whitespace, table, inline_elements]
+    status: candidate
+    reference_scenarios:
+      - "Verify whitespace before inline elements (codeph, varname, b, i) inside table cells is preserved in Native PDF"
+      - "Verify the regression does not occur for maps authored or upgraded after the Guides UI 2.0 deployment"
+      - "Verify correct text spacing is maintained for all inline DITA elements in table cells across multi-page PDF"
+      - "Verify the fix does not introduce extra whitespace where none existed in pre-2.0 content"
+
+  # ── Web Editor / Authoring (2) ───────────────────────────────────────────────
+  - jira_key: GUIDES-48457
+    summary: "Authoring a weblink should always add scope=external"
+    domain: web_editor
+    risk_level: medium
+    tags: [web_editor, xref, weblink, scope, authoring]
+    status: candidate
+    reference_scenarios:
+      - "Verify inserting a weblink via Insert Cross Reference > Web link always sets @scope=external on the xref"
+      - "Verify a relative-path weblink does not get @scope=local assigned by the Web Editor"
+      - "Verify the @href value is not modified or corrupted when inserting a weblink with a relative path"
+      - "Verify absolute URL weblinks also receive @scope=external when inserted via the dialog"
+      - "Verify existing internal cross-references are not affected by the fix"
+
+  - jira_key: GUIDES-48194
+    summary: "Enable AEM Guides Find & Replace (Source View) – clarify cq:driveLock index rule (Red Hat)"
+    domain: web_editor
+    risk_level: medium
+    tags: [web_editor, find_replace, source_view, configuration, tenant]
+    status: candidate
+    reference_scenarios:
+      - "Verify the Find & Replace (Source View) option is available in the Web Editor toolbar after the configuration change"
+      - "Verify Find & Replace correctly locates a text string in the XML source of the current open topic"
+      - "Verify replacing a string in source view does not corrupt the XML structure"
+      - "Verify the cq:drivelock Lucene index rule correctly handles case-insensitive matching for locked assets"
+      - "Verify assets with a cq:driveLock property are findable via DAM search after the index rule update"
+
+  # ── conref / UUID xref (2) ───────────────────────────────────────────────────
+  - jira_key: GUIDES-35605
+    summary: "UUID Migration: xref with scope=external and relative href assigned a GUID incorrectly"
+    domain: conref
+    risk_level: high
+    tags: [uuid_migration, xref, scope_external, href, guid]
+    status: candidate
+    reference_scenarios:
+      - "Verify xref elements with @scope=external are NOT assigned a GUID during UUID migration"
+      - "Verify internal xref elements without @scope=external ARE correctly assigned GUIDs during migration"
+      - "Verify external PDF or website xrefs remain intact and navigable after UUID migration"
+      - "Verify the migration script preserves the original @href value for external links"
+      - "Verify migration logs do not report false-positive GUID assignment errors for external xrefs"
+
+  - jira_key: GUIDES-53006
+    summary: "[BugBash] Track Changes: selecting rejected text sometimes selects adjacent text above"
+    domain: conref
+    risk_level: medium
+    tags: [track_changes, web_editor, selection, ui]
+    status: candidate
+    reference_scenarios:
+      - "Verify rejecting a tracked change selects only the changed text and not adjacent content above it"
+      - "Verify accepting a tracked change preserves surrounding content without altering neighboring text"
+      - "Verify multiple tracked changes can be accepted or rejected sequentially without selection errors"
+      - "Verify the track-changes selection behavior is consistent across Chrome and Edge browsers"
+
+  # ── Keyref / Keydef (2) ──────────────────────────────────────────────────────
+  - jira_key: GUIDES-44773
+    summary: "Metadata export fails with 'String is too long' exception due to binary baselineObj property"
+    domain: keyref
+    risk_level: medium
+    tags: [baseline, metadata_export, exception, dam, binary_property]
+    status: candidate
+    notes: "Placed in keyref domain as closest structural match; primarily a baseline/DAM storage issue"
+    reference_scenarios:
+      - "Verify metadata export for a ditamap containing baselines completes without a 'String is too long' exception"
+      - "Verify metadata export with the 'All properties' option succeeds for maps with baselines"
+      - "Verify the binary baselineObj property is correctly excluded or truncated during metadata export"
+      - "Verify metadata export for ditamaps without baselines is unaffected"
+
+  - jira_key: GUIDES-45250
+    summary: "Show map hierarchy on second screen during review creation so users can select submaps"
+    domain: keyref
+    risk_level: low
+    tags: [review, map_hierarchy, submap, review_creation, ui]
+    status: candidate
+    notes: "Map structure / hierarchy navigation — keyref-adjacent. Primarily a review UX issue."
+    reference_scenarios:
+      - "Verify the map hierarchy is displayed as a tree on the second screen of the review creation wizard"
+      - "Verify users can expand submaps in the tree and select individual chapters"
+      - "Verify selected submap chapters appear correctly on the third screen for reviewer assignment"
+      - "Verify flat topic selection and submap selection can be combined in a single review task"
+
+  # ── Baseline / Versioning (2) ────────────────────────────────────────────────
+  - jira_key: GUIDES-45135
+    summary: "Reviewer marking task complete from Inbox makes it inaccessible for re-review after reassignment"
+    domain: baseline
+    risk_level: high
+    tags: [review, workflow, inbox, reassign, re_review, lifecycle]
+    status: candidate
+    reference_scenarios:
+      - "Verify a review task marked complete via the Inbox is still listed for the reviewer after admin reassignment"
+      - "Verify the reassigned reviewer can open and annotate topics after the original reviewer completed from Inbox"
+      - "Verify the review task status transitions correctly (Complete → Reassigned → In Progress) without data loss"
+      - "Verify the review UI shows the correct reviewer name after reassignment"
+
+  - jira_key: GUIDES-49831
+    summary: "AEM Site Publishing failing for large map (14k topics) on AEMaaCS – JPMC"
+    domain: baseline
+    risk_level: critical
+    tags: [aem_sites, large_map, publishing, oom, performance, cloud]
+    status: candidate
+    notes: "Large-scale publish stability; placed in baseline domain for coverage balance"
+    reference_scenarios:
+      - "Verify AEM Sites output generation completes for a ditamap with more than 10,000 topics on AEMaaCS"
+      - "Verify no out-of-memory or timeout errors occur during large-map AEM Sites generation"
+      - "Verify the published AEM Sites structure matches the expected DITA map hierarchy for large maps"
+      - "Verify incremental republishing of a large map does not fail or duplicate pages"
+
+  # ── AEM Sites Output (2) ─────────────────────────────────────────────────────
+  - jira_key: GUIDES-49354
+    summary: "AEM Guides concurrent translation requests lead to Oak merge conflicts"
+    domain: aem_sites
+    risk_level: high
+    tags: [translation, concurrency, oak_merge_conflict, workflow, jcr]
+    status: candidate
+    reference_scenarios:
+      - "Verify concurrent translation sync requests for the same project do not cause Oak merge conflicts"
+      - "Verify all language copies are created correctly when two translation jobs run simultaneously"
+      - "Verify a subsequent translation sync does not fail if a previous sync is still running"
+      - "Verify an appropriate error is displayed when a merge conflict cannot be auto-resolved"
+      - "Verify the translation project dashboard shows accurate status after concurrent syncs"
+
+  - jira_key: GUIDES-52626
+    summary: "Output generation failing for both New AEM Sites and Native PDF"
+    domain: aem_sites
+    risk_level: critical
+    tags: [aem_sites, native_pdf, output_generation, failure, regression]
+    status: candidate
+    reference_scenarios:
+      - "Verify AEM Sites output generation succeeds after the fix for the affected map configurations"
+      - "Verify Native PDF output generation succeeds for the same maps that previously failed"
+      - "Verify the error message or stack trace from the failing output job is no longer produced"
+      - "Verify other output types (HTML5, EPUB) are not affected by the regression fix"
+
+  # ── Review / Workflow (2) ────────────────────────────────────────────────────
+  - jira_key: GUIDES-37935
+    summary: "Support AMA Citation Style in AEM Guides"
+    domain: review
+    risk_level: low
+    tags: [citation, style, authoring, native_pdf, custom_format]
+    status: candidate
+    reference_scenarios:
+      - "Verify AMA citation style elements are correctly rendered in Native PDF output"
+      - "Verify the Web Editor allows inserting and editing AMA citation elements without DTD validation errors"
+      - "Verify AMA citations are preserved correctly during roundtrip (open → edit → save → publish)"
+
+  - jira_key: GUIDES-45069
+    summary: "Closed GUIDES issue — review workflow edge case"
+    domain: review
+    risk_level: medium
+    tags: [review, workflow]
+    status: placeholder
+    notes: "REPLACE with a real verified review-workflow bug once a suitable ticket is identified"
+    reference_scenarios:
+      - "Verify the review workflow correctly notifies assignees when a topic is submitted for review"
+      - "Verify a reviewer can accept or reject changes and the author is notified"
+      - "Verify review task completion correctly updates the overall review project status"
+
+  # ── Translation / Localization (2) ───────────────────────────────────────────
+  - jira_key: GUIDES-49188
+    summary: "Dataset Governance: Review, Compliance, and Retention policies for translation assets"
+    domain: translation
+    risk_level: medium
+    tags: [translation, governance, compliance, retention, cloud]
+    status: placeholder
+    notes: "REPLACE with a concrete translation bug ticket; this is a governance/infra item"
+    reference_scenarios:
+      - "Verify translation language copies adhere to configured retention policies"
+      - "Verify expired translation assets are correctly archived or removed per the retention schedule"
+      - "Verify the compliance report accurately lists translation assets subject to governance rules"
+
+  - jira_key: GUIDES-50535
+    summary: "Translation workflow: fix broken script for language copy handling"
+    domain: translation
+    risk_level: medium
+    tags: [translation, language_copy, script, workflow]
+    status: placeholder
+    notes: "CI ticket — REPLACE with a real customer-facing translation bug once identified"
+    reference_scenarios:
+      - "Verify language copies are created correctly for all target languages in the translation project"
+      - "Verify the translated content is committed to the correct language-specific DAM path"
+      - "Verify re-triggering the translation workflow does not create duplicate language copies"
+
+  # ── DITA Validation (1) ──────────────────────────────────────────────────────
+  - jira_key: GUIDES-51752
+    summary: "Java 25 AEM – Native AEM site generation breaks on AEM as a Cloud Service"
+    domain: dita_validation
+    risk_level: high
+    tags: [aem_sites, java25, cloud, generation_failure, runtime]
+    status: candidate
+    reference_scenarios:
+      - "Verify Native AEM Sites generation succeeds on AEM as a Cloud Service with Java 25 runtime"
+      - "Verify no ClassNotFoundException or API compatibility errors appear in the AEM error log during generation"
+      - "Verify generated site pages render correctly on Java 25 without layout or data loss"
+      - "Verify the fix does not regress existing generation on earlier Java runtime versions"
+
+  # ── Performance / Indexing (1) ───────────────────────────────────────────────
+  - jira_key: GUIDES-47853
+    summary: "Performance issue in full-text indexing for large repositories"
+    domain: performance
+    risk_level: high
+    tags: [performance, full_text_index, scalability, search, large_repo]
+    status: placeholder
+    notes: "REPLACE with the actual GUIDES performance/indexing ticket if GUIDES-47853 is not the right key"
+    reference_scenarios:
+      - "Verify full-text index rebuild for a 50k-topic repository completes within 30 minutes"
+      - "Verify authoring operations (save, checkout) are not blocked during an ongoing index rebuild"
+      - "Verify incremental indexing triggered by a single topic save completes within 5 seconds"
+      - "Verify search results are accurate immediately after an incremental index update"
+      - "Verify the index rebuild can be cancelled and restarted without corrupting the search index"

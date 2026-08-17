@@ -21,20 +21,28 @@ _GENERATION_SIGNAL = re.compile(
     r"\b(generate|create|build|make|produce|prepare|want|need|get|give|show|run|publish|transform)\b",
     re.IGNORECASE,
 )
+_STRONG_GENERATION_SIGNAL = re.compile(
+    r"\b(generate|create|build|make|produce|prepare|run|publish|transform)\b",
+    re.IGNORECASE,
+)
 _DATASET_SIGNAL = re.compile(
-    r"\b(dataset|data|test\s+data|sample|corpus|bundle|same|above|combination|scenario|evidence|oracle|oracles|review|qa)\b",
+    r"\b(dataset|data|test\s+data|sample|corpus|bundle|same|above|combination|scenario)\b",
+    re.IGNORECASE,
+)
+_QA_ANSWER_SIGNAL = re.compile(
+    r"^\s*(how|what|why|when|where|which|explain|describe|tell\s+me)\b|\b(give|with)\s+evidence\b",
     re.IGNORECASE,
 )
 _DITA_OT_SIGNAL = re.compile(
-    r"\b(dita[-\s]?ot|dita\s+open\s+toolkit|open\s+toolkit|pdf2|html5|xhtml|classic\s+html)\b",
+    r"\b(dita[-\s]?ot|dita\s+open\s+toolkit|open\s+toolkit|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html)\b",
     re.IGNORECASE,
 )
 _PUBLISH_OUTPUT_SIGNAL = re.compile(
-    r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|transform|transformation|publish|publishing|output)\b",
+    r"\b(pdf|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html|html|transform|transformation|publish|publishing|output)\b",
     re.IGNORECASE,
 )
 _EXPLICIT_FORMAT_SIGNAL = re.compile(
-    r"\b(pdf|pdf2|html5|xhtml|classic\s+html|html|all)\b",
+    r"\b(pdf|pdf\s*2|pd2|html\s*5|xhtml|classic\s+html|html|all)\b",
     re.IGNORECASE,
 )
 _PRIOR_CONTEXT_SIGNAL = re.compile(
@@ -82,11 +90,16 @@ def is_publishing_dataset_request(prompt: str) -> bool:
     if not text or text.startswith("/"):
         return False
 
-    wants_generation = bool(_GENERATION_SIGNAL.search(text))
+    strong_generation = bool(_STRONG_GENERATION_SIGNAL.search(text))
+    weak_generation = bool(_GENERATION_SIGNAL.search(text))
     wants_dataset_or_context = bool(_DATASET_SIGNAL.search(text) or references_prior_context(text))
     wants_dita_ot = bool(_DITA_OT_SIGNAL.search(text))
     wants_publish_output = bool(_PUBLISH_OUTPUT_SIGNAL.search(text))
     has_construct_or_context = bool(has_publishing_behavior_terms(text) or references_prior_context(text))
+    wants_generation = weak_generation
+
+    if _QA_ANSWER_SIGNAL.search(text) and not strong_generation and not wants_dataset_or_context:
+        return False
 
     return bool(
         wants_generation

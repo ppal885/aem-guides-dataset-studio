@@ -1,0 +1,102 @@
+{
+  "version": "rag-coverage-sources/1.0",
+  "description": "Coverage-gap driven scrape/index plan for AEM Guides, DITA-OT, and publishing QA retrieval.",
+  "sources": [
+    {
+      "id": "aem-guides-user-guide",
+      "type": "experienceleague",
+      "enabled": true,
+      "priority": 10,
+      "state_dir": "experienceleague-dita-corpus",
+      "scope_prefix": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/",
+      "seed_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/about-aemg/intro",
+      "limit": 1000,
+      "why": "Core AEM Guides behavior for authoring, maps, reports, metadata, translation, baselines, and output generation."
+    },
+    {
+      "id": "aem-guides-install-config",
+      "type": "experienceleague",
+      "enabled": true,
+      "priority": 20,
+      "state_dir": "experienceleague-install-conf-dita-corpus",
+      "scope_prefix": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/",
+      "seed_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-new-baseline-on-prem",
+      "limit": 600,
+      "why": "Admin/configuration corpus for baselines, integrations, on-prem/cloud setup, and environment-dependent behavior."
+    },
+    {
+      "id": "aem-guides-release-info",
+      "type": "experienceleague",
+      "enabled": true,
+      "priority": 30,
+      "state_dir": "experienceleague-release-info-dita-corpus",
+      "scope_prefix": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/",
+      "seed_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/on-prem-release-notes/43-release/43-release-notes/release-notes-4-3",
+      "limit": 800,
+      "why": "Release-note corpus for historical feature changes, regressions, version-specific behavior, and migration signals."
+    },
+    {
+      "id": "dita-ot-open-issues",
+      "type": "dita_ot_issues",
+      "enabled": true,
+      "priority": 40,
+      "input": "https://github.com/dita-ot/dita-ot/issues?q=is%3Aissue%20state%3Aopen",
+      "output_dir": "dita-ot-issue-corpus",
+      "state": "open",
+      "limit": 0,
+      "why": "Open DITA-OT issues provide active risk signals for PDF/HTML5 publishing failures."
+    },
+    {
+      "id": "dita-ot-official-docs",
+      "type": "dita_ot_docs",
+      "enabled": true,
+      "priority": 45,
+      "state_dir": "dita-ot-docs-corpus",
+      "scope_prefix": "https://www.dita-ot.org/dev/",
+      "seed_url": "https://www.dita-ot.org/dev/",
+      "limit": 250,
+      "why": "Official DITA-OT behavior for preprocessing, publishing, transforms, parameters, troubleshooting, and extension points."
+    },
+    {
+      "id": "dita-ot-closed-issues",
+      "type": "dita_ot_issues",
+      "enabled": true,
+      "priority": 50,
+      "input": "https://github.com/dita-ot/dita-ot/issues?q=is%3Aissue%20state%3Aclosed",
+      "output_dir": "dita-ot-closed-issue-corpus",
+      "state": "closed",
+      "limit": 0,
+      "why": "Closed DITA-OT issues provide historical regression and fix-pattern signals."
+    }
+  ],
+  "enrichment": {
+    "experienceleague_roots": [
+      "experienceleague-dita-corpus/topics",
+      "experienceleague-dita-corpus.bak/topics",
+      "experienceleague-install-conf-dita-corpus/topics",
+      "experienceleague-release-info-dita-corpus/topics"
+    ],
+    "output": "backend/storage/aem_guides_enriched_behavior_chunks.json",
+    "sample_output": "tmp/aem_guides_enriched_behavior_sample.json",
+    "max_chunks": 12000,
+    "batch_size": 64
+  },
+  "dita_ot_docs_indexing": {
+    "roots": [
+      "dita-ot-docs-corpus/topics"
+    ],
+    "output": "backend/storage/dita_ot_docs_behavior_chunks.json",
+    "sample_output": "tmp/dita_ot_docs_behavior_sample.json",
+    "max_chunks": 8000,
+    "batch_size": 64,
+    "allowed_source_prefixes": [
+      "https://www.dita-ot.org/"
+    ]
+  },
+  "notes": [
+    "Run with --dry-run first to see exact commands.",
+    "Use --source-id to execute one source at a time on the VM.",
+    "Use --skip-scrape --enrich --upsert-chroma when corpus folders were copied manually.",
+    "DITA-OT official docs are scraped through scripts/scrape_dita_ot_docs_to_dita.py and indexed into the same Chroma-backed retrieval path."
+  ]
+}

@@ -330,6 +330,37 @@ def _filter_issues_for_query(issues: list[dict[str, Any]], strict_terms: list[st
     return [issue for _, _, issue in scored]
 
 
+def _fetch_issue_by_key(client: JiraClient, issue_key: str) -> dict[str, Any] | None:
+    """Fetch one issue directly when the query is an explicit Jira key."""
+    key = (issue_key or "").strip().upper()
+    if not _JIRA_KEY_PATTERN.fullmatch(key) or not client.is_configured():
+        return None
+    try:
+        from app.services.jira_client import extract_description_from_issue
+
+        raw = client.get_issue(key)
+        fields = raw.get("fields") or {}
+        return _normalize_issue(
+            {
+                "key": raw.get("key", key),
+                "summary": fields.get("summary", ""),
+                "description": extract_description_from_issue(raw),
+                "status": (fields.get("status") or {}).get("name", ""),
+                "issue_type": (fields.get("issuetype") or {}).get("name", ""),
+                "priority": (fields.get("priority") or {}).get("name", ""),
+                "labels": fields.get("labels") or [],
+            },
+            base_url=client.base_url,
+            source="jira_api",
+        )
+    except Exception as exc:
+        logger.warning_structured(
+            "Direct Jira issue fetch failed",
+            extra_fields={"issue_key": key, "error": str(exc)},
+        )
+        return None
+
+
 def _search_live_jira(
     query: str,
     terms: list[str],
@@ -338,9 +369,13 @@ def _search_live_jira(
     strict_terms: list[str],
     max_results: int,
 ) -> list[dict[str, Any]]:
-    has_auth = (client.username and client.password) or (client.email and client.api_token)
-    if not client.base_url or not has_auth:
+    if not client.is_configured():
         return []
+
+    if _JIRA_KEY_PATTERN.fullmatch((query or "").strip().upper()):
+        direct = _fetch_issue_by_key(client, query)
+        if direct:
+            return [direct]
 
     for jql in _build_live_jql_variants(query, terms or [query]):
         live_results = fetch_jira_issues(
@@ -518,6 +553,19 @@ def search_related_jira_issues(
     terms = expand_jira_search_terms(query)
     strict_terms = build_strict_match_terms(query)
     client = build_jira_client(tenant_id)
+
+    if _JIRA_KEY_PATTERN.fullmatch(query.strip().upper()):
+        direct = _fetch_issue_by_key(client, query)
+        if direct:
+            return {
+                "query": query,
+                "search_terms": terms,
+                "strict_match_terms": strict_terms,
+                "issues": [direct],
+                "source": "jira_api",
+                "message": f"Fetched Jira issue `{direct.get('issue_key')}` directly from Jira API.",
+            }
+
     live_results = _search_live_jira(
         query,
         terms,
@@ -560,7 +608,7 @@ def search_related_jira_issues(
             "message": f"Found {len(issues[:max_results])} matching Jira issue(s) from the indexed Jira cache.",
         }
 
-    has_auth = (client.username and client.password) or (client.email and client.api_token)
+    has_auth = client.has_auth()
     if client.base_url and has_auth:
         message = f"No matching Jira issues were found for `{query}`."
         source = "jira_api"

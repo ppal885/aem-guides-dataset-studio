@@ -1,0 +1,13 @@
+# Local AEM upload credentials for Claude MCP uploads.
+# Copy this file to config/aem-upload.properties and fill values locally.
+# Do not commit or share the filled config file.
+#
+# Precedence: explicit Claude tool args > this local client config.
+# VM backend config is used only for RAG, not for local uploads.
+
+aem.base.url=http://<aem-author-host>:4502
+aem.username=<your-aem-username>
+aem.password=<your-aem-password>
+
+# Or use an access token instead of username/password:
+# aem.access.token=<your-access-token>

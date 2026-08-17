@@ -11,6 +11,7 @@ from app.models.tool_models import PlannedToolCall
 from app.prompts.planner_prompts import PLANNER_SYSTEM_PROMPT
 from app.rag.hybrid_search import HybridJiraSearch
 from app.rag.metadata_filtering import JiraMetadataCriteria, matches_metadata
+from app.rag.semantic_search import SemanticJiraSearch
 from app.services.metadata_service import MetadataService
 from app.services.response_grounding_service import ResponseGroundingService
 from app.services.retrieval_service import QaCopilotRetrievalService
@@ -222,6 +223,64 @@ def test_metadata_filter_matches_future_customer_label_without_code_change() -> 
         "issue_type": "Bug",
     }
     assert matches_metadata(criteria, meta, "Northwind Labs Native PDF publish output fails")
+
+
+def test_metadata_filter_treats_feature_domain_as_soft_signal() -> None:
+    criteria = JiraMetadataCriteria(feature="publishing", issue_type="Bug")
+    meta = {
+        "jira_key": "GUIDES-12",
+        "enrich_domain": "unknown",
+        "issue_type": "Bug",
+    }
+
+    assert matches_metadata(criteria, meta, "Timeout while generating an output")
+
+
+def test_hybrid_search_keeps_unknown_domain_candidate_and_reranks_feature_match(monkeypatch) -> None:
+    candidates = [
+        {
+            "jira_key": "GUIDES-13",
+            "title": "Publishing timeout",
+            "score": 0.7,
+            "document": "Publishing timeout during output generation.",
+            "metadata": {"enrich_domain": "publishing", "issue_type": "Bug"},
+        },
+        {
+            "jira_key": "GUIDES-14",
+            "title": "Unclassified output timeout",
+            "score": 0.7,
+            "document": "Timeout during output generation.",
+            "metadata": {"enrich_domain": "unknown", "issue_type": "Bug"},
+        },
+    ]
+    monkeypatch.setattr("app.rag.semantic_search.semantic_search_jira_qa", lambda *args, **kwargs: candidates)
+
+    result = HybridJiraSearch().search(
+        JiraMetadataCriteria(feature="publishing", issue_type="Bug"),
+        limit=5,
+    )
+
+    assert [row["jira_key"] for row in result.hits] == ["GUIDES-13", "GUIDES-14"]
+    assert result.debug["domain_policy"] == "soft_boost_only"
+
+
+def test_semantic_search_passes_feature_only_as_soft_domain(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_search(*args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("app.rag.semantic_search.semantic_search_jira_qa", fake_search)
+
+    SemanticJiraSearch().search(
+        "publishing timeout",
+        JiraMetadataCriteria(feature="publishing"),
+        top_k=10,
+    )
+
+    assert captured["domain"] == "publishing"
+    assert captured["dita_entities"] == []
 
 
 def test_hybrid_search_marks_semantic_fallback_when_customer_metadata_missing(monkeypatch) -> None:

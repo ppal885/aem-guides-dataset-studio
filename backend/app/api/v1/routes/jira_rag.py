@@ -135,7 +135,7 @@ def jira_kb_search(
     limit: int = 100,
     user: UserIdentity = CurrentUser,
 ):
-    """Search the indexed Jira knowledge base by keyword and/or metadata filters."""
+    """Search Jira knowledge; domain is a soft boost while other supplied metadata remains filtering."""
     del user
     limit = max(1, min(limit, 500))
     db = SessionLocal()
@@ -151,7 +151,7 @@ def jira_kb_search(
         )
     finally:
         db.close()
-    return {"total": len(results), "results": results}
+    return {"total": len(results), "domain_policy": "soft_boost_only", "results": results}
 
 
 @router.get("/kb/domains")

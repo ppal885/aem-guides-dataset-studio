@@ -415,7 +415,7 @@ _DITA_RELATED_LINKS_TOC_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_OUTPUT_TARGET_PATTERN = re.compile(
-    r"\b(pdf|native\s+pdf|web|html|html5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
+    r"\b(pdf|pdf\s*2|pd2|native\s+pdf|web|html|html\s*5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
     re.IGNORECASE,
 )
 _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
@@ -432,7 +432,8 @@ _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
     r"translate\s+attribute|dir\s+attribute|colsep|rowsep|rowheader|valign|expanse|frame\s+attribute|"
     r"scale\s+attribute|expiry|golive|role\s+attribute|otherrole|base\s+attribute|status\s+attribute|"
     r"keycol|relcolwidth|refcols|"
-    r"processing-role|collection-type|locktitle|keyscope|navtitle)\b",
+    r"processing-role|collection-type|locktitle|keyscope|navtitle|searchtitle|search\s+title|"
+    r"titlealts?|topicmeta|lockmeta|metadata\s+cascad(?:e|ing)|cascade)\b",
     re.IGNORECASE,
 )
 _DITA_FOREIGN_ELEMENT_QUERY_PATTERN = re.compile(r"</?foreign\b|\bforeign\s+element\b|\bforeign\b", re.IGNORECASE)
@@ -582,7 +583,7 @@ _DITA_OT_GUIDANCE: Optional[str] = None
 _DITA_AUTHORING_GUIDANCE: Optional[str] = None
 
 _DITA_OT_PATTERN = re.compile(
-    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf2|html5\s+output|publish|publishing|"
+    r"\b(dita.?ot|dita open toolkit|transtype|transform|pdf\s*2|pd2|html\s*5\s+output|publish|publishing|"
     r"output preset|native pdf|ant\s+propert|plugin|ditaval filter|xsl.fo|fop|xslt|"
     r"dita command|dita --input|dita --format|dita --output|"
     # DITA-OT error/warning codes (DOTX, DOTJ, DOTA, DOTF prefixes)
@@ -732,7 +733,12 @@ def _build_chat_system_prompt(user_context: str, rag_context: str) -> str:
         "- Never use placeholder links like example.com.\n"
         "- If a generate_dita tool result exists, use only its returned download_url and prefer telling the user to use the in-app download action.\n"
         "- Do not claim a bundle was generated unless the tool result says it was.\n"
-        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers."
+        "- Do not invent file size, ZIP contents, expiry windows, or availability disclaimers.\n"
+        "- Keep official documentation, indexed Jira incident evidence, runtime observation, and source-code observation explicitly separate.\n"
+        "- If documentation does not address a recovery mechanism, do not say the evidence recommends one. Label incident-derived sequential execution as temporary operational mitigation, not product behavior.\n"
+        "- Do not present full-map overwrite/orphan cleanup as recovery for Oak/JCR commit conflicts unless direct evidence explicitly establishes that relationship.\n"
+        "- Do not claim Support or Cloud Ops ownership, mandatory full republish, automatic retry, locking, or serialization without direct current evidence.\n"
+        "- Cite only sources that directly prove a retained claim; do not add unrelated source links or advertise unrelated tools at the end."
     )
     return prompt + safety_rules
 
@@ -3561,6 +3567,60 @@ def _normalize_grounded_tool_facts(
             tenant_points = _tenant_output_guidance_points(tenant)
             native_pdf_summary = str(native_pdf.get("short_answer") or native_pdf.get("summary") or "").strip()
 
+            aem_result_ids = {
+                str(item.get("chunk_id") or "").strip()
+                for item in (aem.get("results") or [])
+                if isinstance(item, dict)
+            }
+            has_searchtitle_mapping = "aem-guides-searchtitle-legacy-sites-mapping-v1" in aem_result_ids
+            has_searchtitle_boundary = "aem-guides-searchtitle-evidence-boundary-v1" in aem_result_ids
+            if element_name_lower == "searchtitle" and has_searchtitle_mapping and has_searchtitle_boundary:
+                return NormalizedGroundedFactSet(
+                    answer_kind="dita_output_behavior",
+                    source_policy=source_policy,
+                    canonical_definition=(
+                        "For the verified legacy AEM Sites component mapping, publish a topic with a distinct "
+                        "`<searchtitle>` value and inspect the rendered page head for "
+                        "`<meta name=\"searchtitle\" content=\"...\">`."
+                    ),
+                    default_behavior=[
+                        "DITA defines `<searchtitle>` as alternate search-oriented title metadata; it does not define an AEM Sites implementation.",
+                        "The verified legacy mapping targets the component to the HTML head and preserves the source value in `meta[name=\"searchtitle\"]`.",
+                    ],
+                    placement_notes=[
+                        "DITA 1.3 source: place `<searchtitle>` inside `<titlealts>` after the primary `<title>`.",
+                        "Verified output scope: legacy AEM Sites component mapping only; composite or newer mappings need separate evidence.",
+                    ],
+                    usage_patterns=[
+                        "Use different primary-title and searchtitle values plus a unique marker, publish with the applicable AEM Sites preset, and inspect the generated page source or DOM head.",
+                        "Pass when exactly one `meta[name=\"searchtitle\"]` has `content` equal to the authored searchtitle marker.",
+                        "Record the preset and component-mapping type with the result so the legacy oracle is not applied to another pipeline.",
+                    ],
+                    common_mistakes=[
+                        "Do not treat the verified meta tag as proof that `<searchtitle>` replaces the HTML `<title>`, visible heading, or a JCR title property.",
+                        "Fallback precedence and AEM search indexing or ranking remain unverified until product code, official documentation, or a runtime observation proves them.",
+                        "Do not apply this expected result to composite or newer component mapping without separate evidence.",
+                    ],
+                    verified_examples=[
+                        VerifiedExampleSnippet(
+                            label="Verified legacy mapping oracle",
+                            snippet=(
+                                "<titlealts><searchtitle>qa-searchtitle-marker</searchtitle></titlealts>\n"
+                                "<!-- rendered page head -->\n"
+                                "<meta name=\"searchtitle\" content=\"qa-searchtitle-marker\">"
+                            ),
+                            source="verified_product_code",
+                            deterministic=True,
+                        )
+                    ],
+                    example_verified=True,
+                    semantic_warnings=[
+                        "No indexed evidence currently verifies fallback precedence or AEM search indexing/ranking for this value."
+                    ],
+                    thin_evidence=False,
+                    cross_source_mixed=False,
+                )
+
             if attr_name or element_name or native_pdf_has_doc_evidence or aem_summary or tenant_points:
                 if element_name_lower == "glossentry" and _NATIVE_PDF_QUERY_PATTERN.search(question or ""):
                     short_answer = (
@@ -4781,6 +4841,55 @@ def _question_shape_hint(question: str) -> str:
         hints.append(
             "Use a markdown table or bullet list. Be exhaustive — list ALL values/options, not just common ones. "
             "Add a brief description for each."
+        )
+    requested_facets: list[str] = []
+    facet_patterns = (
+        ("Source DITA", r"\bsource\s+dita\b|\bdita\s+source\b"),
+        ("Publishing steps", r"\bpublish(?:ing)?\s+steps?\b|\bgeneration\s+steps?\b"),
+        ("Expected HTML/JCR output", r"\bhtml\b.{0,20}\bjcr\b|\bjcr\b.{0,20}\bhtml\b|\bexpected\s+(?:html|jcr|output)"),
+        ("PDF observations", r"\bpdf\s+observations?\b|\bexpected\s+pdf\b"),
+        ("Output comparison", r"\boutput\s+comparison\b|\bcompare\b.{0,30}\boutput"),
+        ("Negative cases", r"\bnegative\s+(?:cases?|scenarios?|tests?)\b"),
+        ("Fallback cases", r"\bfallback\s+(?:cases?|behavior|behaviour|precedence)\b"),
+        ("Mapping scope", r"\bmapping\s+scope\b|\boverride\s+scope\b"),
+        ("Evidence sources", r"\bevidence\s+sources?\b|\bsources?\s+of\s+evidence\b"),
+        ("Unverified behaviors", r"\b(?:explicitly\s+)?list\b.{0,40}\bnot\s+(?:yet\s+)?verified\b|\bunverified\b"),
+    )
+    for label, pattern in facet_patterns:
+        if re.search(pattern, q, re.IGNORECASE):
+            requested_facets.append(label)
+    if len(requested_facets) >= 2:
+        hints.append(
+            "This is a multi-part QA-oracle request. Use these headings in the user's requested order: "
+            + "; ".join(requested_facets)
+            + ". Answer every heading explicitly. If evidence does not support a heading, write `Not verified from current evidence` "
+            "and state the exact runtime, code, or documentation evidence needed; never silently omit it or replace it with adjacent guidance. "
+            "Keep DITA specification behavior, DITA-OT runtime behavior, and AEM Guides product behavior separate. "
+            "Do not end with a bare source dump: connect every cited source to the claim it supports and reject sources that only share broad terms."
+        )
+    if re.search(r"\bsearchtitle\b", q, re.IGNORECASE) and re.search(
+        r"\b(html|jcr|pdf|publish|output|mapping|fallback|index)", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For `searchtitle`, clearly separate: valid source placement; generic DITA/DITA-OT behavior; verified AEM Guides mapping and its component/version boundary; "
+            "an executable assertion; negative cases; and unsupported HTML `<title>`, JCR, fallback, search-indexing, ranking, translation, or newer-mapping claims."
+        )
+    if re.search(r"\bcopy-to\b", q, re.IGNORECASE) and re.search(
+        r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For `copy-to` combined with chunking, state the normative resource-name precedence: when `copy-to` is specified for the chunk, "
+            "the output resource name comes from `copy-to`. Explain `to-content` as combining selected topics into one output chunk. "
+            "Demonstrate `by-topic` with nested topics in one physical source document, not merely sibling child topicrefs. "
+            "State that chunk processing is output-format and processor specific; never claim identical AEM Sites, HTML5, and PDF behavior without runtime evidence. "
+            "Separate normative collision recovery and unsupported scope rules from exact DITA-OT filenames, temporary-file order, rewritten links, and AEM mappings that require generated or product evidence."
+        )
+    if re.search(r"\bbaselines?\b", q, re.IGNORECASE) and re.search(
+        r"\b(resolve|reference|working copy|version|keyref|conref|publish|metadata)", q, re.IGNORECASE
+    ):
+        hints.append(
+            "For baseline behavior, distinguish the baseline's captured map/topic versions from working copies and from publish-time processing. "
+            "Answer each named reference or metadata type separately, distinguish legacy versus New Baseline when evidence does, and do not use release-note or DITA-spec adjacency as proof of AEM baseline behavior."
         )
     return "\n\n".join(hints)
 
@@ -6046,6 +6155,11 @@ def _build_compact_chat_system_prompt(
         "8. **Tool results**: When the UI already shows a structured tool card (e.g. DITA element tables), do not "
         "repeat the entire table in prose. Add interpretation, tradeoffs, and practical guidance.\n"
         "9. Do not invent download URLs, undocumented product behavior, or citations not present in context.\n\n"
+        "10. **DITA-to-product mappings**: Never infer concrete HTML tags, JCR properties, title fallback or "
+        "override precedence, search indexing, search-result behavior, or UI behavior from the DITA specification "
+        "alone. Require explicit AEM Guides product documentation or verified implementation evidence. Preserve "
+        "the documented implementation boundary, such as legacy versus composite component mapping, and label "
+        "every unsupported mapping claim as unverified.\n\n"
         "# EXPERT DEPTH & SOURCE FUSION\n"
         "- Answer as a senior DITA / AEM Guides consultant. Lead with a direct answer to exactly what was asked "
         "(the how / where / why / which), then explain the underlying behavior, give a concrete spec-aligned XML "
@@ -8627,6 +8741,7 @@ async def _stream_assistant_reply(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """Generate and persist an assistant reply for an existing last user message."""
     if attachments:
@@ -8665,10 +8780,18 @@ async def _stream_assistant_reply(
     elif _DITA_AUTHORING_PATTERN.search(user_content) and not _is_dita_answer_request(user_content):
         answer_mode = "default"
 
-    parsed_tool_intent = tool_intent or parse_tool_intent_from_content(user_content)
-    parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
-    if parsed_tool_intent is None:
-        parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)
+    routed_tool_intent = None
+    parsed_tool_intent = None
+    if allow_tool_routing:
+        routed_tool_intent = (
+            route_decision.candidate_contract
+            if route_decision.intent == "dita_ot_generation" and isinstance(route_decision.candidate_contract, dict)
+            else None
+        )
+        parsed_tool_intent = tool_intent or routed_tool_intent or parse_tool_intent_from_content(user_content)
+        parsed_tool_intent = _normalize_generation_tool_intent(session_id, user_content, parsed_tool_intent)
+        if parsed_tool_intent is None:
+            parsed_tool_intent = _contextual_dita_dataset_tool_intent(session_id, user_content) or _publishing_dataset_tool_intent(user_content)
     if parsed_tool_intent:
         async for event in _stream_tool_intent_reply(
             session_id,
@@ -8789,7 +8912,7 @@ async def _stream_assistant_reply(
         yield {"type": "done"}
         return
 
-    if route_decision.intent == "dita_answer_then_generation" and policy_decision.action == "answer_then_preview":
+    if allow_tool_routing and route_decision.intent == "dita_answer_then_generation" and policy_decision.action == "answer_then_preview":
         async for event in _stream_mixed_dita_answer_then_preview_reply(
             session_id,
             user_content=user_content,
@@ -8802,7 +8925,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
+    if allow_tool_routing and route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
         contract = route_decision.candidate_contract or {}
         fresh_generate_dita_plan = _build_generate_dita_preview_plan(
             user_request=user_content,
@@ -8820,7 +8943,7 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    agent_plan = build_agent_plan(user_content, tenant_id=tenant_id) if answer_mode == "agent_research_plan" else None
+    agent_plan = build_agent_plan(user_content, tenant_id=tenant_id) if allow_tool_routing and answer_mode == "agent_research_plan" else None
     if agent_plan:
         async for event in _stream_agent_plan_reply(
             session_id,
@@ -8898,7 +9021,7 @@ async def _stream_assistant_reply(
         yield {"type": "done"}
         return
 
-    if _should_use_tool_mode(user_content, session_id=session_id):
+    if allow_tool_routing and _should_use_tool_mode(user_content, session_id=session_id):
         async for event in _stream_tool_mode_reply(
             session_id,
             user_content=user_content,
@@ -10539,6 +10662,7 @@ async def chat_turn(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """Process a chat turn (LangSmith-traced when enabled)."""
     impl = _get_traced_chat_turn_impl()
@@ -10553,6 +10677,7 @@ async def chat_turn(
         attachments=attachments,
         generation_options=generation_options,
         jira_context=jira_context,
+        allow_tool_routing=allow_tool_routing,
     ):
         yield event
 
@@ -10589,6 +10714,7 @@ async def _chat_turn_impl(
     attachments: Optional[list[ChatAttachmentRef]] = None,
     generation_options: Optional[ChatDitaGenerationOptions] = None,
     jira_context: Optional[str] = None,
+    allow_tool_routing: bool = True,
 ) -> AsyncGenerator[dict, None]:
     """
     Process a chat turn: persist user message, call LLM with RAG, stream response, persist assistant message.
@@ -10659,6 +10785,7 @@ async def _chat_turn_impl(
         attachments=attachments,
         generation_options=generation_options,
         jira_context=jira_context,
+        allow_tool_routing=allow_tool_routing,
     ):
         yield event
 

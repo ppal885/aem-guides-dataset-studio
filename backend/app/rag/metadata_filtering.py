@@ -145,18 +145,18 @@ def metadata_has_escalation(meta: dict[str, Any], document: str = "") -> bool:
 
 
 def matches_metadata(criteria: JiraMetadataCriteria, meta: dict[str, Any], document: str = "") -> bool:
+    """Match only explicit hard constraints.
+
+    ``feature`` can be sourced from domain metadata, which is frequently unknown.
+    It therefore remains a reranking signal in :func:`metadata_score` and never
+    excludes a semantically relevant Jira here.
+    """
     checks = [
         metadata_contains(
             criteria.customer,
             meta,
             document,
             fields=("customer", "customer_key", "customer_labels", "labels", "enrich_customers"),
-        ),
-        metadata_contains(
-            criteria.feature,
-            meta,
-            document,
-            fields=("enrich_domain", "enrich_sub_domain", "enrich_entities", "enrich_outputs", "labels", "title", "summary"),
         ),
         metadata_contains(criteria.issue_type, meta, document, fields=("issue_type",)),
         metadata_contains(criteria.environment, meta, document, fields=("environment", "labels", "build_type")),

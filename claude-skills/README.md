@@ -44,8 +44,12 @@ python3 scripts/install_claude_test_plan_generator.py \
   --dest-command-dir "$HOME/.claude/commands"
 ```
 
-The slash command still requires the MCP gateway/tool `guides_test_plan_generator` to be registered
-in that user's Claude Code environment.
+The slash command still requires Adobe Jira MCP plus the existing VM AEM Guides MCP/RAG tools
+to be registered in that user's Claude Code environment. At minimum, configure
+`guides_test_plan_generator`; `test_plan_pipeline` is optional and used only as an existing
+deterministic evidence/scoring helper when available. Team members should also expose local clone
+paths for `xmleditor`, `starling`, `guides-ui-tests`, and `dxml-it-tests` if they want
+Review-ready plans instead of Draft/with-flags output.
 
 ## Skills
 
@@ -58,7 +62,7 @@ in that user's Claude Code environment.
 | `dita-element-qa` | "what is `<shortdesc>`", "how does `@conref` work" | `lookup_dita_spec` |
 | `dita-ot-publishing` | "DITA-OT transforms", "PDF not rendering", "how to publish" | `lookup_aem_guides` |
 | `dita-authoring-advisor` | "concept vs task", "how do I reuse content", best practices | `lookup_dita_spec` + `lookup_aem_guides` |
-| `aem-guides-test-scenario-generator` | `/guides-test-plan-generator GUIDES-12345`, AEM Guides test plans, bug discovery, regression prevention | `guides_test_plan_generator` MCP + RAG/Jira/code evidence |
+| `aem-guides-test-scenario-generator` | `/guides-test-plan-generator GUIDES-12345`, AEM Guides test plans, bug discovery, regression prevention | Adobe Jira MCP + existing VM RAG/MCP + local repo evidence |
 
 ## Chat UI integration
 

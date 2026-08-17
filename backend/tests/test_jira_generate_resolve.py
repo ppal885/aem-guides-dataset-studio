@@ -88,3 +88,17 @@ def test_build_evidence_pack_forced_key():
     assert p["issue_key"] == "GUIDES-9"
     assert "Hello summary" in p["summary"]
     assert "Body line 1" in p["description"]
+
+
+def test_jira_client_ready_accepts_pat_bearer_auth(monkeypatch):
+    from app.services.jira_client import JiraClient
+    from app.services.jira_generate_resolve import _jira_client_ready
+
+    monkeypatch.setenv("JIRA_URL", "https://jira.corp.adobe.com")
+    monkeypatch.setenv("JIRA_PAT", "test-pat-token")
+    monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+    monkeypatch.delenv("JIRA_EMAIL", raising=False)
+
+    client = JiraClient()
+    assert client.has_auth() is True
+    assert _jira_client_ready(client) is True

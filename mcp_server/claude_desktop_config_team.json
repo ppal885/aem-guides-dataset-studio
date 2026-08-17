@@ -1,0 +1,9 @@
+{
+  "_comment": "For team members — HTTP/SSE mode, connects to shared VM. No clone needed.",
+  "_setup": "Replace <VM_IP> with the actual VM IP address. Copy mcpServers block into your own claude_desktop_config.json",
+  "mcpServers": {
+    "aem-guides-dataset-studio": {
+      "url": "http://<VM_IP>:4502/sse"
+    }
+  }
+}

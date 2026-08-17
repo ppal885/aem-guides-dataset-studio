@@ -14,6 +14,11 @@ from app.core.aem_guides_taxonomy import (
     get_output_signals,
 )
 from app.core.schemas_jira_enrichment import JiraEnrichedDocument
+from app.services.jira_component_metadata_service import (
+    canonical_component_name,
+    canonical_component_names,
+    component_primary_from_names,
+)
 from app.services.jira_client import extract_description_from_issue
 from app.services.jira_qa_automation_rubric import score_automation_fit
 
@@ -93,6 +98,19 @@ _TEXT_TOKEN_STOPWORDS: frozenset[str] = frozenset(
 _CANONICAL_BRAND_MAP: dict[str, str] = {
     "pwc": "PwC",
     "ibm": "IBM",
+    "redhat": "Red Hat",
+    "swift": "Swift",
+    "lexmark": "Lexmark",
+    "topcon": "Topcon",
+    "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jpmorgan": "JPMC",
+    "kone": "KONE",
+    "mayoclinic": "Mayo Clinic",
+    "thomsonreuters": "Thomson Reuters",
+    "linkedin": "LinkedIn",
+    "sonova": "Sonova",
+    "demant": "Demant",
     "hp": "HP",
     "sap": "SAP",
     "aws": "AWS",
@@ -543,6 +561,22 @@ def classify_domain(text: str, labels: list[str]) -> dict[str, Any]:
     return {"domain": best_dom, "sub_domain": sub, "scores": scores, "hits": hits}
 
 
+_COMPONENT_DOMAIN_MAP = {
+    "editor": "editor",
+    "authoring": "authoring",
+    "publishing": "publishing",
+    "platform": "platform",
+    "schematron": "schematron",
+    "integration": "integration",
+}
+
+
+def infer_domain_from_components(components: list[str]) -> str:
+    """Return the domain corresponding to the first canonical Jira component."""
+    primary = component_primary_from_names(components)
+    return _COMPONENT_DOMAIN_MAP.get(primary, "")
+
+
 def extract_dita_entities(text: str) -> list[str]:
     """Rule-based DITA / product entity mentions (canonical labels)."""
     if not text:
@@ -725,17 +759,47 @@ def enrich_jira(jira: dict[str, Any]) -> JiraEnrichedDocument:
     if isinstance(raw_labels, list):
         labels = [str(x).strip() for x in raw_labels if x]
     comps_raw = fields.get("components") or []
-    components: list[str] = []
+    raw_components: list[str] = []
     if isinstance(comps_raw, list):
         for c in comps_raw:
             if isinstance(c, dict) and c.get("name"):
-                components.append(str(c["name"]).strip())
+                raw_components.append(str(c["name"]).strip())
+    source_components = fields.get("_components_raw")
+    if not isinstance(source_components, list):
+        source_components = list(raw_components)
+    source_components = [
+        str(component).strip() for component in source_components if str(component).strip()
+    ]
+    raw_components = list(dict.fromkeys(raw_components + source_components))
+    components = canonical_component_names(raw_components)
+    noncanonical_components = [
+        component for component in raw_components if not canonical_component_name(component)
+    ]
 
-    blob = "\n".join([summary, desc_plain, " ".join(labels), " ".join(components)])
+    blob = "\n".join(
+        [
+            summary,
+            desc_plain,
+            " ".join(labels),
+            " ".join(re.sub(r"[_-]+", " ", component) for component in raw_components),
+            " ".join(components),
+        ]
+    )
 
     cls = classify_domain(blob, labels)
-    domain = str(cls.get("domain") or "unknown")
+    classified_domain = str(cls.get("domain") or "unknown")
+    domain = classified_domain
     sub_domain = str(cls.get("sub_domain") or "")
+    component_domain = infer_domain_from_components(components)
+    if component_domain:
+        domain = component_domain
+        domain_source = "jira_component"
+        if classified_domain not in {"unknown", component_domain}:
+            sub_domain = classified_domain
+    elif domain == "unknown":
+        domain_source = "unknown"
+    else:
+        domain_source = "taxonomy_text"
 
     customers, cust_debug = detect_customers_dynamic_with_debug(jira)
     entities = extract_dita_entities(blob)
@@ -755,11 +819,21 @@ def enrich_jira(jira: dict[str, Any]) -> JiraEnrichedDocument:
             "sub_domain": sub_domain,
             "scores": cls.get("scores") or {},
             "hits": cls.get("hits") or {},
+            "source": domain_source,
         },
         "customer_detection": cust_debug,
         "detected_outputs": outputs,
         "detected_features": feats,
         "detected_entities": entities,
+        "jira_components": {
+            "canonical": components,
+            "raw": raw_components,
+            "source_raw": source_components,
+            "noncanonical": noncanonical_components,
+            "assignment_method": str(
+                fields.get("_component_assignment_method") or "source"
+            )[:80],
+        },
         "missing_info": missing,
         "qa_risk_tags": risks,
     }

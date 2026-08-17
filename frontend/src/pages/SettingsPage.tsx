@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Brain, CheckCircle, Clock3, Database, Download, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { AlertTriangle, Brain, CheckCircle, Clock3, Database, Download, FileUp, Loader2, RefreshCw, XCircle } from 'lucide-react';
 
 import { AppPageHeader, AppPageShell } from '@/components/DocsShell';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import {
+  getJiraCsvImportStatus,
+  JiraCsvImportStatus,
+  JiraCsvPreview,
+  previewJiraCsvFiles,
+  startJiraCsvImport,
+} from '@/api/jiraQaCopilot';
 import { apiUrl, fetchJson } from '@/utils/api';
 
 interface ReviewCenterSource {
@@ -80,6 +88,12 @@ export function SettingsPage() {
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [customUrlsText, setCustomUrlsText] = useState('');
   const [customUrlsResult, setCustomUrlsResult] = useState<{ message: string; isError: boolean } | null>(null);
+  const [jiraCsvFiles, setJiraCsvFiles] = useState<File[]>([]);
+  const [jiraCsvPreview, setJiraCsvPreview] = useState<JiraCsvPreview | null>(null);
+  const [jiraCustomerAssignments, setJiraCustomerAssignments] = useState<Record<string, string>>({});
+  const [jiraCsvImport, setJiraCsvImport] = useState<JiraCsvImportStatus | null>(null);
+  const [jiraCsvBusy, setJiraCsvBusy] = useState(false);
+  const [jiraCsvError, setJiraCsvError] = useState<string | null>(null);
 
   const loadReviewCenter = useCallback(async () => {
     setLoading(true);
@@ -241,6 +255,83 @@ export function SettingsPage() {
       setActionBusy(key, false);
     }
   }, [customUrlsText, loadReviewCenter, setActionBusy]);
+
+  const handlePreviewJiraCsv = useCallback(async () => {
+    if (jiraCsvFiles.length === 0) {
+      setJiraCsvError('Select at least one Jira CSV export.');
+      return;
+    }
+    setJiraCsvBusy(true);
+    setJiraCsvError(null);
+    setJiraCsvPreview(null);
+    try {
+      const preview = await previewJiraCsvFiles(jiraCsvFiles);
+      setJiraCsvPreview(preview);
+      setJiraCustomerAssignments(
+        Object.fromEntries(preview.files.map(file => [file.file_hash, file.assigned_customer || file.detected_customer]))
+      );
+    } catch (previewError) {
+      setJiraCsvError(previewError instanceof Error ? previewError.message : 'CSV preview failed');
+    } finally {
+      setJiraCsvBusy(false);
+    }
+  }, [jiraCsvFiles]);
+
+  const handleStartJiraCsvImport = useCallback(async () => {
+    if (!jiraCsvPreview || jiraCsvFiles.length === 0) return;
+    setJiraCsvBusy(true);
+    setJiraCsvError(null);
+    try {
+      const result = await startJiraCsvImport(jiraCsvFiles, jiraCustomerAssignments);
+      setJiraCsvImport({
+        import_id: result.import_id,
+        status: 'pending',
+        filenames: result.preview.files.map(file => file.filename),
+        total_rows: result.preview.total_rows,
+        processed_rows: 0,
+        indexed_issues: 0,
+        skipped_issues: 0,
+        metadata_merged_issues: 0,
+        failed_issues: 0,
+        chunks_indexed: 0,
+        redacted_fields: result.preview.redacted_fields,
+        errors: [],
+        progress_percent: 0,
+      });
+    } catch (importError) {
+      setJiraCsvError(importError instanceof Error ? importError.message : 'CSV import failed to start');
+      setJiraCsvBusy(false);
+    }
+  }, [jiraCsvFiles, jiraCsvPreview, jiraCustomerAssignments]);
+
+  useEffect(() => {
+    if (!jiraCsvImport || !['pending', 'running'].includes(jiraCsvImport.status)) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const next = await getJiraCsvImportStatus(jiraCsvImport.import_id);
+        if (cancelled) return;
+        setJiraCsvImport(next);
+        if (['pending', 'running'].includes(next.status)) {
+          timer = window.setTimeout(poll, 1200);
+        } else {
+          setJiraCsvBusy(false);
+          await loadReviewCenter();
+        }
+      } catch (pollError) {
+        if (!cancelled) {
+          setJiraCsvError(pollError instanceof Error ? pollError.message : 'Failed to read import progress');
+          setJiraCsvBusy(false);
+        }
+      }
+    };
+    timer = window.setTimeout(poll, 500);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [jiraCsvImport?.import_id, jiraCsvImport?.status, loadReviewCenter]);
 
   return (
     <AppPageShell wide className="space-y-8">
@@ -410,6 +501,132 @@ export function SettingsPage() {
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl text-slate-900">
+                <FileUp className="h-5 w-5" />
+                Import Jira CSV into QA RAG
+              </CardTitle>
+              <CardDescription>
+                Preview Jira exports, remove direct identifiers, then index normalized issues into SQL and the jira_qa collection.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                type="file"
+                accept=".csv,text/csv"
+                multiple
+                disabled={jiraCsvBusy}
+                onChange={event => {
+                  setJiraCsvFiles(Array.from(event.target.files || []));
+                  setJiraCsvPreview(null);
+                  setJiraCustomerAssignments({});
+                  setJiraCsvImport(null);
+                  setJiraCsvError(null);
+                }}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handlePreviewJiraCsv} disabled={jiraCsvBusy || jiraCsvFiles.length === 0}>
+                  {jiraCsvBusy && !jiraCsvImport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Preview import
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleStartJiraCsvImport}
+                  disabled={
+                    jiraCsvBusy
+                    || !jiraCsvPreview
+                    || !jiraCsvPreview.files.every(file => Boolean(jiraCustomerAssignments[file.file_hash]))
+                  }
+                >
+                  Index previewed files
+                </Button>
+              </div>
+              {jiraCsvPreview ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-900">
+                    {jiraCsvPreview.total_files} file(s), {jiraCsvPreview.total_rows} rows, {jiraCsvPreview.unique_issue_keys} unique Jira keys
+                  </div>
+                  <div className="mt-1">
+                    {jiraCsvPreview.overlap_count} cross-file association(s) will be merged across {jiraCsvPreview.overlapping_issue_keys.length} Jira key(s).
+                  </div>
+                  <div className="mt-1">Potential direct identifiers redacted: {jiraCsvPreview.redacted_fields}</div>
+                  <ul className="mt-3 space-y-3">
+                    {jiraCsvPreview.files.map(file => (
+                      <li key={file.file_hash} className="rounded-md border border-slate-200 bg-white p-3">
+                        <div>
+                          {file.filename}: {file.rows} rows, {file.columns} columns
+                          {file.already_imported ? ' (already imported by this importer version; will be skipped)' : ''}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <label htmlFor={`jira-customer-${file.file_hash}`} className="font-medium text-slate-800">
+                            Customer cohort
+                          </label>
+                          <select
+                            id={`jira-customer-${file.file_hash}`}
+                            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                            value={jiraCustomerAssignments[file.file_hash] || ''}
+                            disabled={jiraCsvBusy}
+                            onChange={event => setJiraCustomerAssignments(current => ({
+                              ...current,
+                              [file.file_hash]: event.target.value,
+                            }))}
+                          >
+                            <option value="">Select customer</option>
+                            <option value="Red Hat">Red Hat</option>
+                            <option value="IBM">IBM</option>
+                            <option value="Swift">Swift</option>
+                            <option value="Lexmark">Lexmark</option>
+                            <option value="Topcon">Topcon</option>
+                            <option value="Fidelity">Fidelity</option>
+                            <option value="JPMC">JPMC</option>
+                            <option value="KONE">KONE</option>
+                            <option value="Mayo Clinic">Mayo Clinic</option>
+                            <option value="Thomson Reuters">Thomson Reuters</option>
+                            <option value="PwC">PwC</option>
+                            <option value="LinkedIn">LinkedIn</option>
+                            <option value="Sonova">Sonova</option>
+                            <option value="Demant">Demant</option>
+                            <option value="Mixed (row-level cohorts)">Mixed (use row-level customer labels)</option>
+                          </select>
+                          <span className="text-xs text-slate-500">
+                            Detected {file.detected_customer || 'none'} ({file.customer_confidence} confidence)
+                          </span>
+                        </div>
+                        {file.customer_evidence_signals.length ? (
+                          <div className="mt-2 text-xs text-slate-500">{file.customer_evidence_signals.join(' | ')}</div>
+                        ) : null}
+                        {file.warnings.map(warning => (
+                          <div key={warning} className="mt-1 text-xs text-amber-700">{warning}</div>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {jiraCsvImport ? (
+                <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-950">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold">Import {jiraCsvImport.status.replaceAll('_', ' ')}</span>
+                    <span>{jiraCsvImport.progress_percent}%</span>
+                  </div>
+                  <Progress value={jiraCsvImport.progress_percent} className="h-2 bg-teal-100 [&>*]:bg-teal-600" />
+                  <div>
+                    Processed {jiraCsvImport.processed_rows}/{jiraCsvImport.total_rows}; indexed {jiraCsvImport.indexed_issues}; metadata-only merges {jiraCsvImport.metadata_merged_issues}; skipped {jiraCsvImport.skipped_issues}; failed {jiraCsvImport.failed_issues}; chunks {jiraCsvImport.chunks_indexed}.
+                  </div>
+                  {jiraCsvImport.errors.length ? (
+                    <ul className="list-disc pl-5 text-amber-900">
+                      {jiraCsvImport.errors.slice(0, 5).map(item => <li key={item}>{item}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              {jiraCsvError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{jiraCsvError}</div>
+              ) : null}
             </CardContent>
           </Card>
 

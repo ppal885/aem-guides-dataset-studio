@@ -6,6 +6,7 @@ import re
 import json
 import zipfile
 import subprocess
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from datetime import datetime
 
@@ -36,15 +37,30 @@ def _load_env_files() -> None:
 
 _load_env_files()
 
+from app.core.mcp_stdio import configure_mcp_stdio_runtime, is_mcp_stdio_mode, strip_stdio_log_handlers
+
+configure_mcp_stdio_runtime()
+
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("aem-dataset-studio")
+strip_stdio_log_handlers()
 
 # Same resolution as backend tavily_search_service.get_tavily_api_key()
 TAVILY_API_KEY = (os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_KEY") or "").strip()
 
 # All imports are lazy (inside each tool function) so a single missing
 # dependency never kills the entire MCP server — only that one tool fails.
+
+
+@contextmanager
+def _tool_stdout_guard():
+    """Keep MCP stdio clean: app logs/progress must not be written to stdout."""
+    if is_mcp_stdio_mode():
+        with redirect_stdout(sys.stderr):
+            yield
+    else:
+        yield
 
 
 # =============================================================================
@@ -216,6 +232,32 @@ def index_jira_issues(jql: str, limit: int = 100) -> str:
         return f"Error indexing issues: {e}"
 
 
+@mcp.tool()
+def search_jira_history(
+    query: str,
+    component: str = "",
+    customer: str = "",
+    exclude_jira_key: str = "",
+    top_k: int = 10,
+) -> str:
+    """Search the indexed Jira corpus for same-mechanism historical defects."""
+    try:
+        from app.api.routes.remote_mcp import _search_jira_history
+
+        result = _search_jira_history(
+            {
+                "query": query,
+                "component": component,
+                "customer": customer,
+                "exclude_jira_key": exclude_jira_key,
+                "top_k": top_k,
+            }
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {e}"}, indent=2)
+
+
 # =============================================================================
 # SECTION 2 — RAG TOOLS (Experience League + DITA Spec)
 # =============================================================================
@@ -227,18 +269,53 @@ def check_rag_status() -> str:
     Always run this first before using RAG query tools.
     """
     try:
-        from backend.app.services.doc_retriever_service import check_rag_readiness
-        status = check_rag_readiness()
-        return f"""
-RAG Status:
-  Experience League (AEM Guides): {'✅ Ready' if status['aem_guides_ready'] else '❌ Not indexed — run crawl_experience_league'}
-  DITA Spec (1.2 / 1.3 PDFs):    {'✅ Ready' if status['dita_spec_ready'] else '❌ Not indexed — run index_dita_spec_pdfs'}
-  Any ready:                       {'✅ Yes' if status['any_ready'] else '❌ No'}
+        from app.api.routes.remote_mcp import _check_rag_status
 
-{status['message']}
-"""
+        return json.dumps(_check_rag_status({"tenant_id": "kone"}), indent=2, ensure_ascii=False, default=str)
     except Exception as e:
         return f"Error checking RAG status: {e}"
+
+
+@mcp.tool()
+def query_test_evidence_graph(
+    query: str,
+    jira_key: str = "",
+    customer: str = "",
+    component: str = "",
+    outputs: list | None = None,
+    dita_entities: list | None = None,
+    include_cross_customer: bool = True,
+    max_depth: int = 2,
+    top_k: int = 10,
+    max_paths: int = 20,
+    tenant_id: str = "kone",
+) -> str:
+    """Connect direct test evidence through the active audited knowledge graph."""
+    try:
+        from app.services.evidence_graph_query_service import query_test_evidence_graph as query_graph
+
+        allow_cross_customer_details = (
+            os.getenv("AEM_STUDIO_TOKEN", "").strip() == "dev-bypass"
+            or os.getenv("EVIDENCE_GRAPH_LOCAL_ADMIN", "false").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        result = query_graph(
+            query,
+            jira_key=jira_key,
+            customer=customer,
+            component=component,
+            outputs=[str(value) for value in (outputs or [])],
+            dita_entities=[str(value) for value in (dita_entities or [])],
+            include_cross_customer=include_cross_customer,
+            max_depth=max_depth,
+            top_k=top_k,
+            max_paths=max_paths,
+            tenant_id=tenant_id,
+            allow_cross_customer_details=allow_cross_customer_details,
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {e}"}, indent=2)
 
 
 @mcp.tool()
@@ -1009,6 +1086,60 @@ def save_prompt_template(name: str, content: str) -> str:
 
 
 @mcp.tool()
+def stage_dita_upload_package(package_name: str, filenames: str) -> str:
+    """
+    Stage a scoped DITA upload folder with only the listed files from output/dita/.
+
+    filenames: comma- or newline-separated basenames, e.g.
+      'GUIDES-37845-map.ditamap,GUIDES-37845-topic-a.dita,README-GUIDES-37845.txt'
+
+    Creates output/packages/<package_name>/ ready for upload_dataset_to_aem.
+    """
+    import json
+    import shutil
+    from datetime import datetime
+
+    output_dir = PROJECT_ROOT / "output" / "dita"
+    stage_dir = PROJECT_ROOT / "output" / "packages" / package_name
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    names = [part.strip() for part in re.split(r"[\n,]+", filenames or "") if part.strip()]
+    if not names:
+        return "Provide at least one filename to stage (comma- or newline-separated basenames)."
+
+    copied: list[str] = []
+    missing: list[str] = []
+    for name in names:
+        src = output_dir / name
+        if not src.is_file():
+            missing.append(name)
+            continue
+        shutil.copy2(src, stage_dir / name)
+        copied.append(name)
+
+    manifest = {
+        "package_name": package_name,
+        "created": datetime.utcnow().isoformat(),
+        "files": copied,
+        "missing": missing,
+    }
+    (stage_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    lines = [
+        f"Staged upload package: {stage_dir}",
+        f"Files copied: {len(copied)}",
+    ]
+    for item in copied:
+        lines.append(f"  - {item}")
+    if missing:
+        lines.append(f"Missing in output/dita/: {', '.join(missing)}")
+    lines.append(f"Upload with: upload_dataset_to_aem(source_path='output/packages/{package_name}', target_path='/content/dam/guides-qa/{package_name}')")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def bundle_dita_package(
         package_name: str,
         include_subfolders: bool = True
@@ -1441,26 +1572,27 @@ async def generate_dita_ot_output(
 
     output_format: pdf, html, xhtml, html5, both, or all.
     """
-    try:
-        from app.services.dita_ot_publish_service import publish_with_dita_ot
-        from app.services.publishing_dataset_intent_service import normalize_publishing_request
+    with _tool_stdout_guard():
+        try:
+            from app.services.dita_ot_publish_service import publish_with_dita_ot
+            from app.services.publishing_dataset_intent_service import normalize_publishing_request
 
-        normalized = normalize_publishing_request(
-            prompt=prompt,
-            output_format=output_format,
-            package_name=package_name,
-        )
-        result = await publish_with_dita_ot(
-            input_map=input_map or None,
-            prompt=normalized["prompt"],
-            output_format=normalized["output_format"],
-            package_name=normalized["package_name"],
-            timeout_seconds=max(1, int(timeout_seconds)),
-        )
-        result["publishing_intent"] = normalized
-        return json.dumps(result, indent=2, ensure_ascii=False)
-    except Exception as exc:
-        return f"Error in generate_dita_ot_output: {exc}"
+            normalized = normalize_publishing_request(
+                prompt=prompt,
+                output_format=output_format,
+                package_name=package_name,
+            )
+            result = await publish_with_dita_ot(
+                input_map=input_map or None,
+                prompt=normalized["prompt"],
+                output_format=normalized["output_format"],
+                package_name=normalized["package_name"],
+                timeout_seconds=max(1, int(timeout_seconds)),
+            )
+            result["publishing_intent"] = normalized
+            return json.dumps(result, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            return f"Error in generate_dita_ot_output: {exc}"
 
 
 @mcp.tool()
@@ -1631,92 +1763,93 @@ async def generate_dita(
 
     This is the standalone text-based generation entry point for Cursor MCP use.
     """
-    try:
-        from app.services.chat_tools import execute_create_job, execute_generate_dita, execute_generate_dita_ot_pdf
-        from app.services.generation_intent_router_service import route_generation_intent
+    with _tool_stdout_guard():
+        try:
+            from app.services.chat_tools import execute_create_job, execute_generate_dita, execute_generate_dita_ot_pdf
+            from app.services.generation_intent_router_service import route_generation_intent
 
-        prior_messages = [prior_context] if (prior_context or "").strip() else []
-        routed_intent = route_generation_intent(
-            text,
-            prior_messages=prior_messages,
-            requested_tool="generate_dita",
-            source="mcp_generate_dita",
-            tool_args={"text": text, "instructions": instructions},
-        )
-        if routed_intent and routed_intent.get("name") == "generate_dita_ot_pdf":
-            args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
-            result = await execute_generate_dita_ot_pdf(
-                prompt=str(args.get("prompt") or text).strip(),
-                output_format=str(args.get("output_format") or "pdf").strip(),
-                package_name=str(args.get("package_name") or "").strip(),
+            prior_messages = [prior_context] if (prior_context or "").strip() else []
+            routed_intent = route_generation_intent(
+                text,
+                prior_messages=prior_messages,
+                requested_tool="generate_dita",
+                source="mcp_generate_dita",
+                tool_args={"text": text, "instructions": instructions},
             )
-            return _format_mcp_generation_redirect_result(
-                "generate_dita was routed to DITA-OT publishing corpus generation.",
-                result,
-            )
+            if routed_intent and routed_intent.get("name") == "generate_dita_ot_pdf":
+                args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
+                result = await execute_generate_dita_ot_pdf(
+                    prompt=str(args.get("prompt") or text).strip(),
+                    output_format=str(args.get("output_format") or "pdf").strip(),
+                    package_name=str(args.get("package_name") or "").strip(),
+                )
+                return _format_mcp_generation_redirect_result(
+                    "generate_dita was routed to DITA-OT publishing corpus generation.",
+                    result,
+                )
 
-        if routed_intent and routed_intent.get("name") == "create_job":
-            args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
-            result = await execute_create_job(
-                recipe_type=str(args.get("recipe_type") or "freeform"),
-                config=args.get("config") if isinstance(args.get("config"), dict) else None,
+            if routed_intent and routed_intent.get("name") == "create_job":
+                args = routed_intent.get("args") if isinstance(routed_intent.get("args"), dict) else {}
+                result = await execute_create_job(
+                    recipe_type=str(args.get("recipe_type") or "freeform"),
+                    config=args.get("config") if isinstance(args.get("config"), dict) else None,
+                    user_id="mcp-user",
+                    subject=str(args.get("subject") or "DITA construct behavior dataset"),
+                    prompt_text=str(args.get("prompt_text") or text),
+                )
+                return _format_mcp_generation_redirect_result(
+                    "generate_dita was routed to DITA behavior dataset generation.",
+                    result,
+                )
+
+            result = await execute_generate_dita(
+                text=text,
+                instructions=(instructions or "").strip() or None,
+                bundle_contract=None,
+                run_id=None,
+                session_id=None,
                 user_id="mcp-user",
-                subject=str(args.get("subject") or "DITA construct behavior dataset"),
-                prompt_text=str(args.get("prompt_text") or text),
-            )
-            return _format_mcp_generation_redirect_result(
-                "generate_dita was routed to DITA behavior dataset generation.",
-                result,
+                tenant_id="kone",
             )
 
-        result = await execute_generate_dita(
-            text=text,
-            instructions=(instructions or "").strip() or None,
-            bundle_contract=None,
-            run_id=None,
-            session_id=None,
-            user_id="mcp-user",
-            tenant_id="kone",
-        )
+            if result.get("error"):
+                return f"generate_dita failed: {result['error']}"
 
-        if result.get("error"):
-            return f"generate_dita failed: {result['error']}"
+            representative = result.get("representative_files") or []
+            representative_lines = "\n".join(f"- {name}" for name in representative[:10]) or "- None"
+            artifact_counts = result.get("artifact_counts") or {}
+            count_lines = (
+                "\n".join(f"- {k}: {v}" for k, v in artifact_counts.items())
+                if artifact_counts
+                else "- Not available"
+            )
+            bundle_summary = result.get("bundle_summary") or "DITA bundle generated."
+            download_url = result.get("download_url") or "Not available"
+            contract_summary = result.get("contract_summary") or "No contract summary available."
+            resolution_warning = result.get("resolution_warning")
 
-        representative = result.get("representative_files") or []
-        representative_lines = "\n".join(f"- {name}" for name in representative[:10]) or "- None"
-        artifact_counts = result.get("artifact_counts") or {}
-        count_lines = (
-            "\n".join(f"- {k}: {v}" for k, v in artifact_counts.items())
-            if artifact_counts
-            else "- Not available"
-        )
-        bundle_summary = result.get("bundle_summary") or "DITA bundle generated."
-        download_url = result.get("download_url") or "Not available"
-        contract_summary = result.get("contract_summary") or "No contract summary available."
-        resolution_warning = result.get("resolution_warning")
-
-        lines = [
-            "DITA bundle generated successfully.",
-            "",
-            f"Summary: {bundle_summary}",
-            f"Run ID: {result.get('run_id', 'unknown')}",
-            f"Jira/Text ID: {result.get('jira_id', 'unknown')}",
-            f"Download URL: {download_url}",
-            "",
-            "Artifact counts:",
-            count_lines,
-            "",
-            "Representative files:",
-            representative_lines,
-            "",
-            "Contract summary:",
-            contract_summary,
-        ]
-        if resolution_warning:
-            lines.extend(["", f"Resolution warning: {resolution_warning}"])
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Error generating DITA from text: {e}"
+            lines = [
+                "DITA bundle generated successfully.",
+                "",
+                f"Summary: {bundle_summary}",
+                f"Run ID: {result.get('run_id', 'unknown')}",
+                f"Jira/Text ID: {result.get('jira_id', 'unknown')}",
+                f"Download URL: {download_url}",
+                "",
+                "Artifact counts:",
+                count_lines,
+                "",
+                "Representative files:",
+                representative_lines,
+                "",
+                "Contract summary:",
+                contract_summary,
+            ]
+            if resolution_warning:
+                lines.extend(["", f"Resolution warning: {resolution_warning}"])
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error generating DITA from text: {e}"
 
 
 def _format_mcp_generation_redirect_result(title: str, result: dict) -> str:
@@ -1750,193 +1883,109 @@ def _format_mcp_generation_redirect_result(title: str, result: dict) -> str:
 
 
 @mcp.tool()
-def generate_dita_from_jira(
+async def generate_dita_from_jira(
         issue_key: str,
         dita_type: str = "auto",
 ) -> str:
     """
     THE MAIN TOOL — Give a Jira issue key, get DITA automatically.
-    Handles everything: fetch → RAG → examples → generate → validate → enrich → score → log.
+    Runs the full MCP pipeline: fetch Jira → LLM generate → sync to output/dita → enrich → log.
 
-    issue_key: e.g. 'AEM-123'
+    issue_key: e.g. 'GUIDES-36430'
     dita_type: 'auto' (recommended) or force 'task' / 'concept' / 'reference'
-
-    Just call this and follow the instructions it returns.
     """
     try:
-        steps_log = []
-
-        # ── Step 1: Fetch issue + comments ────────────────────────────────
-        from backend.app.services.jira_client import JiraClient, extract_description_from_issue
-        jira = JiraClient()
-        issue = jira.get_issue(issue_key)
-        fields = issue.get("fields", {})
-        description = extract_description_from_issue(issue)
-        comments = jira.get_issue_comments(issue_key)
-        summary = fields.get("summary", "")
-        issue_type = fields.get("issuetype", {}).get("name", "").lower()
-        labels = fields.get("labels", [])
-        priority = fields.get("priority", {}).get("name", "")
-        status = fields.get("status", {}).get("name", "")
-        steps_log.append(f"✅ Fetched: {issue_key} — {summary[:60]}")
-
-        # ── Step 2: Auto-detect DITA type ─────────────────────────────────
-        if dita_type == "auto":
-            if any(x in issue_type for x in ["bug", "task", "subtask"]):
-                dita_type = "task"
-            elif any(x in issue_type for x in ["story", "epic", "feature"]):
-                dita_type = "concept"
-            elif any(x in issue_type for x in ["doc", "ref", "reference"]):
-                dita_type = "reference"
-            elif any(x in " ".join(labels).lower() for x in ["howto", "procedure", "steps"]):
-                dita_type = "task"
-            else:
-                dita_type = "concept"
-        steps_log.append(f"✅ DITA type detected: {dita_type}")
-
-        # ── Step 3: Load RAG context ──────────────────────────────────────
-        from backend.app.services.doc_retriever_service import (
-            retrieve_relevant_docs, format_docs_for_prompt
+        from backend.app.services.jira_generate_resolve import (
+            enrich_jira_text_with_analysis,
+            fetch_issue_text_for_generate,
         )
-        from backend.app.services.dita_knowledge_retriever import (
-            retrieve_dita_knowledge, retrieve_dita_graph_knowledge
+        from app.services.chat_tools import execute_generate_dita
+        from app.services.mcp_jira_dita_pipeline_service import (
+            build_jira_generation_request,
+            finalize_mcp_dita_output,
+            mark_issue_generated_local,
+            sync_bundle_to_output_dita,
         )
 
-        el_docs = retrieve_relevant_docs(query=summary, k=2)
-        el_text = format_docs_for_prompt(el_docs) if el_docs else "Not indexed yet."
+        key = (issue_key or "").strip().upper()
+        if not key:
+            return "Error: issue_key is required."
 
-        spec_chunks = retrieve_dita_knowledge(query_text=summary, k=2)
-        spec_text = "\n---\n".join(
-            (c.get("text_content") or "")[:600]
-            for c in spec_chunks
-        ) if spec_chunks else "Not indexed yet."
+        formatted, err = fetch_issue_text_for_generate(key)
+        if not formatted:
+            return f"Error fetching {key}: {err or 'Jira issue unavailable'}"
 
-        graph_text = retrieve_dita_graph_knowledge(
-            element_hint=f"{dita_type} {summary}"
-        ) or "Not available."
-        steps_log.append("✅ RAG context loaded")
+        enriched = enrich_jira_text_with_analysis(formatted, issue_key=key)
+        generation_request = build_jira_generation_request(key, dita_type=dita_type)
+        text = f"{enriched}\n\n## Generation Request\n{generation_request}"
 
-        # ── Step 4: Find closest expert DITA example ──────────────────────
-        example_text = ""
-        try:
-            from backend.app.services.embedding_service import embed_query, is_embedding_available
-            from backend.app.services.vector_store_service import query_collection, is_chroma_available
+        instructions = None
+        if dita_type != "auto":
+            instructions = f"Force primary topic type: {dita_type}"
 
-            if is_chroma_available() and is_embedding_available():
-                q_emb = embed_query(f"{dita_type} {summary}")
-                if q_emb is not None:
-                    rows = query_collection(
-                        "dita_examples",
-                        query_embedding=q_emb.tolist(),
-                        k=1,
-                        where={"topic_type": {"$eq": dita_type}},
-                    )
-                    if rows:
-                        example_text = (rows[0].get("document") or "")[:2000]
-                        steps_log.append("✅ Expert example found")
-                    else:
-                        steps_log.append("⚠️ No expert example found — run index_dita_example_repos")
-        except Exception:
-            steps_log.append("⚠️ Expert examples not available")
+        result = await execute_generate_dita(
+            text=text,
+            instructions=instructions,
+            bundle_contract=None,
+            run_id=None,
+            session_id=None,
+            user_id="mcp-user",
+            tenant_id="kone",
+        )
 
-        # ── Step 5: Format comments ───────────────────────────────────────
-        comment_lines = []
-        for c in comments[:5]:
-            body = (c.get("body_text") or "")[:300]
-            if body:
-                comment_lines.append(f"{c.get('author', 'Unknown')}: {body}")
-        comment_text = "\n".join(comment_lines) if comment_lines else "No comments."
+        if result.get("error"):
+            return f"generate_dita_from_jira failed for {key}: {result['error']}"
 
-        # ── Step 6: Build output filename ─────────────────────────────────
-        filename = f"{issue_key}-{dita_type}.dita"
-        root_id = issue_key.lower().replace("-", "_")
+        jira_id = str(result.get("jira_id") or key)
+        saved_files = sync_bundle_to_output_dita(jira_id)
+        if not saved_files:
+            saved_files = [
+                name
+                for name in (result.get("representative_files") or [])
+                if isinstance(name, str) and name.strip()
+            ]
 
-        # ── Step 7: Return complete generation package ────────────────────
-        return f"""
-GENERATION PACKAGE FOR {issue_key}
-{'=' * 60}
-{chr(10).join(steps_log)}
+        finalize = finalize_mcp_dita_output(saved_files)
+        mark_issue_generated_local(
+            key,
+            saved_files,
+            notes="Generated via MCP generate_dita_from_jira pipeline",
+        )
 
-TARGET FILE: output/dita/{filename}
-{'=' * 60}
+        validation_lines = [
+            f"  - {name}: {status}"
+            for name, status in (finalize.get("validation") or {}).items()
+        ] or ["  - none"]
+        file_lines = [f"  - {name}" for name in saved_files] or ["  - none"]
 
-JIRA DATA:
-  Key:         {issue_key}
-  Summary:     {summary}
-  Type:        {fields.get('issuetype', {}).get('name', '')}
-  Status:      {status}
-  Priority:    {priority}
-  Labels:      {', '.join(labels) or 'None'}
-
-  Description:
-  {description[:2000]}
-
-  Comments:
-  {comment_text}
-
-{'=' * 60}
-AEM GUIDES CONTEXT (Experience League):
-{el_text[:1000]}
-
-{'=' * 60}
-DITA SPEC RULES (1.2 / 1.3):
-{spec_text[:800]}
-
-{'=' * 60}
-ELEMENT NESTING RULES:
-{graph_text[:600]}
-
-{'=' * 60}
-EXPERT EXAMPLE (mirror this structure):
-{example_text if example_text else 'No example available — use spec rules above.'}
-
-{'=' * 60}
-YOUR TASK — GENERATE THIS FILE:
-{'=' * 60}
-
-Generate a complete DITA 1.3 {dita_type} topic XML using ALL context above.
-
-REQUIREMENTS:
-1. Start with: <?xml version="1.0" encoding="UTF-8"?>
-2. Include correct DOCTYPE for {dita_type}
-3. Root <{dita_type}> must have: id="{root_id}"
-4. Include <title> reflecting the issue summary
-5. Include <shortdesc> — one sentence summarizing the issue
-6. Include <prolog><metadata> with author and created date
-7. Use correct body element:
-   - task      → <taskbody> with <prereq>, <context>, <steps>, <result>
-   - concept   → <conbody> with <p>, <section>
-   - reference → <refbody> with <section>, <properties>
-8. Every <step> must have <cmd> as first child
-9. Content must reflect the ACTUAL Jira issue — not generic
-10. Follow nesting rules from element graph above
-11. Mirror structure from expert example above
-
-SCENARIO FIDELITY (mandatory — not a Jira field dump):
-12. Do NOT treat the topic as finished if you only paraphrased the description into <p>
-    blocks and added a metadata <simpletable> (issue key, status, labels). That is
-    insufficient for editor, table, layout, or publishing defects.
-13. Encode the reporter's STRUCTURE in DITA: if they describe a table with dimensions,
-    include a real content <table> with <tgroup cols="N">, <colspec> per column,
-    <thead>/<tbody>, and enough <row>/<entry> cells to match the described grid (pick a
-    clear interpretation when Jira wording is ambiguous, e.g. "6 rows and 5 rows" → state
-    5 columns × 6 rows in a short <p> or <note>).
-14. UI actions (right-click, menu paths): use <menucascade> with <uicontrol> for each
-    level (e.g. Delete → Columns). Order must match the Jira reproduction.
-15. Every URL in description or comments: add <xref href="..." format="html" scope="external">.
-16. Distinctive reporter wording that carries reproduction detail: preserve in a <note> or
-    <lq> (verbatim or near-verbatim), then explain interpretation in following <p> if needed.
-17. Procedural reproduction in a concept topic: add a dedicated <section> (e.g. reproduction)
-    with <ol> or numbered steps; if dita_type is task, use <steps>/<step>/<cmd> instead.
-
-AFTER GENERATING, EXECUTE IN ORDER:
-1. save_dita_file('{filename}', generated_xml)
-2. validate_and_fix_dita('{filename}')
-3. enrich_dita_output()
-4. score_dita_quality('{filename}')
-5. mark_issue_generated('{issue_key}', ['{filename}'])
-{'=' * 60}
-"""
+        lines = [
+            f"✅ generate_dita_from_jira completed for {key}",
+            "",
+            f"Jira ID / bundle: {jira_id}",
+            f"Run ID: {result.get('run_id', 'unknown')}",
+            f"Download URL: {result.get('download_url', 'Not available')}",
+            "",
+            "Synced to output/dita/:",
+            *file_lines,
+            "",
+            "Validation:",
+            *validation_lines,
+            "",
+            f"Enrichment: {finalize.get('enrich', {})}",
+        ]
+        if result.get("resolution_warning"):
+            lines.extend(["", f"Resolution warning: {result['resolution_warning']}"])
+        if result.get("rag_warning"):
+            lines.extend(["", f"RAG warning: {result['rag_warning']}"])
+        lines.extend(
+            [
+                "",
+                "Next steps:",
+                f"1. stage_dita_upload_package(package_name='{key}-qa', filenames='<comma-separated basenames>')",
+                f"2. upload_dataset_to_aem(source_path='output/packages/{key}-qa', target_path='/content/dam/guides-qa/{key}')",
+            ]
+        )
+        return "\n".join(lines)
 
     except Exception as e:
         return f"Error generating for {issue_key}: {e}"
@@ -3297,6 +3346,119 @@ def show_rag_index_status() -> str:
 # members can use them directly from any MCP-enabled Claude client, not only
 # through the DITA Expert web UI or a Claude Code session in this repo.
 
+_DITA_QUESTION_STOPWORDS = {
+    "what",
+    "where",
+    "when",
+    "why",
+    "how",
+    "does",
+    "is",
+    "are",
+    "the",
+    "a",
+    "an",
+    "in",
+    "of",
+    "for",
+    "with",
+    "and",
+    "or",
+    "dita",
+    "aem",
+    "guides",
+    "publishing",
+    "pdf",
+    "html",
+    "html5",
+    "works",
+    "work",
+    "used",
+    "use",
+    "behavior",
+    "behaviour",
+}
+
+_DITA_AMBIGUOUS_BARE_CONSTRUCTS = {
+    "steps",
+    "scope",
+    "search",
+    "title",
+    "type",
+    "format",
+    "platform",
+    "product",
+    "audience",
+}
+_DITA_PRODUCT_EVIDENCE_QUESTION = re.compile(
+    r"\b(aem|guides|sites|publishing|publish|output|html|jcr|component mapping|mapping scope|"
+    r"override|fallback|indexing|ranking|evidence|verified|negative cases?|test oracle|not yet verified)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_explicit_dita_construct_reference(question: str, construct: str) -> bool:
+    escaped = re.escape(construct)
+    return bool(
+        re.search(rf"<\s*{escaped}\b|@{escaped}\b", question or "", re.IGNORECASE)
+        or re.search(rf"\b{escaped}\s+(?:element|attribute)\b", question or "", re.IGNORECASE)
+        or re.search(
+            rf"\b(?:what\s+is|what\s+does|define|explain|how\s+does)\s+(?:the\s+)?`?@?{escaped}`?\b",
+            question or "",
+            re.IGNORECASE,
+        )
+    )
+
+
+def _should_use_dita_construct_fast_path(question: str, constructs: list[str]) -> bool:
+    if not constructs or len(constructs) > 3:
+        return False
+    if _DITA_PRODUCT_EVIDENCE_QUESTION.search(question or ""):
+        return False
+    return all(_is_explicit_dita_construct_reference(question, construct) for construct in constructs)
+
+
+def _recognized_dita_constructs_from_question(question: str, *, max_items: int = 4) -> list[str]:
+    """Extract known DITA constructs from a natural-language question."""
+    text = question or ""
+    raw_candidates: list[str] = []
+    raw_candidates.extend(re.findall(r"<\s*([A-Za-z][\w.:-]*)\b", text))
+    raw_candidates.extend(re.findall(r"@([A-Za-z][\w.:-]*)\b", text))
+    raw_candidates.extend(re.findall(r"\b(xml:lang|[A-Za-z][\w.:-]{2,})\b", text))
+
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for candidate in raw_candidates:
+        clean = candidate.strip().strip("`'\".,:;()[]{}").lstrip("@").lower()
+        if not clean or clean in seen or clean in _DITA_QUESTION_STOPWORDS:
+            continue
+        if clean in _DITA_AMBIGUOUS_BARE_CONSTRUCTS and not _is_explicit_dita_construct_reference(text, clean):
+            continue
+        seen.add(clean)
+        candidates.append(clean)
+
+    if not candidates:
+        return []
+
+    try:
+        with _tool_stdout_guard():
+            from app.services.dita_spec_registry_service import get_element_spec
+            from app.services.dita_attribute_catalog import get_attribute_spec
+    except Exception:
+        return []
+
+    recognized: list[str] = []
+    for candidate in candidates:
+        try:
+            is_known = get_element_spec(candidate) is not None or get_attribute_spec(candidate) is not None
+        except Exception:
+            is_known = False
+        if is_known:
+            recognized.append(candidate)
+        if len(recognized) >= max_items:
+            break
+    return recognized
+
 @mcp.tool()
 async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
     """
@@ -3314,25 +3476,49 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
         return "Provide a question to ask."
 
     try:
-        from app.services import chat_service as cs
+        with _tool_stdout_guard():
+            from app.services.aem_guides_incident_answer_service import answer_aem_sites_oak_conflict_from_jira
+
+        incident_answer = answer_aem_sites_oak_conflict_from_jira(question)
+        if incident_answer:
+            return incident_answer
+    except Exception:
+        pass
+
+    constructs = _recognized_dita_constructs_from_question(question)
+    if _should_use_dita_construct_fast_path(question, constructs):
+        sections = [lookup_dita_construct(construct) for construct in constructs]
+        sections.append(
+            "## Grounding\n"
+            "- Status: registry-fast-path\n"
+            "- Confidence: high for recognized DITA construct facts\n"
+            "- Reason: Simple construct question answered from the local DITA element/attribute registry, avoiding a slow full chat turn."
+        )
+        return "\n\n---\n\n".join(sections)
+
+    try:
+        with _tool_stdout_guard():
+            from app.services import chat_service as cs
     except Exception as e:
         return f"Error loading chat_service: {e}"
 
     try:
-        session_id = cs.create_session()
+        with _tool_stdout_guard():
+            session_id = cs.create_session()
     except Exception as e:
         return f"Error creating chat session: {e}"
 
     try:
         parts: list[str] = []
         grounding: dict | None = None
-        async for event in cs.chat_turn(session_id, question, tenant_id=tenant_id, human_prompts=True):
-            if not isinstance(event, dict):
-                continue
-            if event.get("type") == "grounding":
-                grounding = event.get("grounding") or {}
-            elif event.get("type") == "chunk":
-                parts.append(str(event.get("content") or ""))
+        with _tool_stdout_guard():
+            async for event in cs.chat_turn(session_id, question, tenant_id=tenant_id, human_prompts=True):
+                if not isinstance(event, dict):
+                    continue
+                if event.get("type") == "grounding":
+                    grounding = event.get("grounding") or {}
+                elif event.get("type") == "chunk":
+                    parts.append(str(event.get("content") or ""))
         answer = "".join(parts).strip()
         if not answer:
             return "No answer was returned for this question."
@@ -3372,7 +3558,8 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
         return f"Error generating answer: {e}"
     finally:
         try:
-            cs.delete_session(session_id)
+            with _tool_stdout_guard():
+                cs.delete_session(session_id)
         except Exception:
             pass
 
@@ -3889,7 +4076,6 @@ def show_mcp_rag_corpus_status() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def guides_test_plan_generator(
     jira_key: str,
     tenant_id: str = "kone",
@@ -3924,7 +4110,6 @@ def guides_test_plan_generator(
         return f"Error building Guides test-plan evidence packet: {e}"
 
 
-@mcp.tool()
 def publishing_ticket_dita_qa_packet(
     jira_key: str,
     tenant_id: str = "kone",

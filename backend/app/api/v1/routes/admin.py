@@ -1,7 +1,8 @@
 """Admin and maintenance endpoints."""
 import os
+import json
 import subprocess
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from app.core.auth import AdminUser, UserIdentity
 from app.services.cleaning_service import clean_old_data
@@ -10,6 +11,389 @@ from app.core.structured_logging import get_structured_logger
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 logger = get_structured_logger(__name__)
+
+
+class EvidenceGraphRebuildRequest(BaseModel):
+    dry_run: bool = True
+    sources: list[str] = Field(default_factory=lambda: ["jira", "docs", "dita"])
+    batch_size: int = Field(default=500, ge=10, le=5000)
+
+
+class EvidenceGraphSyncRequest(BaseModel):
+    max_events: int = Field(default=500, ge=1, le=5000)
+    max_retries: int = Field(default=5, ge=1, le=20)
+    batch_size: int = Field(default=500, ge=10, le=5000)
+
+
+class EvidenceGraphEventReplayRequest(BaseModel):
+    event_ids: list[str] = Field(default_factory=list)
+    source_kind: str = ""
+    confirm_all_failed: bool = False
+
+
+@router.get("/evidence-graph/status")
+def evidence_graph_status(user: UserIdentity = AdminUser):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import graph_status
+
+    session = SessionLocal()
+    try:
+        return graph_status(session)
+    finally:
+        session.close()
+
+
+@router.get("/evidence-graph/audit")
+def evidence_graph_audit(generation_id: str = "", user: UserIdentity = AdminUser):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import active_generation, audit_generation
+
+    session = SessionLocal()
+    try:
+        selected = generation_id.strip()
+        if not selected:
+            generation = active_generation(session)
+            if generation is None:
+                raise HTTPException(status_code=404, detail="No active evidence graph generation")
+            selected = generation.id
+        result = audit_generation(session, selected)
+        if result.get("errors") == ["Generation does not exist."]:
+            raise HTTPException(status_code=404, detail=result)
+        return result
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/rebuild")
+def rebuild_evidence_graph_endpoint(
+    request: EvidenceGraphRebuildRequest,
+    user: UserIdentity = AdminUser,
+):
+    from app.services.evidence_graph_build_service import rebuild_evidence_graph
+
+    result = rebuild_evidence_graph(
+        dry_run=request.dry_run,
+        sources=request.sources,
+        batch_size=request.batch_size,
+        created_by=user.id,
+    )
+    if not result.get("valid"):
+        raise HTTPException(status_code=409, detail=result)
+    return result
+
+
+@router.post("/evidence-graph/sync")
+def sync_evidence_graph_endpoint(
+    request: EvidenceGraphSyncRequest,
+    user: UserIdentity = AdminUser,
+):
+    from app.services.evidence_graph_sync_service import drain_evidence_graph_events
+
+    result = drain_evidence_graph_events(
+        max_events=request.max_events,
+        max_retries=request.max_retries,
+        batch_size=request.batch_size,
+        created_by=user.id,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail=result)
+    return result
+
+
+@router.get("/evidence-graph/events")
+def evidence_graph_events(
+    status: str = "failed",
+    source_kind: str = "",
+    limit: int = 100,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import list_source_events
+
+    normalized_status = status.strip().lower()
+    if normalized_status and normalized_status not in {"pending", "retry", "failed", "completed"}:
+        raise HTTPException(status_code=400, detail="Unsupported evidence graph event status")
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    session = SessionLocal()
+    try:
+        events = list_source_events(
+            session,
+            status=normalized_status or None,
+            source_kind=source_kind.strip() or None,
+            limit=limit,
+        )
+        return {"count": len(events), "events": events}
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/events/replay")
+def replay_evidence_graph_events_endpoint(
+    request: EvidenceGraphEventReplayRequest,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import replay_source_events
+
+    event_ids = list(dict.fromkeys(value.strip() for value in request.event_ids if value.strip()))
+    source_kind = request.source_kind.strip()
+    if len(event_ids) > 1000:
+        raise HTTPException(status_code=400, detail="At most 1000 event IDs can be replayed at once")
+    if not event_ids and not source_kind and not request.confirm_all_failed:
+        raise HTTPException(
+            status_code=400,
+            detail="Select event_ids/source_kind or explicitly set confirm_all_failed=true",
+        )
+    session = SessionLocal()
+    try:
+        result = replay_source_events(
+            session,
+            event_ids=event_ids,
+            source_kind=source_kind or None,
+        )
+        session.commit()
+        return result
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@router.post("/evidence-graph/rollback")
+def rollback_evidence_graph_endpoint(user: UserIdentity = AdminUser):
+    from app.db.session import SessionLocal
+    from app.services.evidence_graph_store import rollback_generation
+
+    session = SessionLocal()
+    try:
+        try:
+            result = rollback_generation(session)
+            session.commit()
+            return result
+        except ValueError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        session.close()
+
+
+@router.post("/jira-rag/import-csv")
+async def import_jira_csv(
+    response: Response,
+    files: list[UploadFile] = File(...),
+    customer_assignments_json: str = Form("{}"),
+    dry_run: bool = False,
+    user: UserIdentity = AdminUser,
+):
+    """Preview or asynchronously ingest one or more Jira CSV exports."""
+    from app.services.jira_csv_import_service import (
+        MAX_CSV_BYTES,
+        create_import_run,
+        preview_jira_csv_files,
+        start_import,
+    )
+
+    if not files or len(files) > 10:
+        raise HTTPException(status_code=400, detail="Upload between 1 and 10 Jira CSV files")
+    payloads: list[tuple[str, bytes]] = []
+    try:
+        for upload in files:
+            filename = upload.filename or "jira-export.csv"
+            data = await upload.read(MAX_CSV_BYTES + 1)
+            if len(data) > MAX_CSV_BYTES:
+                raise ValueError(f"{filename} exceeds the 25 MB limit")
+            payloads.append((filename, data))
+        try:
+            customer_assignments = json.loads(customer_assignments_json or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("customer_assignments_json must be a JSON object keyed by file hash") from exc
+        if not isinstance(customer_assignments, dict):
+            raise ValueError("customer_assignments_json must be a JSON object keyed by file hash")
+        customer_assignments = {str(key): str(value) for key, value in customer_assignments.items()}
+        preview = preview_jira_csv_files(payloads, customer_assignments)
+        if dry_run:
+            return preview
+        run_id, paths = create_import_run(
+            payloads,
+            created_by=user.id,
+            customer_assignments=customer_assignments,
+        )
+        start_import(run_id, paths)
+        response.status_code = 202
+        return {
+            "import_id": run_id,
+            "status": "pending",
+            "status_url": f"/api/v1/admin/jira-rag/imports/{run_id}",
+            "preview": preview,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        for upload in files:
+            await upload.close()
+
+
+@router.get("/jira-rag/imports/{import_id}")
+def jira_csv_import_status(import_id: str, user: UserIdentity = AdminUser):
+    """Return progress and final statistics for a Jira CSV import."""
+    del user
+    from app.services.jira_csv_import_service import get_import_run
+
+    result = get_import_run(import_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Jira CSV import not found")
+    return result
+
+
+@router.post("/jira-rag/learning-chunks/rebuild")
+def rebuild_jira_learning_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 10_000,
+    user: UserIdentity = AdminUser,
+):
+    """Build high-signal historical learning chunks from indexed resolved Jira evidence."""
+    del user
+    from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
+
+    result = backfill_jira_learning_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 100_000)),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
+
+
+@router.get("/jira-rag/uac-chunks/audit")
+def audit_historical_uac_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 100_000,
+    page_size: int = 200,
+    closed_only: bool = True,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.services.jira_uac_backfill_service import backfill_historical_uac_chunks
+
+    return backfill_historical_uac_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 500_000)),
+        page_size=max(1, min(page_size, 1000)),
+        closed_only=closed_only,
+        dry_run=True,
+    )
+
+
+@router.post("/jira-rag/uac-chunks/rebuild")
+def rebuild_historical_uac_chunks(
+    source_type: str = "jira_csv",
+    limit: int = 100_000,
+    page_size: int = 200,
+    closed_only: bool = True,
+    dry_run: bool = True,
+    refresh_learning: bool = True,
+    user: UserIdentity = AdminUser,
+):
+    del user
+    from app.services.jira_uac_backfill_service import backfill_historical_uac_chunks
+
+    result = backfill_historical_uac_chunks(
+        source_type=source_type.strip()[:80],
+        limit=max(1, min(limit, 500_000)),
+        page_size=max(1, min(page_size, 1000)),
+        closed_only=closed_only,
+        dry_run=dry_run,
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    if not dry_run and result.get("valid") and refresh_learning:
+        from app.services.jira_learning_chunk_service import backfill_jira_learning_chunks
+
+        learning = backfill_jira_learning_chunks(
+            source_type=source_type.strip()[:80],
+            limit=min(limit, 100_000),
+        )
+        result["learning_refresh"] = learning
+        if learning.get("error") or learning.get("failed_issues"):
+            result["valid"] = False
+    if not dry_run and not result.get("valid"):
+        raise HTTPException(status_code=500, detail=result)
+    return result
+
+
+@router.post("/jira-rag/reconcile")
+def reconcile_jira_rag(
+    dry_run: bool = True,
+    limit: int = 10_000,
+    user: UserIdentity = AdminUser,
+):
+    """Repair Jira keys present in SQL but absent from Chroma."""
+    del user
+    from app.services.jira_rag_reconciliation_service import reconcile_jira_sql_chroma
+
+    result = reconcile_jira_sql_chroma(
+        dry_run=dry_run,
+        limit=max(1, min(limit, 100_000)),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=str(result["error"]))
+    return result
+
+
+@router.post("/jira-rag/customer-profiles/rebuild")
+def rebuild_jira_customer_profiles(customers: str = "", user: UserIdentity = AdminUser):
+    """Rebuild aggregate customer workflow profiles from distinct SQL Jira keys."""
+    del user
+    from app.services.jira_customer_profile_service import rebuild_customer_profiles
+
+    selected = [value.strip() for value in customers.split(",") if value.strip()]
+    return rebuild_customer_profiles(selected or None)
+
+
+@router.get("/jira-rag/customer-profiles/{customer}")
+def jira_customer_profile(customer: str, user: UserIdentity = AdminUser):
+    """Return one aggregate profile with its explicit evidence boundary."""
+    del user
+    from app.services.jira_customer_profile_service import get_customer_profile
+
+    result = get_customer_profile(customer)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Customer Jira profile not found")
+    return result
+
+
+class CustomerProfileApprovalRequest(BaseModel):
+    status: str
+    notes: str = ""
+
+
+@router.post("/jira-rag/customer-profiles/{customer}/approval")
+def approve_jira_customer_profile(
+    customer: str,
+    request: CustomerProfileApprovalRequest,
+    user: UserIdentity = AdminUser,
+):
+    """Record reviewer approval without converting aggregate context into direct behavior proof."""
+    from app.services.jira_customer_profile_service import set_customer_profile_approval
+
+    try:
+        result = set_customer_profile_approval(
+            customer,
+            status=request.status,
+            reviewer=user.id,
+            notes=request.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Customer Jira profile not found")
+    return result
 
 
 @router.post("/env-check")
@@ -130,6 +514,25 @@ def trigger_deploy(user: UserIdentity = AdminUser):
             timeout=60,
         )
         results["git_pull"] = (pull.stdout.strip() or pull.stderr.strip())[-500:]
+
+        # Keep the host nginx proxy aligned with the API's 10 files x 25 MB validation.
+        try:
+            nginx_limit = "/etc/nginx/conf.d/aem-guides-upload-limit.conf"
+            with open(nginx_limit, "w", encoding="utf-8") as nginx_file:
+                nginx_file.write("client_max_body_size 260m;\n")
+            nginx_test = subprocess.run(
+                ["nginx", "-t"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_test.returncode != 0:
+                raise RuntimeError((nginx_test.stderr or nginx_test.stdout).strip())
+            nginx_reload = subprocess.run(
+                ["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=15
+            )
+            if nginx_reload.returncode != 0:
+                raise RuntimeError((nginx_reload.stderr or nginx_reload.stdout).strip())
+            results["nginx_upload_limit"] = "260 MB configured and nginx reloaded"
+        except Exception as nginx_exc:
+            results["nginx_upload_limit_error"] = str(nginx_exc)
 
         # clear pyc cache so new code takes effect
         subprocess.run(
@@ -388,6 +791,72 @@ def jira_rag_status(user: UserIdentity = AdminUser):
         return {"available": True, "error": str(e)}
 
 
+@router.get("/jira-rag/corpus-audit")
+def jira_rag_corpus_audit(
+    duplicate_sample_limit: int = 20,
+    top_components_per_customer: int = 10,
+    user: UserIdentity = AdminUser,
+):
+    """Audit unique-issue customer, component, date, metadata, and duplicate coverage in Chroma."""
+    del user
+    from app.services.jira_corpus_audit_service import audit_jira_corpus
+
+    try:
+        return audit_jira_corpus(
+            duplicate_sample_limit=max(0, min(int(duplicate_sample_limit), 100)),
+            top_components_per_customer=max(1, min(int(top_components_per_customer), 50)),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Jira corpus audit failed: {exc}") from exc
+
+
+class JiraSyncCursorBootstrapRequest(BaseModel):
+    project_key: str = Field("", max_length=30)
+    sync_state_id: str = Field("", max_length=120)
+    dry_run: bool = True
+    force: bool = False
+
+
+@router.post("/jira-rag/sync-cursor/bootstrap")
+def bootstrap_jira_rag_sync_cursor(
+    request: JiraSyncCursorBootstrapRequest,
+    user: UserIdentity = AdminUser,
+):
+    """Preview or repair the incremental cursor from searchable Jira metadata."""
+    del user
+    from app.services.jira_sync_cursor_service import bootstrap_jira_sync_cursor
+
+    try:
+        result = bootstrap_jira_sync_cursor(
+            request.project_key or None,
+            sync_state_id=request.sync_state_id or None,
+            dry_run=request.dry_run,
+            force=request.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not result.get("available"):
+        raise HTTPException(status_code=409, detail=result)
+    return result
+
+
+@router.get("/rag/knowledge-audit")
+def rag_knowledge_audit(
+    duplicate_sample_limit: int = 10,
+    user: UserIdentity = AdminUser,
+):
+    """Audit authoritative topic and metadata coverage in product and DITA knowledge corpora."""
+    del user
+    from app.services.knowledge_corpus_audit_service import audit_knowledge_corpora
+
+    try:
+        return audit_knowledge_corpora(
+            duplicate_sample_limit=max(0, min(int(duplicate_sample_limit), 100))
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Knowledge corpus audit failed: {exc}") from exc
+
+
 @router.post("/init-embedding")
 def init_embedding_model(user: UserIdentity = AdminUser):
     """Force-initialize the embedding model (downloads from HuggingFace if needed).
@@ -630,3 +1099,136 @@ def process_info(user: UserIdentity = AdminUser):
         "dotenv_loaded": os.environ.get("_DOTENV_LOADED", ""),
         "env_docker_path": str(Path(sys.executable).parent.parent / "backend" / ".env.docker"),
     }
+
+
+# ── UAC evaluation endpoints ──────────────────────────────────────────────────
+
+@router.post("/uac-eval/backfill")
+async def trigger_uac_backfill(
+    jql: str = (
+        'project in (DXML, GUIDES) AND status in (Closed, Resolved, Done) '
+        'AND resolution in (Fixed, "Done", Implemented) ORDER BY updated DESC'
+    ),
+    batch_size: int = 50,
+    max_issues: int | None = None,
+    dry_run: bool = False,
+    user: UserIdentity = AdminUser,
+):
+    """Backfill closed UAC Jira issues into the jira_qa ChromaDB index.
+
+    Run async — returns immediately with job metadata; check logs for progress.
+    """
+    import asyncio
+    from app.core.structured_logging import get_structured_logger as _gsl
+
+    _log = _gsl(__name__)
+    _log.info_structured("UAC backfill triggered", extra_fields={"jql": jql[:120], "dry_run": dry_run})
+
+    async def _run():
+        import sys
+        from pathlib import Path as _P
+        _scripts = _P(__file__).resolve().parent.parent.parent.parent.parent / "scripts"
+        sys.path.insert(0, str(_scripts))
+        from scripts.backfill_uac_index import run_backfill
+        try:
+            result = await asyncio.to_thread(
+                run_backfill,
+                jql=jql,
+                batch_size=batch_size,
+                dry_run=dry_run,
+                max_issues=max_issues,
+            )
+            _log.info_structured("UAC backfill complete", extra_fields=result)
+        except Exception as exc:
+            _log.error_structured("UAC backfill failed", extra_fields={"error": str(exc)}, exc_info=True)
+
+    asyncio.create_task(_run())
+    return {
+        "status": "started",
+        "jql": jql[:120],
+        "dry_run": dry_run,
+        "max_issues": max_issues,
+        "message": "Backfill running in background — check server logs for progress.",
+    }
+
+
+@router.post("/uac-eval/benchmark")
+async def run_uac_benchmark(
+    keys: str | None = None,
+    user: UserIdentity = AdminUser,
+):
+    """Run the UAC golden benchmark for the specified ticket keys (or all golden tickets).
+
+    `keys` — comma-separated Jira keys, e.g. "DXML-62001,DXML-61540".
+    Leave blank to run all 20 golden tickets (may take 20–40 minutes).
+    """
+    import asyncio
+
+    key_list = [k.strip() for k in keys.split(",")] if keys else None
+
+    async def _run():
+        from app.evaluation.uac_eval.runner import run_benchmark
+        try:
+            report = await asyncio.to_thread(run_benchmark, keys=key_list, verbose=False)
+            logger.info_structured(
+                "UAC benchmark complete",
+                extra_fields={
+                    "run_id": report.run_id,
+                    "mean_f1": report.similarity.mean_f1,
+                    "mean_coverage": report.similarity.mean_coverage,
+                    **report.audit_summary,
+                },
+            )
+        except Exception as exc:
+            logger.error_structured("UAC benchmark failed", extra_fields={"error": str(exc)}, exc_info=True)
+
+    asyncio.create_task(_run())
+    return {
+        "status": "started",
+        "keys": key_list,
+        "message": "Benchmark running in background — results logged when complete.",
+    }
+
+
+@router.get("/uac-eval/golden-set")
+def get_golden_set(user: UserIdentity = AdminUser):
+    """Return the current golden benchmark set (jira_key + metadata only, no reference ACs)."""
+    from pathlib import Path
+    import yaml
+
+    golden_path = Path(__file__).resolve().parent.parent.parent.parent / "evaluation" / "uac_eval" / "golden_set.yaml"
+    try:
+        with open(golden_path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        entries = [
+            {
+                "jira_key": e["jira_key"],
+                "summary": e.get("summary", ""),
+                "domain": e.get("domain", ""),
+                "risk_level": e.get("risk_level", ""),
+                "tags": e.get("tags", []),
+                "reference_scenario_count": len(e.get("reference_scenarios", [])),
+            }
+            for e in data.get("golden", [])
+        ]
+        return {"count": len(entries), "entries": entries}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="golden_set.yaml not found")
+
+
+@router.post("/uac-eval/score-single")
+async def score_single_ticket(
+    jira_key: str,
+    user: UserIdentity = AdminUser,
+):
+    """Generate UAC for one ticket from the golden set and return similarity + audit scores."""
+    from app.evaluation.uac_eval.runner import load_golden_set, evaluate_ticket
+
+    entries = load_golden_set()
+    entry = next((e for e in entries if e.jira_key.upper() == jira_key.upper()), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"{jira_key} not found in golden set")
+
+    import asyncio
+    result = await asyncio.to_thread(evaluate_ticket, entry)
+    return result.to_dict()

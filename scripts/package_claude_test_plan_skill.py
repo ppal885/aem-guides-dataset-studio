@@ -48,16 +48,21 @@ Restart Claude Code after copying.
 /guides-test-plan-generator GUIDES-12345
 ```
 
-## Required MCP/RAG backend
+## Required MCP/RAG/backend tools
 
-This local skill does not contain the RAG index. Claude must be configured with
-the MCP server/tool that points to the central VM backend and exposes:
+This local skill does not contain the RAG index and does not replace Adobe Jira
+MCP. Claude Code must be configured with:
 
-- `guides_test_plan_generator`
+- Adobe Jira MCP for live Jira reads
+- local repo access for `xmleditor`, `starling`, `guides-ui-tests`, `dxml-it-tests`
+- the existing VM-backed AEM Guides MCP/RAG tools, especially `guides_test_plan_generator`
+- optional existing deterministic helper `test_plan_pipeline`
 
 The VM backend provides Jira evidence, AEM Guides RAG/enriched behavior chunks,
 DITA/DITA-OT evidence, and repository analysis. The skill only defines the
-workflow, output structure, quality gates, and validation rules.
+workflow, output structure, quality gates, and validation rules. Do not create a
+second Jira client, RAG index, vector DB, repo scanner service, pipeline app, or
+duplicate skill.
 """
 
 
@@ -133,10 +138,19 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     manifest = {
         "name": "aem-guides-test-plan-claude-skill",
+        "version": "dalp-compact-v2",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "skill": "aem-guides-test-scenario-generator",
         "slash_command": "guides-test-plan-generator",
-        "required_mcp_tool": "guides_test_plan_generator",
+        "required_mcp_tools": [
+            "Adobe Jira MCP",
+            "guides_test_plan_generator",
+        ],
+        "optional_mcp_tools": [
+            "test_plan_pipeline",
+            "find_similar_jira_issues",
+            "show_mcp_rag_corpus_status",
+        ],
         "install_skill_to": "~/.claude/skills/aem-guides-test-scenario-generator",
         "install_command_to": "~/.claude/commands/guides-test-plan-generator.md",
     }

@@ -11,20 +11,43 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.structured_logging import get_structured_logger
+from app.services.customer_tokens import clean_customer_tokens
 from app.services.embedding_service import embed_query, is_embedding_available
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
+from app.services.jira_component_metadata_service import component_filter_field, normalize_component_token
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
 
 logger = get_structured_logger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{3,}", re.I)
 _CHUNK_TYPE_WEIGHT: dict[str, float] = {
+    "learning_behavior_chunk": 0.06,
+    "historical_uac_contract_chunk": 0.055,
+    "historical_uac_clause_chunk": 0.05,
+    "historical_uac_dimension_chunk": 0.045,
+    "historical_uac_out_of_scope_chunk": 0.03,
+    "historical_uac_reference_chunk": 0.025,
+    "historical_uac_context_chunk": 0.025,
+    "acceptance_criteria_chunk": 0.05,
+    "resolution_rca_chunk": 0.05,
+    "test_evidence_chunk": 0.045,
+    "expected_actual_chunk": 0.04,
     "similar_ticket_signals": 0.04,
     "full_ticket_summary": 0.035,
     "customer_problem": 0.035,
+    "comment_chunk": 0.015,
     "comments_discussion": 0.015,
     "attachment_log_signals": 0.015,
     "live_jira_snapshot": 0.02,
+    "customer_profile_overview": 0.025,
+    "customer_profile_components_domains": 0.025,
+    "customer_profile_workflows_outputs": 0.025,
+    "customer_profile_dita_entities": 0.02,
+    "customer_profile_failures_automation_resolutions": 0.025,
+    "customer_profile_bug_taxonomy": 0.035,
+    "customer_profile_bug_concentrations": 0.035,
+    "customer_profile_regression_recommendations": 0.04,
+    "customer_profile_test_data_exploration": 0.04,
 }
 
 # Enterprise hybrid fusion weights.  Keep these aligned with the documented
@@ -52,9 +75,6 @@ MIN_ENTITY_OVERLAP = int(
 JIRA_UAC_MIN_SIMILARITY_SCORE = MIN_VECTOR_SCORE
 JIRA_UAC_MINIMUM_EVIDENCE_THRESHOLD = MIN_FINAL_SCORE
 JIRA_UAC_MIN_METADATA_OVERLAP = MIN_ENTITY_OVERLAP
-JIRA_UAC_MAX_SIMILAR_PER_DOMAIN = int(
-    os.getenv("JIRA_UAC_MAX_SIMILAR_PER_DOMAIN", os.getenv("MAX_SIMILAR_PER_DOMAIN", "3"))
-)
 JIRA_UAC_MIN_STRONG_SIMILAR = int(os.getenv("JIRA_UAC_MIN_STRONG_SIMILAR", "2"))
 JIRA_UAC_VECTOR_ONLY_PENALTY = float(os.getenv("JIRA_UAC_VECTOR_ONLY_PENALTY", "0.14"))
 JIRA_UAC_ENTITY_MATCH_BOOST = float(os.getenv("JIRA_UAC_ENTITY_MATCH_BOOST", "0.04"))
@@ -128,6 +148,190 @@ class RetrievedJira(BaseModel):
     rejection_reasons: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _metadata_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def extract_structured_learning_evidence(row: RetrievedJira | dict[str, Any]) -> dict[str, Any]:
+    """Return reusable learning fields without promoting cautionary history to product truth."""
+    if isinstance(row, RetrievedJira):
+        chunk_type = row.chunk_type
+        document = row.document
+        metadata = row.metadata
+    else:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        chunk_type = str(row.get("chunk_type") or metadata.get("chunk_type") or "")
+        document = str(row.get("document") or row.get("document_excerpt") or "")
+    if chunk_type != "learning_behavior_chunk":
+        return {}
+
+    labels: dict[str, str] = {}
+    for line in str(document or "").splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        labels[key.strip().lower()] = value.strip()
+
+    def evidence_value(label: str) -> str:
+        value = labels.get(label, "").strip()
+        lowered = value.lower()
+        if not value or lowered.startswith("not explicitly") or lowered.startswith("not classified"):
+            return ""
+        return re.sub(r"(?<![\w.])@[A-Za-z][\w.-]+", "", value).strip()
+
+    confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
+    outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
+    resolution_mechanism = str(
+        metadata.get("resolution_mechanism") or evidence_value("resolution mechanism") or "legacy_unknown"
+    ).strip()
+    resolution_evidence_source = str(
+        metadata.get("resolution_evidence_source")
+        or evidence_value("resolution evidence source")
+        or "legacy_unknown"
+    ).strip()
+    contract_complete = (
+        _metadata_bool(metadata.get("behavior_contract_complete"))
+        if "behavior_contract_complete" in metadata
+        else True
+    )
+    behavior_contract = evidence_value("behavior contract")
+    behavior_contract_source = str(
+        metadata.get("behavior_contract_source") or evidence_value("behavior contract source") or "legacy_unknown"
+    ).strip()
+    root_cause_source = str(
+        metadata.get("root_cause_source") or evidence_value("root cause source") or "legacy_unknown"
+    ).strip()
+    qa_oracle = evidence_value("qa oracle")
+    qa_oracle_source = str(
+        metadata.get("qa_oracle_source") or evidence_value("qa oracle source") or "legacy_unknown"
+    ).strip()
+    if qa_oracle.lower().startswith("verify the captured behavior contract"):
+        qa_oracle_source = "generated_fallback"
+    verified_fix = bool(
+        _metadata_bool(metadata.get("is_verified_fix"))
+        and contract_complete
+        and root_cause_source not in {"missing", "generated_fallback"}
+        and qa_oracle_source not in {"missing", "generated_fallback"}
+    )
+    contract_is_only_actual = behavior_contract.lower().startswith("actual:") and not re.search(
+        r"\b(expected|acceptance criteria|must|should)\b",
+        behavior_contract,
+        re.I,
+    )
+    reusable_fix = (
+        outcome == "implemented_fix"
+        and confidence in {"high", "medium"}
+        and contract_complete
+        and bool(verified_fix or (behavior_contract and not contract_is_only_actual))
+    )
+    return {
+        "chunk_type": "learning_behavior_chunk",
+        "learning_confidence": confidence,
+        "historical_outcome": outcome,
+        "resolution_mechanism": resolution_mechanism,
+        "resolution_evidence_source": resolution_evidence_source,
+        "is_verified_fix": verified_fix,
+        "reuse_mode": "verified_regression_contract" if reusable_fix else "risk_signal_only",
+        "behavior_contract_source": behavior_contract_source,
+        "behavior_contract_complete": contract_complete,
+        "observed_problem": evidence_value("observed problem"),
+        "behavior_contract": behavior_contract if reusable_fix else "",
+        "root_cause": (
+            evidence_value("root cause evidence")
+            if reusable_fix and root_cause_source not in {"missing", "generated_fallback"}
+            else ""
+        ),
+        "root_cause_source": root_cause_source,
+        "qa_oracle": (
+            qa_oracle
+            if reusable_fix and qa_oracle_source not in {"missing", "generated_fallback"}
+            else ""
+        ),
+        "qa_oracle_source": qa_oracle_source,
+        "regression_risks": evidence_value("regression risks"),
+        "reuse_rule": evidence_value("reuse rule"),
+    }
+
+
+def extract_structured_uac_evidence(row: RetrievedJira | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(row, RetrievedJira):
+        chunk_type = row.chunk_type
+        document = row.document
+        metadata = row.metadata
+    else:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        chunk_type = str(row.get("chunk_type") or metadata.get("chunk_type") or "")
+        document = str(row.get("document") or row.get("document_excerpt") or "")
+    if not chunk_type.startswith("historical_uac_"):
+        return {}
+    source_text = ""
+    for line in str(document or "").splitlines():
+        if line.startswith("Source text:"):
+            source_text = line.split(":", 1)[1].strip()
+            break
+    tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
+    contract_complete = _metadata_bool(metadata.get("uac_contract_complete"))
+    release_scope_split = _metadata_bool(metadata.get("uac_release_scope_split"))
+    if release_scope_split:
+        reuse_mode = "risk_signal_only"
+    elif tier == "historical_verified" and contract_complete:
+        reuse_mode = "historical_verified_contract"
+    elif tier == "supporting" and contract_complete:
+        reuse_mode = "supporting_uac_contract"
+    else:
+        reuse_mode = "risk_signal_only"
+    return {
+        "schema_version": str(metadata.get("uac_schema_version") or ""),
+        "chunk_type": chunk_type,
+        "source_hash": str(metadata.get("uac_source_hash") or ""),
+        "source_authority": str(metadata.get("uac_source_authority") or ""),
+        "source_truncated": _metadata_bool(metadata.get("uac_source_truncated")),
+        "reuse_tier": tier,
+        "reuse_mode": reuse_mode,
+        "contract_complete": contract_complete,
+        "clause_id": str(metadata.get("uac_clause_id") or ""),
+        "clause_stable_key": str(metadata.get("uac_clause_stable_key") or ""),
+        "clause_kind": str(metadata.get("uac_clause_kind") or ""),
+        "clause_unresolved": _metadata_bool(metadata.get("uac_clause_unresolved")),
+        "dimensions": _parse_json_list_preserve(str(metadata.get("uac_dimensions") or "[]")),
+        "source_text": source_text,
+        "performance_matters": _metadata_bool(metadata.get("uac_performance_matters")),
+        "performance_complete": _metadata_bool(metadata.get("uac_performance_complete")),
+        "release_scope_split": release_scope_split,
+        "release_scope_source": str(metadata.get("uac_release_scope_source") or ""),
+    }
+
+
+def _chunk_utility_bonus(chunk_type: str, metadata: dict[str, Any]) -> float:
+    bonus = _CHUNK_TYPE_WEIGHT.get(chunk_type, 0.0)
+    if chunk_type.startswith("historical_uac_"):
+        tier = str(metadata.get("uac_reuse_tier") or "candidate").strip().lower()
+        if (
+            _metadata_bool(metadata.get("uac_clause_unresolved"))
+            or _metadata_bool(metadata.get("uac_release_scope_split"))
+            or tier == "candidate"
+        ):
+            return min(bonus, 0.01)
+        if tier == "historical_verified" and _metadata_bool(metadata.get("uac_contract_complete")):
+            return bonus + 0.02
+        return bonus
+    if chunk_type != "learning_behavior_chunk":
+        return bonus
+    confidence = str(metadata.get("learning_confidence") or "caution").strip().lower()
+    outcome = str(metadata.get("historical_outcome") or "other_resolution").strip().lower()
+    if outcome != "implemented_fix" or confidence == "caution":
+        return min(bonus, 0.01)
+    if confidence == "high" and _metadata_bool(metadata.get("is_verified_fix")):
+        return bonus + 0.02
+    return bonus
+
+
+def _retrieval_rank_score(row: RetrievedJira) -> float:
+    return round(row.final_score + _chunk_utility_bonus(row.chunk_type, row.metadata), 6)
+
+
 def _parse_json_list(raw: str | None) -> list[str]:
     if not raw or not str(raw).strip():
         return []
@@ -156,12 +360,17 @@ def _parse_json_list_preserve(raw: str | None) -> list[str]:
 def _overlap_boost(meta: dict[str, Any], base_labels: set[str], base_components: set[str]) -> float:
     boost = 0.0
     labels = set(_parse_json_list(str(meta.get("labels") or "")))
-    comps = set(_parse_json_list(str(meta.get("components") or "")))
+    comps = _metadata_components(meta)
     if base_labels & labels:
         boost += 0.04 * min(4, len(base_labels & labels))
     if base_components & comps:
-        boost += 0.05 * min(3, len(base_components & comps))
-    return min(boost, 0.2)
+        # Canonical Jira component is a strong same-area signal.
+        # is a strong same-area signal. Because ``components`` is a JSON-list
+        # metadata field that Chroma cannot ``where``-filter, it is applied as a
+        # heavy post-retrieval boost so a same-Component defect reliably outranks
+        # a generic same-domain ticket instead of only nudging it up.
+        boost += 0.12 * min(3, len(base_components & comps))
+    return min(boost, 0.4)
 
 
 def _label_intel_boost(meta: dict[str, Any], expanded: frozenset[str]) -> float:
@@ -202,21 +411,29 @@ def _metadata_lists(meta: dict[str, Any]) -> tuple[set[str], set[str], set[str]]
             + _parse_json_list_preserve(str(meta.get("smart_affected_outputs") or ""))
         )
     }
-    customers: set[str] = set()
-    for x in _parse_json_list_preserve(str(meta.get("enrich_customers") or "")):
-        customers.add(_norm_label(x))
-    for x in _parse_json_list_preserve(str(meta.get("smart_customer_names") or "")):
-        customers.add(_norm_label(x))
-    for x in _parse_json_list_preserve(str(meta.get("customer_labels") or "")):
-        customers.add(_norm_label(x))
+    # Sanitize leaked Jira-label pollution out of stored customer tokens so
+    # customer overlap scoring compares real customers, not process/status tags.
+    # Applied on READ, so already-indexed (polluted) chunks are cleaned without a re-index.
+    raw_customer_tokens: list[str] = []
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("enrich_customers") or ""))
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("smart_customer_names") or ""))
+    raw_customer_tokens += _parse_json_list_preserve(str(meta.get("customer_labels") or ""))
     mc = str(meta.get("customer") or "").strip()
     if mc:
-        customers.add(_norm_label(mc))
+        raw_customer_tokens.append(mc)
+    customers: set[str] = {_norm_label(x) for x in clean_customer_tokens(raw_customer_tokens)}
     return entities, outputs, customers
 
 
 def _metadata_components(meta: dict[str, Any]) -> set[str]:
-    return {_norm_label(x) for x in _parse_json_list_preserve(str(meta.get("components") or "")) if _norm_label(x)}
+    return {
+        token
+        for token in (
+            normalize_component_token(value)
+            for value in _parse_json_list_preserve(str(meta.get("components") or ""))
+        )
+        if token
+    }
 
 
 def _metadata_issue_type(meta: dict[str, Any]) -> str:
@@ -261,7 +478,11 @@ def _keyword_overlap_score(query_tokens: set[str], doc: str, meta: dict[str, Any
         return 0.0
     inter = query_tokens & doc_tokens
     union = query_tokens | doc_tokens
-    return len(inter) / len(union) if union else 0.0
+    if not union:
+        return 0.0
+    jaccard = len(inter) / len(union)
+    query_coverage = len(inter) / len(query_tokens)
+    return (jaccard + query_coverage) / 2.0
 
 
 def _metadata_match_details(
@@ -290,7 +511,11 @@ def _metadata_match_details(
     ent_q = {_norm_label(x) for x in dita_entities if str(x).strip()}
     out_q = {_norm_label(x) for x in affected_outputs if str(x).strip()}
     cust_q = {_norm_label(x) for x in customer_names if str(x).strip()}
-    comp_q = {_norm_label(x) for x in (components or []) if str(x).strip()}
+    comp_q = {
+        token
+        for token in (normalize_component_token(value) for value in (components or []))
+        if token
+    }
 
     ent_overlap = ent_q & ent_meta
     out_overlap = out_q & out_meta
@@ -536,8 +761,6 @@ def _candidate_confidence_score(
     score = 0.34 * final_score + 0.26 * metadata_score + 0.22 * vector_score + 0.18 * structural
     if gate_signals.get("customer_conflict"):
         score -= 0.2
-    if gate_signals.get("domain_mismatch") and gate_signals.get("entity_overlap_count", 0) == 0:
-        score -= 0.12
     return round(max(0.0, min(1.0, score)), 4)
 
 
@@ -550,45 +773,61 @@ def _candidate_rejection_reasons(
     gate_signals: dict[str, Any],
     evidence_gate_enabled: bool,
     require_non_vector_evidence: bool = True,
+    meaningful_keyword_evidence: bool = False,
 ) -> list[dict[str, Any]]:
-    """Hard gates for candidate rejection — kept minimal to avoid false negatives.
-
-    Removed gates (all converted to soft penalties in _penalty_breakdown):
-    - final_score < MIN_FINAL_SCORE  → double-penalises after score already incorporates penalties
-    - metadata_score < MIN_METADATA_SCORE → too strict when small index has sparse entity metadata
-    - customer_conflict              → already penalised in scoring; hard gate incorrectly blocked
-                                       tickets where customer tokens leaked from cloud env IDs
-    - component_gate_failed         → same reasoning as entity/output gates removed earlier
-    - issue_type_mismatch           → Bug ≠ Story should not hard-reject; just lower score
-    """
-    # Below minimum embedding similarity — always reject regardless of metadata.
+    """Reject candidates that have similarity but no reusable evidence."""
+    reasons: list[dict[str, Any]] = []
     if vector_score < MIN_VECTOR_SCORE:
-        return [
+        reasons.append(
             {
                 "reason": "below_min_vector_score",
                 "detail": f"vector_score={round(vector_score, 4)} < MIN_VECTOR_SCORE={MIN_VECTOR_SCORE}",
             }
-        ]
+        )
 
-    # Cross-domain with zero entity override — clearly wrong domain unless forced by fallback.
+    if evidence_gate_enabled and gate_signals.get("query_entities") and not gate_signals.get(
+        "entity_overlap_count", 0
+    ):
+        reasons.append(
+            {
+                "reason": "entity_overlap_gate_failed",
+                "detail": "The query supplied DITA entities but none overlap the candidate.",
+            }
+        )
+
+    if evidence_gate_enabled and gate_signals.get("query_outputs") and not gate_signals.get(
+        "output_overlap_count", 0
+    ):
+        reasons.append(
+            {
+                "reason": "output_overlap_gate_failed",
+                "detail": "The query supplied output types but none overlap the candidate.",
+            }
+        )
+
+    structural_evidence = any(
+        (
+            gate_signals.get("entity_overlap_count", 0) > 0,
+            gate_signals.get("output_overlap_count", 0) > 0,
+            gate_signals.get("customer_match"),
+            gate_signals.get("component_overlap_count", 0) > 0,
+            gate_signals.get("issue_type_match"),
+        )
+    )
     if (
         evidence_gate_enabled
-        and gate_signals.get("domain_mismatch")
-        and gate_signals.get("entity_overlap_count", 0) == 0
-        and gate_signals.get("output_overlap_count", 0) == 0
+        and require_non_vector_evidence
+        and not structural_evidence
+        and not meaningful_keyword_evidence
     ):
-        return [
+        reasons.append(
             {
-                "reason": "domain_gate_failed",
-                "detail": (
-                    f"query_domain={gate_signals.get('domain_query')}; "
-                    f"candidate_domain={gate_signals.get('domain_candidate')}; "
-                    "no entity or output overlap to override domain mismatch"
-                ),
+                "reason": "vector_only_weak_evidence",
+                "detail": "Embedding similarity has no structural metadata or meaningful keyword support.",
             }
-        ]
+        )
 
-    return []
+    return reasons
 
 
 def _build_why_similar(
@@ -785,7 +1024,7 @@ def extract_hybrid_filters_from_issue_rows(rows: list[dict[str, Any]]) -> dict[s
         "domain": domain or None,
         "dita_entities": entities[:40],
         "affected_outputs": outputs[:20],
-        "customer_names": customers[:20],
+        "customer_names": clean_customer_tokens(customers)[:20],
     }
 
 
@@ -795,12 +1034,15 @@ def _metadata_where_plan(
     sub_domain: str | None,
     issue_type: str | None,
     customer_names: list[str] | None,
+    components: list[str] | None,
 ) -> list[dict[str, Any]]:
     """Build Chroma metadata-first vector query passes for scalar metadata fields.
 
-    JSON-list fields such as enrich_entities/enrich_outputs/components are scored
+    Domain and sub-domain are always soft reranking signals and are never sent
+    as Chroma ``where`` filters. JSON-list fields such as enrich_entities/enrich_outputs are scored
     after retrieval because exact Chroma filters cannot reliably query inside
-    encoded arrays across all deployed Chroma versions.
+    encoded arrays across all deployed Chroma versions. Components use one
+    scalar membership flag per canonical component, so secondary components are searchable too.
     """
     passes: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -813,12 +1055,14 @@ def _metadata_where_plan(
         seen.add(marker)
         passes.append({"label": label, "where": where})
 
-    dom_f = _norm_domain(domain) if domain else ""
-    if dom_f and dom_f != "unknown":
-        add("domain_filtered", {"enrich_domain": dom_f})
-    sub_f = _norm_domain(sub_domain) if sub_domain else ""
-    if sub_f:
-        add("sub_domain_filtered", {"enrich_sub_domain": sub_f})
+    component_tokens = list(dict.fromkeys(
+        token for token in (normalize_component_token(value) for value in (components or [])) if token
+    ))
+    if component_tokens:
+        for token in component_tokens:
+            add("component_membership_filtered", {component_filter_field(token): True})
+        return passes
+
     issue_f = str(issue_type or "").strip()
     if issue_f:
         add("issue_type_filtered", {"issue_type": issue_f})
@@ -831,161 +1075,26 @@ def _metadata_where_plan(
     return passes
 
 
-def _apply_diversity(
-    ranked: list[RetrievedJira],
-    *,
-    limit: int,
-    broad: bool,
-    diversity_drops: list[dict[str, Any]] | None = None,
-) -> list[RetrievedJira]:
-    if not broad or len(ranked) <= 1:
-        res = ranked[:limit]
-        if diversity_drops is not None:
-            for i, r in enumerate(ranked[limit:], start=limit + 1):
-                diversity_drops.append(
-                    {
-                        "jira_key": r.jira_key,
-                        "chunk_type": r.chunk_type,
-                        "reason": "below_result_limit",
-                        "detail": f"sorted_rank={i}, limit={limit}, broad_query=false",
-                        "final_score": round(r.final_score, 4),
-                    }
-                )
-        return res
-    cap = max(2, (limit + 2) // 3)
-    per_bucket: dict[str, int] = {}
-    out: list[RetrievedJira] = []
-    bucket_skipped: list[tuple[RetrievedJira, str, int]] = []
-    for r in ranked:
-        m = r.metadata or {}
-        dom = str(m.get("enrich_domain") or "unknown")
-        sub = str(m.get("enrich_sub_domain") or "")
-        bucket = f"{dom}::{sub}"
-        if per_bucket.get(bucket, 0) >= cap:
-            bucket_skipped.append((r, bucket, cap))
-            continue
-        out.append(r)
-        per_bucket[bucket] = per_bucket.get(bucket, 0) + 1
-        if len(out) >= limit:
-            break
-    if len(out) < limit:
-        seen = {x.jira_key for x in out}
-        for r in ranked:
-            if r.jira_key in seen:
-                continue
-            out.append(r)
-            seen.add(r.jira_key)
-            if len(out) >= limit:
-                break
-    final = out[:limit]
-    if diversity_drops is not None:
-        dropped_keys: set[str] = set()
-        picked = {x.jira_key for x in final}
-        for r, bucket, c in bucket_skipped:
-            if r.jira_key in picked:
-                continue
-            diversity_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "diversity_bucket_cap",
-                    "detail": f"bucket={bucket}, per_bucket_cap={c}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-            dropped_keys.add(r.jira_key)
-        for i, r in enumerate(ranked):
-            if r.jira_key in picked or r.jira_key in dropped_keys:
-                continue
-            diversity_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "not_in_final_top_after_diversity",
-                    "detail": f"sorted_rank={i + 1}, limit={limit}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-            dropped_keys.add(r.jira_key)
-    return final
-
-
-def _apply_max_per_domain(
-    ranked: list[RetrievedJira],
-    *,
-    limit: int,
-    max_per_domain: int,
-    domain_drops: list[dict[str, Any]] | None = None,
-) -> list[RetrievedJira]:
-    if max_per_domain <= 0:
-        return ranked[:limit]
-    per: dict[str, int] = {}
-    out: list[RetrievedJira] = []
-    skipped: list[tuple[RetrievedJira, str]] = []
-    for r in ranked:
-        dom = _norm_domain(str((r.metadata or {}).get("enrich_domain") or "unknown"))
-        if per.get(dom, 0) >= max_per_domain:
-            skipped.append((r, dom))
-            continue
-        out.append(r)
-        per[dom] = per.get(dom, 0) + 1
-        if len(out) >= limit:
-            break
-    final = out[:limit]
-    if domain_drops is not None:
-        picked = {x.jira_key for x in final}
-        for r, dom in skipped:
-            if r.jira_key in picked:
-                continue
-            domain_drops.append(
-                {
-                    "jira_key": r.jira_key,
-                    "chunk_type": r.chunk_type,
-                    "reason": "max_similar_per_domain",
-                    "detail": f"domain={dom}, cap={max_per_domain}",
-                    "final_score": round(r.final_score, 4),
-                }
-            )
-    return final
-
-
 def _apply_enterprise_diversity(
     ranked: list[RetrievedJira],
     *,
     limit: int,
-    max_per_domain: int,
     max_per_customer: int,
     diversity_drops: list[dict[str, Any]] | None = None,
 ) -> list[RetrievedJira]:
-    """Apply production diversity caps after reranking.
+    """Apply non-domain diversity safeguards after reranking.
 
-    Caps:
-    - max N per domain
-    - max N per customer when customer metadata is present
-    - skip near-duplicate title/document fingerprints
+    Domain and subdomain are intentionally absent from this selection step. They
+    are soft ranking signals and must never exclude an otherwise relevant Jira.
+    Customer caps and near-duplicate suppression remain independent safeguards.
     """
-    per_domain: dict[str, int] = {}
     per_customer: dict[str, int] = {}
     fingerprints: list[tuple[str, set[str]]] = []
     out: list[RetrievedJira] = []
 
     for r in ranked:
         meta = r.metadata or {}
-        dom = _norm_domain(str(meta.get("enrich_domain") or "unknown"))
         customer = _customer_bucket(meta)
-
-        if max_per_domain > 0 and per_domain.get(dom, 0) >= max_per_domain:
-            if diversity_drops is not None:
-                diversity_drops.append(
-                    {
-                        "jira_key": r.jira_key,
-                        "chunk_type": r.chunk_type,
-                        "reason": "max_similar_per_domain",
-                        "detail": f"domain={dom}, cap={max_per_domain}",
-                        "final_score": round(r.final_score, 4),
-                    }
-                )
-            continue
 
         if customer and max_per_customer > 0 and per_customer.get(customer, 0) >= max_per_customer:
             if diversity_drops is not None:
@@ -1021,7 +1130,6 @@ def _apply_enterprise_diversity(
             continue
 
         out.append(r)
-        per_domain[dom] = per_domain.get(dom, 0) + 1
         if customer:
             per_customer[customer] = per_customer.get(customer, 0) + 1
         fingerprints.append((r.jira_key, fp))
@@ -1083,8 +1191,8 @@ def retrieve_similar_jiras(
     require_non_vector_evidence: bool = True,
 ) -> list[RetrievedJira]:
     """
-    Hybrid retrieval over ``jira_qa`` Chroma: optional domain filter on vector query, token overlap,
-    enrichment metadata boosts, dedupe by ``jira_key``, diversity when the query is broad.
+    Hybrid retrieval over ``jira_qa`` Chroma: semantic candidate retrieval, soft domain and metadata
+    boosts, token overlap, dedupe by ``jira_key``, and diversity when the query is broad.
 
     When ``retrieval_debug_sink`` is a dict, it is cleared and filled with retrieval diagnostics
     (query text, extracted filters, Chroma hits, score breakdowns, diversity / dedupe drops).
@@ -1122,7 +1230,7 @@ def retrieve_similar_jiras(
             "min_similarity_score": JIRA_UAC_MIN_SIMILARITY_SCORE,
             "minimum_evidence_threshold": JIRA_UAC_MINIMUM_EVIDENCE_THRESHOLD,
             "min_metadata_overlap": JIRA_UAC_MIN_METADATA_OVERLAP,
-            "max_similar_per_domain": JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
+            "domain_policy": "soft_boost_only",
             "vector_only_penalty": JIRA_UAC_VECTOR_ONLY_PENALTY,
         }
 
@@ -1151,6 +1259,7 @@ def retrieve_similar_jiras(
         sub_domain=sub_domain,
         issue_type=issue_type,
         customer_names=customer_names or [],
+        components=base_components or [],
     )
 
     def _extend(rows: list[dict[str, Any]], *, pass_label: str) -> None:
@@ -1183,7 +1292,13 @@ def retrieve_similar_jiras(
         _extend(filtered, pass_label=str(plan.get("label") or "metadata_filtered"))
 
     unique_filtered_keys = {str((r.get("metadata") or {}).get("jira_key") or "") for r in raw_rows if r.get("metadata")}
-    if metadata_query_plan and metadata_query_plan[0].get("where") and len(unique_filtered_keys) < max(3, limit // 2):
+    strict_component_filter = bool(base_components)
+    if (
+        not strict_component_filter
+        and metadata_query_plan
+        and metadata_query_plan[0].get("where")
+        and len(unique_filtered_keys) < max(3, limit // 2)
+    ):
         unfiltered_fallback = True
         _extend(
             query_collection(CHROMA_COLLECTION_JIRA_QA, emb, k=fetch_k, where=None),
@@ -1202,6 +1317,11 @@ def retrieve_similar_jiras(
             "domain_chroma_filter_applied": any(
                 (plan.get("where") or {}).get("enrich_domain") for plan in metadata_query_plan
             ),
+            "domain_policy": "soft_boost_only",
+            "component_chroma_filter_applied": any(
+                str(plan.get("label") or "") == "component_membership_filtered"
+                for plan in metadata_query_plan
+            ),
             "unfiltered_fallback_query": unfiltered_fallback,
             "merged_hit_count": len(raw_rows),
         }
@@ -1219,10 +1339,15 @@ def retrieve_similar_jiras(
 
     qt_tokens = _norm_token_set(query_text[:12000])
     bl = {x.lower().strip() for x in (base_labels or []) if x}
-    bc = {x.lower().strip() for x in (base_components or []) if x}
+    bc = {
+        token
+        for token in (normalize_component_token(value) for value in (base_components or []))
+        if token
+    }
     lex = label_expanded_tokens if label_expanded_tokens is not None else frozenset()
     evidence_gate_enabled = bool(
-        domain
+        require_non_vector_evidence
+        or domain
         or sub_domain
         or dita_entities
         or affected_outputs
@@ -1286,7 +1411,11 @@ def retrieve_similar_jiras(
         ent_q = {_norm_label(x) for x in (dita_entities or []) if str(x).strip()}
         out_q = {_norm_label(x) for x in (affected_outputs or []) if str(x).strip()}
         cust_q = {_norm_label(x) for x in (customer_names or []) if str(x).strip()}
-        comp_q = {_norm_label(x) for x in (base_components or []) if str(x).strip()}
+        comp_q = {
+            token
+            for token in (normalize_component_token(value) for value in (base_components or []))
+            if token
+        }
         ent_inter = ent_q & ent_m
         out_inter = out_q & out_m
         comp_inter = comp_q & comp_m
@@ -1311,6 +1440,7 @@ def retrieve_similar_jiras(
                         break
         ct = str(meta.get("chunk_type") or "")
         chunk_w = _CHUNK_TYPE_WEIGHT.get(ct, 0.0)
+        utility_bonus = _chunk_utility_bonus(ct, meta)
         ob = _overlap_boost(meta, bl, bc)
         lb = _label_intel_boost(meta, lex)
         base_formula_score = _score_formula(vector_score, md, kw)
@@ -1354,6 +1484,9 @@ def retrieve_similar_jiras(
             gate_signals=gate_signals,
             evidence_gate_enabled=evidence_gate_enabled,
             require_non_vector_evidence=require_non_vector_evidence,
+            meaningful_keyword_evidence=(
+                kw >= 0.06 and not _generic_overlap_only(qt_tokens, doc_toks, gate_signals)
+            ),
         )
         strong_evidence = not rejection_reasons
 
@@ -1374,6 +1507,8 @@ def retrieve_similar_jiras(
             "penalty_total": round(penalty_total, 4),
             "final_score": round(fused, 4),
             "chunk_type_weight_observed": round(chunk_w, 4),
+            "chunk_utility_bonus": round(utility_bonus, 4),
+            "ranking_score": round(fused + utility_bonus, 4),
             "label_component_overlap_observed": round(ob, 4),
             "label_intel_observed": round(lb, 4),
             "evidence_overlap_signals": evidence_overlap,
@@ -1428,7 +1563,9 @@ def retrieve_similar_jiras(
                 jira_key=jk,
                 title=str(meta.get("title") or "")[:500],
                 chunk_type=ct,
-                document=doc[:600],
+                document=doc[:6000]
+                if ct in {"learning_behavior_chunk", "historical_uac_contract_chunk"}
+                else doc[:1200],
                 metadata=meta,
                 vector_score=round(vector_score, 4),
                 keyword_score=round(kw, 4),
@@ -1452,7 +1589,7 @@ def retrieve_similar_jiras(
         by_key_lists.setdefault(c.jira_key, []).append(c)
     dedupe_drops: list[dict[str, Any]] = []
     for jkey, lst in by_key_lists.items():
-        lst.sort(key=lambda x: (-x.final_score, -x.vector_score, -x.keyword_score))
+        lst.sort(key=lambda x: (-_retrieval_rank_score(x), -x.final_score, -x.vector_score, -x.keyword_score))
         for loser in lst[1:]:
             dedupe_drops.append(
                 {
@@ -1470,15 +1607,16 @@ def retrieve_similar_jiras(
     per_key: dict[str, RetrievedJira] = {}
     for c in candidates:
         prev = per_key.get(c.jira_key)
-        if prev is None or c.final_score > prev.final_score:
+        if prev is None or _retrieval_rank_score(c) > _retrieval_rank_score(prev):
             per_key[c.jira_key] = c
 
     ranked_full = sorted(
-        per_key.values(), key=lambda x: (-x.final_score, -x.vector_score, -x.keyword_score)
+        per_key.values(),
+        key=lambda x: (-_retrieval_rank_score(x), -x.final_score, -x.vector_score, -x.keyword_score),
     )
     evidence_drops: list[dict[str, Any]] = []
     ranked = [r for r in ranked_full if r.strong_evidence]
-    if not ranked and ranked_full:
+    if not ranked and ranked_full and not evidence_gate_enabled:
         # Fallback: strict gates filtered everything — return best-effort top candidates
         # with a lower floor so QA engineers always see something useful.
         _FALLBACK_FLOOR = 0.35
@@ -1531,7 +1669,6 @@ def retrieve_similar_jiras(
     result = _apply_enterprise_diversity(
         ranked,
         limit=limit,
-        max_per_domain=JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
         max_per_customer=JIRA_MAX_SIMILAR_PER_CUSTOMER,
         diversity_drops=div_drops,
     )
@@ -1565,7 +1702,7 @@ def retrieve_similar_jiras(
         sink["broad_query_diversity_enabled"] = broad
         sink["evidence_gate_enabled"] = evidence_gate_enabled
         sink["diversity_limits"] = {
-            "max_per_domain": JIRA_UAC_MAX_SIMILAR_PER_DOMAIN,
+            "domain_cap_applied": False,
             "max_per_customer": JIRA_MAX_SIMILAR_PER_CUSTOMER,
             "near_duplicate_jaccard": JIRA_NEAR_DUPLICATE_JACCARD,
             "recent_repeat_penalty": JIRA_RECENT_REPEAT_PENALTY,
@@ -1958,6 +2095,8 @@ def retrieved_to_legacy_hit(r: RetrievedJira) -> dict[str, Any]:
         "matching_components": list(r.matching_components),
         "score_breakdown": dict(r.score_breakdown or {}),
         "rejection_reasons": list(r.rejection_reasons or []),
+        "learning": extract_structured_learning_evidence(r),
+        "uac_evidence": extract_structured_uac_evidence(r),
         "retrieval": {
             "vector_score": r.vector_score,
             "keyword_score": r.keyword_score,

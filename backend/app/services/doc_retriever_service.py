@@ -31,6 +31,8 @@ BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_behavior_chunks.json"
 ENRICHED_BEHAVIOR_DOC_CHUNKS_FILENAME = "aem_guides_enriched_behavior_chunks.json"
 DITA_OT_ISSUE_DOC_CHUNKS_FILENAME = "dita_ot_issue_behavior_chunks.json"
 MANUAL_DOC_CHUNKS_FILENAME = "manual_aem_guides_doc_chunks.json"
+SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME = "manual_searchtitle_behavior_chunks.json"
+COPY_TO_CHUNK_BEHAVIOR_DOC_CHUNKS_FILENAME = "manual_copy_to_chunk_behavior_chunks.json"
 MAX_SNIPPET_CHARS = 1500
 
 
@@ -42,6 +44,16 @@ def _get_doc_chunks_path() -> Path:
 def _get_manual_doc_chunks_path() -> Path:
     storage = get_storage()
     return storage.base_path / MANUAL_DOC_CHUNKS_FILENAME
+
+
+def _get_searchtitle_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / SEARCHTITLE_BEHAVIOR_DOC_CHUNKS_FILENAME
+
+
+def _get_copy_to_chunk_behavior_doc_chunks_path() -> Path:
+    storage = get_storage()
+    return storage.base_path / COPY_TO_CHUNK_BEHAVIOR_DOC_CHUNKS_FILENAME
 
 
 def _get_behavior_doc_chunks_path() -> Path:
@@ -73,11 +85,21 @@ def _load_chunk_file(path: Path) -> list[dict]:
 def _load_chunks() -> list[dict]:
     """Load doc chunks from JSON, including manual fallback chunks."""
     primary = _load_chunk_file(_get_doc_chunks_path())
+    searchtitle_behavior = _load_chunk_file(_get_searchtitle_behavior_doc_chunks_path())
+    copy_to_chunk_behavior = _load_chunk_file(_get_copy_to_chunk_behavior_doc_chunks_path())
     enriched_behavior = _load_chunk_file(_get_enriched_behavior_doc_chunks_path())
     behavior = _load_chunk_file(_get_behavior_doc_chunks_path())
     dita_ot_issues = _load_chunk_file(_get_dita_ot_issue_doc_chunks_path())
     manual = _load_chunk_file(_get_manual_doc_chunks_path())
-    return [*manual, *dita_ot_issues, *enriched_behavior, *behavior, *primary]
+    return [
+        *searchtitle_behavior,
+        *copy_to_chunk_behavior,
+        *manual,
+        *dita_ot_issues,
+        *enriched_behavior,
+        *behavior,
+        *primary,
+    ]
 
 
 def check_rag_readiness() -> dict:
@@ -141,6 +163,57 @@ def _lexical_score(query_tokens: set[str], content: str) -> float:
     return matches / len(query_tokens) if query_tokens else 0.0
 
 
+_TITLE_SLUG_STOPWORDS = {
+    "adobe",
+    "aem",
+    "admin",
+    "asset",
+    "assets",
+    "configure",
+    "configuring",
+    "configuration",
+    "configurations",
+    "experience",
+    "manager",
+    "setting",
+    "settings",
+    "tools",
+    "view",
+}
+
+
+def _normalized_match_words(text: str) -> list[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(text or "").lower())
+    return [word for word in normalized.split() if len(word) >= 3]
+
+
+def _title_slug_match_bonus(query: str, *, title: str, url: str) -> float:
+    query_words = [
+        word for word in _normalized_match_words(query)
+        if word not in _TITLE_SLUG_STOPWORDS
+    ]
+    if not query_words:
+        return 0.0
+
+    slug = urlparse(str(url or "")).path.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+    target_words = _normalized_match_words(f"{title} {slug}")
+    target_word_set = set(target_words)
+    matched_terms = {word for word in query_words if word in target_word_set}
+    if len(matched_terms) < 2:
+        return 0.0
+
+    bonus = min(0.32, 0.08 * len(matched_terms))
+    for window_size, window_bonus in ((4, 0.34), (3, 0.28), (2, 0.22)):
+        for start in range(0, max(0, len(query_words) - window_size + 1)):
+            phrase = query_words[start:start + window_size]
+            if len(set(phrase)) < min(2, window_size):
+                continue
+            for target_start in range(0, max(0, len(target_words) - window_size + 1)):
+                if phrase == target_words[target_start:target_start + window_size]:
+                    return min(0.64, bonus + window_bonus)
+    return bonus
+
+
 def _infer_evidence_type(value: str, explicit: str = "") -> str:
     if explicit:
         return explicit
@@ -190,6 +263,11 @@ def _classify_aem_query_intent(query: str) -> str:
         lowered,
     ):
         return "configuration"
+    if re.search(r"/bin/(guides|fmdita|dxml)/", lowered) or re.search(
+        r"\b(asset status|rest api|servlet|/bin/guides/v1)\b",
+        lowered,
+    ):
+        return "rest_api"
     if re.search(r"\bbaselines?\b", lowered):
         return "baseline"
     if re.search(r"\bmap collections?\b", lowered):
@@ -223,6 +301,18 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     intent = _classify_aem_query_intent(query)
     bonus = 0.0
     lowered_query = str(query or "").lower()
+
+    if intent == "rest_api":
+        api_signals = lowered_title + " " + lowered_url + " " + lowered_content
+        if re.search(r"\b(rest api|http api|servlet|assets?\s+status|/bin/guides)\b", api_signals):
+            bonus += 1.6
+        if re.search(r"\b(assets http api|api reference|rest endpoints?)\b", api_signals):
+            bonus += 1.2
+        if re.search(r"\b(assets view|search assets|assets ui introduction)\b", lowered_title) and re.search(
+            r"\b(rest api|/bin/|servlet|asset status)\b",
+            lowered_query,
+        ):
+            bonus -= 1.0
 
     if "dita-ot.org" in lowered_url:
         preprocess_targets = [
@@ -376,10 +466,31 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
         if "/install-conf-guide/" in lowered_url:
             bonus += 0.45
         if "conf-new-baseline-on-prem" in lowered_url and re.search(
-            r"\b(new baseline|on-premise|on-prem|enable faster baseline|baseline v2|configmanager|configmgr|web console|enable\.baseline\.v2|osgi)\b",
+            r"\b(new baseline|enable faster baseline|baseline v2|enable\.baseline\.v2)\b",
             lowered_query,
         ):
             bonus += 2.2
+        if "conf-folder-post-processing" in lowered_url and re.search(
+            r"\b(post\s*processing|postprocessing|uuid|dam update asset|ignored paths for post processing|"
+            r"enabled paths for post processing|ignored\.post\.processing\.paths|enabled\.post\.processing\.paths)\b",
+            lowered_query,
+        ):
+            bonus += 2.4
+        if "#cloud-service-postprocessing-configuration" in lowered_url and re.search(
+            r"\b(cloud service|configuration overrides?|ignored\.post\.processing\.paths|enabled\.post\.processing\.paths)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
+        if "#on-premise-postprocessing-configuration" in lowered_url and re.search(
+            r"\b(on-premise|on-prem|web console|configmgr|ignored paths for post processing|enabled paths for post processing)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
+        if "#rules-to-enable-or-disable-postprocessing" in lowered_url and re.search(
+            r"\b(parent|child|successors?|same folder path|ignored wins|enable or disable postprocessing)\b",
+            lowered_query,
+        ):
+            bonus += 1.1
         if re.search(r"\b(configure|settings?|profile|filter|mapping|indexing|search|workspace)\b", lowered_title):
             bonus += 0.28
         if "/output-gen/" in lowered_url and "output" not in str(query or "").lower():
@@ -497,6 +608,7 @@ def _document_relevance_score(
     lowered_title = str(title or "").lower()
     lowered_url = str(url or "").lower()
     lowered_content = str(content or "").lower()
+    searchable = f"{lowered_title} {lowered_url} {lowered_content}"
 
     phrase_bonus = 0.0
     for phrase in _phrase_candidates(query):
@@ -540,14 +652,43 @@ def _document_relevance_score(
             evidence_bonus += 0.55
         elif lowered_evidence_type == "enriched_generation_oracle":
             evidence_bonus += 0.50
+    exact_match_bonus = 0.0
+    for issue_key in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or "")):
+        if issue_key.lower() in searchable:
+            exact_match_bonus += 1.0
+    for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
+        normalized_version = version.replace("-", ".")
+        if version in searchable or normalized_version in searchable:
+            exact_match_bonus += 1.15
+        parts = normalized_version.split(".")
+        if len(parts) >= 2 and len(parts[0]) == 4:
+            short_release = f"{parts[0][2:]}{parts[1]}"
+            if f"/{short_release}-release/" in searchable:
+                exact_match_bonus += 0.65
+        compact_release = re.sub(r"\D", "", normalized_version)[:6]
+        if compact_release and f"/{compact_release}-release/" in searchable:
+            exact_match_bonus += 0.65
+    if re.search(r"\bupgrade instructions?\b", str(query or "").lower()) and re.search(
+        r"\bupgrade instructions?\b", searchable
+    ):
+        exact_match_bonus += 0.35
+    if re.search(r"\bsearchtitle\b", str(query or "").lower()):
+        if "searchtitle" in lowered_title:
+            exact_match_bonus += 1.4
+        elif "searchtitle" in lowered_url:
+            exact_match_bonus += 1.0
+        elif "searchtitle" in lowered_content:
+            exact_match_bonus += 0.8
     return (
         (content_score * 0.45)
         + (title_score * 0.35)
         + (url_score * 0.18)
         + min(0.4, phrase_bonus)
+        + _title_slug_match_bonus(query, title=title, url=url)
         + _aem_intent_bonus(query, title=title, url=url, content=content)
         + host_bonus
         + evidence_bonus
+        + exact_match_bonus
     )
 
 
@@ -558,9 +699,34 @@ def _filter_and_rank_docs(
     k: int,
     allowed_host_suffixes: tuple[str, ...] | None,
 ) -> list[dict]:
+    searchtitle_evidence_ids = {
+        "aem-guides-searchtitle-dita-contract-v1",
+        "aem-guides-searchtitle-legacy-sites-mapping-v1",
+        "aem-guides-searchtitle-legacy-sites-qa-v1",
+        "aem-guides-searchtitle-evidence-boundary-v1",
+    }
+    copy_to_chunk_evidence_ids = {
+        "dita-copy-to-chunk-naming-v1",
+        "dita-copy-to-chunk-by-topic-fixture-v1",
+        "dita-copy-to-chunk-boundaries-v1",
+        "dita-copy-to-chunk-evidence-contract-v1",
+    }
+    allow_bounded_searchtitle_evidence = bool(re.search(r"\bsearchtitle\b", str(query or ""), re.IGNORECASE))
+    allow_bounded_copy_to_chunk_evidence = bool(
+        re.search(r"\bcopy-to\b", str(query or ""), re.IGNORECASE)
+        and re.search(r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", str(query or ""), re.IGNORECASE)
+    )
     filtered = [
         doc for doc in (docs or [])
         if _matches_allowed_hosts(str(doc.get("url") or ""), allowed_host_suffixes)
+        or (
+            allow_bounded_searchtitle_evidence
+            and str(doc.get("chunk_id") or "") in searchtitle_evidence_ids
+        )
+        or (
+            allow_bounded_copy_to_chunk_evidence
+            and str(doc.get("chunk_id") or "") in copy_to_chunk_evidence_ids
+        )
     ]
     intent = _classify_aem_query_intent(query)
     limit_per_doc = 2 if intent in {"authoring_create", "baseline"} else (1 if intent in {"configuration", "publishing", "workflow"} else 2)
@@ -598,6 +764,112 @@ def _filter_and_rank_docs(
         if len(deduped) >= k:
             break
     return deduped
+
+
+def _query_needs_exact_match_supplement(query: str) -> bool:
+    lowered_query = str(query or "").lower()
+    return bool(
+        re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))
+        or re.search(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", lowered_query)
+        or re.search(r"\bsearchtitle\b", lowered_query)
+        or (
+            re.search(r"\bcopy-to\b", lowered_query)
+            and re.search(r"\bchunk(?:ing)?\b|\bto-content\b|\bby-topic\b", lowered_query)
+        )
+    )
+
+
+def _exact_match_fragments(query: str) -> set[str]:
+    fragments = {term.lower() for term in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", str(query or ""))}
+    if re.search(r"\bsearchtitle\b", str(query or "").lower()):
+        fragments.add("searchtitle")
+    lowered_query = str(query or "").lower()
+    if re.search(r"\bcopy-to\b", lowered_query):
+        fragments.add("copy-to")
+    for token in ("to-content", "by-topic"):
+        if re.search(rf"\b{token}\b", lowered_query):
+            fragments.add(token)
+    for version in re.findall(r"\b20\d{2}[.-]\d{2}(?:[.-]\d+)?\b", str(query or "").lower()):
+        normalized_version = version.replace("-", ".")
+        fragments.add(version)
+        fragments.add(normalized_version)
+        parts = normalized_version.split(".")
+        if len(parts) >= 2 and len(parts[0]) == 4:
+            short_release = f"{parts[0][2:]}{parts[1]}"
+            fragments.add(f"/{short_release}-release/")
+            fragments.add(f"/{parts[0]}-releases/{short_release}-release/")
+        compact_release = re.sub(r"\D", "", normalized_version)[:6]
+        if compact_release:
+            fragments.add(f"/{compact_release}-release/")
+    return {fragment for fragment in fragments if fragment}
+
+
+def _lexical_supplement_docs(
+    query: str,
+    *,
+    k: int,
+    max_snippet_chars: int,
+    allowed_host_suffixes: tuple[str, ...] | None,
+    existing_chunk_ids: set[str],
+) -> list[dict]:
+    if not _query_needs_exact_match_supplement(query):
+        return []
+
+    scored: list[tuple[float, dict]] = []
+    exact_terms = _exact_match_fragments(query)
+    if not exact_terms:
+        return []
+    for chunk in _load_chunks():
+        chunk_id = str(chunk.get("id") or chunk.get("chunk_id") or "").strip()
+        if chunk_id and chunk_id in existing_chunk_ids:
+            continue
+        url = str(chunk.get("source_url") or chunk.get("canonical_url") or chunk.get("url") or "")
+        bounded_copy_to_chunk_ids = {
+            "dita-copy-to-chunk-naming-v1",
+            "dita-copy-to-chunk-by-topic-fixture-v1",
+            "dita-copy-to-chunk-boundaries-v1",
+            "dita-copy-to-chunk-evidence-contract-v1",
+        }
+        allow_bounded_copy_to_chunk = (
+            str(chunk_id) in bounded_copy_to_chunk_ids
+            and "copy-to" in str(query or "").lower()
+        )
+        if not _matches_allowed_hosts(url, allowed_host_suffixes) and not allow_bounded_copy_to_chunk:
+            continue
+        snippet = str(chunk.get("content") or "")[:max_snippet_chars]
+        title = str(chunk.get("title") or "")
+        searchable = f"{title} {url} {snippet}".lower()
+        if not any(term in searchable for term in exact_terms):
+            continue
+        score = _document_relevance_score(
+            query,
+            title=title,
+            url=url,
+            content=snippet,
+            evidence_type=str(chunk.get("evidence_type") or ""),
+            allowed_host_suffixes=allowed_host_suffixes,
+        )
+        score += 1.0
+        if score <= 0:
+            continue
+        scored.append(
+            (
+                score,
+                {
+                    "chunk_id": chunk_id,
+                    "url": url,
+                    "source_url": chunk.get("source_url") or chunk.get("url", ""),
+                    "canonical_url": chunk.get("canonical_url") or chunk.get("url", ""),
+                    "corpus": chunk.get("corpus", "aem_guides"),
+                    "evidence_type": _infer_evidence_type(snippet, str(chunk.get("evidence_type") or "")),
+                    "title": title,
+                    "snippet": snippet,
+                },
+            )
+        )
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [doc for _score, doc in scored[: max(k, 1)]]
 
 
 def _require_semantic_retrieval_for_aem_guides(
@@ -707,18 +979,28 @@ def retrieve_relevant_docs_with_diagnostics(
                         "title": meta.get("title", ""),
                         "snippet": snippet,
                     })
+                lexical_supplements = _lexical_supplement_docs(
+                    query,
+                    k=max(k * 4, 20),
+                    max_snippet_chars=max_snippet_chars,
+                    allowed_host_suffixes=allowed_hosts,
+                    existing_chunk_ids={str(doc.get("chunk_id") or "") for doc in result},
+                )
+                if lexical_supplements:
+                    result.extend(lexical_supplements)
                 ranked = _filter_and_rank_docs(query, result, k=k, allowed_host_suffixes=allowed_hosts)
                 logger.info_structured(
                     "AEM Guides docs from ChromaDB (Experience League)",
                     extra_fields={
                         "source": "chromadb",
                         "count": len(ranked),
+                        "lexical_supplements": len(lexical_supplements),
                         "allowed_hosts": list(allowed_hosts),
                     },
                 )
                 payload["results"] = ranked
                 payload["count"] = len(ranked)
-                payload["retrieval_mode"] = "chromadb_semantic"
+                payload["retrieval_mode"] = "chromadb_semantic_plus_lexical" if lexical_supplements else "chromadb_semantic"
                 return payload
 
     chunks = _load_chunks()

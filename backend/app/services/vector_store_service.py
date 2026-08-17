@@ -3,6 +3,9 @@
 Provides persistent storage for embeddings with metadata filtering.
 Collections: aem_guides, dita_spec, recipes, jira_issues.
 """
+import hashlib
+import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -96,7 +99,7 @@ def add_documents(
     Returns True on success, False on failure.
     """
     client = _get_client()
-    if not client or not ids or len(ids) != len(documents) != len(metadatas) != len(embeddings):
+    if not client or not ids or len({len(ids), len(documents), len(metadatas), len(embeddings)}) != 1:
         return False
     try:
         coll = client.get_or_create_collection(
@@ -109,7 +112,14 @@ def add_documents(
             metadatas=metadatas,
             embeddings=embeddings,
         )
-        return True
+        events_persisted = _queue_evidence_graph_events(
+            collection_name,
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas,
+            event_type="upsert",
+        )
+        return bool(events_persisted)
     except Exception as e:
         logger.warning_structured(
             "ChromaDB add_documents failed",
@@ -194,12 +204,100 @@ def delete_documents(collection_name: str, ids: list[str]) -> bool:
         return True
     try:
         coll = client.get_collection(name=collection_name)
+        existing = get_collection_records_by_ids(collection_name, ids, include_documents=True)
         coll.delete(ids=ids)
-        return True
+        metadata_by_id = {str(row.get("id") or ""): row for row in existing}
+        events_persisted = _queue_evidence_graph_events(
+            collection_name,
+            ids=ids,
+            documents=[str(metadata_by_id.get(doc_id, {}).get("document") or "") for doc_id in ids],
+            metadatas=[dict(metadata_by_id.get(doc_id, {}).get("metadata") or {}) for doc_id in ids],
+            event_type="delete",
+        )
+        return bool(events_persisted)
     except Exception as e:
         logger.warning_structured(
             "ChromaDB delete_documents failed",
             extra_fields={"collection": collection_name, "error": str(e), "count": len(ids)},
+        )
+        return False
+
+
+def update_documents_metadata(collection_name: str, where: dict, updates: dict, *, limit: int = 500) -> int:
+    """Merge scalar metadata into matching Chroma documents without changing text or embeddings."""
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return 0
+    try:
+        coll = client.get_collection(name=collection_name)
+        result = coll.get(
+            where=where,
+            limit=max(1, limit),
+            include=["documents", "metadatas"],
+        )
+        ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        documents = result.get("documents") or []
+        if not ids:
+            return 0
+        merged = []
+        for index, _doc_id in enumerate(ids):
+            metadata = dict(metadatas[index] or {})
+            metadata.update({key: value for key, value in updates.items() if isinstance(value, (str, int, float, bool))})
+            merged.append(metadata)
+        coll.update(ids=ids, metadatas=merged)
+        events_persisted = _queue_evidence_graph_events(
+            collection_name,
+            ids=ids,
+            documents=[
+                str(documents[index] or "") if index < len(documents) else ""
+                for index in range(len(ids))
+            ],
+            metadatas=merged,
+            event_type="upsert",
+        )
+        return len(ids) if events_persisted else 0
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB metadata update failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "where": str(where)[:500]},
+        )
+        return 0
+
+
+def update_document_metadatas(collection_name: str, ids: list[str], metadatas: list[dict]) -> bool:
+    """Replace metadata for specific documents while preserving documents and embeddings."""
+    if not ids or len(ids) != len(metadatas):
+        return False
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return False
+    cleaned: list[dict] = []
+    for metadata in metadatas:
+        cleaned.append({
+            key: value
+            for key, value in dict(metadata or {}).items()
+            if isinstance(value, (str, int, float, bool))
+        })
+    try:
+        existing = get_collection_records_by_ids(collection_name, ids, include_documents=True)
+        existing_by_id = {str(row.get("id") or ""): row for row in existing}
+        client.get_collection(name=collection_name).update(ids=ids, metadatas=cleaned)
+        events_persisted = _queue_evidence_graph_events(
+            collection_name,
+            ids=ids,
+            documents=[
+                str(existing_by_id.get(doc_id, {}).get("document") or "")
+                for doc_id in ids
+            ],
+            metadatas=cleaned,
+            event_type="upsert",
+        )
+        return bool(events_persisted)
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB per-document metadata update failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "count": len(ids)},
         )
         return False
 
@@ -234,6 +332,223 @@ def get_collection_count(collection_name: str) -> int:
         return coll.count()
     except Exception:
         return 0
+
+
+def get_collection_records(collection_name: str, *, include_documents: bool = False) -> list[dict]:
+    """Return all document IDs and metadata, optionally including document text."""
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return []
+    try:
+        includes = ["metadatas", "documents"] if include_documents else ["metadatas"]
+        result = client.get_collection(name=collection_name).get(include=includes)
+        ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        documents = result.get("documents") or []
+        return [
+            {
+                "id": doc_id,
+                "metadata": (metadatas[index] if index < len(metadatas) else None) or {},
+                **(
+                    {"document": (documents[index] if index < len(documents) else None) or ""}
+                    if include_documents
+                    else {}
+                ),
+            }
+            for index, doc_id in enumerate(ids)
+        ]
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB collection record scan failed",
+            extra_fields={"collection": collection_name, "error": str(exc)},
+        )
+        return []
+
+
+def get_collection_records_by_ids(
+    collection_name: str,
+    ids: list[str],
+    *,
+    include_documents: bool = False,
+) -> list[dict]:
+    """Return selected Chroma records without scanning the collection."""
+    requested = [str(value) for value in ids if str(value)]
+    if not requested:
+        return []
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        return []
+    try:
+        includes = ["metadatas", "documents"] if include_documents else ["metadatas"]
+        result = client.get_collection(name=collection_name).get(ids=requested, include=includes)
+        result_ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        documents = result.get("documents") or []
+        return [
+            {
+                "id": doc_id,
+                "metadata": (metadatas[index] if index < len(metadatas) else None) or {},
+                **(
+                    {"document": (documents[index] if index < len(documents) else None) or ""}
+                    if include_documents
+                    else {}
+                ),
+            }
+            for index, doc_id in enumerate(result_ids)
+        ]
+    except Exception as exc:
+        logger.warning_structured(
+            "ChromaDB selected-record read failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "count": len(requested)},
+        )
+        return []
+
+
+def _graph_event_capture_enabled() -> bool:
+    explicit = os.getenv("EVIDENCE_GRAPH_EVENT_CAPTURE_ENABLED")
+    if explicit is not None:
+        return explicit.strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("EVIDENCE_GRAPH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _queue_evidence_graph_events(
+    collection_name: str,
+    *,
+    ids: list[str],
+    documents: list[str],
+    metadatas: list[dict],
+    event_type: str,
+) -> bool:
+    """Persist graph events after a vector mutation and surface partial failure."""
+    source_kind_by_collection = {
+        CHROMA_COLLECTION_JIRA_QA: "jira",
+        CHROMA_COLLECTION_AEM_GUIDES: "docs",
+        CHROMA_COLLECTION_DITA_SPEC: "dita",
+    }
+    source_kind = source_kind_by_collection.get(collection_name)
+    if not source_kind or not _graph_event_capture_enabled():
+        return True
+    grouped: dict[str, list[str]] = {}
+    for index, doc_id in enumerate(ids):
+        metadata = metadatas[index] if index < len(metadatas) and isinstance(metadatas[index], dict) else {}
+        if source_kind == "jira":
+            record_id = str(metadata.get("jira_key") or str(doc_id).split("::", 1)[0]).strip().upper()
+        else:
+            record_id = str(doc_id).strip()
+        if not record_id:
+            continue
+        document = documents[index] if index < len(documents) else ""
+        fingerprint = str(
+            metadata.get("chunk_content_hash")
+            or metadata.get("source_content_hash")
+            or metadata.get("source_file_hash")
+            or ""
+        )
+        grouped.setdefault(record_id, []).append(
+            fingerprint or hashlib.sha256(str(document).encode("utf-8", errors="ignore")).hexdigest()
+        )
+    if not grouped:
+        return True
+    try:
+        from app.db.session import SessionLocal
+        from app.services.evidence_graph_store import enqueue_source_event
+
+        session = SessionLocal()
+        try:
+            for record_id, hashes in grouped.items():
+                source_hash = hashlib.sha256(
+                    json.dumps(sorted(hashes), separators=(",", ":")).encode("utf-8")
+                ).hexdigest()
+                enqueue_source_event(
+                    session,
+                    source_kind=source_kind,
+                    source_record_id=record_id,
+                    source_hash=f"sha256:{source_hash}",
+                    event_type=event_type,
+                )
+            session.commit()
+            return True
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.warning_structured(
+            "Evidence graph source event capture failed",
+            extra_fields={"collection": collection_name, "error": str(exc), "event_type": event_type},
+        )
+        return False
+
+
+def iter_collection_records(
+    collection_name: str,
+    *,
+    include_documents: bool = False,
+    batch_size: int = 500,
+    max_retries: int = 3,
+):
+    """Yield a complete Chroma collection scan without loading the corpus at once.
+
+    Unlike ``get_collection_records``, this strict iterator raises when a page is
+    missing or the final scanned count differs from the collection count. Graph
+    rebuilds use that contract to avoid promoting partial generations.
+    """
+    import time
+
+    client = _get_client()
+    if not client or not _collection_exists(client, collection_name):
+        raise RuntimeError(f"Chroma collection is unavailable: {collection_name}")
+    collection = client.get_collection(name=collection_name)
+    expected_count = int(collection.count())
+    page_size = max(1, min(int(batch_size or 500), 5000))
+    retries = max(1, min(int(max_retries or 3), 10))
+    scanned = 0
+    includes = ["metadatas", "documents"] if include_documents else ["metadatas"]
+
+    while scanned < expected_count:
+        result = None
+        last_error = None
+        for attempt in range(1, retries + 1):
+            try:
+                result = collection.get(
+                    limit=min(page_size, expected_count - scanned),
+                    offset=scanned,
+                    include=includes,
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt < retries:
+                    time.sleep(min(0.25 * (2 ** (attempt - 1)), 2.0))
+        if result is None:
+            raise RuntimeError(
+                f"Chroma page scan failed for {collection_name} at offset {scanned}: {last_error}"
+            )
+
+        ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        documents = result.get("documents") or []
+        if not ids:
+            raise RuntimeError(
+                f"Chroma returned an empty page for {collection_name} at offset {scanned}; "
+                f"expected {expected_count} records"
+            )
+        for index, doc_id in enumerate(ids):
+            yield {
+                "id": doc_id,
+                "metadata": (metadatas[index] if index < len(metadatas) else None) or {},
+                **(
+                    {"document": (documents[index] if index < len(documents) else None) or ""}
+                    if include_documents
+                    else {}
+                ),
+            }
+        scanned += len(ids)
+
+    final_count = int(collection.count())
+    if scanned != expected_count or final_count != expected_count:
+        raise RuntimeError(
+            f"Chroma scan count mismatch for {collection_name}: "
+            f"scanned={scanned}, initial_count={expected_count}, final_count={final_count}"
+        )
 
 
 def get_documents_where(

@@ -9,6 +9,7 @@ from app.services.generate_dita_preview_service import (
     build_generate_dita_preview,
 )
 from app.services.jira_generate_resolve import extract_issue_key_from_generation_request
+from app.services.publishing_dataset_intent_service import detect_publishing_dataset_intent
 
 _NON_DITA_AUTOMATION_PATTERN = re.compile(
     r"\b(feature files?|gherkin|cucumber|step definitions?|page objects?|page object|playwright|selenium)\b",
@@ -52,7 +53,8 @@ _DITA_QUESTION_PATTERN = re.compile(
     r"translate\s+attribute|dir\s+attribute|colsep|rowsep|rowheader|valign|expanse|frame\s+attribute|"
     r"scale\s+attribute|expiry|golive|role\s+attribute|otherrole|base\s+attribute|status\s+attribute|"
     r"keycol|relcolwidth|refcols|indexterm|"
-    r"processing-role|collection-type|linking|locktitle|toc|print|keyscope|keys|href|navtitle)\b",
+    r"processing-role|collection-type|linking|locktitle|toc|print|keyscope|keys|href|navtitle|"
+    r"searchtitle|search\s+title|titlealts?|topicmeta|lockmeta|metadata\s+cascad(?:e|ing)|cascade)\b",
     re.IGNORECASE,
 )
 _DITA_TERM_PATTERN = re.compile(
@@ -70,7 +72,8 @@ _DITA_TERM_PATTERN = re.compile(
     r"translate\s+attribute|dir\s+attribute|colsep|rowsep|rowheader|valign|expanse|frame\s+attribute|"
     r"scale\s+attribute|expiry|golive|role\s+attribute|otherrole|base\s+attribute|status\s+attribute|"
     r"keycol|relcolwidth|refcols|indexterm|"
-    r"processing-role|collection-type|linking|locktitle|toc|print|keyscope|keys|href|navtitle)\b",
+    r"processing-role|collection-type|linking|locktitle|toc|print|keyscope|keys|href|navtitle|"
+    r"searchtitle|search\s+title|titlealts?|topicmeta|lockmeta|metadata\s+cascad(?:e|ing)|cascade)\b",
     re.IGNORECASE,
 )
 _DITA_ANSWER_INTENT_PATTERN = re.compile(
@@ -81,7 +84,8 @@ _DITA_ANSWER_INTENT_PATTERN = re.compile(
 )
 _DITA_CONSTRUCT_HINT_PATTERN = re.compile(
     r"\b(morerows|namest|nameend|colspec|tgroup|tbody|thead|tfoot|entry|simpletable|strow|stentry|"
-    r"processing-role|collection-type|locktitle|navtitle|keyscope|keyref|conref|conkeyref|"
+    r"processing-role|collection-type|locktitle|navtitle|searchtitle|search\s+title|topicmeta|lockmeta|"
+    r"metadata\s+cascad(?:e|ing)|cascade|keyscope|keyref|conref|conkeyref|"
     r"topicref|topichead|topicgroup|ditavalref|keycol|relcolwidth)\b",
     re.IGNORECASE,
 )
@@ -103,7 +107,7 @@ _DITA_RELATED_LINKS_TOC_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DITA_OUTPUT_TARGET_PATTERN = re.compile(
-    r"\b(pdf|native\s+pdf|web|html|html5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
+    r"\b(pdf|pdf\s*2|pd2|native\s+pdf|web|html|html\s*5|aem\s+sites?|browser|dita-ot|output|outputs|publish|publishing)\b",
     re.IGNORECASE,
 )
 _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
@@ -120,7 +124,8 @@ _DITA_OUTPUT_CONSTRUCT_PATTERN = re.compile(
     r"translate\s+attribute|dir\s+attribute|colsep|rowsep|rowheader|valign|expanse|frame\s+attribute|"
     r"scale\s+attribute|expiry|golive|role\s+attribute|otherrole|base\s+attribute|status\s+attribute|"
     r"keycol|relcolwidth|refcols|"
-    r"processing-role|collection-type|locktitle|keyscope|navtitle)\b",
+    r"processing-role|collection-type|locktitle|keyscope|navtitle|searchtitle|search\s+title|"
+    r"titlealts?|topicmeta|lockmeta|metadata\s+cascad(?:e|ing)|cascade)\b",
     re.IGNORECASE,
 )
 _ASSISTIVE_GENERATION_REQUEST_PATTERN = re.compile(
@@ -183,7 +188,7 @@ _DITA_OT_INTERNALS_PATTERN = re.compile(
     r"xsl[-\s]?fo|xslfo|fo\s+customization|cfg/fo|attribute[-\s]?set|page[-\s]?master|"
     r"simple-page-master|page-sequence|insertbodystaticcontents|static-content|"
     r"store\s+api|catalog-dita|oasis\s+(?:xml\s+)?catalog|"
-    r"\bpdf2\b|\bhtml5\b|xsltmodule|ant\s+task|depends\s+chain|unable\s+to\s+load\s+stylesheet"
+    r"\bpdf\s*2\b|\bpd2\b|\bhtml\s*5\b|xsltmodule|ant\s+task|depends\s+chain|unable\s+to\s+load\s+stylesheet"
     r")\b",
     re.IGNORECASE,
 )
@@ -390,18 +395,18 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             reasoning_notes=["Detected screenshot/image authoring input."],
         )
 
-    if is_dita_ot_internals_question(trimmed):
+    publishing_dataset_intent = detect_publishing_dataset_intent(trimmed)
+    if publishing_dataset_intent:
         return PromptRouteDecision(
-            intent="dita_ot_build",
-            confidence=0.93,
+            intent="dita_ot_generation",
+            confidence=0.95,
             supported=True,
-            execution_hint="answer_directly",
-            legacy_answer_mode="grounded_dita_answer",
+            execution_hint="run_directly",
+            legacy_answer_mode="generation_request",
             reasoning_notes=[
-                "Detected a DITA-OT toolkit internals question (plugin/extension point/preprocessing/"
-                "XSL-FO/PDF2/catalog/Store API/transtype/build validation); route to grounded RAG+LLM "
-                "synthesis rather than a canned args primer, single-attribute lookup, or issue search."
+                "Detected DITA-OT publishing/output generation intent; route to deterministic publishing corpus generation, not single-topic generate_dita."
             ],
+            candidate_contract=publishing_dataset_intent,
         )
 
     if is_native_pdf_dita_ot_argument_query(trimmed):
@@ -413,6 +418,20 @@ def route_prompt(text: str, *, attachments_present: bool = False) -> PromptRoute
             legacy_answer_mode="grounded_aem_answer",
             reasoning_notes=[
                 "Detected DITA-OT arguments in a Native PDF/PDF output context; route to AEM Guides output-preset guidance before DITA spec fallback."
+            ],
+        )
+
+    if is_dita_ot_internals_question(trimmed):
+        return PromptRouteDecision(
+            intent="dita_ot_build",
+            confidence=0.93,
+            supported=True,
+            execution_hint="answer_directly",
+            legacy_answer_mode="grounded_dita_answer",
+            reasoning_notes=[
+                "Detected a DITA-OT toolkit internals question (plugin/extension point/preprocessing/"
+                "XSL-FO/PDF2/catalog/Store API/transtype/build validation); route to grounded RAG+LLM "
+                "synthesis rather than a canned args primer, single-attribute lookup, or issue search."
             ],
         )
 

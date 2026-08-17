@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "aem-guides-dataset-studio": {
+      "command": "/absolute/path/to/aem-guides-mcp-client/.venv/bin/python",
+      "args": ["/absolute/path/to/aem-guides-mcp-client/server.py"],
+      "cwd": "/absolute/path/to/aem-guides-mcp-client",
+      "env": {
+        "AEM_STUDIO_URL": "http://<VM-IP-or-host>:4502",
+        "AEM_STUDIO_TOKEN": "dev-bypass",
+        "AEM_STUDIO_TIMEOUT_SECONDS": "300",
+        "PYTHONUTF8": "1"
+      }
+    }
+  }
+}

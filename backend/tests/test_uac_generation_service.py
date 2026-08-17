@@ -209,6 +209,88 @@ def test_unknown_domain_ignores_similar_without_current_entity_or_output():
     )
 
 
+def test_publishing_learning_drives_specific_regression_oracle():
+    enriched = {
+        "jira_key": "GUIDES-49831",
+        "summary": "AEM Sites publishing remains in Post Publishing",
+        "description": "Concurrent full-library runs collide while committing rendered pages.",
+        "domain": "publishing",
+        "dita_entities": ["ditamap", "workflow"],
+        "affected_outputs": ["AEM Sites"],
+    }
+    similar = [
+        {
+            "jira_key": "GUIDES-28118",
+            "title": "AEM Sites publishing queue regression",
+            "document": "AEM Sites workflow remains blocked after a failed publish.",
+            "matching_entities": ["ditamap", "workflow"],
+            "matching_outputs": ["AEM Sites"],
+            "scores": {"final": 0.82},
+            "chunk_type": "learning_behavior_chunk",
+            "learning": {
+                "learning_confidence": "medium",
+                "historical_outcome": "implemented_fix",
+                "reuse_mode": "verified_regression_contract",
+                "root_cause": "Concurrent commits targeted the same output path.",
+                "qa_oracle": "Run overlapping publishes and verify both jobs reach terminal states without blocking the queue.",
+                "regression_risks": "queue blockage, orphan output state",
+            },
+        }
+    ]
+
+    out = generate_uac_recommendations(enriched, similar, {})
+
+    assert out["classification"]["domain"] == "publishing"
+    historical = out["similar_jiras"][0]
+    assert historical["learning"]["historical_outcome"] == "implemented_fix"
+    scenario = out["must_test_scenarios"][0]
+    assert "terminal states" in scenario["scenario"]
+    assert "concurrent commits" in scenario["why"].lower()
+    assert scenario["priority"] == "P1"
+    assert not any("behavior proven" in row["question"].lower() for row in out["missing_clarifications"])
+
+
+def test_cautionary_learning_is_risk_only_not_expected_behavior():
+    out = generate_uac_recommendations(
+        {
+            "jira_key": "GUIDES-NEW",
+            "summary": "Publishing retry behavior",
+            "domain": "publishing",
+            "dita_entities": ["workflow"],
+            "affected_outputs": ["AEM Sites"],
+        },
+        [
+            {
+                "jira_key": "GUIDES-OLD",
+                "title": "Old publishing report",
+                "document": "Publishing retry report for AEM Sites workflow.",
+                "matching_entities": ["workflow"],
+                "matching_outputs": ["AEM Sites"],
+                "scores": {"final": 0.75},
+                "chunk_type": "learning_behavior_chunk",
+                "learning": {
+                    "learning_confidence": "caution",
+                    "historical_outcome": "non_fix_decision",
+                    "reuse_mode": "risk_signal_only",
+                    "behavior_contract": "This must not become current expected behavior.",
+                    "qa_oracle": "This must not become a sign-off oracle.",
+                    "regression_risks": "retry exhaustion can block later jobs",
+                },
+            }
+        ],
+        {},
+    )
+
+    historical = out["similar_jiras"][0]
+    assert historical["learning"]["behavior_contract"] == ""
+    assert historical["learning"]["qa_oracle"] == ""
+    historical_scenario = next(
+        row for row in out["must_test_scenarios"] if "GUIDES-OLD" in str(row.get("evidence"))
+    )
+    assert historical_scenario["priority"] == "P2"
+    assert "risk signal" in historical_scenario["why"]
+
+
 def test_provider_generic_scenario_is_rejected_even_with_sidecar_evidence():
     class BadProvider:
         provider_name = "bad-test-provider"

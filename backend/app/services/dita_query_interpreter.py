@@ -140,6 +140,13 @@ def extract_attribute_names(query: str) -> list[str]:
             continue
         add(token)
 
+    if "search" in matches and re.search(r"\bsearchtitle\b", text, re.IGNORECASE):
+        explicitly_requests_search_attribute = bool(
+            re.search(r"@search\b|\bsearch\s+attribute\b|\battribute\s+@?search\b", text, re.IGNORECASE)
+        )
+        if not explicitly_requests_search_attribute:
+            matches.remove("search")
+
     return matches
 
 

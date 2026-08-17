@@ -772,6 +772,37 @@ class KeydefHeavyRecipe(BaseModel):
     include_map: bool = True
     pretty_print: bool = True
 
+
+class LargeMapKeyResolutionRecipe(BaseModel):
+    """
+    Generate one large map with many key definitions and one topic that resolves every key.
+
+    Used for AEM Guides functional, scale, performance, memory, Editor, Preview,
+    and publishing validation.
+    """
+    type: Literal["large_map_key_resolution"] = "large_map_key_resolution"
+    key_count: int = Field(default=500, ge=1, le=10000, description="Number of unique map-defined keys")
+    keys_per_section: int = Field(default=25, ge=1, description="Number of keyrefs per topic section")
+    key_prefix: str = Field(default="product-key", description="XML/DITA-safe prefix for generated key names")
+    map_title: str = "Large Key Resolution Performance Map"
+    topic_title: str = "Large Topic Resolving Map-Defined Keys"
+    include_expected_values: bool = True
+    create_zip: bool = True
+
+    @field_validator("key_prefix")
+    @classmethod
+    def validate_key_prefix(cls, value: str) -> str:
+        import re
+
+        prefix = (value or "").strip()
+        if not prefix:
+            raise ValueError("key_prefix cannot be blank")
+        if not re.fullmatch(r"^[A-Za-z_][A-Za-z0-9_.-]*$", prefix):
+            raise ValueError(
+                "key_prefix must start with a letter or underscore and contain only letters, numbers, '.', '_' or '-'"
+            )
+        return prefix
+
 class KeyscopeDemoRecipe(BaseModel):
     """
     Recipe for generating keyscope demo dataset demonstrating scoped key resolution.
@@ -1319,6 +1350,7 @@ Recipe = Annotated[
         AdvancedRelationshipRecipe,
         HubSpokeInboundRecipe,
         KeydefHeavyRecipe,
+        LargeMapKeyResolutionRecipe,
         KeyscopeDemoRecipe,
         KeywordMetadataRecipe,
         InsuranceIncrementalRecipe,

@@ -123,10 +123,7 @@ def extract_issue_key_from_generation_request(text: str) -> Optional[str]:
 def _jira_client_ready(client: JiraClient) -> bool:
     if not (client.base_url or "").strip():
         return False
-    return bool(
-        (client.username and client.password)
-        or (client.email and client.api_token)
-    )
+    return client.has_auth()
 
 
 def _extract_section(text: str, heading_pattern: str, max_chars: int = 3000) -> str:

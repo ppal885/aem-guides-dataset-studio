@@ -19,7 +19,126 @@ from app.services.enterprise_qa.enterprise_reranking_engine import (
     build_rerank_base_from_issue_chunks,
 )
 
-_SIGNAL_TYPES = frozenset({"full_ticket_summary", "customer_problem", "similar_ticket_signals"})
+_SIGNAL_TYPES = frozenset(
+    {
+        "full_ticket_summary",
+        "customer_problem",
+        "similar_ticket_signals",
+        "summary_chunk",
+        "problem_chunk",
+        "learning_behavior_chunk",
+    }
+)
+_QUERY_CUSTOMER_ALIASES = {
+    "3m": "3M",
+    "aetna": "Aetna",
+    "abs": "American Bureau of Shipping",
+    "american express": "American Express",
+    "american bureau of shipping": "American Bureau of Shipping",
+    "amex": "American Express",
+    "ariel cop": "Ariel Corporation",
+    "ariel corp": "Ariel Corporation",
+    "ariel corporation": "Ariel Corporation",
+    "astrazeneca": "AstraZeneca",
+    "avaya": "Avaya",
+    "banner engineering": "Banner Engineering",
+    "basco": "BASCO",
+    "benq": "BenQ",
+    "blackberry": "BlackBerry",
+    "bretting": "Bretting",
+    "broadcom": "Broadcom",
+    "centene": "Centene",
+    "citrix": "Citrix",
+    "cisco": "Cisco",
+    "cloud software group": "Cloud Software Group",
+    "ciena": "Ciena",
+    "ciena corporation": "Ciena",
+    "cmr surgical": "CMR Surgical",
+    "crown": "Crown Equipment",
+    "crown equipment": "Crown Equipment",
+    "deluxe": "Deluxe",
+    "dfs": "DFS",
+    "dow": "Dow",
+    "dsv": "DSV",
+    "eaton": "Eaton",
+    "emerson": "Emerson",
+    "emerson process management": "Emerson",
+    "enbridge": "Enbridge",
+    "erie": "Erie Insurance",
+    "erie insurance": "Erie Insurance",
+    "ey": "EY",
+    "faa": "FAA",
+    "gm": "GM",
+    "greenbytes": "GreenBytes",
+    "gulfstream": "Gulfstream",
+    "grundfos": "Grundfos",
+    "haas equipment": "Haas Equipment",
+    "haas automation": "Haas Automation",
+    "hyundai": "Hyundai",
+    "hunter douglas": "Hunter Douglas",
+    "red hat": "Red Hat",
+    "redhat": "Red Hat",
+    "ibm": "IBM",
+    "informatica": "Informatica",
+    "intel": "Intel",
+    "isuzu intec": "Isuzu Intec Corporation",
+    "swift": "Swift",
+    "lexmark": "Lexmark",
+    "topcon": "Topcon",
+    "fidelity": "Fidelity",
+    "jpmc": "JPMC",
+    "jp morgan": "JPMC",
+    "jpmorgan": "JPMC",
+    "kone": "KONE",
+    "kyndryl": "Kyndryl",
+    "kogei intec": "Kogei Intec Corporation",
+    "kyocera": "Kyocera",
+    "mayo clinic": "Mayo Clinic",
+    "mayoclinic": "Mayo Clinic",
+    "marriott": "Marriott",
+    "micron": "Micron",
+    "navico": "Navico",
+    "nutanix": "Nutanix",
+    "optum": "Optum",
+    "pan": "PAN",
+    "piaggio": "Piaggio",
+    "qualcomm": "Qualcomm",
+    "raymond corporation": "Raymond Corporation",
+    "rbs": "RBS",
+    "thomson reuters": "Thomson Reuters",
+    "thomsonreuters": "Thomson Reuters",
+    "pwc": "PwC",
+    "pricewaterhousecoopers": "PwC",
+    "linkedin": "LinkedIn",
+    "linked in": "LinkedIn",
+    "lloyds": "Lloyds",
+    "lanl": "LANL",
+    "resmed": "ResMed",
+    "ringcentral": "RingCentral",
+    "rockwell automation": "Rockwell Automation",
+    "samsung": "Samsung",
+    "sandia": "Sandia",
+    "signify": "Signify",
+    "splunk": "Splunk",
+    "stihl": "STIHL",
+    "servicenow": "ServiceNow",
+    "sonova": "Sonova",
+    "sub zero": "Sub-Zero",
+    "demant": "Demant",
+    "transunion": "TransUnion",
+    "transunion llc": "TransUnion",
+    "ttc": "TTC",
+    "toyota": "Toyota",
+    "translation.com": "Translation.com",
+    "txdot": "TxDOT",
+    "ubs": "UBS",
+    "usmc": "USMC",
+    "verizon": "Verizon",
+    "volkswagen": "Volkswagen",
+    "workday": "Workday",
+    "zebra": "Zebra",
+    "zebra technologies": "Zebra",
+}
 
 
 def _parse_json_list(raw: str) -> list[str]:
@@ -36,6 +155,18 @@ def _parse_json_list(raw: str) -> list[str]:
 
 def _norm_customer_token(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _customer_names_from_query(query_text: str) -> list[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", query_text.casefold()).strip()
+    padded = f" {normalized} "
+    return list(
+        dict.fromkeys(
+            customer
+            for alias, customer in _QUERY_CUSTOMER_ALIASES.items()
+            if f" {alias} " in padded
+        )
+    )
 
 
 def get_chunks_for_jira_key(jira_key: str, *, limit: int = 64) -> list[dict[str, Any]]:
@@ -179,6 +310,7 @@ def semantic_search_jira_qa(
     dita_entities: list[str] | None = None,
     affected_outputs: list[str] | None = None,
     customer_names: list[str] | None = None,
+    require_non_vector_evidence: bool = False,
 ) -> list[dict[str, Any]]:
     """Hybrid retrieval over jira_qa (vector + keyword overlap + enrichment metadata + diversity)."""
     from app.services.jira_retrieval_service import retrieve_similar_jiras, retrieved_to_legacy_hit
@@ -197,6 +329,8 @@ def semantic_search_jira_qa(
         cache_set_embedding_vector(qt, emb)
 
     names = list(customer_names or [])
+    if not names and not customer:
+        names.extend(_customer_names_from_query(qt))
     if customer and str(customer).strip():
         names.append(str(customer).strip())
 
@@ -212,7 +346,7 @@ def semantic_search_jira_qa(
         base_labels=base_labels,
         base_components=base_components,
         label_expanded_tokens=label_expanded_tokens,
-        require_non_vector_evidence=False,
+        require_non_vector_evidence=require_non_vector_evidence,
     )
     ranked_full = [retrieved_to_legacy_hit(r) for r in retrieved]
     if rerank_base and ranked_full:

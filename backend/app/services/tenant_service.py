@@ -429,11 +429,16 @@ def build_jira_client(tenant_id: str):
         config = get_tenant(tenant_id)
     except Exception:
         return JiraClient()
-    return JiraClient(
+
+    client = JiraClient(
         base_url=config.jira_url or None,
         email=config.jira_email or None,
         api_token=config.jira_token or None,
     )
+    if client.is_configured():
+        return client
+    # Tenant record may be empty in local MCP mode — fall back to backend/.env (JIRA_PAT, etc.)
+    return JiraClient()
 
 
 def build_tenant_context(tenant_id: str, issue: dict, intent_type: str) -> dict:

@@ -1,5 +1,6 @@
 """Jira REST API client."""
 import os
+import re
 from typing import Optional
 import httpx
 
@@ -115,6 +116,14 @@ class JiraClient:
         """Fetch a single issue by key. Optionally restrict to specific fields."""
         path = f"/rest/api/{self._api}/issue/{issue_key}"
         params = {"fields": fields} if fields else None
+        return self._request("GET", path, params=params)
+
+    def get_issue_with_names(self, issue_key: str, fields: str | None = None) -> dict:
+        """Fetch an issue plus Jira's custom-field ID-to-name mapping."""
+        path = f"/rest/api/{self._api}/issue/{issue_key}"
+        params = {"expand": "names"}
+        if fields:
+            params["fields"] = fields
         return self._request("GET", path, params=params)
 
     def get_issue_legacy(self, issue_key: str) -> dict:
@@ -294,3 +303,49 @@ def extract_description_from_issue(issue: dict) -> str:
     if isinstance(desc, dict) and "content" in desc:
         return _adf_to_plain_text(desc)
     return str(desc)[:50000]
+
+
+def jira_field_value_to_text(value: object) -> str:
+    """Convert Jira scalar, list, option, or ADF field values into bounded plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        if "content" in value:
+            return _adf_to_plain_text(value)[:50000]
+        for key in ("value", "name", "displayName"):
+            if value.get(key) not in (None, ""):
+                return str(value[key]).strip()[:50000]
+        return ""
+    if isinstance(value, (list, tuple)):
+        parts = [jira_field_value_to_text(item) for item in value]
+        return "\n".join(part for part in parts if part)[:50000]
+    return str(value).strip()[:50000]
+
+
+def extract_named_issue_field(
+    issue: dict,
+    accepted_names: tuple[str, ...] | list[str],
+    *,
+    explicit_field_id: str = "",
+) -> tuple[str, str, str]:
+    """Return ``(text, field_id, display_name)`` using Jira's expanded names map."""
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
+    if explicit_field_id and explicit_field_id in fields:
+        return (
+            jira_field_value_to_text(fields.get(explicit_field_id)),
+            explicit_field_id,
+            str(names.get(explicit_field_id) or explicit_field_id),
+        )
+
+    normalized_targets = {
+        re.sub(r"[^a-z0-9]+", "", str(name or "").casefold()) for name in accepted_names
+    }
+    for field_id, display_name in sorted(names.items()):
+        normalized_name = re.sub(r"[^a-z0-9]+", "", str(display_name or "").casefold())
+        if normalized_name not in normalized_targets:
+            continue
+        text = jira_field_value_to_text(fields.get(field_id))
+        if text:
+            return text, str(field_id), str(display_name)
+    return "", "", ""

@@ -86,15 +86,15 @@ def _metadata_cascade_topic() -> str:
 <!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd">
 <topic id="metadata-cascade-topic" xml:lang="en-US">
   <title>Topic-level metadata cascade target</title>
+  <shortdesc>This topic contains topic-level metadata that is combined with map-level topicmeta during processing.</shortdesc>
   <prolog>
     <metadata>
+      <audience type="writer"/>
       <keywords>
         <keyword>topic-keyword</keyword>
       </keywords>
-      <audience type="writer"/>
     </metadata>
   </prolog>
-  <shortdesc>This topic contains topic-level metadata that is combined with map-level topicmeta during processing.</shortdesc>
   <body>
     <section id="metadata-cascade-positive"><title>Metadata cascade behavior</title>
       <p>The map contributes <xmlelement>topicmeta</xmlelement> such as navigation title, search title, and keywords. The topic contributes <xmlelement>prolog</xmlelement> metadata.</p>
@@ -743,11 +743,11 @@ def detect_publishing_constructs(prompt: str) -> list[str]:
 
 def detect_output_format(prompt: str, default: str = "pdf") -> str:
     text = (prompt or "").lower()
-    wants_pdf = bool(re.search(r"\b(pdf|pdf2)\b", text))
-    wants_html = bool(re.search(r"\b(html5|html|xhtml|classic\s+html)\b", text))
+    wants_pdf = bool(re.search(r"\b(pdf|pdf\s*2|pd2)\b", text))
+    wants_html = bool(re.search(r"\b(html\s*5|html|xhtml|classic\s+html)\b", text))
     if "all" in text or (wants_pdf and wants_html):
         return "all"
-    if "html5" in text:
+    if re.search(r"\bhtml\s*5\b", text):
         return "html5"
     if re.search(r"\b(html|xhtml|classic\s+html)\b", text):
         return "html"

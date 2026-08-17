@@ -69,6 +69,40 @@ _CURATED_EXAMPLES: dict[str, dict[str, str]] = {
 <p>See <xref keyref="install-guide"/> before continuing.</p>""",
         "expected_result": "Creates map-level key definitions and topics that resolve repeated `keyref` usage through shared keys.",
     },
+    "large_map_key_resolution": {
+        "full_example_xml": """<map id="large-key-resolution-map">
+  <title>Large Key Resolution Performance Map</title>
+  <keydef keys="product-key-001">
+    <topicmeta>
+      <keywords>
+        <keyword>Enterprise configuration value 001 for AEM Guides key-resolution validation</keyword>
+      </keywords>
+    </topicmeta>
+  </keydef>
+  <!-- ... hundreds or thousands of keydefs ... -->
+  <topicref href="large-keyref-topic-500.dita"/>
+</map>
+
+<topic id="large-keyref-topic">
+  <title>Large Topic Resolving Map-Defined Keys</title>
+  <body>
+    <section id="keys-001-025">
+      <title>Resolved keys 001 through 025</title>
+      <dl>
+        <dlentry id="keyref-001">
+          <dt>product-key-001</dt>
+          <dd><keyword keyref="product-key-001"/></dd>
+        </dlentry>
+      </dl>
+    </section>
+  </body>
+</topic>""",
+        "expected_result": (
+            "Generates one DITA map with hundreds/thousands of unique `keydef` entries, one large topic "
+            "that consumes every key exactly once with empty `<keyword keyref=\"...\"/>`, an expected-values CSV, "
+            "README, validation summary via generation checks, and an optional ZIP for AEM upload."
+        ),
+    },
     "relationship_table": {
         "full_example_xml": """<map>
   <reltable>
@@ -409,6 +443,26 @@ def get_recipe_catalog() -> dict[str, Any]:
                 "search_terms": ["curated_realtime_corpus", "curated", "100k", "stackoverflow"],
                 "recipe_id": "curated_realtime_corpus",
                 "preset_params": {"topic_count": 100_000},
+            },
+            {
+                "id": "large_key_resolution_500",
+                "title": "500 keyrefs",
+                "description": "One large topic resolving 500 map-defined keys.",
+                "category": "qa_dataset_creation",
+                "featured_track": "qa_dataset_creation",
+                "search_terms": ["large_map_key_resolution", "key resolution", "keyref scale"],
+                "recipe_id": "large_map_key_resolution",
+                "preset_params": {"key_count": 500, "keys_per_section": 25, "create_zip": True},
+            },
+            {
+                "id": "large_key_resolution_2000",
+                "title": "2000 keyrefs",
+                "description": "Performance dataset for 2000 map-defined key references.",
+                "category": "qa_dataset_creation",
+                "featured_track": "qa_dataset_creation",
+                "search_terms": ["large_map_key_resolution", "2000", "keyref performance"],
+                "recipe_id": "large_map_key_resolution",
+                "preset_params": {"key_count": 2000, "keys_per_section": 50, "create_zip": True},
             },
             {
                 "id": "curated_200k",
