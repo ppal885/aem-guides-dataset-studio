@@ -866,6 +866,41 @@ def test_coverage_gate() -> None:
     check("coverage gate present with a reasoning block", cg.is_present({"coverage_hypotheses": [hyp("CONSUMER", "H1")]}) is True)
 
 
+def test_reasoning_required() -> None:
+    import json, tempfile
+    run_gates = _load("run_gates", "run_gates.py")
+
+    def _write(tmp, payload):
+        p = Path(tmp) / "m.json"
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        return str(p)
+
+    bm = {"trigger": ["t"], "operations": ["o"]}
+    cov = [{"hypothesis_id": "H1", "dimension": "CONSUMER", "candidate": "c", "reason": "r", "technical_basis": ["t"], "status": "CONFIRMED"}]
+    verif = [{"hypothesis_id": "H1", "verdict": "CONFIRMED", "supporting_authorities": ["CURRENT_IMPLEMENTATION"], "supporting_evidence": ["E1"], "disposition": "ACCEPTANCE_CRITERION"}]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # behaviour_matters true (default) but no behavior_model -> required failure
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X"}))[0]
+        check("behavior_model mandatory when behaviour_matters", any("behavior_model block is mandatory" in x for x in f))
+
+        # behaviour_matters false -> requirement waived
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behaviour_matters": False}))[0]
+        check("behaviour_matters false waives the reasoning requirement", f == [])
+
+        # behavior_model present, no coverage -> satisfied
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm}))[0]
+        check("behavior_model present satisfies the requirement", f == [])
+
+        # coverage declared without verifications -> required failure
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm, "coverage_hypotheses": cov}))[0]
+        check("coverage hypotheses without verifications is rejected", any("no verifications block" in x for x in f))
+
+        # full reasoning set -> satisfied
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm, "coverage_hypotheses": cov, "verifications": verif}))[0]
+        check("full reasoning set satisfies the requirement", f == [])
+
+
 def test_uac_integration() -> None:
     ig = integration_mod
 
@@ -941,6 +976,7 @@ def main() -> int:
     test_hypothesis_verifier()
     test_coverage_gate()
     test_uac_integration()
+    test_reasoning_required()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

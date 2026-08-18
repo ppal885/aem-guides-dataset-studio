@@ -50,6 +50,41 @@ integration_mod = _load("uac_integration", "uac_integration.py")
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
 
+def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Make the reasoning pipeline MANDATORY for behavioral tickets.
+
+    When `behaviour_matters` is not explicitly false, a structured `behavior_model`
+    block is required (the plan must model "what is happening" before "what to test",
+    rather than going Jira -> RAG -> UAC). When coverage hypotheses are declared,
+    every one must be verified (a `verifications` block is required). Pure internal
+    code-bug tickets opt out with `behaviour_matters: false` (with a reason), the
+    same escape used for RAG. This is the policy flip that turns the opt-in
+    architecture into an enforced pipeline.
+    """
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["reasoning pipeline not required (behaviour_matters is false)"]
+    failures = []
+    if not behavior_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] a behavior_model block is mandatory when behaviour_matters is true - model the "
+            "trigger/operations/state/consumers (unknowns allowed) before writing coverage; set behaviour_matters "
+            "false with a reason only for a pure internal code bug with no product-visible contract"
+        )
+    if coverage_mod.is_present(data) and data.get("coverage_hypotheses") and not verifier_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] coverage_hypotheses are declared but no verifications block exists - every "
+            "candidate must be driven to a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / "
+            "UNRESOLVED) before the plan is delivered"
+        )
+    return failures, ["reasoning pipeline requirements satisfied"] if not failures else []
+
+
 def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]]:
     """Run the generalized SemanticCoverageGate when the plan participates.
 
@@ -246,6 +281,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += [f"[anti-hardcoding] {f}" for f in hc_fail]
     notes += hc_notes
 
+    # Mandatory reasoning pipeline for behavioral tickets (policy flip to READY).
+    rq_fail, rq_notes = check_reasoning_required(manifest_path)
+    failures += rq_fail
+    notes += rq_notes
+
     # BehaviorModel validation (only when the manifest declares a behavior_model block).
     bm_fail, bm_notes = check_behavior_model(manifest_path)
     failures += bm_fail
@@ -300,6 +340,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_hypothesis_verifier()
             self_tests.test_coverage_gate()
             self_tests.test_uac_integration()
+            self_tests.test_reasoning_required()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
