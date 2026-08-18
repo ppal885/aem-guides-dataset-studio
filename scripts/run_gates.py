@@ -47,6 +47,7 @@ verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
+oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -329,6 +330,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             failures += [f"[disposition] {p}" for p in disposition_mod.validate_dispositions(_idata["dispositions"])]
         if coverage_gate_mod.is_present(_idata):
             failures += [f"[disposition] {p}" for p in disposition_mod.check_plan_acceptance_criteria(body)]
+        # TestOracleBuilder: validate any scenario_oracles block, and (for reasoning-
+        # driven plans) require an observable product oracle on P0/P1 scenarios.
+        if oracle_mod.is_present(_idata):
+            failures += [f"[oracle] {p}" for p in oracle_mod.validate_scenario_oracles(_idata["scenario_oracles"])]
+        if coverage_gate_mod.is_present(_idata):
+            failures += [f"[oracle] {p}" for p in oracle_mod.check_plan_scenarios(body)]
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -350,6 +357,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_reasoning_required()
             self_tests.test_relevance_prioritizer()
             self_tests.test_disposition_classifier()
+            self_tests.test_oracle_builder()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
