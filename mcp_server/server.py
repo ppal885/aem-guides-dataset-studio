@@ -297,6 +297,57 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["jira_key"],
             },
         ),
+        types.Tool(
+            name="search_jira_history",
+            description=(
+                "Semantic search over the INDEXED jira_qa corpus — past validated AEM "
+                "Guides UACs / test plans the team has indexed. This is historical QA "
+                "learning, distinct from `search_jira_issues` (which hits live Jira). "
+                "Use it to retrieve prior plans for the same component/behaviour."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural-language query or Jira key (e.g. 'native AEM site navtitle crash', 'duplicate id save warning')",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return (default 10)",
+                        "default": 10,
+                    },
+                    "customer": {
+                        "type": "string",
+                        "description": "Optional customer/tenant to rank same-customer plans first",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="index_test_plan",
+            description=(
+                "Persist a validated test-plan markdown to the backend's shared store and "
+                "index it into the jira_qa corpus, so the whole team can retrieve it via "
+                "`search_jira_history`. Push your own already-made plan to the team backend "
+                "(the VM behind AEM_STUDIO_URL) from Claude Desktop or the CLI. Idempotent."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "AEM Guides Jira key the plan is for, e.g. GUIDES-12345",
+                    },
+                    "markdown": {
+                        "type": "string",
+                        "description": "The full validated test-plan markdown to index",
+                    },
+                },
+                "required": ["key", "markdown"],
+            },
+        ),
     ]
 
 
@@ -369,6 +420,19 @@ async def _dispatch(name: str, args: dict) -> Any:
             "jira_key": args["jira_key"],
             "tenant_id": args.get("tenant_id", "kone"),
             "evidence_k": args.get("evidence_k", 8),
+        })
+
+    if name == "search_jira_history":
+        return await _post("/api/v1/mcp/search-jira-history", {
+            "query": args["query"],
+            "limit": args.get("limit", 10),
+            "customer": args.get("customer"),
+        })
+
+    if name == "index_test_plan":
+        return await _post("/api/v1/mcp/index-test-plan", {
+            "key": args["key"],
+            "markdown": args["markdown"],
         })
 
     raise ValueError(f"Unknown tool: {name}")

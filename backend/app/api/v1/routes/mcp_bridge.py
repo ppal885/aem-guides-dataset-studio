@@ -359,3 +359,86 @@ _SCREENSHOT_DITA_GONE = (
 async def screenshot_to_dita(user: UserIdentity = CurrentUser):
     """Legacy MCP endpoint — screenshot authoring was removed from the product."""
     raise HTTPException(status_code=410, detail=_SCREENSHOT_DITA_GONE)
+
+
+# ---------------------------------------------------------------------------
+# search-jira-history  (indexed jira_qa corpus — past UACs / test plans)
+# ---------------------------------------------------------------------------
+
+class JiraHistoryRequest(BaseModel):
+    query: str
+    limit: int = 10
+    customer: str | None = None
+
+
+@router.post("/search-jira-history")
+def search_jira_history(body: JiraHistoryRequest, user: UserIdentity = CurrentUser):
+    """Semantic search over the indexed jira_qa corpus (past validated UACs / test plans).
+
+    This is the historical-learning corpus — distinct from ``/search-jira`` which hits
+    live Jira. Used by the MCP ``search_jira_history`` tool so any teammate can retrieve
+    indexed plans (e.g. the whole team's past AEM Guides UAC work) via Claude Desktop/CLI.
+    """
+    from app.services.jira_qa_retrieval_service import semantic_search_jira_qa
+
+    limit = max(1, min(int(body.limit or 10), 50))
+    try:
+        hits = semantic_search_jira_qa(body.query, top_k=limit, customer=body.customer)
+    except Exception as exc:  # RAG/Chroma/embedding unavailable — degrade, don't 500
+        logger.warning_structured("jira_qa history search failed", extra_fields={"error": str(exc)})
+        return {"query": body.query, "count": 0, "results": [], "error": str(exc)}
+
+    results = []
+    for h in (hits or []):
+        if not isinstance(h, dict):
+            results.append({"text": str(h)})
+            continue
+        meta = h.get("metadata") or {}
+        try:
+            score = round(float(h.get("score", h.get("distance", 0) or 0)), 3)
+        except (TypeError, ValueError):
+            score = None
+        results.append({
+            "jira_key": h.get("jira_key", meta.get("jira_key", "")),
+            "summary": (h.get("summary", "") or "")[:200],
+            "section": meta.get("section_title", h.get("chunk_type", "")),
+            "component": h.get("component", meta.get("component", "")),
+            "score": score,
+            "text": (h.get("document") or h.get("text") or "")[:1200],
+        })
+    return {"query": body.query, "count": len(results), "results": results[:limit]}
+
+
+# ---------------------------------------------------------------------------
+# index-test-plan  (persist + index a validated plan into jira_qa on this backend)
+# ---------------------------------------------------------------------------
+
+class IndexTestPlanRequest(BaseModel):
+    key: str
+    markdown: str
+
+
+@router.post("/index-test-plan")
+def index_test_plan_bridge(body: IndexTestPlanRequest, user: UserIdentity = CurrentUser):
+    """Persist a validated test-plan markdown to this backend's shared store and index it
+    into jira_qa, so a teammate can push their own plan to the (VM) backend from Claude
+    Desktop/CLI via the MCP ``index_test_plan`` tool. Idempotent — safe to re-run.
+    """
+    from app.services.test_plan_artifact_service import save_test_plan
+    from app.services.test_plan_index_service import index_test_plan
+
+    if not (body.markdown or "").strip():
+        raise HTTPException(status_code=400, detail="markdown is empty")
+    try:
+        saved = save_test_plan(body.key, body.markdown)
+    except ValueError as exc:  # bad Jira key / empty content
+        raise HTTPException(status_code=400, detail=str(exc))
+    indexed = index_test_plan(body.key, markdown=body.markdown)
+    saved = saved if isinstance(saved, dict) else {}
+    return {
+        "key": saved.get("key") or saved.get("jira_key") or body.key,
+        "saved_path": saved.get("path") or saved.get("file_path"),
+        "indexed": indexed.get("indexed", False),
+        "chunks_indexed": indexed.get("chunks_indexed", 0),
+        "reason": indexed.get("reason"),
+    }

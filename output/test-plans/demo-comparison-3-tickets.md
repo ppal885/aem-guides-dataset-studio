@@ -89,29 +89,18 @@ publishing job, plus documentation of the existing APIs.
 *Problem:* restates the ask. No job-id linkage, no efficiency requirement, no dashboard
 regression, no auth, no documentation, no open question, no evidence.
 
-### With the skill (evidence-backed)
-Evidence read: `starling/core/utils/.../PublishUtils.java` (`generateOutput` → `operation =
-GENERATEOUTPUT`), `PublishWorkflowStep.java`, dashboard consumers `outputmanager.js` /
-`outputcontroller.js`, `core-api-servlet-paths.csv`.
-- AC-01 (Confirmed): The generate-output response returns a jobId that can be passed to the
-  status API.
-- AC-02 (Confirmed): A status API returns one job's status without the full output-history
-  array.
-- AC-03 (Confirmed): The `GENERATEOUTPUT` and `PUBLISHBEACON` APIs are documented for
-  customers (the ticket's second ask).
-- AC-04: The map-dashboard load that consumes `PUBLISHBEACON` keeps working
-  unchanged.
-- AC-05 (Confirmed): The public status API enforces tenant/permission access control.
-- AC-06 (Confirmed): The status API distinguishes in-progress, success, and failure and
-  returns an error payload on failure.
-- AC-07: Single-job tracking stays efficient under many concurrent jobs,
-  instead of returning the whole history array.
-- Open question: What is the exact REST contract and versioning of the new API? The ticket
-  says "technical design can be discussed" — a design decision to settle before sign-off.
+### With the skill (evidence-backed, after reading the actual handler)
+Evidence read (the fix from the weak first pass): `PublishListener.java`, `PublishOutputService.java`, and `Operation.java` in `starling/core/publish-listener/` — the real `/bin/publishlistener` servlet and its operation enum.
+- AC-01 [Confirmed]: The generate-output response already returns a stable job identifier — `generationId` (the executionId, equal to the output-history node name), set at `PublishOutputService.java:182` and written to the response via `gson.toJson`. The ticket's "no jobID" premise is outdated; the acceptance target is that this `generationId` is present, stable, and accepted by the status lookup.
+- AC-02 [Confirmed]: `PUBLISHBEACON` returns the whole output history for the map — `handleOperationPublishBeacon` calls `getOutputHistoryForMap(src, adminSession)` and serialises the full `OutputsDto` (`PublishListener.java:2750`), keyed by map, which is the dashboard's data source.
+- AC-03 [Proposed]: The genuine gap the ticket asks for is an efficient status lookup keyed by `generationId` (rather than parsing the whole beacon array); confirm whether such a per-job status path exists or must be added, since the current operations are `PUBLISHBEACON` (by map) and `CANCELOUTPUTJOB` (by job).
+- AC-04 [Proposed]: The `GENERATEOUTPUT` and `PUBLISHBEACON` operations are documented for customer automation (the ticket's second ask).
+- AC-05 [Proposed]: `PUBLISHBEACON` runs under a service-user admin session (`PublishListener.java:2748`), so any customer-facing status API must enforce its own tenant/permission gate rather than inherit the admin context.
+- AC-06 [Proposed]: The status lookup distinguishes in-progress, success, and failure for a given `generationId`, and returns an error payload on failure.
+- AC-07 [Proposed]: Single-job tracking stays efficient under many concurrent jobs instead of returning the full map history array.
+- Open question: GUIDES-26085 is Closed and `generationId` is already returned, so confirm whether the delivered fix was "return `generationId` + document the existing operations" or also added a new per-job status endpoint — this decides whether AC-03 is a verification or a new-surface test.
 
-**What the skill caught that plain Claude did not:** the job-id link, the array-bloat
-efficiency requirement, the dashboard regression, auth, documentation, and the design open
-question.
+**Root cause of the earlier weak pass:** I took the ticket text as ground truth and never opened the handler, so I missed that `generationId` is already returned and stated the beacon-array claim without confirming `getOutputHistoryForMap`. **Fix / rule:** for any API or operation ticket, read the actual servlet/operation handler before writing ACs — the same "read the code, not the ticket" discipline that resolved the 53707 topichead case.
 
 | Metric | Plain | Skill |
 |---|---|---|

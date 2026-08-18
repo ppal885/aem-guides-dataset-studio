@@ -15,7 +15,7 @@ AEM Guides Studio — a full-stack tool for generating, validating, and managing
 
 `mcp_server/server.py` exposes the studio's capabilities as MCP tools for Claude Desktop, Cursor, and Claude Code.
 
-**Exposed tools:** `find_recipes`, `lookup_dita_spec`, `lookup_aem_guides`, `lookup_dita_attribute`, `review_dita_xml`, `fix_dita_xml`, `generate_dita`, `generate_dita_from_screenshot`, `list_jobs`, `get_job_status`, `search_jira_issues`.
+**Exposed tools:** `find_recipes`, `lookup_dita_spec`, `lookup_aem_guides`, `lookup_dita_attribute`, `review_dita_xml`, `fix_dita_xml`, `generate_dita`, `generate_dita_from_screenshot`, `list_jobs`, `get_job_status`, `search_jira_issues`, `guides_test_plan_generator`, `search_jira_history` (query the indexed jira_qa corpus of past validated UACs/test plans), `index_test_plan` (persist + index a validated plan into the backend's jira_qa so the whole team can retrieve it).
 
 The MCP server calls the backend REST API. A new bridge route (`backend/app/api/v1/routes/mcp_bridge.py`, registered at `/api/v1/mcp/*`) provides direct service-level endpoints for tools that have no standalone REST endpoint.
 
