@@ -30,6 +30,7 @@ behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
+coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -790,6 +791,80 @@ def test_hypothesis_verifier() -> None:
     check("verifications absent is not a failure", hv.is_present({"issue": "X"}) is False)
 
 
+def test_coverage_gate() -> None:
+    cg = coverage_gate_mod
+
+    def hyp(dim, hid, status="INVESTIGATION_CANDIDATE"):
+        return {"hypothesis_id": hid, "dimension": dim, "candidate": "c", "reason": "r",
+                "technical_basis": ["t"], "status": status}
+
+    def verif(hid, verdict, **k):
+        base = {"hypothesis_id": hid, "verdict": verdict}
+        base.update(k)
+        return base
+
+    # a fully-explored plan: covered + rejected + unresolved-but-exposed -> PASS
+    good = {
+        "coverage_hypotheses": [hyp("CONSUMER", "H1"), hyp("STATE_PARTITION", "H2"), hyp("NFR_RISK", "H3")],
+        "verifications": [verif("H1", "CONFIRMED", disposition="ACCEPTANCE_CRITERION"),
+                          verif("H2", "REJECTED", disposition="EXCLUDED"),
+                          verif("H3", "UNRESOLVED", disposition="OPEN_QUESTION", open_question_ref="OQ-1")],
+        "open_questions": ["OQ-1"],
+    }
+    r = cg.evaluate(good)
+    check("fully explored plan passes the coverage gate", r["semantic_gate"] == "PASS")
+    check("covered dimension marked COVERED", r["dimensions"]["CONSUMER_EXPLORATION"] == "COVERED")
+    check("rejected candidate marked INVESTIGATED_AND_REJECTED", r["dimensions"]["STATE_PARTITIONS"] == "INVESTIGATED_AND_REJECTED")
+    check("exposed unresolved marked UNRESOLVED_AND_EXPOSED", r["dimensions"]["NFR"] == "UNRESOLVED_AND_EXPOSED")
+
+    # adversarial 1: discovered abstraction/consumer NOT explored (candidate, no verification) -> NEEDS_REVIEW
+    a1 = {"coverage_hypotheses": [hyp("CONTRACT_BOUNDARY", "H1"), hyp("CONSUMER", "H2")], "verifications": []}
+    r1 = cg.evaluate(a1)
+    check("discovered-but-unexplored contract/consumer -> NEEDS_REVIEW", r1["semantic_gate"] == "NEEDS_REVIEW"
+          and r1["dimensions"]["CONTRACT_BOUNDARY"] == "NEEDS_REVIEW")
+
+    # adversarial 2: meaningful state hypothesis UNRESOLVED but HIDDEN from Open Questions -> FAIL
+    a2 = {"coverage_hypotheses": [hyp("STATE_PARTITION", "H1")],
+          "verifications": [verif("H1", "UNRESOLVED", disposition="OPEN_QUESTION", open_question_ref="OQ-9")],
+          "open_questions": []}  # OQ-9 not present -> hidden
+    r2 = cg.evaluate(a2)
+    check("hidden unresolved hypothesis -> FAIL", r2["semantic_gate"] == "FAIL"
+          and any("Open Question" in b for b in r2["blocking_reasons"]))
+
+    # adversarial 3: strong large-data signal (NFR) discovered but never evaluated -> NEEDS_REVIEW
+    a3 = {"coverage_hypotheses": [hyp("NFR_RISK", "H1")], "verifications": []}
+    check("unevaluated NFR signal -> NEEDS_REVIEW", cg.evaluate(a3)["semantic_gate"] == "NEEDS_REVIEW")
+
+    # adversarial 4: material question but no new second-pass query -> NEEDS_REVIEW
+    a4 = {"behavior_model": {"trigger": ["t"], "operations": ["o"]},
+          "missing_questions": [{"question_id": "Q1", "question": "q", "why_it_matters": "w",
+                                 "preferred_sources": ["rag"], "search_concepts": ["s"], "blocking": True,
+                                 "if_unresolved": "OPEN_QUESTION"}],
+          "evidence_lifecycle": [{"evidence_id": "E1", "source": "rag", "query": "same", "pass": "initial", "status": "RETRIEVED"},
+                                 {"evidence_id": "E2", "source": "rag", "query": "same", "pass": "second", "status": "RETRIEVED"}]}
+    check("material question without a new second pass -> NEEDS_REVIEW", cg.evaluate(a4)["dimensions"]["SECOND_PASS_RETRIEVAL"] == "NEEDS_REVIEW")
+
+    # candidate investigated and proven irrelevant -> PASS
+    a5 = {"coverage_hypotheses": [hyp("LIFECYCLE", "H1")],
+          "verifications": [verif("H1", "REJECTED", disposition="EXCLUDED")]}
+    check("investigated-and-rejected candidate -> PASS", cg.evaluate(a5)["semantic_gate"] == "PASS")
+
+    # DITA semantics folded in: active DITA gate with uninvestigated dep -> NEEDS_REVIEW
+    a6 = {"behavior_model": {"trigger": ["t"], "operations": ["o"]},
+          "dita_semantics": {"active": True, "primary_constructs": ["topicref"], "dita_versions": ["1.3"],
+                             "governing_spec_retrieved": True, "product_implementation_checked": True,
+                             "automation_semantic_paths_checked": True,
+                             "relations": [{"source_construct": "href", "target_construct": "navtitle",
+                                            "relation": "CONTROLS", "dita_version": "1.3", "authority": "DITA_SPEC",
+                                            "evidence": ["x"], "material": True, "states": ["a"],
+                                            "status": "INVESTIGATION_CANDIDATE"}]}}
+    check("active DITA dep left uninvestigated folds into NEEDS_REVIEW", cg.evaluate(a6)["dimensions"]["DITA_SEMANTICS"] == "NEEDS_REVIEW")
+
+    # backward compatibility: no reasoning blocks -> gate does not activate
+    check("coverage gate not present without reasoning blocks", cg.is_present({"issue": "X", "dita_semantics": {"active": True}}) is False)
+    check("coverage gate present with a reasoning block", cg.is_present({"coverage_hypotheses": [hyp("CONSUMER", "H1")]}) is True)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -803,6 +878,7 @@ def main() -> int:
     test_coverage_hypotheses()
     test_missing_questions()
     test_hypothesis_verifier()
+    test_coverage_gate()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

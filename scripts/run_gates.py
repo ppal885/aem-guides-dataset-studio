@@ -44,8 +44,35 @@ behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
+coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
+
+
+def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Run the generalized SemanticCoverageGate when the plan participates.
+
+    FAIL is blocking (a material hypothesis is UNRESOLVED but hidden). NEEDS_REVIEW
+    is a prominent non-blocking note (the plan may be produced but must flag the
+    missing exploration - per the integration contract). Backward-compatible:
+    plans without any reasoning block do not activate this gate.
+    """
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    if not coverage_gate_mod.is_present(data):
+        return [], ["semantic coverage gate skipped (no reasoning blocks declared)"]
+    result = coverage_gate_mod.evaluate(data)
+    verdict = result["semantic_gate"]
+    notes = [f"semantic coverage gate: {verdict}"]
+    for rr in result["review_reasons"]:
+        notes.append(f"REVIEW {rr}")
+    if verdict == "FAIL":
+        return [f"[coverage-gate] {b}" for b in result["blocking_reasons"]], notes
+    return [], notes
 
 
 def check_verifications(manifest_path: str | None) -> tuple[list[str], list[str]]:
@@ -238,6 +265,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += hv_fail
     notes += hv_notes
 
+    # Generalized SemanticCoverageGate over all activated dimensions (only when the
+    # plan carries reasoning blocks). FAIL blocks; NEEDS_REVIEW is a loud note.
+    cg_fail, cg_notes = check_coverage_gate(manifest_path)
+    failures += cg_fail
+    notes += cg_notes
+
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
     failures += sc_fail  # already tagged [semantic-gate]/[relation] by the evaluator
@@ -253,6 +286,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_coverage_hypotheses()
             self_tests.test_missing_questions()
             self_tests.test_hypothesis_verifier()
+            self_tests.test_coverage_gate()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
