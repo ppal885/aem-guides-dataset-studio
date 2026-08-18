@@ -28,6 +28,7 @@ explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_ex
 audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
 behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
+mq_mod = _load("missing_questions", "missing_questions.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -659,6 +660,72 @@ def test_coverage_hypotheses() -> None:
     check("coverage_hypotheses absent is not a failure", cov.is_present({"issue": "X"}) is False)
 
 
+def test_missing_questions() -> None:
+    mq = mq_mod
+
+    def Q(**k):
+        base = {"question_id": "Q-01", "question": "Who originally writes this state?",
+                "why_it_matters": "a cleanup fix must not leave the writer producing bad state",
+                "hypothesis_id": "H-01", "preferred_sources": ["current repository"],
+                "search_concepts": ["what writes the parent-map property"], "blocking": True,
+                "if_unresolved": "OPEN_QUESTION"}
+        base.update(k)
+        return base
+
+    def E(p="initial", **k):
+        base = {"evidence_id": "E1", "source": "current repository", "query": "initial jira keywords",
+                "pass": p, "status": "RETRIEVED", "question_id": ""}
+        base.update(k)
+        return base
+
+    # a well-formed question validates
+    check("valid missing_question passes", mq.check_retrieval_discipline([Q()], [
+        E(), E("second", evidence_id="E2", query="what writes the parent-map property", status="USED", question_id="Q-01")]) == [])
+
+    # (1) second retrieval is required only when a material question exists
+    check("material question requires a second pass", mq.requires_second_pass([mq.MissingQuestion.from_dict(Q(blocking=True))]) is True)
+    check("no material question -> no second pass required", mq.requires_second_pass([mq.MissingQuestion.from_dict(Q(blocking=False))]) is False)
+    # a blocking question with NO second-pass evidence is flagged
+    check("material question without a second pass is rejected",
+          any("no second-pass retrieval" in p for p in mq.check_retrieval_discipline([Q()], [E()])))
+
+    # (2) second query must differ from the initial Jira keyword query
+    same = [E("initial", query="native aem site navtitle"),
+            E("second", evidence_id="E2", query="native aem site navtitle", question_id="Q-01")]
+    check("second query identical to initial is rejected",
+          any("must be derived from the missing question" in p for p in mq.check_retrieval_discipline([Q()], same)))
+    diff_items = [mq.EvidenceItem.from_dict(E("initial", query="A")),
+                  mq.EvidenceItem.from_dict(E("second", evidence_id="E2", query="B"))]
+    check("a genuinely new second-pass query is detected", mq.new_second_pass_queries(diff_items) == ["b"])
+
+    # (3) evidence can resolve a candidate (a USED item for its question)
+    used = [mq.EvidenceItem.from_dict(E("second", evidence_id="E2", status="USED", question_id="Q-01"))]
+    check("USED evidence resolves the question", mq.is_resolved("Q-01", used) is True)
+
+    # (4) missing/rejected evidence leaves it unresolved, and it must stay an Open Question
+    unresolved = [mq.EvidenceItem.from_dict(E("second", evidence_id="E2", status="REJECTED", question_id="Q-01"))]
+    check("REJECTED-only evidence leaves the question unresolved", mq.is_resolved("Q-01", unresolved) is False)
+    check("unresolved question must declare if_unresolved OPEN_QUESTION",
+          any("OPEN_QUESTION" in p for p in mq.check_retrieval_discipline([Q(if_unresolved="GUESS")], [E(), E("second", evidence_id="E9", query="new q")])))
+
+    # (5) duplicate retrieval loops are prevented
+    dup = [E("second", evidence_id="E1", query="repeat", source="rag"),
+           E("second", evidence_id="E2", query="repeat", source="rag")]
+    check("duplicate (query,source) retrieval is flagged",
+          any("duplicate retrieval" in p for p in mq.check_retrieval_discipline([Q()], dup)))
+
+    # schema guards
+    check("question without search_concepts is rejected",
+          any("search_concepts" in p for p in mq.check_retrieval_discipline([Q(search_concepts=[])], [E(), E("second", evidence_id="E2", query="new")])))
+    check("evidence with unknown status is rejected",
+          any("status" in p for p in mq.check_retrieval_discipline([Q(blocking=False)], [E(status="MAYBE")])))
+    check("evidence with out-of-bound pass is rejected",
+          any("pass" in p for p in mq.check_retrieval_discipline([Q(blocking=False)], [E("fourth")])))
+
+    # absent blocks are backward-compatible
+    check("missing_questions/evidence absent is not a failure", mq.is_present({"issue": "X"}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -670,6 +737,7 @@ def main() -> int:
     test_anti_hardcoding()
     test_behavior_model()
     test_coverage_hypotheses()
+    test_missing_questions()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
