@@ -27,6 +27,7 @@ verify_mod = _load("verify_evidence", "verify_evidence.py")
 explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
 audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
 behavior_mod = _load("behavior_model", "behavior_model.py")
+coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -607,6 +608,57 @@ def test_behavior_model() -> None:
     check("behavior_model absent is not a failure", bm.is_present({"issue": "X"}) is False)
 
 
+def test_coverage_hypotheses() -> None:
+    cov = coverage_mod
+
+    def H(**k):
+        base = {"hypothesis_id": "H", "dimension": "CONSUMER", "candidate": "another surface reads the model",
+                "reason": "shared model", "technical_basis": ["behavior_model.consumers has 2 surfaces"],
+                "status": "INVESTIGATION_CANDIDATE", "requires_more_evidence": True, "confidence": 0.4}
+        base.update(k)
+        return base
+
+    # a relevant, evidence-justified candidate validates
+    check("valid coverage candidate passes", cov.validate_coverage_block([H()]) == [])
+
+    # candidate defaults to INVESTIGATION_CANDIDATE (never an AC at this stage)
+    check("candidate status is INVESTIGATION_CANDIDATE by default",
+          coverage_mod.CoverageHypothesis().status == "INVESTIGATION_CANDIDATE")
+
+    # speculation (no technical_basis) is rejected -> enforces "evidence -> candidate"
+    check("candidate with no technical_basis is rejected",
+          any("no technical_basis" in p for p in cov.validate_coverage_block([H(technical_basis=[])])))
+
+    # unknown dimension rejected (irrelevant/invented dimension does not slip in)
+    check("unknown dimension is rejected",
+          any("is not one of" in p for p in cov.validate_coverage_block([H(dimension="VIBES")])))
+
+    # bad status rejected
+    check("invalid status is rejected",
+          any("status" in p for p in cov.validate_coverage_block([H(status="MAYBE")])))
+
+    # confidence range enforced
+    check("confidence out of range is rejected",
+          any("confidence" in p for p in cov.validate_coverage_block([H(confidence=2.0)])))
+
+    # Cartesian-explosion guard: two equivalent candidates must collapse
+    dup = [H(hypothesis_id="H1", candidate="type A reaches path", dimension="TYPE_ABSTRACTION", equivalence_key="reaches-path"),
+           H(hypothesis_id="H2", candidate="type B reaches path", dimension="TYPE_ABSTRACTION", equivalence_key="reaches-path")]
+    check("equivalent candidates are flagged for collapse",
+          any("collapse" in p for p in cov.validate_coverage_block(dup)))
+    kept, collapsed = cov.collapse_hypotheses([coverage_mod.CoverageHypothesis.from_dict(x) for x in dup])
+    check("collapse keeps one representative of an equivalent family", len(kept) == 1 and len(collapsed) == 1)
+
+    # distinct dimensions/candidates do NOT collapse (no false merging)
+    distinct = [H(hypothesis_id="H1", dimension="CONSUMER", candidate="surface X"),
+                H(hypothesis_id="H2", dimension="NFR_RISK", candidate="large hierarchy traversal",
+                  technical_basis=["deep map traversal per reference"])]
+    check("distinct candidates both pass and do not collapse", cov.validate_coverage_block(distinct) == [])
+
+    # absent block is not a failure (backward compatible; irrelevant explorers just do not activate)
+    check("coverage_hypotheses absent is not a failure", cov.is_present({"issue": "X"}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -617,6 +669,7 @@ def main() -> int:
     test_semantic_explorer()
     test_anti_hardcoding()
     test_behavior_model()
+    test_coverage_hypotheses()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
