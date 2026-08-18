@@ -74,6 +74,7 @@ state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_ex
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
+authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -726,6 +727,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             failures += [f"[struct-equiv] {p}" for p in struct_equiv_mod.validate_structural_equivalence(_dm["structural_equivalence"])]
         if scenario_reducer_mod.is_present(_dm):
             failures += [f"[scenario-reduce] {p}" for p in scenario_reducer_mod.validate_reduction(_dm["scenario_reduction"])]
+        if authority_mod.is_present(_dm):
+            failures += [f"[evidence-authority] {p}" for p in authority_mod.validate_evidence_authority(_dm["evidence_authority"])]
 
     if not skip_self_tests:
         try:
@@ -752,6 +755,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_cross_surface_resolver()
             self_tests.test_structural_equivalence()
             self_tests.test_scenario_reducer()
+            self_tests.test_evidence_authority()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
