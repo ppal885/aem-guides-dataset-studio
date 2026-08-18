@@ -53,6 +53,7 @@ cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
+change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -368,6 +369,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         # EvidenceAuthorityResolver: no recency/similarity wins; conflicts stay Open Questions.
         if authority_mod.is_present(_idata):
             failures += [f"[evidence-authority] {p}" for p in authority_mod.validate_evidence_authority(_idata["evidence_authority"])]
+        # ChangeImpactExplorer: when a fix/diff exists, trace its blast radius for regression.
+        if change_impact_mod.is_present(_idata):
+            failures += [f"[change-impact] {p}" for p in change_impact_mod.validate_change_impact(_idata["change_impact"])]
+        elif coverage_gate_mod.is_present(_idata) and change_impact_mod.has_change_signal(_idata):
+            notes.append("REVIEW change-impact: a fix/diff is available but no change_impact trace recorded "
+                         "(changed -> callers -> shared models -> state -> downstream -> outputs)")
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -395,6 +402,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_structural_equivalence()
             self_tests.test_scenario_reducer()
             self_tests.test_evidence_authority()
+            self_tests.test_change_impact()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
