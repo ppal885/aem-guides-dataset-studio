@@ -50,6 +50,7 @@ disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
+struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2645,6 +2646,51 @@ def test_cross_surface_resolver() -> None:
           cs.multi_output_signal({"behavior_model": {"publishing_modes": ["New AEM Site"]}}) is False)
 
 
+def test_structural_equivalence() -> None:
+    se = struct_equiv_mod
+    allchecks = {d: True for d in se.VERIFICATION_DIMENSIONS}
+
+    # fully-verified equivalence may drive regression
+    ok = [{"construct_a": "topichead", "construct_b": "topicref", "classification": "EQUIVALENT_PATH",
+           "checks": allchecks, "evidence": ["same parser + nav model + transform, product-supported"],
+           "disposition": "REGRESSION", "generates_regression": True}]
+    check("fully-verified EQUIVALENT_PATH passes", se.validate_structural_equivalence(ok) == [])
+
+    # EQUIVALENT_PATH missing a verified dimension is rejected
+    partial_checks = dict(allchecks); partial_checks["transformation"] = False
+    bad = [{"construct_a": "topichead", "construct_b": "topicref", "classification": "EQUIVALENT_PATH",
+            "checks": partial_checks, "evidence": ["x"]}]
+    check("EQUIVALENT_PATH with an unverified dimension is rejected", any("requires all verification dimensions" in p for p in se.validate_structural_equivalence(bad)))
+
+    # asserting equivalence without evidence is rejected
+    no_ev = [{"construct_a": "a", "construct_b": "b", "classification": "EQUIVALENT_PATH", "checks": allchecks, "evidence": []}]
+    check("EQUIVALENT_PATH without evidence is rejected", any("must cite evidence" in p for p in se.validate_structural_equivalence(no_ev)))
+
+    # the GUIDES-53707 case: unverified -> UNKNOWN -> Open Question, no regression
+    unknown_ok = [{"construct_a": "topichead", "construct_b": "topicref", "classification": "UNKNOWN",
+                   "disposition": "OPEN_QUESTION", "generates_regression": False}]
+    check("UNKNOWN equivalence as Open Question passes", se.validate_structural_equivalence(unknown_ok) == [])
+    unknown_bad = [{"construct_a": "topichead", "construct_b": "topicref", "classification": "UNKNOWN",
+                    "disposition": "REGRESSION", "generates_regression": True}]
+    check("UNKNOWN equivalence asserted as regression is rejected",
+          any("must be an OPEN_QUESTION" in p or "must not generate regression" in p for p in se.validate_structural_equivalence(unknown_bad)))
+
+    # PARTIALLY_EQUIVALENT needs a verified dimension, evidence, and a stated boundary
+    part_ok = [{"construct_a": "a", "construct_b": "b", "classification": "PARTIALLY_EQUIVALENT",
+                "checks": {"navigation_model": True}, "evidence": ["same nav model"], "boundary": "transformation differs",
+                "generates_regression": True}]
+    check("well-formed PARTIALLY_EQUIVALENT passes", se.validate_structural_equivalence(part_ok) == [])
+    part_bad = [{"construct_a": "a", "construct_b": "b", "classification": "PARTIALLY_EQUIVALENT",
+                 "checks": {"navigation_model": True}, "evidence": ["x"]}]
+    check("PARTIALLY_EQUIVALENT without a boundary is rejected", any("must state the boundary" in p for p in se.validate_structural_equivalence(part_bad)))
+
+    # DIFFERENT_PATH cannot generate regression
+    diff = [{"construct_a": "a", "construct_b": "b", "classification": "DIFFERENT_PATH", "generates_regression": True}]
+    check("DIFFERENT_PATH generating regression is rejected", any("only EQUIVALENT_PATH or a materially relevant" in p for p in se.validate_structural_equivalence(diff)))
+
+    check("invalid classification rejected", any("classification" in p for p in se.validate_structural_equivalence([{"construct_a": "a", "construct_b": "b", "classification": "SAMEISH"}])))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2669,6 +2715,7 @@ def main() -> int:
     test_oracle_builder()
     test_state_compatibility()
     test_cross_surface_resolver()
+    test_structural_equivalence()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
