@@ -1,0 +1,72 @@
+{
+  "source": "SOURCE-4 NATIVE_PDF",
+  "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/pdf-preset/native-pdf-web-editor",
+  "output_type": "NATIVE_PDF",
+  "distinction_note": "These are NATIVE_PDF preset configuration dependencies. The DITA-OT command-line argument dependency is the OPTIONAL preprocessing bridge inside the Native-PDF engine; it does NOT make Native PDF equivalent to the DITA_OT_PDF publishing engine (SOURCE-3). Distinction preserved.",
+  "extraction_principle": "Captured as generic conditional relations (not isolated option names). Each relation records the dependency, its state branches, the coupling, and a domain-agnostic abstraction so it is reusable as reasoning evidence, never as a hardcoded option rule.",
+  "relation_types": {
+    "OPTION_VISIBLE_WHEN": "control is rendered/hidden based on upstream state",
+    "OPTION_ENABLED_WHEN": "control is present but active/accepted only under a condition",
+    "OPTION_REQUIRES": "control needs a prerequisite state/selection to function",
+    "OPTION_CONTROLS_BEHAVIOR": "control changes the produced output and/or the reference frame of another feature"
+  },
+  "relations": [
+    {
+      "id": "NPD-1",
+      "type": "OPTION_VISIBLE_WHEN",
+      "dependent": "Condition Preset (publish-time DITAVAL/condition selector)",
+      "controller_state": "a condition has been added/configured for the DITA map being published",
+      "state_branches": ["map has NO configured condition -> Condition Preset control is hidden", "map HAS a configured condition -> Condition Preset control is visible and selectable"],
+      "coupling": "authoring-time state (map conditions) gates a publish-time control's visibility",
+      "evidence_verbatim": "This option is visible if you have added a condition for the DITA map",
+      "evidence_status": "CONFIRMED_VERBATIM",
+      "authority": "AEM_GUIDES_DOC",
+      "generic_abstraction": "A consumer-of-configured-state control is VISIBLE only when the upstream authoring state it depends on exists. Coverage must include the state-absent branch (control hidden, no filtering applied) and the state-present branch (control shown, filtering applied), not just the happy path.",
+      "reasoning_family": "STATE_PERSISTED / CONSUMER_POLICY",
+      "skill_explorer": "state_compatibility_explorer + semantic_relationship_explorer"
+    },
+    {
+      "id": "NPD-2",
+      "type": "OPTION_ENABLED_WHEN",
+      "dependent": "DITA-OT command-line arguments field (e.g. -Dargs.rellinks, -Dpreprocess.* on the Native-PDF preset)",
+      "controller_state": "DITA-OT preprocessing is enabled for the Native-PDF preset",
+      "state_branches": ["DITA-OT preprocessing OFF -> command-line argument field unavailable / arguments not applied", "DITA-OT preprocessing ON -> command-line argument field available and arguments passed to preprocessing"],
+      "coupling": "a parent capability toggle enables a dependent free-text input; disabling the parent must disable/ignore the child input",
+      "evidence_verbatim": "DITA-OT command-line argument tokens present on the Native-PDF preset page: `-Dargs.rellinks=nofamily`, `-Dpreprocess.move-meta-entries.skip=false`",
+      "evidence_status": "PARTIAL — the DITA-OT argument field and example -D arguments are confirmed on the NATIVE_PDF page; the exact enabling-gate sentence ('available only when Enable DITA-OT preprocessing is selected') was supplied by the source spec but not retrieved verbatim in the sampled chunks. Verify against the Advanced tab before asserting as a hard AC.",
+      "authority": "AEM_GUIDES_DOC",
+      "generic_abstraction": "A dependent input is ENABLED/ACCEPTED only when a parent capability toggle is on. Coverage must verify: (a) child disabled/ignored when parent off, (b) child active when parent on, (c) toggling parent off after configuring the child does not silently apply stale arguments.",
+      "reasoning_family": "SEMANTIC_DEPENDENCY / CONSUMER_POLICY",
+      "skill_explorer": "semantic_relationship_explorer + change_impact_explorer"
+    },
+    {
+      "id": "NPD-3",
+      "type": "OPTION_CONTROLS_BEHAVIOR",
+      "dependent": "Published content + Change-bar comparison reference frame",
+      "controller_state": "Baseline selection (Use Baseline / Baseline of the Previous Version)",
+      "state_branches": ["no baseline chosen -> current version published, change-bar reference is current/published context", "Use Baseline + baseline chosen -> that baseline is published AND change-bar diffs the two selected baseline versions"],
+      "coupling": "ONE selection changes TWO coupled outcomes: WHAT content version is published, and the REFERENCE the change-bar diff is computed against",
+      "evidence_verbatim": "If you select Use Baseline and choose a baseline to publish, the comparison will be done between the two selected baseline versions.",
+      "evidence_status": "CONFIRMED_VERBATIM",
+      "authority": "AEM_GUIDES_DOC",
+      "generic_abstraction": "A single selector changes both WHAT is produced (published version) and the REFERENCE FRAME of a derived feature (change-bar diff). The two effects are coupled: tests must assert the published version AND the diff baseline together for the same selection, never as two independent options.",
+      "reasoning_family": "SEMANTIC_DEPENDENCY / STATE_PERSISTED",
+      "skill_explorer": "change_impact_explorer + cross_surface_resolver"
+    },
+    {
+      "id": "NPD-4",
+      "type": "OPTION_REQUIRES",
+      "dependent": "Change-bar output (Baseline of the Previous Version)",
+      "controller_state": "a current/published baseline context to diff against",
+      "state_branches": ["no comparison baseline available -> change bars cannot be produced", "valid current + previous baseline -> change bars mark inserted/changed/deleted content"],
+      "coupling": "the change-bar feature is meaningless without a resolvable comparison baseline; it requires the baseline selection (NPD-3) as a prerequisite",
+      "evidence_verbatim": "A change bar appears in the PDF to indicate the modified content ... on the left of the content that has been inserted, changed, or deleted.",
+      "evidence_status": "CONFIRMED_VERBATIM",
+      "authority": "AEM_GUIDES_DOC",
+      "generic_abstraction": "A derived-diff feature REQUIRES a resolvable reference. Coverage must include the missing/unresolvable-reference branch (feature no-ops or errors) and the valid-reference branch (diff rendered).",
+      "reasoning_family": "SEMANTIC_DEPENDENCY",
+      "skill_explorer": "semantic_relationship_explorer"
+    }
+  ],
+  "test_plan_usage": "Feed these relations as state/dependency evidence to the reasoning pipeline for any NATIVE_PDF publishing ticket: each relation yields at least a controller-off and controller-on scenario branch, and NPD-3 forces a coupled published-version+diff-baseline assertion. Do NOT hardcode the option names into the skill; consume this file as run-time evidence."
+}

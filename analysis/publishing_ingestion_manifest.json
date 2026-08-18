@@ -1,0 +1,59 @@
+{
+  "ingestion": "AEM Guides Publishing documentation -> existing RAG (Chroma collection AEM_GUIDES)",
+  "code_path_reused": "backend/app/services/experience_league_index_service.py :: crawl_experience_league_rag (upsert; Playwright render, RecursiveCharacterTextSplitter chunking, embedding_service, vector_store_service.add_documents, content-hash dedup)",
+  "collection": "AEM_GUIDES",
+  "collection_count_before": 26,
+  "collection_count_after": 593,
+  "authority": "OFFICIAL_PRODUCT_DOCUMENTATION",
+  "source_type": "EXPERIENCE_LEAGUE",
+  "product": "AEM_GUIDES",
+  "domain": "PUBLISHING",
+  "recursive_crawl": false,
+  "sources": [
+    {
+      "id": "SOURCE-1",
+      "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/aem-sites/generate-output-aem-site-map-dashboard",
+      "classification": ["PUBLISHING", "AEM_SITES", "OUTPUT_PRESET", "MAP_DASHBOARD", "SITE_GENERATION"],
+      "publishing_family": "AEM_SITES",
+      "output_type": "AEM_SITES",
+      "chunks": 142,
+      "status": "ingested"
+    },
+    {
+      "id": "SOURCE-2",
+      "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/pdf-preset/generate-output-pdf",
+      "classification": ["PUBLISHING", "PDF", "OUTPUT_PRESET_OVERVIEW"],
+      "publishing_family": "PDF",
+      "output_type": "PDF_OVERVIEW",
+      "chunks": 135,
+      "status": "ingested"
+    },
+    {
+      "id": "SOURCE-3",
+      "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/pdf-preset/generate-output-pdf-dita-ot",
+      "classification": ["PUBLISHING", "PDF", "DITA_OT", "OUTPUT_PRESET", "MAP_CONSOLE", "MAP_DASHBOARD", "CONFIGURATION"],
+      "publishing_family": "PDF",
+      "output_type": "DITA_OT_PDF",
+      "chunks": 137,
+      "status": "ingested"
+    },
+    {
+      "id": "SOURCE-4",
+      "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/pdf-preset/native-pdf-web-editor",
+      "classification": ["PUBLISHING", "PDF", "NATIVE_PDF", "OUTPUT_PRESET", "MAP_CONSOLE", "CONFIGURATION"],
+      "publishing_family": "PDF",
+      "output_type": "NATIVE_PDF",
+      "note": "NATIVE_PDF may optionally use DITA-OT preprocessing but is a distinct engine from DITA_OT_PDF; kept separate by source_url provenance",
+      "chunks": 153,
+      "status": "ingested"
+    }
+  ],
+  "pdf_engine_model": {"PDF": ["NATIVE_PDF (+ optional DITA-OT preprocessing)", "DITA_OT_PDF", "FMPS (per overview)"]},
+  "dedup": "content-hash + stable_chunk_id(url,index); upsert preserves prior manual/crawled chunks (26 pre-existing retained)",
+  "provenance": "every chunk carries source_url + title + chunk_index in Chroma metadata",
+  "limitations": [
+    "Reused pipeline does semantic-section chunking; it does NOT build structured per-option table records or an explicit relation graph (Steps 5, 11-12) - those need a pipeline extension, deliberately not built to honour the reuse/no-parallel-pipeline constraint",
+    "content_type / heading_path classification is not emitted by the current chunk schema (only source_url/title/chunk_index/hashes)",
+    "console rendering showed replacement chars for bullet glyphs; verify stored text encoding if bullet fidelity matters"
+  ]
+}
