@@ -50,6 +50,7 @@ disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
+struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -355,6 +356,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         elif coverage_gate_mod.is_present(_idata) and cross_surface_mod.multi_output_signal(_idata):
             notes.append("REVIEW cross-surface: multiple output surfaces in scope but no cross_surface classification "
                          "(separate REFERENCE_ORACLE from evidence-backed REGRESSION_TARGET)")
+        # StructuralEquivalenceVerifier: a proven equivalence is required before similar
+        # constructs drive regression coverage; unproven ones stay Open Questions.
+        if struct_equiv_mod.is_present(_idata):
+            failures += [f"[struct-equiv] {p}" for p in struct_equiv_mod.validate_structural_equivalence(_idata["structural_equivalence"])]
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -379,6 +384,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_oracle_builder()
             self_tests.test_state_compatibility()
             self_tests.test_cross_surface_resolver()
+            self_tests.test_structural_equivalence()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
