@@ -48,6 +48,7 @@ integration_mod = _load("uac_integration", "uac_integration.py")
 relevance_mod = _load("relevance_prioritizer", "relevance_prioritizer.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
+state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2575,6 +2576,41 @@ def test_oracle_builder() -> None:
     check("observable P0 scenario is not flagged", ob.check_plan_scenarios(good_plan) == [])
 
 
+def test_state_compatibility() -> None:
+    sc = state_compat_mod
+
+    # activation: a first-run/subsequent-run persisted-state ticket activates
+    active_manifest = {"behavior_model": {"trigger": ["publish map"], "operations": ["generate"],
+                       "update_paths": ["rewrite state"], "unknowns": ["fails until nodes deleted on subsequent run"]}}
+    check("persisted/subsequent-run signals activate the explorer", sc.is_active(active_manifest) is True)
+    # a plain stateless UI ticket does not activate
+    check("stateless UI ticket does not activate", sc.is_active({"behavior_model": {"trigger": ["click"], "operations": ["open dialog"]}}) is False)
+    # remove/recompute paths are a structural signal on their own
+    check("remove_paths is a structural activation signal",
+          sc.is_active({"behavior_model": {"trigger": ["delete"], "operations": ["x"], "remove_paths": ["remove entry"]}}) is True)
+
+    def block(**over):
+        base = {"active": True,
+                "states": {o: {"behavior": "described"} for o in sc.STATE_ORIGINS},
+                "recovery_of_old_state": {"required": "unknown", "evidence": [], "disposition": "OPEN_QUESTION"}}
+        base.update(over)
+        return base
+
+    check("well-formed state_compatibility passes", sc.validate_state_compatibility(block()) == [])
+    # missing one of the three state origins is flagged
+    partial = block(states={"CLEAN_PRE_FIX_STATE": {}, "STATE_CREATED_BY_FIXED_CODE": {}})
+    check("missing BUGGY-old state origin is flagged", any("STATE_CREATED_BY_BUGGY_OLD_CODE" in p for p in sc.validate_state_compatibility(partial)))
+    # recovery-of-old-state as AC without evidence is rejected
+    as_ac = block(recovery_of_old_state={"required": True, "evidence": [], "disposition": "ACCEPTANCE_CONTRACT"})
+    check("recovery-of-old-state AC without evidence is rejected", any("without product/engineering evidence" in p for p in sc.validate_state_compatibility(as_ac)))
+    # recovery-of-old-state as AC WITH evidence is allowed
+    as_ac_ev = block(recovery_of_old_state={"required": True, "evidence": ["eng decision: fix self-heals"], "disposition": "ACCEPTANCE_CONTRACT"})
+    check("recovery-of-old-state AC with evidence is allowed", sc.validate_state_compatibility(as_ac_ev) == [])
+    # unknown recovery requirement must be an OPEN_QUESTION
+    unknown_ac = block(recovery_of_old_state={"required": "unknown", "evidence": [], "disposition": "ACCEPTANCE_CONTRACT"})
+    check("unknown recovery requirement forced to OPEN_QUESTION", any("must be OPEN_QUESTION" in p for p in sc.validate_state_compatibility(unknown_ac)))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2597,6 +2633,7 @@ def main() -> int:
     test_relevance_prioritizer()
     test_disposition_classifier()
     test_oracle_builder()
+    test_state_compatibility()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
