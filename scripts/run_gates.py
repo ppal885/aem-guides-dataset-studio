@@ -43,8 +43,30 @@ audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
 behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
+verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
+
+
+def check_verifications(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `verifications` block when present.
+
+    Backward-compatible: absent block is not a failure. When present, every
+    coverage hypothesis must reach a terminal verdict and every verdict must be
+    justified and routed to an allowed disposition (UNRESOLVED->OPEN_QUESTION only,
+    REJECTED excluded from ACs, CONFIRMED not resting on similarity/test alone).
+    """
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    if not verifier_mod.is_present(data):
+        return [], ["hypothesis-verification check skipped (no verifications block declared)"]
+    failures = [f"[verify-hyp] {p}" for p in verifier_mod.verify_all(
+        data.get("coverage_hypotheses", []), data.get("verifications", []))]
+    return failures, ["hypothesis verifications validated"] if not failures else []
 
 
 def check_retrieval(manifest_path: str | None) -> tuple[list[str], list[str]]:
@@ -211,6 +233,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += rt_fail
     notes += rt_notes
 
+    # HypothesisVerifier + hallucination control (only when declared).
+    hv_fail, hv_notes = check_verifications(manifest_path)
+    failures += hv_fail
+    notes += hv_notes
+
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
     failures += sc_fail  # already tagged [semantic-gate]/[relation] by the evaluator
@@ -225,6 +252,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_behavior_model()
             self_tests.test_coverage_hypotheses()
             self_tests.test_missing_questions()
+            self_tests.test_hypothesis_verifier()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

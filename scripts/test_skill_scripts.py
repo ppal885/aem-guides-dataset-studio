@@ -29,6 +29,7 @@ audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
 behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
+verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -726,6 +727,69 @@ def test_missing_questions() -> None:
     check("missing_questions/evidence absent is not a failure", mq.is_present({"issue": "X"}) is False)
 
 
+def test_hypothesis_verifier() -> None:
+    hv = verifier_mod
+
+    def V(**k):
+        base = {"hypothesis_id": "H-01", "verdict": "CONFIRMED",
+                "supporting_authorities": ["CURRENT_IMPLEMENTATION"], "supporting_evidence": ["E5"],
+                "disposition": "ACCEPTANCE_CRITERION"}
+        base.update(k)
+        return base
+
+    # (1) a plausible hypothesis is CONFIRMED on authoritative evidence -> AC
+    check("plausible hypothesis confirmed on authoritative evidence", hv.validate_verification(hv.Verification.from_dict(V())) == [])
+
+    # (2) a plausible hypothesis is REJECTED with disproving evidence -> excluded
+    rej = V(verdict="REJECTED", disproving_evidence=["E7"], disposition="EXCLUDED", supporting_authorities=[])
+    check("hypothesis rejected with disproving evidence", hv.validate_verification(hv.Verification.from_dict(rej)) == [])
+    # REJECTED cannot be routed into an AC
+    rej_ac = V(verdict="REJECTED", disproving_evidence=["E7"], disposition="ACCEPTANCE_CRITERION")
+    check("REJECTED cannot enter an AC", any("cannot have disposition" in p for p in hv.validate_verification(hv.Verification.from_dict(rej_ac))))
+
+    # (3) conflicting evidence becomes UNRESOLVED
+    conf = V(verdict="CONFIRMED", conflict=True)
+    check("conflicting evidence cannot be CONFIRMED", any("must be UNRESOLVED" in p for p in hv.validate_verification(hv.Verification.from_dict(conf))))
+    unres = V(verdict="UNRESOLVED", conflict=True, disposition="OPEN_QUESTION", open_question_ref="OQ-1", supporting_authorities=[])
+    check("conflict resolved as UNRESOLVED->Open Question passes", hv.validate_verification(hv.Verification.from_dict(unres)) == [])
+
+    # (4) specification and implementation differ -> conflict -> UNRESOLVED (same rule as (3), spec/impl framing)
+    spec_impl = V(verdict="INFERRED_HIGH_CONFIDENCE", conflict=True, supporting_evidence=["E1", "E2"], disposition="INFERRED_AC")
+    check("spec-vs-impl divergence forces UNRESOLVED", any("must be UNRESOLVED" in p for p in hv.validate_verification(hv.Verification.from_dict(spec_impl))))
+
+    # (5) an existing test alone is insufficient for CONFIRMED
+    test_only = V(verdict="CONFIRMED", supporting_authorities=["EXISTING_AUTOMATION"])
+    check("existing test alone cannot CONFIRM current contract",
+          any("not the current product contract" in p or "authoritative source" in p for p in hv.validate_verification(hv.Verification.from_dict(test_only))))
+    # similarity alone is not proof
+    sim = V(verdict="CONFIRMED", similarity_only=True, supporting_authorities=[])
+    check("embedding similarity alone cannot CONFIRM", any("similarity" in p for p in hv.validate_verification(hv.Verification.from_dict(sim))))
+
+    # UNRESOLVED must be routed to an Open Question, never an AC
+    unres_ac = V(verdict="UNRESOLVED", conflict=True, disposition="ACCEPTANCE_CRITERION", open_question_ref="OQ-2")
+    check("UNRESOLVED cannot become an AC", any("cannot have disposition" in p for p in hv.validate_verification(hv.Verification.from_dict(unres_ac))))
+    unres_no_oq = V(verdict="UNRESOLVED", insufficient=True, disposition="OPEN_QUESTION", supporting_authorities=[])
+    check("UNRESOLVED without an open_question_ref is rejected", any("open_question_ref" in p for p in hv.validate_verification(hv.Verification.from_dict(unres_no_oq))))
+
+    # INFERRED_HIGH_CONFIDENCE stays inferred (a product decision means it should be CONFIRMED)
+    inferred_ok = V(verdict="INFERRED_HIGH_CONFIDENCE", supporting_evidence=["E1", "E2"], disposition="INFERRED_AC", supporting_authorities=["CURRENT_IMPLEMENTATION"])
+    check("inferred-high-confidence with 2+ facts and no product decision passes", hv.validate_verification(hv.Verification.from_dict(inferred_ok)) == [])
+    inferred_pd = V(verdict="INFERRED_HIGH_CONFIDENCE", supporting_evidence=["E1", "E2"], product_decision=True, disposition="INFERRED_AC")
+    check("inferred verdict with an explicit product decision is rejected", any("should be CONFIRMED" in p for p in hv.validate_verification(hv.Verification.from_dict(inferred_pd))))
+
+    # (6) an unsupported candidate never reaches UAC: an unverified coverage hypothesis is flagged
+    cov = [{"hypothesis_id": "H-01", "status": "INVESTIGATION_CANDIDATE"},
+           {"hypothesis_id": "H-02", "status": "INVESTIGATION_CANDIDATE"}]
+    verifs = [V(hypothesis_id="H-01")]
+    problems = hv.verify_all(cov, verifs)
+    check("every coverage hypothesis must be verified (unverified is flagged)",
+          any("H-02" in p and "no verification" in p for p in problems))
+    check("verified hypothesis is not flagged", not any("H-01" in p and "no verification" in p for p in problems))
+
+    # absent block is backward compatible
+    check("verifications absent is not a failure", hv.is_present({"issue": "X"}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -738,6 +802,7 @@ def main() -> int:
     test_behavior_model()
     test_coverage_hypotheses()
     test_missing_questions()
+    test_hypothesis_verifier()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
