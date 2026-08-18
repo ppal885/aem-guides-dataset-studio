@@ -48,6 +48,7 @@ coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
+state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -336,6 +337,16 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             failures += [f"[oracle] {p}" for p in oracle_mod.validate_scenario_oracles(_idata["scenario_oracles"])]
         if coverage_gate_mod.is_present(_idata):
             failures += [f"[oracle] {p}" for p in oracle_mod.check_plan_scenarios(body)]
+        # ExistingStateCompatibilityExplorer: validate a state_compatibility block, and
+        # (for reasoning-driven plans) require it when persisted/stale-state signals exist.
+        if state_compat_mod.is_present(_idata):
+            failures += [f"[state-compat] {p}" for p in state_compat_mod.validate_state_compatibility(_idata["state_compatibility"])]
+        elif coverage_gate_mod.is_present(_idata) and state_compat_mod.is_active(_idata):
+            failures.append(
+                "[state-compat] state-lifecycle signals detected "
+                f"({', '.join(state_compat_mod.detect_signals(_idata))}) but no state_compatibility exploration "
+                "recorded - address CLEAN/FIXED/BUGGY-old state and whether old-state recovery is required"
+            )
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -358,6 +369,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_relevance_prioritizer()
             self_tests.test_disposition_classifier()
             self_tests.test_oracle_builder()
+            self_tests.test_state_compatibility()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
