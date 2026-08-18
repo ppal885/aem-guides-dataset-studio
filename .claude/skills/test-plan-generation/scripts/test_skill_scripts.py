@@ -47,6 +47,7 @@ coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
 relevance_mod = _load("relevance_prioritizer", "relevance_prioritizer.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
+oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2540,6 +2541,40 @@ def test_disposition_classifier() -> None:
     check("observable AC in the plan is not flagged", dc.check_plan_acceptance_criteria(good_plan) == [])
 
 
+def test_oracle_builder() -> None:
+    ob = oracle_mod
+
+    # classification
+    check("observable outcome is a product oracle",
+          ob.classify_oracle("the site navigation shows the grouping entry") == "PRIMARY_PRODUCT_ORACLE")
+    check("property outcome is a state oracle",
+          ob.classify_oracle("the guides-navigation property is well-formed") == "SECONDARY_STATE_ORACLE")
+    check("no-exception is a diagnostic signal",
+          ob.classify_oracle("no NullPointerException is thrown") == "DIAGNOSTIC_SIGNAL")
+
+    # diagnostic-only detection: "no exception / job success" alone is insufficient
+    check("no-exception-only is diagnostic-only", ob.is_diagnostic_only("the job completes successfully with no NullPointerException") is True)
+    check("success + observable output is not diagnostic-only",
+          ob.is_diagnostic_only("generation succeeds and the navigation shows the grouping entry") is False)
+    check("state oracle counts as observable", ob.is_diagnostic_only("no error and the guides-navigation property is intact") is False)
+
+    # manifest scenario_oracles: a P0/P1 needs a PRIMARY_PRODUCT_ORACLE
+    bad = [{"scenario_id": "P0-1", "priority": "P0", "oracles": [{"type": "DIAGNOSTIC_SIGNAL", "statement": "no NPE"}]}]
+    check("P0 with only a diagnostic oracle is rejected", any("PRIMARY_PRODUCT_ORACLE" in p for p in ob.validate_scenario_oracles(bad)))
+    good = [{"scenario_id": "P0-1", "priority": "P0", "oracles": [
+        {"type": "DIAGNOSTIC_SIGNAL", "statement": "no NPE"},
+        {"type": "PRIMARY_PRODUCT_ORACLE", "statement": "navigation shows the grouping entry"}]}]
+    check("P0 with a product oracle passes", ob.validate_scenario_oracles(good) == [])
+
+    # plan-body scan: a diagnostic-only P0 scenario is flagged; an observable one is not
+    bad_plan = ("**Test Scenarios**\n- P0 [AC-01]: publish the map -> the job completes SUCCESS with no NullPointerException.\n"
+                "**Known Jira Bugs / Past Similar Tickets**\n- none\n")
+    check("diagnostic-only P0 scenario is flagged", any("P0" in p for p in ob.check_plan_scenarios(bad_plan)))
+    good_plan = ("**Test Scenarios**\n- P0 [AC-01]: publish the map -> the job succeeds and the site navigation shows the grouping entry with its two child topics.\n"
+                 "**Known Jira Bugs / Past Similar Tickets**\n- none\n")
+    check("observable P0 scenario is not flagged", ob.check_plan_scenarios(good_plan) == [])
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2561,6 +2596,7 @@ def main() -> int:
     test_component_reference_routing()
     test_relevance_prioritizer()
     test_disposition_classifier()
+    test_oracle_builder()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
