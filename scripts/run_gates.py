@@ -45,6 +45,7 @@ coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
+integration_mod = _load("uac_integration", "uac_integration.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -271,6 +272,17 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += cg_fail
     notes += cg_notes
 
+    # Final Pre-UAC integration: cross-check the plan BODY against the reasoning
+    # blocks (open questions surfaced; evidence trace valid). Only when participating.
+    if manifest_path and Path(manifest_path).is_file():
+        try:
+            _idata = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _idata = {}
+        i_fail, i_notes = integration_mod.check_integration(_idata, body)
+        failures += i_fail
+        notes += i_notes
+
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
     failures += sc_fail  # already tagged [semantic-gate]/[relation] by the evaluator
@@ -287,6 +299,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_missing_questions()
             self_tests.test_hypothesis_verifier()
             self_tests.test_coverage_gate()
+            self_tests.test_uac_integration()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

@@ -31,6 +31,7 @@ coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
+integration_mod = _load("uac_integration", "uac_integration.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -865,6 +866,66 @@ def test_coverage_gate() -> None:
     check("coverage gate present with a reasoning block", cg.is_present({"coverage_hypotheses": [hyp("CONSUMER", "H1")]}) is True)
 
 
+def test_uac_integration() -> None:
+    ig = integration_mod
+
+    plan_with_oq = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Confirmed]: (Basic) Given x | When y | Then z.\n"
+        "**Open Questions**\n"
+        "- Cleanup timing decision: is it synchronous on delete or async via a job? QA impact: changes the oracle.\n"
+    )
+
+    # UNRESOLVED surfaced in the plan Open Questions -> passes
+    m_ok = {
+        "coverage_hypotheses": [{"hypothesis_id": "H1", "dimension": "STATE_PARTITION", "candidate": "c",
+                                 "reason": "r", "technical_basis": ["t"], "status": "UNRESOLVED"}],
+        "verifications": [{"hypothesis_id": "H1", "verdict": "UNRESOLVED", "disposition": "OPEN_QUESTION",
+                           "open_question_ref": "OQ-1", "insufficient": True}],
+        "open_questions": [{"id": "OQ-1", "question": "Cleanup timing decision: is it synchronous on delete"}],
+    }
+    f, _ = ig.check_integration(m_ok, plan_with_oq)
+    check("unresolved surfaced in plan Open Questions passes integration", f == [])
+
+    # UNRESOLVED NOT surfaced in the plan Open Questions -> fails
+    plan_missing_oq = "**Acceptance Criteria**\n- AC-01 [Confirmed]: (Basic) Given x | When y | Then z.\n**Open Questions**\n- Something unrelated.\n"
+    f2, _ = ig.check_integration(m_ok, plan_missing_oq)
+    check("unresolved missing from plan Open Questions fails integration", any("not surfaced" in p for p in f2))
+
+    # evidence_trace: happy path (AC present, confirmed, evidence, links to confirmed verification)
+    m_trace = {
+        "coverage_hypotheses": [{"hypothesis_id": "H1", "dimension": "CONSUMER", "candidate": "c", "reason": "r", "technical_basis": ["t"], "status": "CONFIRMED"}],
+        "verifications": [{"hypothesis_id": "H1", "verdict": "CONFIRMED", "disposition": "ACCEPTANCE_CRITERION"}],
+        "evidence_trace": [{"ac_id": "AC-01", "hypothesis_id": "H1", "evidence_ids": ["E1"], "status": "CONFIRMED",
+                            "activated_pattern": "CONSUMER"}],
+    }
+    f3, _ = ig.check_integration(m_trace, plan_with_oq)
+    check("valid evidence_trace passes integration", f3 == [])
+
+    # evidence_trace: ac_id not in plan -> fails
+    m_bad_ac = dict(m_trace, evidence_trace=[{"ac_id": "AC-99", "hypothesis_id": "H1", "evidence_ids": ["E1"], "status": "CONFIRMED"}])
+    f4, _ = ig.check_integration(m_bad_ac, plan_with_oq)
+    check("evidence_trace with unknown ac_id fails", any("not present in the plan" in p for p in f4))
+
+    # evidence_trace: AC traces to a REJECTED hypothesis -> fails (rejected never becomes AC)
+    m_rej = {
+        "coverage_hypotheses": [{"hypothesis_id": "H1", "dimension": "CONSUMER", "candidate": "c", "reason": "r", "technical_basis": ["t"], "status": "REJECTED"}],
+        "verifications": [{"hypothesis_id": "H1", "verdict": "REJECTED", "disposition": "EXCLUDED", "disproving_evidence": ["E2"]}],
+        "evidence_trace": [{"ac_id": "AC-01", "hypothesis_id": "H1", "evidence_ids": ["E1"], "status": "CONFIRMED"}],
+    }
+    f5, _ = ig.check_integration(m_rej, plan_with_oq)
+    check("AC tracing to a REJECTED hypothesis fails", any("never become an Acceptance Criterion" in p for p in f5))
+
+    # evidence_trace with no evidence_ids -> fails
+    m_noev = dict(m_trace, evidence_trace=[{"ac_id": "AC-01", "hypothesis_id": "H1", "evidence_ids": [], "status": "CONFIRMED"}])
+    f6, _ = ig.check_integration(m_noev, plan_with_oq)
+    check("evidence_trace without evidence_ids fails", any("cite evidence_ids" in p for p in f6))
+
+    # backward-compat: no reasoning blocks -> integration skipped
+    f7, notes7 = ig.check_integration({"issue": "X"}, plan_with_oq)
+    check("integration skipped without reasoning blocks", f7 == [] and any("skipped" in n for n in notes7))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -879,6 +940,7 @@ def main() -> int:
     test_missing_questions()
     test_hypothesis_verifier()
     test_coverage_gate()
+    test_uac_integration()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
