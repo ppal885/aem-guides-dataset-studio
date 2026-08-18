@@ -76,6 +76,7 @@ struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivale
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
+critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -735,6 +736,14 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         elif coverage_gate_mod.is_present(_dm) and change_impact_mod.has_change_signal(_dm):
             notes.append("REVIEW change-impact: a fix/diff is available but no change_impact trace recorded "
                          "(changed -> callers -> shared models -> state -> downstream -> outputs)")
+        failures += [f"[critic] {p}" for p in critic_mod.validate_repair_bound(_dm)]
+        if coverage_gate_mod.is_present(_dm):
+            crit = critic_mod.critique(_dm, body)
+            notes.append(f"pre-UAC critic: {crit['verdict']}")
+            for qid, prompt in critic_mod.QUESTIONS:
+                verdict, reason = crit["questions"].get(qid, ("CLEAN", ""))
+                if verdict != "CLEAN":
+                    notes.append(f"CRITIC [{verdict}] {prompt}" + (f" - {reason}" if reason else ""))
 
     if not skip_self_tests:
         try:
@@ -763,6 +772,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_scenario_reducer()
             self_tests.test_evidence_authority()
             self_tests.test_change_impact()
+            self_tests.test_pre_uac_critic()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

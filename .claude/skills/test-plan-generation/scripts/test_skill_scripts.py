@@ -54,6 +54,7 @@ struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivale
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
+critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2812,6 +2813,58 @@ def test_change_impact() -> None:
     check("no fix signal without a diff/PR/fix", ci.has_change_signal({"issue": "X"}) is False)
 
 
+def test_pre_uac_critic() -> None:
+    cr = critic_mod
+
+    # a clean, fully-reasoned plan: primary + governing dep explored+verified, unresolved
+    # surfaced, observable oracle -> PASS
+    good_manifest = {
+        "behaviour_matters": True,
+        "coverage_hypotheses": [{"hypothesis_id": "H1", "dimension": "DITA_SEMANTIC_DEPENDENCY", "candidate": "locktitle governs navtitle",
+                                  "reason": "r", "technical_basis": ["setTocItemTitle"], "status": "CONFIRMED",
+                                  "behavioral_distance": "DIRECT", "priority_reason": "directly controls the title"}],
+        "verifications": [{"hypothesis_id": "H1", "verdict": "CONFIRMED", "supporting_authorities": ["CURRENT_IMPLEMENTATION"],
+                            "supporting_evidence": ["E1"], "disposition": "ACCEPTANCE_CRITERION"}],
+        "dita_semantics": {"active": True, "relations": [{"source_construct": "locktitle", "target_construct": "navtitle",
+                            "relation": "CONTROLS", "dita_version": "1.3", "authority": "DITA_SPEC", "evidence": ["x"],
+                            "material": True, "states": ["yes"], "status": "CONFIRMED"}]},
+    }
+    good_plan = ("**Acceptance Criteria**\n- AC-01 [Confirmed]: (Basic) Given a map | When published | Then the navigation shows the grouping node.\n"
+                 "**Test Scenarios**\n- P0 [AC-01]: publish -> the site navigation shows the grouping entry.\n"
+                 "**Open Questions**\n- No open questions from current evidence\n")
+    r = cr.critique(good_manifest, good_plan)
+    check("clean reasoned plan passes the critic", r["verdict"] == "PASS")
+
+    # an unexplored HIGH-relevance dependency (candidate, no verification) -> NEEDS_REFINEMENT (Q3)
+    unexplored_cov = [dict(good_manifest["coverage_hypotheses"][0], status="INVESTIGATION_CANDIDATE")]
+    nr = dict(good_manifest, coverage_hypotheses=unexplored_cov, verifications=[])
+    check("unexplored direct dependency -> NEEDS_REFINEMENT", cr.critique(nr, good_plan)["verdict"] == "NEEDS_REFINEMENT")
+    check("Q3 flags the unexplored direct dependency", cr.critique(nr, good_plan)["questions"]["prioritized_direct_first"][0] == "CONCERN")
+
+    # an implementation-detail AC -> NEEDS_REFINEMENT (Q4)
+    impl_plan = ("**Acceptance Criteria**\n- AC-01 [Confirmed]: (Basic) Given a map | When published | Then null is guarded before PathUtils.appendUnixSlash.\n"
+                 "**Open Questions**\n- No open questions from current evidence\n")
+    check("Q4 flags an implementation-detail AC", cr.critique(good_manifest, impl_plan)["questions"]["impl_detail_as_ac"][0] == "CONCERN")
+
+    # a diagnostic-only scenario -> Q10 concern
+    diag_plan = ("**Acceptance Criteria**\n- AC-01 [Confirmed]: (Basic) Given a map | When published | Then the navigation shows the group.\n"
+                 "**Test Scenarios**\n- P0 [AC-01]: publish -> the job completes SUCCESS with no NullPointerException.\n"
+                 "**Open Questions**\n- No open questions from current evidence\n")
+    check("Q10 flags a diagnostic-only scenario", cr.critique(good_manifest, diag_plan)["questions"]["scenario_oracles"][0] == "CONCERN")
+
+    # a hidden unresolved verdict -> FAIL (Q8 MISSING)
+    hidden = dict(good_manifest, verifications=good_manifest["verifications"] + [
+        {"hypothesis_id": "H2", "verdict": "UNRESOLVED", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-9", "insufficient": True}],
+        open_questions=[{"id": "OQ-9", "question": "some unresolved item not written into the plan"}])
+    check("hidden unresolved decision -> critic FAIL", cr.critique(hidden, good_plan)["verdict"] == "FAIL")
+
+    # bounded repair: at most one repair pass
+    check("first repair pass is allowed", cr.can_repair(0) is True)
+    check("second repair pass is refused", cr.can_repair(1) is False)
+    check("repair_passes over the limit is rejected", any("bounded limit" in p for p in cr.validate_repair_bound({"critic": {"repair_passes": 2}})))
+    check("repair_passes within the limit passes", cr.validate_repair_bound({"critic": {"repair_passes": 1}}) == [])
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2840,6 +2893,7 @@ def main() -> int:
     test_scenario_reducer()
     test_evidence_authority()
     test_change_impact()
+    test_pre_uac_critic()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
