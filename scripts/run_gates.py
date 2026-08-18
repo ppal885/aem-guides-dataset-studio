@@ -55,6 +55,7 @@ scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
+impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -92,6 +93,35 @@ def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list
             "UNRESOLVED) before the plan is delivered"
         )
     return failures, ["reasoning pipeline requirements satisfied"] if not failures else []
+
+
+def check_implementation_grounding(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Force API/operation/backend tickets to be grounded in the actual handler code.
+
+    - When an `implementation_grounding` block is declared, validate it fully (hard fail).
+    - When it is NOT declared but the plan names a code artifact AND asserts current
+      behaviour about it, FAIL: the handler must be inspected and cited before such an AC.
+    - When signals exist but no current-behaviour assertion is made, emit a REVIEW note.
+    """
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if impl_grounding_mod.is_present(data):
+        failures = [f"[impl-grounding] {p}" for p in
+                    impl_grounding_mod.validate_implementation_grounding(data["implementation_grounding"])]
+        return failures, ["implementation grounding validated"] if not failures else []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["implementation grounding skipped (behaviour_matters is false)"]
+    if impl_grounding_mod.is_active(data, plan_text):
+        signals = ", ".join(impl_grounding_mod.detect_signals(data, plan_text)[:6])
+        if impl_grounding_mod.asserts_current_behavior(plan_text):
+            return ([f"[impl-grounding] the plan names a code artifact/API ({signals}) and asserts current behaviour, "
+                     "but no implementation_grounding block cites the inspected handler - read the handler "
+                     "(clone/GitHub) and ground each current-behaviour AC in a file:line, and verify the ticket's "
+                     "premise against the code before delivery"], [])
+        return [], [f"REVIEW impl-grounding: API/implementation signals detected ({signals}); add an "
+                    "implementation_grounding block citing the inspected handler if any AC asserts current behaviour"]
+    return [], ["implementation grounding not applicable (no API/implementation signals)"]
 
 
 def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]]:
@@ -321,6 +351,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += cg_fail
     notes += cg_notes
 
+    # Implementation grounding: API/operation/backend tickets must cite the inspected handler.
+    ig_fail, ig_notes = check_implementation_grounding(manifest_path, body)
+    failures += ig_fail
+    notes += ig_notes
+
     # Final Pre-UAC integration: cross-check the plan BODY against the reasoning
     # blocks (open questions surfaced; evidence trace valid). Only when participating.
     if manifest_path and Path(manifest_path).is_file():
@@ -415,6 +450,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_evidence_authority()
             self_tests.test_change_impact()
             self_tests.test_pre_uac_critic()
+            self_tests.test_implementation_grounding()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
