@@ -75,6 +75,7 @@ cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
+change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -729,6 +730,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             failures += [f"[scenario-reduce] {p}" for p in scenario_reducer_mod.validate_reduction(_dm["scenario_reduction"])]
         if authority_mod.is_present(_dm):
             failures += [f"[evidence-authority] {p}" for p in authority_mod.validate_evidence_authority(_dm["evidence_authority"])]
+        if change_impact_mod.is_present(_dm):
+            failures += [f"[change-impact] {p}" for p in change_impact_mod.validate_change_impact(_dm["change_impact"])]
+        elif coverage_gate_mod.is_present(_dm) and change_impact_mod.has_change_signal(_dm):
+            notes.append("REVIEW change-impact: a fix/diff is available but no change_impact trace recorded "
+                         "(changed -> callers -> shared models -> state -> downstream -> outputs)")
 
     if not skip_self_tests:
         try:
@@ -756,6 +762,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_structural_equivalence()
             self_tests.test_scenario_reducer()
             self_tests.test_evidence_authority()
+            self_tests.test_change_impact()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

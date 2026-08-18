@@ -53,6 +53,7 @@ cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
+change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2775,6 +2776,42 @@ def test_evidence_authority() -> None:
     check("conflict referencing unknown id rejected", any("unknown evidence_id" in p for p in ea.validate_evidence_authority({"items": items, "conflicts": [{"between": ["E1", "E99"], "resolution_method": "NONE", "disposition": "OPEN_QUESTION"}]})))
 
 
+def test_change_impact() -> None:
+    ci = change_impact_mod
+
+    def block(**over):
+        base = {"changed": ["PathUtils.appendUnixSlash"], "callers": ["getTocItemUsingMap"],
+                "shared_models": ["MapTOCEntry"], "state_paths": {"written": ["guides-navigation"], "read": ["guides-navigation"]},
+                "downstream_consumers": ["New AEM Site preset"], "outputs": ["site navigation"],
+                "can_affect": ["New AEM Site TOC building"], "cannot_affect": ["Native PDF pipeline"],
+                "regression_targets": [{"target": "New AEM Site TOC", "shared_path_evidence": ["shares appendPath helper"]}],
+                "tests_exercising_change": ["AemSiteApiIT"],
+                "product_contract_considered": True, "semantic_behavior_considered": True}
+        base.update(over)
+        return base
+
+    check("well-formed change_impact passes", ci.validate_change_impact(block()) == [])
+    check("missing changed is rejected", any("changed must list" in p for p in ci.validate_change_impact(block(changed=[]))))
+    check("missing cannot_affect is rejected", any("cannot_affect" in p for p in ci.validate_change_impact(block(cannot_affect=[]))))
+    check("missing can_affect is rejected", any("can_affect" in p for p in ci.validate_change_impact(block(can_affect=[]))))
+
+    # a regression target without shared-path evidence is rejected
+    no_ev = block(regression_targets=[{"target": "HTML5", "shared_path_evidence": []}])
+    check("regression target without shared-path evidence is rejected", any("shared_path_evidence" in p for p in ci.validate_change_impact(no_ev)))
+    # a regression target also in cannot_affect is a contradiction
+    contra = block(cannot_affect=["Native PDF pipeline"], regression_targets=[{"target": "Native PDF pipeline", "shared_path_evidence": ["x"]}])
+    check("regression target in cannot_affect is a contradiction", any("contradiction" in p for p in ci.validate_change_impact(contra)))
+
+    # code impact must be combined with product contract + semantic behaviour, not replace them
+    check("product_contract_considered false is rejected", any("does not replace the product contract" in p for p in ci.validate_change_impact(block(product_contract_considered=False))))
+    check("semantic_behavior_considered false is rejected", any("semantic behaviour" in p for p in ci.validate_change_impact(block(semantic_behavior_considered=False))))
+
+    # change signal detection
+    check("change_impact block is a change signal", ci.has_change_signal({"change_impact": block()}) is True)
+    check("fix_available flag is a change signal", ci.has_change_signal({"fix_available": True}) is True)
+    check("no fix signal without a diff/PR/fix", ci.has_change_signal({"issue": "X"}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2802,6 +2839,7 @@ def main() -> int:
     test_structural_equivalence()
     test_scenario_reducer()
     test_evidence_authority()
+    test_change_impact()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
