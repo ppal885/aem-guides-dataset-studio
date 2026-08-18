@@ -46,6 +46,7 @@ mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
+disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -322,6 +323,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         i_fail, i_notes = integration_mod.check_integration(_idata, body)
         failures += i_fail
         notes += i_notes
+        # CoverageDispositionClassifier: validate any dispositions block, and (for
+        # reasoning-driven plans) flag implementation-level statements posing as ACs.
+        if disposition_mod.is_present(_idata):
+            failures += [f"[disposition] {p}" for p in disposition_mod.validate_dispositions(_idata["dispositions"])]
+        if coverage_gate_mod.is_present(_idata):
+            failures += [f"[disposition] {p}" for p in disposition_mod.check_plan_acceptance_criteria(body)]
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -342,6 +349,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_uac_integration()
             self_tests.test_reasoning_required()
             self_tests.test_relevance_prioritizer()
+            self_tests.test_disposition_classifier()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
