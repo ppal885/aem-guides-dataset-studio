@@ -51,6 +51,7 @@ oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
+scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -360,6 +361,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         # constructs drive regression coverage; unproven ones stay Open Questions.
         if struct_equiv_mod.is_present(_idata):
             failures += [f"[struct-equiv] {p}" for p in struct_equiv_mod.validate_structural_equivalence(_idata["structural_equivalence"])]
+        # ScenarioEquivalenceReducer: collapse redundant scenarios to representative paths.
+        if scenario_reducer_mod.is_present(_idata):
+            failures += [f"[scenario-reduce] {p}" for p in scenario_reducer_mod.validate_reduction(_idata["scenario_reduction"])]
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -385,6 +389,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_state_compatibility()
             self_tests.test_cross_surface_resolver()
             self_tests.test_structural_equivalence()
+            self_tests.test_scenario_reducer()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
