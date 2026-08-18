@@ -32,6 +32,7 @@ mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
+relevance_mod = _load("relevance_prioritizer", "relevance_prioritizer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -901,6 +902,51 @@ def test_reasoning_required() -> None:
         check("full reasoning set satisfies the requirement", f == [])
 
 
+def test_relevance_prioritizer() -> None:
+    rp = relevance_mod
+
+    direct = {"hypothesis_id": "H1", "candidate": "controlling attribute governs the value",
+              "behavioral_distance": "DIRECT", "priority_reason": "directly controls the affected value",
+              "status": "INVESTIGATION_CANDIDATE"}
+    generic = {"hypothesis_id": "H2", "candidate": "analogous construct in another output",
+               "behavioral_distance": "GENERIC_REGRESSION", "status": "INVESTIGATION_CANDIDATE"}
+
+    # ranking puts DIRECT before GENERIC (not keyword/confidence order)
+    ordered = rp.prioritize([generic, direct])
+    check("prioritizer ranks DIRECT before GENERIC", [h["hypothesis_id"] for h in ordered] == ["H1", "H2"])
+
+    # distance inferred from boolean signals when not explicit
+    check("direct_semantic_dependency infers DIRECT",
+          rp.effective_distance({"direct_semantic_dependency": True}) == "DIRECT")
+    check("same_code_path infers ONE_HOP", rp.effective_distance({"same_code_path": True}) == "ONE_HOP")
+    check("no signal defaults to GENERIC_REGRESSION", rp.effective_distance({}) == "GENERIC_REGRESSION")
+    check("DIRECT is high relevance", rp.is_high_relevance(direct) is True)
+    check("GENERIC is not high relevance", rp.is_high_relevance(generic) is False)
+
+    # the core rule: a HIGH-relevance dependency left unexplored is flagged...
+    blocked = rp.high_relevance_unresolved([direct, generic], verifications=[])
+    check("unexplored HIGH-relevance hypothesis is flagged", [h["hypothesis_id"] for h in blocked] == ["H1"])
+    # ...and clears once it reaches a terminal verdict
+    verifs = [{"hypothesis_id": "H1", "verdict": "CONFIRMED"}]
+    check("verified HIGH-relevance hypothesis clears the flag", rp.high_relevance_unresolved([direct, generic], verifs) == [])
+
+    # a HIGH-relevance hypothesis must justify its priority
+    check("HIGH-relevance without priority_reason is flagged",
+          any("priority_reason" in p for p in rp.validate_prioritization([{"hypothesis_id": "H3", "behavioral_distance": "DIRECT"}])))
+    check("invalid behavioral_distance is flagged",
+          any("invalid" in p for p in rp.validate_prioritization([{"hypothesis_id": "H4", "behavioral_distance": "SORTA"}])))
+
+    # gate integration: a DIRECT candidate left unexplored -> RELEVANCE_PRIORITIZATION NEEDS_REVIEW
+    # even though a GENERIC one is CONFIRMED (breadth cannot compensate for the direct miss)
+    cov = [dict(direct), {"hypothesis_id": "H2", "dimension": "DOWNSTREAM_REGRESSION", "candidate": "c",
+                          "reason": "r", "technical_basis": ["t"], "status": "CONFIRMED", "behavioral_distance": "GENERIC_REGRESSION"}]
+    cov[0]["dimension"] = "DITA_SEMANTIC_DEPENDENCY"; cov[0]["reason"] = "r"; cov[0]["technical_basis"] = ["t"]
+    r = coverage_gate_mod.evaluate({"coverage_hypotheses": cov,
+                                    "verifications": [{"hypothesis_id": "H2", "verdict": "CONFIRMED", "disposition": "REGRESSION"}]})
+    check("unexplored DIRECT dependency blocks the gate via RELEVANCE_PRIORITIZATION",
+          r["dimensions"].get("RELEVANCE_PRIORITIZATION") == "NEEDS_REVIEW" and r["semantic_gate"] == "NEEDS_REVIEW")
+
+
 def test_uac_integration() -> None:
     ig = integration_mod
 
@@ -977,6 +1023,7 @@ def main() -> int:
     test_coverage_gate()
     test_uac_integration()
     test_reasoning_required()
+    test_relevance_prioritizer()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

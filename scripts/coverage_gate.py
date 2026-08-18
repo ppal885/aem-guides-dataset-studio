@@ -36,6 +36,7 @@ def _load(module_name, filename):
 
 _behavior = _load("behavior_model", "behavior_model.py")
 _explorer = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
+_relevance = _load("relevance_prioritizer", "relevance_prioritizer.py")
 
 
 # Map coverage-hypothesis dimensions to the gate's dimension names.
@@ -172,6 +173,21 @@ def evaluate(manifest):
         dims["OPEN_QUESTIONS"] = FAIL if hidden else COVERED
         if hidden:
             reasons["blocking"].append("OPEN_QUESTIONS: an UNRESOLVED hypothesis is not surfaced in Open Questions")
+
+    # Dimension: RELEVANCE_PRIORITIZATION - a HIGH-relevance (direct/one-hop) governing
+    # dependency must be investigated to a terminal verdict before the gate can pass.
+    # Low-value regression breadth cannot compensate for an unexplored direct dependency.
+    if cov:
+        blocked = _relevance.high_relevance_unresolved(cov, manifest.get("verifications", []))
+        if blocked:
+            dims["RELEVANCE_PRIORITIZATION"] = NEEDS_REVIEW
+            ids = ", ".join(h.get("hypothesis_id", "?") for h in blocked)
+            reasons["review"].append(
+                f"RELEVANCE_PRIORITIZATION: HIGH-relevance direct/one-hop dependency not explored to a terminal "
+                f"verdict ({ids}) - investigate direct governing dependencies before distant regression candidates"
+            )
+        else:
+            dims["RELEVANCE_PRIORITIZATION"] = COVERED
 
     # Dimension: DITA_SEMANTICS (reuse the DITA semantic gate as the single source).
     sem = manifest.get("dita_semantics")
