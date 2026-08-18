@@ -46,6 +46,7 @@ verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
 relevance_mod = _load("relevance_prioritizer", "relevance_prioritizer.py")
+disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2500,6 +2501,45 @@ def test_relevance_prioritizer() -> None:
           r["dimensions"].get("RELEVANCE_PRIORITIZATION") == "NEEDS_REVIEW" and r["semantic_gate"] == "NEEDS_REVIEW")
 
 
+def test_disposition_classifier() -> None:
+    dc = disposition_mod
+
+    # WHAT (observable) is not implementation-level; HOW (internal mechanism) is
+    check("observable outcome is not implementation-level",
+          dc.is_implementation_level("generation completes SUCCESS and the site navigation shows the grouping node") is False)
+    check("class.method reference is implementation-level",
+          dc.is_implementation_level("null must be guarded before PathUtils.appendUnixSlash") is True)
+    check("camelCase method call is implementation-level",
+          dc.is_implementation_level("the null path is not passed into appendUnixSlash()") is True)
+    check("naming a property/output alone is not implementation-level",
+          dc.is_implementation_level("the guides-navigation property is present and well-formed after each run") is False)
+
+    # an implementation-level statement cannot be an ACCEPTANCE_CONTRACT
+    bad = [{"finding_id": "F1", "statement": "null must be guarded before PathUtils.appendUnixSlash", "disposition": "ACCEPTANCE_CONTRACT"}]
+    check("impl-level ACCEPTANCE_CONTRACT is rejected", any("describes WHAT" in p for p in dc.validate_dispositions(bad)))
+    # ...unless the internal contract itself is the requirement
+    ok = [dict(bad[0], internal_contract_is_requirement=True)]
+    check("impl-level AC allowed when internal contract IS the requirement", dc.validate_dispositions(ok) == [])
+    # the same statement is fine as an IMPLEMENTATION_ORACLE
+    oracle = [{"finding_id": "F1", "statement": "null must be guarded before PathUtils.appendUnixSlash", "disposition": "IMPLEMENTATION_ORACLE"}]
+    check("impl-level statement is fine as IMPLEMENTATION_ORACLE", dc.validate_dispositions(oracle) == [])
+    # an IMPLEMENTATION_ORACLE must not map to an AC
+    mapped = [dict(oracle[0], maps_to_ac="AC-03")]
+    check("IMPLEMENTATION_ORACLE mapped to an AC is rejected", any("must not map" in p for p in dc.validate_dispositions(mapped)))
+    # unknown disposition rejected
+    check("unknown disposition rejected", any("must be one of" in p for p in dc.validate_dispositions([{"statement": "x", "disposition": "MAYBE"}])))
+
+    # plan-body scan: an implementation-mechanism AC is flagged; an observable one is not
+    bad_plan = ("**Acceptance Criteria**\n"
+                "- AC-01 [Confirmed]: (Basic) Given a map | When published | Then the null path is guarded before PathUtils.appendUnixSlash.\n"
+                "**Expected Behaviour**\n- x\n")
+    check("implementation-mechanism AC in the plan is flagged", any("AC-01" in p for p in dc.check_plan_acceptance_criteria(bad_plan)))
+    good_plan = ("**Acceptance Criteria**\n"
+                 "- AC-01 [Confirmed]: (Basic) Given a map | When published | Then generation completes SUCCESS and the grouping node appears in the site navigation.\n"
+                 "**Expected Behaviour**\n- x\n")
+    check("observable AC in the plan is not flagged", dc.check_plan_acceptance_criteria(good_plan) == [])
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2520,6 +2560,7 @@ def main() -> int:
     test_uac_fidelity_reference()
     test_component_reference_routing()
     test_relevance_prioritizer()
+    test_disposition_classifier()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

@@ -68,6 +68,7 @@ mq_mod = _load("missing_questions", "missing_questions.py")
 verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
 coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
 integration_mod = _load("uac_integration", "uac_integration.py")
+disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -694,6 +695,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _if, _in = integration_mod.check_integration(_load_manifest_dict(manifest_path), body)
     failures += _if
     notes += _in
+    _dm = _load_manifest_dict(manifest_path)
+    if disposition_mod.is_present(_dm):
+        failures += [f"[disposition] {p}" for p in disposition_mod.validate_dispositions(_dm["dispositions"])]
+    if coverage_gate_mod.is_present(_dm):
+        failures += [f"[disposition] {p}" for p in disposition_mod.check_plan_acceptance_criteria(body)]
 
     if not skip_self_tests:
         try:
@@ -714,6 +720,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_uac_integration()
             self_tests.test_reasoning_required()
             self_tests.test_relevance_prioritizer()
+            self_tests.test_disposition_classifier()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
