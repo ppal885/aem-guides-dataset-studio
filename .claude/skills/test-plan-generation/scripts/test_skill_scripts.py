@@ -51,6 +51,7 @@ oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
+scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2691,6 +2692,51 @@ def test_structural_equivalence() -> None:
     check("invalid classification rejected", any("classification" in p for p in se.validate_structural_equivalence([{"construct_a": "a", "construct_b": "b", "classification": "SAMEISH"}])))
 
 
+def test_scenario_reducer() -> None:
+    sr = scenario_reducer_mod
+
+    def scn(sid, decision, branch, transition, contract, factors=None, representative=True, collapsed_into=None):
+        e = {"scenario_id": sid,
+             "signature": {"semantic_decision": decision, "implementation_branch": branch,
+                           "state_transition": transition, "resulting_contract": contract},
+             "distinguishing_factors": factors or [], "representative": representative}
+        if collapsed_into:
+            e["collapsed_into"] = collapsed_into
+        return e
+
+    # two scenarios with the same signature and no distinguishing factor: one rep, one collapsed
+    rep = scn("S1", "publish grouping", "fallback branch", "state written", "navigation shows group")
+    dup = scn("S2", "publish grouping", "fallback branch", "state written", "navigation shows group",
+              representative=False, collapsed_into="S1")
+    check("equivalent scenario collapses cleanly", sr.validate_reduction([rep, dup]) == [])
+    reps, collapsed = sr.reduce([rep, dup])
+    check("reduce keeps one representative", len(reps) == 1 and len(collapsed) == 1)
+
+    # a collapsed scenario whose signature differs from its representative is rejected
+    diff = scn("S3", "publish grouping", "LOCKED branch", "state written", "navigation shows group",
+               representative=False, collapsed_into="S1")
+    check("collapsing across different signatures is rejected", any("signatures differ" in p for p in sr.validate_reduction([rep, diff])))
+
+    # a scenario carrying a distinguishing factor cannot be collapsed
+    factored = scn("S4", "publish grouping", "fallback branch", "state written", "navigation shows group",
+                   factors=["different_lifecycle_transition"], representative=False, collapsed_into="S1")
+    check("scenario with a distinguishing factor cannot be collapsed", any("cannot be collapsed" in p for p in sr.validate_reduction([rep, factored])))
+    # ...but it is fine as its own representative
+    factored_rep = scn("S4", "publish grouping", "fallback branch", "remove then republish", "navigation updates",
+                       factors=["different_lifecycle_transition"], representative=True)
+    check("distinguishing scenario is fine as a representative", sr.validate_reduction([rep, factored_rep]) == [])
+
+    # two representatives with identical signature and no distinguishing factor -> redundancy flag
+    rep2 = scn("S5", "publish grouping", "fallback branch", "state written", "navigation shows group")
+    check("redundant representatives are flagged", any("collapse them" in p for p in sr.validate_reduction([rep, rep2])))
+
+    # signature completeness and factor vocab
+    incomplete = {"scenario_id": "S6", "signature": {"semantic_decision": "x"}, "representative": True}
+    check("incomplete signature is rejected", any("is required" in p for p in sr.validate_reduction([incomplete])))
+    badf = scn("S7", "d", "b", "t", "c", factors=["random"], representative=True)
+    check("invalid distinguishing factor is rejected", any("must be one of" in p for p in sr.validate_reduction([badf])))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -2716,6 +2762,7 @@ def main() -> int:
     test_state_compatibility()
     test_cross_surface_resolver()
     test_structural_equivalence()
+    test_scenario_reducer()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
