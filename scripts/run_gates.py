@@ -40,8 +40,28 @@ validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
 audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
+behavior_mod = _load("behavior_model", "behavior_model.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
+
+
+def check_behavior_model(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `behavior_model` block when present.
+
+    Backward-compatible: a manifest without a `behavior_model` block is not a
+    failure (the structured model is being adopted incrementally). When present,
+    it must be structurally valid, evidence-anchored, and state-lifecycle complete.
+    """
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []  # manifest-completeness check already reports this
+    if not behavior_mod.is_present(data):
+        return [], ["behavior model check skipped (no behavior_model block declared)"]
+    failures = [f"[behavior-model] {p}" for p in behavior_mod.validate_behavior_model(data["behavior_model"])]
+    return failures, ["behavior model validated"] if not failures else []
 
 
 def check_semantic_coverage(manifest_path: str | None) -> tuple[list[str], list[str]]:
@@ -135,6 +155,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += [f"[anti-hardcoding] {f}" for f in hc_fail]
     notes += hc_notes
 
+    # BehaviorModel validation (only when the manifest declares a behavior_model block).
+    bm_fail, bm_notes = check_behavior_model(manifest_path)
+    failures += bm_fail
+    notes += bm_notes
+
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
     failures += sc_fail  # already tagged [semantic-gate]/[relation] by the evaluator
@@ -146,6 +171,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_validator()
             self_tests.test_verifier()
             self_tests.test_attachment_manifest()
+            self_tests.test_behavior_model()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

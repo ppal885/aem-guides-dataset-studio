@@ -26,6 +26,7 @@ validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
 audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
+behavior_mod = _load("behavior_model", "behavior_model.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -547,6 +548,65 @@ def test_anti_hardcoding() -> None:
     check("the real skill directory passes the anti-hardcoding audit", failures == [])
 
 
+def test_behavior_model() -> None:
+    bm = behavior_mod
+    F = lambda **k: dict(k)  # noqa: E731 - tiny fact builder for fixtures
+
+    # A valid model for each ticket family the phase must support.
+    ui = {"trigger": ["user clicks Generate in Map dashboard"], "operations": ["render toc"],
+          "consumers": ["Map dashboard UI", "Editor toc panel"],
+          "facts": [F(fact="both surfaces read the same toc model", evidence_ids=["E1"], authority="CURRENT_IMPLEMENTATION", confidence=0.7)]}
+    backend = {"trigger": ["POST publish job"], "operations": ["build output"], "inputs": ["map path"],
+               "outputs": ["site nodes"], "processors": ["PublishingJob"]}
+    config = {"trigger": ["preset toggled"], "operations": ["branch on setting"],
+              "configuration_branches": ["dita processing on", "dita processing off"], "outputs": ["toc"]}
+    publishing = {"trigger": ["generate output"], "operations": ["transform"], "outputs": ["pdf"],
+                  "publishing_modes": ["Native PDF", "DITA-OT PDF", "Native AEM Site"]}
+    dita = {"trigger": ["publish map"], "operations": ["resolve toc"], "affected_state": ["navigation title"],
+            "facts": [F(fact="no-href navtitle yields null path", evidence_ids=["E2"], authority="CURRENT_IMPLEMENTATION", confidence=0.8)]}
+    # persistence model that CORRECTLY identifies the writer of the state it removes
+    persistence_ok = {"trigger": ["delete topic"], "operations": ["cleanup parent-map property"],
+                      "remove_paths": ["remove parentMaps entry"], "write_paths": ["writer adds parentMaps on add-to-map"],
+                      "affected_state": ["parentMaps property"]}
+
+    for name, m in (("ui", ui), ("backend", backend), ("config", config),
+                    ("publishing", publishing), ("dita", dita), ("persistence_ok", persistence_ok)):
+        check(f"behavior_model valid for {name} ticket", bm.validate_behavior_model(m) == [])
+
+    # empty / shapeless model is rejected
+    check("empty behavior_model is rejected", any("effectively empty" in p for p in bm.validate_behavior_model({})))
+
+    # a fact without evidence is inference -> rejected
+    no_ev = {"trigger": ["x"], "operations": ["y"], "facts": [F(fact="claim", evidence_ids=[], authority="JIRA")]}
+    check("fact without evidence_ids is rejected", any("no evidence_ids" in p for p in bm.validate_behavior_model(no_ev)))
+
+    # bad authority rejected
+    bad_auth = {"trigger": ["x"], "operations": ["y"], "facts": [F(fact="c", evidence_ids=["E1"], authority="VIBES")]}
+    check("fact with unknown authority is rejected", any("authority" in p for p in bm.validate_behavior_model(bad_auth)))
+
+    # confidence out of range rejected
+    bad_conf = {"trigger": ["x"], "operations": ["y"], "confidence": 1.7}
+    check("confidence out of range is rejected", any("confidence" in p for p in bm.validate_behavior_model(bad_conf)))
+
+    # list field given a non-list rejected
+    bad_type = {"trigger": "click", "operations": ["y"]}
+    check("non-list model field is rejected", any("must be a list" in p for p in bm.validate_behavior_model(bad_type)))
+
+    # persistence rule: removes state but never identifies the writer -> rejected
+    persistence_gap = {"trigger": ["delete topic"], "operations": ["cleanup"],
+                       "remove_paths": ["remove parentMaps entry"], "affected_state": ["parentMaps"]}
+    check("state removal without a writer path is rejected",
+          any("what WRITES that state" in p for p in bm.validate_behavior_model(persistence_gap)))
+
+    # same gap is acceptable if the missing writer is explicitly flagged unknown
+    persistence_flagged = dict(persistence_gap, unknowns=["who writes parentMaps is not yet identified"])
+    check("state removal passes when the missing writer is flagged in unknowns",
+          bm.validate_behavior_model(persistence_flagged) == [])
+
+    # run_gates skips the check when no block is present (backward compatible)
+    check("behavior_model absent is not a failure", bm.is_present({"issue": "X"}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -556,6 +616,7 @@ def main() -> int:
     test_extract_acs()
     test_semantic_explorer()
     test_anti_hardcoding()
+    test_behavior_model()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
