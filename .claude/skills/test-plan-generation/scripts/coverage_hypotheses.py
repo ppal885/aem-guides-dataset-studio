@@ -51,6 +51,10 @@ CANDIDATE_STATUS = "INVESTIGATION_CANDIDATE"
 TERMINAL_STATUSES = ("CONFIRMED", "INFERRED_HIGH_CONFIDENCE", "REJECTED", "UNRESOLVED")
 ALL_STATUSES = (CANDIDATE_STATUS, *TERMINAL_STATUSES)
 
+# Behavioural distance from the affected behaviour, most-direct first. Ranking uses
+# this, NOT keyword similarity / retrieved-chunk count / model confidence alone.
+BEHAVIORAL_DISTANCES = ("DIRECT", "ONE_HOP", "MULTI_HOP", "ANALOGOUS", "GENERIC_REGRESSION")
+
 
 @dataclass
 class CoverageHypothesis:
@@ -65,6 +69,14 @@ class CoverageHypothesis:
     requires_more_evidence: bool = True
     confidence: float = 0.0
     equivalence_key: str = ""  # hypotheses sharing this collapse to one representative
+    # BehavioralRelevancePrioritizer (Prompt 8) fields - how directly this governs the
+    # affected behaviour, so a direct dependency (e.g. a controlling attribute) is
+    # investigated BEFORE distant regression candidates. Optional; default GENERIC.
+    behavioral_distance: str = ""
+    relevance_score: float = 0.0
+    priority_reason: str = ""
+    same_code_path: bool = False
+    direct_semantic_dependency: bool = False
 
     @classmethod
     def from_dict(cls, data):
@@ -96,6 +108,10 @@ def validate_hypothesis(h):
         problems.append(f"{tag}: requires_more_evidence must be a boolean")
     if not (0.0 <= h.confidence <= 1.0):
         problems.append(f"{tag}: confidence {h.confidence} must be between 0.0 and 1.0")
+    if h.behavioral_distance and h.behavioral_distance not in BEHAVIORAL_DISTANCES:
+        problems.append(f"{tag}: behavioral_distance '{h.behavioral_distance}' must be one of {', '.join(BEHAVIORAL_DISTANCES)}")
+    if not (0.0 <= h.relevance_score <= 1.0):
+        problems.append(f"{tag}: relevance_score {h.relevance_score} must be between 0.0 and 1.0")
     return problems
 
 

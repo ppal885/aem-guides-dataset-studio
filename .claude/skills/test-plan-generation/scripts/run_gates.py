@@ -713,6 +713,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_coverage_gate()
             self_tests.test_uac_integration()
             self_tests.test_reasoning_required()
+            self_tests.test_relevance_prioritizer()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
