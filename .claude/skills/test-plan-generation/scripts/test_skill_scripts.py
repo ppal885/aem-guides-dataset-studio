@@ -55,6 +55,7 @@ scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
 authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
+impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2813,6 +2814,54 @@ def test_change_impact() -> None:
     check("no fix signal without a diff/PR/fix", ci.has_change_signal({"issue": "X"}) is False)
 
 
+def test_implementation_grounding() -> None:
+    ig = impl_grounding_mod
+
+    # activation: a ticket naming a REST/servlet API artifact activates
+    api_manifest = {"issue": {"summary": "API to track output generation status",
+                    "description": "The /bin/publishlistener servlet operation returns no job id"}}
+    check("named API/servlet artifact activates implementation grounding", ig.is_active(api_manifest) is True)
+    # a plain UI/DITA ticket does not activate
+    check("plain UI ticket does not activate", ig.is_active({"issue": {"summary": "Show a warning dialog on save"}}) is False)
+
+    # asserts_current_behavior: Expected Behaviour claiming what the API does today
+    plan_asserting = ("Acceptance Criteria\n- AC-01\nExpected Behaviour\n"
+                      "- The /bin/publishlistener endpoint currently returns no job id in its response.")
+    check("current-behaviour assertion about an API is detected", ig.asserts_current_behavior(plan_asserting) is True)
+    check("no assertion when API not mentioned", ig.asserts_current_behavior("Expected Behaviour\n- The dialog shows a warning.") is False)
+
+    # block validation
+    def art(**over):
+        base = {"artifact": "/bin/publishlistener GENERATEOUTPUT", "kind": "operation",
+                "inspected": True, "evidence": ["PublishOutputService.java:182"], "material": True}
+        base.update(over)
+        return base
+
+    def block(**over):
+        base = {"active": True, "named_artifacts": [art()]}
+        base.update(over)
+        return base
+
+    check("well-formed implementation_grounding passes", ig.validate_implementation_grounding(block()) == [])
+    # a material artifact not inspected is rejected
+    check("material artifact not inspected is rejected",
+          any("not inspected" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[art(inspected=False)]))))
+    # a material artifact without cited evidence is rejected
+    check("material artifact without file:line evidence is rejected",
+          any("file:line" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[art(evidence=[])]))))
+    # a stated ticket premise not verified against code is rejected
+    unverified = art(premise="the generate call returns no job id", premise_verified=False)
+    check("unverified ticket premise is rejected",
+          any("premise_verified" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[unverified]))))
+    # a verified premise (recording that code contradicts the ticket) is allowed
+    verified = art(premise="the generate call returns no job id", premise_verified=True, premise_holds=False)
+    check("verified premise (code contradicts ticket) is allowed", ig.validate_implementation_grounding(block(named_artifacts=[verified])) == [])
+    # empty artifact list is rejected
+    check("empty named_artifacts is rejected", any("non-empty" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[]))))
+    # bad kind is rejected
+    check("invalid artifact kind is rejected", any("kind must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[art(kind="widget")]))))
+
+
 def test_pre_uac_critic() -> None:
     cr = critic_mod
 
@@ -2894,6 +2943,7 @@ def main() -> int:
     test_evidence_authority()
     test_change_impact()
     test_pre_uac_critic()
+    test_implementation_grounding()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
