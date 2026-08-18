@@ -12,14 +12,14 @@
 - AC-05 [Proposed]: (Integration) Given a map already left in the failed state by an earlier pre-fix failure | When the map is regenerated after the fix without any manual cleanup | Then generation recovers and produces correct output from the already-corrupted persisted state | Evidence: Jira description (Business Impact).
 - AC-06 [Proposed]: (Integration) Given a New AEM Sites preset configured to delete and recreate output | When the map is regenerated | Then the option actually clears the prior generated output for that map | Evidence: Jira description (delete and create setting have no effect).
 - AC-07 [Proposed]: (Integration) Given the same no-href navtitle grouping map | When it is published to Native PDF | Then Native PDF generates successfully and renders the grouping navigation title, serving as the working comparison baseline the fix must not regress | Evidence: Jira description (Native PDF/Legacy sites generates fine).
-- AC-08 [Proposed]: (Negative) Given a map with two or more sibling no-href navtitle grouping topicrefs at the same level | When the map is published to New AEM Sites | Then every grouping node generates successfully with no failure on any occurrence, not just the first | Evidence: source file NativeAemSitePublishing.java getTocItemUsingMap.
+- AC-08 [Proposed]: (Negative) Given a map with two or more sibling no-href navtitle grouping nodes at the same level, covering both the topicref-with-navtitle and the topichead element forms | When the map is published to New AEM Sites | Then every grouping node generates successfully with no failure on any occurrence, not just the first, because both element forms are honoured for navtitle and reach the same path build | Evidence: source file NativeAemSitePublishing.java getListOfElementsHonourNavtitle and getTocItemUsingMap.
 **Expected Behaviour**
 - From Jira (verified): New AEM Sites publishing of the reproduction bookmap fails in ProcessGeneratedOutputStep.processNativeAemSiteOutput, caused by a NullPointerException in PathUtils.appendUnixSlash reached through the Native AEM Site TOC-building path; the first generation succeeds and subsequent ones fail until the generated sites nodes are deleted.
 - From product clone (verified, provisional): In `C:\starling` the helper appendUnixSlash calls lastIndexOf on the raw path with no null check, while its sibling getNodeParentPath in the same file guards null, so a null path reaching appendPath/appendUnixSlash throws; a no-href grouping topicref is a concrete source of that null effective path.
 - Title-resolution semantics (verified from clone, provisional): setTocItemTitle takes an early-return branch when lock-title is yes and navtitle is present, using the navtitle directly; otherwise it falls through to a topic-path title lookup, so lock-title yes is a distinct path while no and absent share the fallback path and are behaviourally equivalent for title display.
 - Supported inference (not yet proven): whether lock-title yes also avoids the NullPointerException is unclear because the crash is in the path computation which may run independently of the title branch; treat it as an Open Question.
 - Supported inference (not yet proven): the fails-until-nodes-deleted symptom indicates corrupted persistent navigation state written before or around the crash and re-read on the next run; the exact corrupted value is Unknown from current evidence.
-- Whether a no-href topichead shares the same failing path is Unknown from current evidence.
+- Topichead shares the crash path (verified from clone): getListOfElementsHonourNavtitle builds the navtitle-honouring element set from the DTD/XSD, so topichead - which the DITA DTD declares with a navtitle attribute - is included and processed like a navtitle-bearing topicref; the guard at getTocItemUsingMap only skips an entry when its output path and its navtitle are both null, so a no-href topichead with a navtitle is not skipped and proceeds into the path build that reaches appendUnixSlash with a null path, hitting the same NullPointerException.
 **Scope From Git**
 - Lifecycle stage is Pre-Development UAC and the readiness target is UAC-ready; no fix branch or PR exists (fix version Backlog).
 - Issue source: live Jira GUIDES-53707 (Customer Request, Critical, component Publishing, labels Avaya / Plan_2610 / Triaged) fetched via the backend Jira client; reproduction package npe-test (1).zip downloaded and extracted (bookmap npe-book.ditamap with topics a/b/c).
@@ -30,7 +30,7 @@
 **Code Touched**
 - No code changes yet - development has not started.
 - Current implementation implicated: `C:\starling\core\utils\src\main\java\com\adobe\fmdita\common\PathUtils.java` - appendUnixSlash and appendPath assume a non-null path and are the throw site; getNodeParentPath in the same file shows the null-guard pattern the fix likely needs.
-- Current implementation implicated: `C:\starling\core\publish-workflow\src\main\java\com\adobe\dxml\article\publish\service\NativeAemSitePublishing.java` - getTocItemUsingMap builds each TOC item's path and title on the crashing path, and setTocItemTitle is where navtitle/lock-title/href title resolution branches.
+- Current implementation implicated: `C:\starling\core\publish-workflow\src\main\java\com\adobe\dxml\article\publish\service\NativeAemSitePublishing.java` - getListOfElementsHonourNavtitle builds the navtitle-honouring element set from the DTD/XSD (so topichead is included), getTocItemUsingMap builds each TOC item's path and title on the crashing path with a skip-guard that only drops an entry when output path and navtitle are both null, and setTocItemTitle is where navtitle/lock-title/href title resolution branches.
 - Current implementation implicated: `C:\starling\core\cloud-publish\src\main\java\com\adobe\aem\guides\job\ProcessGeneratedOutputStep.java` - the processNativeAemSiteOutput step reported at the top of the stack trace.
 - Potential code impact (inference): the map-level guides-navigation property write/read path is the likely source of the repeat-generation persistence symptom and must be traced from the same publishing step; label this inference until confirmed against the fix.
 **Lines Changed**
@@ -44,7 +44,7 @@
 - P1 [AC-05]: Action: starting from a map already in the failed state, regenerate after the fix without manual node deletion. Expected: generation recovers and produces correct output.
 - P1 [AC-06]: Action: with the preset delete-and-recreate option enabled, regenerate. Expected: prior generated output is actually cleared.
 - P1 [AC-07]: Action: publish the same map to Native PDF. Expected: it still generates and renders the grouping title as the comparison baseline.
-- P2 [AC-08]: Action: build a map with two sibling no-href navtitle grouping topicrefs and publish to New AEM Sites. Expected: all grouping entries generate with no failure on any occurrence.
+- P2 [AC-08]: Action: build a map with two sibling no-href navtitle grouping nodes - one topicref-with-navtitle and one topichead - and publish to New AEM Sites. Expected: both element forms generate with no failure on any occurrence, confirming the fix covers every navtitle-honouring element, not only topicref.
 - P1 [AC-02]: Action: run the lifecycle sequence first publish, second publish, modify the grouping navtitle and republish, remove the grouping node and republish, then re-add it and republish. Expected: every step succeeds and the generated navigation reflects each change without manual node deletion.
 - Implementation oracle (not an acceptance criterion): add a unit test for PathUtils.appendUnixSlash and appendPath with a null argument asserting no NullPointerException, mirroring the null guard already in getNodeParentPath; this internal check belongs in unit coverage, not the acceptance contract.
 **Known Jira Bugs / Past Similar Tickets**
@@ -72,41 +72,7 @@
 **Open Questions**
 - Does lock-title yes, which takes the early-return title branch, also avoid the no-href NullPointerException, or does the crash occur in the path computation regardless? QA impact: if it avoids the crash it becomes a documented workaround and a distinct passing scenario; if not, AC-03 and AC-04 share the same crash guard and the workaround must not be advertised.
 - What exact persistent state is corrupted on the first failing run, and does the fix prevent the bad write, self-heal an already-corrupted map, or both? QA impact: prevent-only means AC-05 needs a fresh map, whereas self-heal requires a scenario starting from an already-failed map and an oracle for the repaired property.
-- Does the identical crash occur for a no-href topichead grouping node? QA impact: if code or RAG confirms the shared path a topichead scenario is a same-priority fix; if not it is a separate ticket, kept as an investigation candidate rather than an AC.
+- Resolved by clone inspection - a no-href topichead does share the crash path: getListOfElementsHonourNavtitle includes topichead because the DITA DTD declares its navtitle attribute, and the getTocItemUsingMap skip-guard only drops an entry when its output path and its navtitle are both null, so a no-href topichead with a navtitle proceeds to appendUnixSlash and crashes; the remaining design question is whether the fix guards at the shared path helper appendUnixSlash so every no-href navtitle element is covered at once, or per element type. QA impact: a path-level guard makes topicref and topichead a single scenario class covered by AC-08, whereas a per-element guard needs a separate case for each navtitle-honouring element.
 - Is nested no-href grouping, a no-href grouping node inside another, supported and behaviourally meaningful for New AEM Sites? QA impact: if supported, add a nested-depth case to AC-08; if not, the nested case is out of scope and no scenario is needed.
 - Beyond Native PDF, do Legacy AEM Sites, DITA-OT PDF, or HTML5 share the affected Native AEM Site navigation-processing code? QA impact: only presets shown by code or RAG to share the path are added as regression checks, avoiding a generic test-every-output matrix.
 - Does the preset delete-and-recreate option need to change as part of this fix? QA impact: if in scope AC-06 gains a cleanup-behaviour assertion and a regression pass over incremental generation; if out of scope it becomes a separate follow-up.
-
-# Appendix A - Automation Evidence
-
-Existing navtitle AEM Site coverage - `C:\api automation\dxml-it-tests\guides-regression\src\main\java\com\adobe\aem\guides\it\regression\tests\aemsitepublishing\AemSiteApiIT.java` (read-only, provisional). Proves first-run navtitle nodes are asserted for a different map; does NOT cover the no-`href` grouping topicref or a second-run generation, so AC-01 is only Partially covered and AC-02 is Not covered.
-
-```java
-    public void shouldGenerateAEMSiteWithNavtitleInContent() throws IllegalAccessException,ClientException,InterruptedException{
-        String mapPath = "/content/dam/guides_regression/guides-29387/mapnavtitle.ditamap";
-        String aemSitePath = "/content/output/sites/mapnavtitle-ditamap";
-        String aemSiteJsonPath = aemSitePath + ".2.json";
-        publishAemSiteWithPoller(mapPath,aemSitePath,aemSiteJsonPath);
-        JsonNode response = adminAuthor.doGetJson(aemSitePath, 2, 200);
-        Assert.assertNotNull("Node 'check-nav-title' should be present in the response", response.get("check-nav-title"));
-        Assert.assertNotNull("Node 'navtitle2' should be present in the response", response.get("navtitle2"));
-```
-
-Throw site - `C:\starling\core\utils\src\main\java\com\adobe\fmdita\common\PathUtils.java` (read-only develop @ fdfa72777a, provisional). Proves `appendUnixSlash` calls `lastIndexOf` on the raw path with no null guard, while `getNodeParentPath` in the same file does guard null - the guard the fix (AC-03) must add.
-
-```java
-    public static String getNodeParentPath(String _path) {
-        _path = _path != null ? _path : "";
-        int slashIndex = _path.lastIndexOf('/');
-        return (slashIndex != -1) ? _path.substring(0, slashIndex) : "";
-    }
-
-    public static String appendPath(String path, String append) {
-        return PathUtils.appendUnixSlash(path) + StringUtils.removeStartIgnoreCase(append, SLASH);
-    }
-
-    public static String appendUnixSlash(String _path) {
-        int slashIndex = _path.lastIndexOf('/');
-        return (slashIndex != _path.length() - 1) ? _path + SLASH : _path;
-    }
-```
