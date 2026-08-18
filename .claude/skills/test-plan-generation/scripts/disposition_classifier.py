@@ -126,8 +126,11 @@ def check_plan_acceptance_criteria(plan_text):
     for line in _acceptance_section(plan_text):
         if not _AC_LINE_RE.match(line.strip()):
             continue
-        # look at the outcome (after 'Then', if present) so a fixture mention earlier is not flagged
+        # Look only at the Then OUTCOME - after 'Then' and before the '| Evidence:' field.
+        # The Evidence field legitimately cites source files (e.g. Foo.java), which must
+        # not be misread as an implementation-mechanism AC.
         outcome = line.split("Then", 1)[1] if "Then" in line else line
+        outcome = outcome.split("| Evidence:", 1)[0]
         if is_implementation_level(outcome):
             ac_id = line.strip().split()[1] if len(line.strip().split()) > 1 else "AC"
             problems.append(
