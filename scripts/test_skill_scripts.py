@@ -39,6 +39,7 @@ state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_ex
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
+authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -908,6 +909,43 @@ def test_reasoning_required() -> None:
         check("full reasoning set satisfies the requirement", f == [])
 
 
+def test_evidence_authority() -> None:
+    ea = authority_mod
+
+    items = [
+        {"evidence_id": "E1", "statement": "spec requires X", "status": "CONFIRMED", "authority": "SPECIFICATION_AUTHORITY"},
+        {"evidence_id": "E2", "statement": "current code does Y", "status": "IMPLEMENTED", "authority": "IMPLEMENTATION_AUTHORITY"},
+        {"evidence_id": "E3", "statement": "old design proposed Z", "status": "SUPERSEDED", "authority": "PRODUCT_REQUIREMENT_AUTHORITY"},
+    ]
+
+    # a spec-vs-implementation conflict preserved as an Open Question passes
+    oq = {"items": items, "conflicts": [{"between": ["E1", "E2"], "resolution_method": "NONE", "disposition": "OPEN_QUESTION"}]}
+    check("spec-vs-impl conflict preserved as Open Question passes", ea.validate_evidence_authority(oq) == [])
+
+    # resolving by recency / similarity is forbidden
+    recency = {"items": items, "conflicts": [{"between": ["E1", "E2"], "resolution_method": "LATEST_COMMENT", "disposition": "RESOLVED", "resolved_by": "E2", "note": "newer"}]}
+    check("latest-comment resolution is forbidden", any("must not be resolved by recency" in p for p in ea.validate_evidence_authority(recency)))
+    sim = {"items": items, "conflicts": [{"between": ["E1", "E2"], "resolution_method": "HIGHEST_SIMILARITY", "disposition": "RESOLVED", "resolved_by": "E1", "note": "closer"}]}
+    check("highest-similarity resolution is forbidden", any("forbidden" in p for p in ea.validate_evidence_authority(sim)))
+
+    # a valid explicit resolution passes
+    valid = {"items": items, "conflicts": [{"between": ["E1", "E2"], "resolution_method": "EXPLICIT_FINAL_DECISION", "disposition": "RESOLVED", "resolved_by": "E1", "note": "product decided to follow the spec"}]}
+    check("explicit-decision resolution passes", ea.validate_evidence_authority(valid) == [])
+
+    # cannot resolve in favour of superseded/rejected evidence
+    stale = {"items": items, "conflicts": [{"between": ["E1", "E3"], "resolution_method": "AUTHORITY_ORDERING", "disposition": "RESOLVED", "resolved_by": "E3", "note": "old design"}]}
+    check("resolving toward superseded evidence is rejected", any("cannot be the current truth" in p for p in ea.validate_evidence_authority(stale)))
+
+    # a RESOLVED conflict without resolved_by is rejected
+    noby = {"items": items, "conflicts": [{"between": ["E1", "E2"], "resolution_method": "AUTHORITY_ORDERING", "disposition": "RESOLVED", "note": "x"}]}
+    check("RESOLVED without resolved_by is rejected", any("must state resolved_by" in p for p in ea.validate_evidence_authority(noby)))
+
+    # vocab + reference guards
+    check("bad status rejected", any("status" in p for p in ea.validate_evidence_authority({"items": [{"evidence_id": "E9", "statement": "x", "status": "MAYBE", "authority": "SPECIFICATION_AUTHORITY"}]})))
+    check("bad authority rejected", any("authority" in p for p in ea.validate_evidence_authority({"items": [{"evidence_id": "E9", "statement": "x", "status": "CONFIRMED", "authority": "VIBES"}]})))
+    check("conflict referencing unknown id rejected", any("unknown evidence_id" in p for p in ea.validate_evidence_authority({"items": items, "conflicts": [{"between": ["E1", "E99"], "resolution_method": "NONE", "disposition": "OPEN_QUESTION"}]})))
+
+
 def test_scenario_reducer() -> None:
     sr = scenario_reducer_mod
 
@@ -1267,6 +1305,7 @@ def main() -> int:
     test_cross_surface_resolver()
     test_structural_equivalence()
     test_scenario_reducer()
+    test_evidence_authority()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

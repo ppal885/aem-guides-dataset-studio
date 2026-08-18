@@ -52,6 +52,7 @@ state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_ex
 cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
 scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
+authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -364,6 +365,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         # ScenarioEquivalenceReducer: collapse redundant scenarios to representative paths.
         if scenario_reducer_mod.is_present(_idata):
             failures += [f"[scenario-reduce] {p}" for p in scenario_reducer_mod.validate_reduction(_idata["scenario_reduction"])]
+        # EvidenceAuthorityResolver: no recency/similarity wins; conflicts stay Open Questions.
+        if authority_mod.is_present(_idata):
+            failures += [f"[evidence-authority] {p}" for p in authority_mod.validate_evidence_authority(_idata["evidence_authority"])]
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -390,6 +394,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_cross_surface_resolver()
             self_tests.test_structural_equivalence()
             self_tests.test_scenario_reducer()
+            self_tests.test_evidence_authority()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
