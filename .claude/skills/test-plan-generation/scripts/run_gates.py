@@ -59,6 +59,15 @@ compact_mod = _load("render_compact_view", "render_compact_view.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 graph_manifest_mod = _load("evidence_graph_manifest", "evidence_graph_manifest.py")
 performance_mod = _load("performance_contract", "performance_contract.py")
+# Reasoning pipeline modules (BehaviorModel -> Hypotheses -> Retrieval -> Verify -> Gate -> Integration).
+explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
+audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
+behavior_mod = _load("behavior_model", "behavior_model.py")
+coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
+mq_mod = _load("missing_questions", "missing_questions.py")
+verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
+coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
+integration_mod = _load("uac_integration", "uac_integration.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -543,6 +552,95 @@ def check_manifest_completeness(path: str | None) -> list[str]:
     return failures
 
 
+def _load_manifest_dict(manifest_path: str | None) -> dict:
+    if not manifest_path or not Path(manifest_path).is_file():
+        return {}
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Mandatory reasoning pipeline for behavioural tickets: a behavior_model is
+    required when behaviour_matters is not false, and verifications are required when
+    coverage_hypotheses are declared. Pure internal code bugs opt out with
+    behaviour_matters:false."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["reasoning pipeline not required (behaviour_matters is false)"]
+    failures = []
+    if not behavior_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] a behavior_model block is mandatory when behaviour_matters is true - model the "
+            "trigger/operations/state/consumers (unknowns allowed) before writing coverage"
+        )
+    if coverage_mod.is_present(data) and data.get("coverage_hypotheses") and not verifier_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] coverage_hypotheses are declared but no verifications block exists - every "
+            "candidate must reach a terminal verdict before the plan is delivered"
+        )
+    return failures, ["reasoning pipeline requirements satisfied"] if not failures else []
+
+
+def check_behavior_model(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not behavior_mod.is_present(data):
+        return [], ["behavior model check skipped (no behavior_model block declared)"]
+    failures = [f"[behavior-model] {p}" for p in behavior_mod.validate_behavior_model(data["behavior_model"])]
+    return failures, ["behavior model validated"] if not failures else []
+
+
+def check_coverage_hypotheses(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not coverage_mod.is_present(data):
+        return [], ["coverage-hypotheses check skipped (no coverage_hypotheses block)"]
+    failures = [f"[coverage] {p}" for p in coverage_mod.validate_coverage_block(data["coverage_hypotheses"])]
+    return failures, ["coverage hypotheses validated"] if not failures else []
+
+
+def check_retrieval(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not mq_mod.is_present(data):
+        return [], ["retrieval-discipline check skipped (no missing_questions/evidence_lifecycle)"]
+    failures = [f"[retrieval] {p}" for p in mq_mod.check_retrieval_discipline(
+        data.get("missing_questions", []), data.get("evidence_lifecycle", []))]
+    return failures, ["retrieval discipline validated"] if not failures else []
+
+
+def check_verifications(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not verifier_mod.is_present(data):
+        return [], ["hypothesis-verification check skipped (no verifications block)"]
+    failures = [f"[verify-hyp] {p}" for p in verifier_mod.verify_all(
+        data.get("coverage_hypotheses", []), data.get("verifications", []))]
+    return failures, ["hypothesis verifications validated"] if not failures else []
+
+
+def check_semantic_coverage(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    semantics = data.get("dita_semantics")
+    if not isinstance(semantics, dict) or not semantics.get("active"):
+        return [], ["DITA semantic gate skipped (no active DITA semantics)"]
+    _overall, _dims, failures = explorer_mod.evaluate_semantic_gate(semantics)
+    return failures, [f"DITA semantic gate: {_overall}"]
+
+
+def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not coverage_gate_mod.is_present(data):
+        return [], ["semantic coverage gate skipped (no reasoning blocks declared)"]
+    result = coverage_gate_mod.evaluate(data)
+    notes = [f"semantic coverage gate: {result['semantic_gate']}"]
+    notes += [f"REVIEW {rr}" for rr in result["review_reasons"]]
+    if result["semantic_gate"] == "FAIL":
+        return [f"[coverage-gate] {b}" for b in result["blocking_reasons"]], notes
+    return [], notes
+
+
 def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys_path: str | None,
         skip_self_tests: bool) -> tuple[list[str], list[str]]:
     failures: list[str] = []
@@ -581,6 +679,22 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         failures += [f"[verify] {f}" for f in a_fail]
         notes += a_notes
 
+    # Anti-hardcoding audit of the skill's own scripts/prompts.
+    hc_fail, hc_notes = audit_mod.audit_paths([Path(__file__).resolve().parent.parent])
+    failures += [f"[anti-hardcoding] {f}" for f in hc_fail]
+    notes += hc_notes
+
+    # Reasoning pipeline: mandatory-for-behavioural, then each stage's gate.
+    for _checker in (check_reasoning_required, check_behavior_model, check_coverage_hypotheses,
+                     check_retrieval, check_verifications, check_semantic_coverage, check_coverage_gate):
+        _f, _n = _checker(manifest_path)
+        failures += _f
+        notes += _n
+    # Final Pre-UAC integration cross-checks the plan body against the reasoning blocks.
+    _if, _in = integration_mod.check_integration(_load_manifest_dict(manifest_path), body)
+    failures += _if
+    notes += _in
+
     if not skip_self_tests:
         try:
             self_tests = _load("test_skill_scripts", "test_skill_scripts.py")
@@ -590,6 +704,15 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_run_gates()
             self_tests.test_extract_acs()
             self_tests.test_compact_view()
+            self_tests.test_semantic_explorer()
+            self_tests.test_anti_hardcoding()
+            self_tests.test_behavior_model()
+            self_tests.test_coverage_hypotheses()
+            self_tests.test_missing_questions()
+            self_tests.test_hypothesis_verifier()
+            self_tests.test_coverage_gate()
+            self_tests.test_uac_integration()
+            self_tests.test_reasoning_required()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
