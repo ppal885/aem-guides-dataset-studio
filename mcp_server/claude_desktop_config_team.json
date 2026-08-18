@@ -1,13 +1,13 @@
 {
   "_comment": "TEAM preset — HTTP/SSE mode. Connects to the shared VM backend. No clone, no Python, no torch needed on your machine.",
-  "_setup_1": "Replace VM_HOST below with the VM's Nginx-reachable host or IP (SSE is exposed via Nginx on port 4502 at /sse).",
+  "_setup_1": "Preconfigured for the shared VM at 10.42.46.78 (SSE exposed via Nginx on port 4502 at /sse). You must be on the corporate network / VPN that can reach this private IP.",
   "_setup_2": "Copy the mcpServers block into your own claude_desktop_config.json (Windows: %APPDATA%/Claude/claude_desktop_config.json, macOS: ~/Library/Application Support/Claude/claude_desktop_config.json), then fully restart Claude Desktop.",
   "_setup_3": "Cursor users: put the same mcpServers block in .cursor/mcp.json instead.",
   "_tools": "Gives you: guides_test_plan_generator, search_jira_history (query the team's indexed past UACs/plans), index_test_plan (push your own validated plan into the shared jira_qa so the whole team can retrieve it), plus find_recipes / lookup_dita_spec / lookup_aem_guides / lookup_dita_attribute / review_dita_xml / fix_dita_xml / generate_dita / search_jira_issues / list_jobs / get_job_status.",
   "_vm_owner_note": "On the VM the SSE server must be running behind Nginx:  python3 mcp_server/server.py --sse   (defaults MCP_SSE_HOST=0.0.0.0, MCP_SSE_PORT=4502). Keep the VM on latest main and restart the backend so search_jira_history and index_test_plan endpoints exist.",
   "mcpServers": {
     "aem-guides-dataset-studio": {
-      "url": "http://VM_HOST:4502/sse"
+      "url": "http://10.42.46.78:4502/sse"
     }
   }
 }
