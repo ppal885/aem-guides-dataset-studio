@@ -49,6 +49,7 @@ integration_mod = _load("uac_integration", "uac_integration.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
+cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 
 REQUIRED_MANIFEST_KEYS = ("issue", "attachments", "rag_probes", "indexed_history_run", "clones")
 
@@ -347,6 +348,13 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 f"({', '.join(state_compat_mod.detect_signals(_idata))}) but no state_compatibility exploration "
                 "recorded - address CLEAN/FIXED/BUGGY-old state and whether old-state recovery is required"
             )
+        # CrossSurfaceImpactResolver: validate a cross_surface block when present; note
+        # a multi-output signal without one (a REGRESSION_TARGET needs shared-path evidence).
+        if cross_surface_mod.is_present(_idata):
+            failures += [f"[cross-surface] {p}" for p in cross_surface_mod.validate_cross_surface(_idata["cross_surface"])]
+        elif coverage_gate_mod.is_present(_idata) and cross_surface_mod.multi_output_signal(_idata):
+            notes.append("REVIEW cross-surface: multiple output surfaces in scope but no cross_surface classification "
+                         "(separate REFERENCE_ORACLE from evidence-backed REGRESSION_TARGET)")
 
     # Semantic Coverage Gate (only when the manifest declares active DITA semantics).
     sc_fail, sc_notes = check_semantic_coverage(manifest_path)
@@ -370,6 +378,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_disposition_classifier()
             self_tests.test_oracle_builder()
             self_tests.test_state_compatibility()
+            self_tests.test_cross_surface_resolver()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

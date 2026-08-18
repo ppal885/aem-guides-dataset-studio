@@ -36,6 +36,7 @@ relevance_mod = _load("relevance_prioritizer", "relevance_prioritizer.py")
 disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
 oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
 state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
+cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -905,6 +906,39 @@ def test_reasoning_required() -> None:
         check("full reasoning set satisfies the requirement", f == [])
 
 
+def test_cross_surface_resolver() -> None:
+    cs = cross_surface_mod
+
+    # a comparison baseline (semantic equivalence) is fine as a REFERENCE_ORACLE
+    ref = [{"surface": "Native PDF", "impact_class": "SEMANTIC_EQUIVALENCE_ONLY", "role": "REFERENCE_ORACLE"}]
+    check("semantic-equivalence surface as REFERENCE_ORACLE passes", cs.validate_cross_surface(ref) == [])
+
+    # ...but semantic equivalence alone cannot make it a REGRESSION_TARGET
+    bad = [{"surface": "HTML5", "impact_class": "SEMANTIC_EQUIVALENCE_ONLY", "role": "REGRESSION_TARGET", "evidence": ["shows same semantics"]}]
+    check("semantic-equivalence-only REGRESSION_TARGET is rejected", any("not proof of impact" in p for p in cs.validate_cross_surface(bad)))
+
+    # no-evidence-of-impact cannot be a regression target
+    none_ev = [{"surface": "DITA-OT PDF", "impact_class": "NO_EVIDENCE_OF_IMPACT", "role": "REGRESSION_TARGET", "evidence": ["x"]}]
+    check("no-evidence-of-impact REGRESSION_TARGET is rejected", any("not proof of impact" in p for p in cs.validate_cross_surface(none_ev)))
+
+    # a shared-path surface with evidence is a valid REGRESSION_TARGET
+    good = [{"surface": "Legacy AEM Sites", "impact_class": "SHARED_AFFECTED_PATH", "role": "REGRESSION_TARGET", "evidence": ["shares TOC path helper"]}]
+    check("shared-path REGRESSION_TARGET with evidence passes", cs.validate_cross_surface(good) == [])
+    # ...but the same shared-path target with no evidence is rejected
+    good_no_ev = [{"surface": "Legacy AEM Sites", "impact_class": "SHARED_AFFECTED_PATH", "role": "REGRESSION_TARGET", "evidence": []}]
+    check("shared-path REGRESSION_TARGET without evidence is rejected", any("must cite evidence" in p for p in cs.validate_cross_surface(good_no_ev)))
+
+    # vocab guards
+    check("invalid impact_class rejected", any("impact_class" in p for p in cs.validate_cross_surface([{"surface": "X", "impact_class": "SORTA", "role": "REFERENCE_ORACLE"}])))
+    check("invalid role rejected", any("role" in p for p in cs.validate_cross_surface([{"surface": "X", "impact_class": "NO_EVIDENCE_OF_IMPACT", "role": "MAYBE"}])))
+
+    # multi-output signal detection
+    check("two+ publishing modes is a multi-output signal",
+          cs.multi_output_signal({"behavior_model": {"publishing_modes": ["Native PDF", "New AEM Site"]}}) is True)
+    check("single publishing mode is not a multi-output signal",
+          cs.multi_output_signal({"behavior_model": {"publishing_modes": ["New AEM Site"]}}) is False)
+
+
 def test_state_compatibility() -> None:
     sc = state_compat_mod
 
@@ -1138,6 +1172,7 @@ def main() -> int:
     test_disposition_classifier()
     test_oracle_builder()
     test_state_compatibility()
+    test_cross_surface_resolver()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
