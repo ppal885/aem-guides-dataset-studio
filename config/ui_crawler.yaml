@@ -36,6 +36,17 @@ action_policy:
     - preview
     - filter
     - properties
+    # Guides editor left-nav panels + editor modes (read-only navigation)
+    - collections
+    - explorer
+    - map
+    - outline
+    - conditions
+    - more
+    - author
+    - source
+    - side_by_side
+    - overview
   blocked_action_patterns:
     - delete
     - move
@@ -74,6 +85,10 @@ fixtures:
 # rest from here. The Assets UI is where Guides content lives.
 seed_surfaces:
   - "assets.html/content/dam"
+  # Guides web editor shell (opens Collections/Explorer/Map/Outline/Conditions
+  # panels even without a specific topic). For the richest capture, set
+  # fixtures.editor_url above to the FULL url of a topic open in your editor.
+  - "libs/fmdita/clientlibs/xmleditor/page.html?appMode=author&leftPanel=collection_panel&leftPanelState=1&rightPanelState=1"
 
 output:
   directory: ui_evidence
