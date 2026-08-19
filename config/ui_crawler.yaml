@@ -85,10 +85,10 @@ fixtures:
 # rest from here. The Assets UI is where Guides content lives.
 seed_surfaces:
   - "assets.html/content/dam"
-  # Guides web editor shell (opens Collections/Explorer/Map/Outline/Conditions
-  # panels even without a specific topic). For the richest capture, set
-  # fixtures.editor_url above to the FULL url of a topic open in your editor.
-  - "libs/fmdita/clientlibs/xmleditor/page.html?appMode=author&leftPanel=collection_panel&leftPanelState=1&rightPanelState=1"
+  # NOTE: the Guides web editor only opens with a topic loaded (a src=<path>
+  # param). An editor URL WITHOUT src redirects to /aem/search.html, so the
+  # editor entry is provided via fixtures.editor_url above (paste the FULL url of
+  # a topic open in your editor), not as a bare shell seed here.
 
 output:
   directory: ui_evidence
