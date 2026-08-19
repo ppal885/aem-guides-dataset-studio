@@ -13,8 +13,14 @@ credential prefill (only if the provider supports it).
 """
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
 AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
+
+# Hosts/paths that indicate we are still on the Adobe IMS sign-in flow (NOT the
+# authenticated app). Deliberately specific - we must not match the AEM "author"
+# host, whose name contains the substring "auth".
+_LOGIN_MARKERS = ("adobelogin.com", "ims-na", "auth.services.adobe", "/ims/", "signin", "/login")
 
 
 def storage_state_exists(config):
@@ -56,11 +62,17 @@ def interactive_login(config, *, timeout_ms=300000):
         print("\n[ui_harvester] Complete the Adobe SSO / MFA sign-in in the opened "
               "browser window. The session will be saved automatically once you "
               "reach the authenticated AEM author UI.\n")
-        # Wait until we are clearly inside the authenticated app (URL leaves the IMS
-        # login host) or the human closes the login. Poll on a stable app signal.
-        page.wait_for_url(lambda url: "ims-na" not in url and "auth" not in url.lower()
-                          and config.base_url.split("//")[-1].split("/")[0] in url,
-                          timeout=timeout_ms)
+        # Wait until we are clearly inside the authenticated app: the URL is on the
+        # configured AEM author host and carries no IMS/login markers. We match the
+        # host explicitly (never the bare substring "auth", which the author host
+        # itself contains).
+        target_host = urlsplit(config.base_url).netloc.lower()
+
+        def _is_authenticated(url):
+            u = (url or "").lower()
+            return target_host in u and not any(m in u for m in _LOGIN_MARKERS)
+
+        page.wait_for_url(_is_authenticated, timeout=timeout_ms)
         context.storage_state(path=config.storage_state)
         browser.close()
     return config.storage_state
