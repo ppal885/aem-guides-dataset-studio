@@ -18,6 +18,12 @@ import re
 
 PREDICATE_DIMENSIONS = ("ENTITY_TYPE", "METADATA", "STATE", "SURFACE", "PERMISSION", "SELECTION", "CONFIG", "ENTRY_POINT")
 
+# Provenance of a CONFIG term's config key: verified against product code/docs vs
+# copied unverified from the reporter/ticket (often a typo/transposition). A CONFIG
+# predicate that grounds an AC must be verified or carried as an Open Question.
+VERIFIED_KEY_PROVENANCE = ("CODE", "PRODUCT_DOC", "OSGI_CONFIG", "DTD", "SPEC")
+UNVERIFIED_KEY_PROVENANCE = ("REPORTER", "TICKET", "PARAPHRASE", "UNKNOWN")
+
 # One capability can be exposed through several render forms / entry points on the SAME
 # surface (a direct toolbar button, an overflow "more" menu, a context menu, a shortcut).
 # A responsive condition - viewport width, browser zoom, density - selects which form
@@ -189,6 +195,26 @@ def config_terms_missing_key(block):
     return out
 
 
+def config_terms_missing_provenance(block):
+    """CONFIG predicate terms that name a key but declare no key_provenance. The
+    gate surfaces these as NEEDS_REVIEW so each config key is explicitly marked
+    verified (code/doc) vs unverified (reporter/ticket) before it grounds an AC."""
+    out = []
+    if not isinstance(block, dict):
+        return out
+    for cap in (block.get("capabilities") or []):
+        if not isinstance(cap, dict):
+            continue
+        for term in (cap.get("predicate_terms") or []):
+            if not isinstance(term, dict) or term.get("dimension") != "CONFIG":
+                continue
+            has_key = bool(str(term.get("config_key", "") or "").strip())
+            if has_key and not str(term.get("key_provenance", "") or "").strip():
+                out.append(str(cap.get("capability", "?")))
+                break
+    return out
+
+
 def detect_responsive_signals(manifest, plan_text=""):
     """Signals that a capability renders through multiple forms selected by a responsive
     condition (viewport/zoom/density) - the direct-button vs overflow-menu situation."""
@@ -262,6 +288,29 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
                 elif open_ids and ref not in open_ids:
                     problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] "
                                     f"prerequisite_open_question_ref '{ref}' is not in the plan's open_questions")
+
+    # Config-key provenance: a CONFIG predicate that names a key copied unverified
+    # from the reporter/ticket must be code/doc-verified or made an Open Question.
+    for i, cap in enumerate(caps):
+        if not isinstance(cap, dict):
+            continue
+        for j, term in enumerate(cap.get("predicate_terms") or []):
+            if not isinstance(term, dict) or term.get("dimension") != "CONFIG":
+                continue
+            prov = str(term.get("key_provenance", "") or "").strip()
+            if prov and prov not in VERIFIED_KEY_PROVENANCE + UNVERIFIED_KEY_PROVENANCE:
+                problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}].key_provenance "
+                                f"must be one of {', '.join(VERIFIED_KEY_PROVENANCE + UNVERIFIED_KEY_PROVENANCE)}")
+            elif prov in UNVERIFIED_KEY_PROVENANCE:
+                ref = str(term.get("verification_open_question_ref", "") or "").strip()
+                if not ref:
+                    problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] is a CONFIG "
+                                    f"predicate with UNVERIFIED provenance ({prov}) - a reporter/ticket-supplied key "
+                                    "is frequently a typo/transposition; verify it against product code/docs or carry "
+                                    "it as an Open Question via verification_open_question_ref")
+                elif open_ids and ref not in open_ids:
+                    problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] "
+                                    f"verification_open_question_ref '{ref}' is not in the plan's open_questions")
 
     # shared-predicate groups must carry shared evidence and reference known capabilities.
     for g, group in enumerate(block.get("shared_predicate_groups", []) or []):

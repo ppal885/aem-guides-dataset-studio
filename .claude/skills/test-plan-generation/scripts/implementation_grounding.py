@@ -22,6 +22,14 @@ It is generic - it hardcodes no specific endpoint, operation, or class. Stdlib o
 
 ARTIFACT_KINDS = ("api", "operation", "handler", "method", "service_class", "config_key")
 
+# Provenance of a config KEY string: whether the exact key was verified against
+# product code/docs, or merely copied from the reporter/ticket (frequently a typo
+# or transposition - e.g. a reporter's "uuid.duplicate.move.old" vs the real
+# "duplicate.uuid.move.old.file"). A config_key that grounds an acceptance
+# criterion must be code/doc-verified or explicitly carried as an Open Question.
+VERIFIED_KEY_PROVENANCE = ("CODE", "PRODUCT_DOC", "OSGI_CONFIG", "DTD", "SPEC")
+UNVERIFIED_KEY_PROVENANCE = ("REPORTER", "TICKET", "PARAPHRASE", "UNKNOWN")
+
 # Strong signals that a ticket concerns a named backend/API *contract* artifact.
 # Deliberately narrow: merely citing a .java file (as any code-grounded DITA/publishing
 # plan does) must NOT activate this gate - only an API/service-contract surface does.
@@ -101,11 +109,12 @@ def is_present(manifest):
     return isinstance(manifest, dict) and isinstance(manifest.get("implementation_grounding"), dict)
 
 
-def validate_implementation_grounding(block):
+def validate_implementation_grounding(block, *, open_question_ids=None):
     """Validate a manifest `implementation_grounding` block. Returns problem strings."""
     if not isinstance(block, dict):
         return ["implementation_grounding must be a JSON object"]
     problems = []
+    open_ids = set(open_question_ids or [])
     if not isinstance(block.get("active", True), bool):
         problems.append("implementation_grounding.active must be a boolean")
     if not block.get("active", True):
@@ -140,6 +149,28 @@ def validate_implementation_grounding(block):
                 problems.append(
                     f"named_artifacts[{i}] ('{name or '?'}') must cite at least one file:line evidence for the inspected handler"
                 )
+        # Config-key provenance: a config_key artifact must not rest on a
+        # reporter/ticket-supplied key string that was never verified in code/docs.
+        if kind == "config_key":
+            prov = str(art.get("key_provenance", "")).strip()
+            if prov and prov not in VERIFIED_KEY_PROVENANCE + UNVERIFIED_KEY_PROVENANCE:
+                problems.append(
+                    f"named_artifacts[{i}].key_provenance must be one of "
+                    f"{', '.join(VERIFIED_KEY_PROVENANCE + UNVERIFIED_KEY_PROVENANCE)}"
+                )
+            elif prov in UNVERIFIED_KEY_PROVENANCE and material:
+                ref = str(art.get("verification_open_question_ref", "") or "").strip()
+                if not ref:
+                    problems.append(
+                        f"named_artifacts[{i}] ('{name or '?'}') is a config_key with UNVERIFIED provenance "
+                        f"({prov}) - a reporter/ticket-supplied key is frequently a typo or transposition; grep it "
+                        f"against the product code/docs and set key_provenance to a verified source, or carry it as "
+                        f"an Open Question via verification_open_question_ref"
+                    )
+                elif open_ids and ref not in open_ids:
+                    problems.append(
+                        f"named_artifacts[{i}].verification_open_question_ref '{ref}' is not in the plan's open_questions"
+                    )
         # A ticket premise about CURRENT behaviour must be verified against the code.
         premise = str(art.get("premise", "")).strip()
         if premise:
@@ -155,6 +186,21 @@ def validate_implementation_grounding(block):
             if material and not any(str(e).strip() for e in (evidence or [])):
                 problems.append(f"named_artifacts[{i}] premise verification needs cited code evidence")
     return problems
+
+
+def config_key_artifacts_missing_provenance(block):
+    """Material config_key artifacts that declare no key_provenance at all. The gate
+    surfaces these as NEEDS_REVIEW so every config key is explicitly marked as
+    code/doc-verified vs reporter/ticket-supplied before it grounds an AC."""
+    out = []
+    if not isinstance(block, dict):
+        return out
+    for art in (block.get("named_artifacts") or []):
+        if not isinstance(art, dict) or art.get("kind") != "config_key":
+            continue
+        if art.get("material", True) and not str(art.get("key_provenance", "") or "").strip():
+            out.append(str(art.get("artifact", "?")))
+    return out
 
 
 def summarize(manifest, plan_text=""):

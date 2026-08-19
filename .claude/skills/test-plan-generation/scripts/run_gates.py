@@ -608,6 +608,10 @@ def check_capability_eligibility(manifest_path: str | None, plan_text: str = "")
             notes.append(f"REVIEW capability-eligibility: capability [{cap}] has a CONFIG predicate that names a "
                          "mode/behaviour but cites no actual config key (e.g. xmleditor.autocheckout) - ground the "
                          "config-driven criterion in the real OSGi key/property, not a paraphrase")
+        for cap in cap_elig_mod.config_terms_missing_provenance(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] has a CONFIG key with no key_provenance "
+                         "- mark it CODE/PRODUCT_DOC (verified) vs REPORTER/TICKET (unverified) and grep the exact "
+                         "key against the product; a reporter-supplied key is frequently a typo/transposition")
         if not failures:
             notes.append("capability eligibility validated")
         return failures, notes
@@ -717,9 +721,18 @@ def check_implementation_grounding(manifest_path: str | None, plan_text: str = "
     if not data:
         return [], []
     if impl_grounding_mod.is_present(data):
+        block = data["implementation_grounding"]
         failures = [f"[impl-grounding] {p}" for p in
-                    impl_grounding_mod.validate_implementation_grounding(data["implementation_grounding"])]
-        return failures, ["implementation grounding validated"] if not failures else []
+                    impl_grounding_mod.validate_implementation_grounding(
+                        block, open_question_ids=_open_question_ids(data))]
+        notes = []
+        for cap in impl_grounding_mod.config_key_artifacts_missing_provenance(block):
+            notes.append(f"REVIEW impl-grounding: config_key '{cap}' declares no key_provenance - mark it "
+                         "CODE/PRODUCT_DOC (verified) or REPORTER/TICKET (unverified), and grep the exact key "
+                         "against the product before it grounds an AC (reporter-supplied keys are often typos)")
+        if not failures:
+            notes.append("implementation grounding validated")
+        return failures, notes
     if data.get("behaviour_matters", True) is False:
         return [], ["implementation grounding skipped (behaviour_matters is false)"]
     if impl_grounding_mod.is_active(data, plan_text):
