@@ -2954,6 +2954,16 @@ def test_capability_eligibility() -> None:
         {"dimension": "CONFIG", "expected_value": "xmleditor.autocheckout (Disable edit without locking the file) enabled", "evidence_ids": ["XmlEditorConfig"], "material": True}]}]}
     check("CONFIG term citing xmleditor.autocheckout is not flagged", ce.config_terms_missing_key(with_key) == [])
 
+    # Config PREREQUISITE product decision must be surfaced as an Open Question.
+    prereq_cap = {"active": True, "capabilities": [{"capability": "Save under lock", "predicate_terms": [
+        {"dimension": "CONFIG", "config_key": "xmleditor.autocheckout", "expected_value": "xmleditor.autocheckout enabled", "evidence_ids": ["XmlEditorConfig"], "material": True, "prerequisite": True}]}]}
+    check("CONFIG prerequisite without an open-question ref is rejected",
+          any("prerequisite" in p for p in ce.validate_capability_eligibility(prereq_cap)))
+    prereq_ok = {"active": True, "capabilities": [{"capability": "Save under lock", "predicate_terms": [
+        {"dimension": "CONFIG", "config_key": "xmleditor.autocheckout", "expected_value": "xmleditor.autocheckout enabled", "evidence_ids": ["XmlEditorConfig"], "material": True, "prerequisite": True, "prerequisite_open_question_ref": "OQ-5"}]}]}
+    check("CONFIG prerequisite surfaced as an open question passes",
+          ce.validate_capability_eligibility(prereq_ok, open_question_ids=["OQ-5"]) == [])
+
 
 def test_scope_conflict() -> None:
     sc = scope_conflict_mod

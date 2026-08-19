@@ -244,6 +244,25 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
                     problems.append(f"capability_eligibility.capabilities[{i}].selection_open_question_ref '{ref}' "
                                     "is not in the plan's open_questions")
 
+    # Config PREREQUISITE product decision: when a CONFIG term is a prerequisite (the fix is
+    # a no-op unless the setting is ON - a decision usually taken during UAC), it must be
+    # surfaced as an Open Question so QA verifies the environment and it is documented, not
+    # buried in a boundary AC.
+    for i, cap in enumerate(caps):
+        if not isinstance(cap, dict):
+            continue
+        for j, term in enumerate(cap.get("predicate_terms") or []):
+            if isinstance(term, dict) and term.get("dimension") == "CONFIG" and term.get("prerequisite"):
+                ref = str(term.get("prerequisite_open_question_ref", "") or "").strip()
+                if not ref:
+                    problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] is a CONFIG "
+                                    "prerequisite (the fix does not work unless the setting is on) - surface it with a "
+                                    "prerequisite_open_question_ref in Open Questions; a config prerequisite/product "
+                                    "decision must be visible, not assumed")
+                elif open_ids and ref not in open_ids:
+                    problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] "
+                                    f"prerequisite_open_question_ref '{ref}' is not in the plan's open_questions")
+
     # shared-predicate groups must carry shared evidence and reference known capabilities.
     for g, group in enumerate(block.get("shared_predicate_groups", []) or []):
         gtag = f"capability_eligibility.shared_predicate_groups[{g}]"
