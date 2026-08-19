@@ -2926,6 +2926,26 @@ def test_capability_eligibility() -> None:
         "scope_conflict": {"active": True, "problem_threads": [{"thread_id": "T1", "problem_statement": "p", "status": "CONFIRMED"}], "alignment": "PARTIAL_SCOPE_FIX", "open_question_refs": []}})
     check("coverage_gate FAILs a hidden scope mismatch (Item 19)", gate_fail["semantic_gate"] == "FAIL")
 
+    # Entry-point / render-form consistency (responsive direct-button vs overflow-menu).
+    def ep_cap(**o):
+        b = {"capability": "Insert Keyword", "predicate_terms": [term()],
+             "entry_points": [
+                 {"form": "DIRECT_BUTTON", "dispatch": "AUTHOR_INSERT_ELEMENT", "evidence_ids": ["E1"]},
+                 {"form": "OVERFLOW_MENU", "dispatch": "AUTHOR_INSERT_KEYWORD", "evidence_ids": ["E2"]}],
+             "entry_point_consistency": "VERIFIED_SAME", "entry_point_consistency_evidence": ["fix unifies dispatch"]}
+        b.update(o); return b
+    check("entry points with resolved consistency pass", ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap()]}) == [])
+    check("multiple entry points without consistency rejected",
+          any("entry_point_consistency" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_point_consistency="")]})))
+    check("VERIFIED_SAME without evidence rejected",
+          any("needs evidence" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_point_consistency_evidence=[])]})))
+    check("invalid entry-point form rejected",
+          any("form must be one of" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_points=[{"form": "WIDGET", "evidence_ids": ["E1"]}, {"form": "OVERFLOW_MENU", "evidence_ids": ["E2"]}])]})))
+    resp_manifest = {"issue": {"description": "the keyword shows as a direct button at 50% zoom; in the overflow menu it works"}}
+    under = ce.entrypoint_underexplored({"capabilities": [{"capability": "Insert Keyword", "predicate_terms": [term()]}]}, resp_manifest)
+    check("responsive signals + <2 entry points is under-explored", under == ["Insert Keyword"])
+    check("no responsive signals -> not under-explored", ce.entrypoint_underexplored({"capabilities": [{"capability": "X"}]}, {"issue": {"summary": "plain dialog title fix"}}) == [])
+
 
 def test_scope_conflict() -> None:
     sc = scope_conflict_mod

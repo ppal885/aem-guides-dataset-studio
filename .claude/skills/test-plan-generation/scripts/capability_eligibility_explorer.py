@@ -14,7 +14,22 @@ refuses to let "same surface" stand in for "same predicate."
 It is generic - it hardcodes no specific action, entity, or mapping. Stdlib only.
 """
 
-PREDICATE_DIMENSIONS = ("ENTITY_TYPE", "METADATA", "STATE", "SURFACE", "PERMISSION", "SELECTION", "CONFIG")
+PREDICATE_DIMENSIONS = ("ENTITY_TYPE", "METADATA", "STATE", "SURFACE", "PERMISSION", "SELECTION", "CONFIG", "ENTRY_POINT")
+
+# One capability can be exposed through several render forms / entry points on the SAME
+# surface (a direct toolbar button, an overflow "more" menu, a context menu, a shortcut).
+# A responsive condition - viewport width, browser zoom, density - selects which form
+# renders, and each form may dispatch through a DIFFERENT code path. Divergence between
+# render forms is a real defect class, so they must be enumerated and their behavioural
+# consistency resolved, never assumed.
+ENTRY_POINT_FORMS = ("DIRECT_BUTTON", "OVERFLOW_MENU", "CONTEXT_MENU", "KEYBOARD_SHORTCUT", "INLINE", "OTHER")
+ENTRY_POINT_CONSISTENCY = ("VERIFIED_SAME", "OPEN_QUESTION")
+# Signals that a capability has multiple render forms selected by a responsive condition.
+RESPONSIVE_ENTRYPOINT_SIGNALS = (
+    "overflow menu", "more menu", "kebab", "toolbar button", "direct button", "zoom",
+    "responsive", "viewport", "collapse", "density", "hidden under more", "moves to more",
+    "promoted to a", "shown as a button", "in the more", "overflow",
+)
 SELECTION_POLICIES = (
     "ALL_SELECTED_ITEMS_MUST_SUPPORT", "ANY_SELECTED_ITEM_SUPPORTS", "PRIMARY_ITEM_CONTROLS",
     "ACTION_DISABLED_FOR_MULTISELECT", "NOT_APPLICABLE", "UNKNOWN",
@@ -111,7 +126,58 @@ def _validate_capability(cap, i):
             if m == "SEMANTIC_COLLISION" and ev.get("supports_predicate"):
                 problems.append(f"{tag}.eligibility_evidence[{k}] is a SEMANTIC_COLLISION and must not support the "
                                 "capability predicate - it describes a different capability that merely shares a term")
+
+    # entry-point / render-form consistency: a capability exposed through several forms
+    # (direct button vs overflow menu vs context menu, selected by a responsive condition)
+    # must have each form's dispatch evidenced and their behavioural consistency resolved.
+    eps = cap.get("entry_points")
+    if eps is not None:
+        if not isinstance(eps, list):
+            problems.append(f"{tag}.entry_points must be a list")
+        else:
+            for e, ep in enumerate(eps):
+                etag = f"{tag}.entry_points[{e}]"
+                if not isinstance(ep, dict):
+                    problems.append(f"{etag} must be an object")
+                    continue
+                if str(ep.get("form", "")).strip() not in ENTRY_POINT_FORMS:
+                    problems.append(f"{etag}.form must be one of {', '.join(ENTRY_POINT_FORMS)}")
+                if ep.get("material", True) and not (ep.get("evidence_ids") or []):
+                    problems.append(f"{etag} is a material render form but cites no evidence_ids - each form's "
+                                    "dispatch/behaviour must be evidence-backed, not assumed from the other form")
+            real = [x for x in eps if isinstance(x, dict)]
+            if len(real) >= 2:
+                consistency = str(cap.get("entry_point_consistency", "")).strip()
+                if consistency not in ENTRY_POINT_CONSISTENCY:
+                    problems.append(f"{tag} exposes multiple entry points (render forms) but entry_point_consistency is "
+                                    f"unresolved - set VERIFIED_SAME (with evidence) or OPEN_QUESTION; do not assume the "
+                                    "forms behave the same")
+                elif consistency == "VERIFIED_SAME" and not (cap.get("entry_point_consistency_evidence") or []):
+                    problems.append(f"{tag} entry_point_consistency VERIFIED_SAME needs evidence that every render form "
+                                    "dispatches the same behaviour")
+                elif consistency == "OPEN_QUESTION" and not str(cap.get("entry_point_open_question_ref", "") or "").strip():
+                    problems.append(f"{tag} entry_point_consistency OPEN_QUESTION needs an entry_point_open_question_ref")
     return problems
+
+
+def detect_responsive_signals(manifest, plan_text=""):
+    """Signals that a capability renders through multiple forms selected by a responsive
+    condition (viewport/zoom/density) - the direct-button vs overflow-menu situation."""
+    t = _text(manifest, plan_text)
+    return sorted(set(s for s in RESPONSIVE_ENTRYPOINT_SIGNALS if s in t))
+
+
+def entrypoint_underexplored(block, manifest, plan_text=""):
+    """Capabilities that show responsive/multi-form signals but enumerate fewer than two
+    entry points - the reasoner may be testing only one render form and missing a divergent
+    one (the direct-button-vs-overflow defect class). Surfaced by the gate as NEEDS_REVIEW."""
+    if not isinstance(block, dict) or not detect_responsive_signals(manifest, plan_text):
+        return []
+    out = []
+    for cap in (block.get("capabilities") or []):
+        if isinstance(cap, dict) and len(cap.get("entry_points") or []) < 2:
+            out.append(str(cap.get("capability", "?")))
+    return out
 
 
 def validate_capability_eligibility(block, *, open_question_ids=None, multiselect=False):

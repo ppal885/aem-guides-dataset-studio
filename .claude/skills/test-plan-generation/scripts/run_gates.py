@@ -600,6 +600,10 @@ def check_capability_eligibility(manifest_path: str | None, plan_text: str = "")
         for grp in cap_elig_mod.bundled_groups_without_evidence(data["capability_eligibility"]):
             notes.append(f"REVIEW capability-eligibility: capabilities [{grp}] are grouped under one predicate "
                          "without shared evidence - same surface does not imply same eligibility")
+        for cap in cap_elig_mod.entrypoint_underexplored(data["capability_eligibility"], data, plan_text):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] shows responsive/multi-form signals "
+                         "(direct button vs overflow menu / zoom-dependent) but fewer than two entry points are "
+                         "enumerated - each render form can dispatch differently; verify all forms, not just one")
         if not failures:
             notes.append("capability eligibility validated")
         return failures, notes
