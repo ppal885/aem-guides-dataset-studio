@@ -41,12 +41,29 @@ def extract_acceptance_criteria(markdown: str) -> list[str]:
     return out
 
 
+QE_ASSIGNEE_FIELD = "customfield_18512"  # AEM Guides Jira "QE Assignee" user field
+
+
+def _qe_assignee_username(client, key: str) -> str | None:
+    """Return the QE Assignee's Jira username (for a [~name] mention), or None."""
+    try:
+        issue = client.get_issue(key, fields=QE_ASSIGNEE_FIELD)
+        qe = (issue.get("fields") or {}).get(QE_ASSIGNEE_FIELD)
+        if isinstance(qe, dict):
+            return qe.get("name") or None
+    except Exception:  # noqa: BLE001 - tagging is best-effort, never block the AC post
+        return None
+    return None
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--key", required=True)
     p.add_argument("--plan", default=None)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--label", default="Needs_Human_Review")
+    p.add_argument("--no-qe-tag", action="store_true",
+                   help="do not add a comment tagging the QE Assignee to review")
     args = p.parse_args()
 
     from app.services.test_plan_artifact_service import TEST_PLANS_DIR, _normalize_jira_key
@@ -77,6 +94,16 @@ def main() -> int:
     c = JiraClient()
     c.set_acceptance_criteria(key, ac_text, review_label=args.label, review_comment=comment)
     print(f"\nOK: updated {key} Acceptance Criteria field, added label {args.label} and a review comment.")
+
+    # Tag the QE Assignee to review, in a follow-up comment (best-effort).
+    if not args.no_qe_tag:
+        qe = _qe_assignee_username(c, key)
+        if qe:
+            c.add_comment(key, f"[~{qe}] please review the acceptance criteria for this case (QE Assignee). "
+                               f"These AI-drafted ACs are in the Acceptance Criteria field and labelled {args.label}.")
+            print(f"OK: added a comment tagging QE Assignee [~{qe}] to review.")
+        else:
+            print("NOTE: no QE Assignee set on the issue - skipped the review tag.")
     return 0
 
 
