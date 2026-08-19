@@ -32,6 +32,9 @@ AC_LINE_RE = re.compile(
 )
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 RESERVED_FIELD_RE = re.compile(r"(?:^|\s)(?:Given|When|Then|Evidence:)\s")
+# Clean AC format (default): a plain "- AC-##: <statement>" with no tag / sphere /
+# Given|When|Then. The strict grammar above is still accepted for backward compatibility.
+CLEAN_AC_LINE_RE = re.compile(r"^- (?P<id>AC-\d{2}):\s+(?P<statement>\S(?:.*\S)?)$")
 
 
 class AcceptanceCriterion(TypedDict):
@@ -47,7 +50,15 @@ class AcceptanceCriterion(TypedDict):
 
 
 def parse_ac_line(line: str) -> AcceptanceCriterion | None:
-    """Parse one AC only when it exactly matches the canonical grammar."""
+    """Parse one AC. Accepts the clean default format `- AC-##: <statement>` and the
+    legacy strict Given|When|Then grammar (for backward compatibility)."""
+    clean = CLEAN_AC_LINE_RE.fullmatch(line)
+    if clean:
+        return {
+            "id": clean.group("id"), "status": "", "sphere": "",
+            "given": "", "when": "", "then": clean.group("statement"),
+            "evidence": "", "raw": line[2:], "schema_version": AC_SCHEMA_VERSION,
+        }
     match = AC_LINE_RE.fullmatch(line)
     if not match:
         return None

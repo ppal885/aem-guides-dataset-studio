@@ -235,6 +235,51 @@ class JiraClient:
         data = self._request("POST", f"/rest/api/{self._api}/issue", json_data={"fields": fields})
         return data
 
+    def update_issue(
+        self,
+        issue_key: str,
+        fields: Optional[dict] = None,
+        update: Optional[dict] = None,
+    ) -> None:
+        """Update issue fields and/or apply an `update` verb block (e.g. add labels).
+
+        Example: update_issue("GUIDES-1", fields={"customfield_13400": "..."},
+                              update={"labels": [{"add": "Needs_Human_Review"}]}).
+        """
+        body: dict = {}
+        if fields:
+            body["fields"] = fields
+        if update:
+            body["update"] = update
+        if not body:
+            return
+        self._request("PUT", f"/rest/api/{self._api}/issue/{issue_key}", json_data=body)
+
+    def add_comment(self, issue_key: str, body: str) -> dict:
+        """Add a comment to an issue."""
+        return self._request(
+            "POST", f"/rest/api/{self._api}/issue/{issue_key}/comment", json_data={"body": body}
+        )
+
+    def set_acceptance_criteria(
+        self,
+        issue_key: str,
+        text: str,
+        *,
+        ac_field_id: str = "customfield_13400",
+        review_label: str = "Needs_Human_Review",
+        review_comment: Optional[str] = None,
+    ) -> None:
+        """Post ONLY the acceptance criteria into the AC field, add a human-review label,
+        and (optionally) a short review comment. Deliberately writes only the AC text."""
+        self.update_issue(
+            issue_key,
+            fields={ac_field_id: text},
+            update={"labels": [{"add": review_label}]},
+        )
+        if review_comment:
+            self.add_comment(issue_key, review_comment)
+
     def transition_issue(
         self,
         issue_key: str,
