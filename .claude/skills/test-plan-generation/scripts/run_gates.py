@@ -78,6 +78,8 @@ authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolve
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
+cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
+scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -572,6 +574,62 @@ def _load_manifest_dict(manifest_path: str | None) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _open_question_ids(data: dict) -> list[str]:
+    ids = []
+    for oq in (data.get("open_questions") or []):
+        if isinstance(oq, str):
+            ids.append(oq)
+        elif isinstance(oq, dict) and oq.get("id"):
+            ids.append(str(oq["id"]))
+    return ids
+
+
+def check_capability_eligibility(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Decompose same-surface actions into per-capability eligibility predicates.
+    Declared block validated fully (incl. multi-select-unknown-must-be-open-question);
+    bundling capabilities under one predicate without shared evidence -> NEEDS_REVIEW;
+    active-by-signal but undeclared -> REVIEW note."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    notes: list[str] = []
+    if cap_elig_mod.is_present(data):
+        ms = cap_elig_mod.multiselect_in_scope(data, plan_text)
+        failures = [f"[capability-eligibility] {p}" for p in cap_elig_mod.validate_capability_eligibility(
+            data["capability_eligibility"], open_question_ids=_open_question_ids(data), multiselect=ms)]
+        for grp in cap_elig_mod.bundled_groups_without_evidence(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capabilities [{grp}] are grouped under one predicate "
+                         "without shared evidence - same surface does not imply same eligibility")
+        if not failures:
+            notes.append("capability eligibility validated")
+        return failures, notes
+    if data.get("behaviour_matters", True) is False:
+        return [], ["capability eligibility skipped (behaviour_matters is false)"]
+    if cap_elig_mod.is_active(data, plan_text):
+        sig = ", ".join(cap_elig_mod.detect_signals(data, plan_text)[:5])
+        return [], [f"REVIEW capability-eligibility: several actions share one surface ({sig}) but no "
+                    "capability_eligibility decomposition is declared - do not assume they share one eligibility rule"]
+    return [], ["capability eligibility not applicable (no multi-action surface signals)"]
+
+
+def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
+    A material scope mismatch with no open question exposing it is a hard FAIL."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if scope_conflict_mod.is_present(data):
+        failures = [f"[scope-conflict] {p}" for p in scope_conflict_mod.validate_scope_conflict(
+            data["scope_conflict"], open_question_ids=_open_question_ids(data))]
+        return failures, ["scope conflict reconciled"] if not failures else []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["scope reconciliation skipped (behaviour_matters is false)"]
+    if scope_conflict_mod.is_active(data, plan_text):
+        return [], ["REVIEW scope-conflict: a fix/PR is present alongside multiple reported problems but no "
+                    "scope_conflict reconciliation is declared - compare Jira scope vs fix scope and keep threads separate"]
+    return [], ["scope reconciliation not applicable (no fix-vs-multi-problem signal)"]
+
+
 def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list[str]]:
     """Mandatory reasoning pipeline for behavioural tickets: a behavior_model is
     required when behaviour_matters is not false, and verifications are required when
@@ -733,6 +791,14 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _igf, _ign = check_implementation_grounding(manifest_path, body)
     failures += _igf
     notes += _ign
+    # Capability eligibility: same-surface actions decomposed per capability.
+    _cef, _cen = check_capability_eligibility(manifest_path, body)
+    failures += _cef
+    notes += _cen
+    # Scope conflict: reconcile reported Jira scope vs current fix scope.
+    _scf, _scn = check_scope_conflict(manifest_path, body)
+    failures += _scf
+    notes += _scn
     # Final Pre-UAC integration cross-checks the plan body against the reasoning blocks.
     _if, _in = integration_mod.check_integration(_load_manifest_dict(manifest_path), body)
     failures += _if
@@ -808,6 +874,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_change_impact()
             self_tests.test_pre_uac_critic()
             self_tests.test_implementation_grounding()
+            self_tests.test_capability_eligibility()
+            self_tests.test_scope_conflict()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

@@ -56,6 +56,8 @@ authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolve
 change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
 critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
+cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
+scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2862,6 +2864,70 @@ def test_implementation_grounding() -> None:
     check("invalid artifact kind is rejected", any("kind must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[art(kind="widget")]))))
 
 
+def test_capability_eligibility() -> None:
+    ce = cap_elig_mod
+    check("multi-action toolbar activates", ce.is_active({"issue": {"description": "the toolbar shows View source, Edit topics and Share buttons"}}) is True)
+    check("single-action ticket does not activate (Case A)", ce.is_active({"issue": {"summary": "fix the export dialog title"}}) is False)
+
+    def term(**o):
+        b = {"dimension": "ENTITY_TYPE", "operator": "in", "expected_value": "dita", "evidence_ids": ["E1"], "material": True}
+        b.update(o); return b
+
+    def cap(name="Cap A", **o):
+        b = {"capability": name, "predicate_terms": [term()]}
+        b.update(o); return b
+
+    def block(**o):
+        b = {"active": True, "capabilities": [cap("Cap A"), cap("Cap B", predicate_terms=[term(dimension="METADATA", expected_value="uuid present")])]}
+        b.update(o); return b
+
+    check("distinct per-capability predicates pass (Case C)", ce.validate_capability_eligibility(block()) == [])
+    check("material predicate without evidence rejected",
+          any("evidence" in p for p in ce.validate_capability_eligibility(block(capabilities=[cap(predicate_terms=[term(evidence_ids=[])])]))))
+    check("invalid predicate dimension rejected",
+          any("dimension" in p for p in ce.validate_capability_eligibility(block(capabilities=[cap(predicate_terms=[term(dimension="VIBES")])]))))
+    check("empty capabilities rejected", any("non-empty" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": []})))
+    grouped_ok = block(shared_predicate_groups=[{"capabilities": ["Cap A", "Cap B"], "shared_predicate": "content type is dita", "evidence": ["E9"]}])
+    check("shared predicate group with evidence passes (Case B)", ce.validate_capability_eligibility(grouped_ok) == [])
+    grouped_no_ev = block(shared_predicate_groups=[{"capabilities": ["Cap A", "Cap B"], "shared_predicate": "same", "evidence": []}])
+    check("shared group without evidence is flagged for review", ce.bundled_groups_without_evidence(grouped_no_ev) == ["Cap A, Cap B"])
+    check("group with unknown capability rejected",
+          any("not decomposed" in p for p in ce.validate_capability_eligibility(block(shared_predicate_groups=[{"capabilities": ["Cap A", "Cap Z"], "evidence": ["E1"]}]))))
+    check("no multiselect -> no selection requirement (Case D)", ce.validate_capability_eligibility(block(), multiselect=False) == [])
+    ms_unknown = block(capabilities=[cap(selection_policy="UNKNOWN")])
+    check("multiselect UNKNOWN without open question rejected", any("selection_policy" in p for p in ce.validate_capability_eligibility(ms_unknown, multiselect=True)))
+    ms_ref = block(capabilities=[cap(selection_policy="UNKNOWN", selection_open_question_ref="OQ-1")])
+    check("multiselect UNKNOWN with open-question ref allowed", ce.validate_capability_eligibility(ms_ref, multiselect=True, open_question_ids=["OQ-1"]) == [])
+    coll = block(capabilities=[cap(eligibility_evidence=[{"capability_match": "SEMANTIC_COLLISION", "supports_predicate": True}])])
+    check("semantic-collision evidence cannot support predicate", any("SEMANTIC_COLLISION" in p for p in ce.validate_capability_eligibility(coll)))
+
+
+def test_scope_conflict() -> None:
+    sc = scope_conflict_mod
+    check("fix + multi-problem activates", sc.is_active({"issue": {"description": "the PR fixes the button; also there is a separate font preview problem"}}) is True)
+    check("no fix signal does not activate", sc.is_active({"issue": {"summary": "buttons show on wrong assets"}}) is False)
+
+    def thread(**o):
+        b = {"thread_id": "T1", "problem_statement": "buttons wrong", "status": "CONFIRMED"}
+        b.update(o); return b
+
+    def block(**o):
+        b = {"active": True, "problem_threads": [thread()], "alignment": "FULL_SCOPE_FIX", "open_question_refs": []}
+        b.update(o); return b
+
+    check("full alignment passes with no open question (Case E)", sc.validate_scope_conflict(block()) == [])
+    check("partial alignment without open question rejected",
+          any("surfaced as an Open Question" in p for p in sc.validate_scope_conflict(block(alignment="PARTIAL_SCOPE_FIX"))))
+    check("partial alignment with open question passes",
+          sc.validate_scope_conflict(block(alignment="PARTIAL_SCOPE_FIX", open_question_refs=["OQ-2"]), open_question_ids=["OQ-2"]) == [])
+    check("unresolved_scope_without_open_question detects hidden mismatch",
+          sc.unresolved_scope_without_open_question(block(alignment="UNKNOWN_FIX_SCOPE")) is True)
+    check("secondary-defect thread mapped to AC rejected (Case F)",
+          any("must NOT map" in p for p in sc.validate_scope_conflict(block(problem_threads=[thread(status="SECONDARY_DEFECT", maps_to_ac=True)]))))
+    check("invalid thread status rejected", any("status" in p for p in sc.validate_scope_conflict(block(problem_threads=[thread(status="MAYBE")]))))
+    check("invalid alignment rejected", any("alignment" in p for p in sc.validate_scope_conflict(block(alignment="SORTA"))))
+
+
 def test_pre_uac_critic() -> None:
     cr = critic_mod
 
@@ -2944,6 +3010,8 @@ def main() -> int:
     test_change_impact()
     test_pre_uac_critic()
     test_implementation_grounding()
+    test_capability_eligibility()
+    test_scope_conflict()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

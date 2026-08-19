@@ -35,6 +35,7 @@ DISPOSITIONS = (
     "DIAGNOSTIC_CHECK",
     "AUTOMATION_GAP",
     "NFR_RISK",
+    "SECONDARY_DEFECT",
     "OPEN_QUESTION",
     "OUT_OF_SCOPE",
 )
@@ -87,9 +88,9 @@ def validate_disposition(entry):
             f"describes WHAT the product does; reclassify as IMPLEMENTATION_ORACLE (or set "
             f"internal_contract_is_requirement:true if the internal contract IS the requirement)"
         )
-    # An implementation oracle must not be routed to an AC.
-    if disp == "IMPLEMENTATION_ORACLE" and entry.get("maps_to_ac"):
-        problems.append(f"{tag}: an IMPLEMENTATION_ORACLE must not map to an Acceptance Criterion")
+    # An implementation oracle or a secondary defect must not be routed to a product AC.
+    if disp in ("IMPLEMENTATION_ORACLE", "SECONDARY_DEFECT") and entry.get("maps_to_ac"):
+        problems.append(f"{tag}: a {disp} must not map to a product Acceptance Criterion")
     return problems
 
 
