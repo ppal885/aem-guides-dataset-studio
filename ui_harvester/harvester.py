@@ -18,6 +18,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from . import actions as action_mod
 from . import dom_extract, rag_records, screenshot as shot_mod, transitions as trans_mod
@@ -120,15 +121,22 @@ class Harvester:
             if s:
                 urls.append(s if s.startswith("http") else base + "/" + s.lstrip("/"))
         fx = self.config.fixtures or {}
-        # A full editor URL is the most reliable way into the New Editor surfaces.
+        # Preferred (good practice): a repository PATH fixture + a host-agnostic URL
+        # template. The template supports {base} (base_url), {path} (raw repo path)
+        # and {path_enc} (url-encoded path). The crawler builds the editor deep link
+        # so no environment/topic/state-specific URL is baked into config.
+        template = str(fx.get("editor_url_template", "") or "").strip()
+        if template:
+            for key in ("root_map_with_keys", "dita_map", "topic_with_keys", "dita_topic"):
+                path = str(fx.get(key, "") or "").strip()
+                if path:
+                    urls.append(template.replace("{base}", base)
+                                        .replace("{path_enc}", quote(path, safe=""))
+                                        .replace("{path}", path))
+        # Escape hatch (discouraged): an explicit full URL, for one-off manual use.
         editor_url = str(fx.get("editor_url", "") or "").strip()
         if editor_url:
             urls.append(editor_url)
-        template = str(fx.get("editor_url_template", "") or "").strip()
-        for key in ("root_map_with_keys", "dita_map", "topic_with_keys", "dita_topic"):
-            path = str(fx.get(key, "") or "").strip()
-            if path and template:
-                urls.append(template.format(path=path))
         if not urls:
             urls = [self.config.base_url]  # fallback only when nothing is configured
         seen, out = set(), []

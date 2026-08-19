@@ -64,7 +64,7 @@ action_policy:
 # Execution-context only. Fixture VALUES are never ingested as product knowledge.
 fixtures:
   root: ""
-  dita_topic: ""
+  dita_topic: ""    # repo path of a topic to open in the editor, e.g. /content/dam/<folder>/<topic>.dita
   dita_map: ""
   ditaval: ""
   image: ""
@@ -72,13 +72,12 @@ fixtures:
   topic_with_keys: ""
   root_map_with_keys: ""
   collection: ""
-  # The most reliable way into the New Editor surfaces: open a DITA topic/map in
-  # the Guides web editor in your browser and paste the FULL url here.
+  # Host-agnostic editor deep-link template (good practice: no env/topic-specific
+  # URL is hardcoded). Placeholders: {base}=base_url, {path}=repo path,
+  # {path_enc}=url-encoded path. Combined with the dita_topic/dita_map path above.
+  editor_url_template: "{base}/libs/fmdita/clientlibs/xmleditor/page.html?appMode=author&src={path_enc}"
+  # Escape hatch (discouraged): a full, environment-specific editor URL.
   editor_url: ""
-  # Optional: a URL template with {path}; combined with dita_map/dita_topic above
-  # to build editor deep links. Example (confirm your deployment's pattern):
-  #   "https://author-p34572-e147958.adobeaemcloud.com/ui#/aem/editor.html{path}"
-  editor_url_template: ""
 
 # Entry points that take the crawler INTO Guides (the AEM author root alone lands
 # on the Start page). Paths are relative to base_url; the crawler discovers the
