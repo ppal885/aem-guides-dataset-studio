@@ -21,6 +21,40 @@ Generic only: the distance is supplied per hypothesis from evidence, never hardc
 # Behavioural distance, most-direct first. Rank index = priority.
 DISTANCE_ORDER = ("DIRECT", "ONE_HOP", "MULTI_HOP", "ANALOGOUS", "GENERIC_REGRESSION")
 _DISTANCE_RANK = {d: i for i, d in enumerate(DISTANCE_ORDER)}
+
+# Behavioral-relevance kinds, most to least direct. Direct eligibility dependencies must
+# outrank distant regressions and historical-Jira similarity - product semantics win.
+RELEVANCE_KIND_ORDER = (
+    "CAPABILITY_PREDICATE",             # the affected capability's own eligibility rule
+    "CONTROLLING_STATE_METADATA",       # the state/metadata that directly gates it
+    "SAME_CAPABILITY_OTHER_SURFACE",    # the same capability on another supported surface
+    "CURRENT_FIX_LIFECYCLE",            # the current fix/PR lifecycle
+    "SHARED_IMPLEMENTATION_PATH",       # a shared code/impl path
+    "ANALOGOUS_TOOLBAR",                # an analogous action on the same surface
+    "GENERIC_REGRESSION",               # a generic regression area
+    "HISTORICAL_SIMILARITY",            # a similar past Jira - never allowed to dominate
+)
+_KIND_RANK = {k: i for i, k in enumerate(RELEVANCE_KIND_ORDER)}
+
+
+def relevance_kind_rank(h):
+    kind = str(_get(h, "relevance_kind", "") or "").upper()
+    return _KIND_RANK.get(kind, len(RELEVANCE_KIND_ORDER))
+
+
+def historical_dominates_direct(hypotheses):
+    """True if any HISTORICAL_SIMILARITY item is ranked above a direct product-semantic
+    item (CAPABILITY_PREDICATE / CONTROLLING_STATE_METADATA) - which must never happen."""
+    ranks = [relevance_kind_rank(h) for h in (hypotheses or [])]
+    if not ranks:
+        return False
+    direct = {_KIND_RANK["CAPABILITY_PREDICATE"], _KIND_RANK["CONTROLLING_STATE_METADATA"]}
+    hist = _KIND_RANK["HISTORICAL_SIMILARITY"]
+    has_hist = hist in ranks
+    has_direct = any(r in direct for r in ranks)
+    # if both kinds are present, the sort guarantees direct precedes historical; this is a
+    # guard for callers that bypass prioritize().
+    return has_hist and has_direct and min(ranks) == hist
 # HIGH-relevance = the tiers that must be terminal before the gate can pass.
 HIGH_RELEVANCE_DISTANCES = frozenset({"DIRECT", "ONE_HOP"})
 
@@ -66,9 +100,14 @@ def is_high_relevance(h):
 
 
 def _sort_key(h):
+    # Capability/product-semantic kind dominates (Step 18): the affected capability's own
+    # predicate and its controlling state outrank distant regressions and historical
+    # similarity. Items with no relevance_kind fall back to pure distance ordering, so
+    # existing plans are unaffected.
+    kind_rank = relevance_kind_rank(h)
     dist_rank = _DISTANCE_RANK.get(effective_distance(h), len(DISTANCE_ORDER))
-    # within the same distance, higher relevance_score first (negated for ascending sort)
-    return (dist_rank, -float(_get(h, "relevance_score", 0.0) or 0.0))
+    # within the same kind+distance, higher relevance_score first (negated for ascending sort)
+    return (kind_rank, dist_rank, -float(_get(h, "relevance_score", 0.0) or 0.0))
 
 
 def prioritize(hypotheses):

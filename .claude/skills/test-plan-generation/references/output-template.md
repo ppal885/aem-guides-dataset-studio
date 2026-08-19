@@ -182,3 +182,30 @@ Examples:
 - Upgrade impact: For on-premise release/upgrade scope, confirm source/target versions, retained custom configs, changed defaults, manual post-upgrade steps, and backward-compatibility expectations.
 - DITA/output: Confirm whether PDF, HTML5, Native PDF, DITA-OT, preset, or plugin-specific output must be validated.
 ```
+
+## Capability-eligibility & scope-alignment output (when those blocks are active)
+
+These are NOT new top-level sections (the validated plan stays eleven sections). They are
+projections woven into the existing sections and the chat view, shown only when the
+`capability_eligibility` / `scope_conflict` manifest blocks are active.
+
+- **Per-capability Acceptance Criteria.** When several actions share a surface, write a
+  separate AC per capability with its own eligibility predicate (entity type / metadata /
+  state / surface / permission / selection). Never one AC covering all buttons. If a
+  capability's predicate is unproven, keep it `[Proposed]` or move it to Open Questions.
+- **Implementation Verification (inside Test Scenarios).** Findings dispositioned
+  `IMPLEMENTATION_ORACLE` / `DIAGNOSTIC_CHECK` go under an implementation-verification
+  scenario bullet, never as a customer-facing AC. Every functional scenario must carry a
+  PRIMARY_PRODUCT_ORACLE; "no exception" alone never passes it.
+- **Secondary Findings (inside Test Scenarios or Open Questions).** A `SECONDARY_DEFECT`
+  discovered during investigation is recorded as a separate finding/thread, never folded
+  into the main acceptance contract. A reported-but-unaddressed second problem must be
+  surfaced (SEPARATE_THREAD / OUT_OF_SCOPE / SEPARATE_DEFECT_CANDIDATE), not dropped.
+- **Scope / Fix Alignment (inside Understanding From Jira and Open Questions).** Show this
+  ONLY when a material discrepancy exists between reported Jira scope and current fix scope:
+  - Reported Scope: <what the Jira/customer reported>
+  - Current Fix Evidence: <what the PR/fix actually changes>
+  - Alignment: FULL / PARTIAL / DIFFERENT / UNKNOWN
+  - Unresolved: <the Open Question that surfaces the gap>
+  A PARTIAL/DIFFERENT/UNKNOWN alignment MUST have a matching Open Question, or `run_gates`
+  fails the plan.

@@ -199,6 +199,24 @@ def validate_behavior_model(data):
             "writer in `unknowns` (a cleanup problem must also investigate the path that creates the state)"
         )
 
+    # Optional per-capability decomposition: when several capabilities share a surface,
+    # each may carry its own inputs/eligibility/surfaces/state/outputs instead of one
+    # issue-wide predicate. Backward-compatible (the block is optional).
+    caps = data.get("capabilities")
+    if caps is not None:
+        if not isinstance(caps, list):
+            problems.append("behavior_model.capabilities must be a list")
+        else:
+            for i, cap in enumerate(caps):
+                if not isinstance(cap, dict):
+                    problems.append(f"behavior_model.capabilities[{i}] must be an object")
+                    continue
+                if not str(cap.get("name", "")).strip():
+                    problems.append(f"behavior_model.capabilities[{i}] is missing 'name'")
+                for lf in ("inputs", "eligibility", "surfaces", "state_dependencies", "outputs", "consumers", "unknowns"):
+                    if lf in cap and not isinstance(cap[lf], list):
+                        problems.append(f"behavior_model.capabilities[{i}].{lf} must be a list")
+
     return problems
 
 

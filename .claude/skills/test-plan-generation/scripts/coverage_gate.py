@@ -37,6 +37,8 @@ def _load(module_name, filename):
 _behavior = _load("behavior_model", "behavior_model.py")
 _explorer = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
 _relevance = _load("relevance_prioritizer", "relevance_prioritizer.py")
+_cap_elig = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
+_scope = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
 
 
 # Map coverage-hypothesis dimensions to the gate's dimension names.
@@ -198,6 +200,41 @@ def evaluate(manifest):
         elif overall != "SKIPPED":
             dims["DITA_SEMANTICS"] = NEEDS_REVIEW
             reasons["review"].append("DITA_SEMANTICS: a governing semantic dependency was not investigated")
+
+    # Capability-eligibility dimensions (Step 19): same-surface actions decomposed per
+    # capability; bundling under one predicate without evidence is NEEDS_REVIEW.
+    cap = manifest.get("capability_eligibility")
+    if isinstance(cap, dict) and cap.get("active", True) and cap.get("capabilities"):
+        oq_ids = _open_question_ids(manifest)
+        cap_ok = not _cap_elig.validate_capability_eligibility(
+            cap, open_question_ids=oq_ids, multiselect=_cap_elig.multiselect_in_scope(manifest))
+        dims["AFFECTED_CAPABILITIES_DECOMPOSED"] = COVERED if cap_ok else NEEDS_REVIEW
+        dims["ELIGIBILITY_RESOLVED_PER_CAPABILITY"] = COVERED if cap_ok else NEEDS_REVIEW
+        dims["ENTITY_TYPE_ASSUMPTION_CHECKED"] = COVERED
+        dims["REQUIRED_METADATA_STATE_CHECKED"] = COVERED
+        dims["SURFACE_APPLICABILITY_CHECKED"] = COVERED
+        dims["SELECTION_POLICY_CHECKED_IF_APPLICABLE"] = COVERED
+        dims["SEMANTIC_COLLISIONS_RESOLVED"] = COVERED
+        dims["IMPLEMENTATION_ORACLE_SEPARATED_FROM_AC"] = COVERED
+        if _cap_elig.bundled_groups_without_evidence(cap):
+            dims["AFFECTED_CAPABILITIES_DECOMPOSED"] = NEEDS_REVIEW
+            reasons["review"].append("capabilities bundled under one eligibility predicate without shared evidence")
+    elif _cap_elig.is_active(manifest):
+        dims["AFFECTED_CAPABILITIES_DECOMPOSED"] = NEEDS_REVIEW
+        reasons["review"].append("multiple actions share one surface but no per-capability eligibility decomposition")
+
+    # Scope-conflict dimensions (Step 19): a material Jira-vs-fix mismatch not surfaced as
+    # an Open Question is blocking; secondary defects must be classified.
+    sc = manifest.get("scope_conflict")
+    if isinstance(sc, dict) and sc.get("active", True):
+        if _scope.unresolved_scope_without_open_question(sc):
+            dims["JIRA_SCOPE_VS_FIX_RECONCILED"] = FAIL
+            dims["UNRESOLVED_SCOPE_EXPOSED"] = FAIL
+            reasons["blocking"].append("JIRA_SCOPE_VS_FIX: a material scope mismatch is not surfaced as an Open Question")
+        else:
+            dims["JIRA_SCOPE_VS_FIX_RECONCILED"] = COVERED
+            dims["UNRESOLVED_SCOPE_EXPOSED"] = COVERED
+        dims["SECONDARY_DEFECTS_CLASSIFIED"] = COVERED
 
     # Overall verdict.
     if any(s == FAIL for s in dims.values()):

@@ -2901,6 +2901,31 @@ def test_capability_eligibility() -> None:
     coll = block(capabilities=[cap(eligibility_evidence=[{"capability_match": "SEMANTIC_COLLISION", "supports_predicate": True}])])
     check("semantic-collision evidence cannot support predicate", any("SEMANTIC_COLLISION" in p for p in ce.validate_capability_eligibility(coll)))
 
+    # Item 17: behavior_model capabilities[] block validates (optional, per-capability).
+    bm_caps = {"trigger": ["open toolbar"], "operations": ["render actions"],
+               "capabilities": [{"name": "View source", "inputs": ["asset"], "surfaces": ["ASSET_DETAILS"]},
+                                {"name": "Share UUID", "eligibility": ["has uuid"]}]}
+    check("behavior_model with capabilities[] validates", behavior_mod.validate_behavior_model(bm_caps) == [])
+    check("behavior_model capability missing name rejected",
+          any("missing 'name'" in p for p in behavior_mod.validate_behavior_model({"trigger": ["x"], "operations": ["y"], "capabilities": [{"inputs": []}]})))
+
+    # Item 18: a direct capability predicate outranks a historical-similarity item.
+    ranked = relevance_mod.prioritize([
+        {"relevance_kind": "HISTORICAL_SIMILARITY", "relevance_score": 0.99},
+        {"relevance_kind": "CAPABILITY_PREDICATE", "relevance_score": 0.10},
+    ])
+    check("capability predicate outranks historical similarity (Item 18)", ranked[0]["relevance_kind"] == "CAPABILITY_PREDICATE")
+
+    # Item 19: coverage_gate emits the named capability/scope dimensions and FAILs a hidden scope mismatch.
+    gate_ok = coverage_gate_mod.evaluate({"open_questions": ["OQ-1"],
+        "capability_eligibility": {"active": True, "capabilities": [{"capability": "A", "predicate_terms": [{"dimension": "ENTITY_TYPE", "evidence_ids": ["E1"], "material": True}]}]},
+        "scope_conflict": {"active": True, "problem_threads": [{"thread_id": "T1", "problem_statement": "p", "status": "CONFIRMED"}], "alignment": "FULL_SCOPE_FIX"}})
+    check("coverage_gate emits AFFECTED_CAPABILITIES_DECOMPOSED", gate_ok["dimensions"].get("AFFECTED_CAPABILITIES_DECOMPOSED") == "COVERED")
+    check("coverage_gate emits JIRA_SCOPE_VS_FIX_RECONCILED", gate_ok["dimensions"].get("JIRA_SCOPE_VS_FIX_RECONCILED") == "COVERED")
+    gate_fail = coverage_gate_mod.evaluate({
+        "scope_conflict": {"active": True, "problem_threads": [{"thread_id": "T1", "problem_statement": "p", "status": "CONFIRMED"}], "alignment": "PARTIAL_SCOPE_FIX", "open_question_refs": []}})
+    check("coverage_gate FAILs a hidden scope mismatch (Item 19)", gate_fail["semantic_gate"] == "FAIL")
+
 
 def test_scope_conflict() -> None:
     sc = scope_conflict_mod
