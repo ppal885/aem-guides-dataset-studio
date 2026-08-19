@@ -124,3 +124,6 @@ backend/storage/**/failure_log.jsonl
 
 # Machine-specific MCP client config (local absolute paths) -- .mcp.json.example is the template.
 .mcp.json
+ui_evidence/auth/
+ui_evidence/screenshots/
+**/storage_state.json

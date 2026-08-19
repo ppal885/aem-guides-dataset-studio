@@ -1,0 +1,69 @@
+environment:
+  base_url: "https://author-p34572-e147958.adobeaemcloud.com/"
+  deployment_model: cloud
+
+authentication:
+  username_env: AEM_USERNAME
+  password_env: AEM_PASSWORD
+  storage_state: ui_evidence/auth/storage_state.json
+
+browser:
+  type: chromium
+  headed: true
+  viewport:
+    width: 1536
+    height: 960
+
+crawler:
+  mode: smoke
+  max_states: 30
+  max_depth: 4
+  max_actions_per_state: 12
+  max_dialog_states: 40
+  navigation_timeout_ms: 20000
+  overall_timeout_s: 1800
+  mutation_mode: false
+
+# Action safety policy (merged with built-in defaults; defaults always block
+# destructive tokens even if omitted here).
+action_policy:
+  safe_action_patterns:
+    - open
+    - close
+    - expand
+    - collapse
+    - switch
+    - preview
+    - filter
+    - properties
+  blocked_action_patterns:
+    - delete
+    - move
+    - rename
+    - publish
+    - upload
+    - save
+    - create
+    - check_in
+    - reprocess
+    - submit
+  safe_selectors: []
+  blocked_selectors: []
+
+# Execution-context only. Fixture VALUES are never ingested as product knowledge.
+fixtures:
+  root: ""
+  dita_topic: ""
+  dita_map: ""
+  ditaval: ""
+  image: ""
+  multimedia: ""
+  topic_with_keys: ""
+  root_map_with_keys: ""
+  collection: ""
+
+# Seed surfaces are entry points only; the crawler discovers the current set.
+seed_surfaces: []
+
+output:
+  directory: ui_evidence
