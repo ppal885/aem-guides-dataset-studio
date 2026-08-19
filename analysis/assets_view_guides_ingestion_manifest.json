@@ -1,0 +1,27 @@
+{
+  "ingestion": "Assets View collaboration (SOURCE-1..4, AEM_ASSETS) + AEM Guides preview/Source/UUID (SOURCE-5, AEM_GUIDES) -> existing RAG (Chroma AEM_GUIDES)",
+  "code_path_reused": "experience_league_index_service.crawl_experience_league_rag (Playwright, RecursiveCharacterTextSplitter, all-MiniLM-L6-v2, vector_store_service.add_documents, content-hash dedup). SSRF path allowlist widened at RUNTIME ONLY for the assets-view path; SOURCE-5 (-guides) is already allowed by DEFAULT_PATH_PREFIXES. No file edit, no parallel pipeline, no recursion.",
+  "collection": "AEM_GUIDES (single shared collection)",
+  "collection_count_before": 1661,
+  "collection_count_after": 2890,
+  "authority": "OFFICIAL_PRODUCT_DOCUMENTATION",
+  "source_type": "EXPERIENCE_LEAGUE",
+  "cross_product_note": "SOURCE-1..4 are AEM_ASSETS_PLATFORM_CONTRACT; SOURCE-5 is AEM_GUIDES_PRODUCT_CONTRACT. Kept separate; distinguishable by source_url. Assets Share Link != Guides Share UUID Link; Asset Source Relation != Guides Source View.",
+  "sources": [
+    {"id": "SOURCE-1", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/share-links-for-assets-view", "product": "AEM", "product_area": "AEM_ASSETS", "surface": "ASSETS_VIEW", "capability": "EXTERNAL_ASSET_SHARING", "chunks": 264, "status": "ingested"},
+    {"id": "SOURCE-2", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/manage-collections-assets-view", "product": "AEM", "product_area": "AEM_ASSETS", "surface": "ASSETS_VIEW", "capability": "COLLECTION_MANAGEMENT", "chunks": 273, "status": "ingested"},
+    {"id": "SOURCE-3", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/asset-relations-for-assets-view", "product": "AEM", "product_area": "AEM_ASSETS", "surface": "ASSETS_VIEW", "capability": "ASSET_RELATIONS", "chunks": 266, "status": "ingested"},
+    {"id": "SOURCE-4", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/manage-notifications-assets-view", "product": "AEM", "product_area": "AEM_ASSETS", "surface": "ASSETS_VIEW", "capability": "WATCH_AND_NOTIFICATIONS", "chunks": 266, "status": "ingested"},
+    {"id": "SOURCE-5", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/author-content/work-with-editor/create-preview-topics/web-editor-preview-topics", "product": "AEM_GUIDES", "product_area": "AUTHORING", "surface": "PREVIEW/ASSETS_UI/MAP_CONSOLE", "capability": "GUIDES_PREVIEW_SOURCE_UUID", "chunks": 160, "status": "ingested"}
+  ],
+  "totals": {"new_chunks": 1229, "collection_total": 2890},
+  "dedup": "content-hash + stable_chunk_id(url,index); idempotent on re-run.",
+  "provenance": "every chunk carries source_url/canonical_url/title/chunk_index/content_hash in Chroma metadata; product/surface/capability recoverable from source_url (not a queryable facet - same flat-metadata limitation noted in analysis/rag_ingestion_gaps.md).",
+  "screenshot_evidence": "No screenshot ingested - image ingestion is not part of the existing pipeline and was not built (per task constraint). The provided screenshot would be SUPPORTING_UI_EVIDENCE only, never the behavioural authority.",
+  "data_quality_warnings": [
+    "High per-page chunk counts (160-273) include left-nav/TOC/release-notes boilerplate.",
+    "Notification category ENUMERATION (Q18) did not surface as a clean chunk - left-nav TOC outranked it; the self-vs-other + watch-exception semantics (Requests / Assigned to me) DID surface.",
+    "UUID link move-survival / delete-invalidation lifecycle (Q26/Q27) not cleanly found in SOURCE-5 - the page documents creating/sharing the link and supported entity types, not the move/delete lifecycle; recorded as not-found, not fabricated.",
+    "Bullet glyphs render as replacement chars in console (display artifact)."
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "ingestion": "AEM Assets (as a Cloud Service) documentation -> existing RAG (Chroma collection AEM_GUIDES)",
+  "code_path_reused": "backend/app/services/experience_league_index_service.py :: crawl_experience_league_rag (Playwright fetch, RecursiveCharacterTextSplitter chunking, embedding_service all-MiniLM-L6-v2, vector_store_service.add_documents, content-hash dedup + merge_chunk_records). SSRF path allowlist widened at RUNTIME ONLY (monkeypatched els.DEFAULT_PATH_PREFIXES to add /en/docs/experience-manager-cloud-service/content/assets) - no file edit, not persisted.",
+  "collection": "AEM_GUIDES (single shared collection)",
+  "collection_count_before": 593,
+  "collection_count_after": 1661,
+  "product": "AEM",
+  "product_area": "AEM_ASSETS",
+  "deployment_model": "AEM_AS_A_CLOUD_SERVICE",
+  "authority": "OFFICIAL_PRODUCT_DOCUMENTATION",
+  "source_type": "EXPERIENCE_LEAGUE",
+  "recursive_crawl": false,
+  "cross_product_note": "AEM_ASSETS product behaviour != AEM_GUIDES product behaviour. These chunks are platform context only; distinguishable from AEM_GUIDES chunks by source_url (contains experience-manager-cloud-service/content/assets). They must never become an AEM Guides acceptance contract without downstream code/dependency proof.",
+  "sources": [
+    {"id": "SOURCE-1", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-view/navigate-assets-view", "capability": "ASSETS_VIEW", "sub_capability": "REPOSITORY_NAVIGATION", "chunks": 272, "status": "ingested"},
+    {"id": "SOURCE-2", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-cloud-changes", "capability": "ASSETS_PLATFORM", "sub_capability": "CLOUD_SERVICE_DIFFERENCES", "document_type": "COMPATIBILITY_MATRIX", "chunks": 265, "status": "ingested"},
+    {"id": "SOURCE-3", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/detect-duplicate-assets", "capability": "DUPLICATE_ASSET_DETECTION", "domain": "ASSET_INGESTION", "configuration_type": "ADMIN", "chunks": 262, "status": "ingested"},
+    {"id": "SOURCE-4", "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/folder-metadata-schema", "capability": "FOLDER_METADATA_SCHEMA", "domain": "ASSET_METADATA", "configuration_type": "ADMIN", "persistence": "CRX_REPOSITORY", "chunks": 269, "status": "ingested"}
+  ],
+  "totals": {"aem_assets_chunks": 1068, "aem_guides_chunks": 567, "legacy_no_provenance_chunks": 26, "collection_total": 1661},
+  "dedup": "content-hash + stable_chunk_id(url,index); an earlier tool-timeout partial run's chunks were overwritten idempotently by stable id (no duplicates).",
+  "provenance": "every chunk carries source_url + canonical_url + title + chunk_index + content_hash + chunk_content_hash + parser_version in Chroma metadata.",
+  "metadata_facet_limitation": "The reused pipeline stores FLAT Chroma metadata only (no product_area/deployment_model/capability/content_type/heading_path facet). Product-area and deployment-model are recoverable from source_url but are NOT queryable as a where-filter. The rich metadata schema and structured relation/feature-parity records requested by the task are captured in analysis/assets_cs_semantic_enrichment.json as sidecar evidence, not in the vector store, to honour the 'reuse existing infrastructure / no duplicate infrastructure' constraint.",
+  "data_quality_warnings": [
+    "High chunk count per page (262-272) - the pages include left-nav/TOC/release-notes boilerplate that was chunked alongside real content; real content ranks top in retrieval but boilerplate inflates counts and adds low-value chunks.",
+    "Bullet glyphs render as the replacement character in console output (cp1252 display artifact); verify stored encoding if bullet fidelity matters.",
+    "A few pre-existing legacy 'Manage files and folders' chunks (no source_url) surface at rank 2-3 for some duplicate-detection queries - weak cross-contamination, top hit always correct."
+  ]
+}

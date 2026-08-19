@@ -1,0 +1,67 @@
+{
+  "purpose": "Sidecar semantic enrichment for the 4 ingested AEM Assets Cloud Service docs. Consumed as run-time EVIDENCE by downstream reasoning; NOT a vector DB, NOT hardcoded QE rules. Every record is grounded in verbatim source content retrieved from the ingested chunks.",
+  "cross_product_safety": {
+    "rule": "AEM Assets documentation is PLATFORM context for AEM Guides, never an AEM Guides acceptance contract by itself. Ownership tags: GUIDES_PRODUCT_CONTRACT | ASSETS_PLATFORM_CONTRACT | PLATFORM_DEPENDENCY | SHARED_AEM_CAPABILITY | UNKNOWN_RELATIONSHIP.",
+    "all_records_here": "ASSETS_PLATFORM_CONTRACT",
+    "promotion_condition": "A record may inform an AEM Guides AC only after downstream reasoning proves the affected Guides workflow depends on that Assets capability (code/dependency evidence)."
+  },
+  "source_1_assets_view": {
+    "capability": "ASSETS_VIEW", "ui_surface": "ASSETS_VIEW",
+    "navigation_model": ["left sidebar (open/collapse to increase viewing area)", "browse folders from main UI or left sidebar", "asset preview via Details in the toolbar", "Settings configures Assets view options (e.g. Metadata)"],
+    "relations": [
+      {"relation": "UI_SURFACE_HAS_NAVIGATION", "source": "Assets view", "target": "left sidebar + folder browse", "evidence": "You can open or collapse the left sidebar... You can browse the folders from the main user interface or from the left sidebar.", "ownership": "ASSETS_PLATFORM_CONTRACT"},
+      {"relation": "ASSET_PREVIEW_EXPOSES_ACTION", "source": "asset preview", "target": "Details toolbar action", "evidence": "To preview an asset, select it and click Details from the toolbar at the top.", "ownership": "ASSETS_PLATFORM_CONTRACT"}
+    ]
+  },
+  "source_2_cloud_differences": {
+    "capability": "ASSETS_PLATFORM", "document_type": "COMPATIBILITY_MATRIX",
+    "differences": [
+      {"capability": "asset processing workflow", "legacy_context": "AEM_6_5", "cloud_context": "AEM_AS_A_CLOUD_SERVICE", "difference_type": "REPLACED", "legacy_mechanism": "DAM Asset Update default workflow", "replacement_mechanism": "asset microservices", "evidence": "The default workflow DAM Asset Update in previous versions of Experience Manager [is replaced]; Experience Manager uses ... asset microservices to process asset.", "ownership": "ASSETS_PLATFORM_CONTRACT"},
+      {"capability": "asset upload/download", "legacy_context": "AEM_6_5", "cloud_context": "AEM_AS_A_CLOUD_SERVICE", "difference_type": "WORKS_DIFFERENTLY", "replacement_mechanism": "direct binary access (direct binary upload protocol/APIs)", "evidence": "Experience Manager uses direct binary access principle to upload and download assets.", "ownership": "ASSETS_PLATFORM_CONTRACT"},
+      {"capability": "Classic UI", "legacy_context": "AEM_6_5", "cloud_context": "AEM_AS_A_CLOUD_SERVICE", "difference_type": "NOT_SUPPORTED", "evidence": "Removal of Classic UI.", "ownership": "ASSETS_PLATFORM_CONTRACT"}
+    ],
+    "version_context": ["AEM_6_5", "AEM_AS_A_CLOUD_SERVICE"]
+  },
+  "source_3_duplicate_detection": {
+    "capability": "DUPLICATE_ASSET_DETECTION",
+    "defaults": [
+      {"configuration": "Asset Duplication Detector", "default_value": "DISABLED_BY_DEFAULT", "effective_behavior": "no duplicate detection on upload until an admin enables it", "reason_or_limitation": "can have a performance impact depending on the size of the repository and the number of assets uploaded", "evidence": "Duplicate detection is disabled by default as it can have a performance impact depending on the size of the repository and the number of assets uploaded."}
+    ],
+    "enable_path": "Tools > Assets > Assets Configurations > Asset Duplication Detector > Enabled > Save",
+    "detection_metadata": {"field": "Detect Metadata", "value": "dam:sha1", "evidence": "dam:sha1 value for the Detect Metadata field ensures that duplicate assets are detected even if the filenames are different."},
+    "notification": {"behavior": "Experience Manager sends notifications of duplicate assets to the user", "evidence": "Once enabled, Experience Manager sends notifications of duplicate assets to [users]."},
+    "nfr_signal": {"risk_type": "PERFORMANCE", "capability": "duplicate asset detection", "scale_dimensions": ["repository size", "number of assets uploaded"], "documented_behavior": "performance impact scales with repository size and upload count", "note": "no SLA or numeric threshold stated in source; documented risk only"},
+    "conditional_behavior": "Duplicate Detection ENABLED -> asset upload -> duplicate evaluation (dam:sha1) -> notification to user",
+    "not_found_in_source": [
+      "RESULT_LIMIT / bounded number of duplicates surfaced to the user - NOT documented in the retrieved content (Q12 top distance ~0.41, no distinct chunk). Do not assume a limit exists.",
+      "OSGi legacy duplicate-detector configuration still-supported fallback - NOT found in the retrieved content (Q13 top distance ~0.62). Do not assert legacy-config compatibility for this page."
+    ]
+  },
+  "source_4_folder_metadata_schema": {
+    "capability": "FOLDER_METADATA_SCHEMA", "persistence": "CRX_REPOSITORY",
+    "property_mapping": {
+      "map_to_property": "relative CRX path under the folder node, starting with './'",
+      "examples": ["./jcr:content/metadata/dc:title stores the value at the folder's metadata node as dc:title", "./jcr:created is the asset creation date/time and is a PROTECTED property"],
+      "protected_property_guidance": "For protected properties Adobe recommends marking them as Disable Edit",
+      "evidence": "Map to Property: This property specifies the relative path of the folder node in the CRX repository where it is saved. It starts with './' ... ./jcr:created ... is a protected property. If you configure these properties, Adobe recommends that you mark them as Disable Edit."
+    },
+    "assignment_lifecycle": ["CREATE/EDIT schema in Tools > Assets > Folder Metadata Schemas", "SAVE via toolbar", "ASSIGN via 'Apply to Folders' -> select folder -> Apply", "OVERWRITE: if a metadata schema is already applied on the folder, applying a new one replaces it", "ASSIGN_DURING_FOLDER_CREATION: select a schema from the Folder Metadata Schema list when creating a folder"],
+    "persistence_semantics": {"schema_reference": "assigned schema is applied to the folder", "metadata_values": "folder metadata values are stored on the folder's metadata node (e.g. ./jcr:content/metadata/<prop>)", "evidence": "Open the metadata properties for the folder to which you applied the metadata schema... stores the value at the folder's metadata node."},
+    "relations": [
+      {"relation": "COMPONENT_MAPS_TO_PROPERTY", "evidence": "Map to Property: relative path of the folder node in CRX", "ownership": "ASSETS_PLATFORM_CONTRACT"},
+      {"relation": "METADATA_VALUE_STORED_ON_FOLDER", "evidence": "stores the value at the folder's metadata node", "ownership": "ASSETS_PLATFORM_CONTRACT"},
+      {"relation": "SCHEMA_ASSIGNED_TO_FOLDER", "evidence": "Apply to Folders -> select folder -> Apply", "ownership": "ASSETS_PLATFORM_CONTRACT"}
+    ],
+    "not_found_in_source": [
+      "Explicit MAPPING_CONFLICT / PRECEDENCE rule for two fields mapping to the same property - NOT documented in the retrieved content (Q17 top distance ~0.50). Do not invent a precedence rule.",
+      "A full enumerated form-component-type taxonomy was not cleanly separable from the property-config prose in the retrieved chunks; treat component types as documented-but-not-structured here."
+    ]
+  },
+  "cross_document_taxonomy": {
+    "AEM_ASSETS": {"ASSETS_VIEW": "SOURCE-1 repository navigation/preview", "CLOUD_SERVICE_PLATFORM": "SOURCE-2 ingestion/processing/6.5 differences", "DUPLICATE_ASSET_DETECTION": "SOURCE-3 upload/detection", "FOLDER_METADATA_SCHEMA": "SOURCE-4 folder metadata/CRX persistence"},
+    "note": "Retrieval taxonomy only; does NOT imply the four pages share a runtime implementation path."
+  },
+  "related_links": [
+    {"relationship": "RELATED_DOCUMENT", "note": "SOURCE-2/3/4 reference sibling Experience League pages (asset microservices, direct binary upload APIs, metadata schemas, 6.5 equivalents).", "ingestion_status": "NOT_INGESTED", "disposition": "FOLLOW_UP_INGESTION_CANDIDATE", "recursion": "not crawled this task per constraint"}
+  ]
+}

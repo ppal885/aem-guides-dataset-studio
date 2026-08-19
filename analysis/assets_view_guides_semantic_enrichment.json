@@ -1,0 +1,55 @@
+{
+  "purpose": "Sidecar semantic enrichment for SOURCE-1..5. Run-time EVIDENCE only; not a vector DB, not hardcoded QE rules. Grounded in verbatim retrieved content. Ownership tagged per record.",
+  "link_taxonomy": {
+    "ASSETS_EXTERNAL_SHARE_LINK": {"ownership": "AEM_ASSETS_PLATFORM_CONTRACT", "purpose": "external collaboration - generate a public link to an asset/folder/collection and share it", "traits": ["preview/download", "recipient may not need Assets View login (per share flow)", "expiration (default not cleanly stated in retrieved content)"], "evidence": "Assets view enables you to generate a link and share a[sset]... Copy the link from the Share Link field.", "not_found": "exact default-expiration value and recipient-login requirement not cleanly retrievable"},
+    "GUIDES_SHARE_UUID_LINK": {"ownership": "AEM_GUIDES_PRODUCT_CONTRACT", "purpose": "direct repository access to a Guides file via UUID identity", "supported_entities": ["DITA_MAP", "DITA_TOPIC", "IMAGE"], "supported_surfaces": ["ASSETS_UI", "DITA_MAP_CONSOLE", "TOPIC_PREVIEW", "IMAGE_PREVIEW"], "evidence": "Experience Manager Guides allows you to share the UUID-based links for DITA maps, topics, and image files... A new option Share UUID Link is shown in the toolbar of the above-mentioned areas.", "not_found": "move-survival and delete-invalidation lifecycle not stated on SOURCE-5; UUID-link-is-not-a-content-reference limitation not stated on SOURCE-5 (do not assert either from this page)"},
+    "disambiguation_rule": "These are different link contracts. Never answer a UUID move/delete-lifecycle question with Assets external-share semantics, or vice versa. Retrieval keeps them separable by product/source_url."
+  },
+  "source_disambiguation": {
+    "GUIDES_XML_SOURCE_VIEW": {"ownership": "AEM_GUIDES_PRODUCT_CONTRACT", "capability": "open the underlying XML of a file", "supported_files": ["DITA_MAP", "DITA_TOPIC", "DITAVAL"], "access": "open the file in Preview mode and select the Source icon", "evidence": "Open the XML source code of a file. You can view the underlying XML code of a map, topic or DITAVAL file by opening the file in the Preview mode and selecting the Source icon."},
+    "ASSET_SOURCE_RELATION": {"ownership": "AEM_ASSETS_PLATFORM_CONTRACT", "capability": "a related SOURCE asset (asset-relations), distinct from viewing XML", "evidence": "Asset Relations sections: Source, Derived, Other."},
+    "rule": "GUIDES_XML_SOURCE_VIEW != ASSET_SOURCE_RELATION. A search for 'Source' must resolve by product + capability + surface, not keyword (validation TEST-B returned all meanings equally, separable by metadata)."
+  },
+  "source_3_asset_relations": {
+    "ownership": "AEM_ASSETS_PLATFORM_CONTRACT",
+    "relation_cardinality": [
+      {"relation_type": "SOURCE", "target_cardinality": "single (per the relation model; not explicitly restated in the retrieved chunk)", "directionality": "source-of", "evidence": "Source section in Asset Relations"},
+      {"relation_type": "DERIVED", "target_cardinality": "multiple", "evidence": "To relate a derived file, select Add Derived... You can associate multiple assets in this category."},
+      {"relation_type": "OTHER", "target_cardinality": "multiple", "directionality": "two-way", "evidence": "To create a two-way relationship between the assets, select Add Other... You can associate multiple assets in this category."}
+    ],
+    "lifecycle": {"operations": ["RELATE (Add Source/Derived/Other)", "UNRELATE (per section)"], "evidence": "Click Unrelate available for all the related assets in each section (Source, Derived, and Other)."},
+    "translation_dependency": {"relation": "RELATION_AFFECTS_TRANSLATION", "ownership": "AEM_ASSETS_PLATFORM_CONTRACT", "dependency": "ASSET_RELATION", "evidence": "When you run a translation workflow on a derived asset, Experience Manager Assets automatically fetches any asset that the source file references and includes it for translation.", "cross_product_caveat": "Do NOT convert into an AEM Guides Translation AC; Guides must separately prove its translation workflow consumes this Assets behaviour."}
+  },
+  "source_2_collections": {
+    "ownership": "AEM_ASSETS_PLATFORM_CONTRACT",
+    "reference_semantics": {"relation": "COLLECTION_REFERENCES_ASSET (not OWNS)", "evidence": "A collection is a set of assets, folders, or other collections [by reference]."},
+    "smart_collection": {"relations": ["SMART_COLLECTION_DERIVED_FROM_SEARCH", "SEARCH_CRITERIA_CONTROLS_MEMBERSHIP"], "dynamic_membership": true, "evidence": "Save your search results as a Smart Collection to dynamically update the collection contents... contents get updated automatically when you open a Smart Collection."},
+    "visibility": ["PUBLIC", "PRIVATE"], "types": ["REGULAR", "SMART"],
+    "external_share": {"relation": "COLLECTION_SUPPORTS_EXTERNAL_SHARE", "links_to": "ASSETS_EXTERNAL_SHARE_LINK (SOURCE-1 semantics, not duplicated)", "evidence": "Share links for collections."}
+  },
+  "source_4_notifications": {
+    "ownership": "AEM_ASSETS_PLATFORM_CONTRACT", "surface": "ASSETS_VIEW",
+    "two_level_subscription": {"relations": ["CATEGORY_SUBSCRIPTION_REQUIRED", "CONTENT_SUBSCRIPTION_REQUIRED", "CATEGORY_HAS_WATCH_EXCEPTION"], "watch_exception_categories": ["Requests", "Assigned to me"], "evidence": "For Requests and Assigned to me notification categories, you do not need to subscribe to the content after subscribing to the notification categories."},
+    "watchable_entities": ["ASSET", "FOLDER", "COLLECTION"], "evidence_watch": "Browse the folder, asset, or collection you want to subscribe to, and click Watch.",
+    "surface_scope": "notifications monitor Assets View operations (SURFACE=ASSETS_VIEW); Admin View scope not established from retrieved content - do not generalize",
+    "not_found": "full notification category enumeration and the self-vs-other-user origin condition did not surface as clean chunks (boilerplate outranked); record as documented-but-not-cleanly-retrievable, do not fabricate the full list"
+  },
+  "source_5_guides_preview": {
+    "ownership": "AEM_GUIDES_PRODUCT_CONTRACT", "product_area": "AUTHORING",
+    "capabilities": ["GUIDES_SOURCE_VIEW (map/topic/DITAVAL XML)", "SHARE_UUID_LINK (map/topic/image)", "PREVIEW", "KEY_RESOLUTION", "EDIT"],
+    "relations": [
+      {"relation": "GUIDES_FILE_SUPPORTS_SOURCE_VIEW", "evidence": "view the underlying XML code of a map, topic or DITAVAL file"},
+      {"relation": "GUIDES_FILE_SUPPORTS_UUID_LINK", "evidence": "share the UUID-based links for DITA maps, topics, and image files"}
+    ]
+  },
+  "retrieval_validation_summary": {
+    "Q1_Q31": "top hit product/capability correct for the large majority; weak/undocumented: Q18 category enumeration, Q26/Q27 UUID move-delete lifecycle, Q3 exact expiration - flagged not-found, not fabricated",
+    "TEST_A_share_link": "PASS - external share dominates; UUID stays under Guides",
+    "TEST_B_source": "PASS(collision-surfaced) - all three 'Source' meanings returned at equal score, separable by product/capability metadata",
+    "TEST_C_share_move": "the only move-related content is the Guides UUID page; Assets external-share move-survival is NOT documented, so a UUID hit for a generic 'survive move' query is expected - metadata keeps products separate (do not answer an Assets-link question with UUID semantics)",
+    "TEST_D_href": "PASS - Guides UUID context dominates, not Assets sharing",
+    "TEST_E_source_derived": "PASS - ASSET_RELATIONS dominates",
+    "TEST_F_view_xml_source": "PASS - Guides Source View dominates"
+  },
+  "related_links": [{"relationship": "RELATED_DOCUMENT", "status": "FOLLOW_UP_INGESTION_CANDIDATE", "note": "sibling pages (search/saved-searches, translation, UUID filename config, move/delete lifecycle) referenced but not crawled per no-recursion constraint"}]
+}
