@@ -80,6 +80,7 @@ critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
 cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
 scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
+affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -624,6 +625,33 @@ def check_capability_eligibility(manifest_path: str | None, plan_text: str = "")
     return [], ["capability eligibility not applicable (no multi-action surface signals)"]
 
 
+def check_affected_surface(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Force ACs to cover the FULL dimension space of the grounded code surface
+    (its operation enum + config keys). Declared block validated (hard fail on an
+    uncovered value); active-by-signal but undeclared -> REVIEW note. This is the
+    guard for the AC-09/AC-10-class omission (an operation/config value with no AC)."""
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    if not isinstance(data, dict):
+        return [], []
+    ac_ids = set(re.findall(r"AC-\d{2}", plan_text or ""))
+    if affected_surface_mod.is_present(data):
+        failures = [f"[affected-surface] {p}" for p in affected_surface_mod.validate_affected_surface(
+            data["affected_surface_dimensions"], ac_ids=ac_ids, open_question_ids=_open_question_ids(data))]
+        return failures, ["affected surface dimensions validated"] if not failures else []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["affected-surface exploration skipped (behaviour_matters is false)"]
+    if affected_surface_mod.is_active(data, plan_text):
+        return [], ["REVIEW affected-surface: a handler/operation/config artifact is grounded but no "
+                    "affected_surface_dimensions enumeration is declared - enumerate the affected surface's operation "
+                    "enum and co-located config keys and map each value to a covering AC or an out-of-scope disposition"]
+    return [], ["affected surface not applicable (no handler/operation/config artifact grounded)"]
+
+
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
     """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
     A material scope mismatch with no open question exposing it is a hard FAIL."""
@@ -796,6 +824,15 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         a_fail, a_notes = verify_mod.verify_attachments(manifest_path)
         failures += [f"[verify] {f}" for f in a_fail]
         notes += a_notes
+        # Config-key reality: a CODE/OSGI-provenance config_key must exist in the clone.
+        try:
+            _croots = [c.get("path") for c in (json.loads(Path(manifest_path).read_text(encoding="utf-8")).get("clones") or [])
+                       if isinstance(c, dict) and c.get("path")]
+        except (OSError, json.JSONDecodeError):
+            _croots = []
+        ck_fail, ck_notes = verify_mod.verify_config_keys(manifest_path, _croots)
+        failures += [f"[verify] {f}" for f in ck_fail]
+        notes += ck_notes
 
     # Anti-hardcoding audit of the skill's own scripts/prompts.
     hc_fail, hc_notes = audit_mod.audit_paths([Path(__file__).resolve().parent.parent])
@@ -817,6 +854,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     failures += _cef
     notes += _cen
     # Scope conflict: reconcile reported Jira scope vs current fix scope.
+    _asf, _asn = check_affected_surface(manifest_path, body)
+    failures += _asf
+    notes += _asn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn
@@ -897,6 +937,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_implementation_grounding()
             self_tests.test_capability_eligibility()
             self_tests.test_scope_conflict()
+            self_tests.test_affected_surface()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

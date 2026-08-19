@@ -58,6 +58,7 @@ critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
 impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
 cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
 scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
+affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -3043,6 +3044,45 @@ def test_pre_uac_critic() -> None:
     check("repair_passes within the limit passes", cr.validate_repair_bound({"critic": {"repair_passes": 1}}) == [])
 
 
+def test_affected_surface() -> None:
+    asf = affected_surface_mod
+
+    def block(**o):
+        b = {"active": True, "dimensions": [{
+            "name": "uuid_conflict_op", "kind": "OPERATION_ENUM", "source": "ImportServlet.java:124",
+            "values": ["OVERWRITE", "MOVE"],
+            "coverage": {"OVERWRITE": {"disposition": "COVERED", "ac": "AC-02"},
+                         "MOVE": {"disposition": "COVERED", "ac": "AC-05"}}}]}
+        b.update(o)
+        return b
+
+    check("well-formed affected_surface passes",
+          asf.validate_affected_surface(block(), ac_ids={"AC-02", "AC-05"}) == [])
+    bad = block(); bad["dimensions"][0]["coverage"].pop("MOVE")
+    check("uncovered enum value is rejected",
+          any("no coverage entry" in p for p in asf.validate_affected_surface(bad, ac_ids={"AC-02", "AC-05"})))
+    noac = block(); noac["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "COVERED"}
+    check("COVERED without an ac is rejected",
+          any("names no acceptance criterion" in p for p in asf.validate_affected_surface(noac, ac_ids={"AC-02", "AC-05"})))
+    check("ac not defined in the plan is rejected",
+          any("not an AC defined" in p for p in asf.validate_affected_surface(block(), ac_ids={"AC-02"})))
+    oos = block(); oos["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE"}
+    check("OUT_OF_SCOPE without a reason is rejected",
+          any("no reason" in p for p in asf.validate_affected_surface(oos, ac_ids={"AC-02", "AC-05"})))
+    oos2 = block(); oos2["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE", "reason": "name-conflict only"}
+    check("OUT_OF_SCOPE with a reason passes",
+          asf.validate_affected_surface(oos2, ac_ids={"AC-02", "AC-05"}) == [])
+    bk = block(); bk["dimensions"][0]["kind"] = "STUFF"
+    check("invalid dimension kind is rejected",
+          any("kind must be one of" in p for p in asf.validate_affected_surface(bk, ac_ids={"AC-02", "AC-05"})))
+    check("empty dimensions is rejected",
+          any("non-empty list" in p for p in asf.validate_affected_surface({"active": True, "dimensions": []})))
+    grounded = {"behaviour_matters": True, "implementation_grounding": {"active": True, "named_artifacts": [
+        {"artifact": "k", "kind": "config_key", "inspected": True, "evidence": ["x"], "material": True}]}}
+    check("grounded config_key activates affected-surface", asf.is_active(grounded) is True)
+    check("no grounding does not activate affected-surface", asf.is_active({"behaviour_matters": True}) is False)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -3075,6 +3115,7 @@ def main() -> int:
     test_implementation_grounding()
     test_capability_eligibility()
     test_scope_conflict()
+    test_affected_surface()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

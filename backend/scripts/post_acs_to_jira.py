@@ -81,9 +81,30 @@ def main() -> int:
         return 1
 
     ac_text = "\n".join(acs)  # ONLY the acceptance criteria - nothing else
-    comment = ("Acceptance Criteria posted by the AEM Guides test-plan skill (AI-generated). "
-               "Flagged Needs_Human_Review - a human must review and confirm before sign-off.")
-    print(f"Issue: {key}\nAC field content to post ({len(acs)} criteria):\n" + "-" * 60)
+    c = JiraClient()
+
+    # First-post vs update: read the current AC field so a re-run does not repeat
+    # the identical "posted" comment. An update gets an update-specific comment.
+    existing = ""
+    try:
+        existing = (c.get_issue(key, fields="customfield_13400")
+                    .get("fields", {}).get("customfield_13400") or "").strip()
+    except Exception:  # noqa: BLE001 - if we cannot read it, treat as a first post
+        existing = ""
+    is_update = bool(existing) and existing != ac_text
+    unchanged = bool(existing) and existing == ac_text
+
+    if unchanged:
+        comment = None  # nothing changed - do not add a noise comment
+    elif is_update:
+        comment = (f"Acceptance Criteria field updated by the AEM Guides test-plan skill "
+                   f"(now {len(acs)} criteria, AI-generated). Flagged {args.label} - please re-review the updated criteria.")
+    else:
+        comment = ("Acceptance Criteria posted by the AEM Guides test-plan skill (AI-generated). "
+                   f"Flagged {args.label} - a human must review and confirm before sign-off.")
+
+    mode = "unchanged" if unchanged else ("update" if is_update else "first post")
+    print(f"Issue: {key} ({mode})\nAC field content to post ({len(acs)} criteria):\n" + "-" * 60)
     print(ac_text)
     print("-" * 60 + f"\nLabel: {args.label}")
 
@@ -91,12 +112,18 @@ def main() -> int:
         print("\nDry-run: nothing written.")
         return 0
 
-    c = JiraClient()
     c.set_acceptance_criteria(key, ac_text, review_label=args.label, review_comment=comment)
-    print(f"\nOK: updated {key} Acceptance Criteria field, added label {args.label} and a review comment.")
+    verb = "unchanged (re-affirmed)" if unchanged else ("updated" if is_update else "set")
+    print(f"\nOK: {verb} {key} Acceptance Criteria field ({len(acs)} criteria); label {args.label}"
+          + ("; comment added." if comment else "; no comment (content unchanged)."))
 
-    # Tag the QE Assignee to review, in a follow-up comment (best-effort).
-    if not args.no_qe_tag:
+    # Tag the QE Assignee only on the FIRST post (avoid re-tagging on every update),
+    # unless explicitly disabled.
+    if args.no_qe_tag:
+        pass
+    elif is_update or unchanged:
+        print("NOTE: not a first post - skipped re-tagging the QE Assignee (already tagged initially).")
+    else:
         qe = _qe_assignee_username(c, key)
         if qe:
             c.add_comment(key, f"[~{qe}] please review the acceptance criteria for this case (QE Assignee). "
