@@ -109,10 +109,48 @@ class Harvester:
             self._record_candidate(cand, verdict)
 
     # ---- crawl -------------------------------------------------------------
+    def _seed_urls(self):
+        """Entry points that take the crawler INTO Guides. The AEM author root
+        alone lands on the Start page, so we seed the configured Guides surfaces
+        (e.g. the Assets UI) and any fixture-provided editor deep link."""
+        base = self.config.base_url.rstrip("/")
+        urls = [self.config.base_url]
+        for s in (self.config.seed_surfaces or []):
+            s = str(s).strip()
+            if s:
+                urls.append(s if s.startswith("http") else base + "/" + s.lstrip("/"))
+        fx = self.config.fixtures or {}
+        # A full editor URL is the most reliable way into the New Editor surfaces.
+        editor_url = str(fx.get("editor_url", "") or "").strip()
+        if editor_url:
+            urls.append(editor_url)
+        template = str(fx.get("editor_url_template", "") or "").strip()
+        for key in ("root_map_with_keys", "dita_map", "topic_with_keys", "dita_topic"):
+            path = str(fx.get(key, "") or "").strip()
+            if path and template:
+                urls.append(template.format(path=path))
+        seen, out = set(), []
+        for u in urls:
+            if u not in seen:
+                seen.add(u)
+                out.append(u)
+        return out
+
     def _crawl(self, page, shots, mode, deadline):
-        seed = self._snapshot_state(page, shots, capture=True)
-        self.result.states[seed.state_id] = seed
-        queue = [(seed, 0)]
+        queue = []
+        for seed_url in self._seed_urls():
+            try:
+                page.goto(seed_url, wait_until="domcontentloaded")
+                page.wait_for_load_state("networkidle", timeout=self.config.navigation_timeout_ms)
+            except Exception as exc:  # noqa: BLE001 - a bad seed must not abort the crawl
+                self.result.failures.append({"stage": "seed", "url": seed_url, "error": str(exc)})
+                continue
+            st = self._snapshot_state(page, shots, capture=True)
+            if st.state_id not in self.result.states:
+                self.result.states[st.state_id] = st
+                queue.append((st, 0))
+        if not queue:
+            self.result.failures.append({"stage": "seed", "error": "no seed state captured - check seed_surfaces/base_url"})
         explored_edges = set()  # (state_id, capability) to avoid endless retries
         while queue and len(self.result.states) < self.config.max_states:
             if time.time() > deadline:

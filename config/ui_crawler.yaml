@@ -61,9 +61,19 @@ fixtures:
   topic_with_keys: ""
   root_map_with_keys: ""
   collection: ""
+  # The most reliable way into the New Editor surfaces: open a DITA topic/map in
+  # the Guides web editor in your browser and paste the FULL url here.
+  editor_url: ""
+  # Optional: a URL template with {path}; combined with dita_map/dita_topic above
+  # to build editor deep links. Example (confirm your deployment's pattern):
+  #   "https://author-p34572-e147958.adobeaemcloud.com/ui#/aem/editor.html{path}"
+  editor_url_template: ""
 
-# Seed surfaces are entry points only; the crawler discovers the current set.
-seed_surfaces: []
+# Entry points that take the crawler INTO Guides (the AEM author root alone lands
+# on the Start page). Paths are relative to base_url; the crawler discovers the
+# rest from here. The Assets UI is where Guides content lives.
+seed_surfaces:
+  - "assets.html/content/dam"
 
 output:
   directory: ui_evidence
