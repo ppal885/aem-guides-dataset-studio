@@ -114,7 +114,7 @@ class Harvester:
         alone lands on the Start page, so we seed the configured Guides surfaces
         (e.g. the Assets UI) and any fixture-provided editor deep link."""
         base = self.config.base_url.rstrip("/")
-        urls = [self.config.base_url]
+        urls = []
         for s in (self.config.seed_surfaces or []):
             s = str(s).strip()
             if s:
@@ -129,6 +129,8 @@ class Harvester:
             path = str(fx.get(key, "") or "").strip()
             if path and template:
                 urls.append(template.format(path=path))
+        if not urls:
+            urls = [self.config.base_url]  # fallback only when nothing is configured
         seen, out = set(), []
         for u in urls:
             if u not in seen:
@@ -141,10 +143,15 @@ class Harvester:
         for seed_url in self._seed_urls():
             try:
                 page.goto(seed_url, wait_until="domcontentloaded")
-                page.wait_for_load_state("networkidle", timeout=self.config.navigation_timeout_ms)
             except Exception as exc:  # noqa: BLE001 - a bad seed must not abort the crawl
                 self.result.failures.append({"stage": "seed", "url": seed_url, "error": str(exc)})
                 continue
+            # The Guides editor is a heavy SPA that may never reach networkidle;
+            # a timeout here must NOT skip the seed - proceed with what has loaded.
+            try:
+                page.wait_for_load_state("networkidle", timeout=self.config.navigation_timeout_ms)
+            except Exception:  # noqa: BLE001
+                pass
             st = self._snapshot_state(page, shots, capture=True)
             if st.state_id not in self.result.states:
                 self.result.states[st.state_id] = st
