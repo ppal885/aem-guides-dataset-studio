@@ -604,6 +604,10 @@ def check_capability_eligibility(manifest_path: str | None, plan_text: str = "")
             notes.append(f"REVIEW capability-eligibility: capability [{cap}] shows responsive/multi-form signals "
                          "(direct button vs overflow menu / zoom-dependent) but fewer than two entry points are "
                          "enumerated - each render form can dispatch differently; verify all forms, not just one")
+        for cap in cap_elig_mod.config_terms_missing_key(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] has a CONFIG predicate that names a "
+                         "mode/behaviour but cites no actual config key (e.g. xmleditor.autocheckout) - ground the "
+                         "config-driven criterion in the real OSGi key/property, not a paraphrase")
         if not failures:
             notes.append("capability eligibility validated")
         return failures, notes

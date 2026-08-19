@@ -2946,6 +2946,14 @@ def test_capability_eligibility() -> None:
     check("responsive signals + <2 entry points is under-explored", under == ["Insert Keyword"])
     check("no responsive signals -> not under-explored", ce.entrypoint_underexplored({"capabilities": [{"capability": "X"}]}, {"issue": {"summary": "plain dialog title fix"}}) == [])
 
+    # CONFIG predicate must cite a real config key, not a paraphrased mode name.
+    no_key = {"capabilities": [{"capability": "Save under lock", "predicate_terms": [
+        {"dimension": "CONFIG", "expected_value": "explicit-lock mode enabled", "evidence_ids": ["Jira AC field"], "material": True}]}]}
+    check("CONFIG term without a config key is flagged", ce.config_terms_missing_key(no_key) == ["Save under lock"])
+    with_key = {"capabilities": [{"capability": "Save under lock", "predicate_terms": [
+        {"dimension": "CONFIG", "expected_value": "xmleditor.autocheckout (Disable edit without locking the file) enabled", "evidence_ids": ["XmlEditorConfig"], "material": True}]}]}
+    check("CONFIG term citing xmleditor.autocheckout is not flagged", ce.config_terms_missing_key(with_key) == [])
+
 
 def test_scope_conflict() -> None:
     sc = scope_conflict_mod

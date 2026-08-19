@@ -14,6 +14,8 @@ refuses to let "same surface" stand in for "same predicate."
 It is generic - it hardcodes no specific action, entity, or mapping. Stdlib only.
 """
 
+import re
+
 PREDICATE_DIMENSIONS = ("ENTITY_TYPE", "METADATA", "STATE", "SURFACE", "PERMISSION", "SELECTION", "CONFIG", "ENTRY_POINT")
 
 # One capability can be exposed through several render forms / entry points on the SAME
@@ -158,6 +160,33 @@ def _validate_capability(cap, i):
                 elif consistency == "OPEN_QUESTION" and not str(cap.get("entry_point_open_question_ref", "") or "").strip():
                     problems.append(f"{tag} entry_point_consistency OPEN_QUESTION needs an entry_point_open_question_ref")
     return problems
+
+
+# A configuration-driven predicate must cite the real config KEY (an OSGi property like
+# `xmleditor.autocheckout` or a PID/customfield), not a paraphrased mode name. This regex
+# recognises a dotted config key, an OSGi PID, a customfield id, or an explicit "config key".
+CONFIG_KEY_RE = re.compile(r"\b[a-z][a-z0-9]*(?:\.[a-z0-9]+){1,}\b|customfield_\d+|\bOSGi\b|config key", re.IGNORECASE)
+
+
+def config_terms_missing_key(block):
+    """CONFIG predicate terms that name a mode/behaviour but cite no actual config key
+    (e.g. `xmleditor.autocheckout`). Surfaced by the gate as NEEDS_REVIEW so config-driven
+    ACs get grounded in the real key instead of a paraphrase."""
+    out = []
+    if not isinstance(block, dict):
+        return out
+    for cap in (block.get("capabilities") or []):
+        if not isinstance(cap, dict):
+            continue
+        for term in (cap.get("predicate_terms") or []):
+            if not isinstance(term, dict) or term.get("dimension") != "CONFIG":
+                continue
+            haystack = " ".join([str(term.get("config_key", "")), str(term.get("expected_value", ""))]
+                                + [str(e) for e in (term.get("evidence_ids") or [])])
+            if not CONFIG_KEY_RE.search(haystack):
+                out.append(str(cap.get("capability", "?")))
+                break
+    return out
 
 
 def detect_responsive_signals(manifest, plan_text=""):
