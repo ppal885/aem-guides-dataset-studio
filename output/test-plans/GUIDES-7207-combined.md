@@ -1,0 +1,170 @@
+**Understanding From Jira**
+- Issue understood: In a UUID build the Assets UI upload was broken because Guides overrode the AEM `fileupload.js`, so uploads lost the per-file upload status/progress and the default AEM upload dialog (which offers rename on first upload) was not shown; the fix rewrites and unifies the Assets UI upload and drag-drop flow so cloud and on-prem both show upload status, allow abort/cancel (and resume on chunked upload), create a working-copy version on override for on-prem at parity with cloud, and honour the standard AEM upload restrictions (size, MIME, duplicate detection).
+- Why it matters: Critical customer-facing regression escalated by 3M, Eaton, Broadcom, KONE, Rockwell, TXDOT with a P1 support case (later P2 with daily-update commitment); non-Guides users upload through the Assets UI, so losing the progress dialog caused confusion and interrupted in-progress uploads and a high support-ticket volume.
+- Requested outcome: Uploading via the Create > Files menu and via drag-drop, on both cloud and on-prem, shows upload status and supports abort/cancel; on-prem uses the same upload APIs as cloud and creates a working-copy version on override (with the create-version choice shown as a note); the standard AEM rename dialog, filename validation, size/MIME rejection, and duplicate detection all work.
+- Lifecycle understood as: Post-Fix Validation (UAT complete) - the change is Closed with fix versions 2608 and 5.2.1, cloud/on-prem/bug-fix PRs and a 5.2.1 hotfix PR are merged, the automation PR is merged, and UAT surfaced several defects that were fixed or logged before closure.
+- Evidence boundary: Live Jira was fetched via the backend JiraClient (Jira MCP OAuth unavailable) including the Acceptance Criteria field, all 40 comments, and all 4 attachments (3 screenshots analysed as images, 1 screen recording noted from its comment context, frames not extracted); RAG over the AEM Guides / Assets docs grounded the upload-restriction, duplicate-detection, version-on-upload, and overwrite-checked-out behaviour; the Starling product clone and the guides-ui-tests automation clone were inspected read-only; the merged PR diffs themselves were not opened this pass (git.corp.adobe.com, no GitHub MCP) so line-level change detail rests on the PRs, not this plan.
+
+**Acceptance Criteria**
+- AC-01: In a UUID build, uploading files through the Assets UI (Create > Files menu and drag-drop) shows a per-file upload status/progress indicator, on both cloud and on-prem.
+- AC-02: A user can abort an in-progress upload from the upload status dialog - cancelling one file removes only that file's row and lets the remaining files complete, and cancel-all closes the status dialog and uploads nothing further.
+- AC-03: On-prem upload through the Assets UI uses the same upload APIs and behaviour as cloud, including chunked-upload resume, so on-prem no longer diverges from the cloud upload path.
+- AC-04: On on-prem, overriding an existing file during upload creates a version for the working copy by default (parity with cloud), and the previous create-version user choice is presented only as a note rather than a blocking checkbox.
+- AC-05: The Create-new-Version-for-Uploaded-File administrator setting (create.ver.new.content under com.adobe.fmdita.config.ConfigManager) is honoured on upload - a new version is created when enabled and no new version when disabled - consistently on cloud and on-prem.
+- AC-06: Uploading a file whose name contains disallowed characters shows the rename dialog with an inline validation error and blocks the upload until the name is corrected; the file is not silently uploaded with the invalid name.
+- AC-07: The rename dialog live-validates as the filename is edited - the error appears and clears while typing, an empty name blocks upload, and a valid filename shows the rename dialog with no error tooltip.
+- AC-08: Uploading a file that exceeds the configured AEM size limit shows the Rejected Files dialog listing the too-large file and does not upload it, while other in-range files in the same batch still upload.
+- AC-09: Uploading a file of a restricted or not-allowed MIME type is rejected per the AEM asset-upload-restriction configuration, on both cloud and on-prem.
+- AC-10: With Day CQ DAM Create Asset detect-duplicate enabled, uploading an asset that already exists surfaces the duplicate/conflict dialog so the user can choose (Keep/Delete or Keep Both); with it disabled no duplicate dialog appears and the upload proceeds.
+- AC-11: Overwriting existing files and choosing not to overwrite both create the expected versions; aborting upload of new files leaves them not created, and aborting upload of existing files leaves them unchanged with the same version.
+- AC-12: Folder upload remains disallowed through the Assets UI upload and drag-drop functionality (unchanged behaviour), and casing-only filename differences are handled per the same rename/duplicate rules.
+
+**Expected Behaviour**
+- From Jira/UAC (agreed): the fix restores the per-file upload status and abort/cancel on cloud and on-prem, unifies on-prem onto the cloud upload APIs, and makes on-prem create a working-copy version on override with the create-version choice shown as a note.
+- From the AEM Assets docs (verified): duplicate detection is disabled by default and is enabled through Tools > Assets > Assets Configurations > Asset Duplication Detector (or the Day CQ DAM Create Asset detect-duplicate flag); when enabled, an upload of an existing asset notifies the user with a duplicate dialog.
+- From the AEM Guides docs (verified): the Create-new-Version-for-Uploaded-File feature must be enabled by an administrator - when enabled a new version of the uploaded file is created and when deselected no version is created - and version-management config governs whether checked-out files can be overwritten on upload.
+- From the product clone (verified): the rewritten cloud upload handler owns the progress/status selector, the upload-status dialog, abort/cancel and chunked resume events, filename invalid-character handling, and the version/duplicate response flags, confirming these behaviours are implemented in the overridden Assets UI upload flow rather than delegated to stock AEM.
+- Supported inference: because on-prem now shares the cloud upload path, the cloud-side status/abort/version behaviour should hold identically on on-prem; on-prem-only divergence (as seen for overwrite-checked-out and duplicate detection during UAT) is the highest-risk area and must be validated separately on an on-prem server.
+
+**Scope From Git**
+- Lifecycle stage is Post-Fix Validation; the issue is Closed with fix versions 2608 and 5.2.1, and the delivered scope spans cloud upload, on-prem upload parity, and bug fixes found during UAT.
+- Issue source: live Jira GUIDES-7207 (Critical, Platform, onPremOnly label plus cloud changes, customers 3M/Eaton/Broadcom/KONE/Rockwell/TXDOT); the Acceptance Criteria field carries the agreed UAC and the TCs-to-be-verified list; product PRs are starling 7703 (cloud), 7730 (on-prem), 7764 and 7769 (bug fixes), and 8070 (hotfix-5.2.1); the automation PR is guides-ui-tests 3729 (merged).
+- Product clone at `C:\starling` was inspected read-only; its captured SHA is fdfa72777a and fetch/ahead/behind was not run this pass, so the clone evidence is provisional and should be re-confirmed against the fix build before sign-off.
+- Automation clone at `C:\UI TEST\guides-ui-tests` was inspected read-only; its captured SHA is 234e19acd and fetch/ahead/behind was not run this pass, so the automation evidence is provisional and the merged PR 3729 content should be confirmed on the current default branch.
+- Figma design evidence is not applicable to this upload-behaviour fix.
+
+**Code Touched**
+- Current implementation (cloud): the rewritten Assets UI upload handler at `C:\starling\aemaacs\repo\jcr_root\apps\dam\gui\coral\components\commons\fileupload\clientlibs\fileupload\js\fileUpload.js` (3012 lines) owns the progress/status selector near L9, the upload-status dialog near L529, and the version and duplicate response flags near L343-L345, which is where upload status, abort/cancel, resume, and version/duplicate behaviour now live.
+- Current implementation (on-prem): the overridden on-prem upload handler at `C:\starling\AEM6.5\repo\jcr_root\apps\dam\gui\coral\components\commons\fileupload\clientlibs\fileupload\js\fileupload.js` (2750 lines) is the on-prem counterpart that the fix unifies onto the cloud upload APIs and behaviour.
+- Delivered change set (not diffed this pass): the cloud, on-prem, bug-fix, and 5.2.1 hotfix changes were merged through starling PRs 7703, 7730, 7764, 7769, and 8070; line-level detail lives on those PRs and was not opened this pass because git.corp.adobe.com is not reachable via GitHub MCP here.
+
+**Lines Changed**
+- Not inspected this pass - the merged PR diffs were not opened; the change is delivered across the five starling PRs listed in Code Touched and the exact line ranges live on those PRs, not in this plan.
+
+**Test Scenarios**
+- Setup and test data: a Guides UUID build on both a cloud author (for example a cmstg author instance) and an on-prem author; test users with author permission on the Assets UI target folder; sample files covering images (tiff, png, gif, jpg), dita, pdf, word, txt, videos, audios, zip, and .plt; a file exceeding the configured AEM size limit (for example a 12 MB file against an 11 MB limit); filenames with disallowed characters, casing-only differences, and an empty name; the create.ver.new.content setting toggled on and off under com.adobe.fmdita.config.ConfigManager; the Day CQ DAM Create Asset detect-duplicate flag toggled on and off; the overwrite-checked-out-on-upload option toggled on both servers. Oracles: a per-file status/progress row appears, cancel removes only the targeted row, cancel-all closes the dialog, a working-copy version is created on override when configured, the rename dialog blocks invalid names, the Rejected Files dialog lists too-large files, restricted MIME uploads are refused, the duplicate dialog appears only when detect-duplicate is on, and folder upload is refused.
+- P0 [AC-01]: upload a single file and multiple mixed-type files via the Create > Files menu and via drag-drop on both cloud and on-prem. Expected: each file shows an upload status/progress row.
+- P0 [AC-02]: during a multi-file upload, cancel one file, then in a fresh batch cancel all. Expected: cancelling one removes only that row and the rest complete; cancel-all closes the status dialog and no further files upload.
+- P0 [AC-04]: on on-prem, upload a file that overrides an existing asset. Expected: a working-copy version is created by default and the create-version choice is shown as a note, matching cloud.
+- P1 [AC-03]: on on-prem, upload a large file that triggers chunked upload and resume. Expected: the on-prem upload uses the same APIs as cloud and resumes correctly, with status shown.
+- P1 [AC-05]: toggle create.ver.new.content on then off and upload/override a file on both servers. Expected: a new version is created only when the setting is enabled, identically on cloud and on-prem.
+- P1 [AC-06]: upload a file whose name contains disallowed characters. Expected: the rename dialog shows an inline error and blocks upload until the name is corrected; the invalid-named file is not uploaded.
+- P1 [AC-07]: edit the filename in the rename dialog, clear it, then enter a valid name. Expected: the error appears and clears live, an empty name blocks upload, and a valid name shows no error tooltip.
+- P1 [AC-08]: upload a batch containing a file over the size limit alongside in-range files. Expected: the Rejected Files dialog lists the too-large file and it is not uploaded while the in-range files upload.
+- P1 [AC-09]: upload a restricted or not-allowed MIME type on cloud and on-prem. Expected: the upload is rejected per the AEM asset-upload-restriction configuration.
+- P1 [AC-10]: with detect-duplicate on, upload an existing asset, then repeat with detect-duplicate off. Expected: the duplicate/conflict dialog appears only when the flag is on and the user can choose Keep/Delete or Keep Both.
+- P1 [AC-11]: overwrite existing files, decline overwrite, abort new-file uploads, and abort existing-file uploads. Expected: versions are created as configured, aborted new files are not created, and aborted existing files keep the same version.
+- P2 [AC-11]: upload a large set (dozens) of files mixing existing and non-existing assets, overwriting only a few. Expected: each file shows status, only the chosen files are overwritten with a new version, and the rest are created or skipped correctly with no cross-file version corruption.
+- P2 [AC-12]: attempt a folder upload and upload files whose names differ only in casing. Expected: folder upload is refused and casing-only names follow the rename/duplicate rules.
+
+**Known Jira Bugs / Past Similar Tickets**
+- Search status: `search_jira_history` was run against the indexed jira_qa corpus for the assets-upload UUID defect class (status/version/duplicate/overwrite), and narrow live-Jira JQL intents were framed by error text (`text ~ "upload status" AND component = Platform`, `text ~ "fileupload" AND text ~ uuid`) and by workflow (`component = Platform AND text ~ upload AND text ~ "drag drop"`); the strongest indexed matches are listed below and the rest were area-only and excluded.
+- GUIDES-39393: Similarity: strongest match, structural twin - the same UUID-upload dialog defect class and explicitly cross-referenced in this ticket's own comment thread. Status: Open (per this ticket's comments, still being clarified). Resolution: Unresolved (per indexed history). Affected version: UUID builds after the Guides UUID rollout. Fix version: not assigned in the index. RCA: the Guides override of the AEM upload flow removed the default create-event upload dialog with rename in UUID builds. Test evidence: manual repro of the missing default dialog on first upload. Impact: overlaps this ticket's rename/first-upload-dialog scope, so this fix must be re-checked against GUIDES-39393 to confirm the create-event dialog and rename now appear.
+- GUIDES-46111: Similarity: adjacent - the same multi-file UUID upload path with an overwrite-correctness risk. Status: Closed (per indexed history, not re-fetched live). Resolution: Fixed (per indexed history). Affected version: UUID builds. Fix version: not recorded in the index. RCA: a multi-file batch upload could map to the wrong asset when both files hit the UUID path. Test evidence: multi-file overwrite regression. Impact: overwrite and version correctness during multi-file upload is a direct regression dimension for this fix.
+- GUIDES-32680: Similarity: adjacent - a locked/checked-out file upload error path in the same component. Status: Closed (per indexed history, not re-fetched live). Resolution: Fixed (per indexed history). Affected version: not recorded in the index. Fix version: not recorded in the index. RCA: an incorrect file-locked-by-other-user error was shown when uploading. Test evidence: upload-over-locked-file repro. Impact: the overwrite-checked-out path this fix touches must not regress the locked-file messaging.
+
+**Regression Areas**
+- Re-verify the normal single-author single-file and multi-file upload and drag-drop flow on both cloud and on-prem, because the fix rewrites the shared upload handler and any status/version change could disrupt an ordinary upload.
+- Re-verify version-history correctness after upload and override on both servers, because the on-prem working-copy-version parity change alters which versions are created on upload and is the same overwrite class as GUIDES-46111.
+- Re-verify the create-event first-upload dialog and rename behaviour, because this fix touches the same override that caused the missing-dialog defect tracked in GUIDES-39393 and a partial fix could leave that dialog still missing.
+- Re-verify large-file chunked upload, resume, and upload performance for a large batch (dozens of files), because the resume path and status rendering are new and were where the GUID-filename move failure was observed during UAT.
+- Re-verify the AEM-level guards (size limit, restricted MIME type, duplicate detection, overwrite-checked-out) on both cloud and on-prem, because these were reported broken on on-prem during UAT and must behave identically to cloud.
+
+**Automation Coverage & Gaps**
+- Special-character rename dialog, live validation, empty-name block, valid-name no-error, AC-06 and AC-07: Partially covered - `C:\UI TEST\guides-ui-tests\tests\assets_ui\upload_assets\upload_assets.feature` scenarios TC_01 to TC_04 exercise the rename dialog, the inline error tooltip appearing and clearing while editing, the empty-name block, and a valid filename with no error, on both cloud and on-prem tags; the gap is that these run on dita fixtures only, so extend the fixtures to the full mixed file-type matrix in the UAC.
+- Multi-file cancel-one, cancel-all, and upload status dialog, AC-01 and AC-02: Partially covered - the same feature TC_05 and TC_06 assert the upload status dialog becomes visible, cancelling one file removes only its row while the rest complete, and cancel-all closes the dialog; the gap is single-file status and the on-prem-specific status path are not asserted separately, so add an on-prem-tagged status/abort scenario.
+- Re-upload conflict and Keep Both, AC-10 and AC-11: Partially covered - TC_07 re-uploads existing files with detect-duplicate on and asserts the conflict dialog and that Keep Both uploads copies with a success count; the gap is the Keep and Delete choices, the detect-duplicate-off path, and the version-created-on-overwrite assertion are not covered.
+- Version-on-override parity and create.ver.new.content matrix, AC-04 and AC-05: Not covered. Recipe - layer: UI Behave/Playwright in `C:\UI TEST\guides-ui-tests`; setup: an existing asset on both cloud and on-prem with create.ver.new.content toggled on then off via the ConfigManager step; poll: upload an overriding file and wait for the upload-success dialog; timeout: the existing upload-success poller; assert: a working-copy version is created only when the setting is enabled and on-prem matches cloud; cleanup: delete the uploaded asset in after_scenario; tag: onpremonly plus cloud upload-assets suite.
+- Restricted MIME type and size-limit rejection, AC-08 and AC-09: Not covered. Recipe - layer: UI Behave/Playwright in `C:\UI TEST\guides-ui-tests`; setup: a file over the configured size limit and a restricted-MIME file with the AEM upload-restriction config applied; poll: attempt upload and wait for the rejection dialog; timeout: the existing upload-feedback poller; assert: the Rejected Files dialog lists the too-large file and the restricted-MIME file is refused while in-range files upload; cleanup: remove uploaded assets and restore config in after_scenario; tag: upload-assets negative suite.
+- Chunked upload resume on on-prem, AC-03: Not covered. Recipe - layer: UI Behave/Playwright in `C:\UI TEST\guides-ui-tests`; setup: a large file that triggers chunked upload on an on-prem author; poll: start the upload, interrupt, and wait for resume; timeout: the existing upload-success poller extended for large files; assert: the on-prem upload uses the cloud upload API path and resumes to completion with status shown; cleanup: delete the uploaded asset in after_scenario; tag: onpremonly upload-assets suite.
+- Folder-upload disallowed and casing-only names, AC-12: Not covered. Recipe - layer: UI Behave/Playwright in `C:\UI TEST\guides-ui-tests`; setup: a folder drag-drop attempt and two files whose names differ only in casing; poll: attempt the upload and wait for the feedback dialog; timeout: the existing upload-feedback poller; assert: folder upload is refused and casing-only names follow the rename/duplicate rules; cleanup: remove uploaded assets in after_scenario; tag: upload-assets negative suite.
+
+**Open Questions**
+- OQ-1: Does the on-prem working-copy-version-on-override change apply unconditionally, or is it still gated by create.ver.new.content? QA impact: if it is unconditional, AC-04 must assert a version is always created on on-prem override; if it is gated, AC-04 and AC-05 must be tested together and the note wording verified so testers do not record a false failure when the setting is off.
+- OQ-2: Is the Day CQ DAM Create Asset detect-duplicate defect reported on on-prem during UAT (duplicate not detected when the flag is on) fully fixed in the closed build, or only on cloud? QA impact: this decides whether AC-10 must be executed and signed off separately on on-prem, and whether a duplicate-detection regression test is mandatory before closure.
+- OQ-3: The GUID-filename move failure seen for a 35-file batch was logged as a separate EPV bug; is that bug in scope for this fix version or deferred? QA impact: if deferred, the large-batch GUID-filename scenario must be recorded as a known limitation rather than a pass/fail of this fix, so QA does not block sign-off on an out-of-scope defect.
+- OQ-4: Is GUIDES-39393 (missing default create-event upload dialog with rename) resolved by this fix or still open? QA impact: if this fix is expected to restore that dialog, a first-upload create-event dialog scenario must pass here; if not, the plan must state that the rename-on-create dialog remains out of scope so it is not tested as this ticket's acceptance.
+- OQ-5: Does the automation PR guides-ui-tests 3729 already run on both cloud and on-prem in CI, or only on one? QA impact: if it runs on only one environment, the on-prem parity ACs (AC-03, AC-04, AC-09, AC-10) still need manual sign-off on an on-prem server rather than relying on the merged automation.
+- OQ-6: Do the Create > Files menu entry point and the drag-drop entry point dispatch through the same upload code path, or through different paths? QA impact: if they diverge, every upload AC (status, abort, version, duplicate, rejection) must be executed through both entry points rather than assuming the menu result covers drag-drop, because a fix verified on only one entry point can still leave the other broken.
+
+**Appendix A - Automation Evidence**
+
+The following is the merged upload automation inspected at `C:\UI TEST\guides-ui-tests` (SHA 234e19acd). It proves the Partially covered verdicts above and shows the reusable helpers a gap test would build on.
+
+Rename dialog, live validation, empty-name block, and valid-name-no-error (AC-06, AC-07) from `C:\UI TEST\guides-ui-tests\tests\assets_ui\upload_assets\upload_assets.feature`:
+
+```gherkin
+Scenario: TC_01||Uploading a file with special characters triggers a rename dialog
+    Given user is on assets ui page at /guides_regression
+    Then set the detect duplicate config to true
+    When user clicks the create button
+    And uploads a file with special characters in its name at resources/special_char_@#$.dita
+    Then a dialog should appear to rename the file
+    When clicks the upload button
+    Then an error tooltip should be visible
+    When the user removes the special characters from the filename and rename it to test_file.dita
+    And clicks the upload button
+    Then the test_file.dita should be uploaded successfully
+
+Scenario: TC_03||Empty filename shows validation error and blocks upload
+    When user clears the filename field
+    Then an error tooltip should be visible
+
+Scenario: TC_04||Rename dialog appears for valid filename with no error tooltip
+    Then a rename dialog should appear with no error tooltip
+```
+
+Multi-file cancel-one, cancel-all, and upload status dialog (AC-01, AC-02), and re-upload conflict with Keep Both (AC-10, AC-11) from the same feature:
+
+```gherkin
+Scenario: TC_05||Cancelling one file in a multi-file upload still completes the rest
+    Then the upload status dialog should be visible
+    When user cancels upload of file multi_upload_sample03.dita
+    Then the multi_upload_sample03.dita row should be removed from the status dialog
+    Then the multi_upload_sample01.dita should be uploaded successfully
+
+Scenario: TC_06||Cancel all uploads dismisses the status dialog
+    When user clicks cancel all uploads
+    Then the upload status dialog should close
+
+Scenario: TC_07||Re-uploading existing files shows conflict dialog and Keep Both uploads copies
+    Then a conflict dialog should appear
+    When user chooses Keep Both in the conflict dialog
+    Then the success dialog should show 2 assets uploaded
+```
+
+Reusable step helpers a gap test (size limit, MIME, version-on-override, resume, detect-duplicate off, Keep/Delete) would build on, from `C:\UI TEST\guides-ui-tests\tests\assets_ui\upload_assets\steps\upload_assets.py`:
+
+```python
+@then("set the detect duplicate config to {detect_duplicate}")
+def step_impl(context: GuidesContext, detect_duplicate: bool):
+    url = context.serverPath + "system/console/configMgr/com.day.cq.dam.core.impl.servlet.CreateAssetServlet"
+    login_session(context)
+    payload = {'apply': 'true', 'action': 'ajaxConfigManager',
+               'detect_duplicate': detect_duplicate, 'propertylist': 'detect_duplicate'}
+    response = context.requestSession.post(url, data=payload)
+    return response.status_code
+
+@then('the upload status dialog should be visible')
+def verify_upload_status_dialog_visible(context):
+    assets_ui = AssetFiles(context, "")
+    assets_ui.wait_for_status_dialog_visible()
+
+@when('user cancels upload of file {filename}')
+def cancel_file_upload(context, filename):
+    assets_ui = AssetFiles(context, "")
+    assets_ui.cancel_file_in_status_dialog(filename)
+
+@when('user clicks cancel all uploads')
+def click_cancel_all(context):
+    assets_ui = AssetFiles(context, "")
+    assets_ui.click_cancel_all_uploads()
+
+@then('a conflict dialog should appear')
+def verify_conflict_dialog(context):
+    assets_ui = AssetFiles(context, "")
+    assets_ui.wait_for_conflict_dialog()
+```
+
+- What this proves: the upload status dialog, per-file cancel, cancel-all, rename/inline-validation, and the re-upload conflict path are automated and passing at the inspected SHA; the detect-duplicate config toggle is driven through the CreateAssetServlet ConfigManager, which is the exact hook a detect-duplicate-off and a Keep/Delete gap test would reuse.
+- Precise gaps: no scenario asserts a working-copy version is created on override (AC-04, AC-05), size-limit or restricted-MIME rejection (AC-08, AC-09), on-prem chunked resume (AC-03), the detect-duplicate-off path or Keep/Delete choices (AC-10), or folder-upload refusal (AC-12); these build on the `AssetFiles` helpers and the ConfigManager step above.
