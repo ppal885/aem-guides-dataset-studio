@@ -52,14 +52,19 @@ def _get_client():
         # no CHROMA_HOST, we fall back to the local embedded PersistentClient.
         chroma_host = os.getenv("CHROMA_HOST", "").strip()
         if chroma_host:
-            settings = None
+            from chromadb.config import Settings
+            setting_kwargs = {}
             auth_token = os.getenv("CHROMA_AUTH_TOKEN", "").strip()
             if auth_token:
-                from chromadb.config import Settings
-                settings = Settings(
-                    chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-                    chroma_client_auth_credentials=auth_token,
-                )
+                setting_kwargs["chroma_client_auth_provider"] = "chromadb.auth.token_authn.TokenAuthClientProvider"
+                setting_kwargs["chroma_client_auth_credentials"] = auth_token
+            # When Chroma is reached through a reverse-proxy sub-path (e.g. Nginx
+            # `location /chroma/` on an already-exposed port), set CHROMA_API_PATH
+            # to the prefixed API path, e.g. "/chroma/api/v2".
+            api_path = os.getenv("CHROMA_API_PATH", "").strip()
+            if api_path:
+                setting_kwargs["chroma_server_api_default_path"] = api_path
+            settings = Settings(**setting_kwargs) if setting_kwargs else None
             client = chromadb.HttpClient(
                 host=chroma_host,
                 port=int(os.getenv("CHROMA_PORT", "8000")),
