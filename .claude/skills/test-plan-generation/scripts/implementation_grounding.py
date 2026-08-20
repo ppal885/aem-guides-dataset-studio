@@ -30,6 +30,14 @@ ARTIFACT_KINDS = ("api", "operation", "handler", "method", "service_class", "con
 VERIFIED_KEY_PROVENANCE = ("CODE", "PRODUCT_DOC", "OSGI_CONFIG", "DTD", "SPEC")
 UNVERIFIED_KEY_PROVENANCE = ("REPORTER", "TICKET", "PARAPHRASE", "UNKNOWN")
 
+# Dependency-delegated implementation: when the real logic lives in an external/
+# vendored package (not the ticket's own repo) and neither a local clone of that
+# package nor GitHub MCP can reach it, the premise is genuinely UNRESOLVED - not a
+# gate failure to route around, and not a silent guess to accept as fact.
+DEPENDENCY_RESOLUTION_STATUSES = (
+    "RESOLVED_LOCAL_CLONE", "RESOLVED_GITHUB_MCP", "UNRESOLVED_NO_ACCESS", "NOT_APPLICABLE",
+)
+
 # Strong signals that a ticket concerns a named backend/API *contract* artifact.
 # Deliberately narrow: merely citing a .java file (as any code-grounded DITA/publishing
 # plan does) must NOT activate this gate - only an API/service-contract surface does.
@@ -179,12 +187,46 @@ def validate_implementation_grounding(block, *, open_question_ids=None):
                     f"named_artifacts[{i}] states a ticket premise ('{premise[:60]}') but premise_verified is not true - "
                     f"confirm the premise against the handler; ticket claims about current behaviour are often stale"
                 )
-            if not isinstance(art.get("premise_holds"), bool):
+            premise_holds = art.get("premise_holds")
+            if isinstance(premise_holds, bool):
+                pass
+            elif premise_holds == "unresolved":
+                # A genuine third state: the code was inspected but cannot confirm OR
+                # refute the premise (e.g. delegated to an unreachable dependency, or the
+                # claimed behaviour depends on runtime state no static read can settle).
+                # This must not be used as an escape hatch from actually looking - it
+                # requires a premise_note explaining what was checked and why it fell short.
+                if not str(art.get("premise_note", "")).strip():
+                    problems.append(
+                        f"named_artifacts[{i}].premise_holds is 'unresolved' but premise_note is empty - "
+                        f"explain what was searched and why the premise could not be confirmed or refuted in code"
+                    )
+            else:
                 problems.append(
-                    f"named_artifacts[{i}].premise_holds must be a boolean recording whether the code confirms the ticket premise"
+                    f"named_artifacts[{i}].premise_holds must be true, false, or 'unresolved' (only when the code "
+                    f"genuinely cannot confirm or refute the ticket premise) recording whether the code confirms it"
                 )
             if material and not any(str(e).strip() for e in (evidence or [])):
                 problems.append(f"named_artifacts[{i}] premise verification needs cited code evidence")
+
+        # Dependency-delegated implementation: optional, only validated when declared.
+        dep = art.get("dependency_resolution")
+        if dep is not None:
+            if not isinstance(dep, dict):
+                problems.append(f"named_artifacts[{i}].dependency_resolution must be an object")
+            else:
+                status = str(dep.get("status", "")).strip()
+                if status not in DEPENDENCY_RESOLUTION_STATUSES:
+                    problems.append(
+                        f"named_artifacts[{i}].dependency_resolution.status must be one of: "
+                        f"{', '.join(DEPENDENCY_RESOLUTION_STATUSES)}"
+                    )
+                if status == "UNRESOLVED_NO_ACCESS" and not str(dep.get("note", "")).strip():
+                    problems.append(
+                        f"named_artifacts[{i}].dependency_resolution is UNRESOLVED_NO_ACCESS but has no 'note' - "
+                        f"name the external/vendored package and why neither a local clone nor GitHub MCP could "
+                        f"reach it, and carry the resulting gap as an Open Question"
+                    )
     return problems
 
 

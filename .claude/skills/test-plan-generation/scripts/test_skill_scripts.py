@@ -59,6 +59,8 @@ impl_grounding_mod = _load("implementation_grounding", "implementation_grounding
 cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
 scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
 affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
+comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
+pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -2864,6 +2866,51 @@ def test_implementation_grounding() -> None:
     # bad kind is rejected
     check("invalid artifact kind is rejected", any("kind must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[art(kind="widget")]))))
 
+    # config-key provenance: a reporter/ticket-supplied key must be verified or made an Open Question.
+    # (Backported from the dev-copy suite - the validator already enforced this in both
+    # copies, but this copy's self-tests never got matching coverage.)
+    def cfg(**over):
+        return art(artifact="duplicate.uuid.move.old.file", kind="config_key",
+                   evidence=["ConfigManager.java:195"], **over)
+    check("config_key with verified provenance passes",
+          ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="CODE")])) == [])
+    check("config_key UNVERIFIED provenance without OQ is rejected",
+          any("UNVERIFIED provenance" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="REPORTER")]))))
+    check("config_key UNVERIFIED provenance with OQ ref passes",
+          ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="REPORTER", verification_open_question_ref="OQ-3")]), open_question_ids=["OQ-3"]) == [])
+    check("config_key invalid provenance rejected",
+          any("key_provenance must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="RUMOR")]))))
+    check("config_key missing provenance is review-only, not a validate failure",
+          ig.validate_implementation_grounding(block(named_artifacts=[cfg()])) == []
+          and ig.config_key_artifacts_missing_provenance(block(named_artifacts=[cfg()])) == ["duplicate.uuid.move.old.file"])
+
+    # premise_holds tri-state: 'unresolved' is allowed only with a premise_note explaining the gap.
+    unresolved_no_note = art(premise="friendly names update live", premise_verified=True, premise_holds="unresolved")
+    check("premise_holds 'unresolved' without a note is rejected",
+          any("premise_note is empty" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[unresolved_no_note]))))
+    unresolved_with_note = art(premise="friendly names update live", premise_verified=True, premise_holds="unresolved",
+                                premise_note="dependency package source not reachable; searched local clone and GitHub MCP, both absent")
+    check("premise_holds 'unresolved' with a note passes",
+          ig.validate_implementation_grounding(block(named_artifacts=[unresolved_with_note])) == [])
+    bad_holds = art(premise="friendly names update live", premise_verified=True, premise_holds="maybe")
+    check("premise_holds invalid string value is rejected",
+          any("must be true, false, or 'unresolved'" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[bad_holds]))))
+
+    # dependency_resolution: optional sub-field, validated only when declared.
+    dep_ok = art(dependency_resolution={"status": "RESOLVED_LOCAL_CLONE", "external_package": "@rh/jui-app"})
+    check("dependency_resolution with valid status passes", ig.validate_implementation_grounding(block(named_artifacts=[dep_ok])) == [])
+    dep_bad_status = art(dependency_resolution={"status": "GUESSED"})
+    check("dependency_resolution invalid status is rejected",
+          any("dependency_resolution.status must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[dep_bad_status]))))
+    dep_unresolved_no_note = art(dependency_resolution={"status": "UNRESOLVED_NO_ACCESS"})
+    check("dependency_resolution UNRESOLVED_NO_ACCESS without a note is rejected",
+          any("UNRESOLVED_NO_ACCESS but has no 'note'" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[dep_unresolved_no_note]))))
+    dep_unresolved_with_note = art(dependency_resolution={
+        "status": "UNRESOLVED_NO_ACCESS", "external_package": "@rh/jui-app",
+        "note": "no local clone and GitHub MCP unavailable"})
+    check("dependency_resolution UNRESOLVED_NO_ACCESS with a note passes",
+          ig.validate_implementation_grounding(block(named_artifacts=[dep_unresolved_with_note])) == [])
+
 
 def test_capability_eligibility() -> None:
     ce = cap_elig_mod
@@ -3083,6 +3130,86 @@ def test_affected_surface() -> None:
     check("no grounding does not activate affected-surface", asf.is_active({"behaviour_matters": True}) is False)
 
 
+def test_comment_claims() -> None:
+    cc = comment_claim_mod
+
+    check("comment_claims absent is not a failure", cc.validate_comment_claims(None) == [])
+    check("comment_claims wrong type is rejected", cc.validate_comment_claims({"a": 1}) == ["comment_claims must be a list"])
+
+    def claim(**o):
+        base = {"claim": "there is no DB-mode gate here", "comment_source": "author_rca",
+                "verification_status": "VERIFIED_FALSE", "evidence_ids": ["E4"]}
+        base.update(o)
+        return base
+
+    check("well-formed VERIFIED_FALSE claim passes", cc.validate_comment_claims([claim()]) == [])
+    check("missing claim text is rejected",
+          any("missing 'claim'" in p for p in cc.validate_comment_claims([claim(claim="")])))
+    check("invalid comment_source is rejected",
+          any("comment_source must be one of" in p for p in cc.validate_comment_claims([claim(comment_source="hearsay")])))
+    check("invalid verification_status is rejected",
+          any("verification_status must be one of" in p for p in cc.validate_comment_claims([claim(verification_status="PROBABLY")])))
+    check("VERIFIED_TRUE without evidence_ids is rejected",
+          any("must cite evidence_ids" in p for p in cc.validate_comment_claims([claim(verification_status="VERIFIED_TRUE", evidence_ids=[])])))
+    check("UNVERIFIABLE without open_question_ref is rejected",
+          any("open_question_ref" in p for p in cc.validate_comment_claims([claim(verification_status="UNVERIFIABLE", evidence_ids=[])])))
+    check("UNVERIFIABLE with a known open_question_ref passes",
+          cc.validate_comment_claims([claim(verification_status="UNVERIFIABLE", evidence_ids=[], open_question_ref="OQ-1")], open_question_ids=["OQ-1"]) == [])
+    check("UNVERIFIABLE with an unknown open_question_ref is rejected",
+          any("is not in the plan's open_questions" in p for p in cc.validate_comment_claims(
+              [claim(verification_status="UNVERIFIABLE", evidence_ids=[], open_question_ref="OQ-9")], open_question_ids=["OQ-1"])))
+
+    hits = cc.likely_claims_in_comments({"issue": {"comments": [{"body": "there is no gate for this in the code today"}]}})
+    check("current-behaviour phrasing is detected in comment text", len(hits) == 1)
+    check("plain comment text has no hits", cc.likely_claims_in_comments({"issue": {"comments": [{"body": "looks good to me"}]}}) == [])
+
+
+def test_pr_supersession() -> None:
+    prs = pr_supersession_mod
+
+    check("pr_references absent is not a failure", prs.validate_pr_references(None) == [])
+    check("single PR needs no reconciliation",
+          prs.validate_pr_references([{"pr_ref": "#8098", "status": "AUTHORITATIVE", "comparison_note": "only PR linked"}]) == [])
+
+    two_prs_unreconciled = [
+        {"pr_ref": "#8098", "status": "SUPERSEDED"},
+        {"pr_ref": "#8135", "status": "SUPERSEDED"},
+    ]
+    check("two PRs with no AUTHORITATIVE entry is rejected",
+          any("does not mark exactly one AUTHORITATIVE" in p for p in prs.validate_pr_references(two_prs_unreconciled)))
+
+    two_prs_ok = [
+        {"pr_ref": "#8098", "status": "SUPERSEDED"},
+        {"pr_ref": "#8135", "status": "AUTHORITATIVE",
+         "comparison_note": "8135 supersedes 8098 with a full V1+V2 fix; diff --stat shows 8098's files as a subset"},
+    ]
+    check("two PRs with exactly one AUTHORITATIVE + comparison_note passes", prs.validate_pr_references(two_prs_ok) == [])
+
+    authoritative_no_note = [
+        {"pr_ref": "#8098", "status": "SUPERSEDED"},
+        {"pr_ref": "#8135", "status": "AUTHORITATIVE"},
+    ]
+    check("AUTHORITATIVE without comparison_note is rejected",
+          any("comparison_note" in p for p in prs.validate_pr_references(authoritative_no_note)))
+
+    unresolved_no_oq = [
+        {"pr_ref": "#8098", "status": "UNRESOLVED"},
+        {"pr_ref": "#8135", "status": "UNRESOLVED"},
+    ]
+    check("UNRESOLVED without open_question_ref is rejected",
+          any("open_question_ref" in p for p in prs.validate_pr_references(unresolved_no_oq)))
+    unresolved_with_oq = [
+        {"pr_ref": "#8098", "status": "UNRESOLVED", "open_question_ref": "OQ-1"},
+        {"pr_ref": "#8135", "status": "UNRESOLVED", "open_question_ref": "OQ-1"},
+    ]
+    check("all-UNRESOLVED with a known open_question_ref passes",
+          prs.validate_pr_references(unresolved_with_oq, open_question_ids=["OQ-1"]) == [])
+    check("invalid status is rejected",
+          any("status must be one of" in p for p in prs.validate_pr_references([{"pr_ref": "#8098", "status": "MERGED"}])))
+    check("missing pr_ref is rejected",
+          any("missing 'pr_ref'" in p for p in prs.validate_pr_references([{"status": "AUTHORITATIVE", "comparison_note": "x"}])))
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -3116,6 +3243,8 @@ def main() -> int:
     test_capability_eligibility()
     test_scope_conflict()
     test_affected_surface()
+    test_comment_claims()
+    test_pr_supersession()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

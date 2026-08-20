@@ -81,6 +81,8 @@ impl_grounding_mod = _load("implementation_grounding", "implementation_grounding
 cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
 scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
 affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
+comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
+pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -652,6 +654,44 @@ def check_affected_surface(manifest_path: str | None, plan_text: str = "") -> tu
     return [], ["affected surface not applicable (no handler/operation/config artifact grounded)"]
 
 
+def check_comment_claims(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `comment_claims` block when present (optional, backward-
+    compatible). When a Jira comment's current-behaviour claim is recorded, it must carry
+    a real verification outcome (code/diff evidence, or an Open Question) - never an
+    unreconciled assertion. When comment text LOOKS like a current-behaviour claim but
+    nothing is recorded, this is a non-blocking REVIEW note, not a failure - the heuristic
+    cannot reliably tell a stale RCA from harmless chatter."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if comment_claim_mod.is_present(data):
+        failures = [f"[comment-claims] {p}" for p in comment_claim_mod.validate_comment_claims(
+            data["comment_claims"], open_question_ids=_open_question_ids(data))]
+        return failures, ["comment claims validated"] if not failures else []
+    hits = comment_claim_mod.likely_claims_in_comments(data)
+    if hits:
+        return [], [f"REVIEW comment-claims: comment text with current-behaviour phrasing was found "
+                    f"({len(hits)} candidate(s)) but no comment_claims entries are recorded - verify each such "
+                    f"claim against the diff/code and record VERIFIED_TRUE / VERIFIED_FALSE / STALE_SUPERSEDED / "
+                    f"UNVERIFIABLE rather than repeating the comment as fact"]
+    return [], ["comment claims not applicable (no current-behaviour comment phrasing detected)"]
+
+
+def check_pr_supersession(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `pr_references` block when present (optional, backward-
+    compatible). Only activates a hard requirement when more than one PR/branch is
+    listed: exactly one must be marked AUTHORITATIVE with a comparison_note, or every
+    non-authoritative entry must be UNRESOLVED with an Open Question."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if not pr_supersession_mod.is_present(data):
+        return [], ["pr supersession not applicable (no pr_references declared)"]
+    failures = [f"[pr-supersession] {p}" for p in pr_supersession_mod.validate_pr_references(
+        data["pr_references"], open_question_ids=_open_question_ids(data))]
+    return failures, ["pr_references reconciled"] if not failures else []
+
+
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
     """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
     A material scope mismatch with no open question exposing it is a hard FAIL."""
@@ -857,6 +897,16 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _asf, _asn = check_affected_surface(manifest_path, body)
     failures += _asf
     notes += _asn
+    # Comment-claim reconciliation: a Jira comment's own claim about current code must
+    # be verified against the diff/code, not accepted as fact.
+    _ccf, _ccn = check_comment_claims(manifest_path)
+    failures += _ccf
+    notes += _ccn
+    # PR supersession: when a ticket has more than one PR/branch, exactly one must be
+    # reconciled as authoritative before grounding on it.
+    _prsf, _prsn = check_pr_supersession(manifest_path)
+    failures += _prsf
+    notes += _prsn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn
