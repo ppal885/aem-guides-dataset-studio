@@ -93,6 +93,15 @@ def main() -> int:
         existing = ""
     is_update = bool(existing) and existing != ac_text
     unchanged = bool(existing) and existing == ac_text
+    mode = "unchanged" if unchanged else ("update" if is_update else "first post")
+
+    # Resolve the QE Assignee BEFORE building the comment text so the mention can be
+    # folded into the single posted comment, instead of being a second, separate
+    # comment (previously this posted two near-identical comments back-to-back on a
+    # first post - a real duplication bug, not intentional).
+    qe = None
+    if not args.no_qe_tag and not is_update and not unchanged:
+        qe = _qe_assignee_username(c, key)
 
     if unchanged:
         comment = None  # nothing changed - do not add a noise comment
@@ -100,10 +109,11 @@ def main() -> int:
         comment = (f"Acceptance Criteria field updated by the AEM Guides test-plan skill "
                    f"(now {len(acs)} criteria, AI-generated). Flagged {args.label} - please re-review the updated criteria.")
     else:
-        comment = ("Acceptance Criteria posted by the AEM Guides test-plan skill (AI-generated). "
-                   f"Flagged {args.label} - a human must review and confirm before sign-off.")
+        mention = f"[~{qe}] " if qe else ""
+        reviewer_note = "please review (QE Assignee)" if qe else "a human must review"
+        comment = (f"{mention}Acceptance Criteria posted by the AEM Guides test-plan skill (AI-generated). "
+                   f"Flagged {args.label} - {reviewer_note} and confirm before sign-off.")
 
-    mode = "unchanged" if unchanged else ("update" if is_update else "first post")
     print(f"Issue: {key} ({mode})\nAC field content to post ({len(acs)} criteria):\n" + "-" * 60)
     print(ac_text)
     print("-" * 60 + f"\nLabel: {args.label}")
@@ -117,20 +127,14 @@ def main() -> int:
     print(f"\nOK: {verb} {key} Acceptance Criteria field ({len(acs)} criteria); label {args.label}"
           + ("; comment added." if comment else "; no comment (content unchanged)."))
 
-    # Tag the QE Assignee only on the FIRST post (avoid re-tagging on every update),
-    # unless explicitly disabled.
     if args.no_qe_tag:
         pass
     elif is_update or unchanged:
         print("NOTE: not a first post - skipped re-tagging the QE Assignee (already tagged initially).")
+    elif qe:
+        print(f"OK: QE Assignee [~{qe}] tagged in the single posted comment (no separate comment added).")
     else:
-        qe = _qe_assignee_username(c, key)
-        if qe:
-            c.add_comment(key, f"[~{qe}] please review the acceptance criteria for this case (QE Assignee). "
-                               f"These AI-drafted ACs are in the Acceptance Criteria field and labelled {args.label}.")
-            print(f"OK: added a comment tagging QE Assignee [~{qe}] to review.")
-        else:
-            print("NOTE: no QE Assignee set on the issue - skipped the review tag.")
+        print("NOTE: no QE Assignee set on the issue - skipped the review tag.")
     return 0
 
 
