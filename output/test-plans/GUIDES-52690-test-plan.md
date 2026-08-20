@@ -1,0 +1,16 @@
+**Acceptance Criteria**
+- AC-01: A baseline selected and saved for publishing from the map dashboard or map console is retained after a page refresh - the saved baseline keeps displaying and does not revert to "no baseline used".
+- AC-02: When the selected baseline is updated, the baseline selection is retained rather than being reset.
+- AC-03: When the selected baseline is deleted, the map dashboard shows a warning icon with the tooltip "Not able to retrieve baseline".
+- AC-04: When the selected baseline is deleted, the Use Baseline toggle stays on (it is not toggled off) and the baseline dropdown shows empty text.
+- AC-05: The saved baseline value is retained in map collections after a screen refresh.
+- AC-06: Baseline retention behaves correctly across all output presets - Native PDF, AEM Site, Native AEM Site, HTML5, and JSON.
+- AC-07: The behaviour applies to old v1 baselines; v2 baselines are out of scope for this fix.
+- AC-08: When only one baseline exists and it is deleted, the Use Baseline toggle remains on with no baseline selected, and publishing in that state fails rather than silently publishing without a baseline.
+- AC-09: Publishing fails fast with a clear error when the selected baseline cannot be resolved, instead of proceeding without the intended baseline.
+
+**Known Jira Bugs / Past Similar Tickets**
+- GUIDES-53119: Break || AEM Site || Baseline value is not retained after reverting between map versions. Similarity: strongest match, same-defect-class - the same baseline-retention failure on the publishing/preset path, triggered by a version revert rather than a page refresh. Status: not re-fetched live this pass. Resolution: not re-fetched. Affected version: not re-fetched. Fix version: not re-fetched. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: the closest prior instance of baseline value not persisting - its repro and fix should inform AC-01 and AC-02.
+- GUIDES-3176: Baselines are getting lost after closing the map dashboard. Similarity: adjacent - same lost-baseline-after-leaving-the-screen class this ticket reports on refresh. Status: not re-fetched live this pass. Resolution: not re-fetched. Affected version: not re-fetched. Fix version: not re-fetched. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: reinforces the persistence contract in AC-01 and AC-05 (retention across screen leave/refresh).
+- GUIDES-27300: EPV | Baseline panel does not refresh when map versions are switched. Similarity: adjacent - baseline-panel state not updating correctly on a map-context change. Status: not re-fetched live this pass. Resolution: not re-fetched. Affected version: not re-fetched. Fix version: not re-fetched. RCA: not available in current evidence. Test evidence: not available in current evidence. Impact: widens the retention regression net to version-switch, relevant to AC-02.
+- Search status: search_jira_history was run on the indexed jira_qa corpus for the baseline-retention / preset-not-saved defect class; live-Jira JQL by error text (text ~ "baseline" AND text ~ "retain"), by workflow (component = Publishing AND baseline AND refresh), and by code area were framed but not run live this expedited pass.
