@@ -40,8 +40,37 @@ def _get_client():
     if _chroma_client is not None:
         return _chroma_client
     try:
+        import os
+
         import chromadb
         from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT
+
+        # Shared-server mode: when CHROMA_HOST is set, connect to a Chroma running in
+        # client-server mode (e.g. on the VM) so multiple people/processes can write
+        # to ONE database safely (embedded PersistentClient is single-writer and
+        # corrupts under concurrent multi-process writes). Backward-compatible: with
+        # no CHROMA_HOST, we fall back to the local embedded PersistentClient.
+        chroma_host = os.getenv("CHROMA_HOST", "").strip()
+        if chroma_host:
+            settings = None
+            auth_token = os.getenv("CHROMA_AUTH_TOKEN", "").strip()
+            if auth_token:
+                from chromadb.config import Settings
+                settings = Settings(
+                    chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
+                    chroma_client_auth_credentials=auth_token,
+                )
+            client = chromadb.HttpClient(
+                host=chroma_host,
+                port=int(os.getenv("CHROMA_PORT", "8000")),
+                ssl=os.getenv("CHROMA_SSL", "false").strip().lower() in ("1", "true", "yes", "on"),
+                settings=settings,
+            )
+            client.heartbeat()  # fail fast if the server is unreachable
+            _chroma_client = client
+            logger.info_structured("ChromaDB connected in server mode",
+                                   extra_fields={"host": chroma_host, "port": os.getenv("CHROMA_PORT", "8000")})
+            return _chroma_client
 
         path = _get_chroma_path()
         # Pin Chroma's canonical tenant/database names (default_tenant / default_database) so we never
