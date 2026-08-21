@@ -253,6 +253,13 @@ def documents_to_chunk_records(
         per_url_index[url] = chunk_index + 1
         content = (chunk.page_content or "")[:MAX_CONTENT_CHARS]
         page_hash = _content_hash(str(metadata.get("source", "")) + "\n" + str(chunk.page_content or ""))
+        # The splitter copies the same Document.metadata onto every chunk it cuts from one
+        # page, so paragraphs/list_items/codeph/codeblocks/tables (the WHOLE page's scraped
+        # arrays) were being duplicated onto every chunk of that page - e.g. one page with 30
+        # chunks stored its full list_items array 30 times. Only chunk_index 0 needs to carry
+        # them: experience_league_to_dita.py dedupes to one chunk per url and walks chunks in
+        # (url, chunk_index) order, so it always finds this first chunk's copy.
+        is_first_chunk_of_url = chunk_index == 0
         records.append(
             {
                 "id": stable_chunk_id(url, chunk_index),
@@ -267,11 +274,11 @@ def documents_to_chunk_records(
                 "content_hash": page_hash,
                 "chunk_content_hash": _content_hash(content),
                 "chunk_index": chunk_index,
-                "paragraphs": metadata.get("paragraphs", []),
-                "list_items": metadata.get("list_items", []),
-                "codeph": metadata.get("codeph", []),
-                "codeblocks": metadata.get("codeblocks", []),
-                "tables": metadata.get("tables", []),
+                "paragraphs": metadata.get("paragraphs", []) if is_first_chunk_of_url else [],
+                "list_items": metadata.get("list_items", []) if is_first_chunk_of_url else [],
+                "codeph": metadata.get("codeph", []) if is_first_chunk_of_url else [],
+                "codeblocks": metadata.get("codeblocks", []) if is_first_chunk_of_url else [],
+                "tables": metadata.get("tables", []) if is_first_chunk_of_url else [],
             }
         )
     return records
