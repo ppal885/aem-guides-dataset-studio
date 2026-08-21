@@ -5,14 +5,25 @@ normalization, DOM taxonomy, action safety, transitions, flows, dedup, records,
 currentness). Run with: python -m pytest ui_harvester/tests -q
 """
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from ui_harvester import actions, currentness, dom_extract, rag_records, taxonomy
+from ui_harvester import actions, currentness, dom_extract, rag_records, reports, taxonomy
+from ui_harvester import surface_resolution as surface_mod
 from ui_harvester import transitions as trans_mod
-from ui_harvester.state import UIState, compute_state_id, finalize_state, normalize_url
+from ui_harvester.state import (
+    UIState,
+    compute_state_id,
+    finalize_state,
+    normalize_route_identity,
+    normalize_url,
+)
 from ui_harvester.screenshot import ScreenshotStore, image_checksum
 
 
@@ -221,9 +232,241 @@ def test_screenshot_manifest_entry_shape():
     entry = store.manifest_entry(store.__new__(store), st)  # manifest_entry is pure
     assert entry["state_id"] == st.state_id
     assert entry["authority"] == "UI_OBSERVATION"
+    assert entry["route_identity"] == st.route_identity
     assert entry["screenshot_path"].endswith("shot:abc.png")
 
 
 def test_image_checksum_deterministic():
     assert image_checksum(b"abc") == image_checksum(b"abc")
     assert image_checksum(b"abc") != image_checksum(b"abd")
+
+
+# --- route-scoped surface lifecycle -----------------------------------------
+def _surface_pair():
+    current_route = (
+        "/libs/fmdita/clientlibs/xmleditor/page.html"
+        "?appmode=author&leftpanel=repository_panel"
+    )
+    legacy_route = "/libs/fmdita/mapcollections"
+    current = surface_mod.make_surface_identity(
+        "OPEN_MAP_COLLECTIONS", "NEW_EDITOR_MAP_COLLECTIONS", current_route
+    )
+    legacy = surface_mod.make_surface_identity(
+        "OPEN_MAP_COLLECTIONS", "LEGACY_MAP_COLLECTIONS", legacy_route
+    )
+    return current, legacy
+
+
+def test_route_identity_preserves_current_surface_and_drops_asset_identity():
+    route = normalize_route_identity(
+        "http://host/libs/fmdita/clientlibs/xmleditor/page.html"
+        "?leftPanel=repository_panel&appMode=author"
+        "&src=%2Fcontent%2Fdam%2FGUID-abc.dita"
+    )
+    assert route == (
+        "/libs/fmdita/clientlibs/xmleditor/page.html"
+        "?appmode=author&leftpanel=repository_panel"
+    )
+    assert "src" not in route
+    assert "GUID" not in route
+
+
+def test_route_identity_canonicalizes_legacy_map_collections():
+    route = normalize_route_identity(
+        "http://host/libs/fmdita/mapcollections/details.html/content/dam/example"
+    )
+    assert route == "/libs/fmdita/mapcollections"
+
+
+def test_same_capability_on_current_and_legacy_routes_never_merges():
+    current, legacy = _surface_pair()
+    assert current.surface_id != legacy.surface_id
+    assert current.route_identity != legacy.route_identity
+
+
+def test_route_hints_classify_known_current_and_legacy_surfaces():
+    current, legacy = _surface_pair()
+    assert current.lifecycle == surface_mod.CURRENT_UI
+    assert legacy.lifecycle == surface_mod.LEGACY_UI
+
+
+def test_conflicting_lifecycle_evidence_remains_version_unknown():
+    evidence = (
+        surface_mod.LifecycleEvidence(
+            source_type="DOCUMENTATION",
+            source_ref="docs/current",
+            assertion="Current map collections surface",
+            classification=surface_mod.CURRENT_UI,
+        ),
+        surface_mod.LifecycleEvidence(
+            source_type="JIRA",
+            source_ref="GUIDES-1",
+            assertion="Legacy map collections surface",
+            classification=surface_mod.LEGACY_UI,
+        ),
+    )
+    identity = surface_mod.make_surface_identity(
+        "OPEN_MAP_COLLECTIONS",
+        "MAP_COLLECTIONS",
+        "/libs/fmdita/mapcollections",
+        evidence=evidence,
+    )
+    assert identity.lifecycle == surface_mod.VERSION_UNKNOWN
+
+
+def test_replacement_relation_requires_explicit_lifecycle_evidence():
+    current, legacy = _surface_pair()
+    with pytest.raises(ValueError, match="requires explicit"):
+        surface_mod.make_surface_relation(
+            legacy, current, surface_mod.REPLACED_BY
+        )
+
+    evidence = surface_mod.LifecycleEvidence(
+        source_type="DOCUMENTATION",
+        source_ref="docs/map-collections-migration",
+        assertion="The new editor map collections surface replaces the legacy route.",
+        relation=surface_mod.REPLACED_BY,
+    )
+    relation = surface_mod.make_surface_relation(
+        legacy, current, surface_mod.REPLACED_BY, evidence=(evidence,)
+    )
+    assert relation.source_surface_id == legacy.surface_id
+    assert relation.target_surface_id == current.surface_id
+    assert relation.evidence_ids == (evidence.evidence_id,)
+
+
+def test_current_plan_retrieval_prefers_current_and_excludes_legacy():
+    current, legacy = _surface_pair()
+    selected = surface_mod.select_surfaces(
+        (legacy, current), purpose=surface_mod.CURRENT_TEST_PLAN
+    )
+    assert selected == [current]
+
+    legacy_requested = surface_mod.select_surfaces(
+        (current, legacy),
+        purpose=surface_mod.CURRENT_TEST_PLAN,
+        requested_route=legacy.route_identity,
+    )
+    assert legacy_requested[0] == legacy
+
+
+def test_historical_jira_retrieval_may_prefer_legacy():
+    current, legacy = _surface_pair()
+    selected = surface_mod.select_surfaces(
+        (current, legacy), purpose=surface_mod.HISTORICAL_JIRA
+    )
+    assert selected[0] == legacy
+
+
+def test_legacy_surface_is_never_a_current_product_contract():
+    current, legacy = _surface_pair()
+    assert surface_mod.is_current_product_contract(current)
+    assert not surface_mod.is_current_product_contract(legacy)
+
+
+def test_product_hierarchy_keeps_current_and_legacy_map_collections_separate():
+    edges = set(taxonomy.PRODUCT_HIERARCHY_EDGES)
+    assert (
+        "MAP_COLLECTIONS", "HAS_CURRENT_SURFACE", "NEW_EDITOR_MAP_COLLECTIONS"
+    ) in edges
+    assert (
+        "MAP_COLLECTIONS", "HAS_LEGACY_SURFACE", "LEGACY_MAP_COLLECTIONS"
+    ) in edges
+    assert (
+        "USER_PREFERENCES", "HAS_SECTION", "GENERAL"
+    ) in edges
+    assert (
+        "USER_PREFERENCES", "HAS_SECTION", "APPEARANCE"
+    ) in edges
+    assert not any(
+        relation in (surface_mod.REPLACED_BY, surface_mod.SUPERSEDED_BY)
+        for _, relation, _ in edges
+    )
+    serialized = json.dumps(sorted(edges))
+    for environment_label in ("Draft", "Edits", "HR-Approved", "HR-Review"):
+        assert environment_label not in serialized
+
+
+def test_crawler_observes_workflows_but_blocks_business_mutations():
+    assert actions.mutation_boundary(opens_container="NESTED_CONTEXT_MENU") == actions.OBSERVE
+    assert actions.mutation_boundary(
+        opens_container="MODAL_FORM", reversible=True
+    ) == actions.CONFIGURE_EPHEMERAL
+    assert actions.mutation_boundary(
+        action="save as new version", commits_business_operation=True
+    ) == actions.COMMIT_MUTATION
+    assert actions.mutation_boundary(
+        action="generate sites page", commits_business_operation=True
+    ) == actions.COMMIT_MUTATION
+
+
+def test_surface_rag_records_mark_legacy_non_current_and_serialize_relations():
+    current, legacy = _surface_pair()
+    legacy_record = rag_records.surface_identity_record(legacy)
+    assert legacy_record["metadata"]["is_current_product_contract"] is False
+    assert "legacy" in legacy_record["document"].lower()
+
+    evidence = surface_mod.LifecycleEvidence(
+        source_type="CODE",
+        source_ref="route-registry",
+        assertion="The current route supersedes the legacy map collections route.",
+        relation=surface_mod.SUPERSEDED_BY,
+    )
+    relation = surface_mod.make_surface_relation(
+        legacy, current, surface_mod.SUPERSEDED_BY, evidence=(evidence,)
+    )
+    record = rag_records.surface_relation_record(relation)
+    assert record["metadata"]["from_surface_id"] == legacy.surface_id
+    assert record["metadata"]["to_surface_id"] == current.surface_id
+    assert json.loads(record["metadata"]["evidence_ids"]) == [evidence.evidence_id]
+
+
+def test_surface_graph_preserves_route_scoped_records(tmp_path):
+    current, legacy = _surface_pair()
+    result = SimpleNamespace(
+        capabilities={
+            current.surface_id: {
+                "capability": current.capability,
+                "surface": current.surface,
+                "route_identity": current.route_identity,
+                "lifecycle": current.lifecycle,
+            },
+            legacy.surface_id: {
+                "capability": legacy.capability,
+                "surface": legacy.surface,
+                "route_identity": legacy.route_identity,
+                "lifecycle": legacy.lifecycle,
+            },
+        },
+        states={},
+        transitions=[],
+    )
+    reports.write_graphs(result, tmp_path, [])
+    graph = json.loads(
+        (tmp_path / "graph" / "ui_surface_graph.json").read_text(encoding="utf-8")
+    )
+    assert len(graph) == 2
+    assert {entry["route_identity"] for entry in graph.values()} == {
+        current.route_identity,
+        legacy.route_identity,
+    }
+
+
+def test_rag_export_includes_requested_product_hierarchy():
+    result = SimpleNamespace(capabilities={}, states={}, transitions=[])
+    records = reports.build_rag_records(result, [])
+    hierarchy = {
+        (
+            item["metadata"].get("parent"),
+            item["metadata"].get("relation"),
+            item["metadata"].get("child"),
+        )
+        for item in records
+        if item["metadata"]["record_type"] == "UI_HIERARCHY"
+    }
+    assert (
+        "MAP_COLLECTIONS", "HAS_CURRENT_SURFACE", "NEW_EDITOR_MAP_COLLECTIONS"
+    ) in hierarchy
+    assert (
+        "MAP_COLLECTIONS", "HAS_LEGACY_SURFACE", "LEGACY_MAP_COLLECTIONS"
+    ) in hierarchy

@@ -10,9 +10,11 @@ SPECIFICATION and refuse to mint a formal AC from a UI observation alone.
 import hashlib
 import json
 
+from .surface_resolution import LEGACY_UI, is_current_product_contract
+
 RECORD_TYPES = (
     "UI_SURFACE", "UI_CAPABILITY", "UI_STATE", "UI_TRANSITION", "UI_FLOW",
-    "UI_CURRENTNESS",
+    "UI_CURRENTNESS", "UI_SURFACE_IDENTITY", "UI_SURFACE_RELATION", "UI_HIERARCHY",
 )
 AUTHORITY_STATE = "UI_OBSERVATION"
 AUTHORITY_FLOW = "OBSERVED_UI_FLOW"
@@ -34,6 +36,7 @@ def state_record(state):
     caps = ", ".join(state.visible_capabilities) or "none observed"
     text = (
         f"UI state on the {state.product} {state.surface or 'UNKNOWN'} surface. "
+        f"Route identity: {state.route_identity or 'UNKNOWN'}. "
         f"Region {state.region or 'UNKNOWN'}, container {state.container or 'UNKNOWN'}. "
         f"Left panel: {state.active_left_panel or 'none'}; right panel: {state.active_right_panel or 'none'}; "
         f"editor mode: {state.active_editor_mode or 'n/a'}; active tab: {state.active_tab or 'n/a'}. "
@@ -49,9 +52,67 @@ def state_record(state):
         "disabled_capabilities": json.dumps(state.disabled_capabilities),
         "product_version": state.product_version, "currentness": state.currentness,
         "source_screenshot": state.screenshot_id, "authority": AUTHORITY_STATE,
-        "url_normalized": state.url_normalized,
+        "url_normalized": state.url_normalized, "route_identity": state.route_identity,
     }
     return _record("UI_STATE", text, md)
+
+
+def surface_identity_record(surface):
+    """Route-scoped capability identity; legacy placement is never current truth."""
+    lifecycle_note = (
+        "This is a legacy UI placement and historical evidence only; it must not be used "
+        "as the current product contract."
+        if surface.lifecycle == LEGACY_UI
+        else "This surface identity remains route-scoped and must not be merged by capability name."
+    )
+    text = (
+        f"Capability {surface.capability} is observed on surface {surface.surface or 'UNKNOWN'} "
+        f"at route {surface.route_identity or 'UNKNOWN'}, classified as {surface.lifecycle}. "
+        f"{lifecycle_note}"
+    )
+    md = {
+        "surface_id": surface.surface_id,
+        "capability": surface.capability,
+        "surface": surface.surface,
+        "route_identity": surface.route_identity,
+        "lifecycle": surface.lifecycle,
+        "environment": surface.environment,
+        "product_version": surface.product_version,
+        "evidence_ids": json.dumps(list(surface.evidence_ids)),
+        "is_current_product_contract": is_current_product_contract(surface),
+        "authority": AUTHORITY_STATE,
+    }
+    return _record("UI_SURFACE_IDENTITY", text, md)
+
+
+def surface_relation_record(relation):
+    """Evidence-backed lifecycle relation between two route-scoped surfaces."""
+    text = (
+        f"UI surface {relation.source_surface_id} {relation.relation} "
+        f"{relation.target_surface_id}. This lifecycle relation is supported by evidence "
+        f"{', '.join(relation.evidence_ids)}."
+    )
+    md = {
+        "from_surface_id": relation.source_surface_id,
+        "to_surface_id": relation.target_surface_id,
+        "relation": relation.relation,
+        "evidence_ids": json.dumps(list(relation.evidence_ids)),
+        "authority": AUTHORITY_STATE,
+    }
+    return _record("UI_SURFACE_RELATION", text, md)
+
+
+def hierarchy_record(parent, relation, child, *, hierarchy_type="PRODUCT"):
+    """Deterministic product/capability hierarchy edge for graph retrieval."""
+    text = f"{hierarchy_type} hierarchy: {parent} {relation} {child}."
+    md = {
+        "parent": parent,
+        "relation": relation,
+        "child": child,
+        "hierarchy_type": hierarchy_type,
+        "authority": AUTHORITY_STATE,
+    }
+    return _record("UI_HIERARCHY", text, md)
 
 
 def transition_record(t, *, from_label="", to_label="", action_label=""):

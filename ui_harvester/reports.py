@@ -3,7 +3,8 @@
 import json
 from pathlib import Path
 
-from . import rag_records, transitions as trans_mod
+from . import rag_records, taxonomy, transitions as trans_mod
+from .surface_resolution import make_surface_identity
 
 GAP_CLASSES = (
     "NOT_DISCOVERED", "DISCOVERED_BUT_BLOCKED", "MISSING_FIXTURE",
@@ -24,7 +25,10 @@ def write_metadata(result, output_dir):
     states = [s.to_dict() for s in result.states.values()]
     trans = [t.to_dict() for t in result.transitions]
     flows = trans_mod.extract_flow_paths(result.transitions)
-    caps = [{"capability": c, "surface": v["surface"], "state_count": len(v["states"])}
+    caps = [{"identity_key": c, "capability": v.get("capability", c),
+             "surface": v.get("surface", ""), "route_identity": v.get("route_identity", ""),
+             "lifecycle": v.get("lifecycle", "VERSION_UNKNOWN"),
+             "state_count": len(v["states"])}
             for c, v in sorted(result.capabilities.items())]
     _write_jsonl(meta / "states.jsonl", states)
     _write_jsonl(meta / "transitions.jsonl", trans)
@@ -37,14 +41,21 @@ def write_metadata(result, output_dir):
 def write_graphs(result, output_dir, flows):
     graph = Path(output_dir) / "graph"
     graph.mkdir(parents=True, exist_ok=True)
-    # surface topology: surface -> capabilities
+    # Route-scoped surface topology: same capability on different routes stays distinct.
     surface_graph = {}
-    for cap, v in result.capabilities.items():
-        surface_graph.setdefault(v["surface"] or "UNKNOWN", {"capabilities": []})["capabilities"].append(cap)
+    for identity_key, v in result.capabilities.items():
+        surface_graph[identity_key] = {
+            "surface": v.get("surface") or "UNKNOWN",
+            "route_identity": v.get("route_identity", ""),
+            "lifecycle": v.get("lifecycle", "VERSION_UNKNOWN"),
+            "capabilities": [v.get("capability", identity_key)],
+        }
     (graph / "ui_surface_graph.json").write_text(json.dumps(surface_graph, indent=2, ensure_ascii=False), encoding="utf-8")
     # state graph: nodes + edges
     state_graph = {
-        "nodes": [{"state_id": s.state_id, "surface": s.surface, "dialog": s.open_dialog,
+        "nodes": [{"state_id": s.state_id, "surface": s.surface,
+                   "route_identity": s.route_identity, "lifecycle": s.currentness,
+                   "dialog": s.open_dialog,
                    "menu": s.open_menu, "screenshot_id": s.screenshot_id}
                   for s in result.states.values()],
         "edges": [{"from": t.from_state_id, "to": t.to_state_id, "relation": t.relation,
@@ -63,6 +74,20 @@ def build_rag_records(result, flows):
         records.append(rag_records.transition_record(t))
     for f in flows:
         records.append(rag_records.flow_record(f))
+    for identity_key, value in sorted(result.capabilities.items()):
+        surface = make_surface_identity(
+            value.get("capability", identity_key),
+            value.get("surface", ""),
+            value.get("route_identity", ""),
+            lifecycle=value.get("lifecycle", "VERSION_UNKNOWN"),
+        )
+        records.append(rag_records.surface_identity_record(surface))
+    for parent, relation, child in taxonomy.PRODUCT_HIERARCHY_EDGES:
+        records.append(rag_records.hierarchy_record(parent, relation, child))
+    for parent, relation, child in taxonomy.CAPABILITY_HIERARCHY_EDGES:
+        records.append(rag_records.hierarchy_record(
+            parent, relation, child, hierarchy_type="CAPABILITY"
+        ))
     return records
 
 
