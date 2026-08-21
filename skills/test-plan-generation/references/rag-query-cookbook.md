@@ -54,6 +54,31 @@ For DITA questions:
 - If RAG returns mixed useful and noisy chunks, keep only the exact-matching chunks and say unrelated chunks were rejected internally.
 - If all top chunks are generic release-note or validation-oracle text, mark RAG as noisy and do not use it as behaviour proof.
 
+## Output-Family Disambiguation (publishing tickets)
+
+The AEM Guides RAG corpus co-locates multiple publishing engines that share vocabulary, so
+embedding similarity alone can return the WRONG engine's behaviour. This is observed, not
+theoretical: a probe for "DITA-OT PDF command-line arguments" ranks a Native-PDF chunk first,
+because the Native-PDF page documents *optional* DITA-OT preprocessing. Native PDF using DITA-OT
+preprocessing is NOT the DITA-OT PDF engine — do not treat one as evidence for the other.
+
+- When the claim is about a specific output preset, name the preset in the probe AND verify each
+  accepted chunk's source is that preset (check the chunk `source_url` / title): AEM Sites
+  (`aem-site...`), PDF overview (`generate-output-pdf`), DITA-OT PDF (`...-pdf-dita-ot`), Native
+  PDF (`native-pdf-web-editor`), HTML5.
+- Reject a chunk from a different output family even if its similarity score is high. A Native-PDF
+  chunk mentioning `-Dargs.*` / `-Dpreprocess.*` is evidence about Native-PDF's optional
+  preprocessing, not about the DITA-OT PDF engine's own arguments.
+- For configuration dependencies (an option that is visible/enabled only under a condition), the
+  governing toggle and the dependent option may sit in different chunks. Retrieve both and state
+  the coupling; do not assert an option's availability without its controlling condition. See the
+  worked dependency records in `analysis/native_pdf_dependency_map.json` (consume as run-time
+  evidence — never hardcode option names). Known couplings to look for generically:
+  `OPTION_VISIBLE_WHEN`, `OPTION_ENABLED_WHEN`, `OPTION_REQUIRES`, `OPTION_CONTROLS_BEHAVIOR`.
+- Metadata gap (why this is manual today): current chunks carry only `source_url`/`title`, not an
+  `output_type` facet, so a `where` filter is not yet possible; disambiguate by `source_url` until
+  the ingest adds an output-family facet. Tracked in `analysis/rag_ingestion_gaps.md`.
+
 ## Good vs Noisy Examples
 
 Good:

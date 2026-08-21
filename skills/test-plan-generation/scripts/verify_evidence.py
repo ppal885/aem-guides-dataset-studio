@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -230,6 +231,71 @@ def verify_attachments(manifest_path: str) -> tuple[list[str], list[str]]:
             analyzed_count += 1
 
     notes.append(f"manifest declares {len(attachments)} attachment(s); {analyzed_count} attested analyzed and present")
+    return failures, notes
+
+
+# A dotted lower-case config/OSGi key: >=3 dot-separated segments keeps false
+# positives (bare filenames, two-word prose) low while matching real keys such as
+# `duplicate.uuid.move.old.file` and `create.version.newly.uploaded.content`.
+_CONFIG_KEY_RE = re.compile(r"\b[a-z][a-z0-9]+(?:\.[a-z0-9]+){2,}\b")
+
+
+def verify_config_keys(manifest_path: str, clone_roots: list[str] | None) -> tuple[list[str], list[str]]:
+    """Prove that every config key an implementation_grounding config_key artifact
+    marks CODE/OSGI-verified actually exists in the clone. A key claimed
+    code-verified but not found is the reporter-key bug class (a typo/transposition
+    like `uuid.duplicate.move.old` vs `duplicate.uuid.move.old.file`). Skipped when
+    no clone root is reachable."""
+    failures: list[str] = []
+    notes: list[str] = []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    ig = data.get("implementation_grounding")
+    if not isinstance(ig, dict):
+        return [], []
+
+    def _reachable_git_repo(root: str) -> bool:
+        try:
+            r = subprocess.run(["git", "-C", root, "rev-parse", "--is-inside-work-tree"],
+                               capture_output=True, text=True, timeout=15)
+            return r.returncode == 0 and r.stdout.strip() == "true"
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    roots = [r for r in (clone_roots or []) if r and _reachable_git_repo(r)]
+    if not roots:
+        return [], ["config-key reality check skipped (no reachable clone root to grep against)"]
+    checked = 0
+    for art in (ig.get("named_artifacts") or []):
+        if not isinstance(art, dict) or art.get("kind") != "config_key" or not art.get("material", True):
+            continue
+        if str(art.get("key_provenance", "")).strip() not in ("CODE", "OSGI_CONFIG"):
+            continue
+        blob = " ".join([str(art.get("artifact", ""))] + [str(e) for e in (art.get("evidence") or [])])
+        keys = _CONFIG_KEY_RE.findall(blob)
+        key = max(keys, key=len) if keys else ""
+        if not key:
+            continue
+        found = False
+        for root in roots:
+            try:
+                r = subprocess.run(["git", "-C", root, "grep", "-Fq", key],
+                                   capture_output=True, text=True, timeout=30)
+                if r.returncode == 0:
+                    found = True
+                    break
+            except (OSError, subprocess.SubprocessError):
+                continue
+        checked += 1
+        if not found:
+            failures.append(
+                f"config_key '{key}' is marked {art.get('key_provenance')} (code-verified) but the exact key string "
+                f"was not found in any inspected clone - grep it and correct it; a reporter/ticket-supplied key is "
+                f"frequently a typo or transposition"
+            )
+    notes.append(f"config-key reality: grepped {checked} CODE/OSGI-provenance key(s) against the clone")
     return failures, notes
 
 

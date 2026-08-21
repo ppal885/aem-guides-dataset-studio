@@ -59,6 +59,30 @@ compact_mod = _load("render_compact_view", "render_compact_view.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 graph_manifest_mod = _load("evidence_graph_manifest", "evidence_graph_manifest.py")
 performance_mod = _load("performance_contract", "performance_contract.py")
+# Reasoning pipeline modules (BehaviorModel -> Hypotheses -> Retrieval -> Verify -> Gate -> Integration).
+explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
+audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
+behavior_mod = _load("behavior_model", "behavior_model.py")
+coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
+mq_mod = _load("missing_questions", "missing_questions.py")
+verifier_mod = _load("hypothesis_verifier", "hypothesis_verifier.py")
+coverage_gate_mod = _load("coverage_gate", "coverage_gate.py")
+integration_mod = _load("uac_integration", "uac_integration.py")
+disposition_mod = _load("disposition_classifier", "disposition_classifier.py")
+oracle_mod = _load("test_oracle_builder", "test_oracle_builder.py")
+state_compat_mod = _load("state_compatibility_explorer", "state_compatibility_explorer.py")
+cross_surface_mod = _load("cross_surface_resolver", "cross_surface_resolver.py")
+struct_equiv_mod = _load("structural_equivalence_verifier", "structural_equivalence_verifier.py")
+scenario_reducer_mod = _load("scenario_reducer", "scenario_reducer.py")
+authority_mod = _load("evidence_authority_resolver", "evidence_authority_resolver.py")
+change_impact_mod = _load("change_impact_explorer", "change_impact_explorer.py")
+critic_mod = _load("pre_uac_critic", "pre_uac_critic.py")
+impl_grounding_mod = _load("implementation_grounding", "implementation_grounding.py")
+cap_elig_mod = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
+scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
+affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
+comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
+pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -543,6 +567,266 @@ def check_manifest_completeness(path: str | None) -> list[str]:
     return failures
 
 
+def _load_manifest_dict(manifest_path: str | None) -> dict:
+    if not manifest_path or not Path(manifest_path).is_file():
+        return {}
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _open_question_ids(data: dict) -> list[str]:
+    ids = []
+    for oq in (data.get("open_questions") or []):
+        if isinstance(oq, str):
+            ids.append(oq)
+        elif isinstance(oq, dict) and oq.get("id"):
+            ids.append(str(oq["id"]))
+    return ids
+
+
+def check_capability_eligibility(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Decompose same-surface actions into per-capability eligibility predicates.
+    Declared block validated fully (incl. multi-select-unknown-must-be-open-question);
+    bundling capabilities under one predicate without shared evidence -> NEEDS_REVIEW;
+    active-by-signal but undeclared -> REVIEW note."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    notes: list[str] = []
+    if cap_elig_mod.is_present(data):
+        ms = cap_elig_mod.multiselect_in_scope(data, plan_text)
+        failures = [f"[capability-eligibility] {p}" for p in cap_elig_mod.validate_capability_eligibility(
+            data["capability_eligibility"], open_question_ids=_open_question_ids(data), multiselect=ms)]
+        for grp in cap_elig_mod.bundled_groups_without_evidence(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capabilities [{grp}] are grouped under one predicate "
+                         "without shared evidence - same surface does not imply same eligibility")
+        for cap in cap_elig_mod.entrypoint_underexplored(data["capability_eligibility"], data, plan_text):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] shows responsive/multi-form signals "
+                         "(direct button vs overflow menu / zoom-dependent) but fewer than two entry points are "
+                         "enumerated - each render form can dispatch differently; verify all forms, not just one")
+        for cap in cap_elig_mod.config_terms_missing_key(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] has a CONFIG predicate that names a "
+                         "mode/behaviour but cites no actual config key (e.g. xmleditor.autocheckout) - ground the "
+                         "config-driven criterion in the real OSGi key/property, not a paraphrase")
+        for cap in cap_elig_mod.config_terms_missing_provenance(data["capability_eligibility"]):
+            notes.append(f"REVIEW capability-eligibility: capability [{cap}] has a CONFIG key with no key_provenance "
+                         "- mark it CODE/PRODUCT_DOC (verified) vs REPORTER/TICKET (unverified) and grep the exact "
+                         "key against the product; a reporter-supplied key is frequently a typo/transposition")
+        if not failures:
+            notes.append("capability eligibility validated")
+        return failures, notes
+    if data.get("behaviour_matters", True) is False:
+        return [], ["capability eligibility skipped (behaviour_matters is false)"]
+    if cap_elig_mod.is_active(data, plan_text):
+        sig = ", ".join(cap_elig_mod.detect_signals(data, plan_text)[:5])
+        return [], [f"REVIEW capability-eligibility: several actions share one surface ({sig}) but no "
+                    "capability_eligibility decomposition is declared - do not assume they share one eligibility rule"]
+    return [], ["capability eligibility not applicable (no multi-action surface signals)"]
+
+
+def check_affected_surface(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Force ACs to cover the FULL dimension space of the grounded code surface
+    (its operation enum + config keys). Declared block validated (hard fail on an
+    uncovered value); active-by-signal but undeclared -> REVIEW note. This is the
+    guard for the AC-09/AC-10-class omission (an operation/config value with no AC)."""
+    if not manifest_path or not Path(manifest_path).is_file():
+        return [], []
+    try:
+        data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    if not isinstance(data, dict):
+        return [], []
+    ac_ids = set(re.findall(r"AC-\d{2}", plan_text or ""))
+    if affected_surface_mod.is_present(data):
+        failures = [f"[affected-surface] {p}" for p in affected_surface_mod.validate_affected_surface(
+            data["affected_surface_dimensions"], ac_ids=ac_ids, open_question_ids=_open_question_ids(data))]
+        return failures, ["affected surface dimensions validated"] if not failures else []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["affected-surface exploration skipped (behaviour_matters is false)"]
+    if affected_surface_mod.is_active(data, plan_text):
+        return [], ["REVIEW affected-surface: a handler/operation/config artifact is grounded but no "
+                    "affected_surface_dimensions enumeration is declared - enumerate the affected surface's operation "
+                    "enum and co-located config keys and map each value to a covering AC or an out-of-scope disposition"]
+    return [], ["affected surface not applicable (no handler/operation/config artifact grounded)"]
+
+
+def check_comment_claims(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `comment_claims` block when present (optional, backward-
+    compatible). When a Jira comment's current-behaviour claim is recorded, it must carry
+    a real verification outcome (code/diff evidence, or an Open Question) - never an
+    unreconciled assertion. When comment text LOOKS like a current-behaviour claim but
+    nothing is recorded, this is a non-blocking REVIEW note, not a failure - the heuristic
+    cannot reliably tell a stale RCA from harmless chatter."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if comment_claim_mod.is_present(data):
+        failures = [f"[comment-claims] {p}" for p in comment_claim_mod.validate_comment_claims(
+            data["comment_claims"], open_question_ids=_open_question_ids(data))]
+        return failures, ["comment claims validated"] if not failures else []
+    hits = comment_claim_mod.likely_claims_in_comments(data)
+    if hits:
+        return [], [f"REVIEW comment-claims: comment text with current-behaviour phrasing was found "
+                    f"({len(hits)} candidate(s)) but no comment_claims entries are recorded - verify each such "
+                    f"claim against the diff/code and record VERIFIED_TRUE / VERIFIED_FALSE / STALE_SUPERSEDED / "
+                    f"UNVERIFIABLE rather than repeating the comment as fact"]
+    return [], ["comment claims not applicable (no current-behaviour comment phrasing detected)"]
+
+
+def check_pr_supersession(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `pr_references` block when present (optional, backward-
+    compatible). Only activates a hard requirement when more than one PR/branch is
+    listed: exactly one must be marked AUTHORITATIVE with a comparison_note, or every
+    non-authoritative entry must be UNRESOLVED with an Open Question."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if not pr_supersession_mod.is_present(data):
+        return [], ["pr supersession not applicable (no pr_references declared)"]
+    failures = [f"[pr-supersession] {p}" for p in pr_supersession_mod.validate_pr_references(
+        data["pr_references"], open_question_ids=_open_question_ids(data))]
+    return failures, ["pr_references reconciled"] if not failures else []
+
+
+def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
+    A material scope mismatch with no open question exposing it is a hard FAIL."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if scope_conflict_mod.is_present(data):
+        failures = [f"[scope-conflict] {p}" for p in scope_conflict_mod.validate_scope_conflict(
+            data["scope_conflict"], open_question_ids=_open_question_ids(data))]
+        return failures, ["scope conflict reconciled"] if not failures else []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["scope reconciliation skipped (behaviour_matters is false)"]
+    if scope_conflict_mod.is_active(data, plan_text):
+        return [], ["REVIEW scope-conflict: a fix/PR is present alongside multiple reported problems but no "
+                    "scope_conflict reconciliation is declared - compare Jira scope vs fix scope and keep threads separate"]
+    return [], ["scope reconciliation not applicable (no fix-vs-multi-problem signal)"]
+
+
+def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Mandatory reasoning pipeline for behavioural tickets: a behavior_model is
+    required when behaviour_matters is not false, and verifications are required when
+    coverage_hypotheses are declared. Pure internal code bugs opt out with
+    behaviour_matters:false."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["reasoning pipeline not required (behaviour_matters is false)"]
+    failures = []
+    if not behavior_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] a behavior_model block is mandatory when behaviour_matters is true - model the "
+            "trigger/operations/state/consumers (unknowns allowed) before writing coverage"
+        )
+    if coverage_mod.is_present(data) and data.get("coverage_hypotheses") and not verifier_mod.is_present(data):
+        failures.append(
+            "[reasoning-required] coverage_hypotheses are declared but no verifications block exists - every "
+            "candidate must reach a terminal verdict before the plan is delivered"
+        )
+    return failures, ["reasoning pipeline requirements satisfied"] if not failures else []
+
+
+def check_behavior_model(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not behavior_mod.is_present(data):
+        return [], ["behavior model check skipped (no behavior_model block declared)"]
+    failures = [f"[behavior-model] {p}" for p in behavior_mod.validate_behavior_model(data["behavior_model"])]
+    return failures, ["behavior model validated"] if not failures else []
+
+
+def check_coverage_hypotheses(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not coverage_mod.is_present(data):
+        return [], ["coverage-hypotheses check skipped (no coverage_hypotheses block)"]
+    failures = [f"[coverage] {p}" for p in coverage_mod.validate_coverage_block(data["coverage_hypotheses"])]
+    return failures, ["coverage hypotheses validated"] if not failures else []
+
+
+def check_retrieval(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not mq_mod.is_present(data):
+        return [], ["retrieval-discipline check skipped (no missing_questions/evidence_lifecycle)"]
+    failures = [f"[retrieval] {p}" for p in mq_mod.check_retrieval_discipline(
+        data.get("missing_questions", []), data.get("evidence_lifecycle", []))]
+    return failures, ["retrieval discipline validated"] if not failures else []
+
+
+def check_verifications(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not verifier_mod.is_present(data):
+        return [], ["hypothesis-verification check skipped (no verifications block)"]
+    failures = [f"[verify-hyp] {p}" for p in verifier_mod.verify_all(
+        data.get("coverage_hypotheses", []), data.get("verifications", []))]
+    return failures, ["hypothesis verifications validated"] if not failures else []
+
+
+def check_semantic_coverage(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    semantics = data.get("dita_semantics")
+    if not isinstance(semantics, dict) or not semantics.get("active"):
+        return [], ["DITA semantic gate skipped (no active DITA semantics)"]
+    _overall, _dims, failures = explorer_mod.evaluate_semantic_gate(semantics)
+    return failures, [f"DITA semantic gate: {_overall}"]
+
+
+def check_implementation_grounding(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Force API/operation/backend tickets to be grounded in the actual handler code.
+
+    - When an `implementation_grounding` block is declared, validate it fully (hard fail).
+    - When it is NOT declared but the plan names a code artifact AND asserts current
+      behaviour about it, FAIL: the handler must be inspected and cited before such an AC.
+    - When signals exist but no current-behaviour assertion is made, emit a REVIEW note.
+    """
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if impl_grounding_mod.is_present(data):
+        block = data["implementation_grounding"]
+        failures = [f"[impl-grounding] {p}" for p in
+                    impl_grounding_mod.validate_implementation_grounding(
+                        block, open_question_ids=_open_question_ids(data))]
+        notes = []
+        for cap in impl_grounding_mod.config_key_artifacts_missing_provenance(block):
+            notes.append(f"REVIEW impl-grounding: config_key '{cap}' declares no key_provenance - mark it "
+                         "CODE/PRODUCT_DOC (verified) or REPORTER/TICKET (unverified), and grep the exact key "
+                         "against the product before it grounds an AC (reporter-supplied keys are often typos)")
+        if not failures:
+            notes.append("implementation grounding validated")
+        return failures, notes
+    if data.get("behaviour_matters", True) is False:
+        return [], ["implementation grounding skipped (behaviour_matters is false)"]
+    if impl_grounding_mod.is_active(data, plan_text):
+        signals = ", ".join(impl_grounding_mod.detect_signals(data, plan_text)[:6])
+        if impl_grounding_mod.asserts_current_behavior(plan_text):
+            return ([f"[impl-grounding] the plan names a code artifact/API ({signals}) and asserts current behaviour, "
+                     "but no implementation_grounding block cites the inspected handler - read the handler "
+                     "(clone/GitHub) and ground each current-behaviour AC in a file:line, and verify the ticket's "
+                     "premise against the code before delivery"], [])
+        return [], [f"REVIEW impl-grounding: API/implementation signals detected ({signals}); add an "
+                    "implementation_grounding block citing the inspected handler if any AC asserts current behaviour"]
+    return [], ["implementation grounding not applicable (no API/implementation signals)"]
+
+
+def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not coverage_gate_mod.is_present(data):
+        return [], ["semantic coverage gate skipped (no reasoning blocks declared)"]
+    result = coverage_gate_mod.evaluate(data)
+    notes = [f"semantic coverage gate: {result['semantic_gate']}"]
+    notes += [f"REVIEW {rr}" for rr in result["review_reasons"]]
+    if result["semantic_gate"] == "FAIL":
+        return [f"[coverage-gate] {b}" for b in result["blocking_reasons"]], notes
+    return [], notes
+
+
 def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys_path: str | None,
         skip_self_tests: bool) -> tuple[list[str], list[str]]:
     failures: list[str] = []
@@ -580,6 +864,97 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         a_fail, a_notes = verify_mod.verify_attachments(manifest_path)
         failures += [f"[verify] {f}" for f in a_fail]
         notes += a_notes
+        # Config-key reality: a CODE/OSGI-provenance config_key must exist in the clone.
+        try:
+            _croots = [c.get("path") for c in (json.loads(Path(manifest_path).read_text(encoding="utf-8")).get("clones") or [])
+                       if isinstance(c, dict) and c.get("path")]
+        except (OSError, json.JSONDecodeError):
+            _croots = []
+        ck_fail, ck_notes = verify_mod.verify_config_keys(manifest_path, _croots)
+        failures += [f"[verify] {f}" for f in ck_fail]
+        notes += ck_notes
+
+    # Anti-hardcoding audit of the skill's own scripts/prompts.
+    hc_fail, hc_notes = audit_mod.audit_paths([Path(__file__).resolve().parent.parent])
+    failures += [f"[anti-hardcoding] {f}" for f in hc_fail]
+    notes += hc_notes
+
+    # Reasoning pipeline: mandatory-for-behavioural, then each stage's gate.
+    for _checker in (check_reasoning_required, check_behavior_model, check_coverage_hypotheses,
+                     check_retrieval, check_verifications, check_semantic_coverage, check_coverage_gate):
+        _f, _n = _checker(manifest_path)
+        failures += _f
+        notes += _n
+    # Implementation grounding: API/operation/backend tickets must cite the inspected handler.
+    _igf, _ign = check_implementation_grounding(manifest_path, body)
+    failures += _igf
+    notes += _ign
+    # Capability eligibility: same-surface actions decomposed per capability.
+    _cef, _cen = check_capability_eligibility(manifest_path, body)
+    failures += _cef
+    notes += _cen
+    # Scope conflict: reconcile reported Jira scope vs current fix scope.
+    _asf, _asn = check_affected_surface(manifest_path, body)
+    failures += _asf
+    notes += _asn
+    # Comment-claim reconciliation: a Jira comment's own claim about current code must
+    # be verified against the diff/code, not accepted as fact.
+    _ccf, _ccn = check_comment_claims(manifest_path)
+    failures += _ccf
+    notes += _ccn
+    # PR supersession: when a ticket has more than one PR/branch, exactly one must be
+    # reconciled as authoritative before grounding on it.
+    _prsf, _prsn = check_pr_supersession(manifest_path)
+    failures += _prsf
+    notes += _prsn
+    _scf, _scn = check_scope_conflict(manifest_path, body)
+    failures += _scf
+    notes += _scn
+    # Final Pre-UAC integration cross-checks the plan body against the reasoning blocks.
+    _if, _in = integration_mod.check_integration(_load_manifest_dict(manifest_path), body)
+    failures += _if
+    notes += _in
+    _dm = _load_manifest_dict(manifest_path)
+    if disposition_mod.is_present(_dm):
+        failures += [f"[disposition] {p}" for p in disposition_mod.validate_dispositions(_dm["dispositions"])]
+    if coverage_gate_mod.is_present(_dm):
+        failures += [f"[disposition] {p}" for p in disposition_mod.check_plan_acceptance_criteria(body)]
+        if oracle_mod.is_present(_dm):
+            failures += [f"[oracle] {p}" for p in oracle_mod.validate_scenario_oracles(_dm["scenario_oracles"])]
+        if coverage_gate_mod.is_present(_dm):
+            failures += [f"[oracle] {p}" for p in oracle_mod.check_plan_scenarios(body)]
+        if state_compat_mod.is_present(_dm):
+            failures += [f"[state-compat] {p}" for p in state_compat_mod.validate_state_compatibility(_dm["state_compatibility"])]
+        elif coverage_gate_mod.is_present(_dm) and state_compat_mod.is_active(_dm):
+            failures.append(
+                "[state-compat] state-lifecycle signals detected ("
+                + ", ".join(state_compat_mod.detect_signals(_dm))
+                + ") but no state_compatibility exploration recorded - address CLEAN/FIXED/BUGGY-old "
+                "state and whether old-state recovery is required")
+        if cross_surface_mod.is_present(_dm):
+            failures += [f"[cross-surface] {p}" for p in cross_surface_mod.validate_cross_surface(_dm["cross_surface"])]
+        elif coverage_gate_mod.is_present(_dm) and cross_surface_mod.multi_output_signal(_dm):
+            notes.append("REVIEW cross-surface: multiple output surfaces in scope but no cross_surface "
+                         "classification (separate REFERENCE_ORACLE from evidence-backed REGRESSION_TARGET)")
+        if struct_equiv_mod.is_present(_dm):
+            failures += [f"[struct-equiv] {p}" for p in struct_equiv_mod.validate_structural_equivalence(_dm["structural_equivalence"])]
+        if scenario_reducer_mod.is_present(_dm):
+            failures += [f"[scenario-reduce] {p}" for p in scenario_reducer_mod.validate_reduction(_dm["scenario_reduction"])]
+        if authority_mod.is_present(_dm):
+            failures += [f"[evidence-authority] {p}" for p in authority_mod.validate_evidence_authority(_dm["evidence_authority"])]
+        if change_impact_mod.is_present(_dm):
+            failures += [f"[change-impact] {p}" for p in change_impact_mod.validate_change_impact(_dm["change_impact"])]
+        elif coverage_gate_mod.is_present(_dm) and change_impact_mod.has_change_signal(_dm):
+            notes.append("REVIEW change-impact: a fix/diff is available but no change_impact trace recorded "
+                         "(changed -> callers -> shared models -> state -> downstream -> outputs)")
+        failures += [f"[critic] {p}" for p in critic_mod.validate_repair_bound(_dm)]
+        if coverage_gate_mod.is_present(_dm):
+            crit = critic_mod.critique(_dm, body)
+            notes.append(f"pre-UAC critic: {crit['verdict']}")
+            for qid, prompt in critic_mod.QUESTIONS:
+                verdict, reason = crit["questions"].get(qid, ("CLEAN", ""))
+                if verdict != "CLEAN":
+                    notes.append(f"CRITIC [{verdict}] {prompt}" + (f" - {reason}" if reason else ""))
 
     if not skip_self_tests:
         try:
@@ -590,6 +965,29 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_run_gates()
             self_tests.test_extract_acs()
             self_tests.test_compact_view()
+            self_tests.test_semantic_explorer()
+            self_tests.test_anti_hardcoding()
+            self_tests.test_behavior_model()
+            self_tests.test_coverage_hypotheses()
+            self_tests.test_missing_questions()
+            self_tests.test_hypothesis_verifier()
+            self_tests.test_coverage_gate()
+            self_tests.test_uac_integration()
+            self_tests.test_reasoning_required()
+            self_tests.test_relevance_prioritizer()
+            self_tests.test_disposition_classifier()
+            self_tests.test_oracle_builder()
+            self_tests.test_state_compatibility()
+            self_tests.test_cross_surface_resolver()
+            self_tests.test_structural_equivalence()
+            self_tests.test_scenario_reducer()
+            self_tests.test_evidence_authority()
+            self_tests.test_change_impact()
+            self_tests.test_pre_uac_critic()
+            self_tests.test_implementation_grounding()
+            self_tests.test_capability_eligibility()
+            self_tests.test_scope_conflict()
+            self_tests.test_affected_surface()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
