@@ -83,6 +83,7 @@ scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.p
 affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
 comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
+concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -692,6 +693,29 @@ def check_pr_supersession(manifest_path: str | None) -> tuple[list[str], list[st
     return failures, ["pr_references reconciled"] if not failures else []
 
 
+def check_concurrency_race(manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Validate the manifest `concurrency_race_analysis` block when present (optional,
+    backward-compatible). When the behavior model shows a JCR event listener, Sling job,
+    or similar async/event-driven mechanism, all three recurring race patterns (create-
+    then-delete, restart-mid-processing, duplicate-event) must get a real disposition -
+    covered by an AC, an Open Question, or explicitly out of scope with a reason - never
+    silently unaddressed (the GUIDES-47692-class omission guard)."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if concurrency_race_mod.is_present(data):
+        failures = [f"[concurrency-race] {p}" for p in concurrency_race_mod.validate_concurrency_race_analysis(
+            data["concurrency_race_analysis"], open_question_ids=_open_question_ids(data))]
+        return failures, ["concurrency race patterns validated"] if not failures else []
+    hits = concurrency_race_mod.likely_event_driven(data)
+    if hits:
+        return [], [f"REVIEW concurrency-race: the behavior model looks event/async-driven "
+                    f"({len(hits)} candidate signal(s)) but no concurrency_race_analysis block is recorded - "
+                    f"declare active:true and disposition all three patterns (CREATE_THEN_DELETE_RACE, "
+                    f"RESTART_MID_PROCESSING_RACE, DUPLICATE_EVENT_RACE)"]
+    return [], ["concurrency race analysis not applicable (no event/async-driven signal detected)"]
+
+
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
     """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
     A material scope mismatch with no open question exposing it is a hard FAIL."""
@@ -907,6 +931,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _prsf, _prsn = check_pr_supersession(manifest_path)
     failures += _prsf
     notes += _prsn
+    # Concurrency-race disposition: an event/async-driven fix must explicitly disposition
+    # create-then-delete, restart-mid-processing, and duplicate-event races.
+    _crf, _crn = check_concurrency_race(manifest_path)
+    failures += _crf
+    notes += _crn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn

@@ -61,6 +61,7 @@ scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.p
 affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
 comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
+concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -3210,6 +3211,66 @@ def test_pr_supersession() -> None:
           any("missing 'pr_ref'" in p for p in prs.validate_pr_references([{"status": "AUTHORITATIVE", "comparison_note": "x"}])))
 
 
+def test_concurrency_race() -> None:
+    cr = concurrency_race_mod
+
+    check("not present when block absent", cr.is_present({}) is False)
+    check("inactive block needs nothing else",
+          cr.validate_concurrency_race_analysis({"active": False}) == [])
+    check("missing active key is rejected",
+          cr.validate_concurrency_race_analysis({}) != [])
+
+    all_covered = {
+        "active": True,
+        "triggers": ["JCR NODE_REMOVED listener"],
+        "patterns": [
+            {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
+            {"pattern": "RESTART_MID_PROCESSING_RACE", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-1"},
+            {"pattern": "DUPLICATE_EVENT_RACE", "disposition": "OUT_OF_SCOPE", "reason": "job consumer is idempotent by design"},
+        ],
+    }
+    check("all three patterns dispositioned passes",
+          cr.validate_concurrency_race_analysis(all_covered, ac_ids={"AC-01"}, open_question_ids={"OQ-1"}) == [])
+
+    missing_pattern = {
+        "active": True,
+        "triggers": ["Sling job consumer"],
+        "patterns": [
+            {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
+        ],
+    }
+    check("missing pattern(s) is rejected",
+          any("missing disposition for pattern" in p for p in
+              cr.validate_concurrency_race_analysis(missing_pattern, ac_ids={"AC-01"})))
+
+    bad_covered = {
+        "active": True,
+        "triggers": ["async"],
+        "patterns": [
+            {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC"},
+            {"pattern": "RESTART_MID_PROCESSING_RACE", "disposition": "OPEN_QUESTION"},
+            {"pattern": "DUPLICATE_EVENT_RACE", "disposition": "OUT_OF_SCOPE"},
+        ],
+    }
+    problems = cr.validate_concurrency_race_analysis(bad_covered)
+    check("COVERED_BY_AC without ac_ref is rejected", any("ac_ref" in p for p in problems))
+    check("OPEN_QUESTION without open_question_ref is rejected", any("open_question_ref" in p for p in problems))
+    check("OUT_OF_SCOPE without reason is rejected", any("reason" in p for p in problems))
+
+    check("unknown pattern name is rejected",
+          any("unknown or missing pattern" in p for p in cr.validate_concurrency_race_analysis({
+              "active": True, "triggers": ["x"],
+              "patterns": [{"pattern": "NOT_A_REAL_PATTERN", "disposition": "OUT_OF_SCOPE", "reason": "n/a"}],
+          })))
+    check("missing triggers on active block is rejected",
+          any("triggers" in p for p in cr.validate_concurrency_race_analysis({"active": True, "patterns": []})))
+
+    check("event-driven phrasing detected in behavior_model text",
+          len(cr.likely_event_driven({"behavior_model": {"operations": ["registers a JCR event listener for NODE_REMOVED"]}})) == 1)
+    check("plain behavior_model text has no hits",
+          cr.likely_event_driven({"behavior_model": {"operations": ["updates a property on save"]}}) == [])
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -3245,6 +3306,7 @@ def main() -> int:
     test_affected_surface()
     test_comment_claims()
     test_pr_supersession()
+    test_concurrency_race()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
