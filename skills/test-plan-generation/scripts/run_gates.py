@@ -30,10 +30,12 @@ Exit 0 only when everything passes; any failure prints FAIL lines and exits 1.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
-from datetime import datetime
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -56,6 +58,7 @@ def _load(module_name: str, filename: str):
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
 compact_mod = _load("render_compact_view", "render_compact_view.py")
+extract_mod = _load("extract_acs", "extract_acs.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 graph_manifest_mod = _load("evidence_graph_manifest", "evidence_graph_manifest.py")
 performance_mod = _load("performance_contract", "performance_contract.py")
@@ -83,8 +86,13 @@ scope_conflict_mod = _load("scope_conflict_resolver", "scope_conflict_resolver.p
 affected_surface_mod = _load("affected_surface_explorer", "affected_surface_explorer.py")
 comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
+concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
+enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
+operational_contract_mod = _load("operational_contract", "operational_contract.py")
+feature_class_mod = _load("feature_class_registry", "feature_class_registry.py")
 
 REQUIRED_MANIFEST_KEYS = (
+    "schema_version",
     "issue",
     "attachments",
     "evidence_preflight",
@@ -96,6 +104,10 @@ REQUIRED_MANIFEST_KEYS = (
     "evidence_graph",
     "performance_assessment",
     "clones",
+    "accepted_uac_present",
+    "open_questions",
+    "enumerated_requirements",
+    "operational_contract",
 )
 
 PREFLIGHT_SOURCE_KEYS = (
@@ -109,6 +121,11 @@ PREFLIGHT_STATUSES = {"available", "unavailable", "not_applicable"}
 PREFLIGHT_MODES = {"full", "degraded"}
 PREFLIGHT_READINESS_IMPACTS = {"none", "draft_only", "blocked"}
 UAC_FIDELITY_SCHEMA = "aem-guides-uac-fidelity-v1"
+MANIFEST_SCHEMA_VERSION = "aem-guides-evidence-manifest-v2"
+GATE_RECEIPT_SCHEMA_VERSION = "aem-guides-gate-receipt-v1"
+JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
+PLAN_OQ_RE = re.compile(r"^- (OQ-\d{2}):\s+.+")
+PLAN_SCENARIO_RE = re.compile(r"^- P[012]\s+\[(TS-\d{2})\]\s+\[AC-")
 PREFLIGHT_SOURCE_LABELS = {
     "product_rag": ("product rag", "ask_dita_expert"),
     "jira_history": ("jira history", "search_jira_history", "indexed jira"),
@@ -118,14 +135,165 @@ PREFLIGHT_SOURCE_LABELS = {
 }
 
 
+def manifest_issue_key(data: dict) -> str:
+    issue = data.get("issue") if isinstance(data, dict) else None
+    if isinstance(issue, str):
+        return issue.strip().upper()
+    if isinstance(issue, dict):
+        return str(issue.get("key") or issue.get("id") or "").strip().upper()
+    return ""
+
+
+def check_manifest_identity(data: dict) -> list[str]:
+    failures: list[str] = []
+    if data.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        failures.append(f"manifest schema_version must be {MANIFEST_SCHEMA_VERSION}")
+    issue_key = manifest_issue_key(data)
+    if not JIRA_KEY_RE.fullmatch(issue_key):
+        failures.append("manifest issue must contain a canonical Jira key such as GUIDES-12345")
+    return failures
+
+
+def check_open_questions(data: dict) -> list[str]:
+    value = data.get("open_questions")
+    if not isinstance(value, list):
+        return ["manifest open_questions must be a list of stable OQ-## records"]
+    failures: list[str] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(value):
+        tag = f"open_questions[{index}]"
+        if not isinstance(entry, dict):
+            failures.append(f"{tag} must be an object with id, question, and qa_impact")
+            continue
+        oq_id = str(entry.get("id", "")).strip()
+        if not re.fullmatch(r"OQ-\d{2}", oq_id):
+            failures.append(f"{tag}.id must use stable OQ-## form")
+        elif oq_id in seen:
+            failures.append(f"{tag}.id duplicates {oq_id}")
+        seen.add(oq_id)
+        if not str(entry.get("question", "")).strip():
+            failures.append(f"{tag}.question must be non-empty")
+        if not str(entry.get("qa_impact", "")).strip():
+            failures.append(f"{tag}.qa_impact must state what the answer changes for QA")
+    ordered_ids = [
+        str(entry.get("id", "")).strip()
+        for entry in value
+        if isinstance(entry, dict) and re.fullmatch(r"OQ-\d{2}", str(entry.get("id", "")).strip())
+    ]
+    expected_ids = [f"OQ-{index:02d}" for index in range(1, len(ordered_ids) + 1)]
+    if ordered_ids != expected_ids:
+        failures.append("manifest Open Question IDs must be contiguous and ordered starting at OQ-01")
+    return failures
+
+
+def _plan_open_question_ids(plan_text: str) -> set[str]:
+    ids: set[str] = set()
+    in_section = False
+    for raw_line in plan_text.splitlines():
+        line = raw_line.strip()
+        heading = re.fullmatch(r"\*\*(.+?)\*\*", line)
+        if heading:
+            in_section = heading.group(1) == "Open Questions"
+            continue
+        if in_section:
+            match = PLAN_OQ_RE.fullmatch(line)
+            if match:
+                ids.add(match.group(1))
+    return ids
+
+
+def _plan_scenario_ids(plan_text: str) -> set[str]:
+    return {
+        match.group(1)
+        for line in plan_text.splitlines()
+        for match in [PLAN_SCENARIO_RE.match(line.strip())]
+        if match
+    }
+
+
+def _plan_ac_records(plan_text: str) -> list[dict[str, str]]:
+    criteria, _ = extract_mod.extract(plan_text)
+    return criteria
+
+
+def check_open_question_alignment(data: dict, plan_text: str) -> list[str]:
+    manifest_ids = set(_open_question_ids(data))
+    plan_ids = _plan_open_question_ids(plan_text)
+    if manifest_ids != plan_ids:
+        return [
+            "manifest open_questions IDs must exactly match visible plan Open Questions; "
+            f"manifest={sorted(manifest_ids)}, plan={sorted(plan_ids)}"
+        ]
+    return []
+
+
+def check_uac_plan_alignment(data: dict, plan_text: str) -> list[str]:
+    criteria = _plan_ac_records(plan_text)
+    actual_confirmed = {item["id"] for item in criteria if item["status"] == "Confirmed"}
+    actual_proposed = {item["id"] for item in criteria if item["status"] == "Proposed"}
+    accepted = data.get("accepted_uac_present")
+    if accepted is False:
+        failures = []
+        if actual_confirmed:
+            failures.append(
+                "accepted_uac_present is false, so every AC must remain [Proposed]; "
+                f"found Confirmed {sorted(actual_confirmed)}"
+            )
+        if data.get("uac_fidelity") is not None:
+            failures.append("uac_fidelity must be omitted when accepted_uac_present is false")
+        return failures
+    if accepted is not True:
+        return ["accepted_uac_present must be explicitly true or false"]
+
+    contract = data.get("uac_fidelity")
+    if not isinstance(contract, dict):
+        return ["accepted_uac_present is true but uac_fidelity is missing"]
+    declared_confirmed = set(contract.get("confirmed_ac_to_clause") or {})
+    declared_proposed = set(contract.get("proposed_ac_ids") or [])
+    failures: list[str] = []
+    if actual_confirmed != declared_confirmed:
+        failures.append(
+            "uac_fidelity Confirmed AC IDs must exactly match plan statuses; "
+            f"manifest={sorted(declared_confirmed)}, plan={sorted(actual_confirmed)}"
+        )
+    if actual_proposed != declared_proposed:
+        failures.append(
+            "uac_fidelity Proposed AC IDs must exactly match plan statuses; "
+            f"manifest={sorted(declared_proposed)}, plan={sorted(actual_proposed)}"
+        )
+    return failures
+
+
+def check_combined_binding(plan_text: str, combined_text: str) -> list[str]:
+    """Require combined to be the exact body plus only the permitted appendix."""
+    if combined_text == plan_text:
+        return []
+    body = plan_text.rstrip("\r\n")
+    if not combined_text.startswith(body):
+        return ["combined artifact does not begin with the exact validated plan body"]
+    suffix = combined_text[len(body):]
+    appendix = re.compile(
+        r"^(?:\r?\n){2,}(?:#{1,2}\s+Appendix A(?:\s+-\s+Automation Evidence)?|"
+        r"\*\*Appendix A(?:\s+-\s+Automation Evidence)?\*\*)(?:\r?\n|$)"
+    )
+    if not appendix.match(suffix):
+        return [
+            "combined artifact may append only an 'Appendix A - Automation Evidence' "
+            "section after the exact validated body"
+        ]
+    return []
+
+
 def check_uac_fidelity(data: dict) -> list[str]:
-    if "accepted_uac_present" in data and not isinstance(data["accepted_uac_present"], bool):
-        return ["manifest 'accepted_uac_present' must be a boolean"]
+    if not isinstance(data.get("accepted_uac_present"), bool):
+        return ["manifest 'accepted_uac_present' is required and must be a boolean"]
     contract = data.get("uac_fidelity")
     if data.get("accepted_uac_present") and contract is None:
         return ["accepted_uac_present is true but manifest 'uac_fidelity' is missing"]
     if contract is None:
         return []
+    if not data.get("accepted_uac_present"):
+        return ["uac_fidelity must be omitted when accepted_uac_present is false"]
     if not isinstance(contract, dict):
         return ["manifest 'uac_fidelity' must be an object"]
 
@@ -543,6 +711,8 @@ def check_manifest_completeness(path: str | None) -> list[str]:
                 f"manifest is missing required key '{key}' - every plan must declare "
                 f"preflight status, both RAG tool paths, their queries, attachments, and clone state"
             )
+    failures.extend(check_manifest_identity(data))
+    failures.extend(check_open_questions(data))
     failures.extend(_validate_evidence_preflight(data))
     failures.extend(_validate_dual_source_evidence(data))
     failures.extend(graph_manifest_mod.validate_evidence_graph_manifest(data))
@@ -692,6 +862,96 @@ def check_pr_supersession(manifest_path: str | None) -> tuple[list[str], list[st
     return failures, ["pr_references reconciled"] if not failures else []
 
 
+def check_concurrency_race(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    ac_ids = {item["id"] for item in _plan_ac_records(plan_text)}
+    oq_ids = set(_open_question_ids(data))
+    hits = concurrency_race_mod.likely_event_driven(data)
+    if not concurrency_race_mod.is_present(data):
+        if hits:
+            return [
+                "[concurrency-race] event/async signals require concurrency_race_analysis "
+                "with explicit dispositions for all recurring race patterns"
+            ], []
+        return [], ["concurrency race analysis not applicable"]
+
+    block = data["concurrency_race_analysis"]
+    failures = concurrency_race_mod.validate_concurrency_race_analysis(
+        block, ac_ids=ac_ids, open_question_ids=oq_ids
+    )
+    if block.get("active") is False and hits:
+        failures.append(
+            "concurrency_race_analysis.active cannot be false while event/async signals remain"
+        )
+    return [f"[concurrency-race] {problem}" for problem in failures], (
+        ["concurrency race patterns dispositioned"] if not failures else []
+    )
+
+
+def check_feature_class_coverage(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    """Validate declared feature classes; keep heuristic detection advisory."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    ac_ids = {item["id"] for item in _plan_ac_records(plan_text)}
+    failures, notes = feature_class_mod.validate_feature_classification(
+        data,
+        plan_text,
+        ac_ids=ac_ids,
+        open_question_ids=set(_open_question_ids(data)),
+    )
+    return [f"[feature-class] {problem}" for problem in failures], notes
+
+
+def check_enumerated_coverage(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    detected_count = enumerated_coverage_mod.likely_enumerated(data)
+    if not enumerated_coverage_mod.is_present(data):
+        return [
+            "[enumerated-coverage] manifest requires a versioned enumerated_requirements "
+            "block, active or explicitly inactive with a reason"
+        ], []
+    ac_ids = {item["id"] for item in _plan_ac_records(plan_text)}
+    failures = enumerated_coverage_mod.validate_enumerated_requirements(
+        data["enumerated_requirements"],
+        ac_ids=ac_ids,
+        open_question_ids=set(_open_question_ids(data)),
+        detected_count=detected_count,
+    )
+    return [f"[enumerated-coverage] {problem}" for problem in failures], (
+        ["reporter-enumerated requirements dispositioned"] if not failures else []
+    )
+
+
+def check_operational_contract(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    ac_ids = {item["id"] for item in _plan_ac_records(plan_text)}
+    failures = operational_contract_mod.validate_manifest(
+        data,
+        plan_text=plan_text,
+        ac_ids=ac_ids,
+        open_question_ids=set(_open_question_ids(data)),
+        scenario_ids=_plan_scenario_ids(plan_text),
+    )
+    return [f"[operational-contract] {problem}" for problem in failures], (
+        ["operational incident/job contract dispositioned"] if not failures else []
+    )
+
+
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
     """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
     A material scope mismatch with no open question exposing it is a hard FAIL."""
@@ -824,6 +1084,11 @@ def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]
     notes += [f"REVIEW {rr}" for rr in result["review_reasons"]]
     if result["semantic_gate"] == "FAIL":
         return [f"[coverage-gate] {b}" for b in result["blocking_reasons"]], notes
+    if result["semantic_gate"] == "NEEDS_REVIEW":
+        return [
+            f"[coverage-gate] unresolved review: {reason}"
+            for reason in result["review_reasons"]
+        ], notes
     return [], notes
 
 
@@ -843,6 +1108,14 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             manifest_data = {}
         if isinstance(manifest_data, dict):
             failures += [
+                f"[open-questions] {problem}"
+                for problem in check_open_question_alignment(manifest_data, body)
+            ]
+            failures += [
+                f"[uac-fidelity] {problem}"
+                for problem in check_uac_plan_alignment(manifest_data, body)
+            ]
+            failures += [
                 f"[performance] {problem}"
                 for problem in performance_mod.validate_plan_alignment(manifest_data, body)
             ]
@@ -856,6 +1129,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         notes.append("four-section compact view renderable")
 
     combined = Path(combined_path).read_text(encoding="utf-8")
+    failures += [
+        f"[artifact-binding] {problem}"
+        for problem in check_combined_binding(body, combined)
+    ]
     jira_keys = verify_mod._load_manifest(jira_keys_path)
     v_fail, v_notes = verify_mod.verify(combined, jira_keys)
     failures += [f"[verify] {f}" for f in v_fail]
@@ -907,6 +1184,18 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _prsf, _prsn = check_pr_supersession(manifest_path)
     failures += _prsf
     notes += _prsn
+    _fcf, _fcn = check_feature_class_coverage(manifest_path, body)
+    failures += _fcf
+    notes += _fcn
+    _crf, _crn = check_concurrency_race(manifest_path, body)
+    failures += _crf
+    notes += _crn
+    _ecf, _ecn = check_enumerated_coverage(manifest_path, body)
+    failures += _ecf
+    notes += _ecn
+    _ocf, _ocn = check_operational_contract(manifest_path, body)
+    failures += _ocf
+    notes += _ocn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn
@@ -988,6 +1277,15 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_capability_eligibility()
             self_tests.test_scope_conflict()
             self_tests.test_affected_surface()
+            self_tests.test_feature_class_registry()
+            self_tests.test_ui_surface_scope()
+            self_tests.test_role_provisioning()
+            self_tests.test_terminal_states()
+            self_tests.test_concurrency_race()
+            self_tests.test_enumerated_coverage()
+            self_tests.test_ac_decidability()
+            self_tests.test_operational_contract()
+            self_tests.test_gate_receipt_and_adapter()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
@@ -997,6 +1295,83 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     return failures, notes
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline="\n", delete=False, dir=path.parent
+    ) as handle:
+        handle.write(text)
+        temporary = Path(handle.name)
+    temporary.replace(path)
+
+
+def _derived_artifact_paths(receipt_path: Path) -> tuple[Path, Path]:
+    base = receipt_path.name[:-5] if receipt_path.name.endswith(".json") else receipt_path.name
+    return (
+        receipt_path.with_name(base + ".compact.md"),
+        receipt_path.with_name(base + ".acceptance-criteria.json"),
+    )
+
+
+def write_gate_receipt(
+    *,
+    receipt_path: str,
+    plan_path: str,
+    combined_path: str,
+    manifest_path: str,
+    passed: bool,
+    postable: bool,
+) -> Path:
+    """Atomically write derived artifacts and their hash-bound gate receipt."""
+    receipt = Path(receipt_path).resolve()
+    plan = Path(plan_path).resolve()
+    combined = Path(combined_path).resolve()
+    manifest = Path(manifest_path).resolve()
+    compact_path, extracted_path = _derived_artifact_paths(receipt)
+
+    plan_text = plan.read_text(encoding="utf-8")
+    compact, compact_problems = compact_mod.project(plan_text)
+    criteria, extraction_problems = extract_mod.extract(plan_text)
+    if passed and (compact_problems or extraction_problems):
+        raise ValueError(
+            "cannot issue a passed receipt for invalid compact/extracted AC artifacts"
+        )
+    _atomic_write(compact_path, compact if not compact_problems else "")
+    _atomic_write(
+        extracted_path,
+        json.dumps(criteria if not extraction_problems else [], indent=2, ensure_ascii=False)
+        + "\n",
+    )
+
+    try:
+        manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        manifest_data = {}
+    payload = {
+        "schema_version": GATE_RECEIPT_SCHEMA_VERSION,
+        "passed": bool(passed),
+        "postable": bool(postable),
+        "issue": manifest_issue_key(manifest_data),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "artifacts": {
+            "plan": {"path": str(plan), "sha256": _sha256(plan)},
+            "manifest": {"path": str(manifest), "sha256": _sha256(manifest)},
+            "combined": {"path": str(combined), "sha256": _sha256(combined)},
+            "compact": {"path": str(compact_path), "sha256": _sha256(compact_path)},
+            "extracted_acs": {
+                "path": str(extracted_path),
+                "sha256": _sha256(extracted_path),
+            },
+        },
+    }
+    _atomic_write(receipt, json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Single mandatory gate for an AEM Guides test plan.")
     parser.add_argument("--plan", required=True, help="the eleven-section bullet-only plan body")
@@ -1004,9 +1379,31 @@ def main() -> int:
     parser.add_argument("--manifest", required=True, help="evidence manifest JSON")
     parser.add_argument("--jira-keys", dest="jira_keys", default=None)
     parser.add_argument("--skip-self-tests", action="store_true")
+    parser.add_argument(
+        "--receipt",
+        help="atomic gate receipt path (default: <combined>.gate-receipt.json)",
+    )
     args = parser.parse_args()
 
     failures, notes = run(args.plan, args.combined, args.manifest, args.jira_keys, args.skip_self_tests)
+
+    receipt_path = args.receipt or f"{args.combined}.gate-receipt.json"
+    passed = not failures
+    try:
+        written_receipt = write_gate_receipt(
+            receipt_path=receipt_path,
+            plan_path=args.plan,
+            combined_path=args.combined,
+            manifest_path=args.manifest,
+            passed=passed,
+            postable=passed and not args.skip_self_tests,
+        )
+        notes.append(
+            f"gate receipt: {written_receipt} "
+            f"({'postable' if passed and not args.skip_self_tests else 'not postable'})"
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing receipt must fail closed
+        failures.append(f"[receipt] could not write hash-bound gate receipt: {exc}")
 
     for note in notes:
         print(f"NOTE: {note}")

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "test-plan-reference-routing-v8"
+SCHEMA_VERSION = "test-plan-reference-routing-v9"
 CANONICAL_COMPONENTS = (
     "Editor",
     "Authoring",
@@ -159,6 +159,32 @@ _FOLDER_RESTORE_RE = re.compile(
     r"\b(?:restore\s+(?:a\s+)?folders?|trash(?:\s+can)?|recycle\s+bin)\b",
     re.I,
 )
+_CONDITIONAL_ATTRIBUTE_CONFIG_PATH_RE = re.compile(
+    r"(?:/libs/fmdita/config/)?condattrlist(?:\.csv)?",
+    re.I,
+)
+_CONDITIONAL_ATTRIBUTE_RE = re.compile(
+    r"\b(?:condition(?:al)?\s+attributes?|conditional\s+attribute(?:s)?)\b",
+    re.I,
+)
+_ATTRIBUTE_FRIENDLY_NAME_RE = re.compile(
+    r"\battributes?\b[^.\n]{0,180}\b(?:friendly\s+names?|display\s+labels?)\b|"
+    r"\b(?:friendly\s+names?|display\s+labels?)\b[^.\n]{0,180}\battributes?\b",
+    re.I,
+)
+_CONFIG_DRIVEN_ENUMERATION_RE = re.compile(
+    r"\b(?:config(?:uration|ured)?|dynamically?|runtime|profile|csv|allowlist|whitelist)\b",
+    re.I,
+)
+_CONDITIONAL_ATTRIBUTE_LABEL_OR_SURFACE_RE = re.compile(
+    r"\b(?:friendly\s+names?|display\s+labels?|fallback|full\s+tags(?:\s+view)?|"
+    r"condition(?:al)?\s+attributes?|right\s+panel)\b",
+    re.I,
+)
+_ATTRIBUTE_LABEL_SURFACE_RE = re.compile(
+    r"\b(?:full\s+tags(?:\s+view)?|condition(?:al)?\s+attributes?)\b",
+    re.I,
+)
 
 
 def _clean(value: Any) -> str:
@@ -195,6 +221,19 @@ def _detect_mechanisms(text: str) -> tuple[str, ...]:
         mechanisms.append("explorer_filename_title_sorting")
     if _FOLDER_DELETION_RE.search(text):
         mechanisms.append("folder_deletion")
+    if (
+        _CONDITIONAL_ATTRIBUTE_CONFIG_PATH_RE.search(text)
+        or (
+            _CONDITIONAL_ATTRIBUTE_RE.search(text)
+            and _CONFIG_DRIVEN_ENUMERATION_RE.search(text)
+            and _CONDITIONAL_ATTRIBUTE_LABEL_OR_SURFACE_RE.search(text)
+        )
+        or (
+            _ATTRIBUTE_FRIENDLY_NAME_RE.search(text)
+            and _ATTRIBUTE_LABEL_SURFACE_RE.search(text)
+        )
+    ):
+        mechanisms.append("config_driven_conditional_attribute_labels")
     return tuple(mechanisms)
 
 
@@ -286,6 +325,8 @@ def route_references(
         warnings.append("bulk_overwrite_without_accepted_uac_is_proposed_only")
     if not accepted_text and "folder_deletion" in mechanisms:
         warnings.append("folder_deletion_without_accepted_uac_is_proposed_only")
+    if "config_driven_conditional_attribute_labels" in mechanisms:
+        warnings.append("configuration_driven_conditional_attribute_matrix_required")
     if "folder_deletion" in mechanisms:
         warnings.append("folder_deletion_surface_and_version_must_be_verified")
         if _FOLDER_RESTORE_RE.search(authoritative_scope):
@@ -329,7 +370,15 @@ def route_references(
             warnings.append("explorer_sort_button_default_state_unresolved")
 
     references = ["references/component-routing.md"]
-    if primary_component == "Authoring":
+    if "config_driven_conditional_attribute_labels" in mechanisms:
+        references.extend(
+            [
+                "references/component-authoring.md",
+                "references/configuration-driven-enumerations.md",
+            ]
+        )
+        load_full_reference = False
+    elif primary_component == "Authoring":
         references.append("references/component-authoring.md")
         load_full_reference = False
     elif primary_component == "Integration" and "asset_crud_api_contract" in mechanisms:

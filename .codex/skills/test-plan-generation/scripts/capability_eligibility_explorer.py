@@ -247,14 +247,19 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
     if not isinstance(caps, list) or not caps:
         return ["capability_eligibility.capabilities must be a non-empty list (decompose each action on the surface)"]
     names = set()
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     for i, cap in enumerate(caps):
         problems += _validate_capability(cap, i)
         if isinstance(cap, dict) and cap.get("capability"):
             names.add(str(cap["capability"]).strip())
+        if isinstance(cap, dict) and cap.get("entry_point_consistency") == "OPEN_QUESTION":
+            ref = str(cap.get("entry_point_open_question_ref", "") or "").strip()
+            if ref and open_ids is not None and ref not in open_ids:
+                problems.append(f"capability_eligibility.capabilities[{i}].entry_point_open_question_ref '{ref}' "
+                                "is not in the plan's open_questions")
 
     # multi-select: an UNKNOWN or absent selection policy while multi-select is in scope
     # must be surfaced as an open question, never invented and never silently dropped.
-    open_ids = set(open_question_ids or [])
     if multiselect:
         for i, cap in enumerate(caps):
             if not isinstance(cap, dict):
@@ -266,7 +271,7 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
                     problems.append(f"capability_eligibility.capabilities[{i}] has UNKNOWN/absent selection_policy "
                                     "while multi-selection is in scope - resolve it with evidence or record a "
                                     "selection_open_question_ref; do not invent a mixed-selection AC")
-                elif open_ids and ref not in open_ids:
+                elif open_ids is not None and ref not in open_ids:
                     problems.append(f"capability_eligibility.capabilities[{i}].selection_open_question_ref '{ref}' "
                                     "is not in the plan's open_questions")
 
@@ -285,7 +290,7 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
                                     "prerequisite (the fix does not work unless the setting is on) - surface it with a "
                                     "prerequisite_open_question_ref in Open Questions; a config prerequisite/product "
                                     "decision must be visible, not assumed")
-                elif open_ids and ref not in open_ids:
+                elif open_ids is not None and ref not in open_ids:
                     problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] "
                                     f"prerequisite_open_question_ref '{ref}' is not in the plan's open_questions")
 
@@ -308,7 +313,7 @@ def validate_capability_eligibility(block, *, open_question_ids=None, multiselec
                                     f"predicate with UNVERIFIED provenance ({prov}) - a reporter/ticket-supplied key "
                                     "is frequently a typo/transposition; verify it against product code/docs or carry "
                                     "it as an Open Question via verification_open_question_ref")
-                elif open_ids and ref not in open_ids:
+                elif open_ids is not None and ref not in open_ids:
                     problems.append(f"capability_eligibility.capabilities[{i}].predicate_terms[{j}] "
                                     f"verification_open_question_ref '{ref}' is not in the plan's open_questions")
 

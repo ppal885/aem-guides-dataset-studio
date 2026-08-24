@@ -11,6 +11,7 @@ negative fixture here.
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 from pathlib import Path
 
@@ -23,7 +24,25 @@ def _load(module_name: str, filename: str):
 
 
 def _find_repo_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
+    search_roots = [
+        *Path(__file__).resolve().parents,
+        Path.cwd().resolve(),
+        *Path.cwd().resolve().parents,
+    ]
+    home = Path.home()
+    try:
+        home_children = [item for item in home.iterdir() if item.is_dir()]
+    except OSError:
+        home_children = []
+    search_roots.extend(home_children)
+    for container in home_children:
+        try:
+            search_roots.extend(
+                item for item in container.iterdir() if item.is_dir()
+            )
+        except OSError:
+            continue
+    for candidate in dict.fromkeys(search_roots):
         if (
             (candidate / ".codex" / "skills" / "test-plan-generation").is_dir()
             and (candidate / ".claude" / "skills" / "test-plan-generation").is_dir()
@@ -64,6 +83,13 @@ pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
 ac_decidability_mod = _load("ac_decidability", "ac_decidability.py")
+operational_contract_mod = _load("operational_contract", "operational_contract.py")
+feature_class_mod = _load("feature_class_registry", "feature_class_registry.py")
+ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
+role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
+terminal_states_mod = _load("terminal_states", "terminal_states.py")
+ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
+ac_presentation_mod = _load("ac_presentation", "ac_presentation.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -175,6 +201,45 @@ def test_validator() -> None:
     errs = validate_mod.validate(ac_without_source)
     check("acceptance criterion without source is rejected", any("machine-readable format" in e for e in errs))
 
+    compact_source_line = _replace(
+        GOOD_PLAN,
+        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
+        "- AC-01\n  - Starting point: an input is available.\n  - Action: the system runs.\n  - Expected result: it produces the correct observable output.",
+    )
+    errs = validate_mod.validate(compact_source_line)
+    check(
+        "compact renderer AC syntax is rejected as a durable source record",
+        any("machine-readable format" in error for error in errs),
+    )
+
+    paste_unsafe_cases = (
+        ("`observable output`", "backticks/code spans"),
+        ("~observable output~", "strikethrough"),
+        ("**observable output**", "bold/italic markers"),
+        ("*observable output*", "bold/italic markers"),
+        ("[observable output](https://example.com/result)", "Markdown link"),
+    )
+    for unsafe_outcome, expected_error in paste_unsafe_cases:
+        unsafe_plan = _replace(
+            GOOD_PLAN,
+            "Then it produces the correct observable output | Evidence:",
+            f"Then it produces the correct {unsafe_outcome} | Evidence:",
+        )
+        check(
+            f"paste-unsafe AC markup is rejected: {expected_error}",
+            any(expected_error in error for error in validate_mod.validate(unsafe_plan)),
+        )
+
+    long_then_plan = _replace(
+        GOOD_PLAN,
+        "Then it produces the correct observable output | Evidence:",
+        "Then the system produces the correct output for every selected map and every linked topic while also preserving all metadata, references, permissions, versions, history entries, unrelated files, audit records, workflow states, and generated assets across every supported output preset after processing completes | Evidence:",
+    )
+    check(
+        "overlong Then clause is rejected with rewrite guidance",
+        any("Then has" in error and "plain-English limit" in error for error in validate_mod.validate(long_then_plan)),
+    )
+
     ac_with_only_graph_path = _replace(
         GOOD_PLAN,
         "Evidence: Jira UAC GUIDES-100.",
@@ -269,12 +334,12 @@ def test_validator() -> None:
     quantified_performance = _replace(
         GOOD_PLAN,
         "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
-        "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms and timeout error rate remains at 0% | Evidence: Jira comment GUIDES-100.",
+        "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms | Evidence: Jira comment GUIDES-100.",
     )
     quantified_performance = _replace(
         quantified_performance,
         "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
-        "- P1 [AC-02]: Action: run the cleanup load benchmark for 10,000 topics. Expected: p95 latency is at or below 2000 ms with a 0% timeout error rate.",
+        "- P1 [AC-02]: Action: run the cleanup load benchmark for 10,000 topics. Expected: p95 latency is at or below 2000 ms.",
     )
     check(
         "quantified evidence-backed Performance AC passes",
@@ -340,17 +405,62 @@ def test_validator() -> None:
     oq_with_impact = _replace(
         GOOD_PLAN,
         "- No open questions from current evidence",
-        "- Scope decision: is the async path in scope? QA impact: if yes add a polling-oracle scenario, if no document the limitation and prove cleanup does not fire.",
+        "- OQ-01: Is the async path in scope? QA impact: if yes add a polling-oracle scenario, if no document the limitation and prove cleanup does not fire.",
     )
     check("open question stating QA impact passes", validate_mod.validate(oq_with_impact) == [])
 
     oq_no_impact = _replace(
         GOOD_PLAN,
         "- No open questions from current evidence",
-        "- Is the fix synchronous or asynchronous on delete?",
+        "- OQ-01: Is the fix synchronous or asynchronous on delete?",
     )
     errs = validate_mod.validate(oq_no_impact)
-    check("open question without QA impact is rejected", any("QA impact of the answer" in e for e in errs))
+    check("open question without QA impact is rejected", any("Open Questions bullet must use" in e for e in errs))
+
+    oq_duplicate = _replace(
+        GOOD_PLAN,
+        "- No open questions from current evidence",
+        "- OQ-01: Is the async path in scope? QA impact: the answer changes async coverage.\n"
+        "- OQ-01: Which timeout applies? QA impact: the answer changes the wait oracle.",
+    )
+    errs = validate_mod.validate(oq_duplicate)
+    check("duplicate Open Question IDs are rejected", any("must be unique" in e for e in errs))
+
+    oq_noncontiguous = _replace(
+        GOOD_PLAN,
+        "- No open questions from current evidence",
+        "- OQ-02: Which timeout applies? QA impact: the answer changes the wait oracle.",
+    )
+    errs = validate_mod.validate(oq_noncontiguous)
+    check(
+        "non-contiguous Open Question IDs are rejected",
+        any("contiguous and ordered starting at OQ-01" in e for e in errs),
+    )
+
+    no_questions_mixed = _replace(
+        GOOD_PLAN,
+        "- No open questions from current evidence",
+        "- No open questions from current evidence\n"
+        "- OQ-01: Which timeout applies? QA impact: the answer changes the wait oracle.",
+    )
+    errs = validate_mod.validate(no_questions_mixed)
+    check(
+        "no-open-questions declaration cannot coexist with a real question",
+        any("cannot coexist" in e for e in errs),
+    )
+
+    stable_scenarios = _replace(
+        GOOD_PLAN,
+        "- P0 [AC-01]: Action: do the first thing. Expected: observe the correct output.\n"
+        "- P1 [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+        "- P0 [TS-01] [AC-01]: Action: do the first thing. Expected: observe the correct output.\n"
+        "- P1 [TS-02] [AC-02]: Action: do the second thing. Expected: observe prior state retained.",
+    )
+    check("stable contiguous Test Scenario IDs pass", validate_mod.validate(stable_scenarios) == [])
+
+    duplicate_scenarios = stable_scenarios.replace("[TS-02]", "[TS-01]")
+    errs = validate_mod.validate(duplicate_scenarios)
+    check("duplicate Test Scenario IDs are rejected", any("must be unique" in e for e in errs))
 
     clone_no_sync = _replace(
         GOOD_PLAN,
@@ -374,6 +484,117 @@ def test_validator() -> None:
     )
     errs = validate_mod.validate(unvetted_regression_key)
     check("Regression Areas citing a Jira key absent from Known Bugs is rejected", any("GUIDES-777" in e for e in errs))
+
+
+def test_ac_readability() -> None:
+    ac = ac_contract_mod
+
+    simple = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a DITA-OT publish returns a generation log | "
+        "When the publish workflow completes | Then the logger records one generation-log payload | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check("short technical AC remains valid", simple is not None and ac.validate_ac_readability(simple) == [])
+
+    technical_tokens = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given largeFileTagCount is 100 for map.ditamap in v2.0 | "
+        "When POST /bin/fmdita/import runs | Then the GUIDES-44288 fixture creates one DITA-OT output | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "technical identifiers remain readable tokens",
+        technical_tokens is not None and ac.validate_ac_readability(technical_tokens) == [],
+    )
+    technical_projection = ac_presentation_mod.project_ac_for_people(
+        technical_tokens,
+        include_status=True,
+        header_bullet=False,
+    )
+    check(
+        "plain presentation preserves technical token text exactly",
+        technical_projection
+        == (
+            "AC-01 [Proposed]\n"
+            "- Starting point: largeFileTagCount is 100 for map.ditamap in v2.0.\n"
+            "- Action: POST /bin/fmdita/import runs.\n"
+            "- Expected result: the GUIDES-44288 fixture creates one DITA-OT output."
+        ),
+    )
+
+    coupled_safety = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Negative) Given an API request has an invalid path | "
+        "When the caller submits the request | Then the API returns HTTP 409 and writes no partial state | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "one coupled safety result remains allowed",
+        coupled_safety is not None and ac.validate_ac_readability(coupled_safety) == [],
+    )
+
+    complex_phrase = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Negative) Given a publish job is active | "
+        "When a failure occurs | Then in the event that metadata storage fails the logger records one payload | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "complex legal-style phrase is rejected with a simple replacement",
+        complex_phrase is not None
+        and any("use 'if' instead" in error for error in ac.validate_ac_readability(complex_phrase)),
+    )
+
+    stacked = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Integration) Given a map and a preset and a custom logger and a Splunk sink and an archive are configured | "
+        "When the user publishes the map | Then the application log and custom log and Splunk each receive the payload | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "stacked ideas are rejected instead of producing a reread-heavy AC",
+        stacked is not None
+        and any("joins" in error and "split the AC" in error for error in ac.validate_ac_readability(stacked)),
+    )
+
+    double_negative = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Negative) Given a publish job has no generation log | "
+        "When the job ends | Then the logger does not write an entry unless a payload exists | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "double-negative outcome is rejected",
+        double_negative is not None
+        and any("double negative" in error for error in ac.validate_ac_readability(double_negative)),
+    )
+
+    second_action = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a map is open | "
+        "When the author selects a preset and then starts publishing | Then the publish job starts | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "When cannot hide a second action after and then",
+        second_action is not None
+        and any("second action" in error for error in ac.validate_ac_readability(second_action)),
+    )
+
+    ambiguous_choice = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Negative) Given a map and/or topic is selected | "
+        "When publishing starts | Then one publish job starts | Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "and/or is rejected in favor of an exact choice",
+        ambiguous_choice is not None
+        and any("and/or" in error for error in ac.validate_ac_readability(ambiguous_choice)),
+    )
+
+    semicolon = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a publish job succeeds | "
+        "When the job ends | Then the output remains valid; the history remains unchanged | "
+        "Evidence: Jira description GUIDES-44288."
+    )
+    check(
+        "semicolon-separated outcomes are rejected",
+        semicolon is not None
+        and any("semicolon" in error for error in ac.validate_ac_readability(semicolon)),
+    )
 
 
 def test_verifier() -> None:
@@ -543,7 +764,8 @@ def test_run_gates() -> None:
         check("run_gates flags missing manifest keys", any("clones" in f for f in failures) and any("rag_probes" in f for f in failures))
 
         dual_source = {
-            "issue": "X",
+            "schema_version": "aem-guides-evidence-manifest-v2",
+            "issue": "GUIDES-100",
             "attachments": [],
             "evidence_preflight": _full_preflight(),
             "rag_tool": "ask_dita_expert",
@@ -579,6 +801,18 @@ def test_run_gates() -> None:
                 ],
             },
             "performance_assessment": NOT_REQUIRED_PERFORMANCE,
+            "accepted_uac_present": False,
+            "open_questions": [],
+            "enumerated_requirements": {
+                "schema_version": "aem-guides-enumerated-requirements-v1",
+                "active": False,
+                "reason": "The issue contains no reporter-enumerated requirement list.",
+            },
+            "operational_contract": {
+                "schema_version": "aem-guides-operational-contract-v1",
+                "active": False,
+                "reason": "The fixture is a synchronous non-operational behavior.",
+            },
         }
 
         check(
@@ -673,7 +907,7 @@ def test_run_gates() -> None:
         performance_plan = _replace(
             GOOD_PLAN,
             "- AC-02 [Proposed]: (Negative) Given a second input | When the system runs | Then it retains valid prior state | Evidence: Jira description GUIDES-100.",
-            "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms and timeout error rate remains at 0% | Evidence: Jira comment GUIDES-100.",
+            "- AC-02 [Proposed]: (Performance) Given 10,000 topics with parent-map references | When the cleanup workflow runs | Then p95 cleanup latency remains at or below 2000 ms | Evidence: Jira comment GUIDES-100.",
         )
         performance_plan = _replace(
             performance_plan,
@@ -921,7 +1155,7 @@ def test_run_gates() -> None:
         conditional_plan = _replace(
             GOOD_PLAN,
             "- No open questions from current evidence",
-            "- Performance sign-off: confirm production topic cardinality, concurrent cleanup jobs, and the approved p95 latency SLA. QA impact: without these values no Performance AC can be emitted safely; with them QA can define the load, soak, and pass-fail oracle.",
+            "- OQ-01: Confirm production topic cardinality, concurrent cleanup jobs, and the approved p95 latency SLA. QA impact: without these values no Performance AC can be emitted safely; with them QA can define the load, soak, and pass-fail oracle.",
         )
         check(
             "conditional performance decision aligns after its QA-impact question is visible",
@@ -1009,6 +1243,62 @@ def test_run_gates() -> None:
             "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
         }), encoding="utf-8")
         check("run_gates passes a complete manifest", run_gates.check_manifest_completeness(str(path)) == [])
+
+        confirmed_without_authority = _replace(GOOD_PLAN, "[Proposed]", "[Confirmed]")
+        check(
+            "Confirmed ACs are forbidden when no accepted UAC exists",
+            any(
+                "every AC must remain [Proposed]" in problem
+                for problem in run_gates.check_uac_plan_alignment(
+                    {"accepted_uac_present": False}, confirmed_without_authority
+                )
+            ),
+        )
+        check(
+            "manifest and visible Open Question IDs must match exactly",
+            bool(
+                run_gates.check_open_question_alignment(
+                    {
+                        "open_questions": [
+                            {"id": "OQ-01", "question": "Which limit?", "qa_impact": "Changes the bound."}
+                        ]
+                    },
+                    GOOD_PLAN,
+                )
+            ),
+        )
+        check(
+            "combined artifact accepts only the exact plan plus Appendix A",
+            run_gates.check_combined_binding(
+                GOOD_PLAN, GOOD_PLAN.rstrip("\n") + "\n\n# Appendix A - Automation Evidence\n- Evidence.\n"
+            ) == [],
+        )
+        check(
+            "combined artifact rejects a mutated plan body",
+            bool(run_gates.check_combined_binding(GOOD_PLAN, GOOD_PLAN.replace("a thing", "another thing"))),
+        )
+
+        compact_source = _replace(
+            GOOD_PLAN,
+            "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
+            "- AC-01\n  - Starting point: an input is available.\n  - Action: the system runs.\n  - Expected result: it produces the correct observable output.",
+        )
+        plan_path = Path(tmp) / "plan.md"
+        combined_path = Path(tmp) / "combined.md"
+        plan_path.write_text(compact_source, encoding="utf-8")
+        combined_path.write_text(compact_source, encoding="utf-8")
+        full_manifest = {
+            **dual_source,
+            "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+        }
+        path.write_text(json.dumps(full_manifest), encoding="utf-8")
+        end_to_end_failures, _ = run_gates.run(
+            str(plan_path), str(combined_path), str(path), None, True
+        )
+        check(
+            "full run gate rejects compact source AC syntax",
+            any("[validate]" in problem and "machine-readable" in problem for problem in end_to_end_failures),
+        )
 
         base = {
             **dual_source,
@@ -1229,6 +1519,37 @@ def test_extract_acs() -> None:
     )
     _, malformed_problems = extract_mod.extract(malformed)
     check("extract_acs fails closed on malformed input", any("unparseable" in p for p in malformed_problems))
+    compact_source = _replace(
+        GOOD_PLAN,
+        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
+        "- AC-01\n  - Starting point: an input is available.\n  - Action: the system runs.\n  - Expected result: it produces the correct observable output.",
+    )
+    compact_criteria, compact_problems = extract_mod.extract(compact_source)
+    check(
+        "extract_acs emits no partial payload for compact display syntax",
+        compact_criteria == [] and any("unparseable" in problem for problem in compact_problems),
+    )
+    paste_unsafe = _replace(
+        GOOD_PLAN,
+        "Then it produces the correct observable output | Evidence:",
+        "Then it produces the correct `observable output` | Evidence:",
+    )
+    unsafe_criteria, unsafe_problems = extract_mod.extract(paste_unsafe)
+    check(
+        "extract_acs emits no payload for paste-unsafe AC markup",
+        unsafe_criteria == [] and any("backticks/code spans" in problem for problem in unsafe_problems),
+    )
+    unreadable = _replace(
+        GOOD_PLAN,
+        "Then it produces the correct observable output | Evidence:",
+        "Then the system produces the correct output for every selected map and every linked topic while also preserving all metadata, references, permissions, versions, history entries, unrelated files, audit records, workflow states, and generated assets across every supported output preset after processing completes | Evidence:",
+    )
+    unreadable_criteria, unreadable_problems = extract_mod.extract(unreadable)
+    check(
+        "extract_acs emits no payload for a reread-heavy AC",
+        unreadable_criteria == []
+        and any("plain-English limit" in problem for problem in unreadable_problems),
+    )
 
 
 def test_compact_view() -> None:
@@ -1273,11 +1594,22 @@ def test_compact_view() -> None:
         and "Action:" in compact
         and "Expected:" in compact,
     )
+    acceptance_block = compact.split("**Test Scenarios**", 1)[0]
     check(
-        "compact ACs are straightforward and hide evidence analysis",
-        "- AC-01: Given an input | When the system runs | Then it produces the correct observable output." in compact
-        and "[Proposed]" not in compact
-        and "Evidence:" not in compact,
+        "compact ACs use three simple lines and hide internal record labels",
+        (
+            "- AC-01\n"
+            "  - Starting point: an input.\n"
+            "  - Action: the system runs.\n"
+            "  - Expected result: it produces the correct observable output."
+        )
+        in acceptance_block
+        and "Given " not in acceptance_block
+        and "When " not in acceptance_block
+        and "Then " not in acceptance_block
+        and " | " not in acceptance_block
+        and "[Proposed]" not in acceptance_block
+        and "Evidence:" not in acceptance_block,
     )
     check(
         "compact Jira list keeps only key and title",
@@ -1296,6 +1628,17 @@ def test_compact_view() -> None:
         "**Open Questions**" not in compact
         and "No open questions from current evidence" not in compact
         and "**Open Questions**" in GOOD_PLAN,
+    )
+
+    invalid_source = _replace(
+        GOOD_PLAN,
+        "- AC-01 [Proposed]: (Basic) Given an input | When the system runs | Then it produces the correct observable output | Evidence: Jira UAC GUIDES-100.",
+        "- AC-01: the feature works",
+    )
+    invalid_compact, invalid_problems = compact_mod.project(invalid_source)
+    check(
+        "compact renderer emits nothing for a noncanonical source AC",
+        invalid_compact == "" and bool(invalid_problems),
     )
 
     no_match_plan = _replace(
@@ -1975,6 +2318,24 @@ def test_component_reference_routing() -> None:
     repo_root = _find_repo_root()
     for variant in (".codex", ".claude"):
         variant_root = repo_root / variant / "skills" / "test-plan-generation"
+        for relative_path in (
+            "SKILL.md",
+            "references/chat-deliverable.md",
+            "references/plain-language-ac-writing.md",
+            "references/output-template.md",
+            "references/quality-gate-checklist.md",
+            "scripts/ac_presentation.py",
+            "scripts/ac_contract.py",
+            "scripts/extract_acs.py",
+            "scripts/render_compact_view.py",
+            "scripts/validate_test_plan.py",
+            "scripts/test_skill_scripts.py",
+        ):
+            check(
+                f"{variant} readability contract matches canonical: {relative_path}",
+                (variant_root / relative_path).read_bytes()
+                == (repo_root / "skills" / "test-plan-generation" / relative_path).read_bytes(),
+            )
         check(
             f"{variant} component router matches canonical",
             (variant_root / "scripts" / "component_reference_router.py").read_bytes()
@@ -2436,6 +2797,15 @@ def test_coverage_gate() -> None:
     r1 = cg.evaluate(a1)
     check("discovered-but-unexplored contract/consumer -> NEEDS_REVIEW", r1["semantic_gate"] == "NEEDS_REVIEW"
           and r1["dimensions"]["CONTRACT_BOUNDARY"] == "NEEDS_REVIEW")
+    with tempfile.TemporaryDirectory() as tmp:
+        manifest_path = Path(tmp) / "coverage.json"
+        manifest_path.write_text(json.dumps(a1), encoding="utf-8")
+        gate = _load("run_gates_for_coverage_test", "run_gates.py")
+        gate_failures, _ = gate.check_coverage_gate(str(manifest_path))
+        check(
+            "NEEDS_REVIEW blocks final delivery",
+            any("unresolved review" in problem for problem in gate_failures),
+        )
 
     # adversarial 2: meaningful state hypothesis UNRESOLVED but HIDDEN from Open Questions -> FAIL
     a2 = {"coverage_hypotheses": [hyp("STATE_PARTITION", "H1")],
@@ -2540,7 +2910,6 @@ def test_uac_integration() -> None:
 
 
 def test_reasoning_required() -> None:
-    import json, tempfile
     run_gates = _load("run_gates", "run_gates.py")
 
     def _write(tmp, payload):
@@ -2612,7 +2981,9 @@ def test_relevance_prioritizer() -> None:
     # even though a GENERIC one is CONFIRMED (breadth cannot compensate for the direct miss)
     cov = [dict(direct), {"hypothesis_id": "H2", "dimension": "DOWNSTREAM_REGRESSION", "candidate": "c",
                           "reason": "r", "technical_basis": ["t"], "status": "CONFIRMED", "behavioral_distance": "GENERIC_REGRESSION"}]
-    cov[0]["dimension"] = "DITA_SEMANTIC_DEPENDENCY"; cov[0]["reason"] = "r"; cov[0]["technical_basis"] = ["t"]
+    cov[0]["dimension"] = "DITA_SEMANTIC_DEPENDENCY"
+    cov[0]["reason"] = "r"
+    cov[0]["technical_basis"] = ["t"]
     r = coverage_gate_mod.evaluate({"coverage_hypotheses": cov,
                                     "verifications": [{"hypothesis_id": "H2", "verdict": "CONFIRMED", "disposition": "REGRESSION"}]})
     check("unexplored DIRECT dependency blocks the gate via RELEVANCE_PRIORITIZATION",
@@ -2771,7 +3142,8 @@ def test_structural_equivalence() -> None:
     check("fully-verified EQUIVALENT_PATH passes", se.validate_structural_equivalence(ok) == [])
 
     # EQUIVALENT_PATH missing a verified dimension is rejected
-    partial_checks = dict(allchecks); partial_checks["transformation"] = False
+    partial_checks = dict(allchecks)
+    partial_checks["transformation"] = False
     bad = [{"construct_a": "topichead", "construct_b": "topicref", "classification": "EQUIVALENT_PATH",
             "checks": partial_checks, "evidence": ["x"]}]
     check("EQUIVALENT_PATH with an unverified dimension is rejected", any("requires all verification dimensions" in p for p in se.validate_structural_equivalence(bad)))
@@ -2982,6 +3354,10 @@ def test_implementation_grounding() -> None:
           any("UNVERIFIED provenance" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="REPORTER")]))))
     check("config_key UNVERIFIED provenance with OQ ref passes",
           ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="REPORTER", verification_open_question_ref="OQ-3")]), open_question_ids=["OQ-3"]) == [])
+    check("empty known Open Question set rejects implementation-grounding reference",
+          any("not in the plan's open_questions" in p for p in ig.validate_implementation_grounding(
+              block(named_artifacts=[cfg(key_provenance="REPORTER", verification_open_question_ref="OQ-3")]),
+              open_question_ids=[])))
     check("config_key invalid provenance rejected",
           any("key_provenance must be one of" in p for p in ig.validate_implementation_grounding(block(named_artifacts=[cfg(key_provenance="RUMOR")]))))
     check("config_key missing provenance is review-only, not a validate failure",
@@ -3023,15 +3399,18 @@ def test_capability_eligibility() -> None:
 
     def term(**o):
         b = {"dimension": "ENTITY_TYPE", "operator": "in", "expected_value": "dita", "evidence_ids": ["E1"], "material": True}
-        b.update(o); return b
+        b.update(o)
+        return b
 
     def cap(name="Cap A", **o):
         b = {"capability": name, "predicate_terms": [term()]}
-        b.update(o); return b
+        b.update(o)
+        return b
 
     def block(**o):
         b = {"active": True, "capabilities": [cap("Cap A"), cap("Cap B", predicate_terms=[term(dimension="METADATA", expected_value="uuid present")])]}
-        b.update(o); return b
+        b.update(o)
+        return b
 
     check("distinct per-capability predicates pass (Case C)", ce.validate_capability_eligibility(block()) == [])
     check("material predicate without evidence rejected",
@@ -3050,6 +3429,9 @@ def test_capability_eligibility() -> None:
     check("multiselect UNKNOWN without open question rejected", any("selection_policy" in p for p in ce.validate_capability_eligibility(ms_unknown, multiselect=True)))
     ms_ref = block(capabilities=[cap(selection_policy="UNKNOWN", selection_open_question_ref="OQ-1")])
     check("multiselect UNKNOWN with open-question ref allowed", ce.validate_capability_eligibility(ms_ref, multiselect=True, open_question_ids=["OQ-1"]) == [])
+    check("empty known Open Question set rejects capability reference",
+          any("not in the plan's open_questions" in p for p in
+              ce.validate_capability_eligibility(ms_ref, multiselect=True, open_question_ids=[])))
     coll = block(capabilities=[cap(eligibility_evidence=[{"capability_match": "SEMANTIC_COLLISION", "supports_predicate": True}])])
     check("semantic-collision evidence cannot support predicate", any("SEMANTIC_COLLISION" in p for p in ce.validate_capability_eligibility(coll)))
 
@@ -3085,12 +3467,23 @@ def test_capability_eligibility() -> None:
                  {"form": "DIRECT_BUTTON", "dispatch": "AUTHOR_INSERT_ELEMENT", "evidence_ids": ["E1"]},
                  {"form": "OVERFLOW_MENU", "dispatch": "AUTHOR_INSERT_KEYWORD", "evidence_ids": ["E2"]}],
              "entry_point_consistency": "VERIFIED_SAME", "entry_point_consistency_evidence": ["fix unifies dispatch"]}
-        b.update(o); return b
+        b.update(o)
+        return b
     check("entry points with resolved consistency pass", ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap()]}) == [])
     check("multiple entry points without consistency rejected",
           any("entry_point_consistency" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_point_consistency="")]})))
     check("VERIFIED_SAME without evidence rejected",
           any("needs evidence" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_point_consistency_evidence=[])]})))
+    ep_open = {"active": True, "capabilities": [ep_cap(
+        entry_point_consistency="OPEN_QUESTION",
+        entry_point_consistency_evidence=[],
+        entry_point_open_question_ref="OQ-7",
+    )]}
+    check("entry-point Open Question reference passes when declared",
+          ce.validate_capability_eligibility(ep_open, open_question_ids=["OQ-7"]) == [])
+    check("empty known Open Question set rejects entry-point reference",
+          any("not in the plan's open_questions" in p for p in
+              ce.validate_capability_eligibility(ep_open, open_question_ids=[])))
     check("invalid entry-point form rejected",
           any("form must be one of" in p for p in ce.validate_capability_eligibility({"active": True, "capabilities": [ep_cap(entry_points=[{"form": "WIDGET", "evidence_ids": ["E1"]}, {"form": "OVERFLOW_MENU", "evidence_ids": ["E2"]}])]})))
     resp_manifest = {"issue": {"description": "the keyword shows as a direct button at 50% zoom; in the overflow menu it works"}}
@@ -3121,22 +3514,45 @@ def test_scope_conflict() -> None:
     sc = scope_conflict_mod
     check("fix + multi-problem activates", sc.is_active({"issue": {"description": "the PR fixes the button; also there is a separate font preview problem"}}) is True)
     check("no fix signal does not activate", sc.is_active({"issue": {"summary": "buttons show on wrong assets"}}) is False)
+    check(
+        "pre-development plan text does not create a false fix-scope conflict",
+        sc.is_active(
+            {"issue": {"description": "the future fix should cover the button and another problem"}},
+            "Lifecycle is Pre-Development UAC; development has not started and no pull request exists.",
+        ) is False,
+    )
 
     def thread(**o):
         b = {"thread_id": "T1", "problem_statement": "buttons wrong", "status": "CONFIRMED"}
-        b.update(o); return b
+        b.update(o)
+        return b
 
     def block(**o):
         b = {"active": True, "problem_threads": [thread()], "alignment": "FULL_SCOPE_FIX", "open_question_refs": []}
-        b.update(o); return b
+        b.update(o)
+        return b
 
     check("full alignment passes with no open question (Case E)", sc.validate_scope_conflict(block()) == [])
     check("partial alignment without open question rejected",
           any("surfaced as an Open Question" in p for p in sc.validate_scope_conflict(block(alignment="PARTIAL_SCOPE_FIX"))))
     check("partial alignment with open question passes",
           sc.validate_scope_conflict(block(alignment="PARTIAL_SCOPE_FIX", open_question_refs=["OQ-2"]), open_question_ids=["OQ-2"]) == [])
+    check("empty known Open Question set rejects scope-conflict reference",
+          any("not present" in p for p in sc.validate_scope_conflict(
+              block(alignment="PARTIAL_SCOPE_FIX", open_question_refs=["OQ-2"]),
+              open_question_ids=[])))
     check("unresolved_scope_without_open_question detects hidden mismatch",
           sc.unresolved_scope_without_open_question(block(alignment="UNKNOWN_FIX_SCOPE")) is True)
+    check("unresolved scope rejects undeclared Open Question reference",
+          sc.unresolved_scope_without_open_question(
+              block(alignment="PARTIAL_SCOPE_FIX", open_question_refs=["OQ-2"]),
+              open_question_ids=[],
+          ) is True)
+    check("unresolved scope accepts declared Open Question reference",
+          sc.unresolved_scope_without_open_question(
+              block(alignment="PARTIAL_SCOPE_FIX", open_question_refs=["OQ-2"]),
+              open_question_ids=["OQ-2"],
+          ) is False)
     check("secondary-defect thread mapped to AC rejected (Case F)",
           any("must NOT map" in p for p in sc.validate_scope_conflict(block(problem_threads=[thread(status="SECONDARY_DEFECT", maps_to_ac=True)]))))
     check("invalid thread status rejected", any("status" in p for p in sc.validate_scope_conflict(block(problem_threads=[thread(status="MAYBE")]))))
@@ -3209,21 +3625,33 @@ def test_affected_surface() -> None:
 
     check("well-formed affected_surface passes",
           asf.validate_affected_surface(block(), ac_ids={"AC-02", "AC-05"}) == [])
-    bad = block(); bad["dimensions"][0]["coverage"].pop("MOVE")
+    bad = block()
+    bad["dimensions"][0]["coverage"].pop("MOVE")
     check("uncovered enum value is rejected",
           any("no coverage entry" in p for p in asf.validate_affected_surface(bad, ac_ids={"AC-02", "AC-05"})))
-    noac = block(); noac["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "COVERED"}
+    noac = block()
+    noac["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "COVERED"}
     check("COVERED without an ac is rejected",
           any("names no acceptance criterion" in p for p in asf.validate_affected_surface(noac, ac_ids={"AC-02", "AC-05"})))
     check("ac not defined in the plan is rejected",
           any("not an AC defined" in p for p in asf.validate_affected_surface(block(), ac_ids={"AC-02"})))
-    oos = block(); oos["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE"}
+    oos = block()
+    oos["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE"}
     check("OUT_OF_SCOPE without a reason is rejected",
           any("no reason" in p for p in asf.validate_affected_surface(oos, ac_ids={"AC-02", "AC-05"})))
-    oos2 = block(); oos2["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE", "reason": "name-conflict only"}
+    oos2 = block()
+    oos2["dimensions"][0]["coverage"]["MOVE"] = {"disposition": "OUT_OF_SCOPE", "reason": "name-conflict only"}
     check("OUT_OF_SCOPE with a reason passes",
           asf.validate_affected_surface(oos2, ac_ids={"AC-02", "AC-05"}) == [])
-    bk = block(); bk["dimensions"][0]["kind"] = "STUFF"
+    open_ref = block()
+    open_ref["dimensions"][0]["coverage"]["MOVE"] = {
+        "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-01"
+    }
+    check("empty known Open Question set rejects affected-surface reference",
+          any("not in the plan's open_questions" in p for p in asf.validate_affected_surface(
+              open_ref, ac_ids={"AC-02", "AC-05"}, open_question_ids=[])))
+    bk = block()
+    bk["dimensions"][0]["kind"] = "STUFF"
     check("invalid dimension kind is rejected",
           any("kind must be one of" in p for p in asf.validate_affected_surface(bk, ac_ids={"AC-02", "AC-05"})))
     check("empty dimensions is rejected",
@@ -3262,6 +3690,10 @@ def test_comment_claims() -> None:
     check("UNVERIFIABLE with an unknown open_question_ref is rejected",
           any("is not in the plan's open_questions" in p for p in cc.validate_comment_claims(
               [claim(verification_status="UNVERIFIABLE", evidence_ids=[], open_question_ref="OQ-9")], open_question_ids=["OQ-1"])))
+    check("empty known Open Question set rejects comment-claim reference",
+          any("is not in the plan's open_questions" in p for p in cc.validate_comment_claims(
+              [claim(verification_status="UNVERIFIABLE", evidence_ids=[], open_question_ref="OQ-9")],
+              open_question_ids=[])))
 
     hits = cc.likely_claims_in_comments({"issue": {"comments": [{"body": "there is no gate for this in the code today"}]}})
     check("current-behaviour phrasing is detected in comment text", len(hits) == 1)
@@ -3308,6 +3740,9 @@ def test_pr_supersession() -> None:
     ]
     check("all-UNRESOLVED with a known open_question_ref passes",
           prs.validate_pr_references(unresolved_with_oq, open_question_ids=["OQ-1"]) == [])
+    check("empty known Open Question set rejects PR reference",
+          any("is not in the plan's open_questions" in p for p in
+              prs.validate_pr_references(unresolved_with_oq, open_question_ids=[])))
     check("invalid status is rejected",
           any("status must be one of" in p for p in prs.validate_pr_references([{"pr_ref": "#8098", "status": "MERGED"}])))
     check("missing pr_ref is rejected",
@@ -3316,136 +3751,664 @@ def test_pr_supersession() -> None:
 
 def test_concurrency_race() -> None:
     cr = concurrency_race_mod
-
-    check("not present when block absent", cr.is_present({}) is False)
-    check("inactive block needs nothing else",
-          cr.validate_concurrency_race_analysis({"active": False}) == [])
-    check("missing active key is rejected",
-          cr.validate_concurrency_race_analysis({}) != [])
-
-    all_covered = {
-        "active": True,
-        "triggers": ["JCR NODE_REMOVED listener"],
-        "patterns": [
-            {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
-            {"pattern": "RESTART_MID_PROCESSING_RACE", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-1"},
-            {"pattern": "DUPLICATE_EVENT_RACE", "disposition": "OUT_OF_SCOPE", "reason": "job consumer is idempotent by design"},
-        ],
-    }
-    check("all three patterns dispositioned passes",
-          cr.validate_concurrency_race_analysis(all_covered, ac_ids={"AC-01"}, open_question_ids={"OQ-1"}) == [])
-
-    missing_pattern = {
+    good = {
+        "schema_version": cr.SCHEMA_VERSION,
         "active": True,
         "triggers": ["Sling job consumer"],
         "patterns": [
             {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
+            {"pattern": "RESTART_MID_PROCESSING_RACE", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-01"},
+            {"pattern": "DUPLICATE_EVENT_RACE", "disposition": "OUT_OF_SCOPE", "reason": "The evidence proves exactly-once dispatch."},
         ],
     }
-    check("missing pattern(s) is rejected",
-          any("missing disposition for pattern" in p for p in
-              cr.validate_concurrency_race_analysis(missing_pattern, ac_ids={"AC-01"})))
-
-    bad_covered = {
-        "active": True,
-        "triggers": ["async"],
-        "patterns": [
-            {"pattern": "CREATE_THEN_DELETE_RACE", "disposition": "COVERED_BY_AC"},
-            {"pattern": "RESTART_MID_PROCESSING_RACE", "disposition": "OPEN_QUESTION"},
-            {"pattern": "DUPLICATE_EVENT_RACE", "disposition": "OUT_OF_SCOPE"},
-        ],
-    }
-    problems = cr.validate_concurrency_race_analysis(bad_covered)
-    check("COVERED_BY_AC without ac_ref is rejected", any("ac_ref" in p for p in problems))
-    check("OPEN_QUESTION without open_question_ref is rejected", any("open_question_ref" in p for p in problems))
-    check("OUT_OF_SCOPE without reason is rejected", any("reason" in p for p in problems))
-
-    check("unknown pattern name is rejected",
-          any("unknown or missing pattern" in p for p in cr.validate_concurrency_race_analysis({
-              "active": True, "triggers": ["x"],
-              "patterns": [{"pattern": "NOT_A_REAL_PATTERN", "disposition": "OUT_OF_SCOPE", "reason": "n/a"}],
-          })))
-    check("missing triggers on active block is rejected",
-          any("triggers" in p for p in cr.validate_concurrency_race_analysis({"active": True, "patterns": []})))
-
-    check("event-driven phrasing detected in behavior_model text",
-          len(cr.likely_event_driven({"behavior_model": {"operations": ["registers a JCR event listener for NODE_REMOVED"]}})) == 1)
-    check("plain behavior_model text has no hits",
-          cr.likely_event_driven({"behavior_model": {"operations": ["updates a property on save"]}}) == [])
+    check(
+        "versioned concurrency race contract passes with real references",
+        cr.validate_concurrency_race_analysis(
+            good, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}
+        ) == [],
+    )
+    check(
+        "empty known AC set rejects a concurrency AC reference",
+        any(
+            "valid ac_ref" in problem
+            for problem in cr.validate_concurrency_race_analysis(
+                good, ac_ids=set(), open_question_ids={"OQ-01"}
+            )
+        ),
+    )
+    check(
+        "inactive concurrency contract requires a reason",
+        any(
+            "reason" in problem
+            for problem in cr.validate_concurrency_race_analysis(
+                {"schema_version": cr.SCHEMA_VERSION, "active": False}
+            )
+        ),
+    )
+    check(
+        "event-driven behavior is detected",
+        bool(
+            cr.likely_event_driven(
+                {"behavior_model": {"operations": ["A Sling job consumer updates content"]}}
+            )
+        ),
+    )
 
 
 def test_enumerated_coverage() -> None:
     ec = enumerated_coverage_mod
-
-    check("enumerated not present when block absent", ec.is_present({}) is False)
-    check("enumerated present when list declared", ec.is_present({"enumerated_requirements": []}) is True)
-    check("empty enumerated list is rejected",
-          any("empty" in p for p in ec.validate_enumerated_requirements([])))
-
-    good = [
-        {"id": "R1", "text": "loop never breaks on read-limit error", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
-        {"id": "R2", "text": "result always reports success", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-2"},
-        {"id": "R3", "text": "offset pagination redesign", "disposition": "OUT_OF_SCOPE", "reason": "tracked as a follow-up per the scope decision"},
-    ]
-    check("well-formed enumerated coverage passes",
-          ec.validate_enumerated_requirements(good, ac_ids={"AC-01"}, open_question_ids={"OQ-2"}) == [])
-    check("COVERED_BY_AC with an AC not in the plan is rejected",
-          any("not an AC defined" in p for p in ec.validate_enumerated_requirements(good, ac_ids={"AC-99"}, open_question_ids={"OQ-2"})))
-    check("COVERED_BY_AC without ac_ref is rejected",
-          any("ac_ref" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "COVERED_BY_AC"}])))
-    check("OPEN_QUESTION without ref is rejected",
-          any("open_question_ref" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "OPEN_QUESTION"}])))
-    check("OUT_OF_SCOPE without reason is rejected",
-          any("reason" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "OUT_OF_SCOPE"}])))
-    check("unknown disposition is rejected",
-          any("disposition must be one of" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "MAYBE"}])))
-    check("missing text is rejected",
-          any("missing 'text'" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "disposition": "OUT_OF_SCOPE", "reason": "n/a"}])))
-    check("duplicate id is rejected",
-          any("duplicate id" in p for p in ec.validate_enumerated_requirements([
-              {"id": "R1", "text": "a", "disposition": "OUT_OF_SCOPE", "reason": "r"},
-              {"id": "R1", "text": "b", "disposition": "OUT_OF_SCOPE", "reason": "r"}])))
-
-    _desc = "Problems:" + chr(10) + "1. loop never breaks" + chr(10) + "2. result always success" + chr(10) + "3. no cancellation" + chr(10) + "4. weak logging"
-    check("numbered issue list is detected as enumerated", ec.likely_enumerated({"issue": {"description": _desc}}) >= 3)
-    check("prose issue with no list is not enumerated",
-          ec.likely_enumerated({"issue": {"description": "the job loops forever on a query failure"}}) == 0)
+    block = {
+        "schema_version": ec.SCHEMA_VERSION,
+        "active": True,
+        "source_ref": "Jira description GUIDES-100",
+        "source_item_count": 3,
+        "source_complete": True,
+        "items": [
+            {"id": "REQ-01", "source_index": 1, "text": "First", "disposition": "COVERED_BY_AC", "ac_refs": ["AC-01"]},
+            {"id": "REQ-02", "source_index": 2, "text": "Second", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-01"},
+            {"id": "REQ-03", "source_index": 3, "text": "Third", "disposition": "OUT_OF_SCOPE", "reason": "Explicitly excluded by the accepted scope."},
+        ],
+    }
+    check(
+        "complete enumerated source disposition passes",
+        ec.validate_enumerated_requirements(
+            block, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}, detected_count=3
+        ) == [],
+    )
+    check(
+        "empty known Open Question set rejects an enumerated reference",
+        any(
+            "not declared" in problem
+            for problem in ec.validate_enumerated_requirements(
+                block, ac_ids={"AC-01"}, open_question_ids=set(), detected_count=3
+            )
+        ),
+    )
+    incomplete = json.loads(json.dumps(block))
+    incomplete["items"].pop()
+    check(
+        "missing enumerated source item is a hard failure",
+        any(
+            "source_item_count" in problem
+            for problem in ec.validate_enumerated_requirements(
+                incomplete, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}, detected_count=3
+            )
+        ),
+    )
+    overloaded = json.loads(json.dumps(block))
+    overloaded["items"][1] = {
+        "id": "REQ-02", "source_index": 2, "text": "Second",
+        "disposition": "COVERED_BY_AC", "ac_refs": ["AC-01"],
+    }
+    check(
+        "independent enumerated items cannot silently overload one AC",
+        any(
+            "shared_contract_justification" in problem
+            for problem in ec.validate_enumerated_requirements(
+                overloaded, ac_ids={"AC-01"}, open_question_ids=set(), detected_count=3
+            )
+        ),
+    )
+    bullet_issue = {"issue": {"description": "- first\n- second\n- third\n- fourth"}}
+    check("ordinary Markdown bullets activate enumerated coverage", ec.likely_enumerated(bullet_issue) == 4)
+    inactive = {"schema_version": ec.SCHEMA_VERSION, "active": False, "reason": "No list."}
+    check(
+        "detected source list cannot be bypassed with active false",
+        any(
+            "cannot be inactive" in problem
+            for problem in ec.validate_enumerated_requirements(inactive, detected_count=4)
+        ),
+    )
 
 
 def test_ac_decidability() -> None:
     ad = ac_decidability_mod
 
-    def acs(*lines):
-        nl = chr(10)
-        return "**Acceptance Criteria**" + nl + nl.join(lines) + nl + "**Expected Behaviour**" + nl + "- x" + nl
+    def plan(then: str, *, given: str = "an operational run", when: str = "the worker executes", evidence: str = "Jira description GUIDES-100") -> str:
+        return (
+            "**Acceptance Criteria**\n"
+            f"- AC-01 [Proposed]: (Negative) Given {given} | When {when} | Then {then} | Evidence: {evidence}.\n"
+            "**Expected Behaviour**\n- The criterion is deterministic.\n"
+        )
 
-    # undecided-decision marker -> hard failure
-    f, n = ad.evaluate_plan(acs("- AC-01: the job stops after a limit to be agreed with engineering"))
-    check("undecided-decision AC is a hard failure", any("AC-01" in x for x in f))
+    failures, notes = ad.evaluate_plan(plan("the limit is applied once agreed"))
+    check("unresolved decision marker is a hard AC failure", bool(failures) and notes == [])
+    failures, _ = ad.evaluate_plan(plan("after 2 retries the total logs remain bounded"))
+    check("unrelated retry number does not make a vague log bound measurable", bool(failures))
+    failures, _ = ad.evaluate_plan(plan("the total error log is bounded to 3 entries"))
+    check("explicitly bound outcome is decidable", failures == [])
+    failures, _ = ad.evaluate_plan(plan("the implementation uses an index, keyset paging, or a custom index"))
+    check("implementation-choice menu is a hard AC failure", any("alternative mechanisms" in item for item in failures))
+    failures, _ = ad.evaluate_plan(plan("the run reports a failed or aborted result"))
+    check("ambiguous terminal result is a hard AC failure", any("ambiguous terminal" in item for item in failures))
+    failures, _ = ad.evaluate_plan(plan("the worker does not continue forever"))
+    check("non-finite negative is a hard AC failure", any("non-finite" in item for item in failures))
+    failures, _ = ad.evaluate_plan(
+        plan(
+            "the run reports failure",
+            evidence="Jira comment says the implementation choice is to be decided GUIDES-100",
+        )
+    )
+    check("unresolved prose in Evidence does not poison parsed behavior fields", failures == [])
 
-    # non-measurable qualifier with no number -> REVIEW note
-    f, n = ad.evaluate_plan(acs("- AC-02: under failure the job keeps logs bounded"))
-    check("non-measurable qualifier is flagged", f == [] and any("non-measurable" in x for x in n))
 
-    # measurable version (has a number) -> clean
-    f, n = ad.evaluate_plan(acs("- AC-02: under failure the job writes at most 3 error entries then ends"))
-    check("measurable outcome is clean", f == [] and not any("ac-decidability AC-02" in x for x in n))
+def test_operational_contract() -> None:
+    oc = operational_contract_mod
+    dimensions = [
+        {
+            "dimension": dimension,
+            "disposition": "OUT_OF_SCOPE",
+            "reason": f"Evidence-backed exclusion for {dimension}.",
+        }
+        for dimension in oc.REQUIRED_DIMENSIONS
+    ]
+    block = {
+        "schema_version": oc.SCHEMA_VERSION,
+        "active": True,
+        "reason": "The issue concerns a restart-sensitive background job.",
+        "dimensions": dimensions,
+    }
+    check(
+        "complete operational contract passes",
+        oc.validate_operational_contract(
+            block, ac_ids=set(), open_question_ids=set(), scenario_ids=set()
+        ) == [],
+    )
+    missing_shutdown = json.loads(json.dumps(block))
+    missing_shutdown["dimensions"] = [
+        item for item in missing_shutdown["dimensions"]
+        if item["dimension"] != "SHUTDOWN_TERMINAL_OUTCOME"
+    ]
+    check(
+        "shutdown must be dispositioned separately from cancellation",
+        any(
+            "SHUTDOWN_TERMINAL_OUTCOME" in problem
+            for problem in oc.validate_operational_contract(
+                missing_shutdown, ac_ids=set(), open_question_ids=set(), scenario_ids=set()
+            )
+        ),
+    )
+    referenced = json.loads(json.dumps(block))
+    referenced["dimensions"][0] = {
+        "dimension": "TRIGGER_AND_DEPLOYMENT_SCOPE",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": ["AC-99"],
+    }
+    check(
+        "empty AC set rejects invented operational references",
+        any(
+            "AC-99" in problem
+            for problem in oc.validate_operational_contract(
+                referenced, ac_ids=set(), open_question_ids=set(), scenario_ids=set()
+            )
+        ),
+    )
+    signalled = {"issue": {"description": "A Sling job retries after a partial write."}}
+    check(
+        "strong operational signal requires the contract",
+        any("required" in problem for problem in oc.validate_manifest(signalled)),
+    )
+    signalled["operational_contract"] = {
+        "schema_version": oc.SCHEMA_VERSION,
+        "active": False,
+        "reason": "Claimed non-operational.",
+    }
+    check(
+        "operational signal cannot be bypassed by active false",
+        any("cannot be false" in problem for problem in oc.validate_manifest(signalled)),
+    )
 
-    # alternative-mechanism menu -> REVIEW note
-    f, n = ad.evaluate_plan(acs("- AC-11: the query is made resilient via an index, keyset paging, or a custom index"))
-    check("alternative-mechanism menu is flagged", any("alternative mechanisms" in x for x in n))
 
-    # ambiguous async terminal state -> REVIEW note
-    f, n = ad.evaluate_plan(acs("- AC-04: a run that errors reports a failed or aborted result"))
-    check("ambiguous terminal state is flagged", any("ambiguous terminal state" in x for x in n))
+def test_gate_receipt_and_adapter() -> None:
+    gate = _load("run_gates_for_receipt_test", "run_gates.py")
+    adapter = _load("canonical_runtime_adapter_for_test", "canonical_runtime_adapter.py")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        plan = root / "plan.md"
+        combined = root / "combined.md"
+        manifest = root / "manifest.json"
+        receipt = root / "gate-receipt.json"
+        plan.write_text(GOOD_PLAN, encoding="utf-8")
+        combined.write_text(GOOD_PLAN, encoding="utf-8")
+        manifest.write_text(json.dumps({"issue": "GUIDES-100"}), encoding="utf-8")
+        gate.write_gate_receipt(
+            receipt_path=str(receipt),
+            plan_path=str(plan),
+            combined_path=str(combined),
+            manifest_path=str(manifest),
+            passed=True,
+            postable=True,
+        )
+        adapter.verify_receipt(
+            receipt,
+            jira_key="GUIDES-100",
+            plan_path=plan,
+            manifest_path=manifest,
+        )
+        check("hash-bound receipt authorizes the exact current artifacts", True)
 
-    # clean, decided, single-outcome AC -> nothing
-    f, n = ad.evaluate_plan(acs("- AC-01: the orphaned preset execution data node is removed and valid presets remain"))
-    check("clean decided AC produces no decidability issue", f == [] and n == [])
+        plan.write_text(GOOD_PLAN + "\n", encoding="utf-8")
+        try:
+            adapter.verify_receipt(
+                receipt,
+                jira_key="GUIDES-100",
+                plan_path=plan,
+                manifest_path=manifest,
+            )
+        except ValueError as exc:
+            check("stale receipt is rejected after plan mutation", "hash mismatch" in str(exc))
+        else:
+            check("stale receipt is rejected after plan mutation", False)
+
+        plan.write_text(GOOD_PLAN, encoding="utf-8")
+        gate.write_gate_receipt(
+            receipt_path=str(receipt),
+            plan_path=str(plan),
+            combined_path=str(combined),
+            manifest_path=str(manifest),
+            passed=True,
+            postable=False,
+        )
+        try:
+            adapter.verify_receipt(
+                receipt,
+                jira_key="GUIDES-100",
+                plan_path=plan,
+                manifest_path=manifest,
+            )
+        except ValueError as exc:
+            check("skip-self-test style non-postable receipt is rejected", "postable" in str(exc))
+        else:
+            check("skip-self-test style non-postable receipt is rejected", False)
+
+
+def _ui_scope_fixture():
+    surfaces = [
+        "Full Tags View",
+        "Condition Attributes panel",
+        "Right Panel",
+        "condition presets",
+        "DITAVAL attribute dropdown",
+        "Preview",
+    ]
+    return {
+        "schema_version": "aem-guides-ui-surface-scope-v1",
+        "construct_type": "attribute-label",
+        "render_surfaces": [
+            {"surface": surface, "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"}
+            for surface in surfaces
+        ],
+        "config_scope": {
+            "scope": "USER",
+            "disposition": "COVERED_BY_AC",
+            "ac_ref": "AC-01",
+        },
+        "upgrade_persistence": {
+            "disposition": "COVERED_BY_AC",
+            "ac_ref": "AC-01",
+        },
+        "sibling_regression": {
+            "disposition": "COVERED_BY_AC",
+            "sibling_construct": "element-label",
+            "ac_ref": "AC-01",
+        },
+        "surfaces_grounding": ["C:/repo/rendering.ts:42"],
+    }
+
+
+def test_feature_class_registry() -> None:
+    registry = feature_class_mod
+    failures, notes = registry.validate_feature_classification(
+        {"issue": {"summary": "ordinary content change"}},
+        "ordinary content change",
+        ac_ids={"AC-01"},
+        open_question_ids=set(),
+    )
+    check("feature registry cleanly skips without signals", failures == [] and notes == [])
+
+    failures, notes = registry.validate_feature_classification(
+        {},
+        "A friendly name is shown as a label in workspace settings.",
+        ac_ids={"AC-01"},
+        open_question_ids=set(),
+    )
+    check(
+        "detected feature class without declaration is REVIEW only",
+        failures == [] and any("REVIEW" in note for note in notes),
+    )
+
+    missing_dimension = {
+        "feature_classification": {
+            "schema_version": "aem-guides-feature-classification-v1",
+            "classes": ["ui_display_label"],
+            "rationale": "The change controls a rendered label.",
+            "evidence": ["C:/repo/rendering.ts:42"],
+        }
+    }
+    failures, _ = registry.validate_feature_classification(
+        missing_dimension,
+        "friendly name label",
+        ac_ids={"AC-01"},
+        open_question_ids=set(),
+    )
+    check(
+        "declared feature class requires its dimension block",
+        any("ui_surface_scope" in problem for problem in failures),
+    )
+
+    complete = dict(missing_dimension)
+    complete["ui_surface_scope"] = _ui_scope_fixture()
+    failures, _ = registry.validate_feature_classification(
+        complete,
+        "friendly name label",
+        ac_ids={"AC-01"},
+        open_question_ids=set(),
+    )
+    check("complete feature class contract passes", failures == [])
+    check(
+        "every registry dimension has a validator",
+        all(
+            dimension in registry.DIMENSION_VALIDATORS
+            for config in registry.REGISTRY.values()
+            for dimension in config["required_dimensions"]
+        ),
+    )
+    check(
+        "seeded class-to-dimension mappings stay exact",
+        {
+            name: config["required_dimensions"]
+            for name, config in registry.REGISTRY.items()
+        }
+        == {
+            "ui_display_label": ("ui_surface_scope",),
+            "access_control": ("role_provisioning",),
+            "async_job": ("concurrency_race_analysis", "terminal_states"),
+        },
+    )
+    for class_name, signal in (
+        ("ui_display_label", "friendly name"),
+        ("access_control", "authorization"),
+        ("async_job", "sling job"),
+    ):
+        check(
+            f"registry detects {class_name} from a seeded signal",
+            class_name in registry.classify({}, signal),
+        )
+    check(
+        "registry detects plural and inflected UI display-label signals",
+        "ui_display_label"
+        in registry.classify({}, "Friendly Names are Displayed in the editor."),
+    )
+
+
+def test_ui_surface_scope() -> None:
+    ui = ui_surface_scope_mod
+    good = _ui_scope_fixture()
+    failures, _ = ui.validate_ui_surface_scope(
+        good, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    check("catalog-complete UI surface scope passes", failures == [])
+
+    missing = dict(good)
+    missing["render_surfaces"] = good["render_surfaces"][:-1]
+    failures, _ = ui.validate_ui_surface_scope(
+        missing, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    check(
+        "missed catalog surface is a hard failure",
+        any("Preview" in problem for problem in failures),
+    )
+
+    unknown = dict(good)
+    unknown["construct_type"] = "new-construct"
+    unknown["render_surfaces"] = [good["render_surfaces"][0]]
+    failures, notes = ui.validate_ui_surface_scope(
+        unknown, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    check(
+        "unknown construct requests catalog review without failing",
+        failures == [] and any("REVIEW" in note for note in notes),
+    )
+
+    bad_ref = _ui_scope_fixture()
+    bad_ref["render_surfaces"] = [dict(item) for item in bad_ref["render_surfaces"]]
+    bad_ref["render_surfaces"][0]["ac_ref"] = "AC-99"
+    failures, _ = ui.validate_ui_surface_scope(
+        bad_ref, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    check("UI surface scope rejects unknown AC references", bool(failures))
+
+    jira_only_grounding = _ui_scope_fixture()
+    jira_only_grounding["surfaces_grounding"] = ["Jira: GUIDES-49507"]
+    failures, _ = ui.validate_ui_surface_scope(
+        jira_only_grounding, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    check(
+        "UI surface scope rejects Jira-only rendering grounding",
+        any("surfaces_grounding" in problem for problem in failures),
+    )
+
+    with tempfile.TemporaryDirectory() as directory:
+        catalog = Path(directory) / "catalog.json"
+        catalog.write_text("{}\n", encoding="utf-8")
+        added = ui.add_catalog_surface("topic-title", "Map Preview", catalog_path=catalog)
+        repeated = ui.add_catalog_surface("topic-title", "map preview", catalog_path=catalog)
+        check("catalog helper is append-only and idempotent", added is True and repeated is False)
+
+
+def _role_fixture():
+    return {
+        "schema_version": "aem-guides-role-provisioning-v1",
+        "actors": [
+            {
+                "actor_id": "delegated-admin",
+                "label": "delegated admin user",
+                "privilege_class": "DELEGATED",
+                "grant_groups": ["profile-admins"],
+                "withhold_groups": ["system-admins"],
+                "auto_added_groups": ["profile-members"],
+                "grounding": ["C:/repo/auth.java:20"],
+                "maps_to_acs": ["AC-01"],
+            },
+            {
+                "actor_id": "local-administrator",
+                "label": "local administrator",
+                "privilege_class": "FULL_ADMIN",
+                "grant_groups": ["administrators"],
+                "withhold_groups": [],
+                "auto_added_groups": "none",
+                "grounding": ["C:/repo/auth.java:21"],
+                "maps_to_acs": ["AC-02"],
+            },
+            {
+                "actor_id": "unauthorized-user",
+                "label": "unauthorized user",
+                "privilege_class": "NON_ADMIN",
+                "grant_groups": ["authors"],
+                "withhold_groups": ["profile-admins", "system-admins"],
+                "auto_added_groups": "none",
+                "grounding": ["C:/repo/auth.java:22"],
+                "maps_to_acs": ["AC-03"],
+            },
+        ],
+    }
+
+
+def test_role_provisioning() -> None:
+    roles = role_provisioning_mod
+    plan = "\n".join(
+        [
+            "- AC-01 [Proposed]: (Basic) Given a delegated admin user | When access changes | Then the change persists | Evidence: code.",
+            "- AC-02 [Proposed]: (Basic) Given a member of administrators group | When access changes | Then the change persists | Evidence: code.",
+            "- AC-03 [Proposed]: (Negative) Given an unauthorized user | When access changes | Then access is denied | Evidence: code.",
+        ]
+    )
+    good = _role_fixture()
+    failures = roles.validate_role_provisioning(
+        good, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check("grounded three-actor provisioning matrix passes", failures == [])
+
+    missing_privilege = _role_fixture()
+    missing_privilege["actors"] = [dict(actor) for actor in missing_privilege["actors"]]
+    missing_privilege["actors"][0].pop("privilege_class")
+    failures = roles.validate_role_provisioning(
+        missing_privilege, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor requires an explicit privilege class",
+        any("privilege_class" in problem for problem in failures),
+    )
+
+    invalid_privilege = _role_fixture()
+    invalid_privilege["actors"] = [dict(actor) for actor in invalid_privilege["actors"]]
+    invalid_privilege["actors"][0]["privilege_class"] = "SUPER_ADMIN"
+    failures = roles.validate_role_provisioning(
+        invalid_privilege, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor rejects an unknown privilege class",
+        any("privilege_class" in problem for problem in failures),
+    )
+
+    bad_grounding = _role_fixture()
+    bad_grounding["actors"] = [dict(actor) for actor in bad_grounding["actors"]]
+    bad_grounding["actors"][0]["grounding"] = ["implementation says so"]
+    failures = roles.validate_role_provisioning(
+        bad_grounding, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor grounding requires a checkable citation",
+        any("grounding" in problem for problem in failures),
+    )
+
+    jira_only_grounding = _role_fixture()
+    jira_only_grounding["actors"] = [
+        dict(actor) for actor in jira_only_grounding["actors"]
+    ]
+    jira_only_grounding["actors"][0]["grounding"] = ["Jira: GUIDES-50144"]
+    failures = roles.validate_role_provisioning(
+        jira_only_grounding, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor grounding rejects a Jira-only citation",
+        any("grounding" in problem for problem in failures),
+    )
+
+    missing_withhold = _role_fixture()
+    missing_withhold["actors"] = [dict(actor) for actor in missing_withhold["actors"]]
+    missing_withhold["actors"][0]["withhold_groups"] = []
+    failures = roles.validate_role_provisioning(
+        missing_withhold, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "delegated actor requires withheld groups",
+        any("withhold_groups" in problem for problem in failures),
+    )
+
+    non_admin_without_withhold = _role_fixture()
+    non_admin_without_withhold["actors"] = [
+        dict(actor) for actor in non_admin_without_withhold["actors"]
+    ]
+    non_admin_without_withhold["actors"][2]["withhold_groups"] = []
+    failures = roles.validate_role_provisioning(
+        non_admin_without_withhold,
+        ac_ids={"AC-01", "AC-02", "AC-03"},
+        plan_text=plan,
+    )
+    check(
+        "non-admin actor requires withheld groups",
+        any("withhold_groups" in problem for problem in failures),
+    )
+
+    missing_auto = _role_fixture()
+    missing_auto["actors"] = [dict(actor) for actor in missing_auto["actors"]]
+    missing_auto["actors"][2].pop("auto_added_groups")
+    failures = roles.validate_role_provisioning(
+        missing_auto, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor requires explicit auto-added group disposition",
+        any("auto_added_groups" in problem for problem in failures),
+    )
+
+    empty_auto = _role_fixture()
+    empty_auto["actors"] = [dict(actor) for actor in empty_auto["actors"]]
+    empty_auto["actors"][1]["auto_added_groups"] = []
+    failures = roles.validate_role_provisioning(
+        empty_auto, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "no automatic group uses explicit none instead of an empty list",
+        any("auto_added_groups" in problem for problem in failures),
+    )
+
+    unmapped = _role_fixture()
+    unmapped["actors"] = [dict(actor) for actor in unmapped["actors"]]
+    unmapped["actors"][0]["maps_to_acs"] = ["AC-02"]
+    failures = roles.validate_role_provisioning(
+        unmapped, ac_ids={"AC-01", "AC-02", "AC-03"}, plan_text=plan
+    )
+    check(
+        "actor named by an AC must map back to that AC",
+        any("AC-01" in problem for problem in failures),
+    )
+
+    contributor_plan = (
+        "- AC-04 [Proposed]: (Negative) Given a contributor | When access changes | "
+        "Then access is denied | Evidence: code."
+    )
+    failures = roles.validate_role_provisioning(
+        _role_fixture(),
+        ac_ids={"AC-01", "AC-02", "AC-03", "AC-04"},
+        plan_text=contributor_plan,
+    )
+    check(
+        "generic contributor actor cannot bypass the provisioning matrix",
+        any("AC-04 has no role_provisioning actor" in problem for problem in failures),
+    )
+
+
+def test_terminal_states() -> None:
+    terminal = terminal_states_mod
+    good = {
+        "schema_version": "aem-guides-terminal-states-v1",
+        "states": [
+            {"state": state, "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"}
+            for state in terminal.REQUIRED_STATES
+        ],
+    }
+    check(
+        "all terminal states with valid references pass",
+        terminal.validate_terminal_states(good, ac_ids={"AC-01"}, open_question_ids=set()) == [],
+    )
+    missing = dict(good)
+    missing["states"] = good["states"][:-1]
+    check(
+        "missing terminal state fails",
+        any(
+            "retry_exhausted" in problem
+            for problem in terminal.validate_terminal_states(
+                missing, ac_ids={"AC-01"}, open_question_ids=set()
+            )
+        ),
+    )
+    invalid = dict(good)
+    invalid["states"] = [dict(item) for item in good["states"]]
+    invalid["states"][0]["ac_ref"] = "AC-99"
+    check(
+        "terminal state rejects unknown AC reference",
+        bool(
+            terminal.validate_terminal_states(
+                invalid, ac_ids={"AC-01"}, open_question_ids=set()
+            )
+        ),
+    )
 
 
 def main() -> int:
     test_validator()
+    test_ac_readability()
     test_verifier()
     test_attachment_manifest()
     test_run_gates()
@@ -3479,9 +4442,15 @@ def main() -> int:
     test_affected_surface()
     test_comment_claims()
     test_pr_supersession()
+    test_feature_class_registry()
+    test_ui_surface_scope()
+    test_role_provisioning()
+    test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
     test_ac_decidability()
+    test_operational_contract()
+    test_gate_receipt_and_adapter()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

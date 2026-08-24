@@ -8,7 +8,8 @@ Use this before writing the `Open Questions` section. Ask only questions that af
 - Prefer specific, answerable questions over broad prompts.
 - Keep questions plain English and tester-facing.
 - Group related unknowns in one bullet when possible.
-- If no meaningful unknown remains, write `No open questions from current evidence`.
+- Prefix each real question `- OQ-##:` using unique, contiguous IDs starting at `OQ-01`, preserve source order, and include literal `QA impact:` describing what each plausible answer changes. Use the same ordered IDs in the evidence manifest.
+- If no meaningful unknown remains, write exactly `- No open questions from current evidence` as the only bullet and record an empty manifest list.
 
 ## Permission And Role Questions
 
@@ -50,15 +51,24 @@ Use this before writing the `Open Questions` section. Ask only questions that af
 - Is the requested outcome immediate cleanup/service restoration, a permanent product safeguard, workflow/config correction, resource increase, or all of these?
 - Which exact output type, environment/build, workflows, job/output UUIDs, target paths, queue states, and customer-like fixture sizes are in scope?
 - What completion SLA applies, and how long may a job remain in Waiting, Executing, Post Publishing, cancellation requested, or another non-terminal state before it is considered stuck?
+- Which measurable defensive-progress bound applies (items, pages, cursor repeats, no-progress attempts, elapsed time, or resource use), what is its approved value/source, and what exact state is reported when it fires?
+- Which exception/error categories are retryable versus terminal; what are the maximum attempts, delay/backoff source, short-circuit rule, exhausted terminal result, and aggregate log limit across attempts?
+- Which recurrence source owns retry behavior: scheduler/deployment trigger, queue retry/redelivery, or an in-run loop? Could more than one source cause duplicate or overlapping execution?
+- Which failure phases are in scope: resource/session acquisition, query creation/execution, result iteration, item mutation/delete, save/commit, refresh/cleanup, and final result reporting? What persisted and visible state must each leave?
 - For concurrent operations targeting the same or overlapping destinations, should the system serialize, lock, retry, fail fast, or isolate jobs by path?
 - What must happen to partial writes, previously valid output, temporary nodes, history nodes, workflow instances, and queued successor jobs after failure or cancellation?
 - Must Waiting jobs auto-resume after recovery, or is an explicit retry/restart required?
 - Which exact nodes/workflows may cleanup remove, and what correlation, backup, approval, audit, rollback, and unrelated-state preservation checks are mandatory?
 - How should author-pod restart, deployment, workflow restart, network interruption, timeout, and repeated cancellation affect active and queued jobs?
+- Is cooperative cancellation distinct from service/pod shutdown, and what exact terminal state, checkpoint/rollback behavior, and successor-job behavior applies to each?
+- During traversal or paging, what snapshot semantics apply when source content is added, deleted, renamed, or updated? What no-skip/no-duplicate oracle proves correctness without prescribing a paging implementation?
+- Which trigger/caller matrix is required (single-item action, full-profile/bulk action, manual invocation, schedule, deployment, restart), and which environments/build families implement each path?
+- When failure occurs before a path/page/item is known, which explicit fallback value and correlation fields must logs/status expose?
 - Which CPU, memory, heap, indexing, repository, and workflow metrics decide whether a resource increase is required rather than a code/config fix?
 - Which correlation IDs, job/output/workflow UUIDs, target paths, stage timings, retry counts, terminal reasons, and log messages must QA capture?
 - What generated-output oracle is required beyond UI/build success: page/file count, links, assets, metadata, navigation, output history, workflow completion, or orphan-state checks?
 - Can destructive failure and cleanup scenarios run only on a production-equivalent clone, and which production checks are safe after engineering-approved remediation?
+- What deterministic test hook injects each failure/retry/cancel/shutdown/partial-write condition, which endpoint/state is polled, where does the timeout come from, what output-integrity oracle is asserted, and how is cleanup guaranteed?
 
 ## On-Premise Release Upgrade Impact Questions
 

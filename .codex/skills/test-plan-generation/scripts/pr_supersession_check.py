@@ -42,7 +42,7 @@ def validate_pr_references(value, *, open_question_ids=None):
     if not isinstance(value, list):
         return ["pr_references must be a list"]
     problems = []
-    open_ids = set(open_question_ids or [])
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     for i, item in enumerate(value):
         if not isinstance(item, dict):
             problems.append(f"pr_references[{i}] must be an object")
@@ -57,7 +57,7 @@ def validate_pr_references(value, *, open_question_ids=None):
             oq = str(item.get("open_question_ref", "")).strip()
             if not oq:
                 problems.append(f"pr_references[{i}] is UNRESOLVED but has no open_question_ref")
-            elif open_ids and oq not in open_ids:
+            elif open_ids is not None and oq not in open_ids:
                 problems.append(f"pr_references[{i}].open_question_ref '{oq}' is not in the plan's open_questions")
 
     if len(value) > 1:

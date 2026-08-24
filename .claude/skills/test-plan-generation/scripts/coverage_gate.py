@@ -227,7 +227,7 @@ def evaluate(manifest):
     # an Open Question is blocking; secondary defects must be classified.
     sc = manifest.get("scope_conflict")
     if isinstance(sc, dict) and sc.get("active", True):
-        if _scope.unresolved_scope_without_open_question(sc):
+        if _scope.unresolved_scope_without_open_question(sc, _open_question_ids(manifest)):
             dims["JIRA_SCOPE_VS_FIX_RECONCILED"] = FAIL
             dims["UNRESOLVED_SCOPE_EXPOSED"] = FAIL
             reasons["blocking"].append("JIRA_SCOPE_VS_FIX: a material scope mismatch is not surfaced as an Open Question")

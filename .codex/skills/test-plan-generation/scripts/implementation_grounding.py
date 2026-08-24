@@ -122,7 +122,7 @@ def validate_implementation_grounding(block, *, open_question_ids=None):
     if not isinstance(block, dict):
         return ["implementation_grounding must be a JSON object"]
     problems = []
-    open_ids = set(open_question_ids or [])
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     if not isinstance(block.get("active", True), bool):
         problems.append("implementation_grounding.active must be a boolean")
     if not block.get("active", True):
@@ -175,7 +175,7 @@ def validate_implementation_grounding(block, *, open_question_ids=None):
                         f"against the product code/docs and set key_provenance to a verified source, or carry it as "
                         f"an Open Question via verification_open_question_ref"
                     )
-                elif open_ids and ref not in open_ids:
+                elif open_ids is not None and ref not in open_ids:
                     problems.append(
                         f"named_artifacts[{i}].verification_open_question_ref '{ref}' is not in the plan's open_questions"
                     )

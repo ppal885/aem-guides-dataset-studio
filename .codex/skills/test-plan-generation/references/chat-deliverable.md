@@ -18,7 +18,7 @@ Use this contract only after the complete eleven-section Markdown record passes 
 
 ## Fidelity
 
-- Acceptance Criteria show a straightforward `AC-##: Given | When | Then` product contract. Keep status, sphere, and underlying evidence in the validated full artifact and machine-readable AC JSON.
+- Acceptance Criteria show `AC-##` followed by three short lines: `Starting point`, `Action`, and `Expected result`. Do not show `Given`, `When`, `Then`, pipes, status, sphere, or evidence. Keep those canonical fields in the validated full artifact and machine-readable AC JSON.
 - Test Scenarios retain setup/test-data bullets and P0/P1/P2 Action/Expected wording. Focused regression checks are merged into this section as `P3 [Regression]` scenarios.
 - Jira Tickets Worth Checking includes only validated same-mechanism/same-defect-class Jira keys and concise titles. Hide similarity reasons, status, resolution, versions, RCA, ownership, and corpus-analysis detail.
 - Automation Coverage begins with `Main feature coverage: Covered|Partially covered|Not covered|Unverified`, then states at a high level whether to extend a feature-file/UI test or an integration/API test.

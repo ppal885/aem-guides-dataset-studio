@@ -102,7 +102,7 @@ def _validate_dimension(dim, i, *, ac_ids, open_ids):
             ref = str(entry.get("open_question_ref", "") or "").strip()
             if not ref:
                 problems.append(f"{tag} value '{v}' is OPEN_QUESTION but names no open_question_ref")
-            elif open_ids and ref not in open_ids:
+            elif open_ids is not None and ref not in open_ids:
                 problems.append(f"{tag} value '{v}' open_question_ref '{ref}' is not in the plan's open_questions")
     return problems
 
@@ -118,7 +118,7 @@ def validate_affected_surface(block, *, ac_ids=None, open_question_ids=None):
     if not isinstance(dims, list) or not dims:
         return ["affected_surface_dimensions.dimensions must be a non-empty list (enumerate the affected surface's "
                 "operation enum and config-key set, discovered from the inspected code)"]
-    open_ids = set(open_question_ids or [])
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     problems = []
     for i, dim in enumerate(dims):
         problems += _validate_dimension(dim, i, ac_ids=ac_ids, open_ids=open_ids)

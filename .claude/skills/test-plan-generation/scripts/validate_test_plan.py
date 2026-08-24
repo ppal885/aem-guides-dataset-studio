@@ -8,7 +8,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from ac_contract import AC_EXACT_FORMAT, parse_ac_line, validate_ac_sequence  # noqa: E402
+from ac_contract import (  # noqa: E402
+    AC_EXACT_FORMAT,
+    parse_ac_line,
+    validate_ac_paste_safety,
+    validate_ac_readability,
+    validate_ac_sequence,
+)
 from ac_decidability import evaluate_plan  # noqa: E402
 from performance_contract import (  # noqa: E402
     COMPARATIVE_ORACLE_RE,
@@ -138,6 +144,14 @@ def validate(text: str) -> list[str]:
             )
             continue
         parsed_acceptance.append((number, criterion))
+        errors.extend(
+            f"line {number}: {problem}"
+            for problem in validate_ac_paste_safety(criterion)
+        )
+        errors.extend(
+            f"line {number}: {problem}"
+            for problem in validate_ac_readability(criterion)
+        )
         if criterion["sphere"] == "Performance":
             if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
                 errors.append(
@@ -159,16 +173,6 @@ def validate(text: str) -> list[str]:
             errors.append(f"line {number}: destructive operational procedure is not a product acceptance criterion")
         if prescribed.search(line):
             errors.append(f"line {number}: acceptance criterion prescribes an unapproved implementation choice")
-        # Paste-safe rule: ACs are pasted into Jira/Confluence, so the AC text must
-        # carry no inline markup a renderer turns into a link or strikethrough.
-        if "`" in line:
-            errors.append(f"line {number}: acceptance criterion must not use backticks/code spans (paste-safe plain text; write the bare token, e.g. baseVersion, 409, guides-navigation)")
-        if "~~" in line or re.search(r"(?<!\w)~(?!\w)", line):
-            errors.append(f"line {number}: acceptance criterion must not contain '~' (renders as strikethrough when pasted)")
-        if "**" in line or "__" in line:
-            errors.append(f"line {number}: acceptance criterion must not use bold/italic markers (** or __); use plain text")
-        if re.search(r"\[[^\]]+\]\([^)]*\)", line):
-            errors.append(f"line {number}: acceptance criterion must not embed a Markdown link; name the item in plain words (no clickable Jira-key/URL links inside an AC)")
         evidence = criterion["evidence"]
         if GRAPH_PATH_ONLY_RE.fullmatch(evidence):
             errors.append(

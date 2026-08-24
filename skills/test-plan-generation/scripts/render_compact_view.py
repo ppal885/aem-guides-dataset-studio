@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from ac_presentation import project_ac_for_people
 from extract_acs import extract
 
 
@@ -62,9 +63,10 @@ def _sentence(value: str) -> str:
 
 
 def _acceptance_projection(criterion: dict[str, str]) -> str:
-    return (
-        f"- {criterion['id']}: Given {criterion['given']} | "
-        f"When {criterion['when']} | Then {criterion['then']}."
+    return project_ac_for_people(
+        criterion,
+        include_status=False,
+        header_bullet=True,
     )
 
 
@@ -214,10 +216,12 @@ def project(text: str) -> tuple[str, list[str]]:
     if problems:
         return "", problems
 
-    acceptance_lines = [_acceptance_projection(criterion) for criterion in criteria]
+    acceptance_block = "\n\n".join(
+        _acceptance_projection(criterion) for criterion in criteria
+    )
     output = [
         "**Acceptance Criteria**",
-        *acceptance_lines,
+        acceptance_block,
         "",
         "**Test Scenarios**",
         *sections["Test Scenarios"],

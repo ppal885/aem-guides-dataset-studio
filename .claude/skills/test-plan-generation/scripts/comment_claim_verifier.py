@@ -75,7 +75,7 @@ def validate_comment_claims(value, *, open_question_ids=None):
     if not isinstance(value, list):
         return ["comment_claims must be a list"]
     problems = []
-    open_ids = set(open_question_ids or [])
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     for i, item in enumerate(value):
         if not isinstance(item, dict):
             problems.append(f"comment_claims[{i}] must be an object")
@@ -107,7 +107,7 @@ def validate_comment_claims(value, *, open_question_ids=None):
                     f"comment_claims[{i}] is UNVERIFIABLE but has no open_question_ref - carry it "
                     f"forward as an Open Question instead of silently dropping an unresolved claim"
                 )
-            elif open_ids and ref not in open_ids:
+            elif open_ids is not None and ref not in open_ids:
                 problems.append(
                     f"comment_claims[{i}].open_question_ref '{ref}' is not in the plan's open_questions"
                 )

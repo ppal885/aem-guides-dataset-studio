@@ -11,7 +11,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from ac_contract import AC_EXACT_FORMAT, acceptance_lines, parse_ac_line, validate_ac_sequence
+from ac_contract import (  # noqa: E402
+    AC_EXACT_FORMAT,
+    acceptance_lines,
+    parse_ac_line,
+    validate_ac_paste_safety,
+    validate_ac_readability,
+    validate_ac_sequence,
+)
+from ac_decidability import evaluate_plan  # noqa: E402
 
 
 def extract(text: str) -> tuple[list[dict[str, str]], list[str]]:
@@ -23,8 +31,20 @@ def extract(text: str) -> tuple[list[dict[str, str]], list[str]]:
             problems.append(f"unparseable AC line; expected `{AC_EXACT_FORMAT}`: {line}")
             continue
         criteria.append(dict(criterion))
+        problems.extend(
+            f"{criterion['id']}: {problem}"
+            for problem in validate_ac_paste_safety(criterion)
+        )
+        problems.extend(
+            f"{criterion['id']}: {problem}"
+            for problem in validate_ac_readability(criterion)
+        )
     problems.extend(validate_ac_sequence(criteria))
-    return criteria, problems
+    decidability_failures, _ = evaluate_plan(text)
+    problems.extend(decidability_failures)
+    # Never hand a partial or semantically invalid AC payload to automation, Jira,
+    # compact rendering, or a downstream adapter.
+    return ([], problems) if problems else (criteria, [])
 
 
 def main(argv: list[str] | None = None) -> int:

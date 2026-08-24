@@ -22,10 +22,12 @@ NON_FULL_ALIGNMENT = frozenset({"PARTIAL_SCOPE_FIX", "DIFFERENT_SCOPE_FIX", "UNK
 NON_AC_STATUS = frozenset({"SECONDARY_DEFECT", "UNRESOLVED", "OUT_OF_SCOPE"})
 
 FIX_PRESENT_SIGNALS = ("pr ", "pull request", "fix ready", "fix is", "patch", "the fix", "commit ", "branch ", "starling#")
-# Pre-development markers: a plan that only DISCUSSES the eventual fix (no PR/branch/diff
-# inspected) must not trip scope reconciliation, which is an implementation/post-fix concern.
-PRE_DEVELOPMENT_SIGNALS = ("development has not started", "pre-development", "no pull request",
-                           "not applicable - development", "not applicable — development")
+# Pre-development markers: a plan that only discusses the eventual fix (with no
+# inspected PR, branch, or diff) must not trip implementation-scope reconciliation.
+PRE_DEVELOPMENT_SIGNALS = (
+    "development has not started", "pre-development", "no pull request",
+    "not applicable - development", "not applicable — development",
+)
 MULTI_PROBLEM_SIGNALS = ("also ", "second issue", "another problem", "in addition", "separately", "two problems",
                          "multiple issues", "as well as", "additionally", "font", "preview", "and the")
 
@@ -48,7 +50,7 @@ def is_active(manifest, plan_text=""):
     """Scope reconciliation is expected when a fix/PR is present AND more than one problem
     or scope authority is in play."""
     t = _text(manifest, plan_text)
-    if any(s in t for s in PRE_DEVELOPMENT_SIGNALS):
+    if any(signal in t for signal in PRE_DEVELOPMENT_SIGNALS):
         return False
     fix = any(s in t for s in FIX_PRESENT_SIGNALS)
     multi = any(s in t for s in MULTI_PROBLEM_SIGNALS)
@@ -95,13 +97,13 @@ def validate_scope_conflict(block, *, open_question_ids=None):
 
     # The core rule: a material Jira-scope vs fix-scope mismatch must be surfaced as an
     # Open Question, never merged into 'the Jira is fully solved'.
-    open_ids = set(open_question_ids or [])
+    open_ids = None if open_question_ids is None else set(open_question_ids)
     refs = [str(r).strip() for r in (block.get("open_question_refs") or []) if str(r).strip()]
     if alignment in NON_FULL_ALIGNMENT:
         if not refs:
             problems.append(f"scope_conflict.alignment is {alignment} but no open_question_refs are recorded - a "
                             "material scope mismatch must be surfaced as an Open Question, not merged away")
-        elif open_ids:
+        elif open_ids is not None:
             missing = [r for r in refs if r not in open_ids]
             if missing:
                 problems.append("scope_conflict.open_question_refs not present in the plan's open_questions: "
@@ -115,7 +117,14 @@ def unresolved_scope_without_open_question(block, open_question_ids=None):
         return False
     alignment = str(block.get("alignment", "")).strip()
     refs = [str(r).strip() for r in (block.get("open_question_refs") or []) if str(r).strip()]
-    return alignment in NON_FULL_ALIGNMENT and not refs
+    if alignment not in NON_FULL_ALIGNMENT:
+        return False
+    if not refs:
+        return True
+    if open_question_ids is None:
+        return False
+    known = set(open_question_ids)
+    return any(ref not in known for ref in refs)
 
 
 def summarize(manifest, plan_text=""):

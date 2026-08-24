@@ -2,6 +2,17 @@
 
 Use this focused pack for Authoring Jiras involving topic/map references, asset selection, repository/search surfaces, or author-facing labels. Current Jira/UAC evidence always overrides these historical patterns.
 
+## Configuration-Driven Conditional Attribute Discovery and Label Contract
+
+Activate when Jira, code, or supplied evidence names `condAttrList.csv`, a conditional-attribute configuration, dynamically configured attributes, or attribute friendly/display names in Full Tags, Condition Attributes, or the Right Panel. Also read [configuration-driven-enumerations.md](configuration-driven-enumerations.md) for the reusable matrix.
+
+- Verify the runtime configuration reader, active DTD/schema or specialization applicability filter, workspace/folder/global profile scope, friendly-name resolver, fallback resolver, and every Jira-named rendering consumer as separate links. Do not freeze the currently observed `condAttrList.csv` entries into an exhaustive product list.
+- Use a canary conditional attribute that is valid for the active schema/profile and deliberately absent from every inspected legacy hardcoded allowlist. Cover the canary with and without a friendly-name mapping, and verify its raw XML attribute name and value do not change when only the visible label changes.
+- Cover built-in attributes with and without mappings, custom/dynamic attributes with and without mappings, and added, renamed, and removed configuration entries. Preserve unrelated entries and prevent blank, undefined, malformed, stale, or duplicated labels.
+- Test positive and negative applicability for the actual schema/DTD/specialization and folder/global/workspace profile gates found in evidence. Do not invent universal cross-schema or cross-profile availability, and do not allow values to leak between profiles.
+- Require live updates for already-rendered rows or an open dropdown only when accepted UAC defines live propagation. Otherwise make the supported panel-reopen, editor-reopen, profile-switch, cache-refresh, restart, or deployment boundary an Open Question with QA impact.
+- Treat a hardcoded product allowlist as a code-review and runtime-canary regression risk. Express the AC as observable configuration-driven discovery unless accepted Jira/UAC explicitly requires a no-code-change extensibility contract.
+
 ## Asset-Browser Thumbnail Contract — GUIDES-34915
 
 ### Evidence Boundary

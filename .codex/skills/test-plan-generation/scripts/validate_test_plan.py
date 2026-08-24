@@ -8,8 +8,19 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from ac_contract import AC_EXACT_FORMAT, parse_ac_line, validate_ac_sequence
-from performance_contract import COMPARATIVE_ORACLE_RE, QUANTIFIED_VALUE_RE, QUANTIFIED_WORKLOAD_RE
+from ac_contract import (  # noqa: E402
+    AC_EXACT_FORMAT,
+    parse_ac_line,
+    validate_ac_paste_safety,
+    validate_ac_readability,
+    validate_ac_sequence,
+)
+from ac_decidability import evaluate_plan  # noqa: E402
+from performance_contract import (  # noqa: E402
+    COMPARATIVE_ORACLE_RE,
+    QUANTIFIED_VALUE_RE,
+    QUANTIFIED_WORKLOAD_RE,
+)
 
 
 SECTIONS = (
@@ -27,7 +38,12 @@ SECTIONS = (
 )
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 SCENARIO_RE = re.compile(r"^- P[012]\b")
+SCENARIO_ID_RE = re.compile(r"^- P[012]\s+\[(TS-\d{2})\]\s+\[AC-")
 AC_LINK_RE = re.compile(r"\[AC-\d{2}(?:,\s*AC-\d{2})*\]")
+OPEN_QUESTION_RE = re.compile(
+    r"^- (OQ-\d{2}):\s+(.+?)\s+QA impact:\s+(.+)$"
+)
+NO_OPEN_QUESTIONS = "- No open questions from current evidence"
 UNDERLYING_SOURCE_RE = re.compile(
     r"(?i:https?)://|\b[A-Z][A-Z0-9]+-\d+\b|(?i:\b(?:Jira (?:UAC|description|comment)|"
     r"RAG (?:URL|chunk)|DITA (?:spec|source)|Figma (?:node|frame)|attachment(?: ID)?|"
@@ -41,7 +57,7 @@ WINDOWS_PATH_RE = re.compile(r"(?<![\w])([A-Za-z]:\\[^`\n;,]+)")
 MOJIBAKE = ("\u00e2\u20ac", "\u00e2\u2030", "\u00c3", "\u00c2", "\ufffd")
 UNDERSTANDING_PREFIXES = (
     "- Issue understood:",
-    "- Why it matters:",
+    "- Why it matters: Customer context resolved from Jira:",
     "- Requested outcome:",
     "- Lifecycle understood as:",
     "- Evidence boundary:",
@@ -105,15 +121,6 @@ def validate(text: str) -> list[str]:
     for prefix in UNDERSTANDING_PREFIXES:
         if not any(line.startswith(prefix) and line[len(prefix) :].strip() for line in understanding_lines):
             errors.append(f"Understanding From Jira is missing required bullet '{prefix}'")
-    why_it_matters = next(
-        (line for line in understanding_lines if line.startswith("- Why it matters:")),
-        "",
-    )
-    if "customer context resolved from jira:" not in why_it_matters.lower():
-        errors.append(
-            "Why it matters must state 'Customer context resolved from Jira:' and its Jira field/label source"
-        )
-
     acceptance = sections["Acceptance Criteria"]
     native_ac_empty = any(
         phrase in text.lower()
@@ -137,6 +144,14 @@ def validate(text: str) -> list[str]:
             )
             continue
         parsed_acceptance.append((number, criterion))
+        errors.extend(
+            f"line {number}: {problem}"
+            for problem in validate_ac_paste_safety(criterion)
+        )
+        errors.extend(
+            f"line {number}: {problem}"
+            for problem in validate_ac_readability(criterion)
+        )
         if criterion["sphere"] == "Performance":
             if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
                 errors.append(
@@ -170,15 +185,32 @@ def validate(text: str) -> list[str]:
                 "attachment, inspected code path, or graph leaf - never only a graph path"
             )
     errors.extend(validate_ac_sequence([criterion for _, criterion in parsed_acceptance]))
+    decidability_failures, _ = evaluate_plan(text)
+    errors.extend(f"Acceptance Criteria: {failure}" for failure in decidability_failures)
 
     scenarios = sections["Test Scenarios"]
     if not any(line.startswith("- Test data to prepare:") for _, line in scenarios):
         errors.append("Test Scenarios must begin with explicit 'Test data to prepare:' guidance")
+    scenario_ids: list[str] = []
     for number, line in scenarios:
         if SCENARIO_RE.match(line) and "Incident recovery validation" not in line and not AC_LINK_RE.search(line):
             errors.append(f"line {number}: P0/P1/P2 scenario is missing an AC mapping")
         if SCENARIO_RE.match(line) and ("Action:" not in line or "Expected:" not in line):
             errors.append(f"line {number}: P0/P1/P2 scenario must use plain-English Action: and Expected: wording")
+        if SCENARIO_RE.match(line) and "[TS-" in line:
+            match = SCENARIO_ID_RE.match(line)
+            if match is None:
+                errors.append(
+                    f"line {number}: stable scenario ID must use '- P0|P1|P2 [TS-##] [AC-##]' order"
+                )
+            else:
+                scenario_ids.append(match.group(1))
+    if len(scenario_ids) != len(set(scenario_ids)):
+        errors.append("stable Test Scenario IDs must be unique")
+    if scenario_ids:
+        expected_scenario_ids = [f"TS-{index:02d}" for index in range(1, len(scenario_ids) + 1)]
+        if scenario_ids != expected_scenario_ids:
+            errors.append("stable Test Scenario IDs must be contiguous and ordered starting at TS-01")
 
     defined_acs = {criterion["id"] for _, criterion in parsed_acceptance}
     scenario_acs: set[str] = set()
@@ -227,15 +259,43 @@ def validate(text: str) -> list[str]:
                 f"state what to re-test and the risk, not just an area name"
             )
 
-    for number, line in sections["Open Questions"]:
-        lowered = line.lower()
-        if "no open questions" in lowered:
+    open_question_lines = sections["Open Questions"]
+    no_question_lines = [
+        (number, line) for number, line in open_question_lines if line == NO_OPEN_QUESTIONS
+    ]
+    if not open_question_lines:
+        errors.append(
+            "Open Questions must contain stable OQ-## records or exactly "
+            "'- No open questions from current evidence'"
+        )
+    if no_question_lines and len(open_question_lines) != 1:
+        errors.append("the no-open-questions declaration cannot coexist with real Open Questions")
+
+    open_question_ids: list[str] = []
+    for number, line in open_question_lines:
+        if line == NO_OPEN_QUESTIONS:
             continue
-        if line.startswith("- ") and "impact" not in lowered:
+        if "no open questions" in line.lower():
             errors.append(
-                f"line {number}: Open Questions bullet must state the QA impact of the answer "
-                f"(name the decision and what each possible answer changes for testing)"
+                f"line {number}: use exactly '{NO_OPEN_QUESTIONS}' when there are no Open Questions"
             )
+            continue
+        match = OPEN_QUESTION_RE.fullmatch(line)
+        if match is None:
+            errors.append(
+                f"line {number}: Open Questions bullet must use "
+                "'- OQ-##: <decision>. QA impact: <what the answer changes for QA>'"
+            )
+            continue
+        open_question_ids.append(match.group(1))
+    if len(open_question_ids) != len(set(open_question_ids)):
+        errors.append("Open Question IDs must be unique")
+    if open_question_ids:
+        expected_open_question_ids = [
+            f"OQ-{index:02d}" for index in range(1, len(open_question_ids) + 1)
+        ]
+        if open_question_ids != expected_open_question_ids:
+            errors.append("Open Question IDs must be contiguous and ordered starting at OQ-01")
 
     scope_text = "\n".join(line for _, line in sections["Scope From Git"]).lower()
     if re.search(r"[a-z]:[\\/]", scope_text):
