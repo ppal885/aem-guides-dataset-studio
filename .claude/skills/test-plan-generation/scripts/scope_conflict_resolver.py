@@ -22,6 +22,10 @@ NON_FULL_ALIGNMENT = frozenset({"PARTIAL_SCOPE_FIX", "DIFFERENT_SCOPE_FIX", "UNK
 NON_AC_STATUS = frozenset({"SECONDARY_DEFECT", "UNRESOLVED", "OUT_OF_SCOPE"})
 
 FIX_PRESENT_SIGNALS = ("pr ", "pull request", "fix ready", "fix is", "patch", "the fix", "commit ", "branch ", "starling#")
+# Pre-development markers: a plan that only DISCUSSES the eventual fix (no PR/branch/diff
+# inspected) must not trip scope reconciliation, which is an implementation/post-fix concern.
+PRE_DEVELOPMENT_SIGNALS = ("development has not started", "pre-development", "no pull request",
+                           "not applicable - development", "not applicable — development")
 MULTI_PROBLEM_SIGNALS = ("also ", "second issue", "another problem", "in addition", "separately", "two problems",
                          "multiple issues", "as well as", "additionally", "font", "preview", "and the")
 
@@ -44,6 +48,8 @@ def is_active(manifest, plan_text=""):
     """Scope reconciliation is expected when a fix/PR is present AND more than one problem
     or scope authority is in play."""
     t = _text(manifest, plan_text)
+    if any(s in t for s in PRE_DEVELOPMENT_SIGNALS):
+        return False
     fix = any(s in t for s in FIX_PRESENT_SIGNALS)
     multi = any(s in t for s in MULTI_PROBLEM_SIGNALS)
     return bool(fix and multi)

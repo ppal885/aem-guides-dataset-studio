@@ -84,6 +84,7 @@ affected_surface_mod = _load("affected_surface_explorer", "affected_surface_expl
 comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
+enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -716,6 +717,28 @@ def check_concurrency_race(manifest_path: str | None) -> tuple[list[str], list[s
     return [], ["concurrency race analysis not applicable (no event/async-driven signal detected)"]
 
 
+def check_enumerated_coverage(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Validate the manifest `enumerated_requirements` block when present (optional,
+    backward-compatible). Every reporter-enumerated sub-requirement must be dispositioned -
+    COVERED_BY_AC (ac_ref), OPEN_QUESTION (open_question_ref), or OUT_OF_SCOPE (reason) -
+    so a multi-part ticket cannot silently drop one of its items. When absent but the issue
+    text clearly enumerates several items, emit a non-blocking REVIEW note."""
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    ac_ids = set(re.findall(r"AC-\d{2}", plan_text or ""))
+    if enumerated_coverage_mod.is_present(data):
+        failures = [f"[enumerated-coverage] {p}" for p in enumerated_coverage_mod.validate_enumerated_requirements(
+            data["enumerated_requirements"], ac_ids=ac_ids, open_question_ids=_open_question_ids(data))]
+        return failures, ["enumerated requirements dispositioned"] if not failures else []
+    n = enumerated_coverage_mod.likely_enumerated(data)
+    if n:
+        return [], [f"REVIEW enumerated-coverage: the issue text enumerates ~{n} item(s) but no "
+                    f"enumerated_requirements block maps each to an AC / Open Question / out-of-scope - a multi-part "
+                    f"ticket can silently drop one item; record each reporter-enumerated requirement and its disposition"]
+    return [], ["enumerated coverage not applicable (no reporter-enumerated list detected)"]
+
+
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
     """Reconcile reported Jira scope vs current fix scope; keep problems as separate threads.
     A material scope mismatch with no open question exposing it is a hard FAIL."""
@@ -936,6 +959,11 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _crf, _crn = check_concurrency_race(manifest_path)
     failures += _crf
     notes += _crn
+    # Enumerated-requirement coverage: every reporter-enumerated sub-defect must map to an
+    # AC, an Open Question, or an explicit out-of-scope decision (the multi-part-ticket guard).
+    _ecf, _ecn = check_enumerated_coverage(manifest_path, body)
+    failures += _ecf
+    notes += _ecn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn
@@ -1017,6 +1045,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_capability_eligibility()
             self_tests.test_scope_conflict()
             self_tests.test_affected_surface()
+            self_tests.test_enumerated_coverage()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

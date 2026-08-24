@@ -62,6 +62,7 @@ affected_surface_mod = _load("affected_surface_explorer", "affected_surface_expl
 comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
+enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -1552,6 +1553,78 @@ def test_component_reference_routing() -> None:
         "caution_resolution_without_uac_is_proposed_only" in map_xref["warnings"],
     )
 
+    configured_conditional_attribute = component_router_mod.route_references(
+        component="Editor",
+        summary="Friendly names for conditional attributes in Full Tags and Right Panel",
+        description=(
+            "Discover attributes from /libs/fmdita/config/condAttrList.csv. A newly configured "
+            "conditional attribute must use its friendly name or the approved fallback label."
+        ),
+        acceptance_criteria=(
+            "Configured conditional attributes appear in Full Tags, Condition Attributes, and "
+            "the Right Panel without freezing the current values into a hardcoded list."
+        ),
+        labels=["UAC_Done"],
+    )
+    check(
+        "explicit Editor conditional-attribute scope preserves its Jira component",
+        configured_conditional_attribute["primary_component"] == "Editor",
+    )
+    check(
+        "conditional-attribute configuration receives the exact mechanism",
+        configured_conditional_attribute["mechanisms"]
+        == ["config_driven_conditional_attribute_labels"],
+    )
+    check(
+        "conditional-attribute configuration uses the focused Authoring and enumeration packs",
+        configured_conditional_attribute["references"]
+        == [
+            "references/component-routing.md",
+            "references/component-authoring.md",
+            "references/configuration-driven-enumerations.md",
+        ]
+        and configured_conditional_attribute["load_full_uac_reference"] is False,
+    )
+    check(
+        "conditional-attribute matrix warning is required",
+        "configuration_driven_conditional_attribute_matrix_required"
+        in configured_conditional_attribute["warnings"],
+    )
+
+    semantic_conditional_attribute = component_router_mod.route_references(
+        summary="Dynamically configured conditional attributes need friendly names",
+        description=(
+            "Use friendly display labels for configured conditional attributes and a raw fallback "
+            "when a mapping is absent."
+        ),
+    )
+    check(
+        "semantic conditional-attribute wording activates the same route without a path",
+        semantic_conditional_attribute["mechanisms"]
+        == ["config_driven_conditional_attribute_labels"]
+        and "references/configuration-driven-enumerations.md"
+        in semantic_conditional_attribute["references"],
+    )
+
+    generic_ditaval_filter = component_router_mod.route_references(
+        summary="Use DITAVAL conditional filtering for AEM Sites output",
+        description="The output preset offers None and Using DITAVAL filtering modes.",
+    )
+    check(
+        "generic DITAVAL filtering does not activate conditional-attribute label learning",
+        "config_driven_conditional_attribute_labels"
+        not in generic_ditaval_filter["mechanisms"],
+    )
+
+    generic_right_panel = component_router_mod.route_references(
+        summary="Review task details in the Right Panel",
+        description="The Right Panel shows the selected review task and its status.",
+    )
+    check(
+        "generic Right Panel wording does not activate conditional-attribute label learning",
+        "config_driven_conditional_attribute_labels" not in generic_right_panel["mechanisms"],
+    )
+
     map_selection = component_router_mod.route_references(
         component="Authoring",
         summary="Incorrect selected items in Map View",
@@ -1828,8 +1901,32 @@ def test_component_reference_routing() -> None:
         "does not, by itself, prove",
         "Do not infer restore, trash",
         "Assets UI file deletion as boundary/comparison evidence",
+        "## Configuration-Driven Conditional Attribute Discovery and Label Contract",
+        "canary conditional attribute",
+        "absent from every inspected legacy hardcoded allowlist",
+        "raw XML attribute name and value do not change",
+        "added, renamed, and removed configuration entries",
+        "schema/DTD/specialization and folder/global/workspace profile gates",
+        "already-rendered rows or an open dropdown only when accepted UAC defines live propagation",
     ):
         check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
+
+    enumeration_reference = (
+        skill_root / "references" / "configuration-driven-enumerations.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "## Minimum Coverage Matrix",
+        "Newly added valid entry with a configured friendly/display name",
+        "Newly added valid entry without a mapping",
+        "active DTD/schema, element, profile, permission, or deployment scope",
+        "hardcoded arrays, enums, switch branches, label maps",
+        "supported configuration activation or reload boundary",
+        "stored raw attribute/key/value",
+    ):
+        check(
+            f"Configuration-driven enumeration reference retains marker {marker}",
+            marker in enumeration_reference,
+        )
 
     integration_reference = (skill_root / "references" / "component-integration.md").read_text(
         encoding="utf-8"
@@ -1886,6 +1983,11 @@ def test_component_reference_routing() -> None:
             f"{variant} Authoring pack matches canonical",
             (variant_root / "references" / "component-authoring.md").read_bytes()
             == (repo_root / "skills" / "test-plan-generation" / "references" / "component-authoring.md").read_bytes(),
+        )
+        check(
+            f"{variant} configuration-driven enumeration pack matches canonical",
+            (variant_root / "references" / "configuration-driven-enumerations.md").read_bytes()
+            == (repo_root / "skills" / "test-plan-generation" / "references" / "configuration-driven-enumerations.md").read_bytes(),
         )
         check(
             f"{variant} Integration pack matches canonical",
@@ -3271,6 +3373,44 @@ def test_concurrency_race() -> None:
           cr.likely_event_driven({"behavior_model": {"operations": ["updates a property on save"]}}) == [])
 
 
+def test_enumerated_coverage() -> None:
+    ec = enumerated_coverage_mod
+
+    check("enumerated not present when block absent", ec.is_present({}) is False)
+    check("enumerated present when list declared", ec.is_present({"enumerated_requirements": []}) is True)
+    check("empty enumerated list is rejected",
+          any("empty" in p for p in ec.validate_enumerated_requirements([])))
+
+    good = [
+        {"id": "R1", "text": "loop never breaks on read-limit error", "disposition": "COVERED_BY_AC", "ac_ref": "AC-01"},
+        {"id": "R2", "text": "result always reports success", "disposition": "OPEN_QUESTION", "open_question_ref": "OQ-2"},
+        {"id": "R3", "text": "offset pagination redesign", "disposition": "OUT_OF_SCOPE", "reason": "tracked as a follow-up per the scope decision"},
+    ]
+    check("well-formed enumerated coverage passes",
+          ec.validate_enumerated_requirements(good, ac_ids={"AC-01"}, open_question_ids={"OQ-2"}) == [])
+    check("COVERED_BY_AC with an AC not in the plan is rejected",
+          any("not an AC defined" in p for p in ec.validate_enumerated_requirements(good, ac_ids={"AC-99"}, open_question_ids={"OQ-2"})))
+    check("COVERED_BY_AC without ac_ref is rejected",
+          any("ac_ref" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "COVERED_BY_AC"}])))
+    check("OPEN_QUESTION without ref is rejected",
+          any("open_question_ref" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "OPEN_QUESTION"}])))
+    check("OUT_OF_SCOPE without reason is rejected",
+          any("reason" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "OUT_OF_SCOPE"}])))
+    check("unknown disposition is rejected",
+          any("disposition must be one of" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "text": "x", "disposition": "MAYBE"}])))
+    check("missing text is rejected",
+          any("missing 'text'" in p for p in ec.validate_enumerated_requirements([{"id": "R1", "disposition": "OUT_OF_SCOPE", "reason": "n/a"}])))
+    check("duplicate id is rejected",
+          any("duplicate id" in p for p in ec.validate_enumerated_requirements([
+              {"id": "R1", "text": "a", "disposition": "OUT_OF_SCOPE", "reason": "r"},
+              {"id": "R1", "text": "b", "disposition": "OUT_OF_SCOPE", "reason": "r"}])))
+
+    _desc = "Problems:" + chr(10) + "1. loop never breaks" + chr(10) + "2. result always success" + chr(10) + "3. no cancellation" + chr(10) + "4. weak logging"
+    check("numbered issue list is detected as enumerated", ec.likely_enumerated({"issue": {"description": _desc}}) >= 3)
+    check("prose issue with no list is not enumerated",
+          ec.likely_enumerated({"issue": {"description": "the job loops forever on a query failure"}}) == 0)
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -3307,6 +3447,7 @@ def main() -> int:
     test_comment_claims()
     test_pr_supersession()
     test_concurrency_race()
+    test_enumerated_coverage()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
