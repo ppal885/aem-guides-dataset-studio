@@ -33,7 +33,7 @@ IMMEASURABLE_TERMS = (
 )
 # A menu of alternative mechanisms inside one AC (the solution is undecided): a
 # "via/through/using/by ... or ..." construction.
-ALTERNATIVE_RE = re.compile(r"\b(?:via|through|using|by)\b[^.|]{0,80}?\bor\b", re.IGNORECASE)
+ALTERNATIVE_RE = re.compile(r"\b(?:via|through|using)\b[^.|]{0,80}?\bor\b", re.IGNORECASE)
 # Ambiguous async terminal state phrasing.
 AMBIG_TERMINAL_RE = re.compile(
     r"\b(failed or aborted|aborted or failed|non-?success(?:ful)?|success or failure)\b", re.IGNORECASE)
