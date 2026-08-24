@@ -63,6 +63,7 @@ comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
+ac_decidability_mod = _load("ac_decidability", "ac_decidability.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -3411,6 +3412,38 @@ def test_enumerated_coverage() -> None:
           ec.likely_enumerated({"issue": {"description": "the job loops forever on a query failure"}}) == 0)
 
 
+def test_ac_decidability() -> None:
+    ad = ac_decidability_mod
+
+    def acs(*lines):
+        nl = chr(10)
+        return "**Acceptance Criteria**" + nl + nl.join(lines) + nl + "**Expected Behaviour**" + nl + "- x" + nl
+
+    # undecided-decision marker -> hard failure
+    f, n = ad.evaluate_plan(acs("- AC-01: the job stops after a limit to be agreed with engineering"))
+    check("undecided-decision AC is a hard failure", any("AC-01" in x for x in f))
+
+    # non-measurable qualifier with no number -> REVIEW note
+    f, n = ad.evaluate_plan(acs("- AC-02: under failure the job keeps logs bounded"))
+    check("non-measurable qualifier is flagged", f == [] and any("non-measurable" in x for x in n))
+
+    # measurable version (has a number) -> clean
+    f, n = ad.evaluate_plan(acs("- AC-02: under failure the job writes at most 3 error entries then ends"))
+    check("measurable outcome is clean", f == [] and not any("ac-decidability AC-02" in x for x in n))
+
+    # alternative-mechanism menu -> REVIEW note
+    f, n = ad.evaluate_plan(acs("- AC-11: the query is made resilient via an index, keyset paging, or a custom index"))
+    check("alternative-mechanism menu is flagged", any("alternative mechanisms" in x for x in n))
+
+    # ambiguous async terminal state -> REVIEW note
+    f, n = ad.evaluate_plan(acs("- AC-04: a run that errors reports a failed or aborted result"))
+    check("ambiguous terminal state is flagged", any("ambiguous terminal state" in x for x in n))
+
+    # clean, decided, single-outcome AC -> nothing
+    f, n = ad.evaluate_plan(acs("- AC-01: the orphaned preset execution data node is removed and valid presets remain"))
+    check("clean decided AC produces no decidability issue", f == [] and n == [])
+
+
 def main() -> int:
     test_validator()
     test_verifier()
@@ -3448,6 +3481,7 @@ def main() -> int:
     test_pr_supersession()
     test_concurrency_race()
     test_enumerated_coverage()
+    test_ac_decidability()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

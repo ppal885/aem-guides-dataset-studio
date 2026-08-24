@@ -85,6 +85,7 @@ comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
+ac_decidability_mod = _load("ac_decidability", "ac_decidability.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "issue",
@@ -730,13 +731,25 @@ def check_enumerated_coverage(manifest_path: str | None, plan_text: str = "") ->
     if enumerated_coverage_mod.is_present(data):
         failures = [f"[enumerated-coverage] {p}" for p in enumerated_coverage_mod.validate_enumerated_requirements(
             data["enumerated_requirements"], ac_ids=ac_ids, open_question_ids=_open_question_ids(data))]
-        return failures, ["enumerated requirements dispositioned"] if not failures else []
+        notes = ["enumerated requirements dispositioned"] if not failures else []
+        for ref, ids in enumerated_coverage_mod.overloaded_ac_refs(data["enumerated_requirements"]).items():
+            notes.append(f"REVIEW enumerated-coverage: {ref} covers {len(ids)} distinct enumerated items ({', '.join(ids)}) "
+                         f"- coverage existence is not adequacy; confirm one AC genuinely satisfies each, or split them")
+        return failures, notes
     n = enumerated_coverage_mod.likely_enumerated(data)
     if n:
         return [], [f"REVIEW enumerated-coverage: the issue text enumerates ~{n} item(s) but no "
                     f"enumerated_requirements block maps each to an AC / Open Question / out-of-scope - a multi-part "
                     f"ticket can silently drop one item; record each reporter-enumerated requirement and its disposition"]
     return [], ["enumerated coverage not applicable (no reporter-enumerated list detected)"]
+
+
+def check_ac_decidability(plan_text: str = "") -> tuple[list[str], list[str]]:
+    """Flag ACs that are not decided, measurable, single-outcome contracts (undecided
+    markers hard-fail; non-measurable qualifiers, alternative-mechanism menus, and
+    ambiguous async terminal states are loud REVIEW notes). Body-only; no manifest."""
+    fails, notes = ac_decidability_mod.evaluate_plan(plan_text)
+    return [f"[ac-decidability] {p}" for p in fails], notes
 
 
 def check_scope_conflict(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
@@ -964,6 +977,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _ecf, _ecn = check_enumerated_coverage(manifest_path, body)
     failures += _ecf
     notes += _ecn
+    # AC decidability: each AC must be a decided, measurable, single-outcome contract.
+    _adf, _adn = check_ac_decidability(body)
+    failures += _adf
+    notes += _adn
     _scf, _scn = check_scope_conflict(manifest_path, body)
     failures += _scf
     notes += _scn
@@ -1046,6 +1063,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_scope_conflict()
             self_tests.test_affected_surface()
             self_tests.test_enumerated_coverage()
+            self_tests.test_ac_decidability()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")

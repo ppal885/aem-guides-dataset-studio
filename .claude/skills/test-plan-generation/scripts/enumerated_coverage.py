@@ -107,6 +107,25 @@ def validate_enumerated_requirements(block, *, ac_ids=None, open_question_ids=No
     return problems
 
 
+def overloaded_ac_refs(block, *, threshold=2):
+    """Return {ac_ref: [ids]} for ACs that COVERED_BY_AC-map two or more DISTINCT
+    enumerated requirements. Coverage-existence is not coverage-adequacy: several
+    distinct sub-requirements folded onto one AC is a smell that the AC is over-loaded
+    and one requirement may not actually be satisfied (e.g. structured-progress folded
+    into a logging AC). Advisory only."""
+    if not isinstance(block, list):
+        return {}
+    by_ref = {}
+    for entry in block:
+        if not isinstance(entry, dict) or entry.get("disposition") != "COVERED_BY_AC":
+            continue
+        ref = str(entry.get("ac_ref", "") or "").strip()
+        rid = str(entry.get("id", "") or "").strip()
+        if ref:
+            by_ref.setdefault(ref, []).append(rid)
+    return {ref: ids for ref, ids in by_ref.items() if len(ids) >= threshold}
+
+
 def summarize(manifest, plan_text=""):
     lines = [f"EnumeratedRequirementCoverage: present={is_present(manifest)} likely_enumerated={likely_enumerated(manifest)}"]
     if is_present(manifest):
