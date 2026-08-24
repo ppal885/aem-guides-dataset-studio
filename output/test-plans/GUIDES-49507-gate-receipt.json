@@ -1,0 +1,29 @@
+{
+  "schema_version": "aem-guides-gate-receipt-v1",
+  "passed": true,
+  "postable": true,
+  "issue": "GUIDES-49507",
+  "generated_at": "2026-08-24T15:22:04.372769+00:00",
+  "artifacts": {
+    "plan": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-49507-test-plan.md",
+      "sha256": "5f8f24489d382c037f3743263bc18d056e4c5dee77bd2cd15f878cf667a8707e"
+    },
+    "manifest": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-49507-evidence-manifest.json",
+      "sha256": "ec45617a3581b7e347fff763835ea2919881ed5106723108b74e97bd1553cb42"
+    },
+    "combined": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-49507-combined.md",
+      "sha256": "5f8f24489d382c037f3743263bc18d056e4c5dee77bd2cd15f878cf667a8707e"
+    },
+    "compact": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-49507-gate-receipt.compact.md",
+      "sha256": "eda8f33a5da55bfe24d5a0a003081ef535ea15f6d7913322bbc3a43c1a293e32"
+    },
+    "extracted_acs": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-49507-gate-receipt.acceptance-criteria.json",
+      "sha256": "b64740e63d9d7060e0b1513e70520481931e98882fcfef97b05f4ffa643af477"
+    }
+  }
+}

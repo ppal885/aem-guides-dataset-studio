@@ -1,0 +1,798 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-53897",
+    "summary": "PurgePresetExecutionDataJob executes infinitely when query fails with RuntimeNodeTraversalException",
+    "description": "A Sling background job pages through DITA maps and keeps running after a repository query failure. The reporter also raised query scope, terminal results, paging after failure, cancellation, index and paging cost, repository mutation during paging, a defensive progress limit, progress reporting, and correlated failure logs."
+  },
+  "attachments": [],
+  "behaviour_matters": true,
+  "evidence_preflight": {
+    "mode": "full",
+    "checked_at": "2026-08-24T20:45:00+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "available",
+        "checked_via": "check_rag_status and three ask_dita_expert probes succeeded",
+        "reason": ""
+      },
+      "jira_history": {
+        "status": "available",
+        "checked_via": "searched same-customer and cross-customer indexed Jira history",
+        "reason": ""
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "fetched live Jira issue GUIDES-53897 with comments",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "inspected local product and automation clones at captured SHAs",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "inspected ticket scope for design evidence",
+        "reason": "The ticket concerns a backend Sling job and supplies no UI or Figma design."
+      }
+    },
+    "readiness_impact": "none",
+    "readiness_impact_reason": "",
+    "claim_restrictions": []
+  },
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "How should an AEM Guides Sling background job stop paging DAM maps after RuntimeNodeTraversalException or an Oak node traversal read-limit failure?",
+    "Which observable terminal states, retries, cancellation results, and rerun behavior should an AEM Sling Job expose after query or save failure?",
+    "What AEM Cloud guidance applies to Query Builder node traversal limits, damAssetLucene indexing, and offset pagination for large DAM repositories?"
+  ],
+  "jira_history_tool": "search_jira_history",
+  "jira_history_queries": [
+    {
+      "scope": "same_customer",
+      "query": "RuntimeNodeTraversalException purge preset execution data Sling job infinite loop",
+      "component": "Platform",
+      "customer": "Broadcom",
+      "result": "No same-mechanism indexed Jira match."
+    },
+    {
+      "scope": "cross_customer",
+      "query": "RuntimeNodeTraversalException purge preset execution data Sling job infinite loop",
+      "component": "Platform",
+      "result": "No same-mechanism indexed Jira match."
+    }
+  ],
+  "indexed_history_run": true,
+  "evidence_graph": {
+    "requested": true,
+    "tool": "query_test_evidence_graph",
+    "status": "disabled",
+    "influence_mode": "shadow",
+    "used_for_plan": false,
+    "generation_id": null,
+    "queries": [],
+    "degraded_reason": "Evidence graph is disabled; direct live Jira, RAG, indexed history, and code evidence were retained."
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "conditional",
+    "risk_rating": "high",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "present",
+        "finding": "The customer repository query crosses the Oak 100000-node read limit.",
+        "evidence_refs": [
+          "Jira description GUIDES-53897"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "unknown",
+        "finding": "The ordered single-worker queue limits same-queue parallelism, but repository mutation during paging is unresolved.",
+        "evidence_refs": [
+          "Jira comment GUIDES-53897",
+          "Queue configuration source line 6"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "present",
+        "finding": "The current catch path can repeat the paging loop and queue policy permits later retry attempts.",
+        "evidence_refs": [
+          "PurgePresetExecutionDataJob.java:56-73",
+          "Queue configuration source line 8"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "unknown",
+        "finding": "Traversal failure and job blockage are observed, but no approved completion or throughput target exists.",
+        "evidence_refs": [
+          "Jira description GUIDES-53897"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "present",
+        "finding": "The incident reports about 1 GB of log growth per minute and 98 percent disk use.",
+        "evidence_refs": [
+          "Jira description GUIDES-53897"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "present",
+        "finding": "The workload uses one ORDERED queue worker, so a stuck execution can delay later administrative jobs.",
+        "evidence_refs": [
+          "Queue configuration source lines 4-14"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "present",
+        "finding": "The job removes orphan preset execution data and saves changes page by page.",
+        "evidence_refs": [
+          "PurgePresetExecutionDataJob.java:66-69",
+          "PurgePresetExecutionDataJob.java:79-104"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "Purge folder-profile preset execution data from DITA maps.",
+      "cardinality": "Production map and repository cardinality is unresolved; the observed query crosses 100000 node reads.",
+      "concurrency": "One ordered queue worker is configured; concurrent repository mutations remain unresolved.",
+      "repetition": "One scheduled run plus up to two queue retries, with the current in-run loop able to repeat.",
+      "duration": "Run duration and soak period are unresolved because no approved SLA or baseline exists."
+    },
+    "metrics": [
+      "error_rate",
+      "queue_depth",
+      "backlog_age",
+      "storage_growth",
+      "latency_p95"
+    ],
+    "oracle": {
+      "status": "unresolved",
+      "source_ref": "Jira description and accepted UAC comment GUIDES-53897",
+      "thresholds": []
+    },
+    "test_types": [
+      "stress",
+      "soak",
+      "scalability"
+    ],
+    "performance_ac_ids": [],
+    "historical_contracts": [],
+    "rationale": "The incident has severe scale, repetition, queue, and storage signals, but current evidence supplies no approved production workload or measurable SLA, so performance remains conditional."
+  },
+  "clones": [
+    {
+      "path": "C:\\starling",
+      "synced": false,
+      "sha": "fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f",
+      "provisional": true,
+      "note": "Inspected at the captured SHA; guarded synchronization was not run because the worktree contains developer changes."
+    },
+    {
+      "path": "C:\\UI TEST\\guides-ui-tests",
+      "synced": false,
+      "sha": "67fe7f35b1b4cf06fb87ebbd17d449dbf27ad1ac",
+      "provisional": true,
+      "note": "Inspected at the captured SHA; guarded synchronization was not run because the worktree contains developer changes."
+    },
+    {
+      "path": "C:\\api automation\\dxml-it-tests",
+      "synced": false,
+      "sha": "46709a94fbf357a6277f780202401149c5820054",
+      "provisional": true,
+      "note": "Inspected at the captured SHA; guarded synchronization was not run because the worktree contains developer changes."
+    }
+  ],
+  "accepted_uac_present": true,
+  "uac_fidelity": {
+    "schema_version": "aem-guides-uac-fidelity-v1",
+    "source_ref": "Live Jira accepted UAC comment GUIDES-53897 dated 2026-08-24",
+    "accepted_clause_ids": [
+      "UAC-01",
+      "UAC-02",
+      "UAC-03",
+      "UAC-04",
+      "UAC-05",
+      "UAC-06",
+      "UAC-07",
+      "UAC-08",
+      "UAC-09",
+      "UAC-10",
+      "UAC-11",
+      "UAC-12",
+      "UAC-13"
+    ],
+    "out_of_scope_clause_ids": [],
+    "clause_to_ac": {
+      "UAC-01": [
+        "AC-01"
+      ],
+      "UAC-02": [
+        "AC-02"
+      ],
+      "UAC-03": [
+        "AC-03"
+      ],
+      "UAC-04": [
+        "AC-04"
+      ],
+      "UAC-05": [
+        "AC-05"
+      ],
+      "UAC-06": [
+        "AC-06"
+      ],
+      "UAC-07": [
+        "AC-07"
+      ],
+      "UAC-08": [
+        "AC-08"
+      ],
+      "UAC-09": [
+        "AC-09"
+      ],
+      "UAC-10": [
+        "AC-10"
+      ],
+      "UAC-11": [
+        "AC-11"
+      ],
+      "UAC-12": [
+        "AC-12"
+      ],
+      "UAC-13": [
+        "AC-13"
+      ]
+    },
+    "confirmed_ac_to_clause": {
+      "AC-01": [
+        "UAC-01"
+      ],
+      "AC-02": [
+        "UAC-02"
+      ],
+      "AC-03": [
+        "UAC-03"
+      ],
+      "AC-04": [
+        "UAC-04"
+      ],
+      "AC-05": [
+        "UAC-05"
+      ],
+      "AC-06": [
+        "UAC-06"
+      ],
+      "AC-07": [
+        "UAC-07"
+      ],
+      "AC-08": [
+        "UAC-08"
+      ],
+      "AC-09": [
+        "UAC-09"
+      ],
+      "AC-10": [
+        "UAC-10"
+      ],
+      "AC-11": [
+        "UAC-11"
+      ],
+      "AC-12": [
+        "UAC-12"
+      ],
+      "AC-13": [
+        "UAC-13"
+      ]
+    },
+    "proposed_ac_ids": [],
+    "unresolved_clause_ids": [],
+    "contradictions": [],
+    "scope_expansions": [],
+    "status": "pass"
+  },
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Should query or index redesign be included, and what production-scale map count plus completion or log-growth SLA should QA use?",
+      "qa_impact": "The answer decides whether performance testing becomes a sign-off criterion and supplies its workload and threshold."
+    },
+    {
+      "id": "OQ-02",
+      "question": "Which query, delete, and save failures are retryable, and may any retry occur inside one execution?",
+      "qa_impact": "The answer defines the fault matrix and whether AC-02 expects an immediate stop or a finite internal retry."
+    },
+    {
+      "id": "OQ-03",
+      "question": "What page, item, elapsed-time, or no-progress limit must end a runaway execution?",
+      "qa_impact": "The approved value supplies the missing measurable progress-bound scenario and terminal oracle."
+    },
+    {
+      "id": "OQ-04",
+      "question": "After content mutation or service restart during paging, should cleanup resume or restart, and what proves no map was skipped or repeated?",
+      "qa_impact": "The answer defines snapshot, checkpoint, and restart scenarios for deterministic sign-off."
+    },
+    {
+      "id": "OQ-05",
+      "question": "Should a deterministic read-limit failure short-circuit two queue retries, and how should unrelated queued jobs proceed?",
+      "qa_impact": "The answer changes total-attempt assertions, aggregate log limits, and the queue-isolation scenario."
+    },
+    {
+      "id": "OQ-06",
+      "question": "Must status expose stalled and retrying in addition to running, failed, and completed?",
+      "qa_impact": "The answer decides whether extra visible states and transition scenarios are required."
+    },
+    {
+      "id": "OQ-07",
+      "question": "Must the fixed job recover orphan data left by an earlier blocked purge?",
+      "qa_impact": "The answer decides whether stale-state convergence is a sign-off requirement or a separate recovery task."
+    },
+    {
+      "id": "OQ-08",
+      "question": "Is raising On-Premise Oak QueryEngineSettings LimitReads an approved temporary mitigation for Broadcom?",
+      "qa_impact": "The answer decides whether QA validates a config-only mitigation before the product fix is released."
+    }
+  ],
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": true,
+    "source_ref": "Nine additional issues listed in the live Jira GUIDES-53897 description",
+    "source_item_count": 9,
+    "source_complete": true,
+    "items": [
+      {
+        "id": "REQ-01",
+        "source_index": 1,
+        "text": "Use a custom index or narrower query scope.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-01"
+      },
+      {
+        "id": "REQ-02",
+        "source_index": 2,
+        "text": "Do not report unconditional success after a failed or partial run.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-04",
+          "AC-06"
+        ]
+      },
+      {
+        "id": "REQ-03",
+        "source_index": 3,
+        "text": "Do not advance pagination after a failed or skipped page.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-07"
+        ]
+      },
+      {
+        "id": "REQ-04",
+        "source_index": 4,
+        "text": "Support cancellation and service shutdown.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-05",
+          "AC-08"
+        ]
+      },
+      {
+        "id": "REQ-05",
+        "source_index": 5,
+        "text": "Address offset paging cost and the repository read limit.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-01"
+      },
+      {
+        "id": "REQ-06",
+        "source_index": 6,
+        "text": "Define behavior when repository content changes during paging.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "id": "REQ-07",
+        "source_index": 7,
+        "text": "Set an upper bound for duration, pages, or mutations.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "id": "REQ-08",
+        "source_index": 8,
+        "text": "Expose structured Sling progress and status.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-06"
+      },
+      {
+        "id": "REQ-09",
+        "source_index": 9,
+        "text": "Include job, page, path, and query context in failure logs.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-09"
+        ]
+      }
+    ],
+    "shared_contract_justifications": {}
+  },
+  "behavior_model": {
+    "trigger": [
+      "Folder-profile preset deletion schedules the preset-execution-data Sling job."
+    ],
+    "operations": [
+      "The Sling job queries paged DITA map assets and purges orphan preset execution data."
+    ],
+    "inputs": [
+      "DITA map assets under /content/dam",
+      "folder-profile preset definitions",
+      "map-context preset execution data"
+    ],
+    "outputs": [
+      "saved map-context cleanup state",
+      "Sling terminal result",
+      "correlated operational logs"
+    ],
+    "affected_state": [
+      "map-context preset execution data",
+      "administrative job state",
+      "error log storage"
+    ],
+    "producers": [
+      "Preset execution workflows create map-context execution data; the exact writer path remains unverified."
+    ],
+    "processors": [
+      "PurgePresetExecutionDataJob Sling job consumer",
+      "Guides Administrative Task Queue"
+    ],
+    "consumers": [
+      "folder-profile cleanup workflow",
+      "operators reading Sling job status and logs"
+    ],
+    "write_paths": [
+      "Preset execution writes map-context execution data; the exact product writer requires later grounding."
+    ],
+    "read_paths": [
+      "Query Builder reads dam:Asset DITA maps below /content/dam in path order."
+    ],
+    "update_paths": [
+      "The JCR session saves page-level cleanup changes."
+    ],
+    "remove_paths": [
+      "deletePresetExecDataInMap removes execution data whose backing preset is missing."
+    ],
+    "recompute_paths": [],
+    "configuration_branches": [
+      "ORDERED queue with one worker, two retries, and a 2000 millisecond retry delay."
+    ],
+    "fallback_paths": [
+      "An empty query page ends the current loop."
+    ],
+    "execution_modes": [
+      "scheduled Sling job execution",
+      "queue retry after a failed result"
+    ],
+    "publishing_modes": [],
+    "versioned_models": [
+      "Guides 5.1.4 on AEM 6.5.1 LTS",
+      "AEM Guides Cloud 2026.8.0"
+    ],
+    "side_effects": [
+      "JCR node removal",
+      "page-level session save",
+      "error log growth",
+      "ordered queue worker occupancy"
+    ],
+    "constraints": [
+      "Oak repository read limit",
+      "paged offset query",
+      "single ordered queue worker"
+    ],
+    "unknowns": [
+      "Exact execution-data writer path",
+      "retryable exception taxonomy",
+      "approved progress bound",
+      "repository snapshot semantics",
+      "production performance SLA"
+    ],
+    "evidence_ids": [
+      "JIRA-53897",
+      "CODE-JOB-56",
+      "CODE-JOB-70",
+      "CODE-JOB-73",
+      "CODE-JOB-76",
+      "CODE-JOB-79",
+      "CONFIG-QUEUE-4",
+      "CODE-SCHEDULER-78",
+      "RAG-01",
+      "RAG-02",
+      "RAG-03"
+    ],
+    "facts": [
+      {
+        "fact": "The current cleanup loops until an empty page and catches query errors without leaving the loop.",
+        "evidence_ids": [
+          "CODE-JOB-56",
+          "CODE-JOB-70",
+          "CODE-JOB-73"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1
+      },
+      {
+        "fact": "The current process returns succeeded after the loop without a failure result in the catch path.",
+        "evidence_ids": [
+          "CODE-JOB-70",
+          "CODE-JOB-76"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1
+      },
+      {
+        "fact": "The queue is ordered with one worker, two retries, and a 2000 millisecond retry delay.",
+        "evidence_ids": [
+          "CONFIG-QUEUE-4"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1
+      },
+      {
+        "fact": "Broadcom reported severe repeated log growth and near-full disk use from the stuck execution.",
+        "evidence_ids": [
+          "JIRA-53897"
+        ],
+        "authority": "JIRA",
+        "confidence": 1
+      }
+    ],
+    "behavior_chains": [
+      [
+        "folder-profile preset deletion",
+        "scheduled Sling job",
+        "paged map query",
+        "orphan-data purge",
+        "JCR save",
+        "Sling terminal result"
+      ],
+      [
+        "query failure",
+        "catch block",
+        "offset advance",
+        "next loop iteration",
+        "repeated error log growth"
+      ]
+    ],
+    "confidence": 0.92
+  },
+  "state_compatibility": {
+    "active": true,
+    "states": {
+      "CLEAN_PRE_FIX_STATE": "Fresh test content before the fix is covered by the normal cleanup and empty-repository scenarios.",
+      "STATE_CREATED_BY_FIXED_CODE": "Fresh execution data processed by the fixed job is covered by AC-11, AC-12, TS-11, and TS-12.",
+      "STATE_CREATED_BY_BUGGY_OLD_CODE": "Orphan data left by an earlier blocked purge is represented, but its automatic recovery requirement remains unresolved in OQ-07."
+    },
+    "recovery_of_old_state": {
+      "required": "unknown",
+      "evidence": [
+        "Jira accepted UAC comment GUIDES-53897 and OQ-07"
+      ],
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-07"
+    }
+  },
+  "implementation_grounding": {
+    "active": true,
+    "named_artifacts": [
+      {
+        "artifact": "PurgePresetExecutionDataJob.process",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\aem\\guides\\publish\\job\\PurgePresetExecutionDataJob.java:54",
+          "C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\aem\\guides\\publish\\job\\PurgePresetExecutionDataJob.java:70",
+          "C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\aem\\guides\\publish\\job\\PurgePresetExecutionDataJob.java:76"
+        ],
+        "premise": "A caught query failure does not end the current execution and the method later returns succeeded.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "PurgePresetExecutionDataJob.deletePresetExecDataInMap",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\aem\\guides\\publish\\job\\PurgePresetExecutionDataJob.java:79"
+        ]
+      },
+      {
+        "artifact": "Guides Administrative Task Queue OSGi configuration",
+        "kind": "config_key",
+        "inspected": true,
+        "material": true,
+        "key_provenance": "OSGI_CONFIG",
+        "evidence": [
+          "C:\\starling\\AEM6.x\\repo\\jcr_root\\libs\\fmdita\\config\\org.apache.sling.event.jobs.QueueConfiguration~guidesAdministrativeTaskQueue.xml:4"
+        ]
+      },
+      {
+        "artifact": "FolderProfilePresetStrategy.deletePresetData",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:\\starling\\core\\utils\\src\\main\\java\\com\\adobe\\fmdita\\presets\\service\\FolderProfilePresetStrategy.java:78"
+        ]
+      }
+    ]
+  },
+  "concurrency_race_analysis": {
+    "schema_version": "aem-guides-concurrency-race-v1",
+    "active": true,
+    "triggers": [
+      "Sling job scheduling after preset deletion",
+      "queue retry after a failed execution"
+    ],
+    "patterns": [
+      {
+        "pattern": "CREATE_THEN_DELETE_RACE",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "pattern": "RESTART_MID_PROCESSING_RACE",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "pattern": "DUPLICATE_EVENT_RACE",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-11"
+      }
+    ]
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": true,
+    "reason": "The ticket concerns a scheduled Sling job with paging, retries, cancellation, shutdown, page-level writes, recovery, and queue-isolation risk.",
+    "dimensions": [
+      {
+        "dimension": "TRIGGER_AND_DEPLOYMENT_SCOPE",
+        "disposition": "COVERED_BY_SCENARIO",
+        "scenario_refs": [
+          "TS-01"
+        ]
+      },
+      {
+        "dimension": "FAILURE_POINTS_AND_MATRIX",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-01",
+          "AC-02",
+          "AC-07"
+        ],
+        "scenario_refs": [
+          "TS-01",
+          "TS-02",
+          "TS-07"
+        ]
+      },
+      {
+        "dimension": "SUCCESS_TERMINAL_OUTCOME",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-06",
+          "AC-13"
+        ],
+        "scenario_refs": [
+          "TS-06",
+          "TS-13"
+        ]
+      },
+      {
+        "dimension": "FAILURE_TERMINAL_OUTCOME",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-04"
+        ],
+        "scenario_refs": [
+          "TS-04"
+        ]
+      },
+      {
+        "dimension": "CANCELLATION_TERMINAL_OUTCOME",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-05"
+        ],
+        "scenario_refs": [
+          "TS-05"
+        ]
+      },
+      {
+        "dimension": "SHUTDOWN_TERMINAL_OUTCOME",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-08"
+        ],
+        "scenario_refs": [
+          "TS-08"
+        ]
+      },
+      {
+        "dimension": "RETRY_POLICY",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-03"
+        ],
+        "scenario_refs": [
+          "TS-03"
+        ]
+      },
+      {
+        "dimension": "DEFENSIVE_PROGRESS_BOUND",
+        "disposition": "OPEN_QUESTION",
+        "open_question_refs": [
+          "OQ-03"
+        ]
+      },
+      {
+        "dimension": "PARTIAL_WRITE_RECOVERY_IDEMPOTENCY",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-11",
+          "AC-12"
+        ],
+        "scenario_refs": [
+          "TS-11",
+          "TS-12"
+        ]
+      },
+      {
+        "dimension": "CONCURRENCY_AND_SNAPSHOT_MUTATIONS",
+        "disposition": "OPEN_QUESTION",
+        "open_question_refs": [
+          "OQ-04"
+        ]
+      },
+      {
+        "dimension": "QUEUE_ISOLATION",
+        "disposition": "OPEN_QUESTION",
+        "open_question_refs": [
+          "OQ-05"
+        ]
+      },
+      {
+        "dimension": "OBSERVABILITY",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-09",
+          "AC-10"
+        ],
+        "scenario_refs": [
+          "TS-09",
+          "TS-10"
+        ]
+      },
+      {
+        "dimension": "RECOVERY_SAFETY",
+        "disposition": "COVERED_BY_SCENARIO",
+        "scenario_refs": [
+          "TS-14"
+        ]
+      },
+      {
+        "dimension": "DETERMINISTIC_AUTOMATION",
+        "disposition": "COVERED_BY_SCENARIO",
+        "scenario_refs": [
+          "TS-01",
+          "TS-02",
+          "TS-05",
+          "TS-08",
+          "TS-11"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,700 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-49507",
+    "summary": "Friendly Names for Attributes Not Displayed Consistently in Web Editor",
+    "description": "Consolidated Jira description and reviewer scope:\n- Full Tags View shows the original attribute name.\n- Condition Attributes panel does not show the friendly name.\n- Right Panel loses the friendly name after the attribute is applied.\n- Preserve the complete custom and built-in fallback rule.\n- Cover add, update, and remove while the editor remains open.\n- Discover future valid conditional attributes from supported configuration.\n- Cover the effective label seen by each signed-in author without profile leakage.\n- Cover the Use only above attributes restriction.\n- Preserve mappings through upgrade.\n- Do not regress element friendly names.\n- Decide whether Condition Presets are in scope.\n- Decide whether the DITAVAL attribute dropdown is in scope.\n- Decide whether Preview is in scope.",
+    "status": "Open",
+    "priority": "Major",
+    "customer": "TxDOT",
+    "labels": [
+      "Needs_Human_Review",
+      "Triaged",
+      "TxDOT"
+    ],
+    "lifecycle": "Implementation Review",
+    "pr": "https://git.corp.adobe.com/AdobeStarling/xmleditor/pull/8069"
+  },
+  "attachments": [
+    {
+      "id": "18905901",
+      "filename": "image-2026-06-19-01-13-47-214.png",
+      "downloaded_to": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-49507/image-2026-06-19-01-13-47-214.png",
+      "analyzed": true,
+      "note": "The screenshot shows workspace mapping product to category while Conditions, Full Tags View, and Content Properties still render Product or product."
+    }
+  ],
+  "evidence_preflight": {
+    "mode": "full",
+    "checked_at": "2026-08-24T20:27:28.5323937+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "available",
+        "checked_via": "check_rag_status call succeeded and four ask_dita_expert probe results were received",
+        "reason": ""
+      },
+      "jira_history": {
+        "status": "available",
+        "checked_via": "Two search_jira_history calls searched the indexed jira_qa corpus",
+        "reason": ""
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "backend JiraClient fetched GUIDES-49507, five comments, and the exact current Acceptance Criteria custom field",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "Local clone status, cached refs, diffs, and source files were inspected without fetching or switching branches",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "Jira and attachment input inspection",
+        "reason": "No Figma link exists and the request corrects labels on existing UI surfaces."
+      }
+    },
+    "readiness_impact": "draft_only",
+    "readiness_impact_reason": "The inspected Git refs were cached rather than freshly fetched, and Jira marks the six current AI-generated Acceptance Criteria as Needs_Human_Review.",
+    "claim_restrictions": [
+      "Git implementation claims are limited to the captured local SHAs and cached refs.",
+      "No claim is made about a new-editor product implementation because the supplied path contains no product repository.",
+      "Every Acceptance Criterion remains Proposed until human review accepts the scope."
+    ]
+  },
+  "behaviour_matters": true,
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "In AEM Guides XML Editor, how are friendly display names for DITA attributes configured, and is the configuration stored per user, in the global profile, or in a folder profile?",
+    "Which AEM Guides authoring surfaces are documented to use a configured friendly display name for an attribute, including Full Tags View, the Condition Attributes panel, the Right Panel, condition presets, the DITAVAL attribute dropdown, and Preview?",
+    "How does AEM Guides use /apps/fmdita/config/condAttrList.csv, /libs/fmdita/config/condAttrList.csv, and the legacy condAttrList.xml when a custom conditional attribute is added?",
+    "What does the AEM Guides XML Editor setting 'Use only above attributes' do, especially for attributes already applied to an element?"
+  ],
+  "rag_probe_results": [
+    {
+      "probe_index": 1,
+      "disposition": "PARTIAL_ACCEPT",
+      "finding": "General XML Editor configuration is documented at global-profile and folder-profile levels; friendly attribute label storage is not explicitly documented."
+    },
+    {
+      "probe_index": 2,
+      "disposition": "PARTIAL_ACCEPT",
+      "finding": "Condition Presets are documented as an attribute-selection surface, but friendly-name behavior is not documented on any listed surface."
+    },
+    {
+      "probe_index": 3,
+      "disposition": "PARTIAL_ACCEPT",
+      "finding": "The shipped conditional list and version-dependent legacy XML are documented; exact precedence comes from inspected Starling code."
+    },
+    {
+      "probe_index": 4,
+      "disposition": "REJECT_FOR_PRODUCT_CONTRACT",
+      "finding": "The answer relies on analogy with the element restriction and labels the already-applied attribute behavior unverified."
+    }
+  ],
+  "jira_history_tool": "search_jira_history",
+  "jira_history_queries": [
+    {
+      "scope": "same_customer",
+      "query": "friendly attribute name shown as raw name in Full Tags View Condition Attributes panel Right Panel after apply",
+      "component": "Editor",
+      "customer": "TxDOT",
+      "result_count": 0,
+      "query_fingerprint": "15e203e6c7e120a02710b8d2f5f67086c8550157c419541675f8a4f63f6a3dae"
+    },
+    {
+      "scope": "cross_customer",
+      "query": "AEM Guides XML Editor friendly display name for DITA attributes inconsistent across Full Tags Condition Attributes right properties panel folder profile configuration",
+      "component": "Editor",
+      "result_count": 0,
+      "query_fingerprint": "7aa4e2d97ca3e8f5f3a690a139b58899e65f8f48e5cb647281ba06d059bf8378"
+    }
+  ],
+  "indexed_history_run": true,
+  "evidence_graph": {
+    "requested": true,
+    "tool": "query_test_evidence_graph",
+    "status": "disabled",
+    "influence_mode": "shadow",
+    "used_for_plan": false,
+    "degraded_reason": "Dataset Studio status reported the evidence graph disabled, so no graph path influenced the plan.",
+    "queries": []
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "not_required",
+    "risk_rating": "low",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "absent",
+        "finding": "The change resolves one effective label per rendered attribute and Jira contains no large-data requirement.",
+        "evidence_refs": [
+          "Jira description GUIDES-49507",
+          "commit 839d95b9 src/model/attribute.ts L9-L15"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "absent",
+        "finding": "No concurrent writers, locks, queues, or contention mechanism is part of the requested label behavior.",
+        "evidence_refs": [
+          "Jira description GUIDES-49507",
+          "commit 839d95b9 src/controllers/editor/xml_markup_author_controller.ts L905-L929"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "absent",
+        "finding": "The user actions are bounded editor renders and configuration saves rather than a repeated or long-running operation.",
+        "evidence_refs": [
+          "Jira attachment GUIDES-49507"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "absent",
+        "finding": "Jira, attachment, code diff, and history searches provide no latency, timeout, or throughput contract.",
+        "evidence_refs": [
+          "Jira description GUIDES-49507",
+          "search_jira_history query fingerprint 7aa4e2d97ca3e8f5f3a690a139b58899e65f8f48e5cb647281ba06d059bf8378"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "absent",
+        "finding": "No resource growth or storage-volume behavior is introduced by displaying a resolved label.",
+        "evidence_refs": [
+          "commit 839d95b9 src/model/condition.ts L50-L53",
+          "commit 839d95b9 src/model/other_attrs.ts L348-L358"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "absent",
+        "finding": "The UI change creates no job queue or backlog-producing external operation.",
+        "evidence_refs": [
+          "Jira description GUIDES-49507",
+          "commit 839d95b9 diff summary"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "absent",
+        "finding": "The upgrade requirement concerns configuration compatibility, not a scale-related cleanup or stale-state workload.",
+        "evidence_refs": [
+          "Jira reviewer comment GUIDES-49507",
+          "C:/ui_framework/new_editor/guides-ui-tests/tests/upgrade/2_server_checkpoints.feature L47-L52"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "Not applicable after reviewing the bounded label-render operation.",
+      "cardinality": "Not applicable because no scale or cardinality risk was found.",
+      "concurrency": "Not applicable because no concurrent execution risk was found.",
+      "repetition": "Not applicable because no repeated-operation risk was found.",
+      "duration": "Not applicable because no long-running workflow risk was found."
+    },
+    "metrics": [],
+    "oracle": {
+      "status": "not_applicable",
+      "source_ref": "Jira description, attachment, cached PR diff, and indexed history for GUIDES-49507",
+      "thresholds": []
+    },
+    "test_types": [],
+    "performance_ac_ids": [],
+    "historical_contracts": [],
+    "rationale": "All seven performance categories are absent. The ticket is a bounded UI label-consistency change with no workload, SLA, throughput, queue, resource, or scale signal."
+  },
+  "clones": [
+    {
+      "path": "C:/xmleditor/xmleditor",
+      "role": "product implementation and PR evidence",
+      "branch": "develop",
+      "sha": "1f8e3996e40ea4c55cea2e11c52d7ddb6f58b09a",
+      "upstream": "origin/develop",
+      "cached_ahead": 0,
+      "cached_behind": 1777,
+      "dirty": true,
+      "dirty_count": 8,
+      "fetched": false,
+      "synced": false,
+      "provisional": true,
+      "inspected_ref": "origin/crosshair/guides-49507@839d95b938e70cf4e5e4a7e51ab7a8d32460df86",
+      "baseline_ref": "origin/develop@85574ec9f6a25ea82ef97f19b83b2f66e0cd90bb",
+      "note": "No fetch, pull, checkout, stash, or worktree edit was performed; claims are bound to the captured worktree SHA and cached refs."
+    },
+    {
+      "path": "C:/starling",
+      "role": "current conditional configuration precedence",
+      "branch": "develop",
+      "sha": "fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f",
+      "upstream": "origin/develop",
+      "cached_ahead": 0,
+      "cached_behind": 1230,
+      "dirty": true,
+      "dirty_count": 13,
+      "fetched": false,
+      "synced": false,
+      "provisional": true,
+      "note": "No fetch, pull, checkout, stash, or edit was performed; current-code claims are bound to the captured local SHA."
+    },
+    {
+      "path": "C:/ui_framework/new_editor",
+      "role": "requested new-editor product path",
+      "synced": false,
+      "provisional": true,
+      "note": "The path is not a product Git repository; no new-editor implementation claim is made."
+    },
+    {
+      "path": "C:/ui_framework/new_editor/guides-ui-tests",
+      "role": "UI automation evidence",
+      "branch": "develop",
+      "sha": "bf5dca679ec84f6128d4fe8d9b3b12201e2cc5bb",
+      "upstream": "origin/develop",
+      "cached_ahead": 0,
+      "cached_behind": 1000,
+      "dirty": true,
+      "dirty_count": 2,
+      "fetched": false,
+      "synced": false,
+      "provisional": true,
+      "note": "No fetch, pull, checkout, stash, or edit was performed; automation evidence is bound to the captured local SHA."
+    }
+  ],
+  "accepted_uac_present": false,
+  "source_acceptance_criteria": [
+    "AC-01: Full Tags View shows the workspace friendly name for every allowed attribute.",
+    "AC-02: Built-in conditional attributes show their configured friendly name or default label without malformed text.",
+    "AC-03: The Right Panel keeps the friendly name during selection and after the attribute is applied.",
+    "AC-04: An unmapped custom attribute shows its raw name, an unmapped built-in shows its default label, and no label is blank.",
+    "AC-05: Adding, editing, or removing a mapping updates already-rendered rows and an open dropdown without reload; removal restores fallback.",
+    "AC-06: A valid conditional attribute added to the supported conditional list is discovered from the active profile and schema without a product-code change."
+  ],
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Are conditional value labels from the Name, Value, and Label configuration in scope with attribute names?",
+      "qa_impact": "A yes adds value-label checks in the Conditions panel and Right Panel; a no keeps this plan limited to attribute names."
+    },
+    {
+      "id": "OQ-02",
+      "question": "Must Condition Presets show configured attribute friendly names?",
+      "qa_impact": "A yes adds the surface to acceptance and UI automation; a no records it as an explicit exclusion."
+    },
+    {
+      "id": "OQ-03",
+      "question": "Must the DITAVAL attribute dropdown show configured attribute friendly names?",
+      "qa_impact": "A yes adds DITAVAL fixtures and dropdown assertions; a no records it as an explicit exclusion."
+    },
+    {
+      "id": "OQ-04",
+      "question": "Is any attribute label visible in Preview required to use the friendly name?",
+      "qa_impact": "A yes requires the exact Preview surface and oracle; a no removes Preview from runtime sign-off."
+    },
+    {
+      "id": "OQ-05",
+      "question": "Which shipped markup-editor version provides the guarded attribute-update command?",
+      "qa_impact": "The answer determines whether AC-05 can pass in the target build or requires a dependency update."
+    },
+    {
+      "id": "OQ-06",
+      "question": "Which conditional-list source is supported when legacy XML and CSV both exist?",
+      "qa_impact": "The answer fixes the upgrade matrix, precedence fixture, and safe cleanup path for AC-06 and AC-10."
+    }
+  ],
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": true,
+    "source_ref": "Jira description and Tulika Aggarwal human-review comment dated 2026-08-24 on GUIDES-49507",
+    "source_item_count": 13,
+    "source_complete": true,
+    "items": [
+      {
+        "id": "REQ-01",
+        "source_index": 1,
+        "text": "Full Tags View shows the original attribute name.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-01"
+        ]
+      },
+      {
+        "id": "REQ-02",
+        "source_index": 2,
+        "text": "Condition Attributes panel does not show the friendly name.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-02"
+        ]
+      },
+      {
+        "id": "REQ-03",
+        "source_index": 3,
+        "text": "Right Panel loses the friendly name after the attribute is applied.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-03"
+        ]
+      },
+      {
+        "id": "REQ-04",
+        "source_index": 4,
+        "text": "Preserve the complete custom and built-in fallback rule.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-04"
+        ]
+      },
+      {
+        "id": "REQ-05",
+        "source_index": 5,
+        "text": "Cover add, update, and remove while the editor remains open.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-05"
+        ]
+      },
+      {
+        "id": "REQ-06",
+        "source_index": 6,
+        "text": "Discover future valid conditional attributes from supported configuration.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-06"
+        ]
+      },
+      {
+        "id": "REQ-07",
+        "source_index": 7,
+        "text": "Cover the effective label seen by each signed-in author without profile leakage.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-07"
+        ]
+      },
+      {
+        "id": "REQ-08",
+        "source_index": 8,
+        "text": "Cover the Use only above attributes restriction.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-08",
+          "AC-09"
+        ]
+      },
+      {
+        "id": "REQ-09",
+        "source_index": 9,
+        "text": "Preserve mappings through upgrade.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-10"
+        ]
+      },
+      {
+        "id": "REQ-10",
+        "source_index": 10,
+        "text": "Do not regress element friendly names.",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": [
+          "AC-11"
+        ]
+      },
+      {
+        "id": "REQ-11",
+        "source_index": 11,
+        "text": "Decide whether Condition Presets are in scope.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-02"
+      },
+      {
+        "id": "REQ-12",
+        "source_index": 12,
+        "text": "Decide whether the DITAVAL attribute dropdown is in scope.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "id": "REQ-13",
+        "source_index": 13,
+        "text": "Decide whether Preview is in scope.",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      }
+    ],
+    "shared_contract_justifications": {}
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": false,
+    "reason": "This feature resolves labels during synchronous editor rendering and configuration save; it has no job, queue, listener, retry, migration, repair, or long-running execution contract."
+  },
+  "feature_classification": {
+    "schema_version": "aem-guides-feature-classification-v1",
+    "classes": [
+      "ui_display_label"
+    ],
+    "rationale": "The ticket changes how one configured attribute label is rendered across multiple UI consumers and configuration scopes.",
+    "evidence": [
+      "Jira: GUIDES-49507 description and attachment",
+      "commit 839d95b9 src/model/attribute.ts:9-15",
+      "commit 839d95b9 src/model/condition.ts:50-53",
+      "commit 839d95b9 src/model/other_attrs.ts:348-358"
+    ]
+  },
+  "ui_surface_scope": {
+    "schema_version": "aem-guides-ui-surface-scope-v1",
+    "construct_type": "attribute-label",
+    "render_surfaces": [
+      {
+        "surface": "Full Tags View",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "surface": "Condition Attributes panel",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-02"
+      },
+      {
+        "surface": "Right Panel",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-03"
+      },
+      {
+        "surface": "condition presets",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-02"
+      },
+      {
+        "surface": "DITAVAL attribute dropdown",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "surface": "Preview",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      }
+    ],
+    "config_scope": {
+      "scope": "OTHER",
+      "other_scope": "Folder profile with global-profile fallback",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-07"
+    },
+    "upgrade_persistence": {
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-10"
+    },
+    "sibling_regression": {
+      "disposition": "COVERED_BY_AC",
+      "sibling_construct": "element-label",
+      "ac_ref": "AC-11"
+    },
+    "surfaces_grounding": [
+      "Jira: GUIDES-49507 description and attachment",
+      "commit 839d95b9 src/config/ui/views/widgets/other_attribute_list_item.json:17-18",
+      "commit 839d95b9 src/model/condition.ts:50-53",
+      "commit 839d95b9 src/model/other_attrs.ts:348-358",
+      "C:/xmleditor/xmleditor/src/controllers/widgets/condition_preset_editor_controller.ts:574-575",
+      "C:/xmleditor/xmleditor/src/controllers/widgets/ditaval_element_controller.ts:22-33",
+      "C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts:588-614"
+    ]
+  },
+  "behavior_model": {
+    "trigger": [
+      "An author opens an attribute-rendering surface or an administrator saves an attribute-label setting."
+    ],
+    "operations": [
+      "Resolve the effective profile mapping, apply raw-name fallback, and render the attribute label."
+    ],
+    "inputs": [
+      "Raw DITA attribute name",
+      "Attribute friendly-name mapping",
+      "Active folder or global profile",
+      "DTD-valid attribute choices",
+      "Conditional-attribute configuration"
+    ],
+    "outputs": [
+      "Visible attribute label in each in-scope editor surface"
+    ],
+    "affected_state": [
+      "Editor label models and profile configuration"
+    ],
+    "producers": [
+      "Editor attribute settings save",
+      "Folder-profile conditional attribute configuration",
+      "Conditional-list overlay"
+    ],
+    "processors": [
+      "Attribute model",
+      "OtherAttributes model",
+      "Condition model",
+      "XML markup author controller"
+    ],
+    "consumers": [
+      "Full Tags View",
+      "Condition Attributes panel",
+      "Right Panel",
+      "Condition Presets",
+      "DITAVAL attribute dropdown",
+      "Preview"
+    ],
+    "write_paths": [
+      "Editor configuration save writes mappings and the restriction flag for the active profile."
+    ],
+    "read_paths": [
+      "Editor startup loads ditaAttributes mappings and constraint state.",
+      "Conditional setup reads the effective conditional attribute values."
+    ],
+    "update_paths": [
+      "Open Tag View receives an attribute friendly-name update when the cross-package command exists."
+    ],
+    "configuration_branches": [
+      "Mapped attribute",
+      "Unmapped raw-name fallback",
+      "Folder-profile mapping",
+      "Global-profile fallback",
+      "Use only above attributes enabled",
+      "Use only above attributes disabled",
+      "Apps overlay",
+      "Libs fallback",
+      "Legacy XML precedence"
+    ],
+    "fallback_paths": [
+      "Missing friendly name falls back to the raw name.",
+      "Missing folder profile falls back to global-profile configuration.",
+      "Missing apps conditional list falls back to libs."
+    ],
+    "versioned_models": [
+      "Pre-upgrade and post-upgrade Editor profile configuration"
+    ],
+    "constraints": [
+      "Only DTD-valid attributes are offered for the selected element.",
+      "Already-applied attributes remain visible when choices are restricted."
+    ],
+    "unknowns": [
+      "Friendly-name scope for Condition Presets, DITAVAL, and Preview",
+      "Conditional value-label scope",
+      "Target build support for the guarded update command",
+      "Supported legacy XML and CSV precedence contract"
+    ],
+    "evidence_ids": [
+      "JIRA-GUIDES-49507",
+      "ATTACHMENT-GUIDES-49507-1",
+      "PR-REF-839D95B9",
+      "STARLING-FDFA7277",
+      "RAG-PROBE-1",
+      "RAG-PROBE-2",
+      "RAG-PROBE-3",
+      "RAG-PROBE-4"
+    ],
+    "facts": [
+      {
+        "fact": "Jira requests one effective friendly name across three named editor surfaces.",
+        "evidence_ids": [
+          "JIRA-GUIDES-49507",
+          "ATTACHMENT-GUIDES-49507-1"
+        ],
+        "authority": "JIRA",
+        "confidence": 1.0
+      },
+      {
+        "fact": "The cached PR ref adds friendly lookup and fallback in the attribute, condition, and applied-row models.",
+        "evidence_ids": [
+          "PR-REF-839D95B9"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.95
+      },
+      {
+        "fact": "Current configuration code saves attribute mappings under an active folder profile with global fallback.",
+        "evidence_ids": [
+          "PR-REF-839D95B9"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.9
+      },
+      {
+        "fact": "Starling checks the apps overlay before libs and legacy XML before CSV.",
+        "evidence_ids": [
+          "STARLING-FDFA7277"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.95
+      }
+    ],
+    "behavior_chains": [
+      [
+        "Active profile mapping",
+        "Editor app model",
+        "Friendly-name resolver",
+        "Surface-specific label"
+      ],
+      [
+        "Effective conditional list",
+        "Conditional values",
+        "Conditional model",
+        "Condition Attributes label"
+      ]
+    ],
+    "confidence": 0.9
+  },
+  "state_compatibility": {
+    "active": true,
+    "states": {
+      "CLEAN_PRE_FIX_STATE": {
+        "behavior": "A saved mapping can exist before the fix while the affected surfaces still render the raw name."
+      },
+      "STATE_CREATED_BY_FIXED_CODE": {
+        "behavior": "A mapping saved by the fixed build should render its friendly name and remain readable after reopen or upgrade."
+      },
+      "STATE_CREATED_BY_BUGGY_OLD_CODE": {
+        "behavior": "The Jira evidence shows a display mismatch, not a corrupted mapping; the existing mapping is reused after the fix."
+      }
+    },
+    "recovery_of_old_state": {
+      "required": false,
+      "evidence": [
+        "Jira attachment GUIDES-49507 shows the mapping saved as product to category while the UI renders Product or product."
+      ],
+      "disposition": "OUT_OF_SCOPE"
+    }
+  },
+  "implementation_grounding": {
+    "active": true,
+    "named_artifacts": [
+      {
+        "artifact": "XmlMarkupAuthorController.getConditionalAttributesConfig",
+        "kind": "method",
+        "material": true,
+        "inspected": true,
+        "evidence": [
+          "commit 839d95b9 src/controllers/editor/xml_markup_author_controller.ts:1535-1564"
+        ],
+        "premise": "Conditional setup seeds eight fixed names before adding runtime values.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "DitaItemList.saveEvent",
+        "kind": "method",
+        "material": true,
+        "inspected": true,
+        "evidence": [
+          "C:/xmleditor/xmleditor/src/controllers/widgets/dita_item_list.ts:119-146"
+        ],
+        "premise": "Editor settings serialize friendly-name mappings and the restriction flag.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "FetchCondAttrListService",
+        "kind": "service_class",
+        "material": true,
+        "inspected": true,
+        "evidence": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/service/FetchCondAttrListService.java:27-58"
+        ],
+        "premise": "The effective conditional list uses apps-over-libs lookup and checks legacy XML before CSV.",
+        "premise_verified": true,
+        "premise_holds": true
+      }
+    ]
+  }
+}

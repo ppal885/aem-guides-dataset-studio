@@ -1,0 +1,57 @@
+[
+  {
+    "id": "AC-01",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "a delegated folder-profile admin without local administrator membership",
+    "when": "the admin adds another Admin User to the same non-global profile",
+    "then": "the added user remains in Admin Users after a page refresh",
+    "evidence": "Jira UAC GUIDES-50144 and commit eac2c72512306061d2110b02e03d28197eadeecf",
+    "raw": "AC-01 [Proposed]: (Basic) Given a delegated folder-profile admin without local administrator membership | When the admin adds another Admin User to the same non-global profile | Then the added user remains in Admin Users after a page refresh | Evidence: Jira UAC GUIDES-50144 and commit eac2c72512306061d2110b02e03d28197eadeecf.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-02",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "a delegated folder-profile admin without local administrator membership",
+    "when": "the admin removes an Admin User from the same non-global profile",
+    "then": "the removed user stays absent after a page refresh",
+    "evidence": "Jira UAC GUIDES-50144 and commit eac2c72512306061d2110b02e03d28197eadeecf",
+    "raw": "AC-02 [Proposed]: (Basic) Given a delegated folder-profile admin without local administrator membership | When the admin removes an Admin User from the same non-global profile | Then the removed user stays absent after a page refresh | Evidence: Jira UAC GUIDES-50144 and commit eac2c72512306061d2110b02e03d28197eadeecf.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-03",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "a member of the exact local administrators group uses a non-global folder profile",
+    "when": "the administrator adds or removes one Admin User",
+    "then": "the requested membership change remains saved after refresh",
+    "evidence": "Jira UAC GUIDES-50144 and C:\\starling\\core\\utils\\src\\main\\java\\com\\adobe\\fmdita\\common\\ACLUtils.java L314-L327",
+    "raw": "AC-03 [Proposed]: (Basic) Given a member of the exact local administrators group uses a non-global folder profile | When the administrator adds or removes one Admin User | Then the requested membership change remains saved after refresh | Evidence: Jira UAC GUIDES-50144 and C:\\starling\\core\\utils\\src\\main\\java\\com\\adobe\\fmdita\\common\\ACLUtils.java L314-L327.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-04",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "a delegated folder-profile admin opens the global folder profile",
+    "when": "the admin submits an Admin Users change",
+    "then": "the global Admin Users list stays unchanged",
+    "evidence": "Jira UAC GUIDES-50144 and C:\\starling\\AEM6.x\\repo\\jcr_root\\libs\\fmdita\\clientlibs\\folderprofiles\\js\\main.js L788-L797",
+    "raw": "AC-04 [Proposed]: (Negative) Given a delegated folder-profile admin opens the global folder profile | When the admin submits an Admin Users change | Then the global Admin Users list stays unchanged | Evidence: Jira UAC GUIDES-50144 and C:\\starling\\AEM6.x\\repo\\jcr_root\\libs\\fmdita\\clientlibs\\folderprofiles\\js\\main.js L788-L797.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-05",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "an unauthorized user has neither target-profile admin membership nor local administrator membership",
+    "when": "the user submits an Admin Users change",
+    "then": "the client reports an authorization error without changing stored membership",
+    "evidence": "Jira UAC GUIDES-50144 and C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\fmdita\\rest\\folderprofiles\\FolderProfilesAPI.java L639-L650",
+    "raw": "AC-05 [Proposed]: (Negative) Given an unauthorized user has neither target-profile admin membership nor local administrator membership | When the user submits an Admin Users change | Then the client reports an authorization error without changing stored membership | Evidence: Jira UAC GUIDES-50144 and C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\fmdita\\rest\\folderprofiles\\FolderProfilesAPI.java L639-L650.",
+    "schema_version": "aem-guides-ac-v1"
+  }
+]

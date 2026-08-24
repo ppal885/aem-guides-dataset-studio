@@ -1,0 +1,123 @@
+[
+  {
+    "id": "AC-01",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "an attribute has a friendly name in the active Editor configuration",
+    "when": "an author opens Full Tags View for an element that uses the attribute",
+    "then": "Full Tags View shows the saved friendly name",
+    "evidence": "Jira description and attachment GUIDES-49507",
+    "raw": "AC-01 [Proposed]: (Basic) Given an attribute has a friendly name in the active Editor configuration | When an author opens Full Tags View for an element that uses the attribute | Then Full Tags View shows the saved friendly name | Evidence: Jira description and attachment GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-02",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "a conditional attribute has a friendly name in the active Editor configuration",
+    "when": "an author opens the Condition Attributes panel",
+    "then": "the panel shows the saved friendly name",
+    "evidence": "Jira description, attachment, and commit 839d95b9 source file src/model/condition.ts L50-L53 for GUIDES-49507",
+    "raw": "AC-02 [Proposed]: (Basic) Given a conditional attribute has a friendly name in the active Editor configuration | When an author opens the Condition Attributes panel | Then the panel shows the saved friendly name | Evidence: Jira description, attachment, and commit 839d95b9 source file src/model/condition.ts L50-L53 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-03",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "an attribute has a friendly name and is valid for the selected element",
+    "when": "an author applies it from the Right Panel",
+    "then": "the Right Panel keeps the saved friendly name in the selection and applied row",
+    "evidence": "Jira description, attachment, and commit 839d95b9 source file src/model/other_attrs.ts L348-L358 for GUIDES-49507",
+    "raw": "AC-03 [Proposed]: (Basic) Given an attribute has a friendly name and is valid for the selected element | When an author applies it from the Right Panel | Then the Right Panel keeps the saved friendly name in the selection and applied row | Evidence: Jira description, attachment, and commit 839d95b9 source file src/model/other_attrs.ts L348-L358 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-04",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "a valid custom or built-in attribute has no friendly name",
+    "when": "an author views it in Full Tags View, Condition Attributes, or the Right Panel",
+    "then": "the surface shows its defined nonblank fallback: raw name for custom attributes, default label for built-in conditional attributes",
+    "evidence": "Jira AC-04 GUIDES-49507 and commit 839d95b9 source files src/model/attribute.ts L9-L15 and src/model/condition.ts L50-L53",
+    "raw": "AC-04 [Proposed]: (Negative) Given a valid custom or built-in attribute has no friendly name | When an author views it in Full Tags View, Condition Attributes, or the Right Panel | Then the surface shows its defined nonblank fallback: raw name for custom attributes, default label for built-in conditional attributes | Evidence: Jira AC-04 GUIDES-49507 and commit 839d95b9 source files src/model/attribute.ts L9-L15 and src/model/condition.ts L50-L53.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-05",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a mapped attribute is visible in Full Tags View, Condition Attributes, and the Right Panel",
+    "when": "an administrator adds, changes, or removes its friendly name",
+    "then": "rendered rows plus the open dropdown update before reload or panel reopen, and removal restores the AC-04 fallback",
+    "evidence": "Jira AC-05 GUIDES-49507 and commit 839d95b9 source file src/controllers/editor/xml_markup_author_controller.ts L905-L929",
+    "raw": "AC-05 [Proposed]: (Integration) Given a mapped attribute is visible in Full Tags View, Condition Attributes, and the Right Panel | When an administrator adds, changes, or removes its friendly name | Then rendered rows plus the open dropdown update before reload or panel reopen, and removal restores the AC-04 fallback | Evidence: Jira AC-05 GUIDES-49507 and commit 839d95b9 source file src/controllers/editor/xml_markup_author_controller.ts L905-L929.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-06",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a valid custom conditional attribute belongs to the active profile and schema",
+    "when": "its name is added to the supported conditional-attribute list",
+    "then": "the editor discovers it at runtime and shows its mapped or fallback label without a product-code change",
+    "evidence": "Jira AC-06 GUIDES-49507 and C:/starling/core/utils/src/main/java/com/adobe/fmdita/service/FetchCondAttrListService.java L27-L58",
+    "raw": "AC-06 [Proposed]: (Integration) Given a valid custom conditional attribute belongs to the active profile and schema | When its name is added to the supported conditional-attribute list | Then the editor discovers it at runtime and shows its mapped or fallback label without a product-code change | Evidence: Jira AC-06 GUIDES-49507 and C:/starling/core/utils/src/main/java/com/adobe/fmdita/service/FetchCondAttrListService.java L27-L58.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-07",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "two signed-in authors open topics governed by different active profiles",
+    "when": "each author views the same raw attribute",
+    "then": "each session shows the label from its topic's active profile without using the other profile's mapping",
+    "evidence": "Jira reviewer comment and C:/xmleditor/xmleditor/src/controllers/app_controller.ts L466-L471 for GUIDES-49507",
+    "raw": "AC-07 [Proposed]: (Integration) Given two signed-in authors open topics governed by different active profiles | When each author views the same raw attribute | Then each session shows the label from its topic's active profile without using the other profile's mapping | Evidence: Jira reviewer comment and C:/xmleditor/xmleditor/src/controllers/app_controller.ts L466-L471 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-08",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "Use only above attributes is enabled with configured valid choices",
+    "when": "an author opens Add Attribute for the selected element",
+    "then": "the list shows only choices that are both configured and valid for that element",
+    "evidence": "Jira reviewer comment and C:/xmleditor/xmleditor/src/model/other_attrs.ts L131-L143 for GUIDES-49507",
+    "raw": "AC-08 [Proposed]: (Integration) Given Use only above attributes is enabled with configured valid choices | When an author opens Add Attribute for the selected element | Then the list shows only choices that are both configured and valid for that element | Evidence: Jira reviewer comment and C:/xmleditor/xmleditor/src/model/other_attrs.ts L131-L143 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-09",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a topic already contains an attribute excluded by Use only above attributes",
+    "when": "an author reopens the topic with that setting enabled",
+    "then": "the existing attribute remains visible in the topic and present in its source XML",
+    "evidence": "Jira reviewer comment and C:/xmleditor/xmleditor/src/model/other_attrs.ts L131-L143 for GUIDES-49507",
+    "raw": "AC-09 [Proposed]: (Integration) Given a topic already contains an attribute excluded by Use only above attributes | When an author reopens the topic with that setting enabled | Then the existing attribute remains visible in the topic and present in its source XML | Evidence: Jira reviewer comment and C:/xmleditor/xmleditor/src/model/other_attrs.ts L131-L143 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-10",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a profile has saved friendly-name mappings before a supported AEM Guides upgrade",
+    "when": "an author opens the same topics after the upgrade",
+    "then": "the same labels and active-profile scope still apply",
+    "evidence": "Jira reviewer comment GUIDES-49507 and the inspected guides-ui-tests upgrade suite",
+    "raw": "AC-10 [Proposed]: (Integration) Given a profile has saved friendly-name mappings before a supported AEM Guides upgrade | When an author opens the same topics after the upgrade | Then the same labels and active-profile scope still apply | Evidence: Jira reviewer comment GUIDES-49507 and the inspected guides-ui-tests upgrade suite.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-11",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "element friendly names already work in Full Tags View and Quick Insert",
+    "when": "an administrator saves an attribute friendly-name change",
+    "then": "the existing element friendly names remain unchanged",
+    "evidence": "Jira reviewer comment and commit 839d95b9 source file src/controllers/editor/xml_markup_author_controller.ts L919-L928 for GUIDES-49507",
+    "raw": "AC-11 [Proposed]: (Negative) Given element friendly names already work in Full Tags View and Quick Insert | When an administrator saves an attribute friendly-name change | Then the existing element friendly names remain unchanged | Evidence: Jira reviewer comment and commit 839d95b9 source file src/controllers/editor/xml_markup_author_controller.ts L919-L928 for GUIDES-49507.",
+    "schema_version": "aem-guides-ac-v1"
+  }
+]

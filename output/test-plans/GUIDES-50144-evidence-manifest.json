@@ -1,0 +1,707 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-50144",
+    "summary": "[SLA3] AEM Guides custom Folder Profile requiring administrators group to add new users as Admin Users",
+    "status": "Stage",
+    "priority": "Critical",
+    "component": "Platform",
+    "customer": "Zebra Technologies",
+    "description": "Groups listed for the customer user during reproduction:\n1. authors\n2. Contributors\n3. AEM Administrators author Program 167205 Environment 1910614 (from product profile)\n4. folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)\n5. everyone\n6. AEM Assets Collaborator Users - Service\n7. AEM Sites Content Managers - Service\n8. AEM Administrators - Service\n9. Analytics Administrators",
+    "comments": [
+      {
+        "body": "The author RCA says a refactor removed the folder-admin authorization disjunct from FolderProfilesAPI.updateFolderProfile."
+      },
+      {
+        "body": "The review history says PR #8091 has unit-test coverage for the relevant scenarios."
+      }
+    ]
+  },
+  "generated_at": "2026-08-24T00:00:00+05:30",
+  "behaviour_matters": true,
+  "accepted_uac_present": false,
+  "source_acceptance_criteria": [
+    "AC-01: A user who is an Admin User on a non-global folder profile, but is not a member of AEM's local administrators group, can successfully add another user as an Admin User on that same folder profile, and the change is persisted and remains visible after a page refresh rather than only producing a success toast.",
+    "AC-02: The same folder-profile Admin User can successfully remove an existing Admin User from that folder profile, and the removal is persisted after refresh.",
+    "AC-03: A member of the local administrators group can still add and remove Admin Users on every non-global folder profile. Authorization behavior for the global folder profile remains exactly as before this fix and is not broadened by the non-global-profile change.",
+    "AC-04: For the global folder profile, a user who is only a folder-profile Admin User and is not a true global or local administrator cannot add or remove Admin Users; the restored permission check for non-global profiles does not grant global-profile administration.",
+    "AC-05: A user who is neither an Admin User for the target folder profile nor a member of the local administrators group cannot add or remove Admin Users. Stored membership remains unchanged, the API or client receives an explicit denial or non-success result rather than HTTP 200/true, and the UI does not display a success message."
+  ],
+  "attachments": [
+    {
+      "id": "19066177",
+      "filename": "authors-perm-dxml (1).png",
+      "downloaded_to": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/authors-perm-dxml (1).png",
+      "analyzed": true,
+      "note": "AEM Security shows the authors group selected. On the visible /var/dxml row, Read, Modify, Create, and Delete are checked; Read ACL, Edit ACL, and Replicate are not checked."
+    },
+    {
+      "id": "19066176",
+      "filename": "my-perm-dxml (1).png",
+      "downloaded_to": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/my-perm-dxml (1).png",
+      "analyzed": true,
+      "note": "AEM Security shows Aryan Shekhar selected. On the visible /var/dxml row, Read, Modify, Create, Delete, Read ACL, Edit ACL, and Replicate are checked, with asterisks marking several inherited entries."
+    },
+    {
+      "id": "19066178",
+      "filename": "recording-with-and-without-administartor-grp.zip",
+      "downloaded_to": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording-with-and-without-administartor-grp.zip",
+      "analyzed": true,
+      "extracted_to": [
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/with-administrator-grp.mp4",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/without-administartor-grp.mp4",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/with-administrator-grp-frame-1.png",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/with-administrator-grp-frame-2.png",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/with-administrator-grp-frame-3.png",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/without-administartor-grp-frame-1.png",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/without-administartor-grp-frame-2.png",
+        "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/evidence/GUIDES-50144/recording/without-administartor-grp-frame-3.png"
+      ],
+      "note": "The archive contains clips labelled with and without the administrators group. Extracted with-group frames show the Folder Profiles Create control and the target profile read view listing Aryan Shekhar, Preety Sohal, Kunal Singla, and Kunal Gautam. Extracted without-group frames show the target profile edit view listing Aryan Shekhar, Kunal Singla, and Kunal Gautam before returning to the Folder Profiles list; Preety Sohal is absent. This corroborates the role-dependent saved-membership contrast but does not establish the exact HTTP denial status or body."
+    }
+  ],
+  "attachment_inventory_note": "All three live Jira attachments were downloaded and analyzed. The recording archive was extracted into labelled with-group and without-group clips plus representative frames.",
+  "evidence_preflight": {
+    "mode": "full",
+    "checked_at": "2026-08-24T00:00:00+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "available",
+        "checked_via": "check_rag_status call and four ask_dita_expert probes succeeded",
+        "reason": ""
+      },
+      "jira_history": {
+        "status": "available",
+        "checked_via": "two search_jira_history queries succeeded",
+        "reason": ""
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "Dataset Studio Jira issue and comment fetch succeeded; JiraClient field inspection returned the current AC field",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "local product and automation clones, captured refs, commit history, and PR diff were inspected without mutation",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "Jira and diff inspection",
+        "reason": "The change is a backend authorization correction with no new visual design."
+      }
+    },
+    "readiness_impact": "none",
+    "readiness_impact_reason": "",
+    "claim_restrictions": [
+      "Git refs were inspected without a network fetch, so current-remote claims are limited to captured SHAs and local refs.",
+      "The attachments corroborate the visible permission and saved-membership contrast; exact authorization predicates and response semantics remain grounded in Jira, the PR diff, and inspected code."
+    ]
+  },
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "Can a non-global AEM Guides Folder Profile Admin User add or remove other Admin Users without belonging to AEM's local administrators group? Describe authorization and persistence.",
+    "What is the authorization difference among a delegated Folder Profile Admin User, a member of the local administrators group, and an unauthorized author when updating Admin Users?",
+    "When a Folder Profile is created, how is its admin group named and how are Admin Users added to or removed from that group?",
+    "In Folder Profile settings, which role can edit the Admin Users field, and is that role limited to the target non-global profile?"
+  ],
+  "rag_findings": {
+    "accepted": [
+      {
+        "finding": "A Folder Profile exposes an Admin Users setting and delegates administration of conditional attributes, templates, and output presets within the profile's scope.",
+        "source": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/global-folder-profiles/conf-profiles"
+      },
+      {
+        "finding": "Folder-level profiles are narrower than global administration.",
+        "source": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/global-folder-profiles-cs/conf-folder-level"
+      }
+    ],
+    "rejected": [
+      "RAG did not explicitly prove that a delegated Folder Profile Admin User may change the Admin Users list without local administrators membership.",
+      "The group-provisioning probe returned irrelevant DITA identifier material and a follow-up did not document the folderprofile-<id> implementation; inspected code is authoritative for that rule."
+    ]
+  },
+  "jira_history_tool": "search_jira_history",
+  "jira_history_queries": [
+    {
+      "scope": "same_customer",
+      "query": "delegated folder profile admin user update is reported successful but membership is not persisted without local administrators group",
+      "component": "Platform",
+      "customer": "Zebra Technologies",
+      "result_count": 0
+    },
+    {
+      "scope": "cross_customer",
+      "query": "FolderProfilesAPI missing authorization disjunct causes false success for Admin Users membership update",
+      "component": "Platform",
+      "result_count": 0
+    }
+  ],
+  "indexed_history_run": true,
+  "evidence_graph": {
+    "requested": true,
+    "tool": "query_test_evidence_graph",
+    "status": "disabled",
+    "influence_mode": "shadow",
+    "used_for_plan": false,
+    "degraded_reason": "The evidence graph was disabled in this Dataset Studio runtime.",
+    "response_fingerprint": "sha256:1c4f4689b2a27d2f75fed562bd9021c2c08bf9aaea4fd3a874e34a27f246648d",
+    "queries": [
+      {
+        "query": "same authorization mechanism, false-success symptom, and folder-profile group persistence",
+        "duration_ms": 14,
+        "cache_hit": false,
+        "path_ids": [],
+        "leaf_citations": []
+      }
+    ]
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "not_required",
+    "risk_rating": "low",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "absent",
+        "finding": "The Jira and diff concern one profile-membership authorization decision and provide no volume-growth mechanism.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144",
+          "commit eac2c72512306061d2110b02e03d28197eadeecf"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "absent",
+        "finding": "No concurrent caller, locking, or contention behavior is reported or changed.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144",
+          "commit eac2c72512306061d2110b02e03d28197eadeecf"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "absent",
+        "finding": "The update is one synchronous request and no repeated or long-running workload is reported.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144",
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfileServlet.java:79-92"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "absent",
+        "finding": "The customer reports incorrect authorization and persistence, not latency, timeout, or throughput degradation.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "absent",
+        "finding": "No resource-consumption or storage-growth mechanism appears in the request or final diff.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144",
+          "commit eac2c72512306061d2110b02e03d28197eadeecf"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "absent",
+        "finding": "The inspected request path has no queue or external-service dependency in the affected decision.",
+        "evidence_refs": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:619-650"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "absent",
+        "finding": "The missed membership write is a functional authorization defect; no accumulating stale-state or cleanup cost is reported.",
+        "evidence_refs": [
+          "Jira description GUIDES-50144",
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1121-1171"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "One Admin Users update for one Folder Profile.",
+      "cardinality": "One target profile and a small explicit user list.",
+      "concurrency": "One caller; no concurrent behavior is in evidence.",
+      "repetition": "One add or remove action per functional scenario.",
+      "duration": "One synchronous HTTP request followed by a fresh read."
+    },
+    "metrics": [],
+    "oracle": {
+      "status": "not_applicable",
+      "source_ref": "Jira description GUIDES-50144 and commit eac2c72512306061d2110b02e03d28197eadeecf",
+      "thresholds": []
+    },
+    "test_types": [],
+    "performance_ac_ids": [],
+    "historical_contracts": [],
+    "rationale": "No evidence-backed scale, contention, duration, latency, resource, dependency, or accumulating-state mechanism exists, so a dedicated performance acceptance criterion would add unrelated scope."
+  },
+  "clones": [
+    {
+      "path": "C:/starling",
+      "branch": "develop",
+      "sha": "fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f",
+      "inspected_ref": "origin/develop@69a98eab3948e98aa78684276be7d37fe30b39ea",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only task: no fetch or stash was permitted. The local origin/develop ref contains merged commit eac2c72512306061d2110b02e03d28197eadeecf; the worktree is 0 ahead and 1230 behind that local upstream and has preserved pre-existing changes."
+    },
+    {
+      "path": "C:/xmleditor/xmleditor",
+      "branch": "develop",
+      "sha": "1f8e3996e40ea4c55cea2e11c52d7ddb6f58b09a",
+      "inspected_ref": "origin/develop@85574ec9f6a25ea82ef97f19b83b2f66e0cd90bb",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only inspection only; 0 ahead and 1777 behind the captured local upstream with pre-existing untracked files preserved."
+    },
+    {
+      "path": "C:/ui_framework/new_editor/guides-ui-tests",
+      "branch": "develop",
+      "sha": "bf5dca679ec84f6128d4fe8d9b3b12201e2cc5bb",
+      "inspected_ref": "origin/develop@aad3131e89a3211e87c4ebfc9b5de70bd3c02e32",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only inspection only; 0 ahead and 1000 behind the captured local upstream with pre-existing changes preserved."
+    },
+    {
+      "path": "C:/api automation/dxml-it-tests",
+      "branch": "fix-changebars-nativepdf-lapwing-benchmark",
+      "sha": "46709a94fbf357a6277f780202401149c5820054",
+      "inspected_ref": "origin/fix-changebars-nativepdf-lapwing-benchmark@465791fb31045f8b449ba6d95148afee5a8486f8",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only inspection only; 2 ahead and 0 behind the captured local upstream with pre-existing untracked files preserved."
+    }
+  ],
+  "behavior_model": {
+    "trigger": [
+      "A caller submits UPDATEFOLDERPROFILE with a changed Admin Users list."
+    ],
+    "operations": [
+      "Resolve the caller's local-administrator and target-profile roles.",
+      "Apply the non-global authorization gate.",
+      "Synchronize the profile's declared group members.",
+      "Save the profile and return the HTTP result."
+    ],
+    "inputs": [
+      "remote user identity",
+      "target profile ID",
+      "submitted Admin Users list"
+    ],
+    "outputs": [
+      "saved profile users",
+      "declared folder-profile group membership",
+      "HTTP response and UI message"
+    ],
+    "affected_state": [
+      "Folder Profile Admin Users membership"
+    ],
+    "producers": [
+      "FolderProfileService.createGroup creates the profile group."
+    ],
+    "processors": [
+      "FolderProfilesAPI.updateFolderProfile",
+      "FolderProfileService.updateUsers"
+    ],
+    "consumers": [
+      "Folder Profile settings UI",
+      "GETFOLDERPROFILEBYID clients",
+      "repository group membership checks"
+    ],
+    "write_paths": [
+      "FolderProfileService.createGroup initializes the group and its members.",
+      "FolderProfileService.updateUsers writes declared group membership.",
+      "FolderProfileService.saveToPath saves the profile."
+    ],
+    "read_paths": [
+      "ACLUtils.isAdmin reads repository-admin or administrators-group membership.",
+      "ACLUtils.isGroupMember reads the target profile group membership."
+    ],
+    "update_paths": [
+      "FolderProfilesAPI.updateProfileAndUsers calls FolderProfileService.updateUsers for an allowed non-global update."
+    ],
+    "constraints": [
+      "The delegated path must never apply to global-profile.",
+      "Only the exact target profile group or exact local administrators role authorizes a non-global users write."
+    ],
+    "unknowns": [
+      "The approved HTTP status and response body for AC-05 are not specified.",
+      "The first Stage build containing the merged commit is not identified."
+    ],
+    "evidence_ids": [
+      "E-JIRA-AC",
+      "E-CODE-AUTH",
+      "E-CODE-GROUP",
+      "E-PR-8091"
+    ],
+    "facts": [
+      {
+        "fact": "The local administrator check uses repository admin identity or exact administrators-group membership.",
+        "evidence_ids": [
+          "E-CODE-AUTH"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1.0
+      },
+      {
+        "fact": "The profile admin check uses exact membership in the target profile group.",
+        "evidence_ids": [
+          "E-CODE-AUTH"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1.0
+      },
+      {
+        "fact": "The final PR restores the delegated role for non-global user writes but leaves the unauthorized response path unchanged.",
+        "evidence_ids": [
+          "E-PR-8091",
+          "E-CODE-RESPONSE"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1.0
+      }
+    ],
+    "behavior_chains": [
+      [
+        "UPDATEFOLDERPROFILE request",
+        "role checks",
+        "non-global users-write gate",
+        "group membership synchronization",
+        "profile save",
+        "HTTP result",
+        "UI message"
+      ]
+    ],
+    "confidence": 0.96
+  },
+  "implementation_grounding": {
+    "active": true,
+    "named_artifacts": [
+      {
+        "artifact": "/bin/fmdita/folderprofiles operation UPDATEFOLDERPROFILE",
+        "kind": "operation",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfileServlet.java:79-92"
+        ],
+        "premise": "The servlet routes UPDATEFOLDERPROFILE into FolderProfilesAPI.updateFolderProfile using the service resolver.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "FolderProfilesAPI.updateFolderProfile",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:619-650",
+          "commit eac2c72512306061d2110b02e03d28197eadeecf"
+        ],
+        "premise": "The pre-fix users-write gate omitted the target Folder Profile admin role, and PR #8091 restores it only for non-global profiles.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "ACLUtils.isAdmin and ACLUtils.isGroupMember",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-356"
+        ],
+        "premise": "Local administrators and target-profile group members are separate authorization predicates.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "FolderProfileService.createGroup and FolderProfileService.updateUsers",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1083-1171"
+        ],
+        "premise": "Folder Profile Admin Users are implemented through the stored profile group and declared membership synchronization.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "FolderProfilesAPI.saveProfileChanges",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:649-650",
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:853-862"
+        ],
+        "premise": "A fully unauthorized caller still receives HTTP 200 with true after its Admin Users mutation is skipped.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "ajaxEditProfile response handling",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/AEM6.x/repo/jcr_root/libs/fmdita/clientlibs/folderprofiles/js/main.js:233-249",
+          "C:/starling/AEM6.x/repo/jcr_root/libs/fmdita/clientlibs/folderprofiles/js/main.js:624-632"
+        ],
+        "premise": "The UI shows Profile Saved for a successful HTTP response and an error only for a failed response.",
+        "premise_verified": true,
+        "premise_holds": true
+      }
+    ]
+  },
+  "feature_classification": {
+    "schema_version": "aem-guides-feature-classification-v1",
+    "classes": [
+      "access_control"
+    ],
+    "rationale": "Every acceptance contract depends on the caller's exact role and target Folder Profile group membership, and the reported defect is a missing authorization predicate.",
+    "evidence": [
+      "Jira: GUIDES-50144 acceptance criteria field",
+      "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:619-650",
+      "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-356"
+    ]
+  },
+  "role_provisioning": {
+    "schema_version": "aem-guides-role-provisioning-v1",
+    "actors": [
+      {
+        "actor_id": "delegated-folder-profile-admin",
+        "label": "delegated folder-profile admin",
+        "privilege_class": "DELEGATED",
+        "grant_groups": [
+          "authors",
+          "folderprofile-<target-profile-id>"
+        ],
+        "withhold_groups": [
+          "administrators"
+        ],
+        "auto_added_groups": [
+          "folderprofile-<target-profile-id>"
+        ],
+        "grounding": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:639-646",
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1083-1098"
+        ],
+        "maps_to_acs": [
+          "AC-01",
+          "AC-02",
+          "AC-04"
+        ]
+      },
+      {
+        "actor_id": "aem-admin-group-member",
+        "label": "member of administrators group",
+        "privilege_class": "FULL_ADMIN",
+        "grant_groups": [
+          "administrators"
+        ],
+        "withhold_groups": [],
+        "auto_added_groups": "none",
+        "grounding": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-327"
+        ],
+        "maps_to_acs": [
+          "AC-03"
+        ]
+      },
+      {
+        "actor_id": "unauthorized-user",
+        "label": "unauthorized user",
+        "privilege_class": "NON_ADMIN",
+        "grant_groups": [
+          "authors",
+          "Contributors",
+          "AEM Administrators author Program 167205 Environment 1910614",
+          "everyone",
+          "AEM Assets Collaborator Users - Service",
+          "AEM Sites Content Managers - Service",
+          "AEM Administrators - Service",
+          "Analytics Administrators"
+        ],
+        "withhold_groups": [
+          "administrators",
+          "folderprofile-<target-profile-id>"
+        ],
+        "auto_added_groups": "none",
+        "grounding": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-356",
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:639-650"
+        ],
+        "maps_to_acs": [
+          "AC-05"
+        ]
+      },
+      {
+        "actor_id": "candidate-user",
+        "label": "candidate user",
+        "privilege_class": "NON_ADMIN",
+        "grant_groups": [
+          "authors"
+        ],
+        "withhold_groups": [
+          "administrators",
+          "folderprofile-<target-profile-id> before AC-01"
+        ],
+        "auto_added_groups": [
+          "folderprofile-<target-profile-id> after AC-01"
+        ],
+        "grounding": [
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1121-1171"
+        ],
+        "maps_to_acs": [
+          "AC-01",
+          "AC-02"
+        ]
+      }
+    ]
+  },
+  "comment_claims": [
+    {
+      "claim": "The root cause is a refactor that removed the Folder Profile admin disjunct from the users-write authorization gate.",
+      "comment_source": "author_rca",
+      "verification_status": "VERIFIED_TRUE",
+      "evidence_ids": [
+        "E-PR-8091",
+        "E-CODE-AUTH"
+      ]
+    },
+    {
+      "claim": "PR #8091 includes unit-test coverage for the relevant delegated and global-profile scenarios.",
+      "comment_source": "reviewer_finding",
+      "verification_status": "STALE_SUPERSEDED",
+      "evidence_ids": [
+        "commit 7f991b0ec1 added the tests",
+        "commit 0877924f56 removed the tests",
+        "commit eac2c72512306061d2110b02e03d28197eadeecf contains only FolderProfilesAPI.java"
+      ]
+    }
+  ],
+  "pr_references": [
+    {
+      "pr_ref": "AdobeStarling/starling#8091",
+      "status": "AUTHORITATIVE"
+    }
+  ],
+  "scope_conflict": {
+    "active": true,
+    "problem_threads": [
+      {
+        "thread_id": "PT-01",
+        "problem_statement": "Delegated Folder Profile admins cannot persist add or remove changes for non-global profile Admin Users.",
+        "status": "CURRENT_FIX",
+        "maps_to_ac": [
+          "AC-01",
+          "AC-02",
+          "AC-03",
+          "AC-04"
+        ]
+      },
+      {
+        "thread_id": "PT-02",
+        "problem_statement": "A fully unauthorized caller receives HTTP 200/true and a success message instead of an explicit denial.",
+        "status": "PROPOSED",
+        "maps_to_ac": [
+          "AC-05"
+        ]
+      }
+    ],
+    "alignment": "PARTIAL_SCOPE_FIX",
+    "open_question_refs": [
+      "OQ-01"
+    ]
+  },
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": true,
+    "source_ref": "Jira description GUIDES-50144, Groups my user was part of while reproducing this issue",
+    "source_item_count": 9,
+    "source_complete": true,
+    "items": [
+      {
+        "id": "REQ-01",
+        "source_index": 1,
+        "text": "authors",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      },
+      {
+        "id": "REQ-02",
+        "source_index": 2,
+        "text": "Contributors",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      },
+      {
+        "id": "REQ-03",
+        "source_index": 3,
+        "text": "AEM Administrators author Program 167205 Environment 1910614 (from product profile)",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained as a similarly named non-authorizing group."
+      },
+      {
+        "id": "REQ-04",
+        "source_index": 4,
+        "text": "folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained as the auto-added target-profile group."
+      },
+      {
+        "id": "REQ-05",
+        "source_index": 5,
+        "text": "everyone",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      },
+      {
+        "id": "REQ-06",
+        "source_index": 6,
+        "text": "AEM Assets Collaborator Users - Service",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      },
+      {
+        "id": "REQ-07",
+        "source_index": 7,
+        "text": "AEM Sites Content Managers - Service",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      },
+      {
+        "id": "REQ-08",
+        "source_index": 8,
+        "text": "AEM Administrators - Service",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained as a similarly named non-authorizing group."
+      },
+      {
+        "id": "REQ-09",
+        "source_index": 9,
+        "text": "Analytics Administrators",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Customer actor setup evidence, not a separate product acceptance outcome; retained in the actor matrix."
+      }
+    ],
+    "shared_contract_justifications": {}
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": false,
+    "reason": "The affected behavior is one synchronous Folder Profile update request, not an operational maintenance or background-processing workflow."
+  },
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Which HTTP status and response body must replace HTTP 200/true for an unauthorized Admin Users update, and will that correction be added to PR #8091 or a linked fix?",
+      "qa_impact": "This decides the exact API assertion for AC-05 and whether the current Stage candidate can pass sign-off."
+    },
+    {
+      "id": "OQ-02",
+      "question": "Which AEM Guides Stage build first contains commit eac2c72512306061d2110b02e03d28197eadeecf?",
+      "qa_impact": "This identifies the first build on which all five authorization scenarios must be executed."
+    }
+  ]
+}
