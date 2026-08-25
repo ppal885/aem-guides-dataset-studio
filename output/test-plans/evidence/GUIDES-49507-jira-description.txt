@@ -1,0 +1,3 @@
+Full Tags View shows the original attribute name instead of the configured friendly name.
+The Condition Attributes panel does not show the configured friendly name.
+The Right Panel loses the friendly name after the attribute is applied.

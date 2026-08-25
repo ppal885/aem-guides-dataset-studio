@@ -1,0 +1,10 @@
+AC-04: For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.
+AC-05: When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.
+AC-06: This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.
+Missing AC: Verify friendly names are applied for the logged-in user, as this is a user-level setting.
+Missing AC: Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.
+Missing AC: Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.
+Missing AC: Verify the existing friendly-name functionality for elements is not affected.
+Open question: For condition presets, should friendly attribute names be displayed when configured?
+Open question: In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?
+Open question: In Preview mode, should attributes use their raw names or configured friendly names?

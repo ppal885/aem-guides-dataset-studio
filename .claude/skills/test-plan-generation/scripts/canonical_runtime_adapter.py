@@ -8,11 +8,26 @@ import hashlib
 import json
 import os
 import sys
+import importlib.util
 from pathlib import Path
 
 
 RECEIPT_SCHEMA = "aem-guides-gate-receipt-v1"
 REQUIRED_ARTIFACTS = ("plan", "manifest", "combined", "compact", "extracted_acs")
+
+
+def _load(module_name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(
+        module_name, Path(__file__).with_name(filename)
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+skill_fingerprint_mod = _load(
+    "skill_bundle_fingerprint_for_adapter", "skill_bundle_fingerprint.py"
+)
 
 
 def _repository_root(explicit: str | None = None) -> Path:
@@ -48,6 +63,7 @@ def verify_receipt(
     jira_key: str,
     plan_path: Path,
     manifest_path: Path,
+    skill_root: Path | None = None,
 ) -> dict:
     receipt_file = receipt_file.resolve()
     receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
@@ -57,6 +73,15 @@ def verify_receipt(
         raise ValueError("receipt must record passed=true and postable=true")
     if str(receipt.get("issue", "")).upper() != jira_key.upper():
         raise ValueError("receipt issue does not match --jira-key")
+
+    executing_skill_root = (
+        skill_root.resolve()
+        if skill_root is not None
+        else Path(__file__).resolve().parent.parent
+    )
+    skill_fingerprint_mod.verify(
+        receipt.get("validator"), expected_root=executing_skill_root
+    )
 
     artifacts = receipt.get("artifacts")
     if not isinstance(artifacts, dict):

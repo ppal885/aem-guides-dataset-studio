@@ -20,6 +20,16 @@ DISPOSITIONS = ("COVERED_BY_AC", "OPEN_QUESTION", "OUT_OF_SCOPE")
 CONFIG_SCOPES = ("USER", "GLOBAL", "FOLDER", "OTHER")
 CATALOG_PATH = Path(__file__).with_name("data") / "ui_surface_catalog.json"
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_CODE_FILE_LINE_RE = re.compile(
+    r"^(?:[A-Za-z]:)?[\\/]?(?:[^:\\/\r\n]+[\\/])*"
+    r"[^:\\/\r\n]+\.(?:"
+    r"c|cc|cfg|conf|config|cpp|css|csv|go|groovy|h|hpp|html|ini|java|js|"
+    r"json|jsx|jsp|kt|kts|less|php|properties|py|rb|rs|scss|sh|sql|ts|"
+    r"tsx|xml|yaml|yml"
+    r"):[1-9]\d*(?:-[1-9]\d*)?$",
+    re.I,
+)
+_CHUNK_ID_RE = re.compile(r"^chunk_id:[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
 
 def _load_catalog(path=None):
@@ -51,6 +61,28 @@ def _valid_grounding(value) -> bool:
         or re.match(r"(?i)^RAG:", item)
         for item in cleaned
     )
+
+
+def _valid_edge_source(value) -> bool:
+    text = str(value).strip() if isinstance(value, str) else ""
+    return bool(_CODE_FILE_LINE_RE.fullmatch(text) or _CHUNK_ID_RE.fullmatch(text))
+
+
+def _normalise_surface(value) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def _disposition_signature(entry):
+    if not isinstance(entry, dict):
+        return None
+    disposition = entry.get("disposition")
+    if disposition == "COVERED_BY_AC":
+        return disposition, str(entry.get("ac_ref", "")).strip()
+    if disposition == "OPEN_QUESTION":
+        return disposition, str(entry.get("open_question_ref", "")).strip()
+    if disposition == "OUT_OF_SCOPE":
+        return disposition, ""
+    return None
 
 
 def _validate_disposition(entry, tag, *, ac_ids, open_question_ids, allow_out=True):
@@ -206,6 +238,82 @@ def validate_ui_surface_scope(
     return problems, notes
 
 
+def validate_consumer_edges(
+    block,
+    edges,
+    *,
+    ac_ids=None,
+    open_question_ids=None,
+    plan_text="",
+    catalog_path=None,
+):
+    """Cross-check declared UI surfaces against grounded CONSUMER edges.
+
+    Base block and catalog validation remains unchanged. This umbrella helper
+    additionally proves that every declared render surface is represented by a
+    CONSUMER edge with the same disposition and AC/Open Question reference.
+    It can validate only the direct edges supplied by traversal; an indirect or
+    undiscovered UI consumer cannot be inferred here.
+    """
+    problems, notes = validate_ui_surface_scope(
+        block,
+        ac_ids=ac_ids,
+        open_question_ids=open_question_ids,
+        plan_text=plan_text,
+        catalog_path=catalog_path,
+    )
+    problems = list(problems)
+    notes = list(notes)
+    if not isinstance(block, dict):
+        return problems, notes
+    surfaces = block.get("render_surfaces")
+    if not isinstance(surfaces, list) or not surfaces:
+        return problems, notes
+    if not isinstance(edges, list):
+        problems.append("relationship edges must be a list for UI CONSUMER validation")
+        return problems, notes
+
+    consumers = []
+    for edge_index, edge in enumerate(edges):
+        if isinstance(edge, dict) and edge.get("relation_type") == "CONSUMER":
+            consumers.append((edge_index, edge))
+
+    for surface_index, surface_entry in enumerate(surfaces):
+        if not isinstance(surface_entry, dict):
+            continue
+        surface = str(surface_entry.get("surface", "")).strip()
+        normalized = _normalise_surface(surface)
+        if not normalized:
+            continue
+        matches = [
+            (edge_index, edge)
+            for edge_index, edge in consumers
+            if _normalise_surface(edge.get("neighbor", "")) == normalized
+        ]
+        surface_tag = f"ui_surface_scope.render_surfaces[{surface_index}]"
+        if not matches:
+            problems.append(
+                f"{surface_tag} surface {surface!r} has no matching CONSUMER edge"
+            )
+            continue
+
+        expected_signature = _disposition_signature(surface_entry)
+        for edge_index, edge in matches:
+            edge_tag = f"construct_relationships.edges[{edge_index}]"
+            if not _valid_edge_source(edge.get("source")):
+                problems.append(
+                    f"{edge_tag}.source for UI surface {surface!r} must be a code "
+                    "file:line or chunk_id:<id> citation"
+                )
+            actual_signature = _disposition_signature(edge)
+            if actual_signature != expected_signature:
+                problems.append(
+                    f"{edge_tag} disposition/reference does not match {surface_tag} "
+                    f"for surface {surface!r}"
+                )
+    return problems, notes
+
+
 def add_catalog_surface(construct_type, surface, *, catalog_path=None):
     """Append one normalized-unique surface; return True only when the file changed."""
     slug = str(construct_type).strip()
@@ -232,3 +340,82 @@ def add_catalog_surface(construct_type, surface, *, catalog_path=None):
         temporary = Path(handle.name)
     temporary.replace(path)
     return True
+
+
+def _run_self_tests():
+    catalog, error = _load_catalog()
+    assert not error
+    construct_type = next(iter(catalog))
+    surfaces = catalog[construct_type]
+    last_surface = surfaces[-1]
+    block = {
+        "schema_version": SCHEMA_VERSION,
+        "construct_type": construct_type,
+        "render_surfaces": [
+            {
+                "surface": surface,
+                "disposition": "COVERED_BY_AC",
+                "ac_ref": "AC-01",
+            }
+            for surface in surfaces
+        ],
+        "config_scope": {
+            "scope": "USER",
+            "disposition": "COVERED_BY_AC",
+            "ac_ref": "AC-01",
+        },
+        "upgrade_persistence": {
+            "disposition": "COVERED_BY_AC",
+            "ac_ref": "AC-01",
+        },
+        "sibling_regression": {
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "No sibling construct is affected by this isolated fixture.",
+        },
+        "surfaces_grounding": ["C:/repo/rendering.ts:42"],
+    }
+    edges = [
+        {
+            "relation_type": "CONSUMER",
+            "neighbor": surface,
+            "source": (
+                "chunk_id:ui_surface_catalog_tail"
+                if surface == last_surface
+                else "C:/repo/rendering.ts:42"
+            ),
+            "disposition": "COVERED_BY_AC",
+            "ac_ref": "AC-01",
+        }
+        for surface in surfaces
+    ]
+    failures, _ = validate_consumer_edges(
+        block, edges, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    assert failures == []
+
+    failures, _ = validate_consumer_edges(
+        block, edges[:-1], ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    assert any(
+        last_surface in problem and "no matching CONSUMER" in problem
+        for problem in failures
+    )
+
+    invalid_source = [dict(edge) for edge in edges]
+    invalid_source[0]["source"] = "Jira: remembered UI"
+    failures, _ = validate_consumer_edges(
+        block, invalid_source, ac_ids={"AC-01"}, open_question_ids=set()
+    )
+    assert any("must be a code file:line or chunk_id:<id>" in problem for problem in failures)
+
+    mismatched = [dict(edge) for edge in edges]
+    mismatched[0]["ac_ref"] = "AC-02"
+    failures, _ = validate_consumer_edges(
+        block, mismatched, ac_ids={"AC-01", "AC-02"}, open_question_ids=set()
+    )
+    assert any("disposition/reference does not match" in problem for problem in failures)
+
+
+if __name__ == "__main__":
+    _run_self_tests()
+    print("UI SURFACE SCOPE SELF-TESTS PASSED")

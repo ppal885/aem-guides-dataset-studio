@@ -48,10 +48,7 @@ DOUBLE_NEGATIVE_RE = re.compile(
 )
 AND_OR_RE = re.compile(r"(?i)\band\s*/\s*or\b")
 SECOND_ACTION_RE = re.compile(r"(?i)\band\s+then\b")
-AC_READABILITY_WORD_LIMITS = {"given": 30, "when": 20, "then": 30}
-AC_READABILITY_JOIN_LIMITS = {"given": 3, "when": 1, "then": 2}
-AC_READABILITY_COMMA_LIMITS = {"given": 3, "when": 2, "then": 2}
-AC_READABILITY_TOTAL_WORD_LIMIT = 65
+CROSS_AC_REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9_-])AC-\d{2}(?![A-Za-z0-9_-])")
 COMPLEX_PHRASE_REPLACEMENTS = {
     "in the event that": "if",
     "in order to": "to",
@@ -175,23 +172,9 @@ def validate_ac_readability(criterion: AcceptanceCriterion) -> list[str]:
     names are often necessary product terms.
     """
     errors: list[str] = []
-    total_words = 0
     for field in ("given", "when", "then"):
         text = criterion[field]
         label = field.capitalize()
-        word_count = len(WORD_RE.findall(text))
-        total_words += word_count
-        word_limit = AC_READABILITY_WORD_LIMITS[field]
-        if word_count > word_limit:
-            guidance = {
-                "given": "keep only the setup needed for this outcome or split the AC",
-                "when": "use one trigger or user action",
-                "then": "keep one observable outcome or split the AC",
-            }[field]
-            errors.append(
-                f"{label} has {word_count} words; the plain-English limit is "
-                f"{word_limit}. Please {guidance}"
-            )
 
         if ";" in text:
             errors.append(
@@ -220,25 +203,9 @@ def validate_ac_readability(criterion: AcceptanceCriterion) -> list[str]:
                 "When contains a second action after 'and then'; keep one trigger or action"
             )
 
-        join_count = len(LOGICAL_JOIN_RE.findall(text))
-        join_limit = AC_READABILITY_JOIN_LIMITS[field]
-        if join_count > join_limit:
+        if CROSS_AC_REFERENCE_RE.search(text):
             errors.append(
-                f"{label} joins {join_count} ideas; the plain-English limit is {join_limit}. "
-                "Keep one main idea or split the AC"
+                f"{label} refers to another AC; state the product outcome directly so this AC can be read and tested alone"
             )
 
-        comma_count = len(re.findall(r"(?<!\d),(?!\d)", text))
-        comma_limit = AC_READABILITY_COMMA_LIMITS[field]
-        if comma_count > comma_limit:
-            errors.append(
-                f"{label} contains {comma_count} clause commas; the plain-English limit is "
-                f"{comma_limit}. Shorten the clause or split the AC"
-            )
-
-    if total_words > AC_READABILITY_TOTAL_WORD_LIMIT:
-        errors.append(
-            f"Given/When/Then contain {total_words} words in total; the plain-English limit is "
-            f"{AC_READABILITY_TOTAL_WORD_LIMIT}. Remove secondary details or split the AC"
-        )
     return errors

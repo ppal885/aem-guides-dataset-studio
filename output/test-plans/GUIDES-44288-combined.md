@@ -1,57 +1,93 @@
 **Understanding From Jira**
-- Issue understood: When a map is published, the DITA-OT generation log (the error/output log that DITA-OT writes for that publish) is written twice to the same log line during `PublishWorkflowStep`, once from the output-generation step and again from the metadata-storage step right after it.
-- Why it matters: Major customer-reported (EY) issue - EY forwards these logs to their own logging system (Splunk/ELK) and publishes in bulk (2,000-3,000 documents at once), so the duplication doubles log volume and makes automated log analysis harder; reproduced on both the current release and AEM Guides 5.0.
-- Requested outcome: Each DITA-OT generation log line for a single publish must be written exactly once to the log, with no change to the log's content, retained log data on the output history record, or existing successful-publish behaviour.
-- Lifecycle understood as: Implementation Review - PR `starling#8089` exists and its exact diff was inspected directly against `origin/develop` via the fetched crosshair investigation branch (branch content matches the current PR head byte-for-byte, confirmed by an empty diff between them).
-- Evidence boundary: Live Jira fetched via the backend JiraClient (Jira MCP OAuth unavailable) including all 8 comments; no attachments on this ticket. The Starling clone at `C:\starling` was freshly fetched this pass (not stale) and the PR diff was read directly from the synced remote branch. RAG found only general DITA-OT and logging documentation, not this internal log-emission bug, so `behaviour_matters` is set false with a reason - this is a pure internal duplicate-log-call defect with no DITA/UI/API contract to ground in product documentation.
+- Issue understood: One publish writes the same DITA-OT generation log twice because PublishWorkflowStep logs it after generation and again after storing output metadata.
+- Why it matters: Customer context resolved from Jira: EY forwards these logs to Splunk or ELK and can publish 2,000-3,000 documents in one bulk action, so duplicate entries increase log volume and make automated analysis harder.
+- Requested outcome: Write one application-log entry for each DITA-OT generation log while keeping its text, the publish result, the published path, and saved output-history data unchanged.
+- Lifecycle understood as: Implementation Review for AdobeStarling/starling PR #8089 at captured commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c.
+- Evidence boundary: Evidence mode: full. Live Jira and all eight comments were previously fetched, product RAG and indexed Jira history were queried, the PR branch and Starling source were inspected, and both automation clones were searched in this pass. Jira has no attachments, Figma is not applicable, and the performance threshold remains unresolved in OQ-01.
 
 **Acceptance Criteria**
-- AC-01: When a single map is published successfully, the DITA-OT generation log (returned by the output-generation step) is written to the application/system log exactly once, not twice.
-- AC-02: When the downstream step after output generation fails (for example an error while writing the page/PDF metadata), the DITA-OT generation log is still written to the log exactly once - the fix must not cause the log to be dropped entirely on a downstream failure.
-- AC-03: The content of the logged DITA-OT generation log line is unchanged by the fix - only the duplicate emission is removed, not the log's data or format.
-- AC-04: Removing the duplicate log call does not change the publish job's success/failure outcome, the published output path, or any output-history metadata written for the job.
+- AC-01 [Proposed]: (Basic) Given one map completes output generation | When its publish result is processed | Then the application log contains exactly one matching DITA-OT generation entry | Evidence: Jira description GUIDES-44288 and source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501,923-925.
+- AC-02 [Proposed]: (Negative) Given output generation returns a DITA-OT log before a later publish step fails | When the publish ends with that later failure | Then the application log still contains exactly one matching DITA-OT generation entry | Evidence: commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c and its inspected unit-test change.
+- AC-03 [Proposed]: (Integration) Given output generation returns a known DITA-OT log | When that log is written to the application log | Then its single entry contains the complete returned text | Evidence: source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c.
+- AC-04 [Proposed]: (Integration) Given a valid map and preset have a saved before-fix baseline | When the same map is published after the fix | Then its result and saved output details match the baseline | Evidence: source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:887-925 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c.
 
 **Expected Behaviour**
-- From Jira (verified): the reported behaviour is that `log.info(publishOutput.getErrorLog())` runs twice for one publish - once already inside output generation and a second, redundant time inside `storeGeneratedOutputMetadata`, which is purely a debug-dump statement with a comment saying "for debug level dump all generation logs in system logs as well".
-- From product clone (verified, current code at the fetched PR): the current `develop` branch of `PublishWorkflowStep.java` still contains the redundant `log.info(generatedOutput.getErrorLog())` call inside `storeGeneratedOutputMetadata`, immediately after `session.save()`; the PR removes exactly this one call and its two blank/comment lines, leaving the earlier emission (inside `executeOutputGeneration`, upstream of this method) as the single source of truth for this log line.
-- Supported inference: because the removed call sits after `session.save()` and inside the metadata-storage step (not the generation step itself), removing it cannot affect what output is generated or what metadata is persisted - it only removes a duplicate log write. This is a pure logging-behaviour change with no product-visible contract, so no DITA/RAG grounding is needed beyond this code-level confirmation.
+- Jira reports two identical application-log writes for one publish, with the second write occurring during output-metadata storage.
+- Current source writes the returned generation log at C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:501 and again at line 925.
+- PR #8089 removes only the second write at line 925. It leaves the earlier write, metadata save, exception handling, and output processing unchanged.
+- PublishOutput.getErrorLog returns the full publishLog text at C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70.
+- Output history continues to store the generation log at C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900, so the application-log change must not remove the retained history log.
+- Performance sign-off is conditional because Jira gives a 2,000-3,000-document workload but no approved environment, baseline, latency threshold, throughput threshold, or log-growth threshold.
 
 **Scope From Git**
-- Lifecycle stage is Implementation Review; readiness target is review-ready given the small, well-isolated diff and included unit tests.
-- Issue source: live Jira `GUIDES-44288` (Major, component Publishing, labels EY/Triaged); PR link `starling#8089` (`https://git.corp.adobe.com/AdobeStarling/starling/pull/8089`) recorded in a Crosshair comment, not in Jira's own development-link metadata.
-- Product clone `C:\starling`: branch `develop`, freshly fetched this pass to SHA `69a98eab3948e98aa78684276be7d37fe30b39ea` (fetch confirmed successful; the sync tool's own status field misreported "failed" due to an unrelated stderr warning and a rejected tag, not an actual fetch failure - the updated `origin/develop` ref and dozens of new/updated branches are visible in the fetch output). The PR was inspected by fetching `refs/pull/8089/head` directly from `git.corp.adobe.com` (GitHub MCP / `gh` are not available for the enterprise host this session) and diffing it against `origin/develop`; the diff is identical to the previously-fetched Crosshair investigation branch `origin/crosshair/guides-44288`, confirming no further commits have landed since that investigation snapshot.
-- Automation clone discovery for `dxml-it-tests`/`guides-ui-tests` was not run this pass - this is a pure backend unit-level fix with an included JUnit test, so UI/API-integration automation is not applicable; noted as a gap for completeness only.
-- Figma design evidence is not applicable; this is an internal logging fix.
+- Product clone C:\starling was inspected on branch develop at local SHA fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f; the previously fetched origin/develop ref is SHA 69a98eab3948e98aa78684276be7d37fe30b39ea, and the current worktree is 0 ahead and 1230 behind that captured ref with unrelated user changes preserved.
+- PR evidence uses the captured origin/crosshair/guides-44288 ref at SHA 0fb599b1d2247ee1c0edcd79c373e184b02f027c. Its diff against the captured origin/develop ref changes only PublishWorkflowStep.java and PublishWorkflowStepTest.java.
+- Automation clone C:\api automation\dxml-it-tests was searched at local SHA 46709a94fbf357a6277f780202401149c5820054 on branch fix-changebars-nativepdf-lapwing-benchmark; the clone is 2 ahead and 0 behind its captured upstream, and no GUIDES-44288, getErrorLog, DITA-OT generation log, or PublishWorkflowStep scenario was found.
+- Automation clone C:\ui_framework\new_editor\guides-ui-tests was searched at local SHA bf5dca679ec84f6128d4fe8d9b3b12201e2cc5bb on branch develop; the clone is 0 ahead and 1000 behind its captured upstream, and no GUIDES-44288, getErrorLog, DITA-OT generation log, or PublishWorkflowStep scenario was found.
+- Figma evidence is not applicable because this change only removes one backend log write and introduces no visual behavior.
 
 **Code Touched**
-- Changed: `C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\publishworkflow\PublishWorkflowStep.java` - inside `storeGeneratedOutputMetadata`, the redundant `log.info(generatedOutput.getErrorLog())` call (with its "for debug level dump" comment) is deleted; the surrounding `session.save()` call and the method's exception handling are unchanged.
-- Changed (tests, PR branch only - not yet on the local `develop` checkout): the workflow-step test class has its existing single-emission test renamed and rewritten to reflectively swap in a mock logger and assert exactly one log call, and a new test is added asserting the log is still emitted exactly once when a downstream step throws after generation succeeds.
+- Changed source: C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\publishworkflow\PublishWorkflowStep.java removes the second log.info call after session.save in storeGeneratedOutputMetadata.
+- Changed test: C:\starling\core\publish-workflow\src\test\java\com\adobe\fmdita\publishworkflow\PublishWorkflowStepTest.java checks one log write on success and one log write when a downstream step fails.
+- Unchanged producer: C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\publishworkflow\PublishOutput.java still returns the full publishLog text from getErrorLog.
 
 **Lines Changed**
-- `PublishWorkflowStep.java`: 5 lines deleted (the duplicate `log.info` call plus its comment and blank lines), 0 lines added.
-- `PublishWorkflowStepTest.java`: 92 lines changed (1 test renamed/rewritten with reflection-based logger mocking, 1 new test added for the downstream-failure case).
+- PublishWorkflowStep.java has 0 additions and 5 deletions in the captured PR diff.
+- PublishWorkflowStepTest.java has 75 additions and 17 deletions in the captured PR diff.
 
 **Test Scenarios**
-- Setup and test data: a single DITA map with valid content that publishes successfully to any output preset that goes through `PublishWorkflowStep` (for example a Native PDF or AEM Sites preset); a second setup where a downstream step after output generation is forced to fail (for example by injecting a fault in `handlePdfMapProperties` or an equivalent post-generation step, matching the PR's own test approach); log capture at the application/system log level configured for `PublishWorkflowStep`. Oracles: count of log lines matching the DITA-OT generation log content for one publish, the publish job's final success/failure state, and the output history's stored metadata.
-- P0 [AC-01]: Publish a single map successfully and capture the application log. Expected: the DITA-OT generation log for that publish appears exactly once, not twice.
-- P0 [AC-04]: Publish the same map and inspect the published output path and output-history metadata. Expected: both match pre-fix behaviour exactly - the fix changes only log emission count, nothing else.
-- P1 [AC-02]: Force a failure in the step immediately after output generation (for example the metadata/PDF-properties step) and capture the log. Expected: the DITA-OT generation log still appears exactly once even though the publish ultimately fails downstream.
-- P1 [AC-03]: Compare the exact text of the single logged line after the fix against the log line previously emitted before the duplicate was removed. Expected: identical content - only the duplicate emission is removed.
-- P2 [AC-01]: Publish a bulk batch of maps (for example 10-20 maps in one run, as a scaled-down proxy for EY's 2,000-3,000-document bulk publish) and count log lines per map. Expected: each map's DITA-OT generation log appears exactly once, confirming the fix holds under the bulk-publish pattern EY reported as the original impact driver.
+- Test data to prepare: use a build containing commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c; create map /content/dam/guides-44288/single.ditamap and 20 small numbered maps; configure one supported preset that uses PublishWorkflowStep; capture application logs with a publish-job identifier; save a before-fix output path, job result, output-history properties, and retained DITA-OT log; provide a fault hook after output generation; and clean up the generated outputs, history nodes, and log captures.
+- P0 [TS-01] [AC-01]: Action: publish single.ditamap successfully and count matching DITA-OT generation entries for its job identifier. Expected: exactly one matching application-log entry exists.
+- P0 [TS-02] [AC-02]: Action: publish single.ditamap while the post-generation fault hook fails the next publish step. Expected: exactly one matching DITA-OT generation entry exists even though the publish ends in failure.
+- P1 [TS-03] [AC-03]: Action: publish a map whose generated log contains a unique marker and compare the emitted entry with PublishOutput.getErrorLog. Expected: the one emitted entry matches the complete returned text byte for byte.
+- P1 [TS-04] [AC-04]: Action: repeat the baseline publish after the fix and compare the job result, output path, output-history properties, and retained DITA-OT log. Expected: every saved value matches the before-fix baseline except the application-log entry count.
+- P2 [TS-05] [AC-01]: Action: publish the 20 numbered maps through the supported bulk API and group captured entries by job and map. Expected: every completed map has exactly one matching DITA-OT generation entry, with no missing or duplicate map entry.
 
 **Known Jira Bugs / Past Similar Tickets**
-- Search status: `search_jira_history` was queried against the indexed jira_qa corpus for duplicate-log / logging-duplication defects in the Publishing component, and narrow live-Jira JQL intents were framed by exact error text (`text ~ "PublishWorkflowStep" AND text ~ "log.info"`) and by publish-workflow symptom (`text ~ "duplicate" AND text ~ "log" AND component = Publishing`); no same-defect-class ticket (a duplicate-log-emission bug in the publish workflow) was found in either indexed or live search this pass.
-- No same-defect-class history exists in current evidence. This is stated plainly rather than padding the section with area-only matches from unrelated Publishing-component tickets.
+- Search status: indexed Jira history was searched for EY duplicate-log symptoms and for cross-customer PublishWorkflowStep duplicate logging in the Publishing component; no same-mechanism ticket was found.
+- Narrow JQL intents covered the exact error text with text ~ "PublishWorkflowStep" AND text ~ "log.info", plus the workflow symptom with text ~ "duplicate" AND text ~ "log" AND component = Publishing; neither search returned a same-defect-class ticket.
+- No same-defect-class history is used as acceptance authority because the available results did not identify another publish-workflow log-emission defect.
 
 **Regression Areas**
-- Re-verify that publishing to every output preset that flows through `PublishWorkflowStep` (Native PDF, AEM Sites, Native AEM Site, HTML5, EPUB, and JSON where applicable) still completes successfully and stores correct output-history metadata, because the changed method (`storeGeneratedOutputMetadata`) is shared across all preset types, not specific to one.
-- Re-verify custom log-forwarding integrations (like EY's dedicated logger file for `PublishWorkflowStep`) still receive the DITA-OT generation log line at least once per publish, because a regression that accidentally removes the wrong (upstream) log call instead of the duplicate would silently drop log data that customers depend on for auditing.
-- Re-run a bulk/batch publish (multiple maps in one job or one API call) and confirm log volume drops to one line per map without any map's log being lost entirely, since the customer's original complaint was specifically about log volume at bulk scale.
+- Re-test Native PDF, AEM Sites, Native AEM Site, HTML5, EPUB, and JSON presets that use PublishWorkflowStep because the shared metadata-storage method is not limited to one output type.
+- Re-test output-history log storage and metadata after both successful and failed publishes because removing the application-log duplicate must not remove the retained DITA-OT log or change saved job data.
+- Re-test customer log forwarding with a unique job identifier because removing the wrong call could leave Splunk or ELK without the generation log that EY uses for automated analysis.
+- Re-test a small functional bulk batch for one-entry-per-map behavior, while keeping the 2,000-3,000-document performance run blocked until its workload and oracle are approved.
 
 **Automation Coverage & Gaps**
-- AC-01, AC-02, AC-03: Not covered by existing `guides-ui-tests`/`dxml-it-tests` automation (neither repo was found to contain a scenario asserting DITA-OT log-emission counts); the PR itself adds unit-level test methods proving single-emission on both the success and downstream-failure paths, but that PR-internal coverage is recorded under `Code Touched`/`Lines Changed`, not here, since it is not yet part of the automation repos this section evaluates and its exact test-method identifiers live only on the unmerged PR branch, not the currently synced `develop` checkout. Recipe if an integration-level check is wanted - layer: API IT in `dxml-it-tests`; setup: publish a map end to end; poll: capture the application log during the publish job; timeout: standard job-completion timeout; assert: exactly one DITA-OT generation log line per published map; cleanup: remove published output; tag: publish-workflow regression suite.
-- AC-04: Not covered. Recipe - layer: API IT in `dxml-it-tests`; setup: publish a map end to end through a real (or realistic in-memory) workflow; poll: wait for the publish job to complete via the existing job-status poller; timeout: the standard job-completion timeout; assert: output-history node properties match a pre-fix baseline capture; cleanup: remove the published output and history node; tag: publish-workflow regression suite.
-- Bulk/scale scenario (P2): Not covered. Recipe - layer: API IT in `dxml-it-tests`; setup: a batch of 10-20 small DITA maps; poll: submit a bulk publish and wait for job completion; timeout: standard bulk-job timeout; assert: log-line count per map equals 1; cleanup: remove published outputs; tag: publish-workflow regression suite; this closes the gap between the PR's single-map unit tests and EY's reported bulk-publish (2k-3k document) usage pattern.
+- Main feature coverage: Partially covered - the captured PR branch has unit checks for one log write on success and after a downstream failure, but the product automation repositories have no matching end-to-end scenario.
+- AC-01, AC-02, AC-03 - Partially covered: the PR test class checks the success count, downstream-failure count, and retained full log text; an end-to-end application-log assertion is still absent from dxml-it-tests.
+- AC-04 - Not covered: Layer: backend integration; Setup: record a successful before-fix publish and its output-history data; Poll: wait for the post-fix job to finish; Timeout: use the suite's configured publish-job timeout; Assert: compare result, path, properties, and retained log with the baseline; Cleanup: remove the generated output and history fixture; Tag: publish-workflow-log-regression.
+- Conditional performance coverage: Unverified until OQ-01 supplies an approved environment, a workload within EY's 2,000-3,000-document range, and measurable baseline or SLA thresholds.
 
 **Open Questions**
-- No open questions from current evidence. The fix is a self-contained, single-file deletion with direct unit-test proof of the single-emission behaviour on both the success and downstream-failure paths, and no sign-off-critical product decision is unresolved.
+- OQ-01: Which approved workload should QA use within EY's reported 2,000-3,000-document bulk publish, and what measurable baseline or SLA threshold must latency, throughput, and log growth meet? QA impact: The answer defines the environment, load model, metrics, and pass or fail oracle for performance sign-off.
+- OQ-02: Must one DITA-OT generation log still be written when generation succeeds but a later publish step fails? QA impact: The answer decides whether AC-02 is release-blocking product scope or only a PR regression check.
+- OQ-03: Must the application log preserve the complete text returned by PublishOutput.getErrorLog? QA impact: The answer decides whether exact text comparison in AC-03 is a release-blocking product contract or only regression coverage.
+- OQ-04: Must publish results and saved output metadata remain identical to the before-fix baseline? QA impact: The answer decides whether AC-04 is a release-blocking product contract or only regression coverage.
+
+## Appendix A - Automation Evidence
+
+- Source: C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70
+
+```java
+public String getErrorLog() {
+    return publishLog.toString();
+}
+```
+
+- Source: C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501
+
+```java
+if (publishOutput != null) {
+    log.info(publishOutput.getErrorLog());
+}
+```
+
+- Source: C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925
+
+```java
+// for debug level dump all generation logs in
+// system logs as well
+log.info(generatedOutput.getErrorLog());
+```

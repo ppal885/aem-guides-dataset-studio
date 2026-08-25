@@ -1,0 +1,627 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-44288",
+    "summary": "PublishWorkflowStep writes the DITA-OT generation log twice",
+    "status": "Fix Ready",
+    "priority": "Major",
+    "component": "Publishing",
+    "customer": "EY",
+    "description": "EY forwards DITA-OT generation logs to Splunk or ELK. PublishWorkflowStep writes the same generation log twice for one publish. EY can publish 2,000-3,000 documents in one bulk action."
+  },
+  "generated_at": "2026-08-25T20:30:00+05:30",
+  "behaviour_matters": true,
+  "accepted_uac_present": false,
+  "source_acceptance_criteria": [],
+  "attachments": [],
+  "attachment_inventory_note": "Live Jira reported no attachments for GUIDES-44288.",
+  "evidence_preflight": {
+    "mode": "full",
+    "checked_at": "2026-08-25T20:30:00+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "available",
+        "checked_via": "Three focused ask_dita_expert probes completed during the captured evidence pass.",
+        "reason": ""
+      },
+      "jira_history": {
+        "status": "available",
+        "checked_via": "Same-customer and cross-customer search_jira_history calls completed during the captured evidence pass.",
+        "reason": ""
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "Live GUIDES-44288 and its eight comments were fetched during the captured evidence pass.",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "The captured PR #8089 ref, its diff, Starling source, and both automation clones were inspected read-only.",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "Jira and PR scope inspection.",
+        "reason": "The change removes a backend application-log call and introduces no visual design."
+      }
+    },
+    "readiness_impact": "none",
+    "readiness_impact_reason": "",
+    "claim_restrictions": [
+      "Git claims are limited to the captured local SHAs and refs because no network fetch was performed during this validation.",
+      "The customer workload is a performance-risk signal, not an approved pass or fail threshold."
+    ]
+  },
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "How does AEM Guides store and expose the DITA-OT generation log after a PublishWorkflowStep output generation run?",
+    "Which AEM Guides publishing paths use PublishWorkflowStep and retain output-history metadata after generation?",
+    "What performance or logging guidance applies when an AEM Guides customer publishes 2,000-3,000 documents through a bulk API?"
+  ],
+  "rag_findings": {
+    "status": "partial",
+    "accepted": [
+      "Product documentation supports retaining publish history and validating generated output."
+    ],
+    "rejected": [
+      "No retrieved source defined an approved workload, SLA, latency threshold, throughput threshold, or log-growth threshold for EY's bulk publish."
+    ]
+  },
+  "jira_history_tool": "search_jira_history",
+  "jira_history_queries": [
+    {
+      "scope": "same_customer",
+      "query": "EY PublishWorkflowStep duplicate DITA-OT generation log forwarded to Splunk or ELK",
+      "component": "Publishing",
+      "customer": "EY",
+      "result_count": 0
+    },
+    {
+      "scope": "cross_customer",
+      "query": "PublishWorkflowStep duplicate generation log.info call during output metadata storage",
+      "component": "Publishing",
+      "result_count": 0
+    }
+  ],
+  "indexed_history_run": true,
+  "evidence_graph": {
+    "requested": true,
+    "tool": "query_test_evidence_graph",
+    "status": "disabled",
+    "influence_mode": "shadow",
+    "used_for_plan": false,
+    "degraded_reason": "The evidence graph was disabled in the captured Dataset Studio runtime.",
+    "response_fingerprint": "sha256:44288e900dc078f9d1e98c58cd78269618f24f6a80fd483134bf3923dc3b55af",
+    "queries": [
+      {
+        "query": "same duplicate generation-log emission mechanism in PublishWorkflowStep and output metadata storage",
+        "duration_ms": 0,
+        "cache_hit": false,
+        "path_ids": [],
+        "leaf_citations": []
+      }
+    ]
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "conditional",
+    "risk_rating": "medium",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "present",
+        "finding": "EY reports one bulk action that can publish 2,000-3,000 documents, so duplicate log writes scale with document count.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "unknown",
+        "finding": "The customer uses a bulk API, but current evidence does not define whether document publishes execute serially or concurrently.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "present",
+        "finding": "The duplicate call repeats for each generation result and can repeat across thousands of documents in one customer action.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288",
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501",
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "unknown",
+        "finding": "Jira gives scale but no measured latency, throughput, timeout behavior, or approved comparison target.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "present",
+        "finding": "A second full generation-log write increases application-log volume, but no approved storage-growth threshold is supplied.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288",
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "unknown",
+        "finding": "Splunk or ELK receives forwarded logs, but current evidence does not define publish-queue or external-sink limits.",
+        "evidence_refs": [
+          "Jira description GUIDES-44288"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "absent",
+        "finding": "The retained output-history log is expected to remain; no stale-state accumulation or cleanup defect is reported.",
+        "evidence_refs": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "Publish documents through EY's supported bulk API while capturing application logs.",
+      "cardinality": "Customer-reported range is 2,000-3,000 documents in one bulk action; the approved test point is unresolved.",
+      "concurrency": "The bulk API's serial or concurrent execution model is unresolved.",
+      "repetition": "One bulk action with one correlated generation-log count per document.",
+      "duration": "Run until every bulk publish reaches its terminal result; the approved duration threshold is unresolved."
+    },
+    "metrics": [
+      "latency_p95",
+      "throughput",
+      "storage_growth"
+    ],
+    "oracle": {
+      "status": "unresolved",
+      "source_ref": "Jira description GUIDES-44288 and OQ-01",
+      "thresholds": []
+    },
+    "test_types": [
+      "load",
+      "benchmark"
+    ],
+    "performance_ac_ids": [],
+    "historical_contracts": [],
+    "rationale": "The customer supplies a material 2,000-3,000-document scale signal and a log-volume mechanism, but no approved environment, workload point, baseline, SLA, or measurable threshold. Performance therefore remains conditional and is resolved through OQ-01 rather than an invented Performance AC."
+  },
+  "clones": [
+    {
+      "path": "C:/starling",
+      "branch": "develop",
+      "sha": "fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f",
+      "inspected_ref": "origin/crosshair/guides-44288@0fb599b1d2247ee1c0edcd79c373e184b02f027c",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only inspection used the captured PR ref and preserved unrelated worktree changes; current-remote status was not asserted."
+    },
+    {
+      "path": "C:/api automation/dxml-it-tests",
+      "branch": "fix-changebars-nativepdf-lapwing-benchmark",
+      "sha": "46709a94fbf357a6277f780202401149c5820054",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only exact-term search found no GUIDES-44288 or PublishWorkflowStep generation-log integration scenario; current-remote status was not asserted."
+    },
+    {
+      "path": "C:/ui_framework/new_editor/guides-ui-tests",
+      "branch": "develop",
+      "sha": "bf5dca679ec84f6128d4fe8d9b3b12201e2cc5bb",
+      "synced": false,
+      "provisional": true,
+      "note": "Read-only exact-term search found no GUIDES-44288 or PublishWorkflowStep generation-log UI scenario; current-remote status was not asserted."
+    }
+  ],
+  "behavior_model": {
+    "trigger": [
+      "A map publish returns a DITA-OT generation log."
+    ],
+    "operations": [
+      "PublishWorkflowStep logs the generation result and later stores output metadata and history.",
+      "The before-fix metadata path writes the same generation log to the application logger again."
+    ],
+    "inputs": [
+      "DITA map",
+      "supported output preset",
+      "PublishOutput generation result"
+    ],
+    "outputs": [
+      "application-log generation entry",
+      "published output result",
+      "saved output metadata",
+      "retained output-history DITA-OT log"
+    ],
+    "affected_state": [
+      "application log stream",
+      "output-history metadata"
+    ],
+    "producers": [
+      "PublishOutput.getErrorLog produces the full generation-log text."
+    ],
+    "processors": [
+      "PublishWorkflowStep generation-result path",
+      "PublishWorkflowStep.storeGeneratedOutputMetadata"
+    ],
+    "consumers": [
+      "application-log observers",
+      "EY Splunk or ELK forwarding",
+      "output-history readers"
+    ],
+    "write_paths": [
+      "PublishWorkflowStep logs publishOutput.getErrorLog after generation.",
+      "The before-fix metadata path logs generatedOutput.getErrorLog after session.save."
+    ],
+    "read_paths": [
+      "Output history reads the stored DITA-OT log asset."
+    ],
+    "update_paths": [
+      "storeGeneratedOutputMetadata saves output-history properties and log content."
+    ],
+    "remove_paths": [],
+    "recompute_paths": [],
+    "configuration_branches": [],
+    "fallback_paths": [
+      "A null PublishOutput skips the initial generation-result log call."
+    ],
+    "execution_modes": [
+      "single map publish",
+      "customer bulk API publish"
+    ],
+    "publishing_modes": [
+      "output presets that execute PublishWorkflowStep"
+    ],
+    "versioned_models": [
+      "captured PR #8089 commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c"
+    ],
+    "side_effects": [
+      "application-log volume",
+      "external log-forwarding volume",
+      "saved output-history data"
+    ],
+    "constraints": [
+      "one logical generation log per publish",
+      "full log text is generated by PublishOutput.getErrorLog"
+    ],
+    "unknowns": [
+      "approved bulk performance workload and threshold",
+      "product authority for downstream-failure log behavior",
+      "product authority for exact text and saved-metadata preservation"
+    ],
+    "evidence_ids": [
+      "JIRA-44288",
+      "CODE-PUBLISH-OUTPUT-69",
+      "CODE-INITIAL-LOG-501",
+      "CODE-METADATA-LOG-925",
+      "PR-8089-0fb599b"
+    ],
+    "facts": [
+      {
+        "fact": "The before-fix workflow calls the application logger once after generation and again after output-metadata persistence.",
+        "evidence_ids": [
+          "CODE-INITIAL-LOG-501",
+          "CODE-METADATA-LOG-925"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1.0
+      },
+      {
+        "fact": "PublishOutput.getErrorLog returns the complete publishLog text.",
+        "evidence_ids": [
+          "CODE-PUBLISH-OUTPUT-69"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 1.0
+      },
+      {
+        "fact": "EY reports bulk publication of 2,000-3,000 documents and forwards logs to Splunk or ELK.",
+        "evidence_ids": [
+          "JIRA-44288"
+        ],
+        "authority": "JIRA",
+        "confidence": 1.0
+      }
+    ],
+    "behavior_chains": [
+      [
+        "output generation",
+        "PublishOutput generation log",
+        "initial application-log call",
+        "output metadata persistence",
+        "duplicate application-log call"
+      ],
+      [
+        "customer bulk API",
+        "many document publishes",
+        "generation-log forwarding",
+        "Splunk or ELK volume"
+      ]
+    ],
+    "confidence": 0.96
+  },
+  "implementation_grounding": {
+    "active": true,
+    "named_artifacts": [
+      {
+        "artifact": "PublishWorkflowStep generation-result logging",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501"
+        ],
+        "premise": "The current generation-result path writes publishOutput.getErrorLog to the application logger.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "PublishWorkflowStep.storeGeneratedOutputMetadata",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-925"
+        ],
+        "premise": "The before-fix metadata path stores the history log and then writes the same generation text to the application logger.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "PublishOutput.getErrorLog",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70"
+        ],
+        "premise": "The producer returns the complete publishLog text.",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "PublishWorkflowStepTest generation-log count checks",
+        "kind": "method",
+        "inspected": true,
+        "material": true,
+        "evidence": [
+          "C:/starling/core/publish-workflow/src/test/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStepTest.java:656",
+          "C:/starling/core/publish-workflow/src/test/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStepTest.java:700"
+        ],
+        "premise": "The captured PR test change checks one log write on success and one write after a later failure.",
+        "premise_verified": true,
+        "premise_holds": true
+      }
+    ]
+  },
+  "pr_references": [
+    {
+      "pr_ref": "PR #8089",
+      "status": "AUTHORITATIVE"
+    }
+  ],
+  "scope_conflict": {
+    "active": true,
+    "problem_threads": [
+      {
+        "thread_id": "THREAD-01",
+        "problem_statement": "One publish writes the same DITA-OT generation log twice.",
+        "status": "CURRENT_FIX",
+        "maps_to_ac": [
+          "AC-01"
+        ]
+      },
+      {
+        "thread_id": "THREAD-02",
+        "problem_statement": "The PR test expects one log entry when a later publish step fails.",
+        "status": "PROPOSED",
+        "maps_to_ac": [
+          "AC-02"
+        ]
+      },
+      {
+        "thread_id": "THREAD-03",
+        "problem_statement": "The complete generation-log text should remain unchanged.",
+        "status": "PROPOSED",
+        "maps_to_ac": [
+          "AC-03"
+        ]
+      },
+      {
+        "thread_id": "THREAD-04",
+        "problem_statement": "Publish result and saved output metadata should match the before-fix baseline.",
+        "status": "PROPOSED",
+        "maps_to_ac": [
+          "AC-04"
+        ]
+      }
+    ],
+    "alignment": "FULL_SCOPE_FIX",
+    "open_question_refs": [
+      "OQ-02",
+      "OQ-03",
+      "OQ-04"
+    ]
+  },
+  "implementation_scope_authority": {
+    "schema_version": "aem-guides-implementation-scope-authority-v1",
+    "items": [
+      {
+        "ac_ref": "AC-02",
+        "decision": "OPEN_QUESTION",
+        "open_question_ref": "OQ-02"
+      },
+      {
+        "ac_ref": "AC-03",
+        "decision": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "ac_ref": "AC-04",
+        "decision": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      }
+    ]
+  },
+  "state_compatibility": {
+    "active": true,
+    "states": {
+      "CLEAN_PRE_FIX_STATE": {
+        "expected": "A new publish can write two matching application-log entries while retaining one output-history log."
+      },
+      "STATE_CREATED_BY_FIXED_CODE": {
+        "expected": "A new publish writes one matching application-log entry and retains its normal output-history log."
+      },
+      "STATE_CREATED_BY_BUGGY_OLD_CODE": {
+        "expected": "Earlier duplicate application-log entries remain historical log data; the PR does not rewrite or repair them."
+      }
+    },
+    "recovery_of_old_state": {
+      "required": false,
+      "evidence": [
+        "PR #8089 removes a future logger call and defines no historical-log repair path."
+      ],
+      "disposition": "OUT_OF_SCOPE"
+    }
+  },
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": false,
+    "reason": "The Jira describes one duplicate-log defect and a customer workload in prose; it contains no reporter-numbered or bulleted requirement list."
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": false,
+    "reason": "The affected contract is one sequential pair of logger calls inside an existing publish workflow; the ticket does not change a Sling job, queue, retry, restart, cancellation, paging, or partial-write mechanism."
+  },
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Which approved workload should QA use within EY's reported 2,000-3,000-document bulk publish, and what measurable baseline or SLA threshold must latency, throughput, and log growth meet?",
+      "qa_impact": "The answer defines the environment, load model, metrics, and pass or fail oracle for performance sign-off."
+    },
+    {
+      "id": "OQ-02",
+      "question": "Must one DITA-OT generation log still be written when generation succeeds but a later publish step fails?",
+      "qa_impact": "The answer decides whether AC-02 is release-blocking product scope or only a PR regression check."
+    },
+    {
+      "id": "OQ-03",
+      "question": "Must the application log preserve the complete text returned by PublishOutput.getErrorLog?",
+      "qa_impact": "The answer decides whether exact text comparison in AC-03 is a release-blocking product contract or only regression coverage."
+    },
+    {
+      "id": "OQ-04",
+      "question": "Must publish results and saved output metadata remain identical to the before-fix baseline?",
+      "qa_impact": "The answer decides whether AC-04 is a release-blocking product contract or only regression coverage."
+    }
+  ],
+  "construct_relationships": {
+    "schema_version": "aem-guides-construct-relationships-v1",
+    "construct": {
+      "slug": "dita-ot-generation-log-emission",
+      "label": "DITA-OT generation log emission"
+    },
+    "edges": [
+      {
+        "relation_type": "PRODUCER",
+        "neighbor": "PublishOutput.getErrorLog full generation-log text",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-03"
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "PublishWorkflowStep generation-result log call",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "PublishWorkflowStep output-metadata duplicate log call",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor": "Output-history DITA-OT log persistence",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-04"
+      }
+    ],
+    "cross_dimensions": {
+      "PERFORMANCE": {
+        "applicable": true,
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-01"
+      },
+      "SECURITY": {
+        "applicable": false,
+        "reason": "The inspected change removes a duplicate call without changing the logged text, redaction contract, or data source."
+      },
+      "PERMISSIONS": {
+        "applicable": false,
+        "reason": "The same backend publish workflow executes before and after the change; no role or authorization branch is changed."
+      },
+      "UPGRADE": {
+        "applicable": false,
+        "reason": "The inspected change adds no persisted schema, repository migration, configuration key, or upgrade-only behavior."
+      },
+      "CONCURRENCY": {
+        "applicable": false,
+        "reason": "The duplicate entries come from two sequential calls in one workflow invocation; current evidence defines no shared mutable log state or inter-job ordering contract."
+      }
+    },
+    "discovery": {
+      "code_search_terms": [
+        "PublishOutput.getErrorLog",
+        "log.info(publishOutput.getErrorLog())",
+        "log.info(generatedOutput.getErrorLog())",
+        "OUTPUT_METADATA_PROP_DITAOTLOG"
+      ],
+      "corpus_relation_queries": [
+        "relations.source:\"dita-ot-generation-log-emission\"",
+        "relations.target:\"dita-ot-generation-log-emission\"",
+        "relations.neighbor:\"dita-ot-generation-log-emission\""
+      ],
+      "clones_searched": [
+        "C:/starling"
+      ],
+      "code_neighborhood_sweep": {
+        "affected_artifacts": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java",
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java",
+          "C:/starling/core/publish-workflow/src/test/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStepTest.java"
+        ],
+        "sibling_config_keys": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected producer and callers are Java methods and do not read a sibling configuration key for generation-log emission."
+        },
+        "sibling_ui_options": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected behavior is backend application-log emission and has no UI option in the inspected artifacts."
+        },
+        "callers_and_same_path_processors": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "PublishWorkflowStep generation-result log call",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501"
+            },
+            {
+              "neighbor": "PublishWorkflowStep output-metadata duplicate log call",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925"
+            },
+            {
+              "neighbor": "Output-history DITA-OT log persistence",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

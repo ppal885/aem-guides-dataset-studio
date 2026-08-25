@@ -272,6 +272,143 @@
       "note": "Read-only inspection only; 2 ahead and 0 behind the captured local upstream with pre-existing untracked files preserved."
     }
   ],
+  "construct_relationships": {
+    "schema_version": "aem-guides-construct-relationships-v1",
+    "construct": {
+      "slug": "folder-profile-update-authorization",
+      "label": "Folder Profile update authorization"
+    },
+    "edges": [
+      {
+        "relation_type": "PRECONDITION",
+        "neighbor": "folderprofile-<target-profile-id> group membership",
+        "source": "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:639-646",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "PRECONDITION",
+        "neighbor": "member of administrators group",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/service/FolderProfileAuthorizationService.java:40-41",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-03"
+      },
+      {
+        "relation_type": "PRECONDITION",
+        "neighbor": "folderprofile-<target-profile-id> group membership",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/service/FolderProfileAuthorizationService.java:44-54",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "ContentHealthController create preset authorization",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:130-132",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "This endpoint reuses the authorization service for Content Health preset creation and does not update a Folder Profile Admin Users list."
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "ContentHealthController update preset authorization",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:172-174",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "This endpoint reuses the authorization service for Content Health preset updates and does not update a Folder Profile Admin Users list."
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "ContentHealthController duplicate preset authorization",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:215-217",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "This endpoint reuses the authorization service for Content Health preset duplication and does not update a Folder Profile Admin Users list."
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "ContentHealthController delete preset authorization",
+        "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:258-260",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "This endpoint reuses the authorization service for Content Health preset deletion and does not update a Folder Profile Admin Users list."
+      }
+    ],
+    "cross_dimensions": {
+      "PERFORMANCE": {
+        "applicable": false,
+        "reason": "The inspected path performs one authorization decision for one submitted Folder Profile update, and the Jira provides no bulk, latency, throughput, or scale requirement."
+      },
+      "SECURITY": {
+        "applicable": false,
+        "reason": "The risk is the product's role and group permission boundary, dispositioned under PERMISSIONS; no separate credential, secret, or data-exposure behavior is evidenced."
+      },
+      "PERMISSIONS": {
+        "applicable": true,
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-05"
+      },
+      "UPGRADE": {
+        "applicable": false,
+        "reason": "The Jira and inspected diff contain no saved-data migration, compatibility, rollback, or post-upgrade authorization requirement."
+      },
+      "CONCURRENCY": {
+        "applicable": false,
+        "reason": "The Jira describes one synchronous membership update and provides no simultaneous-admin or competing-update contract."
+      }
+    },
+    "discovery": {
+      "code_search_terms": [
+        "FolderProfileAuthorizationService",
+        "authorizationService",
+        "isAdminOrFolderAdmin",
+        "isGroupMember",
+        "updateFolderProfile",
+        "folderprofile-"
+      ],
+      "corpus_relation_queries": [
+        "relations.source:\"folder-profile-update-authorization\"",
+        "relations.target:\"folder-profile-update-authorization\"",
+        "relations.neighbor:\"folder-profile-update-authorization\""
+      ],
+      "clones_searched": [
+        "C:/starling"
+      ],
+      "code_neighborhood_sweep": {
+        "affected_artifacts": [
+          "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java",
+          "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/service/FolderProfileAuthorizationService.java",
+          "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java"
+        ],
+        "sibling_config_keys": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected Java authorization classes and exact symbol search contain no co-located configuration keys."
+        },
+        "sibling_ui_options": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected backend authorization classes define no sibling UI setting or option."
+        },
+        "callers_and_same_path_processors": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "ContentHealthController create preset authorization",
+              "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:130-132"
+            },
+            {
+              "neighbor": "ContentHealthController update preset authorization",
+              "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:172-174"
+            },
+            {
+              "neighbor": "ContentHealthController duplicate preset authorization",
+              "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:215-217"
+            },
+            {
+              "neighbor": "ContentHealthController delete preset authorization",
+              "source": "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/servlet/ContentHealthController.java:258-260"
+            }
+          ]
+        }
+      }
+    }
+  },
   "behavior_model": {
     "trigger": [
       "A caller submits UPDATEFOLDERPROFILE with a changed Admin Users list."
@@ -484,7 +621,8 @@
         ],
         "grounding": [
           "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:639-646",
-          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1083-1098"
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1083-1098",
+          "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/service/FolderProfileAuthorizationService.java:44-54"
         ],
         "maps_to_acs": [
           "AC-01",
@@ -502,7 +640,8 @@
         "withhold_groups": [],
         "auto_added_groups": "none",
         "grounding": [
-          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-327"
+          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/common/ACLUtils.java:314-327",
+          "C:/starling/core/content-health/src/main/java/com/adobe/guides/contenthealth/service/FolderProfileAuthorizationService.java:40-41"
         ],
         "maps_to_acs": [
           "AC-03"
@@ -533,28 +672,6 @@
         ],
         "maps_to_acs": [
           "AC-05"
-        ]
-      },
-      {
-        "actor_id": "candidate-user",
-        "label": "candidate user",
-        "privilege_class": "NON_ADMIN",
-        "grant_groups": [
-          "authors"
-        ],
-        "withhold_groups": [
-          "administrators",
-          "folderprofile-<target-profile-id> before AC-01"
-        ],
-        "auto_added_groups": [
-          "folderprofile-<target-profile-id> after AC-01"
-        ],
-        "grounding": [
-          "C:/starling/core/utils/src/main/java/com/adobe/fmdita/folderprofiles/FolderProfileService.java:1121-1171"
-        ],
-        "maps_to_acs": [
-          "AC-01",
-          "AC-02"
         ]
       }
     ]
@@ -686,6 +803,148 @@
       }
     ],
     "shared_contract_justifications": {}
+  },
+  "source_requirement_ledger": {
+    "schema_version": "aem-guides-source-requirement-ledger-v1",
+    "sources": [
+      {
+        "id": "SRC-01",
+        "type": "jira_description",
+        "locator": "GUIDES-50144 description, reproduction group list",
+        "raw_text": "authors\nContributors\nAEM Administrators author Program 167205 Environment 1910614 (from product profile)\nfolderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)\neveryone\nAEM Assets Collaborator Users - Service\nAEM Sites Content Managers - Service\nAEM Administrators - Service\nAnalytics Administrators\n",
+        "sha256": "8104131a24cb963aac51fee836aeea255d88aa8492c478fa9809db27d82605e8",
+        "artifact_path": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/test-plans/evidence/GUIDES-50144-reproduction-groups.txt",
+        "artifact_sha256": "8104131a24cb963aac51fee836aeea255d88aa8492c478fa9809db27d82605e8"
+      }
+    ],
+    "items": [
+      {
+        "id": "REQ-01",
+        "source_id": "SRC-01",
+        "source_index": 1,
+        "verbatim_text": "authors",
+        "text": "authors",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "authors is customer actor setup evidence, not a separate product acceptance outcome; it remains in the actor matrix.",
+        "protected_exact": ["authors"],
+        "semantic_atoms": [
+          {"id": "ATOM-01", "text": "authors", "required_terms_all": ["authors"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-02",
+        "source_id": "SRC-01",
+        "source_index": 2,
+        "verbatim_text": "Contributors",
+        "text": "Contributors",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "Contributors is customer actor setup evidence, not a separate product acceptance outcome; it remains in the actor matrix.",
+        "protected_exact": ["Contributors"],
+        "semantic_atoms": [
+          {"id": "ATOM-02", "text": "Contributors", "required_terms_all": ["Contributors"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-03",
+        "source_id": "SRC-01",
+        "source_index": 3,
+        "verbatim_text": "AEM Administrators author Program 167205 Environment 1910614 (from product profile)",
+        "text": "AEM Administrators author Program 167205 Environment 1910614 (from product profile)",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "AEM Administrators author Program 167205 Environment 1910614 (from product profile) is customer actor setup evidence and not a separate product acceptance outcome.",
+        "protected_exact": ["AEM Administrators author Program 167205 Environment 1910614 (from product profile)"],
+        "semantic_atoms": [
+          {"id": "ATOM-03", "text": "AEM Administrators author Program 167205 Environment 1910614 (from product profile)", "required_terms_all": ["AEM Administrators author Program 167205 Environment 1910614 (from product profile)"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-04",
+        "source_id": "SRC-01",
+        "source_index": 4,
+        "verbatim_text": "folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)",
+        "text": "folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile) is customer actor setup evidence retained as the target-profile group.",
+        "protected_exact": ["folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)"],
+        "semantic_atoms": [
+          {"id": "ATOM-04", "text": "folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)", "required_terms_all": ["folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-05",
+        "source_id": "SRC-01",
+        "source_index": 5,
+        "verbatim_text": "everyone",
+        "text": "everyone",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "everyone is customer actor setup evidence, not a separate product acceptance outcome; it remains in the actor matrix.",
+        "protected_exact": ["everyone"],
+        "semantic_atoms": [
+          {"id": "ATOM-05", "text": "everyone", "required_terms_all": ["everyone"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-06",
+        "source_id": "SRC-01",
+        "source_index": 6,
+        "verbatim_text": "AEM Assets Collaborator Users - Service",
+        "text": "AEM Assets Collaborator Users - Service",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "AEM Assets Collaborator Users - Service is customer actor setup evidence, not a separate product acceptance outcome.",
+        "protected_exact": ["AEM Assets Collaborator Users - Service"],
+        "semantic_atoms": [
+          {"id": "ATOM-06", "text": "AEM Assets Collaborator Users - Service", "required_terms_all": ["AEM Assets Collaborator Users - Service"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-07",
+        "source_id": "SRC-01",
+        "source_index": 7,
+        "verbatim_text": "AEM Sites Content Managers - Service",
+        "text": "AEM Sites Content Managers - Service",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "AEM Sites Content Managers - Service is customer actor setup evidence, not a separate product acceptance outcome.",
+        "protected_exact": ["AEM Sites Content Managers - Service"],
+        "semantic_atoms": [
+          {"id": "ATOM-07", "text": "AEM Sites Content Managers - Service", "required_terms_all": ["AEM Sites Content Managers - Service"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-08",
+        "source_id": "SRC-01",
+        "source_index": 8,
+        "verbatim_text": "AEM Administrators - Service",
+        "text": "AEM Administrators - Service",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "AEM Administrators - Service is customer actor setup evidence, not a separate product acceptance outcome.",
+        "protected_exact": ["AEM Administrators - Service"],
+        "semantic_atoms": [
+          {"id": "ATOM-08", "text": "AEM Administrators - Service", "required_terms_all": ["AEM Administrators - Service"], "required_terms_any": []}
+        ]
+      },
+      {
+        "id": "REQ-09",
+        "source_id": "SRC-01",
+        "source_index": 9,
+        "verbatim_text": "Analytics Administrators",
+        "text": "Analytics Administrators",
+        "authority": "Proposed",
+        "disposition": "OOS",
+        "reason": "Analytics Administrators is customer actor setup evidence, not a separate product acceptance outcome.",
+        "protected_exact": ["Analytics Administrators"],
+        "semantic_atoms": [
+          {"id": "ATOM-09", "text": "Analytics Administrators", "required_terms_all": ["Analytics Administrators"], "required_terms_any": []}
+        ]
+      }
+    ]
   },
   "operational_contract": {
     "schema_version": "aem-guides-operational-contract-v1",

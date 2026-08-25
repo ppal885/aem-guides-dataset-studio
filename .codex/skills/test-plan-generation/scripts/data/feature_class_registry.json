@@ -1,0 +1,64 @@
+{
+  "schema_version": "aem-guides-feature-class-registry-v1",
+  "classes": {
+    "ui_display_label": {
+      "signals": [
+        "friendly name",
+        "label",
+        "display",
+        "tooltip",
+        "rendered",
+        "shown in",
+        "workspace settings"
+      ],
+      "required_dimensions": [
+        "ui_surface_scope"
+      ]
+    },
+    "access_control": {
+      "signals": [
+        "permission",
+        "group",
+        "acl",
+        "admin user",
+        "authorization",
+        "privilege",
+        "folder profile"
+      ],
+      "required_dimensions": [
+        "role_provisioning"
+      ]
+    },
+    "async_job": {
+      "signals": [
+        "sling job",
+        "job consumer",
+        "queue",
+        "async",
+        "scheduled job",
+        "event listener"
+      ],
+      "required_dimensions": [
+        "concurrency_race_analysis",
+        "terminal_states"
+      ]
+    },
+    "configuration_driven_enumeration": {
+      "signals": [
+        "configuration-backed list",
+        "configuration-driven",
+        "configured entry",
+        "configured attribute",
+        "supported conditional-attribute list",
+        "condAttrList.csv",
+        "dynamic entry",
+        "hardcoded allowlist",
+        "overlay precedence",
+        "use only above attributes"
+      ],
+      "required_dimensions": [
+        "configuration_enumeration_scope"
+      ]
+    }
+  }
+}

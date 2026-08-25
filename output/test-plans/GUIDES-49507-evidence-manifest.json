@@ -3,7 +3,7 @@
   "issue": {
     "key": "GUIDES-49507",
     "summary": "Friendly Names for Attributes Not Displayed Consistently in Web Editor",
-    "description": "Consolidated Jira description and reviewer scope:\n- Full Tags View shows the original attribute name.\n- Condition Attributes panel does not show the friendly name.\n- Right Panel loses the friendly name after the attribute is applied.\n- Preserve the complete custom and built-in fallback rule.\n- Cover add, update, and remove while the editor remains open.\n- Discover future valid conditional attributes from supported configuration.\n- Cover the effective label seen by each signed-in author without profile leakage.\n- Cover the Use only above attributes restriction.\n- Preserve mappings through upgrade.\n- Do not regress element friendly names.\n- Decide whether Condition Presets are in scope.\n- Decide whether the DITAVAL attribute dropdown is in scope.\n- Decide whether Preview is in scope.",
+    "description": "Source-preserved issue and human-review scope:\n- Full Tags View shows the original attribute name instead of the configured friendly name.\n- The Condition Attributes panel does not show the configured friendly name.\n- The Right Panel loses the friendly name after the attribute is applied.\n- For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.\n- When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.\n- This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.\n- Verify friendly names are applied for the logged-in user, as this is a user-level setting.\n- Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.\n- Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.\n- Verify the existing friendly-name functionality for elements is not affected.\n- For condition presets, should friendly attribute names be displayed when configured?\n- In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?\n- In Preview mode, should attributes use their raw names or configured friendly names?",
     "status": "Open",
     "priority": "Major",
     "customer": "TxDOT",
@@ -15,6 +15,13 @@
     "lifecycle": "Implementation Review",
     "pr": "https://git.corp.adobe.com/AdobeStarling/xmleditor/pull/8069"
   },
+  "user_feedback": [
+    {
+      "id": "USER-FEEDBACK-GUIDES-49507",
+      "source": "Human UAC review supplied by the user on 2026-08-24",
+      "text": "AC-04: For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.\nAC-05: When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.\nAC-06: This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.\nMissing AC: Verify friendly names are applied for the logged-in user, as this is a user-level setting.\nMissing AC: Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.\nMissing AC: Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.\nMissing AC: Verify the existing friendly-name functionality for elements is not affected.\nOpen question: For condition presets, should friendly attribute names be displayed when configured?\nOpen question: In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?\nOpen question: In Preview mode, should attributes use their raw names or configured friendly names?"
+    }
+  ],
   "attachments": [
     {
       "id": "18905901",
@@ -260,9 +267,13 @@
     "AC-01: Full Tags View shows the workspace friendly name for every allowed attribute.",
     "AC-02: Built-in conditional attributes show their configured friendly name or default label without malformed text.",
     "AC-03: The Right Panel keeps the friendly name during selection and after the attribute is applied.",
-    "AC-04: An unmapped custom attribute shows its raw name, an unmapped built-in shows its default label, and no label is blank.",
-    "AC-05: Adding, editing, or removing a mapping updates already-rendered rows and an open dropdown without reload; removal restores fallback.",
-    "AC-06: A valid conditional attribute added to the supported conditional list is discovered from the active profile and schema without a product-code change."
+    "AC-04: For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.",
+    "AC-05: When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.",
+    "AC-06: This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.",
+    "AC-07: Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
+    "AC-08: Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.",
+    "AC-09: Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.",
+    "AC-10: Verify the existing friendly-name functionality for elements is not affected."
   ],
   "open_questions": [
     {
@@ -272,18 +283,18 @@
     },
     {
       "id": "OQ-02",
-      "question": "Must Condition Presets show configured attribute friendly names?",
+      "question": "Must Condition Presets show configured friendly attribute names?",
       "qa_impact": "A yes adds the surface to acceptance and UI automation; a no records it as an explicit exclusion."
     },
     {
       "id": "OQ-03",
-      "question": "Must the DITAVAL attribute dropdown show configured attribute friendly names?",
-      "qa_impact": "A yes adds DITAVAL fixtures and dropdown assertions; a no records it as an explicit exclusion."
+      "question": "In a DITAVAL file's attribute dropdown, should attributes use raw names or configured friendly names?",
+      "qa_impact": "The answer decides whether DITAVAL needs mapped-label and raw-name fallback scenarios or remains outside runtime sign-off."
     },
     {
       "id": "OQ-04",
-      "question": "Is any attribute label visible in Preview required to use the friendly name?",
-      "qa_impact": "A yes requires the exact Preview surface and oracle; a no removes Preview from runtime sign-off."
+      "question": "In Preview mode, should attributes use raw names or configured friendly names?",
+      "qa_impact": "The answer decides whether Preview needs mapped-label and raw-name fallback scenarios or remains outside runtime sign-off."
     },
     {
       "id": "OQ-05",
@@ -292,8 +303,23 @@
     },
     {
       "id": "OQ-06",
-      "question": "Which conditional-list source is supported when legacy XML and CSV both exist?",
+      "question": "What is the configuration precedence when legacy XML and CSV both exist, and which source wins?",
       "qa_impact": "The answer fixes the upgrade matrix, precedence fixture, and safe cleanup path for AC-06 and AC-10."
+    },
+    {
+      "id": "OQ-07",
+      "question": "Are attribute friendly names stored as a user-level setting for the logged-in user, or per active folder or global profile?",
+      "qa_impact": "The answer decides whether AC-07 needs two users in one shared profile, two profiles, or both, and whether the current PR meets the requested scope."
+    },
+    {
+      "id": "OQ-08",
+      "question": "What configuration activation boundary is supported after condAttrList.csv changes?",
+      "qa_impact": "The answer decides whether tests wait for a live update, profile reselect, editor reopen, service restart, or deployment."
+    },
+    {
+      "id": "OQ-09",
+      "question": "What should happen for an invalid entry, a duplicate entry, a removed entry, or a configuration rollback?",
+      "qa_impact": "The answer defines the negative fixtures, visible result, cleanup, and pass or fail oracle for future configured attributes."
     }
   ],
   "enumerated_requirements": {
@@ -306,7 +332,7 @@
       {
         "id": "REQ-01",
         "source_index": 1,
-        "text": "Full Tags View shows the original attribute name.",
+        "text": "Full Tags View shows the original attribute name instead of the configured friendly name.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-01"
@@ -315,7 +341,7 @@
       {
         "id": "REQ-02",
         "source_index": 2,
-        "text": "Condition Attributes panel does not show the friendly name.",
+        "text": "The Condition Attributes panel does not show the configured friendly name.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-02"
@@ -324,7 +350,7 @@
       {
         "id": "REQ-03",
         "source_index": 3,
-        "text": "Right Panel loses the friendly name after the attribute is applied.",
+        "text": "The Right Panel loses the friendly name after the attribute is applied.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-03"
@@ -333,7 +359,7 @@
       {
         "id": "REQ-04",
         "source_index": 4,
-        "text": "Preserve the complete custom and built-in fallback rule.",
+        "text": "For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-04"
@@ -342,7 +368,7 @@
       {
         "id": "REQ-05",
         "source_index": 5,
-        "text": "Cover add, update, and remove while the editor remains open.",
+        "text": "When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-05"
@@ -351,7 +377,7 @@
       {
         "id": "REQ-06",
         "source_index": 6,
-        "text": "Discover future valid conditional attributes from supported configuration.",
+        "text": "This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-06"
@@ -360,7 +386,7 @@
       {
         "id": "REQ-07",
         "source_index": 7,
-        "text": "Cover the effective label seen by each signed-in author without profile leakage.",
+        "text": "Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-07"
@@ -369,7 +395,7 @@
       {
         "id": "REQ-08",
         "source_index": 8,
-        "text": "Cover the Use only above attributes restriction.",
+        "text": "Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-08",
@@ -379,7 +405,7 @@
       {
         "id": "REQ-09",
         "source_index": 9,
-        "text": "Preserve mappings through upgrade.",
+        "text": "Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-10"
@@ -388,7 +414,7 @@
       {
         "id": "REQ-10",
         "source_index": 10,
-        "text": "Do not regress element friendly names.",
+        "text": "Verify the existing friendly-name functionality for elements is not affected.",
         "disposition": "COVERED_BY_AC",
         "ac_refs": [
           "AC-11"
@@ -397,26 +423,435 @@
       {
         "id": "REQ-11",
         "source_index": 11,
-        "text": "Decide whether Condition Presets are in scope.",
+        "text": "For condition presets, should friendly attribute names be displayed when configured?",
         "disposition": "OPEN_QUESTION",
         "open_question_ref": "OQ-02"
       },
       {
         "id": "REQ-12",
         "source_index": 12,
-        "text": "Decide whether the DITAVAL attribute dropdown is in scope.",
+        "text": "In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?",
         "disposition": "OPEN_QUESTION",
         "open_question_ref": "OQ-03"
       },
       {
         "id": "REQ-13",
         "source_index": 13,
-        "text": "Decide whether Preview is in scope.",
+        "text": "In Preview mode, should attributes use their raw names or configured friendly names?",
         "disposition": "OPEN_QUESTION",
         "open_question_ref": "OQ-04"
       }
     ],
     "shared_contract_justifications": {}
+  },
+  "source_requirement_ledger": {
+    "schema_version": "aem-guides-source-requirement-ledger-v1",
+    "sources": [
+      {
+        "id": "SRC-01",
+        "type": "jira_description",
+        "locator": "GUIDES-49507 description and attached screenshot observations",
+        "raw_text": "Full Tags View shows the original attribute name instead of the configured friendly name.\nThe Condition Attributes panel does not show the configured friendly name.\nThe Right Panel loses the friendly name after the attribute is applied.\n",
+        "sha256": "24e4378ea45ff9c40b7a9f007dabb28b3091824ed022edbf8cb1d5df5002ca75",
+        "artifact_path": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/test-plans/evidence/GUIDES-49507-jira-description.txt",
+        "artifact_sha256": "24e4378ea45ff9c40b7a9f007dabb28b3091824ed022edbf8cb1d5df5002ca75"
+      },
+      {
+        "id": "SRC-02",
+        "type": "human_review_feedback",
+        "locator": "User-supplied human UAC review for GUIDES-49507 on 2026-08-24",
+        "raw_text": "AC-04: For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.\nAC-05: When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.\nAC-06: This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.\nMissing AC: Verify friendly names are applied for the logged-in user, as this is a user-level setting.\nMissing AC: Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.\nMissing AC: Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.\nMissing AC: Verify the existing friendly-name functionality for elements is not affected.\nOpen question: For condition presets, should friendly attribute names be displayed when configured?\nOpen question: In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?\nOpen question: In Preview mode, should attributes use their raw names or configured friendly names?\n",
+        "sha256": "a79540b474205c1dff52a6f4c131558c4dee8d7a00ca90521fba5c5104751861",
+        "artifact_path": "C:/Users/prashantp/Videos/aem-guides-dataset-studio/output/test-plans/evidence/GUIDES-49507-human-feedback.txt",
+        "artifact_sha256": "a79540b474205c1dff52a6f4c131558c4dee8d7a00ca90521fba5c5104751861"
+      }
+    ],
+    "items": [
+      {
+        "id": "REQ-01",
+        "source_id": "SRC-01",
+        "source_index": 1,
+        "verbatim_text": "Full Tags View shows the original attribute name instead of the configured friendly name.",
+        "text": "Full Tags View shows the original attribute name instead of the configured friendly name.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-01"
+        ],
+        "protected_exact": [
+          "Full Tags View"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-01",
+            "text": "Full Tags View shows the original attribute name instead of the configured friendly name.",
+            "required_terms_all": [
+              "Full Tags View",
+              "friendly name"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-02",
+        "source_id": "SRC-01",
+        "source_index": 2,
+        "verbatim_text": "The Condition Attributes panel does not show the configured friendly name.",
+        "text": "The Condition Attributes panel does not show the configured friendly name.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-02"
+        ],
+        "protected_exact": [
+          "Condition Attributes panel"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-02",
+            "text": "The Condition Attributes panel does not show the configured friendly name.",
+          "required_terms_all": [
+            "Condition Attributes panel",
+            "friendly name"
+          ],
+          "required_terms_any": [
+            "not",
+            "instead"
+          ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-03",
+        "source_id": "SRC-01",
+        "source_index": 3,
+        "verbatim_text": "The Right Panel loses the friendly name after the attribute is applied.",
+        "text": "The Right Panel loses the friendly name after the attribute is applied.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-03"
+        ],
+        "protected_exact": [
+          "Right Panel"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-03",
+            "text": "The Right Panel loses the friendly name after the attribute is applied.",
+          "required_terms_all": [
+            "Right Panel",
+            "friendly name",
+            "applied"
+          ],
+          "required_terms_any": [
+            "after",
+            "applied row"
+          ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-04",
+        "source_id": "SRC-02",
+        "source_index": 4,
+        "verbatim_text": "For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.",
+        "text": "For a custom attribute added to the DTD, display its configured friendly name. If no friendly name is configured, display the raw attribute name. Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-04"
+        ],
+        "protected_exact": [
+          "DTD",
+          "Full Tags View",
+          "Condition Attributes panel",
+          "Right Panel"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-04",
+            "text": "For a custom attribute added to the DTD, display its configured friendly name.",
+            "required_terms_all": [
+              "custom attribute",
+              "DTD",
+              "friendly name"
+            ]
+          },
+          {
+            "id": "ATOM-05",
+            "text": "If no friendly name is configured, display the raw attribute name.",
+            "required_terms_all": [
+              "no friendly name",
+              "raw attribute name"
+            ]
+          },
+          {
+            "id": "ATOM-06",
+            "text": "Validate this in Full Tags View, the Condition Attributes panel, and the Right Panel.",
+            "required_terms_all": [
+              "Full Tags View",
+              "Condition Attributes panel",
+              "Right Panel"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-05",
+        "source_id": "SRC-02",
+        "source_index": 5,
+        "verbatim_text": "When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.",
+        "text": "When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-05"
+        ],
+        "protected_exact": [
+          "Workspace Settings",
+          "Full Tags View",
+          "Condition Attributes panel",
+          "Right Panel"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-07",
+            "text": "When an attribute's friendly name is added, updated, or removed in Workspace Settings, the change should automatically appear in Full Tags View, the Condition Attributes panel, and the Right Panel without a page reload.",
+            "required_terms_all": [
+              "add",
+              "update",
+              "remove",
+              "Workspace Settings",
+              "Full Tags View",
+            "Condition Attributes panel",
+            "Right Panel",
+            "page reload",
+            "automatically",
+            "without"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-06",
+        "source_id": "SRC-02",
+        "source_index": 6,
+        "verbatim_text": "This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.",
+        "text": "This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv. Display its friendly name when configured; otherwise, display the raw attribute name.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-06"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-08",
+            "text": "This functionality should work for any valid conditional attribute added to /libs/fmdita/config/condAttrList.csv.",
+          "required_terms_all": [
+            "any",
+            "valid conditional attribute",
+            "/libs/fmdita/config/condAttrList.csv"
+            ]
+          },
+          {
+            "id": "ATOM-09",
+            "text": "Display its friendly name when configured; otherwise, display the raw attribute name.",
+            "required_terms_all": [
+              "friendly name",
+              "raw attribute name"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-07",
+        "source_id": "SRC-02",
+        "source_index": 7,
+        "verbatim_text": "Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
+        "text": "Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-07"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-10",
+            "text": "Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
+          "required_terms_all": [
+            "friendly names",
+            "logged-in user",
+            "user-level"
+            ]
+          },
+          {
+            "id": "ATOM-11",
+            "text": "Verify friendly names are applied for the logged-in user, as this is a user-level setting.",
+          "required_terms_all": [
+            "friendly names",
+            "logged-in user",
+            "user-level"
+            ],
+            "evidence_conflict": true,
+            "open_question_ref": "OQ-07"
+          }
+        ]
+      },
+      {
+        "id": "REQ-08",
+        "source_id": "SRC-02",
+        "source_index": 8,
+        "verbatim_text": "Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.",
+        "text": "Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-08",
+          "AC-09"
+        ],
+        "protected_exact": [
+          "Use only above attributes"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-12",
+            "text": "Verify that when Use only above attributes is enabled, only configured attributes are displayed for all elements.",
+            "required_terms_all": [
+              "Use only above attributes",
+              "only configured attributes"
+            ],
+            "required_terms_any": [
+              "all elements",
+              "any DTD-valid element"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-09",
+        "source_id": "SRC-02",
+        "source_index": 9,
+        "verbatim_text": "Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.",
+        "text": "Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-10"
+        ],
+        "protected_exact": [
+          "AEM Guides"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-13",
+            "text": "Verify configured friendly names are preserved and continue to work after an AEM Guides build upgrade.",
+          "required_terms_all": [
+            "configured friendly names",
+            "preserved",
+            "after",
+            "AEM Guides",
+            "upgrade"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-10",
+        "source_id": "SRC-02",
+        "source_index": 10,
+        "verbatim_text": "Verify the existing friendly-name functionality for elements is not affected.",
+        "text": "Verify the existing friendly-name functionality for elements is not affected.",
+        "authority": "Proposed",
+        "disposition": "AC",
+        "ac_refs": [
+          "AC-11"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-14",
+            "text": "Verify the existing friendly-name functionality for elements is not affected.",
+          "required_terms_all": [
+            "existing",
+            "friendly-name functionality",
+            "elements",
+            "not affected"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-11",
+        "source_id": "SRC-02",
+        "source_index": 11,
+        "verbatim_text": "For condition presets, should friendly attribute names be displayed when configured?",
+        "text": "For condition presets, should friendly attribute names be displayed when configured?",
+        "authority": "Proposed",
+        "disposition": "OQ",
+        "open_question_ref": "OQ-02",
+        "semantic_atoms": [
+          {
+            "id": "ATOM-15",
+            "text": "For condition presets, should friendly attribute names be displayed when configured?",
+          "required_terms_all": [
+            "condition presets",
+            "configured",
+            "attribute",
+            "friendly attribute names"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-12",
+        "source_id": "SRC-02",
+        "source_index": 12,
+        "verbatim_text": "In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?",
+        "text": "In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?",
+        "authority": "Proposed",
+        "disposition": "OQ",
+        "open_question_ref": "OQ-03",
+        "protected_exact": [
+          "DITAVAL"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-16",
+            "text": "In a DITAVAL file's attribute dropdown, should attributes use their raw names or configured friendly names?",
+            "required_terms_all": [
+              "DITAVAL",
+              "attribute dropdown",
+              "raw names",
+              "friendly names"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "REQ-13",
+        "source_id": "SRC-02",
+        "source_index": 13,
+        "verbatim_text": "In Preview mode, should attributes use their raw names or configured friendly names?",
+        "text": "In Preview mode, should attributes use their raw names or configured friendly names?",
+        "authority": "Proposed",
+        "disposition": "OQ",
+        "open_question_ref": "OQ-04",
+        "protected_exact": [
+          "Preview"
+        ],
+        "semantic_atoms": [
+          {
+            "id": "ATOM-17",
+            "text": "In Preview mode, should attributes use their raw names or configured friendly names?",
+          "required_terms_all": [
+            "Preview",
+            "raw names",
+            "configured friendly names"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "operational_contract": {
     "schema_version": "aem-guides-operational-contract-v1",
@@ -426,9 +861,10 @@
   "feature_classification": {
     "schema_version": "aem-guides-feature-classification-v1",
     "classes": [
-      "ui_display_label"
+      "ui_display_label",
+      "configuration_driven_enumeration"
     ],
-    "rationale": "The ticket changes how one configured attribute label is rendered across multiple UI consumers and configuration scopes.",
+    "rationale": "The ticket changes how a configuration-backed attribute list is discovered and how its labels render across multiple UI consumers and scopes.",
     "evidence": [
       "Jira: GUIDES-49507 description and attachment",
       "commit 839d95b9 src/model/attribute.ts:9-15",
@@ -472,10 +908,9 @@
       }
     ],
     "config_scope": {
-      "scope": "OTHER",
-      "other_scope": "Folder profile with global-profile fallback",
-      "disposition": "COVERED_BY_AC",
-      "ac_ref": "AC-07"
+      "scope": "USER",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-07"
     },
     "upgrade_persistence": {
       "disposition": "COVERED_BY_AC",
@@ -496,17 +931,316 @@
       "C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts:588-614"
     ]
   },
+  "configuration_enumeration_scope": {
+    "schema_version": "aem-guides-configuration-enumeration-scope-v1",
+    "construct_type": "conditional-attribute",
+    "dimensions": [
+      {
+      "dimension": "authoritative_source",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-06",
+      "semantic_trace": {
+        "required_terms_all": ["supported configuration"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "overlay_precedence",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-06",
+      "semantic_trace": {
+        "required_terms_all": ["configuration precedence"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "dynamic_entry",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-06",
+      "semantic_trace": {
+        "required_terms_all": ["is added"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "mapped_label",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-06",
+      "semantic_trace": {
+        "required_terms_all": ["friendly name"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "raw_or_default_fallback",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-06",
+      "semantic_trace": {
+        "required_terms_all": ["raw attribute name"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "applicability",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-08",
+      "semantic_trace": {
+        "required_terms_all": ["valid for that element"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "activation_reload",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-08",
+      "semantic_trace": {
+        "required_terms_all": ["activation boundary"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "unrelated_entry_preservation",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-12",
+      "semantic_trace": {
+        "required_terms_all": ["existing entries remain"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "invalid_entry",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-09",
+      "semantic_trace": {
+        "required_terms_all": ["invalid entry"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "duplicate_entry",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-09",
+      "semantic_trace": {
+        "required_terms_all": ["duplicate entry"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "removal",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-09",
+      "semantic_trace": {
+        "required_terms_all": ["removed entry"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "upgrade",
+      "disposition": "COVERED_BY_AC",
+      "ac_ref": "AC-10",
+      "semantic_trace": {
+        "required_terms_all": ["build upgrade"],
+        "required_terms_any": []
+      }
+      },
+      {
+      "dimension": "rollback",
+      "disposition": "OPEN_QUESTION",
+      "open_question_ref": "OQ-09",
+      "semantic_trace": {
+        "required_terms_all": ["configuration rollback"],
+        "required_terms_any": []
+      }
+      }
+    ]
+  },
+  "construct_relationships": {
+    "schema_version": "aem-guides-construct-relationships-v1",
+    "construct": {
+      "slug": "configured-attribute-friendly-name",
+      "label": "Configured attribute friendly name"
+    },
+    "edges": [
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "Full Tags View",
+        "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/other_attribute_list_item.json:17-18",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "Condition Attributes panel",
+        "source": "C:/xmleditor/xmleditor/src/model/condition.ts:50-53",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-02"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "Right Panel",
+        "source": "C:/xmleditor/xmleditor/src/model/other_attrs.ts:348-358",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-03"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "condition presets",
+        "source": "C:/xmleditor/xmleditor/src/controllers/widgets/condition_preset_editor_controller.ts:574-575",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-02"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "DITAVAL attribute dropdown",
+        "source": "C:/xmleditor/xmleditor/src/controllers/widgets/ditaval_element_controller.ts:22-33",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor_kind": "UI_SURFACE",
+        "neighbor": "Preview",
+        "source": "C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts:588-614",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "relation_type": "SIBLING_CONFIG",
+        "neighbor": "PAGE_CONSTRAINT_DITA_ATTRIBUTES",
+        "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json:6",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-08"
+      },
+      {
+        "relation_type": "SIBLING_CONFIG",
+        "neighbor": "Use only above attributes",
+        "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json:87-90",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-08"
+      }
+    ],
+    "cross_dimensions": {
+      "PERFORMANCE": {
+        "applicable": false,
+        "reason": "The inspected change resolves one display label per rendered attribute, and the Jira provides no scale, latency, throughput, or bulk-workload requirement."
+      },
+      "SECURITY": {
+        "applicable": false,
+        "reason": "The inspected behavior changes displayed labels and does not add credential, secret, trust-boundary, or data-exposure behavior."
+      },
+      "PERMISSIONS": {
+        "applicable": true,
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-07"
+      },
+      "UPGRADE": {
+        "applicable": true,
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-10"
+      },
+      "CONCURRENCY": {
+        "applicable": false,
+        "reason": "The Jira requires one open editor to reflect a saved setting without reload but supplies no simultaneous-writer or concurrent-update contract."
+      }
+    },
+    "discovery": {
+      "code_search_terms": [
+        "PAGE_DITA_ATTRIBUTES",
+        "PAGE_CONSTRAINT_DITA_ATTRIBUTES",
+        "Use only above attributes",
+        "friendlyNames",
+        "getGroupPath",
+        "getListItemConfigJSON",
+        "attributeList",
+        "profilingAttributes",
+        "switchPreview"
+      ],
+      "corpus_relation_queries": [
+        "relations.source:\"configured-attribute-friendly-name\"",
+        "relations.target:\"configured-attribute-friendly-name\"",
+        "relations.neighbor:\"configured-attribute-friendly-name\""
+      ],
+      "clones_searched": [
+        "C:/xmleditor/xmleditor",
+        "C:/starling"
+      ],
+      "code_neighborhood_sweep": {
+        "affected_artifacts": [
+          "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json",
+          "C:/xmleditor/xmleditor/src/config/ui/views/widgets/other_attribute_list_item.json",
+          "C:/xmleditor/xmleditor/src/model/condition.ts",
+          "C:/xmleditor/xmleditor/src/model/other_attrs.ts",
+          "C:/xmleditor/xmleditor/src/controllers/widgets/condition_preset_editor_controller.ts",
+          "C:/xmleditor/xmleditor/src/controllers/widgets/ditaval_element_controller.ts",
+          "C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts"
+        ],
+        "sibling_config_keys": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "PAGE_CONSTRAINT_DITA_ATTRIBUTES",
+              "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json:6"
+            }
+          ]
+        },
+        "sibling_ui_options": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "Use only above attributes",
+              "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json:87-90"
+            }
+          ]
+        },
+        "callers_and_same_path_processors": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "Full Tags View",
+              "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/other_attribute_list_item.json:17-18"
+            },
+            {
+              "neighbor": "Condition Attributes panel",
+              "source": "C:/xmleditor/xmleditor/src/model/condition.ts:50-53"
+            },
+            {
+              "neighbor": "Right Panel",
+              "source": "C:/xmleditor/xmleditor/src/model/other_attrs.ts:348-358"
+            },
+            {
+              "neighbor": "condition presets",
+              "source": "C:/xmleditor/xmleditor/src/controllers/widgets/condition_preset_editor_controller.ts:574-575"
+            },
+            {
+              "neighbor": "DITAVAL attribute dropdown",
+              "source": "C:/xmleditor/xmleditor/src/controllers/widgets/ditaval_element_controller.ts:22-33"
+            },
+            {
+              "neighbor": "Preview",
+              "source": "C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts:588-614"
+            }
+          ]
+        }
+      }
+    }
+  },
   "behavior_model": {
     "trigger": [
       "An author opens an attribute-rendering surface or an administrator saves an attribute-label setting."
     ],
     "operations": [
-      "Resolve the effective profile mapping, apply raw-name fallback, and render the attribute label."
+      "Resolve the requested user-level mapping, apply raw-name fallback, and render the attribute label."
     ],
     "inputs": [
       "Raw DITA attribute name",
       "Attribute friendly-name mapping",
-      "Active folder or global profile",
+      "Logged-in user",
+      "Active folder or global profile from current implementation",
       "DTD-valid attribute choices",
       "Conditional-attribute configuration"
     ],
@@ -569,13 +1303,17 @@
       "Already-applied attributes remain visible when choices are restricted."
     ],
     "unknowns": [
+      "Whether friendly-name mappings are user-level or active-profile-level",
       "Friendly-name scope for Condition Presets, DITAVAL, and Preview",
       "Conditional value-label scope",
       "Target build support for the guarded update command",
-      "Supported legacy XML and CSV precedence contract"
+      "Supported legacy XML and CSV precedence contract",
+      "Supported configuration activation boundary",
+      "Invalid, duplicate, removal, and rollback behavior for conditional-list entries"
     ],
     "evidence_ids": [
       "JIRA-GUIDES-49507",
+      "USER-FEEDBACK-GUIDES-49507",
       "ATTACHMENT-GUIDES-49507-1",
       "PR-REF-839D95B9",
       "STARLING-FDFA7277",
@@ -609,6 +1347,14 @@
         ],
         "authority": "CURRENT_IMPLEMENTATION",
         "confidence": 0.9
+      },
+      {
+        "fact": "Human review requests that friendly names apply to the logged-in user as a user-level setting.",
+        "evidence_ids": [
+          "USER-FEEDBACK-GUIDES-49507"
+        ],
+        "authority": "JIRA",
+        "confidence": 1.0
       },
       {
         "fact": "Starling checks the apps overlay before libs and legacy XML before CSV.",

@@ -1,0 +1,9 @@
+authors
+Contributors
+AEM Administrators author Program 167205 Environment 1910614 (from product profile)
+folderprofile-8fbxxxx (seems to be added because the user is an Admin User in the folder profile)
+everyone
+AEM Assets Collaborator Users - Service
+AEM Sites Content Managers - Service
+AEM Administrators - Service
+Analytics Administrators

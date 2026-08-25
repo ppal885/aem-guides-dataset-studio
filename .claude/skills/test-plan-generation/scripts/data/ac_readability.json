@@ -1,0 +1,23 @@
+{
+  "schema_version": "aem-guides-ac-readability-signals-v1",
+  "jargon_terms": [
+    "baseline-relative",
+    "materialization",
+    "p95",
+    "heap",
+    "GC",
+    "suffix path",
+    "render condition",
+    "non-asset resource",
+    "per-asset gating"
+  ],
+  "vague_surface_phrases": [
+    "the panel",
+    "the view",
+    "the screen",
+    "the page",
+    "the dialog",
+    "the dropdown",
+    "somewhere"
+  ]
+}

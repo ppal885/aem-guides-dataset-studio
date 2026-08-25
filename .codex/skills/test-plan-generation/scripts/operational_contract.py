@@ -81,6 +81,31 @@ OPERATIONAL_TRIGGER_PHRASES = (
     "fault injection",
 )
 
+# A restart can also be a synchronous configuration-activation boundary.  Do
+# not force the full job/queue recovery contract for that word alone.  It is a
+# strong operational signal only when the same evidence also names recurring
+# execution, recovery, or partial-state machinery.
+RESTART_OPERATIONAL_ANCHORS = (
+    "job",
+    "queue",
+    "worker",
+    "consumer",
+    "listener",
+    "workflow",
+    "async",
+    "retry",
+    "cancellation",
+    "shutdown",
+    "partial write",
+    "checkpoint",
+    "long-running",
+    "long running",
+    "batch",
+    "migration",
+    "repair",
+    "recovery",
+)
+
 
 def is_present(manifest):
     """Return whether *manifest* contains an operational-contract object."""
@@ -121,7 +146,19 @@ def likely_operational(manifest, plan_text=""):
         texts.append(str(plan_text))
 
     haystack = "\n".join(texts).lower()
-    return [phrase for phrase in OPERATIONAL_TRIGGER_PHRASES if phrase in haystack]
+    hits = []
+    for phrase in OPERATIONAL_TRIGGER_PHRASES:
+        if phrase not in haystack:
+            continue
+        if phrase == "restart":
+            restart_lines = [line for line in haystack.splitlines() if "restart" in line]
+            if not any(
+                any(anchor in line for anchor in RESTART_OPERATIONAL_ANCHORS)
+                for line in restart_lines
+            ):
+                continue
+        hits.append(phrase)
+    return hits
 
 
 def _known_ids(values):

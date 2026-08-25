@@ -10,19 +10,26 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 - Never show Given, When, Then, pipes, sphere, or Evidence to the user. Chat uses `AC-##` with `Starting point`, `Action`, and `Expected result`; Jira uses the same lines and also keeps `[Proposed]` or `[Confirmed]`.
 - Write each Given, When, and Then value as a complete plain-language clause because the shared projector copies it verbatim. Do not rely on the hidden field label to make a fragment understandable.
 - Give each AC one purpose.
+- Do not add a summary AC that repeats outcomes already covered by earlier criteria. Use Test Scenarios to show the combined DITA/non-DITA or positive/negative matrix.
 - Use Given only for the minimum setup needed for that purpose.
 - Use When for one trigger or user action.
 - Use Then for one observable result.
-- Aim to keep Given to 20 words or fewer. The hard limit is 30.
-- Aim to keep When to 12 words or fewer. The hard limit is 20.
-- Aim to keep Then to 20 words or fewer. The hard limit is 30.
-- The hard limit for Given, When, and Then together is 65 words.
+- Aim to keep Given to 20 words or fewer and When to 12 words or fewer.
+- Aim to keep Then to 20 words or fewer. More than 28 words, more than two sentences, or many stacked clauses in any Given, When, or Then field is a loud review finding; only an outcome over 45 words is a hard failure.
 - Split the AC when two results can pass or fail independently.
 - Do not remove accepted meaning to meet a length target. Split a long accepted UAC into smaller Confirmed ACs and preserve every source-clause mapping.
 - Prefer short words: use, before, after, if, and for.
 - Keep exact product names, UI labels, API paths, configuration keys, enum values, and error codes when they matter.
 - Avoid semicolons, double negatives, parenthetical explanations, and long comma-separated lists.
 - Move setup steps, matrices, implementation details, and background explanations to Test Scenarios or Open Questions.
+- A code change can reveal an extra behavior, such as a new fallback or error response, but it does not prove that product scope approved that behavior. Keep it Proposed and ask the scope question unless Jira, accepted UAC, or an explicit product decision approves it.
+- Keep long examples, extension lists, implementation explanations, and parenthetical exceptions outside the tester sentence. Put them in Test data, a scenario, or a `Note for developer:` bullet.
+- Name the exact screen. Move code, file paths, implementation jargon, and performance internals to a `Note for developer:` bullet in an existing technical section instead of tester-facing AC text. Preserve a source-mandated exact identifier when fidelity requires it, and expose the readability tradeoff for review.
+- Preserve human reviewer wording as the semantic baseline. Simplify its sentence structure without changing the actor, scope, UI label, timing, fallback, exact path, or product outcome.
+- If inspected code conflicts with human feedback, keep the requested meaning and add an Open Question that states the conflict. Do not silently replace the requirement with current implementation.
+- Do not refer to another criterion such as AC-04 inside Given, When, or Then. State the required fallback or result directly so each criterion stands alone.
+- Review an existing or AI-supplied AC set through the full evidence manifest and `run_gates.py` pipeline. A conversational review alone is not a gated result.
+- Resolve every readability and implementation-scope review before posting. The gate can still exit successfully for backward compatibility, but its receipt remains non-postable.
 
 ## Human-Facing Format
 

@@ -1,0 +1,9 @@
+Perhaps a custom index would help with this query.
+Partial or failed processing is not reflected in the Sling job result.
+Pagination progress is advanced independently of successful page completion.
+PurgePresetExecutionDataJob does not honor Sling job cancellation.
+The job uses offset-based pagination for a large DAM query.
+Concurrent repository changes can shift result positions and cause assets to be skipped or processed more than once.
+The executor has no upper bound on execution duration, page count, or mutation count.
+The executor does not report structured Sling job progress or job-context status.
+Failure logging does not include the Sling job ID, pagination offset, last processed path, or query parameters.

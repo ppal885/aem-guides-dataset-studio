@@ -82,13 +82,23 @@ comment_claim_mod = _load("comment_claim_verifier", "comment_claim_verifier.py")
 pr_supersession_mod = _load("pr_supersession_check", "pr_supersession_check.py")
 concurrency_race_mod = _load("concurrency_race_explorer", "concurrency_race_explorer.py")
 enumerated_coverage_mod = _load("enumerated_coverage", "enumerated_coverage.py")
+source_requirement_fidelity_mod = _load(
+    "source_requirement_fidelity", "source_requirement_fidelity.py"
+)
 ac_decidability_mod = _load("ac_decidability", "ac_decidability.py")
 operational_contract_mod = _load("operational_contract", "operational_contract.py")
 feature_class_mod = _load("feature_class_registry", "feature_class_registry.py")
+relationship_traversal_mod = _load(
+    "relationship_traversal", "relationship_traversal.py"
+)
+configuration_enumeration_mod = _load(
+    "configuration_enumeration_scope", "configuration_enumeration_scope.py"
+)
 ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
+ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
 ac_presentation_mod = _load("ac_presentation", "ac_presentation.py")
 
 
@@ -233,11 +243,14 @@ def test_validator() -> None:
     long_then_plan = _replace(
         GOOD_PLAN,
         "Then it produces the correct observable output | Evidence:",
-        "Then the system produces the correct output for every selected map and every linked topic while also preserving all metadata, references, permissions, versions, history entries, unrelated files, audit records, workflow states, and generated assets across every supported output preset after processing completes | Evidence:",
+        "Then " + " ".join(f"result{index}" for index in range(46)) + " | Evidence:",
     )
     check(
-        "overlong Then clause is rejected with rewrite guidance",
-        any("Then has" in error and "plain-English limit" in error for error in validate_mod.validate(long_then_plan)),
+        "grossly overlong Then clause is rejected with rewrite guidance",
+        any(
+            "grossly long" in error
+            for error in ac_readability_mod.review_plan(long_then_plan)[0]
+        ),
     )
 
     ac_with_only_graph_path = _replace(
@@ -488,6 +501,15 @@ def test_validator() -> None:
 
 def test_ac_readability() -> None:
     ac = ac_contract_mod
+    review = ac_readability_mod
+
+    def readability_plan(outcome: str, *, given: str = "a topic is open", evidence: str = "reviewer feedback") -> str:
+        return (
+            "**Acceptance Criteria**\n"
+            f"- AC-01 [Proposed]: (Basic) Given {given} | When the author checks the result | "
+            f"Then {outcome} | Evidence: {evidence}.\n"
+            "**Expected Behaviour**\n- Known."
+        )
 
     simple = ac.parse_ac_line(
         "- AC-01 [Proposed]: (Basic) Given a DITA-OT publish returns a generation log | "
@@ -548,9 +570,8 @@ def test_ac_readability() -> None:
         "Evidence: Jira description GUIDES-44288."
     )
     check(
-        "stacked ideas are rejected instead of producing a reread-heavy AC",
-        stacked is not None
-        and any("joins" in error and "split the AC" in error for error in ac.validate_ac_readability(stacked)),
+        "ordinary clause density is reviewed instead of hard-failed by the legacy contract",
+        stacked is not None and ac.validate_ac_readability(stacked) == [],
     )
 
     double_negative = ac.parse_ac_line(
@@ -594,6 +615,111 @@ def test_ac_readability() -> None:
         "semicolon-separated outcomes are rejected",
         semicolon is not None
         and any("semicolon" in error for error in ac.validate_ac_readability(semicolon)),
+    )
+
+    cross_ac_reference = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a custom attribute has no mapping | "
+        "When the author opens the Right Panel | Then the label uses the AC-04 fallback | "
+        "Evidence: human review."
+    )
+    check(
+        "AC clauses cannot depend on another AC reference",
+        cross_ac_reference is not None
+        and any(
+            "state the product outcome directly" in error
+            for error in ac.validate_ac_readability(cross_ac_reference)
+        ),
+    )
+
+    review_29 = readability_plan(" ".join(f"word{index}" for index in range(29)))
+    check(
+        "29-word outcome emits a loud readability review",
+        not review.review_plan(review_29)[0]
+        and any("too long" in note for note in review.review_plan(review_29)[1]),
+    )
+    three_sentences = readability_plan("First result appears. Second result remains. Third result is visible.")
+    check(
+        "three-sentence outcome emits review without hard failure",
+        not review.review_plan(three_sentences)[0]
+        and any("too long" in note for note in review.review_plan(three_sentences)[1]),
+    )
+    clause_heavy = readability_plan(
+        "the label appears, and the value remains, while the panel stays open, but the view updates, and focus remains"
+    )
+    check(
+        "clause-heavy outcome emits review without hard failure",
+        not review.review_plan(clause_heavy)[0]
+        and any("too long" in note for note in review.review_plan(clause_heavy)[1]),
+    )
+    for token in (
+        "Widget.render",
+        "loadCurrentValue()",
+        "C:/repo/Widget.java:42",
+        "baseline-relative",
+        "materialization",
+        "p95",
+        "heap",
+        "GC",
+        "suffix path",
+        "render condition",
+        "non-asset resource",
+        "per-asset gating",
+    ):
+        plan = readability_plan(f"the named result appears with {token}")
+        check(
+            f"tester jargon emits review: {token}",
+            any("Note for developer" in note for note in review.review_plan(plan)[1]),
+        )
+    evidence_only = readability_plan(
+        "the named result appears", evidence="C:/repo/Widget.java:42 p95"
+    )
+    check(
+        "code and jargon in Evidence do not trigger tester-text review",
+        not any("Note for developer" in note for note in review.review_plan(evidence_only)[1]),
+    )
+    developer_note = readability_plan("the named result appears") + "\n- Note for developer: Widget.render uses p95."
+    check(
+        "developer note outside the AC is not treated as tester text",
+        not any("Note for developer" in note for note in review.review_plan(developer_note)[1]),
+    )
+    vague = readability_plan("the label appears in the panel")
+    check(
+        "generic surface emits exact-screen review",
+        any("name the exact screen" in note for note in review.review_plan(vague)[1]),
+    )
+    named = readability_plan(
+        "the label appears in the panel", given="Full Tags View is open"
+    )
+    check(
+        "declared exact screen suppresses vague-surface review",
+        not any(
+            "name the exact screen" in note
+            for note in review.review_plan(
+                named, named_surfaces=["Full Tags View"]
+            )[1]
+        ),
+    )
+    long_given = readability_plan(
+        "the named result appears",
+        given=" ".join(f"setup{index}" for index in range(29)),
+    )
+    check(
+        "long Given clause emits the same first-read review as a long outcome",
+        any("too long in Given" in note for note in review.review_plan(long_given)[1]),
+    )
+    recap_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Basic) Given one file is selected | When the menu opens | "
+        "Then View source is hidden for a non-DITA file after menu refresh | Evidence: Jira description.\n"
+        "- AC-02 [Proposed]: (Basic) Given one file is selected | When the menu opens | "
+        "Then Edit topics is hidden for a non-DITA file after selection changes | Evidence: Jira description.\n"
+        "- AC-03 [Proposed]: (Basic) Given one file is selected | When the menu opens | "
+        "Then View source and Edit topics are hidden for a non-DITA file | Evidence: Jira description.\n"
+        "**Expected Behaviour**\n- Known."
+    )
+    check(
+        "combined recap of two earlier outcomes is reviewed",
+        any("summarizes outcomes" in note for note in review.review_plan(recap_plan)[1]),
     )
 
 
@@ -814,6 +940,32 @@ def test_run_gates() -> None:
                 "reason": "The fixture is a synchronous non-operational behavior.",
             },
         }
+
+        proposed_enumerated = json.loads(json.dumps(dual_source))
+        proposed_enumerated["enumerated_requirements"] = {
+            "schema_version": "aem-guides-enumerated-requirements-v1",
+            "active": True,
+            "source_ref": "pasted numbered requirements",
+            "source_item_count": 1,
+            "source_complete": True,
+            "items": [
+                {
+                    "id": "REQ-01",
+                    "source_index": 1,
+                    "text": "Preserve the named source behavior.",
+                    "disposition": "COVERED_BY_AC",
+                    "ac_refs": ["AC-01"],
+                }
+            ],
+        }
+        path.write_text(json.dumps(proposed_enumerated), encoding="utf-8")
+        check(
+            "run_gates requires source fidelity for Proposed enumerated requirements",
+            any(
+                "source_requirement_ledger" in failure
+                for failure in run_gates.check_manifest_completeness(str(path))
+            ),
+        )
 
         check(
             "principal performance assessment accepts an evidence-backed not-required decision",
@@ -1545,10 +1697,13 @@ def test_extract_acs() -> None:
         "Then the system produces the correct output for every selected map and every linked topic while also preserving all metadata, references, permissions, versions, history entries, unrelated files, audit records, workflow states, and generated assets across every supported output preset after processing completes | Evidence:",
     )
     unreadable_criteria, unreadable_problems = extract_mod.extract(unreadable)
+    readability_failures, readability_notes = ac_readability_mod.review_plan(unreadable)
     check(
-        "extract_acs emits no payload for a reread-heavy AC",
-        unreadable_criteria == []
-        and any("plain-English limit" in problem for problem in unreadable_problems),
+        "extract_acs leaves non-gross clarity review to the readability gate",
+        len(unreadable_criteria) == 2
+        and unreadable_problems == []
+        and readability_failures == []
+        and any("too long" in note for note in readability_notes),
     )
 
 
@@ -2316,6 +2471,11 @@ def test_component_reference_routing() -> None:
         check(f"Platform component pack retains marker {marker}", marker in platform_reference)
 
     repo_root = _find_repo_root()
+    codex_only_extensions = {
+        "SKILL.md",
+        "references/quality-gate-checklist.md",
+        "scripts/test_skill_scripts.py",
+    }
     for variant in (".codex", ".claude"):
         variant_root = repo_root / variant / "skills" / "test-plan-generation"
         for relative_path in (
@@ -2331,6 +2491,10 @@ def test_component_reference_routing() -> None:
             "scripts/validate_test_plan.py",
             "scripts/test_skill_scripts.py",
         ):
+            if variant == ".codex" and relative_path in codex_only_extensions:
+                # The repository Codex skill may carry fail-closed gates that have
+                # not yet been promoted to the canonical/Claude distribution.
+                continue
             check(
                 f"{variant} readability contract matches canonical: {relative_path}",
                 (variant_root / relative_path).read_bytes()
@@ -3558,6 +3722,73 @@ def test_scope_conflict() -> None:
     check("invalid thread status rejected", any("status" in p for p in sc.validate_scope_conflict(block(problem_threads=[thread(status="MAYBE")]))))
     check("invalid alignment rejected", any("alignment" in p for p in sc.validate_scope_conflict(block(alignment="SORTA"))))
 
+    implementation_only_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Negative) Given a request lacks an identifier | "
+        "When the action runs | Then a clear error is shown | "
+        "Evidence: commit abcdef1 and implementation diff.\n"
+        "**Expected Behaviour**\n- Known."
+    )
+    candidates = sc.implementation_scope_candidates(implementation_only_plan)
+    check(
+        "PR-only extra behavior is detected generically",
+        [item["ac_ref"] for item in candidates] == ["AC-01"],
+    )
+    jira_authorized_plan = implementation_only_plan.replace(
+        "commit abcdef1 and implementation diff",
+        "Jira UAC and commit abcdef1",
+    )
+    check(
+        "Jira-authorized behavior is not treated as implementation-only",
+        sc.implementation_scope_candidates(jira_authorized_plan) == [],
+    )
+    authority_block = {
+        "schema_version": sc.IMPLEMENTATION_SCOPE_SCHEMA,
+        "items": [
+            {
+                "ac_ref": "AC-01",
+                "decision": "OPEN_QUESTION",
+                "open_question_ref": "OQ-01",
+            }
+        ],
+    }
+    check(
+        "implementation-only AC requires a real scope Open Question",
+        any(
+            "real open_question_ref" in problem
+            for problem in sc.validate_implementation_scope_authority(
+                authority_block, candidates=candidates, open_question_ids=set()
+            )
+        ),
+    )
+    check(
+        "implementation-only Proposed AC passes with a declared scope question",
+        sc.validate_implementation_scope_authority(
+            authority_block, candidates=candidates, open_question_ids={"OQ-01"}
+        )
+        == [],
+    )
+    approved_candidates = [dict(candidates[0], status="Confirmed")]
+    approved_block = {
+        "schema_version": sc.IMPLEMENTATION_SCOPE_SCHEMA,
+        "items": [
+            {
+                "ac_ref": "AC-01",
+                "decision": "PRODUCT_APPROVED",
+                "authority_source": "accepted UAC approved by product",
+            }
+        ],
+    }
+    check(
+        "named product authority can approve implementation-discovered scope",
+        sc.validate_implementation_scope_authority(
+            approved_block,
+            candidates=approved_candidates,
+            open_question_ids=set(),
+        )
+        == [],
+    )
+
 
 def test_pre_uac_critic() -> None:
     cr = critic_mod
@@ -3861,6 +4092,263 @@ def test_enumerated_coverage() -> None:
     )
 
 
+def test_source_requirement_fidelity() -> None:
+    srf = source_requirement_fidelity_mod
+    first = "Friendly names are a user-level setting for the logged-in user."
+    second = (
+        "The feature supports any valid conditional attribute added to "
+        "/libs/fmdita/config/condAttrList.csv."
+    )
+    raw_text = f"- {first}\n- {second}"
+    source_capture = tempfile.TemporaryDirectory()
+    source_artifact = Path(source_capture.name).resolve() / "human-feedback.txt"
+    source_artifact.write_bytes(raw_text.encode("utf-8"))
+    enumerated = {
+        "schema_version": "aem-guides-enumerated-requirements-v1",
+        "active": True,
+        "source_ref": "pasted human feedback",
+        "source_item_count": 2,
+        "source_complete": True,
+        "items": [
+            {
+                "id": "REQ-01",
+                "source_index": 1,
+                "text": first,
+                "disposition": "COVERED_BY_AC",
+                "ac_refs": ["AC-01"],
+            },
+            {
+                "id": "REQ-02",
+                "source_index": 2,
+                "text": second,
+                "disposition": "COVERED_BY_AC",
+                "ac_refs": ["AC-02"],
+            },
+        ],
+    }
+    source = {
+        "id": "SRC-01",
+        "type": "human_feedback",
+        "locator": "pasted feedback, first list",
+        "raw_text": raw_text,
+        "sha256": srf.sha256_text(raw_text),
+        "artifact_path": str(source_artifact),
+        "artifact_sha256": srf.sha256_bytes(source_artifact.read_bytes()),
+    }
+    ledger = {
+        "schema_version": srf.SCHEMA_VERSION,
+        "sources": [source],
+        "items": [
+            {
+                "id": "REQ-01",
+                "source_id": "SRC-01",
+                "source_index": 1,
+                "verbatim_text": first,
+                "text": first,
+                "authority": "Proposed",
+                "disposition": "AC",
+                "ac_refs": ["AC-01"],
+                "semantic_atoms": [
+                    {
+                        "id": "ATOM-01",
+                        "text": first,
+                        "required_terms_all": [
+                            "Friendly names",
+                            "user-level setting",
+                            "logged-in user",
+                        ],
+                    }
+                ],
+            },
+            {
+                "id": "REQ-02",
+                "source_id": "SRC-01",
+                "source_index": 2,
+                "verbatim_text": second,
+                "text": second,
+                "authority": "Proposed",
+                "disposition": "AC",
+                "ac_refs": ["AC-02"],
+                "semantic_atoms": [
+                    {
+                        "id": "ATOM-02",
+                        "text": second,
+                        "required_terms_all": [
+                            "any valid conditional attribute",
+                            "added",
+                            "/libs/fmdita/config/condAttrList.csv",
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    manifest = {
+        "accepted_uac_present": False,
+        "enumerated_requirements": enumerated,
+        "source_requirement_ledger": ledger,
+    }
+    full_ac_text = {
+        "AC-01": "AC-01 [Proposed]: Friendly names are a user-level setting for the logged-in user.",
+        "AC-02": (
+            "AC-02 [Proposed]: Any valid conditional attribute added to "
+            "/libs/fmdita/config/condAttrList.csv is supported."
+        ),
+    }
+
+    missing = {
+        "accepted_uac_present": False,
+        "enumerated_requirements": enumerated,
+    }
+    check(
+        "Proposed-only enumerated source still requires the fidelity ledger",
+        any(
+            "accepted_uac_present is false" in problem
+            for problem in srf.validate_manifest(missing)
+        ),
+    )
+
+    rewritten = json.loads(json.dumps(manifest))
+    rewritten_text = "Friendly names use the active folder-profile mapping."
+    rewritten["enumerated_requirements"]["items"][0]["text"] = rewritten_text
+    rewritten["source_requirement_ledger"]["items"][0]["text"] = rewritten_text
+    check(
+        "rewritten enumerated text cannot pass beside the original verbatim source",
+        any(
+            "must exactly equal verbatim_text" in problem
+            for problem in srf.validate_manifest(rewritten)
+        ),
+    )
+
+    invented_atom = json.loads(json.dumps(manifest))
+    invented_atom["source_requirement_ledger"]["items"][0]["semantic_atoms"][0][
+        "text"
+    ] = "tenant-level setting"
+    check(
+        "invented semantic atom text is rejected",
+        any(
+            "atom" in problem and "exact substring" in problem
+            for problem in srf.validate_manifest(invented_atom)
+        ),
+    )
+
+    omitted_scope_atom = json.loads(json.dumps(manifest))
+    omitted_scope_atom["source_requirement_ledger"]["items"][0]["semantic_atoms"] = [
+        {
+            "id": "ATOM-01",
+            "text": "Friendly names",
+            "required_terms_all": ["Friendly names"],
+        }
+    ]
+    check(
+        "automatic scope protection blocks user-level loss even when its atom is omitted",
+        any(
+            "user-level" in problem and "protected exact" in problem
+            for problem in srf.validate_manifest(
+                omitted_scope_atom,
+                ac_text_by_id={
+                    "AC-01": "Friendly names use the active folder-profile mapping.",
+                    "AC-02": full_ac_text["AC-02"],
+                },
+                open_question_text_by_id={},
+            )
+        ),
+    )
+    protected_scope, protected_scope_problems = srf._protected_exact(
+        "Keep the per-user value and workspace-level fallback.", None
+    )
+    check(
+        "automatic scope protection recognizes per-user and hyphenated level terms",
+        protected_scope_problems == []
+        and "per-user" in protected_scope
+        and "workspace-level" in protected_scope,
+    )
+
+    substitution_failures = srf.validate_manifest(
+        manifest,
+        ac_text_by_id={
+            "AC-01": "Friendly names use the active folder-profile mapping.",
+            "AC-02": full_ac_text["AC-02"],
+        },
+        open_question_text_by_id={},
+    )
+    check(
+        "user-level to folder-profile substitution fails semantic fidelity",
+        any("logged-in user" in problem for problem in substitution_failures),
+    )
+
+    conflict_manifest = json.loads(json.dumps(manifest))
+    conflict_atom = conflict_manifest["source_requirement_ledger"]["items"][0][
+        "semantic_atoms"
+    ][0]
+    conflict_atom["evidence_conflict"] = True
+    conflict_atom["open_question_ref"] = "OQ-01"
+    check(
+        "an evidence conflict passes only when a real Open Question preserves the atom",
+        srf.validate_manifest(
+            conflict_manifest,
+            ac_text_by_id=full_ac_text,
+            open_question_text_by_id={
+                "OQ-01": (
+                    "Are friendly names a user-level setting for the logged-in user or the active "
+                    "folder profile? QA impact: the answer changes user-isolation coverage."
+                )
+            },
+        )
+        == [],
+    )
+
+    path_failures = srf.validate_manifest(
+        manifest,
+        ac_text_by_id={
+            "AC-01": full_ac_text["AC-01"],
+            "AC-02": "Any valid conditional attribute is supported.",
+        },
+        open_question_text_by_id={},
+    )
+    check(
+        "dropping an exact configuration path fails fidelity",
+        any(
+            "/libs/fmdita/config/condAttrList.csv" in problem
+            for problem in path_failures
+        ),
+    )
+
+    bad_hash = json.loads(json.dumps(manifest))
+    bad_hash["source_requirement_ledger"]["sources"][0]["sha256"] = "0" * 64
+    check(
+        "source raw-text hash mismatch fails closed",
+        any("does not match" in problem for problem in srf.validate_manifest(bad_hash)),
+    )
+
+    check(
+        "complete Proposed source ledger passes independently of acceptance authority",
+        srf.validate_manifest(
+            manifest,
+            ac_text_by_id=full_ac_text,
+            open_question_text_by_id={},
+        )
+        == [],
+    )
+
+    skill_root = Path(__file__).resolve().parents[1]
+    skill_text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    checklist_text = (
+        skill_root / "references" / "quality-gate-checklist.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "aem-guides-source-requirement-ledger-v1",
+        "source_requirement_ledger",
+        "accepted_uac_present=false",
+    ):
+        check(f"skill retains source-fidelity marker {marker}", marker in skill_text)
+    check(
+        "quality checklist requires source requirement fidelity",
+        "Every active enumerated requirement list has a hash-bound source requirement ledger"
+        in checklist_text,
+    )
+
+
 def test_ac_decidability() -> None:
     ad = ac_decidability_mod
 
@@ -3957,17 +4445,67 @@ def test_operational_contract() -> None:
         "operational signal cannot be bypassed by active false",
         any("cannot be false" in problem for problem in oc.validate_manifest(signalled)),
     )
+    config_activation = {
+        "issue": {
+            "description": (
+                "The supported configuration activation boundary may require "
+                "a profile reselect, cache refresh, or service restart."
+            )
+        },
+        "operational_contract": {
+            "schema_version": oc.SCHEMA_VERSION,
+            "active": False,
+            "reason": "This is synchronous configuration activation, not recurring work.",
+        },
+    }
+    check(
+        "configuration activation restart does not imply an async operational contract",
+        oc.likely_operational(config_activation) == []
+        and not any(
+            "cannot be false" in problem
+            for problem in oc.validate_manifest(config_activation)
+        ),
+    )
+    restart_job = {
+        "issue": {
+            "description": "A background job must recover after a service restart."
+        }
+    }
+    check(
+        "restart remains operational when recurring job evidence is present",
+        "restart" in oc.likely_operational(restart_job),
+    )
 
 
 def test_gate_receipt_and_adapter() -> None:
     gate = _load("run_gates_for_receipt_test", "run_gates.py")
     adapter = _load("canonical_runtime_adapter_for_test", "canonical_runtime_adapter.py")
+    check(
+        "readability REVIEW prevents a postable receipt",
+        gate._postability_review_present(
+            ["REVIEW ac-readability: AC-01 too long; split into short sentences"]
+        ),
+    )
+    check(
+        "scope-authority REVIEW prevents a postable receipt",
+        gate._postability_review_present(
+            ["REVIEW scope-authority: implementation-only evidence found for AC-01"]
+        ),
+    )
+    check(
+        "ordinary advisory notes do not block posting",
+        not gate._postability_review_present(["REVIEW feature-classification: inspect"]),
+    )
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         plan = root / "plan.md"
         combined = root / "combined.md"
         manifest = root / "manifest.json"
         receipt = root / "gate-receipt.json"
+        fake_skill = root / "skill"
+        (fake_skill / "scripts").mkdir(parents=True)
+        (fake_skill / "SKILL.md").write_text("---\nname: test\n---\n", encoding="utf-8")
+        (fake_skill / "scripts" / "gate.py").write_text("PASS = True\n", encoding="utf-8")
         plan.write_text(GOOD_PLAN, encoding="utf-8")
         combined.write_text(GOOD_PLAN, encoding="utf-8")
         manifest.write_text(json.dumps({"issue": "GUIDES-100"}), encoding="utf-8")
@@ -3978,12 +4516,14 @@ def test_gate_receipt_and_adapter() -> None:
             manifest_path=str(manifest),
             passed=True,
             postable=True,
+            skill_root=fake_skill,
         )
         adapter.verify_receipt(
             receipt,
             jira_key="GUIDES-100",
             plan_path=plan,
             manifest_path=manifest,
+            skill_root=fake_skill,
         )
         check("hash-bound receipt authorizes the exact current artifacts", True)
 
@@ -3994,6 +4534,7 @@ def test_gate_receipt_and_adapter() -> None:
                 jira_key="GUIDES-100",
                 plan_path=plan,
                 manifest_path=manifest,
+                skill_root=fake_skill,
             )
         except ValueError as exc:
             check("stale receipt is rejected after plan mutation", "hash mismatch" in str(exc))
@@ -4001,6 +4542,24 @@ def test_gate_receipt_and_adapter() -> None:
             check("stale receipt is rejected after plan mutation", False)
 
         plan.write_text(GOOD_PLAN, encoding="utf-8")
+        (fake_skill / "scripts" / "gate.py").write_text("PASS = False\n", encoding="utf-8")
+        try:
+            adapter.verify_receipt(
+                receipt,
+                jira_key="GUIDES-100",
+                plan_path=plan,
+                manifest_path=manifest,
+                skill_root=fake_skill,
+            )
+        except ValueError as exc:
+            check(
+                "stale receipt is rejected after validator mutation",
+                "validator fingerprint hash mismatch" in str(exc),
+            )
+        else:
+            check("stale receipt is rejected after validator mutation", False)
+
+        (fake_skill / "scripts" / "gate.py").write_text("PASS = True\n", encoding="utf-8")
         gate.write_gate_receipt(
             receipt_path=str(receipt),
             plan_path=str(plan),
@@ -4008,6 +4567,7 @@ def test_gate_receipt_and_adapter() -> None:
             manifest_path=str(manifest),
             passed=True,
             postable=False,
+            skill_root=fake_skill,
         )
         try:
             adapter.verify_receipt(
@@ -4015,6 +4575,7 @@ def test_gate_receipt_and_adapter() -> None:
                 jira_key="GUIDES-100",
                 plan_path=plan,
                 manifest_path=manifest,
+                skill_root=fake_skill,
             )
         except ValueError as exc:
             check("skip-self-test style non-postable receipt is rejected", "postable" in str(exc))
@@ -4120,15 +4681,19 @@ def test_feature_class_registry() -> None:
             for name, config in registry.REGISTRY.items()
         }
         == {
-            "ui_display_label": ("ui_surface_scope",),
-            "access_control": ("role_provisioning",),
-            "async_job": ("concurrency_race_analysis", "terminal_states"),
+            "ui_display_label": ["ui_surface_scope"],
+            "access_control": ["role_provisioning"],
+            "async_job": ["concurrency_race_analysis", "terminal_states"],
+            "configuration_driven_enumeration": [
+                "configuration_enumeration_scope",
+            ],
         },
     )
     for class_name, signal in (
         ("ui_display_label", "friendly name"),
         ("access_control", "authorization"),
         ("async_job", "sling job"),
+        ("configuration_driven_enumeration", "configured attribute"),
     ):
         check(
             f"registry detects {class_name} from a seeded signal",
@@ -4139,6 +4704,16 @@ def test_feature_class_registry() -> None:
         "ui_display_label"
         in registry.classify({}, "Friendly Names are Displayed in the editor."),
     )
+
+
+def test_configuration_enumeration_scope() -> None:
+    failures = configuration_enumeration_mod.run_self_tests()
+    check("configuration enumeration dimensions self-test", failures == [])
+
+
+def test_relationship_traversal() -> None:
+    relationship_traversal_mod.run_self_tests()
+    check("relationship traversal umbrella self-test", True)
 
 
 def test_ui_surface_scope() -> None:
@@ -4443,11 +5018,14 @@ def main() -> int:
     test_comment_claims()
     test_pr_supersession()
     test_feature_class_registry()
+    test_relationship_traversal()
+    test_configuration_enumeration_scope()
     test_ui_surface_scope()
     test_role_provisioning()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
+    test_source_requirement_fidelity()
     test_ac_decidability()
     test_operational_contract()
     test_gate_receipt_and_adapter()

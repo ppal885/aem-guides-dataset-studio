@@ -1,0 +1,131 @@
+{
+  "artifact_kind": "relationship-traversal-validation",
+  "issue": "GUIDES-44288",
+  "issue_text": "EY can publish 2,000-3,000 documents in one bulk action. One publish currently writes the same DITA-OT generation log twice from PublishWorkflowStep.",
+  "plan_path": "output/test-plans/GUIDES-44288-test-plan.md",
+  "evidence_revision": "0fb599b1d2247ee1c0edcd79c373e184b02f027c",
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Which approved workload should QA use within EY's reported 2,000-3,000-document bulk publish, and what measurable baseline or SLA threshold must latency, throughput, and log growth meet?",
+      "qa_impact": "The answer defines the environment, load model, metrics, and pass or fail oracle for performance sign-off."
+    }
+  ],
+  "performance_assessment": {
+    "decision": "conditional",
+    "performance_contract_complete": false,
+    "performance_ac_ids": [],
+    "open_question_ref": "OQ-01",
+    "reason": "Jira supplies a customer-scale workload but no approved environment, baseline, SLA, or measurable threshold."
+  },
+  "construct_relationships": {
+    "schema_version": "aem-guides-construct-relationships-v1",
+    "construct": {
+      "slug": "dita-ot-generation-log-emission",
+      "label": "DITA-OT generation log emission"
+    },
+    "edges": [
+      {
+        "relation_type": "PRODUCER",
+        "neighbor": "PublishOutput.getErrorLog full generation-log text",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-03"
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "PublishWorkflowStep generation-result log call",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CALLER",
+        "neighbor": "PublishWorkflowStep output-metadata duplicate log call",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01"
+      },
+      {
+        "relation_type": "CONSUMER",
+        "neighbor": "Output-history DITA-OT log persistence",
+        "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-04"
+      }
+    ],
+    "cross_dimensions": {
+      "PERFORMANCE": {
+        "applicable": true,
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-01"
+      },
+      "SECURITY": {
+        "applicable": false,
+        "reason": "The inspected change removes a duplicate call without changing the logged text, redaction contract, or data source."
+      },
+      "PERMISSIONS": {
+        "applicable": false,
+        "reason": "The same backend publish workflow executes before and after the change; no role or authorization branch is changed."
+      },
+      "UPGRADE": {
+        "applicable": false,
+        "reason": "The inspected change adds no persisted schema, repository migration, configuration key, or upgrade-only behavior."
+      },
+      "CONCURRENCY": {
+        "applicable": false,
+        "reason": "The duplicate entries come from two sequential calls in one workflow invocation, and current evidence defines no shared mutable log state or inter-job ordering contract."
+      }
+    },
+    "discovery": {
+      "code_search_terms": [
+        "PublishOutput.getErrorLog",
+        "log.info(publishOutput.getErrorLog())",
+        "log.info(generatedOutput.getErrorLog())",
+        "OUTPUT_METADATA_PROP_DITAOTLOG"
+      ],
+      "corpus_relation_queries": [
+        "relations.source:\"dita-ot-generation-log-emission\"",
+        "relations.target:\"dita-ot-generation-log-emission\"",
+        "relations.neighbor:\"dita-ot-generation-log-emission\""
+      ],
+      "clones_searched": [
+        "C:/starling"
+      ],
+      "code_neighborhood_sweep": {
+        "affected_artifacts": [
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java",
+          "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java",
+          "C:/starling/core/publish-workflow/src/test/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStepTest.java"
+        ],
+        "sibling_config_keys": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected producer and callers are Java methods and do not read a sibling configuration key for generation-log emission."
+        },
+        "sibling_ui_options": {
+          "searched": true,
+          "findings": [],
+          "none_found_reason": "The affected behavior is backend application-log emission and has no UI option in the inspected artifacts."
+        },
+        "callers_and_same_path_processors": {
+          "searched": true,
+          "findings": [
+            {
+              "neighbor": "PublishWorkflowStep generation-result log call",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501"
+            },
+            {
+              "neighbor": "PublishWorkflowStep output-metadata duplicate log call",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:923-925"
+            },
+            {
+              "neighbor": "Output-history DITA-OT log persistence",
+              "source": "C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:890-900"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

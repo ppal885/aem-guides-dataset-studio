@@ -1,0 +1,46 @@
+[
+  {
+    "id": "AC-01",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "one map completes output generation",
+    "when": "its publish result is processed",
+    "then": "the application log contains exactly one matching DITA-OT generation entry",
+    "evidence": "Jira description GUIDES-44288 and source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501,923-925",
+    "raw": "AC-01 [Proposed]: (Basic) Given one map completes output generation | When its publish result is processed | Then the application log contains exactly one matching DITA-OT generation entry | Evidence: Jira description GUIDES-44288 and source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:497-501,923-925.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-02",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "output generation returns a DITA-OT log before a later publish step fails",
+    "when": "the publish ends with that later failure",
+    "then": "the application log still contains exactly one matching DITA-OT generation entry",
+    "evidence": "commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c and its inspected unit-test change",
+    "raw": "AC-02 [Proposed]: (Negative) Given output generation returns a DITA-OT log before a later publish step fails | When the publish ends with that later failure | Then the application log still contains exactly one matching DITA-OT generation entry | Evidence: commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c and its inspected unit-test change.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-03",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "output generation returns a known DITA-OT log",
+    "when": "that log is written to the application log",
+    "then": "its single entry contains the complete returned text",
+    "evidence": "source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c",
+    "raw": "AC-03 [Proposed]: (Integration) Given output generation returns a known DITA-OT log | When that log is written to the application log | Then its single entry contains the complete returned text | Evidence: source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishOutput.java:69-70 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-04",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a valid map and preset have a saved before-fix baseline",
+    "when": "the same map is published after the fix",
+    "then": "its result and saved output details match the baseline",
+    "evidence": "source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:887-925 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c",
+    "raw": "AC-04 [Proposed]: (Integration) Given a valid map and preset have a saved before-fix baseline | When the same map is published after the fix | Then its result and saved output details match the baseline | Evidence: source file C:/starling/core/publish-workflow/src/main/java/com/adobe/fmdita/publishworkflow/PublishWorkflowStep.java:887-925 and commit 0fb599b1d2247ee1c0edcd79c373e184b02f027c.",
+    "schema_version": "aem-guides-ac-v1"
+  }
+]

@@ -3,27 +3,33 @@
   "passed": true,
   "postable": true,
   "issue": "GUIDES-53897",
-  "generated_at": "2026-08-24T15:21:52.510312+00:00",
+  "generated_at": "2026-08-25T15:10:36.446389+00:00",
+  "validator": {
+    "schema_version": "aem-guides-skill-bundle-fingerprint-v1",
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\.codex\\skills\\test-plan-generation",
+    "sha256": "6d7d904a290f9f2af2d97698d6bc77bff7cb8f8e0a8bd1a8c5d0a76027806097",
+    "file_count": 87
+  },
   "artifacts": {
     "plan": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-test-plan.md",
-      "sha256": "5f52f5717987c7d57f94e207e8f0936efd7524da967f16225bbcda76479a38f7"
+      "sha256": "7ad2fb6b6cd04b36d64b91036284eb138e592ab7929fe6d16fab867e082d1cee"
     },
     "manifest": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-evidence-manifest.json",
-      "sha256": "20f949f6f3777e8bfddd2ceeba4a9e01e4ecd4f6755bca4bae2e6abb572e998c"
+      "sha256": "d8346cf50613b9a09be7aa33829ef0ec11206e7b6af20542b6b5ef75e35fb010"
     },
     "combined": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-combined.md",
-      "sha256": "5f52f5717987c7d57f94e207e8f0936efd7524da967f16225bbcda76479a38f7"
+      "sha256": "7ad2fb6b6cd04b36d64b91036284eb138e592ab7929fe6d16fab867e082d1cee"
     },
     "compact": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-gate-receipt.compact.md",
-      "sha256": "4b400294979eb379ef686a6b538278969c1c700ba48c8ea3d507d4bcbc5ba63d"
+      "sha256": "856d779b270ef0b4924da52da56371f592c2ccbb4e8e8b9bd17194108f929e7e"
     },
     "extracted_acs": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-gate-receipt.acceptance-criteria.json",
-      "sha256": "642a79b398df0db39456eeafa8acab51f9df22422150ff724d573285ab1a06cb"
+      "sha256": "64ea400b9b038ad26b17d9b9c82f4ec96d34cea244161f07ccdc7f8c8c4003eb"
     }
   }
 }

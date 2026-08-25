@@ -9,11 +9,13 @@ strictly, while a detected class without a declaration produces REVIEW only.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 
 
 SCHEMA_VERSION = "aem-guides-feature-classification-v1"
+DATA_SCHEMA_VERSION = "aem-guides-feature-class-registry-v1"
 
 
 def _load_peer(module_name: str, filename: str):
@@ -31,45 +33,36 @@ concurrency_race_mod = _load_peer(
     "feature_registry_concurrency_race", "concurrency_race_explorer.py"
 )
 terminal_states_mod = _load_peer("terminal_states", "terminal_states.py")
+configuration_enumeration_mod = _load_peer(
+    "configuration_enumeration_scope", "configuration_enumeration_scope.py"
+)
 
 
-REGISTRY = {
-    "ui_display_label": {
-        "signals": (
-            "friendly name",
-            "label",
-            "display",
-            "tooltip",
-            "rendered",
-            "shown in",
-            "workspace settings",
-        ),
-        "required_dimensions": ("ui_surface_scope",),
-    },
-    "access_control": {
-        "signals": (
-            "permission",
-            "group",
-            "acl",
-            "admin user",
-            "authorization",
-            "privilege",
-            "folder profile",
-        ),
-        "required_dimensions": ("role_provisioning",),
-    },
-    "async_job": {
-        "signals": (
-            "sling job",
-            "job consumer",
-            "queue",
-            "async",
-            "scheduled job",
-            "event listener",
-        ),
-        "required_dimensions": ("concurrency_race_analysis", "terminal_states"),
-    },
-}
+def _load_registry():
+    path = Path(__file__).with_name("data") / "feature_class_registry.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != DATA_SCHEMA_VERSION:
+        raise ValueError(f"feature class registry schema must be {DATA_SCHEMA_VERSION}")
+    classes = data.get("classes")
+    if not isinstance(classes, dict) or not classes:
+        raise ValueError("feature class registry must declare classes")
+    for class_name, config in classes.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", str(class_name)):
+            raise ValueError(f"invalid feature class name: {class_name!r}")
+        if not isinstance(config, dict):
+            raise ValueError(f"feature class {class_name!r} must be an object")
+        for key in ("signals", "required_dimensions"):
+            values = config.get(key)
+            if not isinstance(values, list) or not values or not all(
+                isinstance(value, str) and value.strip() for value in values
+            ):
+                raise ValueError(
+                    f"feature class {class_name!r}.{key} must be a non-empty string list"
+                )
+    return classes
+
+
+REGISTRY = _load_registry()
 
 
 def _validate_concurrency(
@@ -91,6 +84,9 @@ DIMENSION_VALIDATORS = {
     "role_provisioning": role_provisioning_mod.validate_role_provisioning,
     "concurrency_race_analysis": _validate_concurrency,
     "terminal_states": terminal_states_mod.validate_terminal_states,
+    "configuration_enumeration_scope": (
+        configuration_enumeration_mod.validate_configuration_enumeration_scope
+    ),
 }
 
 
@@ -100,6 +96,7 @@ _EXCLUDED_SIGNAL_KEYS = {
     "role_provisioning",
     "concurrency_race_analysis",
     "terminal_states",
+    "configuration_enumeration_scope",
 }
 
 
@@ -203,6 +200,16 @@ def validate_feature_classification(
             failures.append(f"feature_classification.classes duplicates {class_name!r}")
             continue
         declared.append(class_name)
+
+    undeclared_detected = [
+        class_name for class_name in detected if class_name not in declared
+    ]
+    if undeclared_detected:
+        notes.append(
+            "REVIEW feature-classification: detected class(es) "
+            + ", ".join(undeclared_detected)
+            + "; declare feature_classification and its required dimensions"
+        )
 
     if not str(block.get("rationale", "")).strip():
         failures.append("feature_classification.rationale must be non-empty")

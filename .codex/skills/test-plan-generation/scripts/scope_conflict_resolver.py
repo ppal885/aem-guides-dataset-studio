@@ -3,6 +3,11 @@ scopes (reported problem, customer expectation, Jira description, engineering
 investigation, current PR/fix, secondary defects, unresolved behaviour) into one
 acceptance contract, and force a Jira-scope-vs-fix-scope reconciliation.
 
+The optional ``implementation_scope_authority`` block also prevents behavior
+found only in a PR, commit, or diff from silently becoming approved product
+scope. Such an AC stays Proposed and points to an Open Question unless a named
+product authority explicitly approves it.
+
 WHY THIS EXISTS
 ---------------
 A Jira often carries several behavioural problems and several scope authorities. If the
@@ -11,8 +16,10 @@ as fully solved is wrong. This module keeps each problem as its own ProblemThrea
 its own status, and requires that a material Jira-scope vs fix-scope mismatch be surfaced
 as an Open Question rather than merged away.
 
-Generic - no Jira-specific content. Stdlib only.
+Generic - no ticket-specific content. Stdlib only.
 """
+
+import re
 
 THREAD_STATUS = ("CONFIRMED", "PROPOSED", "CURRENT_FIX", "SECONDARY_DEFECT", "UNRESOLVED", "OUT_OF_SCOPE")
 ALIGNMENT = ("FULL_SCOPE_FIX", "PARTIAL_SCOPE_FIX", "DIFFERENT_SCOPE_FIX", "SECONDARY_FIX", "UNKNOWN_FIX_SCOPE")
@@ -31,6 +38,25 @@ PRE_DEVELOPMENT_SIGNALS = (
 MULTI_PROBLEM_SIGNALS = ("also ", "second issue", "another problem", "in addition", "separately", "two problems",
                          "multiple issues", "as well as", "additionally", "font", "preview", "and the")
 
+IMPLEMENTATION_SCOPE_SCHEMA = "aem-guides-implementation-scope-authority-v1"
+IMPLEMENTATION_DECISIONS = ("OPEN_QUESTION", "PRODUCT_APPROVED")
+_CANONICAL_AC_RE = re.compile(
+    r"(?m)^- (?P<id>AC-\d{2}) \[(?P<status>Confirmed|Proposed)\]: "
+    r"\((?:Basic|Negative|Integration|Performance)\) .+? \| Evidence: "
+    r"(?P<evidence>.+)\.$"
+)
+_IMPLEMENTATION_EVIDENCE_RE = re.compile(
+    r"\b(?:pull request|PR\s*#?\d+|commit\s+[0-9a-f]{7,40}|candidate diff|"
+    r"changed-code evidence|implementation diff)\b",
+    re.IGNORECASE,
+)
+_PRODUCT_AUTHORITY_RE = re.compile(
+    r"\b(?:Jira (?:description|UAC|accepted UAC|reviewer comment)|accepted UAC|"
+    r"human review|reviewer feedback|product decision|approved requirement|"
+    r"approved design|Figma design)\b",
+    re.IGNORECASE,
+)
+
 
 def _text(manifest, plan_text=""):
     parts = [plan_text or ""]
@@ -44,6 +70,99 @@ def _text(manifest, plan_text=""):
 
 def is_present(manifest):
     return isinstance(manifest, dict) and isinstance(manifest.get("scope_conflict"), dict)
+
+
+def implementation_scope_candidates(plan_text=""):
+    """Return ACs whose stated evidence is implementation-only.
+
+    This is deliberately evidence-field based. A source path alone can support
+    an implementation observation without implying that the behavior is new
+    product scope; explicit PR/commit/diff evidence activates this check.
+    """
+    candidates = []
+    for match in _CANONICAL_AC_RE.finditer(str(plan_text or "")):
+        evidence = match.group("evidence")
+        if _IMPLEMENTATION_EVIDENCE_RE.search(evidence) and not _PRODUCT_AUTHORITY_RE.search(evidence):
+            candidates.append(
+                {
+                    "ac_ref": match.group("id"),
+                    "status": match.group("status"),
+                    "evidence": evidence,
+                }
+            )
+    return candidates
+
+
+def validate_implementation_scope_authority(
+    block, *, candidates=None, open_question_ids=None
+):
+    """Validate decisions for implementation-only behavior candidates."""
+    if not isinstance(block, dict):
+        return ["implementation_scope_authority must be an object"]
+    problems = []
+    if block.get("schema_version") != IMPLEMENTATION_SCOPE_SCHEMA:
+        problems.append(
+            "implementation_scope_authority.schema_version must be "
+            + IMPLEMENTATION_SCOPE_SCHEMA
+        )
+    items = block.get("items")
+    if not isinstance(items, list) or not items:
+        return problems + [
+            "implementation_scope_authority.items must be a non-empty list"
+        ]
+    candidate_by_id = {
+        str(item.get("ac_ref", "")): item
+        for item in (candidates or [])
+        if isinstance(item, dict)
+    }
+    seen = set()
+    open_ids = None if open_question_ids is None else set(open_question_ids)
+    for index, item in enumerate(items):
+        tag = f"implementation_scope_authority.items[{index}]"
+        if not isinstance(item, dict):
+            problems.append(f"{tag} must be an object")
+            continue
+        ac_ref = str(item.get("ac_ref", "")).strip()
+        if not re.fullmatch(r"AC-\d{2}", ac_ref):
+            problems.append(f"{tag}.ac_ref must use AC-## form")
+        elif ac_ref in seen:
+            problems.append(f"{tag}.ac_ref duplicates {ac_ref}")
+        seen.add(ac_ref)
+        candidate = candidate_by_id.get(ac_ref)
+        if candidates is not None and candidate is None:
+            problems.append(
+                f"{tag}.ac_ref {ac_ref!r} is not an implementation-only candidate"
+            )
+        decision = str(item.get("decision", "")).strip()
+        if decision not in IMPLEMENTATION_DECISIONS:
+            problems.append(
+                f"{tag}.decision must be one of {IMPLEMENTATION_DECISIONS}"
+            )
+        elif decision == "OPEN_QUESTION":
+            if candidate is not None and candidate.get("status") != "Proposed":
+                problems.append(
+                    f"{tag}.ac_ref {ac_ref} must remain Proposed until product scope is approved"
+                )
+            oq_ref = str(item.get("open_question_ref", "")).strip()
+            if not re.fullmatch(r"OQ-\d{2}", oq_ref) or (
+                open_ids is not None and oq_ref not in open_ids
+            ):
+                problems.append(
+                    f"{tag}: OPEN_QUESTION requires a real open_question_ref"
+                )
+        elif decision == "PRODUCT_APPROVED":
+            authority = str(item.get("authority_source", "")).strip()
+            if not authority or not _PRODUCT_AUTHORITY_RE.search(authority):
+                problems.append(
+                    f"{tag}: PRODUCT_APPROVED requires a named product-authority source"
+                )
+    missing = sorted(set(candidate_by_id) - seen)
+    if missing:
+        problems.append(
+            "implementation_scope_authority is missing implementation-only ACs: "
+            + ", ".join(missing)
+        )
+    return problems
 
 
 def is_active(manifest, plan_text=""):

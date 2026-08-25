@@ -1,4 +1,9 @@
-"""Validate grounded actor and group-provisioning setup for access-control ACs."""
+"""Validate grounded actor and group-provisioning setup for access-control ACs.
+
+The relationship crosswalk deliberately recognizes only direct, recorded
+PRECONDITION neighbors. It cannot infer an indirect authorization dependency
+that is absent from the supplied edge list.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,31 @@ _AC_RE = re.compile(
     r"\((?:Basic|Negative|Integration|Performance)\) Given (?P<given>.*?) \| When "
 )
 PRIVILEGE_CLASSES = ("FULL_ADMIN", "DELEGATED", "NON_ADMIN")
+_CODE_FILE_LINE_RE = re.compile(
+    r"^(?:[A-Za-z]:)?[\\/]?(?:[^:\\/\r\n]+[\\/])*"
+    r"[^:\\/\r\n]+\.(?:"
+    r"c|cc|cfg|conf|config|cpp|css|csv|go|groovy|h|hpp|html|ini|java|js|"
+    r"json|jsx|jsp|kt|kts|less|php|properties|py|rb|rs|scss|sh|sql|ts|"
+    r"tsx|xml|yaml|yml"
+    r"):[1-9]\d*(?:-[1-9]\d*)?$",
+    re.I,
+)
+_CHUNK_ID_RE = re.compile(r"^chunk_id:[A-Za-z0-9][A-Za-z0-9._:-]*$")
+_ACCESS_GIVEN_RE = re.compile(
+    r"\b(?:"
+    r"admins?|administrators?|contributors?|reviewers?|publishers?|operators?|"
+    r"delegated|non[- ]?admins?|unauthori[sz]ed|authori[sz](?:ed|ation)|"
+    r"members?|groups?|roles?|permissions?|privileges?|access|service accounts?"
+    r")\b",
+    re.I,
+)
+_AUTH_NEIGHBOR_RE = re.compile(
+    r"\b(?:"
+    r"admins?|administrators?|authori[sz](?:ed|ation)?|groups?|roles?|"
+    r"permissions?|privileges?|access|members?|delegated|non[- ]?admins?"
+    r")\b",
+    re.I,
+)
 
 
 def _normalise(value):
@@ -26,24 +56,77 @@ def _nonempty_strings(value):
     )
 
 
+def _valid_grounding_item(value):
+    text = str(value).strip() if isinstance(value, str) else ""
+    return bool(_CODE_FILE_LINE_RE.fullmatch(text) or _CHUNK_ID_RE.fullmatch(text))
+
+
 def _valid_grounding(value):
     if not _nonempty_strings(value):
         return False
-    return all(
-        re.search(r":\d+(?:-\d+)?(?:\D|$)", item)
-        or re.match(r"(?i)^(RAG|product-doc):", item)
-        for item in value
-    )
+    return all(_valid_grounding_item(item) for item in value)
+
+
+def _actor_aliases(actor):
+    aliases = [
+        actor.get("label", ""),
+        actor.get("actor_id", ""),
+        actor.get("privilege_class", ""),
+    ]
+    aliases.extend(actor.get("grant_groups") or [])
+    automatic = actor.get("auto_added_groups")
+    if isinstance(automatic, list):
+        aliases.extend(automatic)
+    return [alias for alias in aliases if str(alias).strip()]
 
 
 def _actor_matches_given(actor, given):
     normalized_given = _normalise(given)
-    aliases = [actor.get("label", ""), actor.get("actor_id", "")]
-    aliases.extend(actor.get("grant_groups") or [])
     return any(
         normalized and normalized in normalized_given
-        for normalized in (_normalise(alias) for alias in aliases)
+        for normalized in (_normalise(alias) for alias in _actor_aliases(actor))
     )
+
+
+def _access_or_actor_given(given, actors):
+    return bool(
+        _ACCESS_GIVEN_RE.search(str(given))
+        or any(_actor_matches_given(actor, given) for actor in actors)
+    )
+
+
+def _actor_matches_neighbor(actor, neighbor):
+    normalized_neighbor = _normalise(neighbor)
+    if not normalized_neighbor:
+        return False
+    return any(
+        normalized
+        and (normalized in normalized_neighbor or normalized_neighbor in normalized)
+        for normalized in (_normalise(alias) for alias in _actor_aliases(actor))
+    )
+
+
+def _parse_code_grounding(value):
+    text = str(value).strip()
+    if not _CODE_FILE_LINE_RE.fullmatch(text):
+        return None
+    path, line_text = text.rsplit(":", 1)
+    start_text, separator, end_text = line_text.partition("-")
+    start = int(start_text)
+    end = int(end_text) if separator else start
+    return path.replace("\\", "/").casefold(), min(start, end), max(start, end)
+
+
+def _grounding_matches(left, right):
+    left_text = str(left).strip()
+    right_text = str(right).strip()
+    if left_text.casefold() == right_text.casefold():
+        return True
+    left_code = _parse_code_grounding(left_text)
+    right_code = _parse_code_grounding(right_text)
+    if left_code is None or right_code is None or left_code[0] != right_code[0]:
+        return False
+    return left_code[1] <= right_code[2] and right_code[1] <= left_code[2]
 
 
 def validate_role_provisioning(
@@ -108,7 +191,7 @@ def validate_role_provisioning(
         grounding = actor.get("grounding")
         if not _valid_grounding(grounding):
             problems.append(
-                f"{tag}.grounding must contain only file:line, RAG, or product-doc citations"
+                f"{tag}.grounding must contain only code file:line or chunk_id:<id> citations"
             )
         refs = actor.get("maps_to_acs")
         if not _nonempty_strings(refs):
@@ -119,11 +202,26 @@ def validate_role_provisioning(
                 problems.append(f"{tag}.maps_to_acs contains unknown AC {ref!r}")
         valid_actors.append(actor)
 
-    plan_acs = [(match.group(1), match.group("given")) for match in _AC_RE.finditer(plan_text or "")]
-    for ac_id, given in plan_acs:
+    plan_acs = {
+        match.group(1): match.group("given")
+        for match in _AC_RE.finditer(plan_text or "")
+    }
+    for actor in valid_actors:
+        actor_id = str(actor.get("actor_id", "")).strip() or "?"
+        for ac_id in actor.get("maps_to_acs") or []:
+            given = plan_acs.get(ac_id)
+            if given is not None and not _actor_matches_given(actor, given):
+                problems.append(
+                    f"role_provisioning actor {actor_id!r} maps to {ac_id}, but that AC's "
+                    "Given clause does not name the actor or one of its groups"
+                )
+
+    for ac_id, given in plan_acs.items():
         if known_ac_ids is not None and ac_id not in known_ac_ids:
             continue
         matching = [actor for actor in valid_actors if _actor_matches_given(actor, given)]
+        if not _access_or_actor_given(given, valid_actors):
+            continue
         if not matching:
             problems.append(
                 f"{ac_id} has no role_provisioning actor matching its Given clause"
@@ -134,3 +232,158 @@ def validate_role_provisioning(
                     f"{ac_id} references actor {actor.get('actor_id')!r} but maps_to_acs omits it"
                 )
     return problems
+
+
+def validate_precondition_edges(block, edges, *, ac_ids=None, plan_text=""):
+    """Cross-check authorization PRECONDITION edges with provisioned actors.
+
+    The umbrella relationship validator remains responsible for the complete
+    edge schema and Open Question references. This helper checks the role block,
+    identifies only group/privilege/access PRECONDITION edges, and proves that
+    each such edge names a recorded actor or group and shares grounded evidence
+    with that actor. A COVERED_BY_AC edge must map to an AC assigned to the same
+    actor.
+    """
+    problems = list(
+        validate_role_provisioning(block, ac_ids=ac_ids, plan_text=plan_text)
+    )
+    if not isinstance(block, dict):
+        return problems
+    actors = [actor for actor in (block.get("actors") or []) if isinstance(actor, dict)]
+    if not actors:
+        return problems
+    if not isinstance(edges, list):
+        return problems + ["relationship edges must be a list for role PRECONDITION validation"]
+
+    auth_edges = []
+    for index, edge in enumerate(edges):
+        if not isinstance(edge, dict) or edge.get("relation_type") != "PRECONDITION":
+            continue
+        neighbor = str(edge.get("neighbor", "")).strip()
+        if _AUTH_NEIGHBOR_RE.search(neighbor) or any(
+            _actor_matches_neighbor(actor, neighbor) for actor in actors
+        ):
+            auth_edges.append((index, edge))
+
+    if not auth_edges:
+        problems.append(
+            "role_provisioning requires at least one auth/group PRECONDITION edge"
+        )
+        return problems
+
+    known_ac_ids = None if ac_ids is None else set(ac_ids)
+    for index, edge in auth_edges:
+        tag = f"construct_relationships.edges[{index}]"
+        neighbor = str(edge.get("neighbor", "")).strip()
+        source = edge.get("source")
+        if not _valid_grounding_item(source):
+            problems.append(
+                f"{tag}.source must be a code file:line or chunk_id:<id> citation"
+            )
+
+        matching = [
+            actor for actor in actors if _actor_matches_neighbor(actor, neighbor)
+        ]
+        if not matching:
+            problems.append(
+                f"{tag} auth/group neighbor {neighbor!r} matches no role_provisioning actor or group"
+            )
+            continue
+
+        if _valid_grounding_item(source) and not any(
+            _grounding_matches(source, grounding)
+            for actor in matching
+            for grounding in (actor.get("grounding") or [])
+        ):
+            problems.append(
+                f"{tag}.source is not present in the matching actor's grounding"
+            )
+
+        if edge.get("disposition") == "COVERED_BY_AC":
+            ac_ref = str(edge.get("ac_ref", "")).strip()
+            if not ac_ref or (known_ac_ids is not None and ac_ref not in known_ac_ids):
+                problems.append(
+                    f"{tag} COVERED_BY_AC requires a valid ac_ref"
+                )
+            elif not any(
+                ac_ref in set(actor.get("maps_to_acs") or []) for actor in matching
+            ):
+                problems.append(
+                    f"{tag}.ac_ref {ac_ref!r} is not mapped to the matching actor"
+                )
+    return problems
+
+
+def _run_self_tests():
+    plan = "\n".join(
+        [
+            "- AC-01 [Proposed]: (Basic) Given a delegated operator | When access is requested | Then the action is allowed | Evidence: code.",
+            "- AC-02 [Proposed]: (Negative) Given a contributor | When access is requested | Then the action is denied | Evidence: code.",
+            "- AC-03 [Proposed]: (Basic) Given a document is open | When it is saved | Then its content persists | Evidence: code.",
+        ]
+    )
+    block = {
+        "schema_version": SCHEMA_VERSION,
+        "actors": [
+            {
+                "actor_id": "delegated-operator",
+                "label": "delegated operator",
+                "privilege_class": "DELEGATED",
+                "grant_groups": ["profile-operators"],
+                "withhold_groups": ["system-administrators"],
+                "auto_added_groups": "none",
+                "grounding": ["C:/repo/AuthorizationService.java:20-24"],
+                "maps_to_acs": ["AC-01"],
+            },
+            {
+                "actor_id": "contributor",
+                "label": "contributor",
+                "privilege_class": "NON_ADMIN",
+                "grant_groups": ["content-contributors"],
+                "withhold_groups": ["profile-operators"],
+                "auto_added_groups": "none",
+                "grounding": ["chunk_id:authorization_contributor"],
+                "maps_to_acs": ["AC-02"],
+            },
+        ],
+    }
+    ac_ids = {"AC-01", "AC-02", "AC-03"}
+    assert validate_role_provisioning(block, ac_ids=ac_ids, plan_text=plan) == []
+    bad_grounding = {**block, "actors": [dict(actor) for actor in block["actors"]]}
+    bad_grounding["actors"][0]["grounding"] = ["RAG: remembered behavior"]
+    assert any(
+        "grounding" in problem
+        for problem in validate_role_provisioning(
+            bad_grounding, ac_ids=ac_ids, plan_text=plan
+        )
+    )
+    missing_actor = {**block, "actors": [block["actors"][0]]}
+    assert any(
+        "AC-02 has no role_provisioning actor" in problem
+        for problem in validate_role_provisioning(
+            missing_actor, ac_ids=ac_ids, plan_text=plan
+        )
+    )
+    edge = {
+        "relation_type": "PRECONDITION",
+        "neighbor": "profile-operators group membership",
+        "source": "C:/repo/AuthorizationService.java:22",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-01",
+    }
+    assert validate_precondition_edges(
+        block, [edge], ac_ids=ac_ids, plan_text=plan
+    ) == []
+    wrong_group = dict(edge)
+    wrong_group["neighbor"] = "unlisted-privilege group"
+    assert any(
+        "matches no role_provisioning actor" in problem
+        for problem in validate_precondition_edges(
+            block, [wrong_group], ac_ids=ac_ids, plan_text=plan
+        )
+    )
+
+
+if __name__ == "__main__":
+    _run_self_tests()
+    print("ROLE PROVISIONING SELF-TESTS PASSED")

@@ -54,7 +54,16 @@ Use this before calling a test plan review-ready.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
 - Every AC matches the canonical `aem-guides-ac-v1` one-line grammar with contiguous IDs, controlled status/sphere values, ordered `Given | When | Then | Evidence` fields, and no extra or multiline prose.
 - Every AC passes the first-read plain-language check: one purpose, only essential setup in `Given`, one trigger in `When`, and one observable result in `Then`; independent actions or results are split into separate ACs.
-- AC wording aims for 20/12/20 readable words in `Given`/`When`/`Then`, stays within the enforced 30/20/30 and 65-total hard limits, avoids `and/or`, semicolons, double negatives, and reread-heavy filler, and preserves exact technical names.
+- No AC is only a recap of earlier ACs; each has its own observable product outcome.
+- A PR-only extra behavior is not treated as approved sign-off scope; it remains Proposed and its scope decision is an Open Question unless product authority accepts it.
+- Any implementation-only AC has an `implementation_scope_authority` entry; unresolved entries map to a real Open Question, and approved entries cite product authority rather than the PR itself.
+- Any UI `CONSUMER` edge carries `neighbor_kind: UI_SURFACE` and has a catalog-complete `ui_surface_scope` block.
+- Readability and implementation-scope REVIEW notes make the receipt non-postable until resolved.
+- Human reviewer wording remains the semantic baseline; simplification preserves actor, scope, UI labels, timing, fallback, exact paths, and outcomes, while implementation conflicts are exposed as Open Questions.
+- No Given, When, or Then clause refers to another AC ID; each criterion states its own observable product rule.
+- AC wording aims for 20/12/20 readable words in `Given`/`When`/`Then`; outcomes over 28 words or two sentences are reviewed, outcomes over 45 words fail, and ambiguous `and/or`, semicolons, double negatives, or cross-AC dependencies remain invalid.
+- Tester-facing ACs use plain words and exact screen names. Code, paths, implementation jargon, and performance internals move to a `Note for developer:` bullet unless source-fidelity requires the exact identifier and the tradeoff is explicitly reviewed.
+- Existing or AI-supplied AC reviews use the complete manifest and `run_gates.py`; no conversational-only review is reported as gated.
 - Splitting a complex accepted UAC never drops or weakens its meaning: every source clause remains mapped through the accepted-UAC fidelity audit.
 - Human-facing AC projections are rejected as durable input by validation, extraction, and gate execution. Jira posting derives its simple presentation from fresh strict extraction; no consumer reconstructs missing status, sphere, Given/When/Then, or evidence from display text.
 - Every AC is decidable: no pending/conditional marker, unbound qualitative limit, non-finite negative, implementation-choice menu, or combined terminal-state outcome remains. Numbers quantify the named bound rather than an unrelated retry or dataset value.
@@ -68,6 +77,7 @@ Use this before calling a test plan review-ready.
 - Independent controls such as a feature flag and preset argument remain separate and have positive plus one-control-missing configurations; one control is never substituted for the other.
 - Configuration-driven enumerations identify the effective source, overlay/profile/deployment scope, active schema or element applicability, and supported activation/cache boundary instead of treating the values visible in one screenshot or default file as a closed list.
 - Configuration-driven enumeration coverage includes an existing entry, another valid configured entry with and without a friendly/display-name mapping, the approved fallback, preservation of unrelated entries, and applicable invalid/duplicate/removal behavior; every consumer was checked for a hardcoded list that could exclude future values.
+- Declared configuration-driven enumerations include `configuration_enumeration_scope` and disposition authoritative source/precedence, dynamic discovery, mapped/fallback display, applicability, activation, preservation, invalid/duplicate/removal behavior, upgrade, and rollback.
 - Out-of-scope behaviour is not converted into a sign-off AC or a blocking regression, and an intentional output difference is not reported as a defect.
 - Conflict priority is applied when evidence disagrees: Jira/UAC > PR implementation > accepted RAG docs > Figma UI intent > cloned repo/team memory.
 - Edge cases are derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, and similar Jira history.
@@ -135,6 +145,10 @@ Use this before calling a test plan review-ready.
 
 - The manifest uses schema `aem-guides-evidence-manifest-v2` and includes versioned `enumerated_requirements` and `operational_contract` blocks for every plan.
 - Every numbered, `-`, or `*` reporter item is transcribed in source order with the exact source count and one real AC, Open Question, or out-of-scope disposition. Unknown references, missing indices/items, and silently overloaded ACs fail.
+- Every active enumerated requirement list has a hash-bound source requirement ledger using `aem-guides-source-requirement-ledger-v1`, including when accepted UAC is absent and every AC is Proposed.
+- Each source ledger record has a stable ID/type/locator, exact raw text, and matching SHA-256; each ordered item's text equals its verbatim source substring and exactly matches its corresponding enumerated requirement text and disposition.
+- Every source semantic atom is itself an exact verbatim substring and survives through declared required terms in its mapped AC or Open Question. An evidence-based substitution is allowed only as an explicit conflict mapped to an Open Question; exact paths, user-level/per-user scope terms, and protected identifiers are never dropped.
+- Proposed/Confirmed authority is recorded separately from source fidelity and never bypasses the ledger gate.
 - Strong job, queue, listener, retry, restart, long-running, batch, migration, repair, traversal, partial-write, or fault-injection signals force `operational_contract.active=true`; `active=false` has a reason and cannot bypass signals.
 - Active operational contracts disposition trigger/deployment scope; acquisition/query/iteration/mutation/save/refresh failure points; separate success, failure, cancellation, shutdown, retry exhaustion, and recovery outcomes; retry taxonomy/attempts/backoff/log bound; a numeric/configured progress bound; partial-write recovery and idempotency; concurrent same/overlapping/unrelated targets and source add/delete/rename/update snapshot behavior; queue isolation; observability/context fallback; recovery safety; and deterministic automation.
 - Event/async behavior includes versioned `concurrency_race_analysis` with real AC/OQ/out-of-scope dispositions for create-then-delete, restart-mid-processing, and duplicate-event races.
