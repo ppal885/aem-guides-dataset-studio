@@ -590,6 +590,93 @@
       }
     ]
   },
+  "affected_surface_dimensions": {
+    "active": true,
+    "dimensions": [
+      {
+        "name": "FolderProfileServlet POST operation",
+        "kind": "OPERATION_ENUM",
+        "source": "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfileServlet.java:79-109",
+        "values": [
+          "CREATEFOLDERPROFILE",
+          "UPDATEFOLDERPROFILE",
+          "DELETEFOLDERPROFILE",
+          "ADDATTRIBUTEPROFILES"
+        ],
+        "coverage": {
+          "CREATEFOLDERPROFILE": {
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "Creation routes to createFolderProfile and does not execute the affected Admin Users update authorization branch."
+          },
+          "UPDATEFOLDERPROFILE": {
+            "disposition": "COVERED",
+            "ac": "AC-01 AC-02 AC-03 AC-04 AC-05"
+          },
+          "DELETEFOLDERPROFILE": {
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "Deletion routes to deleteFolderProfile and does not update the Admin Users list through updateFolderProfile."
+          },
+          "ADDATTRIBUTEPROFILES": {
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "Attribute-profile assignment routes to addAttributeProfiles and does not update Folder Profile Admin Users."
+          }
+        }
+      },
+      {
+        "name": "UPDATEFOLDERPROFILE Admin Users authorization branch",
+        "kind": "BRANCH_SET",
+        "source": "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:619-650 at commit eac2c72512306061d2110b02e03d28197eadeecf",
+        "values": [
+          "delegated target-profile admin on a non-global profile",
+          "local administrators-group member on a non-global profile",
+          "delegated target-profile admin on the global profile",
+          "caller with neither authorizing membership"
+        ],
+        "coverage": {
+          "delegated target-profile admin on a non-global profile": {
+            "disposition": "COVERED",
+            "ac": "AC-01 AC-02"
+          },
+          "local administrators-group member on a non-global profile": {
+            "disposition": "COVERED",
+            "ac": "AC-03"
+          },
+          "delegated target-profile admin on the global profile": {
+            "disposition": "COVERED",
+            "ac": "AC-04"
+          },
+          "caller with neither authorizing membership": {
+            "disposition": "COVERED",
+            "ac": "AC-05"
+          }
+        }
+      },
+      {
+        "name": "unauthorized Admin Users update outcome",
+        "kind": "OUTPUT_SET",
+        "source": "C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:649-650,853-862 and C:/starling/AEM6.x/repo/jcr_root/libs/fmdita/clientlibs/folderprofiles/js/main.js:233-249",
+        "values": [
+          "stored membership remains unchanged",
+          "client reports authorization failure",
+          "exact HTTP status and response body"
+        ],
+        "coverage": {
+          "stored membership remains unchanged": {
+            "disposition": "COVERED",
+            "ac": "AC-05"
+          },
+          "client reports authorization failure": {
+            "disposition": "COVERED",
+            "ac": "AC-05"
+          },
+          "exact HTTP status and response body": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-01"
+          }
+        }
+      }
+    ]
+  },
   "feature_classification": {
     "schema_version": "aem-guides-feature-classification-v1",
     "classes": [

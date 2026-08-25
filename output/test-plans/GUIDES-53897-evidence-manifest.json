@@ -916,6 +916,160 @@
       }
     ]
   },
+  "affected_surface_dimensions": {
+    "active": true,
+    "dimensions": [
+      {
+        "name": "Cleanup scheduling callers",
+        "kind": "CALLER_SET",
+        "source": "C:/starling/core/utils/src/main/java/com/adobe/fmdita/presets/service/FolderProfilePresetStrategy.java:78-85 and C:/starling/core/publish-listener/src/main/java/com/adobe/fmdita/rest/folderprofiles/FolderProfilesAPI.java:1213-1218",
+        "values": [
+          "FolderProfilePresetStrategy.deletePresetData",
+          "FolderProfilesAPI folder-profile deletion"
+        ],
+        "coverage": {
+          "FolderProfilePresetStrategy.deletePresetData": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-09"
+          },
+          "FolderProfilesAPI folder-profile deletion": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-09"
+          }
+        }
+      },
+      {
+        "name": "PurgePresetExecutionDataJob process branches",
+        "kind": "BRANCH_SET",
+        "source": "C:/starling/core/publish-listener/src/main/java/com/adobe/aem/guides/publish/job/PurgePresetExecutionDataJob.java:54-76",
+        "values": [
+          "empty query result",
+          "successful non-empty result page",
+          "query or page-processing exception",
+          "completed loop returns succeeded"
+        ],
+        "coverage": {
+          "empty query result": {
+            "disposition": "COVERED",
+            "ac": "AC-04, AC-05"
+          },
+          "successful non-empty result page": {
+            "disposition": "COVERED",
+            "ac": "AC-03, AC-09"
+          },
+          "query or page-processing exception": {
+            "disposition": "COVERED",
+            "ac": "AC-01, AC-02"
+          },
+          "completed loop returns succeeded": {
+            "disposition": "COVERED",
+            "ac": "AC-04"
+          }
+        }
+      },
+      {
+        "name": "Guides Administrative Task Queue configuration",
+        "kind": "CONFIG_SURFACE",
+        "source": "C:/starling/AEM6.x/repo/jcr_root/libs/fmdita/config/org.apache.sling.event.jobs.QueueConfiguration~guidesAdministrativeTaskQueue.xml:4-15",
+        "values": [
+          "queue.name",
+          "queue.priority",
+          "queue.maxparallel",
+          "queue.topics",
+          "queue.retries",
+          "queue.preferRunOnCreationInstance",
+          "queue.threadPoolSize",
+          "queue.retrydelay",
+          "service.ranking",
+          "queue.type",
+          "queue.keepJobs"
+        ],
+        "coverage": {
+          "queue.name": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.priority": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.maxparallel": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.topics": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-09"
+          },
+          "queue.retries": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.preferRunOnCreationInstance": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-05"
+          },
+          "queue.threadPoolSize": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.retrydelay": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "service.ranking": {
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "The inspected evidence shows one queue configuration service and no competing service-ranking behavior for this cleanup topic."
+          },
+          "queue.type": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "queue.keepJobs": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-07"
+          }
+        }
+      }
+    ]
+  },
+  "feature_classification": {
+    "schema_version": "aem-guides-feature-classification-v1",
+    "classes": [
+      "async_job"
+    ],
+    "rationale": "The affected behavior is a queued Sling job with retry, stop, terminal-result, and concurrent repository-change contracts.",
+    "evidence": [
+      "Jira description GUIDES-53897",
+      "C:\\starling\\core\\publish-listener\\src\\main\\java\\com\\adobe\\aem\\guides\\publish\\job\\PurgePresetExecutionDataJob.java:79",
+      "C:\\starling\\AEM6.x\\repo\\jcr_root\\libs\\fmdita\\config\\org.apache.sling.event.jobs.QueueConfiguration~guidesAdministrativeTaskQueue.xml:4"
+    ]
+  },
+  "terminal_states": {
+    "schema_version": "aem-guides-terminal-states-v1",
+    "states": [
+      {
+        "state": "succeeded",
+        "disposition": "COVERED_BY_AC",
+        "ac_ref": "AC-04"
+      },
+      {
+        "state": "failed",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "state": "cancelled",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "state": "retry_exhausted",
+        "disposition": "OPEN_QUESTION",
+        "open_question_ref": "OQ-03"
+      }
+    ]
+  },
   "concurrency_race_analysis": {
     "schema_version": "aem-guides-concurrency-race-v1",
     "active": true,

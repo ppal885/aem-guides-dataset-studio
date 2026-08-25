@@ -90,13 +90,17 @@ DIMENSION_VALIDATORS = {
 }
 
 
-_EXCLUDED_SIGNAL_KEYS = {
-    "feature_classification",
-    "ui_surface_scope",
-    "role_provisioning",
-    "concurrency_race_analysis",
-    "terminal_states",
-    "configuration_enumeration_scope",
+_PRIMARY_SIGNAL_KEYS = {
+    "issue",
+    "attachments",
+    "accepted_uac",
+    "accepted_uac_fidelity",
+    "enumerated_requirements",
+    "source_requirement_ledger",
+    "comment_claims",
+    "implementation_grounding",
+    "behavior_model",
+    "open_questions",
 }
 
 
@@ -112,10 +116,17 @@ def _value_strings(value):
 
 
 def _signal_haystack(manifest, plan_text):
+    """Read product evidence, never validator-generated decision blocks.
+
+    Analysis blocks often contain negative dispositions such as "no queue" or
+    "no authorization branch". Feeding those sentences back into feature
+    detection creates a self-activating loop. The plan plus this allowlist are
+    the product-facing sources from which classification may be inferred.
+    """
     parts = [str(plan_text or "")]
     if isinstance(manifest, dict):
         for key, value in manifest.items():
-            if key not in _EXCLUDED_SIGNAL_KEYS:
+            if key in _PRIMARY_SIGNAL_KEYS:
                 parts.extend(_value_strings(value))
     return "\n".join(parts).casefold()
 

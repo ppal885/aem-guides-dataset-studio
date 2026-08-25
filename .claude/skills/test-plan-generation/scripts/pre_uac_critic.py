@@ -76,7 +76,13 @@ def critique(manifest, plan_text=""):
     behaviour_matters = manifest.get("behaviour_matters", True) is not False
     q = {}
 
-    explored = bool(cov) or bool(dita.get("relations"))
+    relationship_block = manifest.get("construct_relationships") or {}
+    relationship_edges = (
+        relationship_block.get("edges", [])
+        if isinstance(relationship_block, dict)
+        else []
+    )
+    explored = bool(cov) or bool(dita.get("relations")) or bool(relationship_edges)
     q["only_the_noun"] = (CONCERN, "no dependency/coverage exploration recorded beyond the primary construct") \
         if behaviour_matters and not explored else (CLEAN, "")
 

@@ -4,11 +4,13 @@
     "ui_display_label": {
       "signals": [
         "friendly name",
+        "display name",
+        "friendly label",
         "label",
-        "display",
+        "label text",
         "tooltip",
-        "rendered",
-        "shown in",
+        "tooltip text",
+        "raw attribute name",
         "workspace settings"
       ],
       "required_dimensions": [
@@ -18,12 +20,14 @@
     "access_control": {
       "signals": [
         "permission",
-        "group",
+        "user group",
+        "aem group",
+        "group membership",
+        "administrators group",
         "acl",
         "admin user",
         "authorization",
-        "privilege",
-        "folder profile"
+        "privilege"
       ],
       "required_dimensions": [
         "role_provisioning"

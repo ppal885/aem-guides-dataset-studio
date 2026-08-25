@@ -1229,6 +1229,180 @@
       }
     }
   },
+  "affected_surface_dimensions": {
+    "active": true,
+    "dimensions": [
+      {
+        "name": "Workspace Settings persistence keys",
+        "kind": "CONFIG_SURFACE",
+        "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/xml_editor_attributes_settings.json:5-8 and C:/xmleditor/xmleditor/src/controllers/widgets/dita_item_list.ts:129-145",
+        "values": [
+          "PAGE_DITA_ATTRIBUTES",
+          "PAGE_CONSTRAINT_DITA_ATTRIBUTES",
+          "ditaAttributes",
+          "attributes"
+        ],
+        "coverage": {
+          "PAGE_DITA_ATTRIBUTES": {
+            "disposition": "COVERED",
+            "ac": "AC-05 AC-10"
+          },
+          "PAGE_CONSTRAINT_DITA_ATTRIBUTES": {
+            "disposition": "COVERED",
+            "ac": "AC-08 AC-09"
+          },
+          "ditaAttributes": {
+            "disposition": "COVERED",
+            "ac": "AC-05 AC-10"
+          },
+          "attributes": {
+            "disposition": "COVERED",
+            "ac": "AC-05 AC-10"
+          }
+        }
+      },
+      {
+        "name": "Conditional-list repository resolution",
+        "kind": "BRANCH_SET",
+        "source": "C:/starling/core/utils/src/main/java/com/adobe/fmdita/service/FetchCondAttrListService.java:27-58",
+        "values": [
+          "/apps/fmdita/config/condAttrList.xml",
+          "/libs/fmdita/config/condAttrList.xml",
+          "/apps/fmdita/config/condAttrList.csv",
+          "/libs/fmdita/config/condAttrList.csv"
+        ],
+        "coverage": {
+          "/apps/fmdita/config/condAttrList.xml": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-06"
+          },
+          "/libs/fmdita/config/condAttrList.xml": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-06"
+          },
+          "/apps/fmdita/config/condAttrList.csv": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-06"
+          },
+          "/libs/fmdita/config/condAttrList.csv": {
+            "disposition": "COVERED",
+            "ac": "AC-06 AC-12"
+          }
+        }
+      },
+      {
+        "name": "Attribute-label render consumers",
+        "kind": "OUTPUT_SET",
+        "source": "C:/xmleditor/xmleditor/src/config/ui/views/widgets/other_attribute_list_item.json:17-18; C:/xmleditor/xmleditor/src/model/condition.ts:50-53; C:/xmleditor/xmleditor/src/model/other_attrs.ts:348-358; C:/xmleditor/xmleditor/src/controllers/widgets/condition_preset_editor_controller.ts:574-575; C:/xmleditor/xmleditor/src/controllers/widgets/ditaval_element_controller.ts:22-33; C:/xmleditor/xmleditor/src/controllers/editor/multi_view.ts:588-614",
+        "values": [
+          "Full Tags View",
+          "Condition Attributes panel",
+          "Right Panel",
+          "condition presets",
+          "DITAVAL attribute dropdown",
+          "Preview"
+        ],
+        "coverage": {
+          "Full Tags View": {
+            "disposition": "COVERED",
+            "ac": "AC-01"
+          },
+          "Condition Attributes panel": {
+            "disposition": "COVERED",
+            "ac": "AC-02"
+          },
+          "Right Panel": {
+            "disposition": "COVERED",
+            "ac": "AC-03"
+          },
+          "condition presets": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-02"
+          },
+          "DITAVAL attribute dropdown": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-03"
+          },
+          "Preview": {
+            "disposition": "OPEN_QUESTION",
+            "open_question_ref": "OQ-04"
+          }
+        }
+      }
+    ]
+  },
+  "scope_conflict": {
+    "active": true,
+    "alignment": "PARTIAL_SCOPE_FIX",
+    "problem_threads": [
+      {
+        "thread_id": "reported-three-surface-label-defect",
+        "problem_statement": "The Jira reports that configured attribute friendly names are inconsistent in Full Tags View, the Condition Attributes panel, and the Right Panel.",
+        "status": "CURRENT_FIX",
+        "maps_to_ac": "AC-01 AC-02 AC-03",
+        "evidence": "Jira description and attachment, plus commit 839d95b9 rendering changes cited by the implementation grounding."
+      },
+      {
+        "thread_id": "reviewer-requested-extensible-attribute-contract",
+        "problem_statement": "Human review adds custom and future configured attributes, raw-name fallback, restriction behavior, preservation, upgrade persistence, and element-label regression coverage.",
+        "status": "PROPOSED",
+        "maps_to_ac": "AC-04 AC-05 AC-06 AC-08 AC-09 AC-10 AC-11 AC-12",
+        "evidence": "Source-preserved human feedback in output/test-plans/evidence/GUIDES-49507-human-feedback.txt."
+      },
+      {
+        "thread_id": "user-versus-profile-scope",
+        "problem_statement": "Human review requests a user-level setting, while inspected implementation evidence stores mappings under the active folder or global profile.",
+        "status": "UNRESOLVED",
+        "open_question_refs": [
+          "OQ-07"
+        ],
+        "evidence": "USER-FEEDBACK-GUIDES-49507 and PR-REF-839D95B9 behavior-model facts."
+      },
+      {
+        "thread_id": "adjacent-render-surfaces",
+        "problem_statement": "Friendly-name behavior for condition presets, the DITAVAL attribute dropdown, and Preview is not approved by the current Jira scope.",
+        "status": "UNRESOLVED",
+        "open_question_refs": [
+          "OQ-02",
+          "OQ-03",
+          "OQ-04"
+        ],
+        "evidence": "Grounded CONSUMER edges in construct_relationships."
+      },
+      {
+        "thread_id": "conditional-value-labels",
+        "problem_statement": "The current scope does not decide whether configured conditional value labels belong with attribute friendly names.",
+        "status": "UNRESOLVED",
+        "open_question_refs": [
+          "OQ-01"
+        ],
+        "evidence": "OQ-01 preserves the unresolved product boundary."
+      },
+      {
+        "thread_id": "configuration-and-version-boundaries",
+        "problem_statement": "The target command version, XML-versus-CSV precedence, activation boundary, and invalid or rollback behavior remain undecided.",
+        "status": "UNRESOLVED",
+        "open_question_refs": [
+          "OQ-05",
+          "OQ-06",
+          "OQ-08",
+          "OQ-09"
+        ],
+        "evidence": "Implementation grounding and configuration_enumeration_scope expose these unresolved branches."
+      }
+    ],
+    "open_question_refs": [
+      "OQ-01",
+      "OQ-02",
+      "OQ-03",
+      "OQ-04",
+      "OQ-05",
+      "OQ-06",
+      "OQ-07",
+      "OQ-08",
+      "OQ-09"
+    ]
+  },
   "behavior_model": {
     "trigger": [
       "An author opens an attribute-rendering surface or an administrator saves an attribute-label setting."

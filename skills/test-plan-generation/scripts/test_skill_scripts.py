@@ -3812,6 +3812,23 @@ def test_pre_uac_critic() -> None:
     r = cr.critique(good_manifest, good_plan)
     check("clean reasoned plan passes the critic", r["verdict"] == "PASS")
 
+    relationship_only = dict(good_manifest)
+    relationship_only.pop("coverage_hypotheses", None)
+    relationship_only.pop("verifications", None)
+    relationship_only["construct_relationships"] = {
+        "edges": [
+            {
+                "relation_type": "CONSUMER",
+                "neighbor": "navigation renderer",
+            }
+        ]
+    }
+    check(
+        "relationship umbrella satisfies breadth exploration in the critic",
+        cr.critique(relationship_only, good_plan)["questions"]["only_the_noun"][0]
+        == "CLEAN",
+    )
+
     # an unexplored HIGH-relevance dependency (candidate, no verification) -> NEEDS_REFINEMENT (Q3)
     unexplored_cov = [dict(good_manifest["coverage_hypotheses"][0], status="INVESTIGATION_CANDIDATE")]
     nr = dict(good_manifest, coverage_hypotheses=unexplored_cov, verifications=[])
@@ -4703,6 +4720,30 @@ def test_feature_class_registry() -> None:
         "registry detects plural and inflected UI display-label signals",
         "ui_display_label"
         in registry.classify({}, "Friendly Names are Displayed in the editor."),
+    )
+    check(
+        "ordinary grouping language does not imply access control",
+        "access_control"
+        not in registry.classify({}, "Group captured log entries by job and map."),
+    )
+    self_describing_manifest = {
+        "operational_contract": {
+            "active": False,
+            "reason": "This does not change a Sling job or queue.",
+        },
+        "construct_relationships": {
+            "cross_dimensions": {
+                "PERMISSIONS": {
+                    "applicable": False,
+                    "reason": "No authorization branch changes.",
+                }
+            }
+        },
+    }
+    check(
+        "validator decision text cannot self-activate a feature class",
+        registry.classify(self_describing_manifest, "A duplicate log entry is removed.")
+        == [],
     )
 
 

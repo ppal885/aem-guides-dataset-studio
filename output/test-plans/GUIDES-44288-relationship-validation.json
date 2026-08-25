@@ -21,7 +21,7 @@
   "construct_relationships": {
     "schema_version": "aem-guides-construct-relationships-v1",
     "construct": {
-      "slug": "dita-ot-generation-log-emission",
+      "slug": "dita-ot-generation-log",
       "label": "DITA-OT generation log emission"
     },
     "edges": [
