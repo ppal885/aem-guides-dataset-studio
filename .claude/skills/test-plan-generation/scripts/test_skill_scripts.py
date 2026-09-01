@@ -100,6 +100,7 @@ configuration_enumeration_mod = _load(
 ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
+temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6256,6 +6257,70 @@ def test_fluffyjaws_evidence() -> None:
     print("test_fluffyjaws_evidence: OK")
 
 
+def test_temporal_evidence() -> None:
+    te = temporal_evidence_mod
+
+    # Backward-compatible: no temporal metadata -> clean pass.
+    check("absent temporal metadata passes", te.validate({}) == [])
+    check("empty manifest not flagged present", te.is_present({}) is False)
+
+    # Invalid state rejected.
+    bad_state = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "MAYBE"}
+    ]}}
+    check("invalid temporal state rejected",
+          any("must be one of" in p for p in te.validate(bad_state)))
+
+    # UNKNOWN_VERSION supporting an AC without safe disposition is rejected.
+    unknown_ac = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "UNKNOWN_VERSION",
+         "supports_ac": True}
+    ]}}
+    check("UNKNOWN_VERSION cannot silently support an AC",
+          any("cannot silently support" in p for p in te.validate(unknown_ac)))
+
+    # Same, but dispositioned as NEEDS_CURRENT_VERIFICATION -> passes.
+    unknown_ok = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "UNKNOWN_VERSION",
+         "supports_ac": True, "disposition": "NEEDS_CURRENT_VERIFICATION"}
+    ]}}
+    check("unknown-version claim is safe when dispositioned", te.validate(unknown_ok) == [])
+
+    # CURRENTLY_APPLICABLE supporting an AC -> passes.
+    current_ok = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "CURRENTLY_APPLICABLE",
+         "supports_ac": True}
+    ]}}
+    check("currently-applicable evidence may support an AC", te.validate(current_ok) == [])
+
+    # SUPERSEDED must name what supersedes it.
+    superseded_bare = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "SUPERSEDED"}
+    ]}}
+    check("SUPERSEDED must record superseded_by/conflict_with",
+          any("superseded_by/conflict_with" in p for p in te.validate(superseded_bare)))
+
+    # Normative authority must not be marked SUPERSEDED by recency alone.
+    normative_superseded = {"evidence_authority": {"items": [
+        {"evidence_id": "E1", "temporal_applicability": "SUPERSEDED",
+         "superseded_by": "E2", "authority_is_normative": True}
+    ]}}
+    check("normative record not superseded by recency alone",
+          any("recency alone" in p for p in te.validate(normative_superseded)))
+
+    # Version conflict must be preserved with two records + applicability.
+    conflict_bad = {"temporal_evidence": {"version_conflicts": [{"between": ["E1"]}]}}
+    check("version conflict must preserve both records",
+          any("at least two evidence_ids" in p for p in te.validate(conflict_bad)))
+
+    conflict_ok = {"temporal_evidence": {"version_conflicts": [
+        {"between": ["E1", "E2"], "applicability": "VERSION_MISMATCH"}
+    ]}}
+    check("marked version conflict passes", te.validate(conflict_ok) == [])
+
+    print("test_temporal_evidence: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6299,6 +6364,7 @@ def main() -> int:
     test_ui_surface_scope()
     test_role_provisioning()
     test_fluffyjaws_evidence()
+    test_temporal_evidence()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()

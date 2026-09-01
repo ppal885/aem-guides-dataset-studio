@@ -106,6 +106,7 @@ relationship_ui_surface_scope_mod = _load(
 )
 skill_fingerprint_mod = _load("skill_bundle_fingerprint", "skill_bundle_fingerprint.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
+temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1444,6 +1445,15 @@ def check_relationship_traversal(
         for problem in fluffyjaws_evidence_mod.validate_block(data)
     )
 
+    # Temporal / version-aware evidence (UACFIX-01, optional, backward-compatible).
+    # Absent temporal metadata -> clean pass. When records opt in, enforce the
+    # applicability state machine and forbid UNKNOWN/superseded evidence silently
+    # grounding a current AC.
+    failures.extend(
+        f"[temporal-evidence] {problem}"
+        for problem in temporal_evidence_mod.validate(data)
+    )
+
     ui_block = data.get("ui_surface_scope")
     ui_edge_present = any(
         isinstance(edge, dict)
@@ -1958,6 +1968,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_ui_surface_scope()
             self_tests.test_role_provisioning()
             self_tests.test_fluffyjaws_evidence()
+            self_tests.test_temporal_evidence()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
