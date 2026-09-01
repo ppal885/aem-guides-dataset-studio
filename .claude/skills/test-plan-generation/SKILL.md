@@ -30,6 +30,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
+- Use the FluffyJaws connector ONLY as a `SUPPORTING_DISCOVERY` source, and only when it is registered in the session AND `SKILL_FLUFFYJAWS_MODE` is `FLUFFYJAWS_SHADOW` or `FLUFFYJAWS_SECOND_PASS` (default `FLUFFYJAWS_DISABLED` => never call it). When enabled, call the connector's own tool for discovery, then RE-GROUND every finding into a first-class source (spec / DITA-OT / product doc / current code / historical Jira) that keeps its own authority before it can raise any AC coverage. FluffyJaws synthesis can hallucinate: it is never an authority, never the sole basis for a Covered/Partially-covered claim, and there is no FluffyJaws -> AC path. Record it in the manifest `fluffyjaws` block (see "### FluffyJaws Supporting-Discovery"); enforced by `fluffyjaws_evidence`. See `docs/fluffyjaws_setup.md` and `references/fluffyjaws-evidence.md`.
 - Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira, Dynamics, support-case, customer-escalation, log, screenshot, and investigation details; state the evidence source without automatically blocking a pre-development UAC.
 - Use the Jira MCP `list_attachments` and `download_attachment` tools to pull every attachment to a scratchpad path, then analyse it (Read images/screenshots, open logs and sample content as text). Never describe an attachment's contents from its filename alone.
 - When the Dataset Studio app or local repo is available, use its `jira_qa` related-ticket retrieval as the first historical-learning candidate source, then validate mutable Jira facts with Jira MCP. Treat indexed learning as historical QA evidence only, never as current Jira truth or product documentation.
@@ -47,6 +48,7 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 
 - Read `references/evidence-preflight.md` before evidence retrieval. Run an actual availability check for product RAG, indexed Jira history, live Jira, Git, and Figma; connector configuration alone does not prove availability.
 - Read `references/rag-query-cookbook.md` before calling or judging `ask_dita_expert` evidence.
+- Read `references/fluffyjaws-evidence.md` before calling the FluffyJaws connector or recording a `fluffyjaws` manifest block; it defines the SUPPORTING_DISCOVERY-only, re-grounding, and no-FJ-to-AC invariants the `fluffyjaws_evidence` gate enforces.
 - Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/git-repo-sync.md` and use `scripts/sync_evidence_repo.py` before treating a local clone as current product or automation evidence.
 - Read `references/design-evidence-flow.md` before using Figma MCP or design screenshots as evidence.
@@ -320,6 +322,16 @@ Produce a concrete AEM Guides QA test plan that reads like a senior manual QA en
 - Record the graph status, exact query, active generation ID, path IDs, and deduplicated leaf citations in the evidence manifest. A path ID is traceability metadata only.
 - If graph access is disabled, unavailable, or degraded, record the reason and continue when authoritative direct evidence covers the behavior; graph unavailability alone is not a Draft blocker.
 - Only in explicit `augment` mode, fold retained findings into the existing output sections. Do not add an Evidence Graph heading or expose raw graph JSON.
+
+### FluffyJaws Supporting-Discovery (optional, mode-gated)
+
+FluffyJaws broadens *discovery* of relevant behaviour, but it is a synthesis engine, not an authority. Use it only to widen the net for candidate dimensions and behaviours; never as evidence on its own.
+
+- **Gate on the mode.** Read `SKILL_FLUFFYJAWS_MODE`. `FLUFFYJAWS_DISABLED` (default) => do not call FluffyJaws and claim no discoveries. Only `FLUFFYJAWS_SHADOW` or `FLUFFYJAWS_SECOND_PASS` may call it, and only when the connector is actually registered in this session. If the mode is enabled but the connector is not reachable, set `available: false` and record no discoveries (fall back to the normal RAG path).
+- **Query for discovery, then re-ground.** Ask FluffyJaws focused discovery questions derived from the normalized behaviour model. For every finding it surfaces, RE-GROUND it into a first-class source that keeps its own authority (spec / DITA-OT / product doc / current code / historical Jira) before it can raise any AC's coverage. A finding that cannot be re-grounded stays an Open Question or is dropped - it never becomes an AC.
+- **Record it in the manifest `fluffyjaws` block** so `fluffyjaws_evidence` can enforce the invariants: `{"mode": "FLUFFYJAWS_SHADOW|FLUFFYJAWS_SECOND_PASS", "available": true|false, "discoveries": [{"finding": "...", "authority": "SUPPORTING_DISCOVERY", "regrounded_evidence_id": "E#"}]}`. Every discovery's `authority` must be `SUPPORTING_DISCOVERY` and must name a `regrounded_evidence_id`; a discovery present while `DISABLED`/`available:false` is a hard failure.
+- **Mode effect.** `FLUFFYJAWS_SHADOW` records discoveries for trace/evaluation only - the final plan stays baseline-equivalent, unchanged versus `DISABLED`. `FLUFFYJAWS_SECOND_PASS` may let a re-grounded discovery become an `INVESTIGATION_CANDIDATE` in the coverage pipeline, still `SUPPORTING_DISCOVERY` and still with no FluffyJaws -> AC path.
+- **Transport note.** The connector-driven path above (this skill calling the registered FluffyJaws tool) is the supported path here. The separate backend HTTPS provider (`build_fluffyjaws_provider` with an injected authenticated transport) requires human-only setup - service-app registration, the operator-guide MCP/API schemas, and the confirmed API base per `docs/fluffyjaws_setup.md`; do not guess that transport.
 
 ### Phase 5 — Inspect Clones And Available Git Changes
 
