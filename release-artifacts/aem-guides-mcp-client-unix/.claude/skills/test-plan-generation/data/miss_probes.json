@@ -1,0 +1,30 @@
+{
+  "schema_version": "aem-guides-miss-probes-v1",
+  "note": "Curated, human-approved discovery probes. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). Never add a probe that encodes a single concrete symbol, path, or Jira key.",
+  "probes": [
+    {
+      "probe_id": "MP-001",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": ["metadata", "jcr:content", "repository node", "property value"],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate_template": "value provenance beyond the authoring UI - repository node (CRX/DE), source map/topic file, API/import, and migration - and assert the product uses the correct source value"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": ["HFD-VALUE-PROVENANCE-01"],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Any ticket where a value is written to an output must enumerate every channel the value can be set from, not only the authoring UI. The property NAME source and the property VALUE source can differ; the value is frequently read from the repository node. This generalizes beyond the originating metadata ticket to all value-write tickets.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "value-provenance",
+      "status": "ACTIVE"
+    }
+  ]
+}

@@ -109,6 +109,7 @@ publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_s
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
+miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -2898,6 +2899,8 @@ def test_component_reference_routing() -> None:
             "scripts/root_cause_fix_driven.py",
             "scripts/reviewer_request_coverage.py",
             "scripts/dimension_synthesizer.py",
+            "scripts/miss_probe_library.py",
+            "data/miss_probes.json",
             "scripts/run_gates.py",
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
@@ -6795,6 +6798,75 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_miss_probe_library() -> None:
+    mpl = miss_probe_library_mod
+
+    # Shipped library has the seeded value-provenance probe, and it is ACTIVE.
+    library = mpl.load_library()
+    check("library loads seeded probes", len(library) >= 1)
+    seed = next((p for p in library if p.get("probe_id") == "MP-001"), None)
+    check("seeded MP-001 present", seed is not None)
+    status, _ = mpl.effective_status(seed)
+    check("seeded probe is ACTIVE", status == "ACTIVE")
+    check(
+        "seeded probe axis is VALUE_SET_CHANNEL",
+        seed["implied_dimension"]["axis"] == "VALUE_SET_CHANNEL",
+    )
+
+    def probe(**over):
+        base = json.loads(json.dumps(seed))
+        for k, v in over.items():
+            if "." in k:
+                a, b = k.split(".", 1)
+                base.setdefault(a, {})[b] = v
+            else:
+                base[k] = v
+        return base
+
+    # A MODEL-sourced delta can never be ACTIVE.
+    model_probe = probe()
+    model_probe["provenance"]["source"] = "MODEL"
+    check("model-sourced probe is not ACTIVE", mpl.effective_status(model_probe)[0] != "ACTIVE")
+
+    # A language/testability pattern is not a discovery probe.
+    lang_probe = probe(pattern_class="RENDERING_LANGUAGE_PATTERN")
+    check("language pattern is retired", mpl.effective_status(lang_probe)[0] == "RETIRED")
+
+    # A non-generalized (single concrete literal) probe is rejected.
+    literal_probe = probe()
+    literal_probe["signal_pattern"]["match"] = ["getMetadataList"]
+    check("single-literal probe is not ACTIVE", mpl.effective_status(literal_probe)[0] != "ACTIVE")
+
+    # A VALIDATING probe runs in SHADOW.
+    validating = probe()
+    validating["provenance"]["promotion_state"] = "VALIDATING"
+    check("validating probe is SHADOW", mpl.effective_status(validating)[0] == "SHADOW")
+
+    # candidates_for matches evidence and tags LEARNED_PROBE + probe_id + delta.
+    pairs = [("E1", "The handler reads the value from jcr:content/metadata on the repository node.")]
+    learned = mpl.candidates_for(pairs)
+    match = next((c for c in learned if c["generator"] == "LEARNED_PROBE"), None)
+    check("learned candidate emitted for matching evidence", match is not None)
+    check("learned candidate axis is VALUE_SET_CHANNEL", match["dimension"] == "VALUE_SET_CHANNEL")
+    check("learned candidate carries probe id", match["probe_id"] == "MP-001")
+    check("learned candidate cites the evidence label", "E1" in match["current_evidence"])
+    check(
+        "learned candidate technical_basis names the probe and delta",
+        any("LEARNED_PROBE:MP-001" in t for t in match["technical_basis"])
+        and any("delta:" in t for t in match["technical_basis"]),
+    )
+
+    # No match -> no learned candidate.
+    check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])
+
+    # manifest miss_probe_activity consistency.
+    check("absent miss_probe_activity passes", mpl.validate({}) == [])
+    bad = {"miss_probe_activity": {"dispositions": [{"probe_id": "MP-999", "disposition": "COVERED_BY_AC"}]}}
+    check("unknown probe id flagged", any("unknown probe_id" in p for p in mpl.validate(bad)))
+
+    print("test_miss_probe_library: OK")
+
+
 def test_dimension_synthesizer() -> None:
     ds = dimension_synthesizer_mod
 
@@ -8901,6 +8973,7 @@ def main() -> int:
     test_publishing_scope_coverage()
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
+    test_miss_probe_library()
     test_dimension_synthesizer()
     test_evidence_provenance()
     test_security_coverage()

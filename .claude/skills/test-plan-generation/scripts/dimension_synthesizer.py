@@ -184,6 +184,19 @@ def synthesize(manifest: dict | None) -> dict:
     candidates += hist_cands
     gaps += hist_gaps
 
+    # LEARNED_PROBE candidates from the miss-probe library (UACDISCOVER-02).
+    try:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "miss_probe_library", Path(__file__).with_name("miss_probe_library.py")
+        )
+        mpl = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mpl)  # type: ignore[union-attr]
+        candidates += mpl.candidates_for(pairs)
+    except Exception as exc:  # pragma: no cover - defensive
+        gaps.append(f"LEARNED_PROBE: miss-probe library unavailable ({exc})")
+
     # Assign stable ids.
     for i, cand in enumerate(candidates, start=1):
         cand["hypothesis_id"] = f"DS-{i:02d}"
