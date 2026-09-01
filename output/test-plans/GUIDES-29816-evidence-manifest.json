@@ -211,5 +211,195 @@
     "active": false,
     "reason": "The ticket concerns publishing metadata correctness, not a job, queue, retry, restart, listener, batch, migration, repair, or long-running operation.",
     "dimensions": []
+  },
+  "feature_classification": {
+    "schema_version": "aem-guides-feature-classification-v1",
+    "classes": [
+      "generated_artifact_delivery"
+    ],
+    "rationale": "Native PDF metadata.xml is a generated artifact whose delivered content (source File properties) is the subject of the fix.",
+    "evidence": [
+      "Jira GUIDES-29816 screenshot metadata.xml",
+      "C:\\starling\\core\\publish-workflow\\src\\main\\java\\com\u0007dobe\fmdita\\ot\\BaseExecutor.java:691"
+    ]
+  },
+  "generated_output_contract": {
+    "schema_version": "aem-guides-generated-output-contract-v2",
+    "artifact_kind": "DOCUMENT",
+    "entry_surface": "Native PDF output preset generation",
+    "output_identity": "Native PDF metadata.xml (temp files) for the published map",
+    "delivery_in_scope": true,
+    "download_surface": "Retain temporary files download of the Native PDF temp folder",
+    "payload_inventory": [
+      {
+        "item_id": "GOI-01",
+        "item": "metadata.xml sourceProps (damPath, source id) for the current map",
+        "role": "PRIMARY_CONTENT",
+        "disposition": "INCLUDED"
+      },
+      {
+        "item_id": "GOI-02",
+        "item": "selected File (Asset) properties for map and topics",
+        "role": "PRIMARY_CONTENT",
+        "disposition": "INCLUDED"
+      },
+      {
+        "item_id": "GOI-03",
+        "item": "existing Metadata tab document properties (XMP)",
+        "role": "SUPPORTING",
+        "disposition": "INCLUDED"
+      }
+    ],
+    "structure": {
+      "root": "Native PDF temporary output folder for the published map",
+      "hierarchy": "per-map and per-topic metadata.xml within the temp folder",
+      "relative_path_policy": "temp files under crx-quickstart profiles ditamaps path"
+    },
+    "oracles": [
+      {
+        "oracle_id": "GO-01",
+        "oracle_type": "ARTIFACT_EXISTS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "metadata.xml is generated for the Native PDF publish",
+        "disposition_ref": "GOD-01"
+      },
+      {
+        "oracle_id": "GO-02",
+        "oracle_type": "CONTENT_CORRECT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "metadata.xml content reflects the selected properties",
+        "disposition_ref": "GOD-02"
+      },
+      {
+        "oracle_id": "GO-03",
+        "oracle_type": "METADATA_CORRECT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "map and topic source properties and damPath are correct per asset",
+        "disposition_ref": "GOD-03"
+      },
+      {
+        "oracle_id": "GO-04",
+        "oracle_type": "OUTPUT_PATH_CORRECT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "metadata.xml is at the expected temp path",
+        "disposition_ref": "GOD-04"
+      },
+      {
+        "oracle_id": "GO-05",
+        "oracle_type": "NO_STALE_OUTPUT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "no values remain from an earlier generation",
+        "disposition_ref": "GOD-05"
+      },
+      {
+        "oracle_id": "GO-06",
+        "oracle_type": "UNCHANGED_CONTENT_NOT_REWRITTEN",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "Metadata tab values are not altered by the fix",
+        "disposition_ref": "GOD-06"
+      },
+      {
+        "oracle_id": "GO-07",
+        "oracle_type": "STATUS_MATCHES_REAL_OUTPUT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "generation status matches the actual metadata written",
+        "disposition_ref": "GOD-07"
+      },
+      {
+        "oracle_id": "GO-08",
+        "oracle_type": "DELIVERY_AVAILABLE",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "expected": "retained temp files expose the corrected metadata.xml",
+        "disposition_ref": "GOD-08"
+      },
+      {
+        "oracle_id": "GO-09",
+        "oracle_type": "TITLE_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-09"
+      },
+      {
+        "oracle_id": "GO-10",
+        "oracle_type": "HIERARCHY_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-10"
+      },
+      {
+        "oracle_id": "GO-11",
+        "oracle_type": "ORDER_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-11"
+      },
+      {
+        "oracle_id": "GO-12",
+        "oracle_type": "NAVIGATION_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-12"
+      },
+      {
+        "oracle_id": "GO-13",
+        "oracle_type": "LINKS_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-13"
+      },
+      {
+        "oracle_id": "GO-14",
+        "oracle_type": "REPOSITORY_STATE_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-14"
+      },
+      {
+        "oracle_id": "GO-15",
+        "oracle_type": "LOCALE_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-15"
+      },
+      {
+        "oracle_id": "GO-16",
+        "oracle_type": "NO_DUPLICATES",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-16"
+      },
+      {
+        "oracle_id": "GO-17",
+        "oracle_type": "NO_ORPHANS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-17"
+      },
+      {
+        "oracle_id": "GO-18",
+        "oracle_type": "ACTIVATION_STATE_CORRECT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "not applicable to a Native PDF metadata.xml correctness fix",
+        "disposition_ref": "GOD-18"
+      }
+    ]
   }
 }

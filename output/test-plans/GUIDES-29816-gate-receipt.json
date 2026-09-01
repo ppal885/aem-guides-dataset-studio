@@ -1,9 +1,9 @@
 {
   "schema_version": "aem-guides-gate-receipt-v1",
   "passed": true,
-  "postable": false,
+  "postable": true,
   "issue": "GUIDES-29816",
-  "generated_at": "2026-09-01T06:21:05.555582+00:00",
+  "generated_at": "2026-09-01T06:26:32.399887+00:00",
   "validator": {
     "schema_version": "aem-guides-skill-bundle-fingerprint-v1",
     "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\skills\\test-plan-generation",
@@ -13,23 +13,23 @@
   "artifacts": {
     "plan": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
-      "sha256": "43cc106dba48954d96fe5cb603fff447b161cbccb025b65c7ae9a8911eb336c3"
+      "sha256": "5b938ec3eb93d1106a3f3e1db469f2289629f2420b6a2990c6027ea719952e90"
     },
     "manifest": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-evidence-manifest.json",
-      "sha256": "d65cc29c4e59c71da70bd62dfe6b4071f95b70f43b44756d65b876966abe07d6"
+      "sha256": "f623eda4291b2f94396bf2f07e57c2f3153c9c453079fa52de902348002be1c4"
     },
     "combined": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
-      "sha256": "43cc106dba48954d96fe5cb603fff447b161cbccb025b65c7ae9a8911eb336c3"
+      "sha256": "5b938ec3eb93d1106a3f3e1db469f2289629f2420b6a2990c6027ea719952e90"
     },
     "compact": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.compact.md",
-      "sha256": "96670f41646be73bb919f54e34244d44bf68746648c35bb03a1024a78e87836f"
+      "sha256": "dd918bd135052fc268405d72039b82b365487746229b0f6cdd11733a68ac1029"
     },
     "extracted_acs": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.acceptance-criteria.json",
-      "sha256": "724f0cbf92dcb8fb49cdd4fcc88e4a676e288c19e9bb86f8ee44351cf882f73e"
+      "sha256": "ecf575da9cc84b61dadb1f7dc46b4f0cb02223581160729a748ab364493d7c6d"
     }
   }
 }
