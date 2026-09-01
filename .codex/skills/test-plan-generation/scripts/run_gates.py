@@ -112,6 +112,7 @@ scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
+acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1481,6 +1482,14 @@ def check_relationship_traversal(
         for problem in repro_dimension_matrix_mod.validate(data)
     )
 
+    # Acceptance-contract synthesizer (UACFIX-06, optional, backward-compatible).
+    # Absent, or no synthesis_group declared -> pass. Enforces customer-observable
+    # grouping and internal->external traceability of synthesized ACs.
+    failures.extend(
+        f"[acceptance-synthesizer] {problem}"
+        for problem in acceptance_synthesizer_mod.validate(data)
+    )
+
     # UAC language & readability policy (UACFIX-LANGUAGE-01, optional, backward-compatible).
     # Absent ac_synthesis -> pass. Enforces MATERIAL_CANDIDATE_LOSS=0 and language lints.
     failures.extend(
@@ -2012,6 +2021,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()
             self_tests.test_repro_dimension_matrix()
+            self_tests.test_acceptance_synthesizer()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()

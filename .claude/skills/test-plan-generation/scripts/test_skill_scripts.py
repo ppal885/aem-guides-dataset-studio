@@ -106,6 +106,7 @@ scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
+acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6610,6 +6611,42 @@ def test_repro_dimension_matrix() -> None:
     print("test_repro_dimension_matrix: OK")
 
 
+def test_acceptance_synthesizer() -> None:
+    syn = acceptance_synthesizer_mod
+
+    check("absent ac_synthesis passes", syn.validate({}) == [])
+    # ac_synthesis present but no synthesis_group -> not activated -> pass
+    check("ac_synthesis without synthesis_group is not activated",
+          syn.validate({"ac_synthesis": {"final_acs": [{"ac_ref": "AC-01", "body": "x"}]}}) == [])
+
+    def wrap(ac):
+        return {"ac_synthesis": {"final_acs": [ac]}}
+
+    good = {"ac_ref": "AC-01", "title": "Deleted-preset data removed on cleanup",
+            "synthesis_group": "CORE_CUSTOMER_CONTRACT",
+            "candidate_ids": ["CF-09", "CF-03"], "merged_candidate_ids": ["CF-09", "CF-03"],
+            "evidence_ids": ["E1"], "scope_basis": "CURRENT_JIRA_AFFECTED_SURFACE",
+            "oracle": "deleted-preset data absent; valid data remains"}
+    check("fully-traced grouped AC passes", syn.validate(wrap(good)) == [])
+
+    bad_group = dict(good, synthesis_group="RANDOM_BUCKET")
+    check("unknown synthesis_group rejected",
+          any("synthesis_group" in p for p in syn.validate(wrap(bad_group))))
+
+    no_trace = {"ac_ref": "AC-02", "synthesis_group": "DIRECT_FIX_BEHAVIOR",
+                "candidate_ids": ["CF-01"]}
+    probs = syn.validate(wrap(no_trace))
+    check("missing evidence_ids trace flagged", any("evidence_ids" in p for p in probs))
+    check("missing scope_basis trace flagged", any("scope_basis" in p for p in probs))
+    check("missing oracle trace flagged", any("oracle" in p for p in probs))
+
+    merged_not_in_cand = dict(good, merged_candidate_ids=["CF-09", "CF-99"])
+    check("merged candidate not in candidate_ids is flagged",
+          any("not in candidate_ids" in p for p in syn.validate(wrap(merged_not_in_cand))))
+
+    print("test_acceptance_synthesizer: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6659,6 +6696,7 @@ def main() -> int:
     test_ac_language_policy()
     test_publishing_scope_coverage()
     test_repro_dimension_matrix()
+    test_acceptance_synthesizer()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
