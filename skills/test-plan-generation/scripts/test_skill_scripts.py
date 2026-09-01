@@ -108,6 +108,7 @@ publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_s
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
+human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6699,6 +6700,59 @@ def test_uac_linter() -> None:
     print("test_uac_linter: OK")
 
 
+def test_human_feedback_delta() -> None:
+    hf = human_feedback_delta_mod
+
+    check("absent human_feedback_delta passes", hf.validate({}) == [])
+
+    def wrap(*deltas):
+        return {"human_feedback_delta": {"deltas": list(deltas)}}
+
+    approved = {"delta_type": "COVERAGE_ADDED", "pattern_class": "DISCOVERY_PATTERN",
+                "source": "HUMAN", "promotion_state": "APPROVED", "first_failed_stage": "DISCOVERY",
+                "human_cases": ["GUIDES-A", "GUIDES-B"], "counterexample_search_done": True}
+    check("multi-case human approved delta passes", hf.validate(wrap(approved)) == [])
+
+    # FluffyJaws cannot be promoted.
+    fj = dict(approved, source="FLUFFYJAWS")
+    check("FluffyJaws delta cannot be VALIDATING/APPROVED",
+          any("only Human feedback" in p for p in hf.validate(wrap(fj))))
+
+    # AI review cannot be promoted.
+    ai = dict(approved, source="AI_REVIEW", promotion_state="VALIDATING")
+    check("AI review delta cannot be promoted",
+          any("only Human feedback" in p for p in hf.validate(wrap(ai))))
+
+    # Language delta cannot be a discovery pattern.
+    lang = {"delta_type": "LANGUAGE_SIMPLIFIED", "pattern_class": "DISCOVERY_PATTERN",
+            "source": "HUMAN", "promotion_state": "CANDIDATE"}
+    check("language delta cannot be DISCOVERY_PATTERN",
+          any("must not be a DISCOVERY_PATTERN" in p for p in hf.validate(wrap(lang))))
+
+    lang_ok = dict(lang, pattern_class="RENDERING_LANGUAGE_PATTERN")
+    check("language delta as rendering pattern passes", hf.validate(wrap(lang_ok)) == [])
+
+    # Coverage miss must record first_failed_stage.
+    no_stage = {"delta_type": "COVERAGE_ADDED", "pattern_class": "DISCOVERY_PATTERN",
+                "source": "HUMAN", "promotion_state": "CANDIDATE"}
+    check("coverage add without first_failed_stage flagged",
+          any("first_failed_stage" in p for p in hf.validate(wrap(no_stage))))
+
+    # Single-case approval without normative/severe is rejected.
+    single = {"delta_type": "SCOPE_NARROWED", "pattern_class": "SCOPE_PATTERN",
+              "source": "HUMAN", "promotion_state": "APPROVED",
+              "human_cases": ["GUIDES-A"], "counterexample_search_done": True}
+    check("single-case approval without invariant/severe flagged",
+          any(">=2 independent Human cases" in p for p in hf.validate(wrap(single))))
+
+    # Approval without counterexample mining is rejected.
+    no_ce = dict(approved, counterexample_search_done=False)
+    check("approval without counterexample search flagged",
+          any("counterexample_search_done" in p for p in hf.validate(wrap(no_ce))))
+
+    print("test_human_feedback_delta: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6750,6 +6804,7 @@ def main() -> int:
     test_repro_dimension_matrix()
     test_acceptance_synthesizer()
     test_uac_linter()
+    test_human_feedback_delta()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()

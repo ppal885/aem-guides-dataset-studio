@@ -114,6 +114,7 @@ publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_s
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
+human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1491,6 +1492,13 @@ def check_relationship_traversal(
         for problem in acceptance_synthesizer_mod.validate(data)
     )
 
+    # Human-feedback delta learner (UACFIX-08, optional, backward-compatible).
+    # Absent -> pass. Human-only supervision; language deltas are not discovery learning.
+    failures.extend(
+        f"[human-feedback-delta] {problem}"
+        for problem in human_feedback_delta_mod.validate(data)
+    )
+
     # UAC language & readability policy (UACFIX-LANGUAGE-01, optional, backward-compatible).
     # Absent ac_synthesis -> pass. Enforces MATERIAL_CANDIDATE_LOSS=0 and language lints.
     failures.extend(
@@ -2028,6 +2036,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_repro_dimension_matrix()
             self_tests.test_acceptance_synthesizer()
             self_tests.test_uac_linter()
+            self_tests.test_human_feedback_delta()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
