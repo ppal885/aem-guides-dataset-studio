@@ -65,6 +65,40 @@
       "counterexamples_checked": true,
       "equivalence_key": "shared-platform-feature-consumers",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-003",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "steps to reproduce",
+          "drag and drop",
+          "drag-and-drop",
+          "right click",
+          "context menu",
+          "toolbar button",
+          "keyboard shortcut"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "ENTRY_POINT",
+        "candidate_template": "when the ticket names a specific UI mechanism to trigger an action (drag-and-drop, a button, right-click or context menu, a keyboard shortcut, or an API), enumerate the OTHER entry points for that same action and assert consistent behaviour across them"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-STATED-MECHANISM-ENTRYPOINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A mechanism named in Steps to Reproduce (e.g. drag-and-drop upload) is only one of several entry points for the action; the UAC must enumerate the sibling entry points, not only the one the reporter used. This is a stated-evidence enumeration miss, distinct from adjacent-feature discovery.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "stated-mechanism-entry-points",
+      "status": "ACTIVE"
     }
   ]
 }

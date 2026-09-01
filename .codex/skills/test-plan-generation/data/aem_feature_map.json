@@ -128,6 +128,22 @@
             "https://experienceleague.adobe.com/en/docs/experience-manager-65/content/assets/administer/configuring-asset-upload-restrictions"
           ],
           "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "upload entry points",
+          "shared_flows": [
+            "drag and drop upload",
+            "upload button",
+            "files view upload",
+            "upload api"
+          ],
+          "implied_dimension_axis": "ENTRY_POINT",
+          "candidate_template": "the conflict and overwrite behaviour is consistent across all upload entry points - drag-and-drop, the upload/create button, the files view, and the upload api - not only the mechanism named in the steps to reproduce",
+          "reference": "Experience League authoring-file-management",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/appendix/manage-content/authoring-file-management"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         }
       ]
     },
