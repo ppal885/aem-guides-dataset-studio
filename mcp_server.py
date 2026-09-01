@@ -258,6 +258,64 @@ def search_jira_history(
         return json.dumps({"error": f"{type(e).__name__}: {e}"}, indent=2)
 
 
+@mcp.tool()
+def resolve_qe_patterns(
+    domain: str,
+    change_surfaces: list[str] | None = None,
+    abstract_signals: list[str] | None = None,
+    publishing_mode: str = "",
+    configuration_state: str = "",
+    scope_constraints: dict | None = None,
+    include_analysis_candidates: bool = False,
+    max_results: int = 10,
+) -> str:
+    """Resolve Human-backed QE questions from a surface/signal; never generate ACs."""
+    try:
+        from pydantic import ValidationError
+
+        from app.core.schemas_qe_pattern_mcp import ResolveQePatternsRequest
+        from app.services.qe_pattern_mcp_service import (
+            resolve_qe_patterns as resolve_patterns,
+        )
+
+        request = ResolveQePatternsRequest(
+            domain=domain,
+            change_surfaces=[str(value) for value in (change_surfaces or [])],
+            abstract_signals=[str(value) for value in (abstract_signals or [])],
+            publishing_mode=publishing_mode or None,
+            configuration_state=configuration_state or None,
+            scope_constraints=scope_constraints or {},
+            include_analysis_candidates=include_analysis_candidates,
+            max_results=max_results,
+        )
+        result = resolve_patterns(request)
+        return json.dumps(
+            result.model_dump(mode="json"),
+            indent=2,
+            ensure_ascii=False,
+        )
+    except ValidationError:
+        from app.core.schemas_qe_pattern_mcp import QePatternProviderStatus
+        from app.services.qe_pattern_mcp_service import pattern_error_response
+
+        result = pattern_error_response(
+            status=QePatternProviderStatus.INVALID_REQUEST,
+            error_code="QE_PATTERN_REQUEST_VALIDATION_FAILED",
+            warning="Pattern request rejected; no pattern influenced reasoning.",
+        )
+        return json.dumps(result.model_dump(mode="json"), indent=2)
+    except Exception:
+        from app.core.schemas_qe_pattern_mcp import QePatternProviderStatus
+        from app.services.qe_pattern_mcp_service import pattern_error_response
+
+        result = pattern_error_response(
+            status=QePatternProviderStatus.UNAVAILABLE,
+            error_code="QE_PATTERN_PROVIDER_UNAVAILABLE",
+            warning="Pattern provider unavailable; no pattern influenced reasoning.",
+        )
+        return json.dumps(result.model_dump(mode="json"), indent=2)
+
+
 # =============================================================================
 # SECTION 2 — RAG TOOLS (Experience League + DITA Spec)
 # =============================================================================

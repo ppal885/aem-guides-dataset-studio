@@ -470,3 +470,66 @@ def test_rag_export_includes_requested_product_hierarchy():
     assert (
         "MAP_COLLECTIONS", "HAS_LEGACY_SURFACE", "LEGACY_MAP_COLLECTIONS"
     ) in hierarchy
+
+
+def test_overview_new_file_topic_creation_topology_is_modeled():
+    product = set(taxonomy.PRODUCT_HIERARCHY_EDGES)
+    capabilities = set(taxonomy.CAPABILITY_HIERARCHY_EDGES)
+    assert ("AEM_GUIDES", "HAS_SURFACE", "OVERVIEW") in product
+    assert ("AEM_GUIDES", "HAS_AREA", "USER_PREFERENCES") in product
+    assert ("GENERAL", "HAS_PREFERENCE", "FOLDER_PROFILE") in product
+    assert {
+        ("OVERVIEW", "HAS_ACTION_FAMILY", "NEW_FILE"),
+        ("NEW_FILE", "HAS_ACTION", "CREATE_TOPIC"),
+        ("NEW_FILE", "HAS_ACTION", "CREATE_MAP"),
+        ("CREATE_TOPIC", "OPENS", "NEW_TOPIC_DIALOG"),
+        ("NEW_TOPIC_DIALOG", "HAS_CONTROL", "TOPIC_TEMPLATE_SELECTOR"),
+    } <= capabilities
+
+
+def test_configuration_relation_vocabulary_covers_all_dependency_classes():
+    assert set(taxonomy.CONFIGURATION_RELATIONS) == {
+        "CONFIGURATION_CONTROLS_OPTIONS",
+        "CONFIGURATION_CONTROLS_UI_REPRESENTATION",
+        "CONFIGURATION_CONTROLS_CAPABILITY",
+    }
+
+
+def test_folder_profile_controls_topic_templates_without_literal_options():
+    dependency = next(
+        item
+        for item in taxonomy.CONFIGURATION_DEPENDENCIES
+        if item["configuration"] == "FOLDER_PROFILE"
+    )
+    assert dependency["relation"] == "CONFIGURATION_CONTROLS_OPTIONS"
+    assert dependency["target"] == "TOPIC_TEMPLATE_SELECTOR"
+    assert dependency["surface"] == "OVERVIEW"
+    assert dependency["capability"] == "CREATE_TOPIC"
+    assert "options" not in dependency
+    assert "template_options" not in dependency
+    assert not any(
+        parent == "TOPIC_TEMPLATE_SELECTOR" and relation == "HAS_OPTION"
+        for parent, relation, _ in taxonomy.CAPABILITY_HIERARCHY_EDGES
+    )
+
+
+def test_configuration_dependency_rag_records_are_emitted_without_fixture_values():
+    result = SimpleNamespace(capabilities={}, states={}, transitions=[])
+    records = reports.build_rag_records(result, [])
+    dependencies = [
+        item
+        for item in records
+        if item["metadata"]["record_type"] == "UI_CONFIGURATION_DEPENDENCY"
+    ]
+    folder_profile = next(
+        item
+        for item in dependencies
+        if item["metadata"]["configuration"] == "FOLDER_PROFILE"
+    )
+    assert folder_profile["metadata"]["relation"] == "CONFIGURATION_CONTROLS_OPTIONS"
+    assert folder_profile["metadata"]["target"] == "TOPIC_TEMPLATE_SELECTOR"
+    assert folder_profile["metadata"]["formal_contract"] is False
+    document = folder_profile["document"].lower()
+    assert "folder_profile" in document
+    for literal_option in ("ditaval", "glossary", "markdown", "reference", "task"):
+        assert literal_option not in document

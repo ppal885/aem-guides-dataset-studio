@@ -10,7 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, UserIdentity
-from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest, TestPlanPipelineResult
+from app.core.schemas_test_plan_pipeline import (
+    TestPlanPipelineRequest,
+    TestPlanPipelineResult,
+)
 from app.db.session import get_db
 from app.services import test_plan_artifact_service as artifacts
 
@@ -56,15 +59,20 @@ async def run_test_plan_pipeline_route(
     user: UserIdentity = CurrentUser,
 ):
     """
-    End-to-end pipeline: ticket intake → full RAG → score → UAC intelligence →
-    draft test plan → QE handoff. Prefer this over MCP for long-running full RAG.
+    Run the canonical reasoning pipeline and return the retained REST response
+    contract. Prefer this over MCP for long-running evidence retrieval.
     """
     from app.services.test_plan_pipeline_service import run_test_plan_pipeline
     from app.services.tenant_service import ensure_user_can_access_tenant
 
     try:
         body.tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)
-        return await asyncio.to_thread(run_test_plan_pipeline, body, user)
+        return await asyncio.to_thread(
+            run_test_plan_pipeline,
+            body,
+            user,
+            entry_point="backend_api",
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -132,7 +140,9 @@ def record_test_plan_feedback(
 ):
     """Append privacy-safe review, edit, execution, or escaped-defect feedback."""
     from app.services.tenant_service import ensure_user_can_access_tenant
-    from app.services.test_plan_feedback_service import record_test_plan_feedback as record
+    from app.services.test_plan_feedback_service import (
+        record_test_plan_feedback as record,
+    )
 
     try:
         tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)
@@ -242,7 +252,9 @@ def index_test_plan_route(jira_key: str, user: UserIdentity = CurrentUser):
     try:
         result = index_test_plan(jira_key)
         if not result["indexed"]:
-            raise HTTPException(status_code=503, detail=result.get("reason", "Indexing failed"))
+            raise HTTPException(
+                status_code=503, detail=result.get("reason", "Indexing failed")
+            )
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

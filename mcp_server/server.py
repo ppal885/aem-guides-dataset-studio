@@ -46,6 +46,7 @@ server = Server("aem-guides-dataset-studio")
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
+
 def _headers() -> dict:
     return {"Authorization": f"Bearer {AUTH_TOKEN}", "Content-Type": "application/json"}
 
@@ -70,9 +71,35 @@ def _fmt(result: Any) -> str:
     return json.dumps(result, indent=2, default=str)
 
 
+def _pattern_error_payload(*, invalid_request: bool) -> dict[str, Any]:
+    return {
+        "schema_version": "aem-guides-qe-pattern-mcp-v1",
+        "provider_name": "TRAIN_V2_PATTERN_ADAPTER",
+        "provider_status": "INVALID_REQUEST" if invalid_request else "UNAVAILABLE",
+        "pattern_library_version": "NOT_LOADED",
+        "pattern_library_sha256": None,
+        "pattern_count": 0,
+        "validated_production_pattern_count": 0,
+        "matched_patterns": [],
+        "suppressed_patterns": [],
+        "excluded_pattern_counts": {},
+        "warnings": [
+            "Pattern request rejected; no pattern influenced reasoning."
+            if invalid_request
+            else "Pattern provider unavailable; no pattern influenced reasoning."
+        ],
+        "error_code": (
+            "QE_PATTERN_REQUEST_VALIDATION_FAILED"
+            if invalid_request
+            else "QE_PATTERN_PROVIDER_UNAVAILABLE"
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
+
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
@@ -326,6 +353,78 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="resolve_qe_patterns",
+            description=(
+                "Resolve Human-backed QE question families and relationships to investigate. "
+                "This discovery-only tool never generates or approves final acceptance criteria."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string"},
+                    "change_surfaces": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": [],
+                    },
+                    "abstract_signals": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": [],
+                    },
+                    "publishing_mode": {"type": ["string", "null"], "default": None},
+                    "configuration_state": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
+                    "scope_constraints": {
+                        "type": "object",
+                        "properties": {
+                            "explicit_out_of_scope": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "default": [],
+                            },
+                            "excluded_relationships": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "default": [],
+                            },
+                            "current_product_decisions": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "default": [],
+                            },
+                        },
+                        "additionalProperties": False,
+                        "default": {},
+                    },
+                    "include_analysis_candidates": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
+                },
+                "required": ["domain"],
+                "additionalProperties": False,
+                "anyOf": [
+                    {
+                        "required": ["change_surfaces"],
+                        "properties": {"change_surfaces": {"minItems": 1}},
+                    },
+                    {
+                        "required": ["abstract_signals"],
+                        "properties": {"abstract_signals": {"minItems": 1}},
+                    },
+                ],
+            },
+        ),
+        types.Tool(
             name="index_test_plan",
             description=(
                 "Persist a validated test-plan markdown to the backend's shared store and "
@@ -355,6 +454,7 @@ async def list_tools() -> list[types.Tool]:
 # Tool dispatch
 # ---------------------------------------------------------------------------
 
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
@@ -362,14 +462,22 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return [types.TextContent(type="text", text=_fmt(result))]
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text[:500]
-        return [types.TextContent(type="text", text=f"Backend error {exc.response.status_code}: {detail}")]
+        return [
+            types.TextContent(
+                type="text", text=f"Backend error {exc.response.status_code}: {detail}"
+            )
+        ]
     except httpx.ConnectError:
-        return [types.TextContent(
-            type="text",
-            text=f"Cannot reach backend at {BACKEND_URL}. Make sure 'python backend/run_local.py' is running.",
-        )]
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Cannot reach backend at {BACKEND_URL}. Make sure 'python backend/run_local.py' is running.",
+            )
+        ]
     except Exception as exc:
-        return [types.TextContent(type="text", text=f"Error ({type(exc).__name__}): {exc}")]
+        return [
+            types.TextContent(type="text", text=f"Error ({type(exc).__name__}): {exc}")
+        ]
 
 
 async def _dispatch(name: str, args: dict) -> Any:
@@ -383,25 +491,37 @@ async def _dispatch(name: str, args: dict) -> Any:
         return await _post("/api/v1/mcp/lookup-aem-guides", {"query": args["query"]})
 
     if name == "lookup_dita_attribute":
-        return await _post("/api/v1/mcp/lookup-dita-attribute", {"attribute_name": args["attribute_name"]})
+        return await _post(
+            "/api/v1/mcp/lookup-dita-attribute",
+            {"attribute_name": args["attribute_name"]},
+        )
 
     if name == "review_dita_xml":
-        return await _post("/api/v1/mcp/review-dita-xml", {
-            "xml": args["xml"],
-            "filename": args.get("filename", "topic.dita"),
-        })
+        return await _post(
+            "/api/v1/mcp/review-dita-xml",
+            {
+                "xml": args["xml"],
+                "filename": args.get("filename", "topic.dita"),
+            },
+        )
 
     if name == "fix_dita_xml":
-        return await _post("/api/v1/mcp/fix-dita-xml", {
-            "xml": args["xml"],
-            "filename": args.get("filename", "topic.dita"),
-        })
+        return await _post(
+            "/api/v1/mcp/fix-dita-xml",
+            {
+                "xml": args["xml"],
+                "filename": args.get("filename", "topic.dita"),
+            },
+        )
 
     if name == "generate_dita":
-        return await _post("/api/v1/ai/generate-from-text", {
-            "text": args["text"],
-            "instructions": args.get("instructions"),
-        })
+        return await _post(
+            "/api/v1/ai/generate-from-text",
+            {
+                "text": args["text"],
+                "instructions": args.get("instructions"),
+            },
+        )
 
     if name == "list_jobs":
         return await _get("/api/v1/jobs", {"limit": args.get("limit", 10)})
@@ -410,30 +530,66 @@ async def _dispatch(name: str, args: dict) -> Any:
         return await _get(f"/api/v1/jobs/{args['job_id']}")
 
     if name == "search_jira_issues":
-        return await _post("/api/v1/mcp/search-jira", {
-            "query": args["query"],
-            "limit": args.get("limit", 5),
-        })
+        return await _post(
+            "/api/v1/mcp/search-jira",
+            {
+                "query": args["query"],
+                "limit": args.get("limit", 5),
+            },
+        )
 
     if name == "guides_test_plan_generator":
-        return await _post("/api/v1/mcp/guides-test-plan-generator", {
-            "jira_key": args["jira_key"],
-            "tenant_id": args.get("tenant_id", "kone"),
-            "evidence_k": args.get("evidence_k", 8),
-        })
+        return await _post(
+            "/api/v1/mcp/guides-test-plan-generator",
+            {
+                "jira_key": args["jira_key"],
+                "tenant_id": args.get("tenant_id", "kone"),
+                "evidence_k": args.get("evidence_k", 8),
+            },
+        )
 
     if name == "search_jira_history":
-        return await _post("/api/v1/mcp/search-jira-history", {
-            "query": args["query"],
-            "limit": args.get("limit", 10),
-            "customer": args.get("customer"),
-        })
+        return await _post(
+            "/api/v1/mcp/search-jira-history",
+            {
+                "query": args["query"],
+                "limit": args.get("limit", 10),
+                "customer": args.get("customer"),
+            },
+        )
+
+    if name == "resolve_qe_patterns":
+        try:
+            return await _post(
+                "/api/v1/mcp/resolve-qe-patterns",
+                {
+                    "domain": args["domain"],
+                    "change_surfaces": args.get("change_surfaces", []),
+                    "abstract_signals": args.get("abstract_signals", []),
+                    "publishing_mode": args.get("publishing_mode"),
+                    "configuration_state": args.get("configuration_state"),
+                    "scope_constraints": args.get("scope_constraints", {}),
+                    "include_analysis_candidates": args.get(
+                        "include_analysis_candidates", False
+                    ),
+                    "max_results": args.get("max_results", 10),
+                },
+            )
+        except httpx.HTTPStatusError as exc:
+            return _pattern_error_payload(
+                invalid_request=exc.response.status_code == 422
+            )
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return _pattern_error_payload(invalid_request=False)
 
     if name == "index_test_plan":
-        return await _post("/api/v1/mcp/index-test-plan", {
-            "key": args["key"],
-            "markdown": args["markdown"],
-        })
+        return await _post(
+            "/api/v1/mcp/index-test-plan",
+            {
+                "key": args["key"],
+                "markdown": args["markdown"],
+            },
+        )
 
     raise ValueError(f"Unknown tool: {name}")
 
@@ -441,6 +597,7 @@ async def _dispatch(name: str, args: dict) -> Any:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 async def main() -> None:
     async with stdio_server() as (read_stream, write_stream):
@@ -459,9 +616,7 @@ def run_sse() -> None:
         from starlette.routing import Mount, Route
         import uvicorn
     except ImportError:
-        raise SystemExit(
-            "SSE dependencies missing. Run: pip install starlette uvicorn"
-        )
+        raise SystemExit("SSE dependencies missing. Run: pip install starlette uvicorn")
 
     host = os.environ.get("MCP_SSE_HOST", "0.0.0.0")
     port = int(os.environ.get("MCP_SSE_PORT", "4502"))
@@ -469,9 +624,10 @@ def run_sse() -> None:
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request):
-        async with sse.connect_sse(
-            request.scope, request.receive, request._send
-        ) as (read_stream, write_stream):
+        async with sse.connect_sse(request.scope, request.receive, request._send) as (
+            read_stream,
+            write_stream,
+        ):
             await server.run(
                 read_stream,
                 write_stream,
@@ -486,12 +642,15 @@ def run_sse() -> None:
     )
     print(f"AEM Guides MCP server (SSE) starting on http://{host}:{port}")
     print(f"  Backend: {BACKEND_URL}")
-    print(f"  Team config: add url=http://<this-vm-ip>:{port}/sse to claude_desktop_config.json")
+    print(
+        f"  Team config: add url=http://<this-vm-ip>:{port}/sse to claude_desktop_config.json"
+    )
     uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
     import sys
+
     if "--sse" in sys.argv:
         run_sse()
     else:

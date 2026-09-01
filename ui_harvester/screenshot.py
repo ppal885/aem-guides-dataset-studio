@@ -50,6 +50,7 @@ class ScreenshotStore:
             "product": state.product,
             "product_area": state.product_area,
             "surface": state.surface,
+            "route_identity": state.route_identity,
             "region": state.region,
             "container": state.container,
             "active_panel": state.active_left_panel or state.active_right_panel,

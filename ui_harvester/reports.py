@@ -88,6 +88,8 @@ def build_rag_records(result, flows):
         records.append(rag_records.hierarchy_record(
             parent, relation, child, hierarchy_type="CAPABILITY"
         ))
+    for dependency in taxonomy.CONFIGURATION_DEPENDENCIES:
+        records.append(rag_records.configuration_dependency_record(**dependency))
     return records
 
 

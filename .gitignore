@@ -127,3 +127,60 @@ backend/storage/**/failure_log.jsonl
 ui_evidence/auth/
 ui_evidence/screenshots/
 **/storage_state.json
+
+# Local agent worktrees and interrupted benchmark candidates.
+.worktrees/
+analysis/golden_benchmark_runs/
+
+# Generated test/runtime work directories (some are sandbox-owned on Windows).
+backend/.pytest_tmp/
+backend/.test_workdirs/
+backend/ai-flow-tests-*/
+backend/codex-dita-*/
+backend/tests/tmp*/
+backend/tmp*/
+
+# Generated AEM export packages use UUID directory names. Curated corpus snapshots
+# under backend/storage/corpus_snapshots remain intentionally versionable.
+backend/storage/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*/
+
+# Local plan execution memory and downloaded customer evidence can contain large
+# recordings or internal material; keep them on disk, never in source control.
+output/test-plans/.pipeline-memory/
+output/evidence/
+
+# Jira-derived/private evaluation material must not be published from this
+# public repository. Keep the runtime and benchmark access-control code tracked;
+# keep raw inputs, manifests, mining output, traces, and local reports private.
+analysis/baseline_*.json
+analysis/baseline_*.md
+analysis/benchmark_integrity.md
+analysis/checkpoints/
+analysis/component_status_matrix.csv
+analysis/content_management_migration_ditaot_security_ingestion_report.json
+analysis/current_runtime_architecture.md
+analysis/current_runtime_graph.json
+analysis/dead_code_report.md
+analysis/final_canonical_runtime_implementation.md
+analysis/fluffyjaws/
+analysis/foundation_checkpoint/
+analysis/guides-*/
+analysis/implementation_plan.md
+analysis/pfix*/
+analysis/phase_0a_recovery/
+analysis/qe_architecture_audit/
+analysis/remediation_phase_state.json
+artifacts/
+benchmark/v2/manifests/
+benchmark/v2/private/
+benchmark/v2/public/
+benchmark/v2/reports/
+benchmark/v2/train_mining/
+backend/storage/corpus_snapshots/
+
+# Generated Jira plan receipts and local embedded example repositories.
+backend/output/test-plans/
+output/test-plans/*evidence-manifest.json
+output/test-plans/*gate-receipt*.json
+output/test-plans/*gate-receipt*.md
+dita_examples/community/*/

@@ -1,366 +1,241 @@
-"""Unit tests for the unified test-plan pipeline."""
+"""Tests for the single canonical Test Plan pipeline entry point."""
 
 from __future__ import annotations
 
-import copy
-
+from app.core.schemas_canonical_test_plan_runtime import (
+    CANONICAL_STAGE_ORDER,
+    ClaudeMissingQuestionSubmission,
+    MissingQuestion,
+    MissingQuestionOrigin,
+)
 from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
 from app.services import test_plan_pipeline_service as pipeline
 
 
-def _stub_issue(key: str = "GUIDES-49065") -> dict:
+def _accepted_packet(key: str = "GUIDES-49065") -> dict:
     return {
-        "issue_key": key,
-        "source": "jira_api",
-        "summary": "Asset Status API fails for comma paths",
-        "description": "POST /bin/guides/v1/assets/status with test,comma folder fails.",
-        "labels": ["UAC_Check", "UAC_Done"],
-        "expected_behavior": "Poll returns SUCCESS with full path intact.",
-        "actual_behavior": "Job FAILED with Not an absolute path: comma/...",
+        "jira_key": key,
+        "issue": {
+            "issue_key": key,
+            "source": "jira_api",
+            "summary": "The editor updates a configured friendly name automatically.",
+            "labels": ["accepted_uac"],
+            "acceptance_criteria": [
+                "The editor updates a configured friendly name automatically."
+            ],
+        },
     }
 
 
-def _stub_packet(*, blocked: bool = False) -> dict:
-    if blocked:
-        return {
-            "jira_key": "GUIDES-49065",
-            "generation_mode": "blocked",
-            "issue": _stub_issue(),
-            "uac_label_gate": {"blocked_reason": "Missing UAC_Check"},
-        }
+def _blocked_packet(key: str = "GUIDES-49066") -> dict:
     return {
-        "jira_key": "GUIDES-49065",
-        "generation_mode": "full_rag",
-        "mcp_fast_mode": False,
-        "issue": _stub_issue(),
-        "uac_label_gate": {"uac_check_present": True, "uac_done_present": True},
-        "experience_league_evidence": [{"title": "API doc"}],
-        "learned_behavior_evidence": {
-            "available": True,
-            "results": [{"title": "Asset Status API behavior", "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides"}],
+        "jira_key": key,
+        "issue": {
+            "issue_key": key,
+            "source": "jira_api",
         },
-        "repo_evidence_status": "partial",
-        "repository_evidence": {
-            "status": "partial",
-            "repositories": [
-                {
-                    "id": "starling",
-                    "match_count": 1,
-                    "matches": [{"path": "src/AssetStatusService.java", "line": 12}],
-                }
-            ],
-        },
-        "planning_seeds": {
-            "test_area_seed": [
-                {"id": "TA-1", "category": "Comma path repro", "priority": "P0", "rationale": "Customer repro"}
-            ],
-            "blast_radius_seed": [
-                {"category": "POST API", "priority": "Direct", "rationale": "Entry point"}
-            ],
-            "regression_risk_seed": [
-                {"id": "R-1", "priority": "P0", "rationale": "Path split failure"}
-            ],
-            "bug_hypothesis_seed": [
-                {"rationale": "Comma delimiter in job properties"}
-            ],
-        },
-        "implementation_diff_evidence": {"summary_line": "AssetStatusJobPathCodec added"},
     }
 
 
-def _stub_uac() -> dict:
-    return {
-        "acceptance_criteria": ["POST accepts comma path", "Poll SUCCESS"],
-        "similar_jira_evidence": [{"jira_key": "GUIDES-30456", "why_similar": "Same API family"}],
-        "ambiguities": [],
-        "quality_score": {"evidence_coverage": 0.8, "clarity_of_expectations": 0.9},
-        "pm_questions": ["Is comma in file name in scope?"],
-        "qa_questions": ["Which Author env for repro?"],
-    }
-
-
-def test_score_pipeline_high_when_evidence_rich():
-    brief = pipeline.build_ticket_brief(_stub_packet())
-    criteria = pipeline.build_evidence_grounded_acceptance_criteria(
-        _stub_packet(), _stub_uac(), brief, None
-    )
-    cases = pipeline.build_grounded_test_cases(_stub_packet(), criteria, brief, None)
-    coverage = pipeline.build_requirement_test_coverage(criteria, cases)
-    score = pipeline.score_pipeline_readiness(
-        _stub_packet(),
-        _stub_uac(),
-        ticket_brief=brief,
-        acceptance_criteria=criteria,
-        coverage_matrix=coverage,
-    )
-    assert score.overall >= 60
-    assert score.tier in {"medium", "high"}
-    assert not score.blockers
-    assert score.dimensions
-    assert score.routing_status in {"QE_REVIEW_WITH_FLAGS", "QE_REVIEW_READY"}
-
-
-def test_score_pipeline_blocked_without_uac_check():
-    score = pipeline.score_pipeline_readiness(_stub_packet(blocked=True), None)
-    assert score.overall == 0
-    assert score.tier == "blocked"
-    assert score.human_review_required
-
-
-def test_compose_draft_plan_action_first_layout():
-    brief = pipeline.build_ticket_brief(_stub_packet())
-    score = pipeline.score_pipeline_readiness(_stub_packet(), _stub_uac())
-    md = pipeline.compose_draft_test_plan(_stub_packet(), _stub_uac(), score, brief)
-    assert "## 1. Action items" in md
-    assert "## 2. Supplementary" in md
-    assert "**AC-1:**" in md
-    assert "S-01" in md
-
-
-def test_run_pipeline_blocked_skips_uac(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        pipeline,
-        "build_guides_test_plan_packet",
-        lambda *a, **k: _stub_packet(blocked=True),
-    )
+def _patch_artifact_storage(monkeypatch, tmp_path):
     from app.services import test_plan_artifact_service as artifacts
 
     monkeypatch.setattr(artifacts, "TEST_PLANS_DIR", tmp_path)
-    monkeypatch.setattr(artifacts, "PIPELINE_MEMORY_DIR", tmp_path / ".pipeline-memory")
-    monkeypatch.setattr(artifacts, "PIPELINE_MEMORY_INDEX", tmp_path / ".pipeline-memory" / "index.json")
+    monkeypatch.setattr(
+        artifacts,
+        "PIPELINE_MEMORY_DIR",
+        tmp_path / ".pipeline-memory",
+    )
+    monkeypatch.setattr(
+        artifacts,
+        "PIPELINE_MEMORY_INDEX",
+        tmp_path / ".pipeline-memory" / "index.json",
+    )
+    return artifacts
+
+
+def test_service_exposes_only_the_canonical_pipeline_api() -> None:
+    assert pipeline.__all__ == ["run_test_plan_pipeline"]
+    for removed in (
+        "build_ticket_brief",
+        "build_evidence_grounded_acceptance_criteria",
+        "score_pipeline_readiness",
+        "compose_draft_test_plan",
+        "render_pipeline_result_markdown",
+        "write_starling_artifacts",
+    ):
+        assert not hasattr(pipeline, removed)
+
+
+def test_pipeline_retrieves_once_and_runs_the_full_canonical_stage_order(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls = 0
+
+    def evidence_packet(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _accepted_packet()
+
+    monkeypatch.setattr(
+        pipeline,
+        "build_guides_test_plan_evidence_packet",
+        evidence_packet,
+    )
+    _patch_artifact_storage(monkeypatch, tmp_path)
+
+    result = pipeline.run_test_plan_pipeline(
+        TestPlanPipelineRequest(jira_key="GUIDES-49065")
+    )
+
+    assert calls == 1
+    assert result.score.tier != "blocked"
+    assert result.draft_test_plan_markdown
+    assert result.stages_completed[: len(CANONICAL_STAGE_ORDER)] == [
+        stage.value for stage in CANONICAL_STAGE_ORDER
+    ]
+    canonical = result.qe_review_package["canonical_result"]
+    assert canonical["status"] == "completed"
+    assert canonical["validation_status"] == "passed"
+    assert canonical["postable"] is True
+    assert canonical["run_id"]
+    assert canonical["trace"]["stage_trace"]
+
+
+def test_pipeline_exposes_preparation_and_accepts_hash_bound_claude_questions(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        pipeline,
+        "build_guides_test_plan_evidence_packet",
+        lambda *args, **kwargs: _accepted_packet("GUIDES-49069"),
+    )
+    _patch_artifact_storage(monkeypatch, tmp_path)
+
+    prepared = pipeline.run_test_plan_pipeline(
+        TestPlanPipelineRequest(jira_key="GUIDES-49069")
+    )
+    questions = [
+        MissingQuestion.model_validate(
+            {
+                **row,
+                "origin": MissingQuestionOrigin.CLAUDE_DESKTOP.value,
+            }
+        )
+        for row in prepared.missing_question_quality["accepted_questions"]
+    ]
+    submission = ClaudeMissingQuestionSubmission(
+        preparation_id=prepared.qe_investigation["preparation_id"],
+        questions=questions,
+    )
 
     result = pipeline.run_test_plan_pipeline(
         TestPlanPipelineRequest(
-            jira_key="GUIDES-49065",
-            skip_uac_label_gate=False,
-            include_uac_intelligence=True,
-            compose_draft_plan=True,
+            jira_key="GUIDES-49069",
+            claude_question_submission=submission,
         )
     )
-    assert result.score.tier == "blocked"
-    assert result.uac_intelligence is None
-    assert result.draft_test_plan_markdown is None
-    assert "rag" in result.stages_completed
-    assert "pipeline_memory" in result.stages_completed
+
+    assert result.qe_investigation["preparation_id"] == submission.preparation_id
+    assert result.missing_question_quality["question_origin"] == "CLAUDE_DESKTOP"
+    assert result.missing_question_quality["accepted_questions"]
+    assert result.missing_question_resolutions
 
 
-def test_run_pipeline_full_stages(monkeypatch, tmp_path):
+def test_non_postable_result_does_not_write_any_artifact(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         pipeline,
-        "build_guides_test_plan_packet",
-        lambda *a, **k: _stub_packet(),
+        "build_guides_test_plan_evidence_packet",
+        lambda *args, **kwargs: _blocked_packet(),
     )
-    from app.services import test_plan_artifact_service as artifacts
+    artifacts = _patch_artifact_storage(monkeypatch, tmp_path)
 
-    monkeypatch.setattr(artifacts, "TEST_PLANS_DIR", tmp_path)
-    monkeypatch.setattr(artifacts, "PIPELINE_MEMORY_DIR", tmp_path / ".pipeline-memory")
-    monkeypatch.setattr(artifacts, "PIPELINE_MEMORY_INDEX", tmp_path / ".pipeline-memory" / "index.json")
+    def unexpected_write(*args, **kwargs):
+        raise AssertionError("blocked canonical runs must be side-effect free")
 
-    def _fake_uac(*a, **k):
-        return _stub_uac()
-
-    import services.uac.uac_orchestrator as uac_mod
-
-    monkeypatch.setattr(uac_mod, "run_requirement_intelligence", _fake_uac)
+    monkeypatch.setattr(artifacts, "record_pipeline_memory", unexpected_write)
+    monkeypatch.setattr(artifacts, "save_test_plan", unexpected_write)
+    monkeypatch.setattr(
+        pipeline, "_write_canonical_starling_artifacts", unexpected_write
+    )
 
     result = pipeline.run_test_plan_pipeline(
-        TestPlanPipelineRequest(jira_key="GUIDES-49065", include_uac_intelligence=True)
+        TestPlanPipelineRequest(
+            jira_key="GUIDES-49066",
+            write_starling_artifacts=True,
+            publish_to_team_ui=True,
+        )
     )
-    assert "uac_intelligence" in result.stages_completed
-    assert "draft_test_plan" in result.stages_completed
-    assert result.draft_test_plan_markdown
-    assert result.qe_handoff.review_status in {"Ready for QE review", "Needs human review", "Draft"}
-    assert result.ticket_analysis["current_behaviour"]
-    assert result.acceptance_criteria
-    assert result.test_cases
-    assert result.coverage_matrix["uac_coverage_percentage"] >= 0
-    assert result.confidence_dimensions
-    assert result.qe_review_package["review_id"].startswith("QE-GUIDES-49065-")
-    assert result.state_history
-    assert "pipeline_memory" in result.stages_completed
-    assert artifacts.list_pipeline_memory("GUIDES-49065")
+
+    assert result.score.tier == "blocked"
+    assert result.artifacts_written == []
+    assert result.qe_review_package["canonical_result"]["postable"] is False
 
 
-def test_graph_and_direct_sources_are_deduplicated_by_leaf_identifier():
-    packet = _stub_packet()
-    packet["evidence_graph_influence_mode"] = "augment"
-    packet["evidence_graph_evaluation"] = {"used_for_plan": True}
-    packet["experience_league_evidence"] = [
-        {"source_url": "https://experienceleague.adobe.com/en/docs/example/"}
-    ]
-    packet["learned_behavior_evidence"] = {
-        "results": [{"canonical_url": "https://experienceleague.adobe.com/en/docs/example"}]
-    }
-    packet["jira_history_searches"] = {
-        "same_customer": {
-            "results": [{"jira_key": "GUIDES-30456", "why_similar": "Direct search"}]
+def test_benchmark_entrypoint_is_always_side_effect_free(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        pipeline,
+        "build_guides_test_plan_evidence_packet",
+        lambda *args, **kwargs: _accepted_packet("GUIDES-49067"),
+    )
+    artifacts = _patch_artifact_storage(monkeypatch, tmp_path)
+
+    def unexpected_write(*args, **kwargs):
+        raise AssertionError("benchmark runs must not write production artifacts")
+
+    monkeypatch.setattr(artifacts, "record_pipeline_memory", unexpected_write)
+    monkeypatch.setattr(artifacts, "save_test_plan", unexpected_write)
+    monkeypatch.setattr(
+        pipeline, "_write_canonical_starling_artifacts", unexpected_write
+    )
+
+    result = pipeline.run_test_plan_pipeline(
+        TestPlanPipelineRequest(
+            jira_key="GUIDES-49067",
+            write_starling_artifacts=True,
+            publish_to_team_ui=True,
+        ),
+        entry_point="benchmark_v2",
+        benchmark_split="train",
+        benchmark_input={
+            "record_id": "GUIDES-49067",
+            "summary": "The editor updates a configured friendly name automatically.",
         },
-        "cross_customer": {"results": []},
-    }
-    packet["evidence_graph"] = {
-        "available": True,
-        "same_mechanism_jira_history": [
-            {
-                "jira_key": "GUIDES-30456",
-                "shared_mechanisms": ["api route"],
-                "leaf_citations": [
-                    {
-                        "source_type": "jira_enriched",
-                        "source_ref": "GUIDES-30456",
-                        "source_record_id": "GUIDES-30456",
-                        "source_hash": "sha256:test",
-                        "trust_tier": "historical_verified",
-                    }
-                ],
-            }
-        ],
-        "evidence_paths": [
-            {
-                "path_id": "path:must-not-be-evidence",
-                "leaf_citations": [
-                    {
-                        "leaf_id": "doc:1",
-                        "source_type": "aem_guides",
-                        "source_ref": "https://experienceleague.adobe.com/en/docs/example",
-                        "source_record_id": "doc-1",
-                        "source_hash": "sha256:doc",
-                        "trust_tier": "authoritative",
-                    },
-                    {
-                        "leaf_id": "jira:1",
-                        "source_type": "jira_enriched",
-                        "source_ref": "GUIDES-30456",
-                        "source_record_id": "GUIDES-30456",
-                        "source_hash": "sha256:jira",
-                        "trust_tier": "historical_verified",
-                    },
-                ],
-            }
-        ],
-    }
-
-    refs = pipeline._collect_evidence_refs(packet)
-    history = pipeline._combined_historical_jira_evidence(packet, _stub_uac())
-
-    assert refs.count("DOC:https://experienceleague.adobe.com/en/docs/example") == 1
-    assert refs.count("JIRA:GUIDES-30456") == 1
-    assert all("GRAPH" not in ref and "path:must-not-be-evidence" not in ref for ref in refs)
-    assert len([row for row in history if row["jira_key"] == "GUIDES-30456"]) == 1
-    assert set(history[0]["evidence_origins"]) == {
-        "uac_intelligence",
-        "search_jira_history",
-        "evidence_graph",
-    }
-
-
-def test_shadow_graph_cannot_change_plan_content_history_or_citations():
-    packet = _stub_packet()
-    packet["evidence_graph_influence_mode"] = "shadow"
-    packet["evidence_graph_evaluation"] = {"used_for_plan": False}
-    packet["evidence_graph"] = {
-        "available": True,
-        "status": "ready",
-        "documented_behaviors": [
-            {
-                "behavior": "Graph-only expected behavior must stay out",
-                "trust_tier": "authoritative",
-                "leaf_citations": [
-                    {"source_type": "aem_guides", "source_ref": "https://example.test/graph-only"}
-                ],
-            }
-        ],
-        "same_mechanism_jira_history": [
-            {
-                "jira_key": "GUIDES-99999",
-                "shared_mechanisms": ["graph-only mechanism"],
-                "leaf_citations": [
-                    {"source_type": "jira_enriched", "source_ref": "GUIDES-99999"}
-                ],
-            }
-        ],
-        "regression_signals": [{"signal": "Graph-only regression must stay out"}],
-        "evidence_paths": [
-            {
-                "path_id": "graph-only-path",
-                "leaf_citations": [
-                    {"source_type": "jira_enriched", "source_ref": "GUIDES-99999"}
-                ],
-            }
-        ],
-    }
-    brief = pipeline.build_ticket_brief(packet)
-    score = pipeline.score_pipeline_readiness(packet, _stub_uac())
-
-    refs = pipeline._collect_evidence_refs(packet)
-    history = pipeline._combined_historical_jira_evidence(packet, _stub_uac())
-    draft = pipeline.compose_draft_test_plan(packet, _stub_uac(), score, brief)
-
-    assert "JIRA:GUIDES-99999" not in refs
-    assert all(row["jira_key"] != "GUIDES-99999" for row in history)
-    assert "Graph-only expected behavior must stay out" not in draft
-    assert "Graph-only regression must stay out" not in draft
-
-
-def test_shadow_graph_is_byte_equivalent_to_graph_off_for_plan_driving_output():
-    graph_off = _stub_packet()
-    graph_off["include_evidence_graph"] = False
-    graph_off["evidence_graph_influence_mode"] = "off"
-    graph_off["evidence_graph_evaluation"] = {"used_for_plan": False}
-    graph_off["evidence_graph"] = {"available": False, "status": "skipped"}
-    shadow = copy.deepcopy(graph_off)
-    shadow["include_evidence_graph"] = True
-    shadow["evidence_graph_influence_mode"] = "shadow"
-    shadow["evidence_graph_evaluation"] = {"used_for_plan": False}
-    shadow["evidence_graph"] = {
-        "available": True,
-        "status": "ready",
-        "documented_behaviors": [
-            {"behavior": "shadow-only behavior", "trust_tier": "authoritative"}
-        ],
-        "same_mechanism_jira_history": [
-            {"jira_key": "GUIDES-88888", "shared_mechanisms": ["shadow-only"]}
-        ],
-        "regression_signals": [{"signal": "shadow-only regression"}],
-        "evidence_paths": [{"path_id": "shadow-path", "leaf_citations": []}],
-    }
-    brief = pipeline.build_ticket_brief(graph_off)
-    off_score = pipeline.score_pipeline_readiness(graph_off, _stub_uac())
-    shadow_score = pipeline.score_pipeline_readiness(shadow, _stub_uac())
-
-    assert off_score.model_dump() == shadow_score.model_dump()
-    assert pipeline._collect_evidence_refs(graph_off) == pipeline._collect_evidence_refs(shadow)
-    assert pipeline._combined_historical_jira_evidence(
-        graph_off, _stub_uac()
-    ) == pipeline._combined_historical_jira_evidence(shadow, _stub_uac())
-    assert pipeline.compose_draft_test_plan(
-        graph_off, _stub_uac(), off_score, brief
-    ) == pipeline.compose_draft_test_plan(shadow, _stub_uac(), shadow_score, brief)
-
-
-def test_graph_unavailability_is_warning_not_draft_blocker():
-    packet = _stub_packet()
-    packet["include_evidence_graph"] = True
-    packet["evidence_graph"] = {"available": False, "status": "degraded"}
-    brief = pipeline.build_ticket_brief(packet)
-    criteria = pipeline.build_evidence_grounded_acceptance_criteria(packet, _stub_uac(), brief, None)
-    cases = pipeline.build_grounded_test_cases(packet, criteria, brief, None)
-    coverage = pipeline.build_requirement_test_coverage(criteria, cases)
-
-    score = pipeline.score_pipeline_readiness(
-        packet,
-        _stub_uac(),
-        ticket_brief=brief,
-        acceptance_criteria=criteria,
-        coverage_matrix=coverage,
     )
 
-    assert not any("graph" in blocker.casefold() for blocker in score.blockers)
-    assert any("graph unavailable" in warning.casefold() for warning in score.warnings)
+    assert result.artifacts_written == []
+    assert result.qe_review_package["trace"]["entry_point"] == "benchmark_v2"
 
 
-def test_final_plan_has_no_evidence_graph_section():
-    import inspect
+def test_postable_run_persists_only_canonical_markdown(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        pipeline,
+        "build_guides_test_plan_evidence_packet",
+        lambda *args, **kwargs: _accepted_packet("GUIDES-49068"),
+    )
+    artifacts = _patch_artifact_storage(monkeypatch, tmp_path)
+    saved_markdown: list[str] = []
 
-    source = inspect.getsource(pipeline.compose_draft_test_plan)
+    def save_test_plan(key: str, markdown: str):
+        saved_markdown.append(markdown)
+        return {"filename": f"{key}-test-plan.md"}
 
-    assert "## Evidence graph" not in source
+    monkeypatch.setattr(artifacts, "save_test_plan", save_test_plan)
+    monkeypatch.setattr(
+        artifacts,
+        "record_pipeline_memory",
+        lambda result: {"memory_path": "memory.json"},
+    )
+
+    result = pipeline.run_test_plan_pipeline(
+        TestPlanPipelineRequest(
+            jira_key="GUIDES-49068",
+            publish_to_team_ui=True,
+        )
+    )
+
+    assert saved_markdown == [result.draft_test_plan_markdown]
+    assert "publish_team_ui" in result.stages_completed
+    assert "pipeline_memory" in result.stages_completed

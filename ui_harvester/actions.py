@@ -27,6 +27,14 @@ DEFAULT_SAFE_PATTERNS = (
 
 SAFE, BLOCKED, UNKNOWN = "SAFE", "BLOCKED", "UNKNOWN"
 
+# A separate observation boundary prevents a safe menu/disclosure click from
+# being mistaken for permission to execute the business operation it exposes.
+OBSERVE, CONFIGURE_EPHEMERAL, COMMIT_MUTATION = (
+    "OBSERVE",
+    "CONFIGURE_EPHEMERAL",
+    "COMMIT_MUTATION",
+)
+
 
 def _norm(text):
     return re.sub(r"[^a-z0-9]+", "_", (text or "").strip().lower()).strip("_")
@@ -67,3 +75,38 @@ def classify_action(*, capability="", name="", control_pattern="", selector="",
 def is_clickable(verdict):
     """Only SAFE actions are auto-clicked in read-only mode."""
     return verdict == SAFE
+
+
+def mutation_boundary(
+    *,
+    action="",
+    opens_container="",
+    reversible=False,
+    commits_business_operation=False,
+):
+    """Classify how far a read-only crawler may progress through a workflow."""
+    if commits_business_operation:
+        return COMMIT_MUTATION
+    if reversible and opens_container in (
+        "DIALOG",
+        "MODAL_FORM",
+        "MENU",
+        "SUBMENU",
+    ):
+        return CONFIGURE_EPHEMERAL
+    if opens_container in (
+        "DIALOG",
+        "MODAL_FORM",
+        "MENU",
+        "SUBMENU",
+        "CONTEXT_MENU",
+        "NESTED_CONTEXT_MENU",
+        "RIGHT_PANEL",
+    ):
+        return OBSERVE
+    if any(
+        token in _norm(action)
+        for token in ("save", "create", "generate", "add_to")
+    ):
+        return COMMIT_MUTATION
+    return OBSERVE

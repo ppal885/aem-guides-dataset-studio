@@ -23,7 +23,8 @@ from urllib.parse import quote
 from . import actions as action_mod
 from . import dom_extract, rag_records, screenshot as shot_mod, transitions as trans_mod
 from .auth import AUTHENTICATION_REQUIRED, storage_state_exists
-from .state import UIState, finalize_state, normalize_url
+from .state import UIState, finalize_state, normalize_route_identity, normalize_url
+from .surface_resolution import classify_route_hint, surface_identity_key
 
 
 def _now():
@@ -34,7 +35,7 @@ class HarvestResult:
     def __init__(self):
         self.states = {}          # state_id -> UIState
         self.transitions = []     # list[UITransition]
-        self.capabilities = {}    # capability -> {surface, states:set}
+        self.capabilities = {}    # route-scoped identity -> capability metadata
         self.blocked_actions = [] # dicts
         self.unknown_actions = [] # dicts
         self.safe_executed = 0
@@ -226,9 +227,11 @@ class Harvester:
     def _snapshot_state(self, page, shots, capture=False):
         nodes = self._accessibility_nodes(page)
         visible, disabled = dom_extract.extract_capabilities(nodes)
+        route_identity = normalize_route_identity(page.url)
+        surface = self._infer_surface(page)
         state = UIState(
             product="AEM_GUIDES",
-            surface=self._infer_surface(page),
+            surface=surface,
             region="UNKNOWN",
             open_dialog=self._first_role_name(nodes, "dialog"),
             open_menu=self._first_role_name(nodes, "menu"),
@@ -237,13 +240,29 @@ class Harvester:
             disabled_capabilities=disabled,
             url=page.url,
             url_normalized=normalize_url(page.url),
+            route_identity=route_identity,
             captured_at=_now(),
             product_version=self.result.product_version,
-            currentness="CURRENT_UI_REFERENCE",
+            currentness=classify_route_hint(route_identity),
         )
         finalize_state(state)
         for cap in visible:
-            self.result.capabilities.setdefault(cap, {"surface": state.surface, "states": set()})["states"].add(state.state_id)
+            identity_key = surface_identity_key(
+                cap,
+                state.surface,
+                state.route_identity,
+            )
+            entry = self.result.capabilities.setdefault(
+                identity_key,
+                {
+                    "capability": cap,
+                    "surface": state.surface,
+                    "route_identity": state.route_identity,
+                    "lifecycle": state.currentness,
+                    "states": set(),
+                },
+            )
+            entry["states"].add(state.state_id)
         if capture:
             try:
                 png = page.screenshot(full_page=False)
@@ -329,12 +348,16 @@ class Harvester:
     # ---- pure-ish helpers --------------------------------------------------
     def _infer_surface(self, page):
         url = (page.url or "").lower()
-        if "/editor" in url or "guides" in url and "assets" not in url:
+        if "/libs/fmdita/mapcollections" in url:
+            return "LEGACY_MAP_COLLECTIONS"
+        if "/libs/fmdita/clientlibs/xmleditor/page.html" in url:
             return "NEW_EDITOR"
-        if "/assets" in url or "assetdetails" in url:
-            return "ASSETS_UI"
         if "baseline" in url:
             return "BASELINE"
+        if "/assets" in url or "assetdetails" in url:
+            return "ASSETS_UI"
+        if "/editor" in url or "guides" in url and "assets" not in url:
+            return "NEW_EDITOR"
         return "UNKNOWN"
 
     def _first_role_name(self, nodes, role):

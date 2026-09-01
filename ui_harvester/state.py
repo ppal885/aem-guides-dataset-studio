@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field, asdict
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 # Query/path fragments that are volatile per-visit and must never enter identity.
@@ -32,6 +32,19 @@ _VOLATILE_PATH_RE = re.compile(
 _NON_SIGNATURE_FIELDS = {
     "url", "captured_at", "screenshot_id", "state_id", "currentness",
     "product_version", "state_properties",
+}
+
+# Query keys that identify a product route/surface rather than the opened
+# customer asset. Asset paths such as ``src`` and ``ditamap`` are intentionally
+# excluded so fixture data never becomes part of a surface identity.
+_ROUTE_QUERY_KEYS = {
+    "appmode",
+    "leftpanel",
+    "mode",
+    "panel",
+    "rail",
+    "view",
+    "workspace",
 }
 
 
@@ -60,6 +73,7 @@ class UIState:
     state_properties: dict = field(default_factory=dict)
     url: str = ""
     url_normalized: str = ""
+    route_identity: str = ""
     captured_at: str = ""
     product_version: str = "UNKNOWN"
     currentness: str = ""
@@ -89,6 +103,34 @@ def normalize_url(url):
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, query, ""))
 
 
+def normalize_route_identity(url):
+    """Return the stable route identity for lifecycle-aware surface matching.
+
+    The route keeps the application path and semantic routing query keys, but
+    deliberately drops opened asset identifiers and all volatile values. This
+    lets one capability exist independently on current and legacy surfaces.
+    """
+    if not url:
+        return ""
+    parts = urlsplit(url.strip())
+    path = _VOLATILE_PATH_RE.sub("*", parts.path.rstrip("/")) or "/"
+    lowered_path = path.lower()
+    if lowered_path.startswith("/libs/fmdita/mapcollections"):
+        path = "/libs/fmdita/mapcollections"
+    elif lowered_path.startswith(
+        "/libs/fmdita/clientlibs/xmleditor/page.html"
+    ):
+        path = "/libs/fmdita/clientlibs/xmleditor/page.html"
+
+    route_query = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key.lower() in _ROUTE_QUERY_KEYS:
+            route_query.append((key.lower(), value.strip().lower()))
+    return path.lower() + (
+        "?" + urlencode(sorted(route_query)) if route_query else ""
+    )
+
+
 def _canonical_signature(state):
     """Stable, order-independent semantic signature for a state (dict or UIState)."""
     data = state.to_dict() if isinstance(state, UIState) else dict(state)
@@ -111,8 +153,10 @@ def compute_state_id(state):
 
 
 def finalize_state(state):
-    """Fill url_normalized + state_id on a UIState and return it."""
+    """Fill normalized URL, route identity, and state id on a UIState."""
     if not state.url_normalized:
         state.url_normalized = normalize_url(state.url)
+    if not state.route_identity:
+        state.route_identity = normalize_route_identity(state.url)
     state.state_id = compute_state_id(state)
     return state

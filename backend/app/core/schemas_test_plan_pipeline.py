@@ -6,6 +6,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.schemas_canonical_test_plan_runtime import (
+    ClaudeMissingQuestionSubmission,
+)
+
 
 class TestPlanPipelineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -25,6 +29,9 @@ class TestPlanPipelineRequest(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # Claude Desktop is the only runtime LLM.  The Python controller accepts
+    # its hash-bound questions but never invokes a second model.
+    claude_question_submission: ClaudeMissingQuestionSubmission | None = None
 
 
 class PipelineScoreBreakdown(BaseModel):
@@ -182,11 +189,19 @@ class AcceptanceCriterionContract(BaseModel):
                 raise ValueError("Confirmed AC requires current-ticket confirmation")
             if not self.source_clause_id.startswith("UAC-"):
                 raise ValueError("Confirmed AC requires a current Jira UAC clause ID")
-            if not any(snapshot.startswith("jira:") and ":current-uac:" in snapshot for snapshot in self.source_snapshot_ids):
+            if not any(
+                snapshot.startswith("jira:") and ":current-uac:" in snapshot
+                for snapshot in self.source_snapshot_ids
+            ):
                 raise ValueError("Confirmed AC requires a current Jira UAC snapshot")
         if self.status == "Proposed" and self.automation_consumption == "approved":
-            raise ValueError("Proposed AC cannot be consumed by automation without human approval")
-        if self.automation_consumption == "blocked" and not self.automation_block_reason:
+            raise ValueError(
+                "Proposed AC cannot be consumed by automation without human approval"
+            )
+        if (
+            self.automation_consumption == "blocked"
+            and not self.automation_block_reason
+        ):
             raise ValueError("blocked automation consumption requires a reason")
         return self
 
@@ -215,6 +230,9 @@ class TestPlanPipelineResult(BaseModel):
     validation: dict[str, Any] | None = None
     qe_handoff: QeHandoff
     qe_review_package: dict[str, Any] = Field(default_factory=dict)
+    qe_investigation: dict[str, Any] = Field(default_factory=dict)
+    missing_question_quality: dict[str, Any] = Field(default_factory=dict)
+    missing_question_resolutions: list[dict[str, Any]] = Field(default_factory=list)
     state_history: list[PipelineStateTransition] = Field(default_factory=list)
     artifacts_written: list[str] = Field(default_factory=list)
     elapsed_ms: int = 0

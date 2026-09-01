@@ -33,7 +33,7 @@ CONTAINERS = (
 SURFACE_HINTS = (
     "NEW_EDITOR", "MAP_CONSOLE", "ASSETS_UI", "ASSET_DETAILS", "OUTPUT_PRESET",
     "BASELINE", "TRANSLATION", "REVIEW", "NEW_EDITOR_MAP_COLLECTIONS",
-    "LEGACY_MAP_COLLECTIONS",
+    "LEGACY_MAP_COLLECTIONS", "OVERVIEW",
 )
 
 # Product ontology. These records express containment and observed capability
@@ -53,6 +53,7 @@ PRODUCT_HIERARCHY_EDGES = (
     ("APPLICATION_THEME", "HAS_OPTION", "USE_DEVICE_THEME"),
     ("APPEARANCE", "HAS_PREFERENCE", "DISPLAY_BY_TITLE_OR_FILE_NAME"),
     ("APPEARANCE", "HAS_PREFERENCE", "ALWAYS_LOCATE_FILES_IN_REPOSITORY"),
+    ("AEM_GUIDES", "HAS_SURFACE", "OVERVIEW"),
     ("AEM_GUIDES", "HAS_AREA", "MAP_COLLECTIONS"),
     ("MAP_COLLECTIONS", "HAS_CURRENT_SURFACE", "NEW_EDITOR_MAP_COLLECTIONS"),
     ("MAP_COLLECTIONS", "HAS_LEGACY_SURFACE", "LEGACY_MAP_COLLECTIONS"),
@@ -80,6 +81,43 @@ CAPABILITY_HIERARCHY_EDGES = (
     ("INSERT_OVERFLOW", "HAS_ACTION", "CITATIONS"),
     ("INSERT_OVERFLOW", "HAS_ACTION", "SNIPPETS"),
     ("INSERT_OVERFLOW", "HAS_ACTION", "KEYWORD"),
+    ("OVERVIEW", "HAS_ACTION_FAMILY", "NEW_FILE"),
+    ("NEW_FILE", "HAS_ACTION", "CREATE_TOPIC"),
+    ("NEW_FILE", "HAS_ACTION", "CREATE_MAP"),
+    ("CREATE_TOPIC", "OPENS", "NEW_TOPIC_DIALOG"),
+    ("NEW_TOPIC_DIALOG", "HAS_CONTROL", "TOPIC_TEMPLATE_SELECTOR"),
+)
+
+CONFIGURATION_RELATIONS = (
+    "CONFIGURATION_CONTROLS_OPTIONS",
+    "CONFIGURATION_CONTROLS_UI_REPRESENTATION",
+    "CONFIGURATION_CONTROLS_CAPABILITY",
+)
+
+CONFIGURATION_DEPENDENCIES = (
+    {
+        "configuration": "FOLDER_PROFILE",
+        "relation": "CONFIGURATION_CONTROLS_OPTIONS",
+        "target": "TOPIC_TEMPLATE_SELECTOR",
+        "surface": "OVERVIEW",
+        "capability": "CREATE_TOPIC",
+        "observed_behavior": (
+            "New file menu exposes topic and map creation",
+            "Selecting topic opens the new topic dialog",
+            "The new topic dialog exposes a template selector",
+            "Template options are resolved from the active folder profile",
+        ),
+    },
+    {
+        "configuration": "DISPLAY_BY_TITLE_OR_FILE_NAME",
+        "relation": "CONFIGURATION_CONTROLS_UI_REPRESENTATION",
+        "target": "REPOSITORY_ITEM_LABEL",
+        "surface": "NEW_EDITOR",
+        "capability": "",
+        "observed_behavior": (
+            "Repository item labels follow the configured title or file-name display preference",
+        ),
+    },
 )
 
 BEHAVIORAL_HEURISTICS = (

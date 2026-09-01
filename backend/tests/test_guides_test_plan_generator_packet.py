@@ -3,6 +3,33 @@ import pytest
 from app.services import guides_test_plan_generator_service as service
 
 
+def test_generator_entrypoint_delegates_to_canonical_runtime(monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "_collect_guides_test_plan_evidence_packet",
+        lambda *args, **kwargs: {
+            "jira_key": "GUIDES-42",
+            "generation_mode": "full_rag",
+            "issue": {
+                "issue_key": "GUIDES-42",
+                "summary": "The API should preserve the complete asset path.",
+                "expected_behavior": "The API should preserve the complete asset path.",
+            },
+        },
+    )
+
+    projected = service.build_guides_test_plan_packet("GUIDES-42")
+
+    assert projected["projection_version"] == "canonical-result-compatibility-v2"
+    assert projected["runtime_id"] == "aem-guides-test-plan-runtime"
+    assert projected["plan_markdown"]
+    assert projected["issue"]["issue_key"] == "GUIDES-42"
+    assert (
+        service.render_guides_test_plan_packet_markdown(projected)
+        == projected["plan_markdown"]
+    )
+
+
 @pytest.fixture(autouse=True)
 def _stub_optional_graph_and_history(monkeypatch):
     monkeypatch.setattr(
@@ -76,7 +103,9 @@ def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
                     ),
                 }
             ],
-            "expected_planner_use": ["Use these chunks to summarize expected AEM Guides behavior."],
+            "expected_planner_use": [
+                "Use these chunks to summarize expected AEM Guides behavior."
+            ],
         },
     )
     monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
@@ -87,23 +116,35 @@ def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
     )
     monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
 
-    packet = service.build_guides_test_plan_packet("DXML-12345", evidence_k=3)
+    packet = service.build_guides_test_plan_evidence_packet("DXML-12345", evidence_k=3)
 
     assert packet["learned_behavior_evidence"]["available"] is True
-    assert packet["learned_behavior_evidence"]["results"][0]["evidence_type"] == "enriched_learned_behavior"
-    assert "learned_behavior_evidence" in packet["prompt"]
-    assert any("learned_behavior_evidence" in item for item in packet["instructions"])
-    assert packet["planning_seeds"]["features"] == ["dita-ot-publishing", "map-management"]
+    assert (
+        packet["learned_behavior_evidence"]["results"][0]["evidence_type"]
+        == "enriched_learned_behavior"
+    )
+    assert packet["canonical_runtime_contract"]["packet_role"] == "evidence_only"
+    assert packet["canonical_runtime_contract"]["caller_reasoning_allowed"] is False
+    assert "prompt" not in packet
+    assert "instructions" not in packet
+    assert packet["planning_seeds"]["features"] == [
+        "dita-ot-publishing",
+        "map-management",
+    ]
     assert "schematron" in packet["planning_seeds"]["constructs"]
     assert "HTML5" in packet["planning_seeds"]["outputs"]
     assert packet["planning_seeds"]["blast_radius_seed"]
     assert packet["planning_seeds"]["bug_hypothesis_seed"]
     assert packet["planning_seeds"]["test_area_seed"]
     assert packet["planning_seeds"]["regression_risk_seed"]
-    assert any(seed["id"] == "BH-SCHEMATRON-XSLT-EXCEPTION" for seed in packet["planning_seeds"]["bug_hypothesis_seed"])
-    assert "planning_seeds" in packet["prompt"]
-    assert any("planning_seeds" in item for item in packet["instructions"])
-    repo_ids = {repo["id"] for repo in packet["repository_evidence_contract"]["required_repositories"]}
+    assert any(
+        seed["id"] == "BH-SCHEMATRON-XSLT-EXCEPTION"
+        for seed in packet["planning_seeds"]["bug_hypothesis_seed"]
+    )
+    repo_ids = {
+        repo["id"]
+        for repo in packet["repository_evidence_contract"]["required_repositories"]
+    }
     assert {"xmleditor", "starling", "guides-ui-tests", "dxml-it-tests"} <= repo_ids
     repo_roles = {
         repo["id"]: repo["owner_role"]
@@ -119,13 +160,9 @@ def test_guides_packet_exposes_scraped_behavior_evidence(monkeypatch):
     assert gates["frontend"]["automation_repo"] == "guides-ui-tests"
     assert gates["backend"]["primary_repo"] == "starling"
     assert gates["backend"]["automation_repo"] == "dxml-it-tests"
-    assert "repository_evidence_contract" in packet["prompt"]
-    assert any("repository_evidence_contract" in item for item in packet["instructions"])
     assert packet["repository_evidence"]["source"] == "local_repository_scan"
     assert packet["repo_evidence_status"] in {"complete", "partial", "missing"}
     assert "repository_evidence_seed" in packet["planning_seeds"]
-    assert "repository_evidence" in packet["prompt"]
-    assert any("repository_evidence" in item for item in packet["instructions"])
 
 
 def test_lookup_issue_uses_direct_jira_fetch(monkeypatch):
@@ -179,7 +216,7 @@ def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
             "summary": "Unable to Create Snippet When colwidth Contains Percentage Value (%)",
             "description": (
                 "POST /bin/fmdita/config/snippets with Content-Type application/x-www-form-urlencoded "
-                "fails when embedded table XML contains colspec colwidth=\"369.50%\". "
+                'fails when embedded table XML contains colspec colwidth="369.50%". '
                 "Error: URLDecoder Illegal hex characters in escape (%) pattern."
             ),
             "labels": ["api"],
@@ -197,10 +234,14 @@ def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
         },
     )
     monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
-    monkeypatch.setattr(service, "_build_publishing_transform_context", lambda issue, query, k: {"enabled": False})
+    monkeypatch.setattr(
+        service,
+        "_build_publishing_transform_context",
+        lambda issue, query, k: {"enabled": False},
+    )
     monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
 
-    packet = service.build_guides_test_plan_packet("DXML-45678", evidence_k=3)
+    packet = service.build_guides_test_plan_evidence_packet("DXML-45678", evidence_k=3)
     seeds = packet["planning_seeds"]
 
     assert "snippet-management" in seeds["features"]
@@ -210,12 +251,22 @@ def test_guides_packet_derives_api_encoding_seeds_from_jira_text(monkeypatch):
     assert "percent-character" in seeds["constructs"]
     assert "Snippet API" in seeds["outputs"]
     assert any(seed["id"] == "BR-FORM-DECODING" for seed in seeds["blast_radius_seed"])
-    assert any(seed["id"] == "BH-PERCENT-DECODE-ESCAPE" for seed in seeds["bug_hypothesis_seed"])
+    assert any(
+        seed["id"] == "BH-PERCENT-DECODE-ESCAPE"
+        for seed in seeds["bug_hypothesis_seed"]
+    )
     assert any(seed["id"] == "TA-ENCODING-MATRIX" for seed in seeds["test_area_seed"])
-    assert any(seed["id"] == "RR-ENCODING-BACKWARD-COMPAT" for seed in seeds["regression_risk_seed"])
-    assert "/bin/fmdita/config/snippets" in packet["repository_evidence_contract"]["focus_queries"]
+    assert any(
+        seed["id"] == "RR-ENCODING-BACKWARD-COMPAT"
+        for seed in seeds["regression_risk_seed"]
+    )
+    assert (
+        "/bin/fmdita/config/snippets"
+        in packet["repository_evidence_contract"]["focus_queries"]
+    )
     assert "guides-ui-tests" in {
-        repo["id"] for repo in packet["repository_evidence_contract"]["required_repositories"]
+        repo["id"]
+        for repo in packet["repository_evidence_contract"]["required_repositories"]
     }
 
 
@@ -273,7 +324,9 @@ def test_direct_jira_history_runs_same_and_cross_customer(monkeypatch):
         "GUIDES-200",
         "GUIDES-201",
     }
-    assert [row["jira_key"] for row in result["cross_customer"]["results"]] == ["GUIDES-200"]
+    assert [row["jira_key"] for row in result["cross_customer"]["results"]] == [
+        "GUIDES-200"
+    ]
     assert all(
         row["evidence_origin"] == "search_jira_history"
         for scope in ("same_customer", "cross_customer")
@@ -285,14 +338,16 @@ def test_same_customer_history_is_explicitly_unavailable_without_customer(monkey
     calls = []
     monkeypatch.setattr(
         "app.services.jira_history_search_service.search_jira_history_evidence",
-        lambda query, **kwargs: calls.append(kwargs)
-        or {
-            "searched_jira_qa": False,
-            "indexed_chunks": 0,
-            "results": [],
-            "match_count": 0,
-            "note": "unavailable",
-        },
+        lambda query, **kwargs: (
+            calls.append(kwargs)
+            or {
+                "searched_jira_qa": False,
+                "indexed_chunks": 0,
+                "results": [],
+                "match_count": 0,
+                "note": "unavailable",
+            }
+        ),
     )
 
     result = service._retrieve_direct_jira_history(
@@ -331,29 +386,40 @@ def test_packet_retrieves_direct_history_before_graph(monkeypatch):
     monkeypatch.setattr(
         service,
         "_retrieve_direct_jira_history",
-        lambda *args, **kwargs: order.append("history")
-        or {
-            "same_customer": {"results": []},
-            "cross_customer": {"results": []},
-            "warnings": [],
-        },
+        lambda *args, **kwargs: (
+            order.append("history")
+            or {
+                "same_customer": {"results": []},
+                "cross_customer": {"results": []},
+                "warnings": [],
+            }
+        ),
     )
     monkeypatch.setattr(
         service,
         "_retrieve_evidence_graph",
-        lambda *args, **kwargs: order.append("graph")
-        or {"available": True, "status": "ready", "evidence_paths": []},
+        lambda *args, **kwargs: (
+            order.append("graph")
+            or {"available": True, "status": "ready", "evidence_paths": []}
+        ),
     )
-    monkeypatch.setattr(service, "_collect_repository_evidence", lambda *args, **kwargs: {"status": "missing"})
+    monkeypatch.setattr(
+        service,
+        "_collect_repository_evidence",
+        lambda *args, **kwargs: {"status": "missing"},
+    )
     monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
 
-    packet = service.build_guides_test_plan_packet("GUIDES-100")
+    packet = service.build_guides_test_plan_evidence_packet("GUIDES-100")
 
     assert order == ["history", "graph"]
     assert "jira_history_searches" in packet
     assert packet["evidence_graph_influence_mode"] == "shadow"
     assert packet["evidence_graph_evaluation"]["used_for_plan"] is False
-    assert "Direct Jira history searches" in service.render_guides_test_plan_packet_markdown(packet)
+    assert (
+        "Direct Jira history searches"
+        in service.render_guides_test_plan_packet_markdown(packet)
+    )
 
 
 def test_disabled_graph_keeps_existing_planning_seeds(monkeypatch):
@@ -410,7 +476,9 @@ def test_graph_mode_controls_plan_seed_influence(monkeypatch, mode, should_augme
         "_retrieve_learned_behavior_evidence",
         lambda query, k: {"available": False, "results": []},
     )
-    monkeypatch.setattr(service, "_derive_planning_seeds", lambda *_args: dict(baseline))
+    monkeypatch.setattr(
+        service, "_derive_planning_seeds", lambda *_args: dict(baseline)
+    )
     monkeypatch.setattr(service, "_retrieve_dita_chunks", lambda query, k: [])
     monkeypatch.setattr(
         service,
@@ -456,24 +524,36 @@ def test_graph_mode_controls_plan_seed_influence(monkeypatch, mode, should_augme
     monkeypatch.setattr(
         service,
         "_collect_repository_evidence",
-        lambda *args, **kwargs: {"status": "missing", "repositories": [], "owner_gates": []},
+        lambda *args, **kwargs: {
+            "status": "missing",
+            "repositories": [],
+            "owner_gates": [],
+        },
     )
-    monkeypatch.setattr(service, "_add_repository_evidence_seeds", lambda seeds, _repo: seeds)
+    monkeypatch.setattr(
+        service, "_add_repository_evidence_seeds", lambda seeds, _repo: seeds
+    )
     monkeypatch.setattr(service, "_qa_preview", lambda jira_key, issue: {})
 
-    packet = service.build_guides_test_plan_packet("GUIDES-900")
+    packet = service.build_guides_test_plan_evidence_packet("GUIDES-900")
 
     assert packet["evidence_graph_influence_mode"] == mode
     assert packet["evidence_graph_evaluation"]["used_for_plan"] is should_augment
     if should_augment:
-        assert packet["planning_seeds"]["documented_behavior_seed"][0]["behavior"] == "Graph-only behavior"
+        assert (
+            packet["planning_seeds"]["documented_behavior_seed"][0]["behavior"]
+            == "Graph-only behavior"
+        )
         assert any(
             row.get("rationale") == "Graph-only risk"
             for row in packet["planning_seeds"]["regression_risk_seed"]
         )
     else:
         assert "documented_behavior_seed" not in packet["planning_seeds"]
-        assert packet["planning_seeds"]["regression_risk_seed"] == baseline["regression_risk_seed"]
+        assert (
+            packet["planning_seeds"]["regression_risk_seed"]
+            == baseline["regression_risk_seed"]
+        )
 
 
 def test_invalid_graph_mode_fails_safe_to_shadow(monkeypatch):

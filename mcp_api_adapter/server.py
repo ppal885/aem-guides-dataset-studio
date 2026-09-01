@@ -251,6 +251,58 @@ def guides_test_plan_generator(
 
 
 @mcp.tool()
+def resolve_qe_patterns(
+    domain: str,
+    change_surfaces: list[str] | None = None,
+    abstract_signals: list[str] | None = None,
+    publishing_mode: str = "",
+    configuration_state: str = "",
+    scope_constraints: dict | None = None,
+    include_analysis_candidates: bool = False,
+    max_results: int = 10,
+) -> str:
+    """Resolve Human-backed QE questions from a surface/signal; never generate ACs."""
+    body = {
+        "domain": domain,
+        "change_surfaces": [str(value) for value in (change_surfaces or [])],
+        "abstract_signals": [str(value) for value in (abstract_signals or [])],
+        "publishing_mode": publishing_mode or None,
+        "configuration_state": configuration_state or None,
+        "scope_constraints": scope_constraints or {},
+        "include_analysis_candidates": include_analysis_candidates,
+        "max_results": max_results,
+    }
+    result = _api().request_json(
+        "POST",
+        "/api/v1/mcp/resolve-qe-patterns",
+        json_body=body,
+    )
+    if isinstance(result, dict) and result.get("ok") is False:
+        from app.core.schemas_qe_pattern_mcp import QePatternProviderStatus
+        from app.services.qe_pattern_mcp_service import pattern_error_response
+
+        invalid = result.get("status_code") == 422
+        result = pattern_error_response(
+            status=(
+                QePatternProviderStatus.INVALID_REQUEST
+                if invalid
+                else QePatternProviderStatus.UNAVAILABLE
+            ),
+            error_code=(
+                "QE_PATTERN_REQUEST_VALIDATION_FAILED"
+                if invalid
+                else "QE_PATTERN_PROVIDER_UNAVAILABLE"
+            ),
+            warning=(
+                "Pattern request rejected; no pattern influenced reasoning."
+                if invalid
+                else "Pattern provider unavailable; no pattern influenced reasoning."
+            ),
+        ).model_dump(mode="json")
+    return _dump(result)
+
+
+@mcp.tool()
 def publishing_ticket_dita_qa_packet(
     jira_key: str,
     tenant_id: str = "kone",

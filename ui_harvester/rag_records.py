@@ -15,6 +15,7 @@ from .surface_resolution import LEGACY_UI, is_current_product_contract
 RECORD_TYPES = (
     "UI_SURFACE", "UI_CAPABILITY", "UI_STATE", "UI_TRANSITION", "UI_FLOW",
     "UI_CURRENTNESS", "UI_SURFACE_IDENTITY", "UI_SURFACE_RELATION", "UI_HIERARCHY",
+    "UI_CONFIGURATION_DEPENDENCY",
 )
 AUTHORITY_STATE = "UI_OBSERVATION"
 AUTHORITY_FLOW = "OBSERVED_UI_FLOW"
@@ -113,6 +114,40 @@ def hierarchy_record(parent, relation, child, *, hierarchy_type="PRODUCT"):
         "authority": AUTHORITY_STATE,
     }
     return _record("UI_HIERARCHY", text, md)
+
+
+def configuration_dependency_record(
+    configuration,
+    relation,
+    target,
+    *,
+    surface="",
+    capability="",
+    observed_behavior=(),
+):
+    """Record an observed configuration dependency without fixing option values."""
+    behavior = tuple(observed_behavior)
+    observations = "; ".join(behavior) or "configuration dependency observed"
+    text = (
+        f"Observed UI configuration dependency on surface {surface or 'UNKNOWN'}: "
+        f"{configuration} {relation} {target}. "
+        f"Capability context: {capability or 'none'}. "
+        f"Observed behavior: {observations}. "
+        "The available values are environment or profile data and are not a fixed "
+        "product option list. This is observed UI behavior, not a formal product contract."
+    )
+    metadata = {
+        "configuration": configuration,
+        "relation": relation,
+        "target": target,
+        "surface": surface,
+        "capability": capability,
+        "observed_behavior": json.dumps(list(behavior)),
+        "authority": AUTHORITY_STATE,
+        "formal_contract": False,
+        "lifecycle_scope": "CURRENT_UI",
+    }
+    return _record("UI_CONFIGURATION_DEPENDENCY", text, metadata)
 
 
 def transition_record(t, *, from_label="", to_label="", action_label=""):

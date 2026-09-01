@@ -1,0 +1,69 @@
+{
+  "schema_version": "fj12-question-generation-fixtures-v1",
+  "cases": [
+    {
+      "case_id": "FJ12-ORIGINAL-XML-EDITOR",
+      "role": "ORIGINAL_HUMAN_CONFIRMED",
+      "public_train_record_id": "GUIDES-27478",
+      "public_train_normalized_sha256": "ae455d52179c53366031419cd1f2baf6c18738ad1e4b0bddbcf6d5de9bc38739",
+      "packet": {
+        "jira_key": "GUIDES-27478",
+        "issue": {
+          "issue_key": "GUIDES-27478",
+          "summary": "{Break 4.4} Formatting in codeblock not retained correctly",
+          "description": "When content is pasted into a codeblock, its source formatting and manually added spaces are not retained after save and reopen."
+        }
+      },
+      "expected": {
+        "surface_kind": "CHANGED_BEHAVIOR",
+        "question_family": "GOVERNING_SEMANTICS",
+        "question_anchors": [
+          "formatting",
+          "codeblock"
+        ],
+        "terminal_outcome": "GENERATED"
+      }
+    },
+    {
+      "case_id": "FJ12-ADJACENT-POSITIVE",
+      "role": "ADJACENT_POSITIVE",
+      "public_train_record_id": "GUIDES-29781",
+      "public_train_normalized_sha256": "27edd80676434a053cf19c50acd97c15d291c291ae23477e4b2e1a3f019f7303",
+      "packet": {
+        "jira_key": "GUIDES-29781",
+        "issue": {
+          "issue_key": "GUIDES-29781",
+          "summary": "Spaces Removed in Codeblock When Toggling Editor Views",
+          "description": "When content moves from Source Editor to Author Editor and back, spaces around inline elements are removed. Spaces should remain as authored."
+        }
+      },
+      "expected": {
+        "surface_kind": "CHANGED_BEHAVIOR",
+        "question_family": "GOVERNING_SEMANTICS",
+        "question_anchors": [
+          "spaces",
+          "editor views"
+        ],
+        "terminal_outcome": "GENERATED"
+      }
+    },
+    {
+      "case_id": "FJ12-ADJACENT-NEGATIVE",
+      "role": "ADJACENT_NEGATIVE",
+      "packet": {
+        "jira_key": "FJ12-NEG-001",
+        "issue": {
+          "issue_key": "FJ12-NEG-001",
+          "summary": "The status indicator should display Ready after a successful save.",
+          "description": "Expected behavior: The status indicator is present and displays Ready after a successful save and refresh. The same specification-defined result is shown when the feature is enabled. A disabled feature or failure must not display Ready. The behavior remains backward compatible after upgrade across supported versions and Cloud and on-prem deployments."
+        }
+      },
+      "expected": {
+        "surface_kind": "CHANGED_BEHAVIOR",
+        "question_family": "GOVERNING_SEMANTICS",
+        "question_anchors": [],
+        "terminal_outcome": "RESOLVED_WITHOUT_QUESTION"
+      }
+    }
+  ]
+}
