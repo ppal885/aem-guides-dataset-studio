@@ -108,6 +108,7 @@ ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
+dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -2896,6 +2897,7 @@ def test_component_reference_routing() -> None:
             "scripts/render_compact_view.py",
             "scripts/root_cause_fix_driven.py",
             "scripts/reviewer_request_coverage.py",
+            "scripts/dimension_synthesizer.py",
             "scripts/run_gates.py",
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
@@ -6793,6 +6795,62 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_dimension_synthesizer() -> None:
+    ds = dimension_synthesizer_mod
+
+    # Non-activated: no behavior_model or evidence_catalog.
+    check("synthesizer not activated on empty manifest", ds.synthesize({})["activated"] is False)
+    check("no review notes when not activated", ds.review_notes({}) == [])
+
+    manifest = {
+        "behavior_model": {
+            "facts": [
+                {
+                    "fact": "The handler reads the value from the repository node jcr:content/metadata.",
+                    "evidence_ids": ["E1"],
+                }
+            ]
+        },
+        "rag_probes": [],
+    }
+    result = ds.synthesize(manifest)
+    check("synthesizer activated with behavior_model", result["activated"] is True)
+    value_cands = [
+        c for c in result["candidates"]
+        if c["dimension"] == "VALUE_SET_CHANNEL" and c["generator"] == "CODE_NEIGHBORHOOD"
+    ]
+    check("emits a VALUE_SET_CHANNEL code-neighborhood candidate", len(value_cands) == 1)
+    check("candidate cites the generating evidence id", "E1" in value_cands[0]["current_evidence"])
+    check("candidate has non-empty technical_basis", bool(value_cands[0]["technical_basis"]))
+    check(
+        "records a history gap when no source",
+        any("HISTORY_NEIGHBORHOOD" in g and "no live" in g for g in result["gaps"]),
+    )
+    check(
+        "records a rag gap when no probes",
+        any("RAG_NEIGHBORHOOD" in g for g in result["gaps"]),
+    )
+    check(
+        "unrepresented candidate surfaces as a DISCOVERY note",
+        any("DISCOVERY:" in n and "VALUE_SET_CHANNEL" in n for n in ds.review_notes(manifest)),
+    )
+
+    # Represented dimension is suppressed from the DISCOVERY notes.
+    represented = dict(manifest)
+    represented["coverage_hypotheses"] = [{"dimension": "VALUE_SET_CHANNEL"}]
+    check(
+        "represented dimension is not re-surfaced",
+        all("VALUE_SET_CHANNEL" not in n for n in ds.review_notes(represented)),
+    )
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates surfaces synthesizer review notes",
+        "dimension_synthesizer_mod.review_notes" in run_gates_source,
+    )
+    print("test_dimension_synthesizer: OK")
+
+
 def test_evidence_provenance() -> None:
     import hashlib
 
@@ -8843,6 +8901,7 @@ def main() -> int:
     test_publishing_scope_coverage()
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
+    test_dimension_synthesizer()
     test_evidence_provenance()
     test_security_coverage()
     test_localization_regression_coverage()

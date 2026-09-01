@@ -117,6 +117,7 @@ ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
+dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -1993,6 +1994,13 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         pv_fail, pv_notes = verify_mod.verify_provenance(combined, manifest_path)
         failures += pv_fail
         notes += pv_notes
+        # Discovery (UACDISCOVER-01): propose candidate dimensions from the evidence
+        # itself. Advisory only - unrepresented candidates are non-blocking REVIEW notes.
+        try:
+            _ds_manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _ds_manifest = {}
+        notes += [f"REVIEW {note}" for note in dimension_synthesizer_mod.review_notes(_ds_manifest)]
 
     # Anti-hardcoding audit of the skill's own scripts/prompts.
     hc_fail, hc_notes = audit_mod.audit_paths([Path(__file__).resolve().parent.parent])
@@ -2149,6 +2157,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_publishing_scope_coverage()
             self_tests.test_root_cause_fix_driven()
             self_tests.test_reviewer_request_coverage()
+            self_tests.test_dimension_synthesizer()
             self_tests.test_evidence_provenance()
             self_tests.test_security_coverage()
             self_tests.test_localization_regression_coverage()
