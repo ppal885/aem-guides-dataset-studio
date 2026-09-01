@@ -109,6 +109,7 @@ ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
+reproducibility_gate_mod = _load("reproducibility_gate", "reproducibility_gate.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 feature_map_mod = _load("feature_map", "feature_map.py")
@@ -2901,6 +2902,7 @@ def test_component_reference_routing() -> None:
             "scripts/render_compact_view.py",
             "scripts/root_cause_fix_driven.py",
             "scripts/reviewer_request_coverage.py",
+            "scripts/reproducibility_gate.py",
             "scripts/dimension_synthesizer.py",
             "scripts/miss_probe_library.py",
             "data/miss_probes.json",
@@ -7621,6 +7623,82 @@ def test_reviewer_request_coverage() -> None:
     print("test_reviewer_request_coverage: OK")
 
 
+def test_reproducibility_gate() -> None:
+    gate = reproducibility_gate_mod
+    nl = chr(10)
+
+    fix_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 Given a batch upload When two files hit UUID conflicts Then the correct asset is written.",
+    ])
+    signal_manifest = {
+        "issue": {
+            "summary": "Batch upload can overwrite the wrong asset on UUID conflict",
+            "description": "We have been UNABLE TO REPRODUCE it in our environment; only a working hypothesis.",
+            "labels": ["crosshair-needs-clarification"],
+        }
+    }
+
+    # No signal -> not activated, clean pass (backward-compatible).
+    clean_manifest = {"issue": {"summary": "Add indexterm to native PDF", "description": "steps to reproduce: publish"}}
+    check("no not-reproducible signal is not activated", not gate.is_present(fix_plan, clean_manifest))
+    check("no-signal plan passes", gate.validate(fix_plan, clean_manifest) == [])
+
+    # Signal present, no block -> hard fail.
+    check("signal without block activates", gate.is_present(fix_plan, signal_manifest))
+    probs = gate.validate(fix_plan, signal_manifest)
+    check("signal without reproducibility block fails", any("no reproducibility block" in p for p in probs))
+
+    # Unconfirmed + no strategy declared -> fail.
+    unconfirmed = dict(signal_manifest, reproducibility={
+        "status": "UNCONFIRMED",
+        "evidence": "comment: unable to reproduce; label crosshair-needs-clarification",
+        "reproduction_strategy_present": False,
+    })
+    probs = gate.validate(fix_plan, unconfirmed)
+    check("unconfirmed without strategy fails", any("REPRODUCTION STRATEGY" in p for p in probs))
+
+    # Strategy claimed but no strategy content + fix ACs not gated -> fails both.
+    claimed = dict(signal_manifest, reproducibility={
+        "status": "UNCONFIRMED",
+        "evidence": "unable to reproduce",
+        "reproduction_strategy_present": True,
+        "fix_acs_gated_on_reproduction": False,
+    })
+    probs = gate.validate(fix_plan, claimed)
+    check("claimed strategy without content fails", any("no reproduction-strategy content" in p for p in probs))
+    check("fix ACs not gated fails", any("gated on 'once reproduced'" in p for p in probs))
+
+    # Complete: strategy content in plan + ACs gated -> pass.
+    good_plan = nl.join([
+        "**Reproduction Strategy**",
+        "- Reliably reproduce by forcing the race: concurrent batch upload of two files that",
+        "  collide on the same target UUID against a shared JCR session; vary batch size and timing.",
+        "",
+        "**Acceptance Criteria (Proposed - gated on once reproduced)**",
+        "- AC-01 Once reproduced, the correct asset is written under the conflict.",
+    ])
+    good = dict(signal_manifest, reproducibility={
+        "status": "UNCONFIRMED",
+        "evidence": "unable to reproduce; working hypothesis (batch UUID-conflict race)",
+        "reproduction_strategy_present": True,
+        "fix_acs_gated_on_reproduction": True,
+    })
+    check("complete reproduction plan passes", gate.validate(good_plan, good) == [])
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads the reproducibility gate",
+        'reproducibility_gate_mod = _load("reproducibility_gate"' in run_gates_source,
+    )
+    check(
+        "run_gates invokes the reproducibility validator without hiding its prefix",
+        "failures += reproducibility_gate_mod.validate(body, manifest_data)" in run_gates_source,
+    )
+
+    print("test_reproducibility_gate: OK")
+
+
 def test_root_cause_fix_driven() -> None:
     gate = root_cause_fix_driven_mod
     nl = chr(10)
@@ -9504,6 +9582,7 @@ def main() -> int:
     test_publishing_scope_coverage()
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
+    test_reproducibility_gate()
     test_miss_probe_library()
     test_feature_map()
     test_offline_retrieval()
