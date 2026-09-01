@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Install the AEM Guides test-plan Claude skill and slash command.
+"""Install the canonical AEM Guides test-plan skill and compatibility alias.
 
 By default this installs for the current user:
 
-- Skill:   ~/.claude/skills/aem-guides-test-scenario-generator
-- Command: ~/.claude/commands/guides-test-plan-generator.md
-
-Use --dest-skill-dir or --dest-command-dir when your Claude Code setup uses a
-custom location.
+- Canonical skill: ~/.claude/skills/test-plan-generation
+- Legacy alias:    ~/.claude/skills/aem-guides-test-scenario-generator
+Use --dest-skill-dir when your Claude Code setup uses a custom location.
 """
 
 from __future__ import annotations
@@ -19,8 +17,8 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_SKILL_DIR = PROJECT_ROOT / "claude-skills" / "aem-guides-test-scenario-generator"
-SOURCE_COMMAND = PROJECT_ROOT / ".claude" / "commands" / "guides-test-plan-generator.md"
+CANONICAL_SKILL_DIR = PROJECT_ROOT / ".claude" / "skills" / "test-plan-generation"
+ALIAS_SKILL_DIR = PROJECT_ROOT / "claude-skills" / "aem-guides-test-scenario-generator"
 
 
 def default_claude_home() -> Path:
@@ -34,17 +32,6 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=default_claude_home() / "skills",
         help="Directory that contains Claude skill folders.",
-    )
-    parser.add_argument(
-        "--dest-command-dir",
-        type=Path,
-        default=default_claude_home() / "commands",
-        help="Directory that contains Claude slash command markdown files.",
-    )
-    parser.add_argument(
-        "--skip-command",
-        action="store_true",
-        help="Install only the skill and do not copy the slash command.",
     )
     parser.add_argument(
         "--dry-run",
@@ -62,31 +49,41 @@ def copy_tree(source: Path, target: Path, *, dry_run: bool) -> None:
         return
     if target.exists():
         shutil.rmtree(target)
-    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(
+        source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+    )
 
 
-def copy_file(source: Path, target: Path, *, dry_run: bool) -> None:
-    if not source.exists():
-        raise FileNotFoundError(f"Source command not found: {source}")
-    print(f"command: {source} -> {target}")
+def copy_declaration_only_alias(source: Path, target: Path, *, dry_run: bool) -> None:
+    skill_file = source / "SKILL.md"
+    if not skill_file.is_file():
+        raise FileNotFoundError(f"Source alias declaration not found: {skill_file}")
+    print(f"alias declaration: {skill_file} -> {target / 'SKILL.md'}")
     if dry_run:
         return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(skill_file, target / "SKILL.md")
 
 
 def main() -> int:
     args = parse_args()
-    skill_target = args.dest_skill_dir / SOURCE_SKILL_DIR.name
-    command_target = args.dest_command_dir / SOURCE_COMMAND.name
 
-    copy_tree(SOURCE_SKILL_DIR, skill_target, dry_run=args.dry_run)
-    if not args.skip_command:
-        copy_file(SOURCE_COMMAND, command_target, dry_run=args.dry_run)
-
+    copy_tree(
+        CANONICAL_SKILL_DIR,
+        args.dest_skill_dir / CANONICAL_SKILL_DIR.name,
+        dry_run=args.dry_run,
+    )
+    copy_declaration_only_alias(
+        ALIAS_SKILL_DIR,
+        args.dest_skill_dir / ALIAS_SKILL_DIR.name,
+        dry_run=args.dry_run,
+    )
     if not args.dry_run:
-        print("\nInstalled. Restart Claude Code, then run:")
-        print("  /guides-test-plan-generator GUIDES-12345")
+        print(
+            "\nInstalled. Restart Claude Code, then request the test-plan-generation skill."
+        )
     return 0
 
 

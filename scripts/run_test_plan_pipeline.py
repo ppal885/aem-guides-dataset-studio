@@ -22,23 +22,39 @@ except ImportError:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run test-plan pipeline for a Jira key.")
+    parser = argparse.ArgumentParser(
+        description="Run test-plan pipeline for a Jira key."
+    )
     parser.add_argument("jira_key", help="e.g. GUIDES-49065")
     parser.add_argument("--tenant-id", default="kone")
     parser.add_argument("--evidence-k", type=int, default=8)
     parser.add_argument("--skip-uac-label-gate", action="store_true")
-    parser.add_argument("--no-uac", action="store_true", help="Skip UAC intelligence stage")
-    parser.add_argument("--no-draft", action="store_true", help="Skip draft test plan composition")
+    parser.add_argument(
+        "--no-uac", action="store_true", help="Skip UAC intelligence stage"
+    )
+    parser.add_argument(
+        "--no-draft", action="store_true", help="Skip draft test plan composition"
+    )
     parser.add_argument(
         "--write-starling",
         action="store_true",
         help="Write full-rag packet, pipeline JSON, and draft plan to starling repo",
     )
-    parser.add_argument("--starling-path", default=None, help="Override STARLING_REPO_PATH")
-    parser.add_argument("--publish-ui", action="store_true", help="Also save to Dataset Studio team UI")
-    parser.add_argument("--threshold", type=int, default=50, help="Human review score threshold")
+    parser.add_argument(
+        "--starling-path", default=None, help="Override STARLING_REPO_PATH"
+    )
+    parser.add_argument(
+        "--publish-ui", action="store_true", help="Also save to Dataset Studio team UI"
+    )
+    parser.add_argument(
+        "--threshold", type=int, default=50, help="Human review score threshold"
+    )
     parser.add_argument("--json", action="store_true", help="Print full JSON result")
-    parser.add_argument("--http", action="store_true", help="Call backend HTTP API instead of in-process")
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Call backend HTTP API instead of in-process",
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8001")
     args = parser.parse_args()
 
@@ -66,17 +82,23 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        from app.services.test_plan_pipeline_service import render_pipeline_result_markdown
-        from app.core.schemas_test_plan_pipeline import TestPlanPipelineResult
-
-        model = TestPlanPipelineResult.model_validate(result)
-        text = render_pipeline_result_markdown(model)
+        text = str(result.get("draft_test_plan_markdown") or "").strip()
+        if not text:
+            canonical = (result.get("qe_review_package") or {}).get(
+                "canonical_result"
+            ) or {}
+            text = str(canonical.get("rendered_output") or "").strip()
+        if not text:
+            raise SystemExit("Canonical runtime returned no rendered plan.")
         sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
         sys.stdout.buffer.write(b"\n")
 
     score = (result.get("score") or {}).get("overall", 0)
     human = (result.get("score") or {}).get("human_review_required", True)
-    print(f"\n--- Pipeline complete: score={score}, human_review={human} ---", file=sys.stderr)
+    print(
+        f"\n--- Pipeline complete: score={score}, human_review={human} ---",
+        file=sys.stderr,
+    )
     return 0 if not human else 2
 
 
@@ -85,7 +107,7 @@ def _run_inprocess(payload: dict) -> dict:
     from app.services.test_plan_pipeline_service import run_test_plan_pipeline
 
     request = TestPlanPipelineRequest.model_validate(payload)
-    result = run_test_plan_pipeline(request)
+    result = run_test_plan_pipeline(request, entry_point="cli")
     return result.model_dump()
 
 
@@ -98,7 +120,10 @@ def _run_http(base_url: str, payload: dict) -> dict:
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json", "Authorization": "Bearer dev-bypass"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer dev-bypass",
+        },
         method="POST",
     )
     try:
