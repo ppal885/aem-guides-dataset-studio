@@ -1,0 +1,60 @@
+{
+  "schema_version": "aem-guides-feature-map-v1",
+  "note": "Curated, human-approved map of native AEM/Guides features grouped by surface. Each feature names the shared flow it rides and the coverage dimension it implies, so discovery runs against a domain checklist, not only code symbols. Grounded in Experience League. Add a feature only when it is domain truth; never a code symbol, config key, or Jira id. Consumed by scripts/feature_map.py (UACDISCOVER-03) and surfaced by the dimension synthesizer as FEATURE_MAP candidates.",
+  "surfaces": [
+    {
+      "surface": "ASSET_UPLOAD_DAM",
+      "match": ["asset upload", "overwrite existing", "upload conflict", "dam upload", "file upload", "keep both", "create version", "asset version", "initiateupload", "completeupload"],
+      "native_features": [
+        {
+          "feature": "duplicate detection",
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "native AEM Assets duplicate detection (checksum-based) still detects duplicates on the shared upload/overwrite flow and is neither suppressed nor bypassed",
+          "reference": "Experience League: Detect duplicate assets"
+        },
+        {
+          "feature": "asset versioning and timeline",
+          "implied_dimension_axis": "TERMINAL_STATE",
+          "candidate_template": "asset versioning and the Timeline version history behave correctly on overwrite (a new version is created or the configured version policy is honored)",
+          "reference": "Experience League: Manage asset versions"
+        },
+        {
+          "feature": "DAM update-asset workflow / processing",
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "the DAM update-asset / processing workflow (renditions, metadata extraction) still runs as configured after the upload or overwrite on both in-scope and out-of-scope paths",
+          "reference": "Experience League: Process assets / asset microservices"
+        },
+        {
+          "feature": "processing profiles and metadata profiles",
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "folder processing profiles and metadata profiles still apply (or are correctly excluded) for the affected paths after the change",
+          "reference": "Experience League: Processing profiles / Metadata profiles"
+        },
+        {
+          "feature": "smart tags",
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "AI smart-tagging still triggers as configured on upload/overwrite where enabled and is unaffected where not",
+          "reference": "Experience League: Smart tags"
+        },
+        {
+          "feature": "asset expiry and on-time/off-time",
+          "implied_dimension_axis": "LIFECYCLE",
+          "candidate_template": "asset expiry and on-time/off-time activation state is preserved or correctly re-evaluated after an overwrite",
+          "reference": "Experience League: Asset expiry"
+        },
+        {
+          "feature": "metadata schema and required properties",
+          "implied_dimension_axis": "VALUE_SET_CHANNEL",
+          "candidate_template": "existing metadata (schema-driven and repository-node values) is preserved or correctly updated on overwrite, and required properties are not lost",
+          "reference": "Experience League: Metadata schemas"
+        },
+        {
+          "feature": "restrict / prevent duplicate upload configuration",
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "any configured restrict-duplicate-upload behavior is honored consistently across in-scope and out-of-scope paths",
+          "reference": "Experience League: Detect duplicate assets (restrict uploads)"
+        }
+      ]
+    }
+  ]
+}
