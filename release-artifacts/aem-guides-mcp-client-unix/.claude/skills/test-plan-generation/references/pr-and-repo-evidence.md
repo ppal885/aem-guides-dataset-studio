@@ -46,6 +46,55 @@ When Jira or the user supplies a PR, branch, commit, or development link and Git
 - Separate actual changed code from potential impact. Never list an untouched adjacent file as changed.
 - If GitHub MCP cannot access the PR, use an exact local branch/commit or user-provided diff when available and state the evidence boundary.
 
+## PR Supersession (More Than One PR/Branch On A Ticket)
+
+A ticket can accumulate more than one PR over its lifetime: a narrower first attempt
+later superseded by a broader fix, two parallel PRs for different platforms, or an
+abandoned branch still linked in Jira dev-panel metadata. Grounding a plan on the first
+PR noticed — without checking whether a later one supersedes it — produces Acceptance
+Criteria for a fix that will never actually ship.
+
+When Jira's dev-panel/comment history references more than one PR or branch:
+
+- Fetch and diff **both** (or all) of them against the base branch, and against each
+  other. `scripts/pr_supersession_check.py <repo_path> <base_ref> <pr_a> <pr_b>` automates
+  the fetch + `diff --stat` steps and reports files unique to each PR plus a direct
+  `pr_a...pr_b` diff, so the comparison is evidence-backed rather than a guess.
+- Record the outcome in the manifest as `pr_references`, one entry per PR/branch:
+
+```json
+"pr_references": [
+  {"pr_ref": "#8098", "status": "SUPERSEDED"},
+  {"pr_ref": "#8135", "status": "AUTHORITATIVE",
+   "comparison_note": "8135 supersedes 8098 with a full V1+V2 fix; diff --stat shows 8098's files as a strict subset of 8135's"}
+]
+```
+
+- `status` ∈ `AUTHORITATIVE | SUPERSEDED | PARALLEL_UNRELATED | UNRESOLVED`.
+- Exactly one entry must be `AUTHORITATIVE` (with a `comparison_note`) whenever more than
+  one PR is listed, unless the supersession genuinely cannot be determined — in which case
+  mark every entry `UNRESOLVED` with an `open_question_ref` and carry it forward as an
+  Open Question rather than silently grounding on one of them.
+- A single linked PR needs no `pr_references` block at all — this only activates once a
+  ticket actually has more than one PR/branch in play.
+
+## Batch Evidence Preparation (Many Tickets, One PR-Review Board)
+
+When processing several tickets from one PR-review batch, the per-ticket fetch step (PR
+ref fetch + `diff --stat` against the base branch) is otherwise repeated by hand for each
+one. `scripts/batch_evidence_prep.py --batch tickets.json` runs this step for a whole
+batch in one pass and prints a consolidated per-ticket report:
+
+```json
+[
+  {"key": "<ISSUE-KEY-1>", "repo": "C:\\product-repo", "pr": 1234},
+  {"key": "<ISSUE-KEY-2>", "repo": "C:\\editor-repo", "pr": 1235, "base": "origin/develop"}
+]
+```
+
+This is read-only evidence gathering only — it does not interpret the diff, write plan
+content, or touch Jira; it just removes the repetitive fetch/diff toil across a batch.
+
 ## User-Cloned Repo Evidence
 
 Use local clones when the user already has them, provides paths, or exposes them as workspace roots. Do not require cloning just to use the skill, but always inspect every relevant available clone before declaring code or automation evidence unavailable.

@@ -32,6 +32,40 @@ AC_LINE_RE = re.compile(
 )
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 RESERVED_FIELD_RE = re.compile(r"(?:^|\s)(?:Given|When|Then|Evidence:)\s")
+MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\([^)]*\)")
+TILDE_MARKUP_RE = re.compile(
+    r"~~|(?<!\w)~[^~\r\n]+~(?!\w)|(?<!\w)~(?!\w)"
+)
+EMPHASIS_MARKUP_RE = re.compile(
+    r"\*\*|__|(?<!\w)\*[^*\r\n]+\*(?!\w)|(?<!\w)_[^_\r\n]+_(?!\w)"
+)
+WORD_RE = re.compile(r"[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*")
+LOGICAL_JOIN_RE = re.compile(
+    r"(?i)\band/or\b|\bas well as\b|\b(?:and|or|while|whereas)\b"
+)
+DOUBLE_NEGATIVE_RE = re.compile(
+    r"(?i)\b(?:not|never|no)\b[^|.;]{0,80}\b(?:unless|without|except)\b"
+)
+AND_OR_RE = re.compile(r"(?i)\band\s*/\s*or\b")
+SECOND_ACTION_RE = re.compile(r"(?i)\band\s+then\b")
+CROSS_AC_REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9_-])AC-\d{2}(?![A-Za-z0-9_-])")
+COMPLEX_PHRASE_REPLACEMENTS = {
+    "in the event that": "if",
+    "in order to": "to",
+    "with respect to": "for",
+    "subsequent to": "after",
+    "prior to": "before",
+    "on the condition that": "if",
+    "including but not limited to": "an exact list",
+    "aforementioned": "the named item",
+    "thereafter": "then",
+    "whereby": "a direct statement",
+    "wherein": "a direct statement",
+    "utilize": "use",
+    "utilizes": "uses",
+    "utilized": "used",
+    "respectively": "separate ACs for each mapping",
+}
 
 
 class AcceptanceCriterion(TypedDict):
@@ -47,7 +81,13 @@ class AcceptanceCriterion(TypedDict):
 
 
 def parse_ac_line(line: str) -> AcceptanceCriterion | None:
-    """Parse one AC only when it exactly matches the canonical grammar."""
+    """Parse one full-record AC in the immutable ``aem-guides-ac-v1`` grammar.
+
+    The human-facing ``Starting point / Action / Expected result`` block is
+    presentation only. Accepting it here would let a durable plan and automation
+    handoff lose status, sphere, canonical fields, and evidence while still
+    appearing machine-readable.
+    """
     match = AC_LINE_RE.fullmatch(line)
     if not match:
         return None
@@ -96,4 +136,76 @@ def validate_ac_sequence(criteria: list[AcceptanceCriterion]) -> list[str]:
             "Acceptance Criteria IDs must be contiguous and ordered from AC-01; "
             f"expected {', '.join(expected)}, found {', '.join(actual)}"
         )
+    return errors
+
+
+def validate_ac_paste_safety(criterion: AcceptanceCriterion) -> list[str]:
+    """Reject inline markup that Jira/Confluence can reinterpret after paste."""
+    text = " | ".join(
+        criterion[field] for field in ("given", "when", "then", "evidence")
+    )
+    errors: list[str] = []
+    if "`" in text:
+        errors.append(
+            "acceptance criterion must not use backticks/code spans; write the bare token"
+        )
+    if TILDE_MARKUP_RE.search(text):
+        errors.append(
+            "acceptance criterion must not use tilde markup because it can render as strikethrough"
+        )
+    if EMPHASIS_MARKUP_RE.search(text):
+        errors.append(
+            "acceptance criterion must not use bold/italic markers; use plain text"
+        )
+    if MARKDOWN_LINK_RE.search(text):
+        errors.append(
+            "acceptance criterion must not embed a Markdown link; use plain text or a bare URL"
+        )
+    return errors
+
+
+def validate_ac_readability(criterion: AcceptanceCriterion) -> list[str]:
+    """Keep Given/When/Then short enough to understand on the first read.
+
+    Technical identifiers remain valid. The checks target sentence structure,
+    not vocabulary scores, because AEM, DITA, API, paths, and configuration
+    names are often necessary product terms.
+    """
+    errors: list[str] = []
+    for field in ("given", "when", "then"):
+        text = criterion[field]
+        label = field.capitalize()
+
+        if ";" in text:
+            errors.append(
+                f"{label} contains a semicolon; use a short sentence or split the ideas into separate ACs"
+            )
+
+        lowercase = text.lower()
+        for phrase, replacement in COMPLEX_PHRASE_REPLACEMENTS.items():
+            if phrase in lowercase:
+                errors.append(
+                    f"{label} uses the hard-to-read phrase '{phrase}'; use '{replacement}' instead"
+                )
+
+        if DOUBLE_NEGATIVE_RE.search(text):
+            errors.append(
+                f"{label} uses a double negative; state the expected rule directly"
+            )
+
+        if AND_OR_RE.search(text):
+            errors.append(
+                f"{label} uses 'and/or'; name the exact choice or split the AC"
+            )
+
+        if field == "when" and SECOND_ACTION_RE.search(text):
+            errors.append(
+                "When contains a second action after 'and then'; keep one trigger or action"
+            )
+
+        if CROSS_AC_REFERENCE_RE.search(text):
+            errors.append(
+                f"{label} refers to another AC; state the product outcome directly so this AC can be read and tested alone"
+            )
+
     return errors

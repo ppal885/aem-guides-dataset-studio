@@ -55,7 +55,7 @@ Use when at least one material signal is present and a source-backed, quantified
 - Add canonical Performance ACs whose `Given` contains a numeric workload and whose `Then` contains a measurable numeric or comparative oracle.
 - Map every Performance AC to an explicit load, stress, soak, scalability, concurrency, or benchmark scenario.
 - Also use `required` when a validated historical Jira supplies a quantified contract and inspected current-code or API evidence proves the same mechanism or shared execution path. A retained historical contract cannot remain a passive Regression Areas note.
-- A source-backed target such as `2x p95 improvement versus the recorded before-fix baseline` is a valid comparative benchmark oracle even when no absolute millisecond SLA exists.
+- A source-backed comparative target against a controlled before-fix baseline is a valid benchmark oracle even when no absolute latency SLA exists. Preserve the source's exact metric and comparison operator; do not substitute an example value.
 
 ### Conditional
 
@@ -80,16 +80,17 @@ A Performance AC uses the same `aem-guides-ac-v1` grammar as every other AC:
 
 `- AC-## [Confirmed|Proposed]: (Performance) Given <quantified workload> | When <single trigger> | Then <numeric or source-backed comparative metric oracle> | Evidence: <underlying source>.`
 
-Acceptable workloads include `10,000 topics`, `200 concurrent users`, `50 publishing jobs`, or `100 iterations`. Acceptable outcomes include `p95 <= 2000 ms`, `timeout rate = 0%`, or `at least 2x p95 improvement versus the recorded before-fix baseline`.
+An acceptable workload contains the source-backed operation, cardinality, concurrency, repetition, duration, dataset, and environment needed for reproduction. An acceptable outcome contains an approved numeric SLA or a source-backed comparative metric and controlled baseline. Never copy an illustrative or historical number into a new plan.
 
 Never use `large dataset`, `acceptable performance`, or `should be fast` as an oracle. If a threshold cannot be sourced, use `conditional` and ask the question instead.
 
-## Historical Contract Example: SubjectScheme Enumdefs
+## Historical Contract Applicability
 
-- Retain `GUIDES-37915` only when the current ticket is verified to touch the SubjectScheme enumdefs request or its inspected title-resolution execution path.
-- Jira comments define before/after execution with the same dataset, collect average/min/max/p90/p95/p99 response times, state a `2x gain` claim, and set the concurrency workload at approximately `200 users`.
-- For a qualifying SubjectScheme change, emit a Proposed Performance AC with `200 concurrent users` and the `2x` comparative response-time oracle, then map it to a benchmark scenario. Do not leave `GUIDES-37915` only under Regression Areas.
-- If the current ticket merely shares the SubjectScheme feature area without API or code-path proof, classify it as `area_only`, do not retain it, and do not create a Performance AC from it.
+- A historical performance issue is a retrieval candidate, not a production rule. Its key never activates a contract.
+- Retain it only when inspected current code/API evidence proves the same mechanism or shared execution path, its workload and environment apply to the current target, and its original source text provides a quantified oracle.
+- Record currentness, applicability, exact provenance, workload, baseline, metric, comparison, and environment. Any unresolved material field makes the decision `conditional` and requires an Open Question instead of a Performance AC.
+- Feature-area similarity without shared-path proof is `area_only`; do not retain its workload or oracle.
+- When retained, promote only source-backed values from the evidence record. Never use a value remembered from an example, customer anecdote, or regression fixture.
 
 ## Manifest Alignment
 

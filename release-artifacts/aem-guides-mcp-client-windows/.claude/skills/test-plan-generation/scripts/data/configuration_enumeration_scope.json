@@ -1,0 +1,114 @@
+{
+  "schema_version": "aem-guides-configuration-enumeration-anchors-v1",
+  "dimension_semantic_anchors": {
+    "authoritative_source": [
+      "authoritative source",
+      "configuration source",
+      "effective configuration",
+      "supported configuration",
+      "config path",
+      "repository path",
+      "profile source",
+      "osgi",
+      "csv",
+      "xml",
+      "json"
+    ],
+    "overlay_precedence": [
+      "overlay precedence",
+      "configuration precedence",
+      "override order",
+      "conflicting overlay",
+      "winning value",
+      "which value wins"
+    ],
+    "dynamic_entry": [
+      "dynamic entry",
+      "new entry",
+      "added entry",
+      "additional entry",
+      "configured entry",
+      "new attribute",
+      "added attribute",
+      "new option",
+      "added option",
+      "is added"
+    ],
+    "mapped_label": [
+      "mapped label",
+      "friendly name",
+      "display name",
+      "configured label",
+      "label mapping"
+    ],
+    "raw_or_default_fallback": [
+      "raw name",
+      "raw attribute name",
+      "raw identifier",
+      "default label",
+      "fallback label",
+      "unmapped fallback"
+    ],
+    "applicability": [
+      "applicability",
+      "active dtd",
+      "active schema",
+      "active profile",
+      "valid for the element",
+      "valid for that element",
+      "deployment scope"
+    ],
+    "activation_reload": [
+      "activation boundary",
+      "reload boundary",
+      "page reload",
+      "panel reopen",
+      "editor reopen",
+      "cache refresh",
+      "service restart",
+      "profile reselect"
+    ],
+    "unrelated_entry_preservation": [
+      "unrelated entry",
+      "unrelated entries",
+      "other entries remain",
+      "existing entries remain",
+      "preserve existing entries"
+    ],
+    "invalid_entry": [
+      "invalid entry",
+      "malformed entry",
+      "unsupported entry",
+      "blank entry",
+      "invalid configuration"
+    ],
+    "duplicate_entry": [
+      "duplicate entry",
+      "repeated entry",
+      "case variant",
+      "duplicate configuration",
+      "conflicting entry"
+    ],
+    "removal": [
+      "entry removal",
+      "removed entry",
+      "remove the entry",
+      "deleted entry",
+      "remove the mapping"
+    ],
+    "upgrade": [
+      "build upgrade",
+      "product upgrade",
+      "upgrade persistence",
+      "service pack upgrade",
+      "configuration migration"
+    ],
+    "rollback": [
+      "configuration rollback",
+      "rollback",
+      "restore previous configuration",
+      "revert the configuration",
+      "remove the customization"
+    ]
+  }
+}

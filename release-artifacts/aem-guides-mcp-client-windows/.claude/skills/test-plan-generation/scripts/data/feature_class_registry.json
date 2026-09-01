@@ -1,0 +1,97 @@
+{
+  "schema_version": "aem-guides-feature-class-registry-v1",
+  "classes": {
+    "ui_display_label": {
+      "signals": [
+        "friendly name",
+        "display name",
+        "friendly label",
+        "label",
+        "label text",
+        "tooltip",
+        "tooltip text",
+        "raw attribute name",
+        "workspace settings"
+      ],
+      "required_dimensions": [
+        "ui_surface_scope"
+      ]
+    },
+    "access_control": {
+      "signals": [
+        "permission",
+        "user group",
+        "aem group",
+        "group membership",
+        "administrators group",
+        "acl",
+        "admin user",
+        "authorization",
+        "privilege"
+      ],
+      "required_dimensions": [
+        "role_provisioning"
+      ]
+    },
+    "async_job": {
+      "signals": [
+        "sling job",
+        "job consumer",
+        "queue",
+        "async",
+        "scheduled job",
+        "event listener"
+      ],
+      "required_dimensions": [
+        "concurrency_race_analysis",
+        "terminal_states"
+      ]
+    },
+    "configuration_driven_enumeration": {
+      "signals": [
+        "configuration-backed list",
+        "configuration-driven",
+        "configured entry",
+        "configured attribute",
+        "supported conditional-attribute list",
+        "condAttrList.csv",
+        "dynamic entry",
+        "hardcoded allowlist",
+        "overlay precedence",
+        "use only above attributes"
+      ],
+      "required_dimensions": [
+        "configuration_enumeration_scope"
+      ]
+    },
+    "generated_artifact_delivery": {
+      "signals": [
+        "download archive",
+        "downloadable archive",
+        "generated artifact",
+        "output package",
+        "temporary files",
+        "intermediate files",
+        "retain temporary files"
+      ],
+      "required_dimensions": [
+        "generated_output_contract"
+      ]
+    },
+    "content_identity_lifecycle": {
+      "signals": [
+        "latest asset",
+        "current asset",
+        "asset version",
+        "previous version",
+        "stale asset",
+        "move asset",
+        "rename asset",
+        "republish asset"
+      ],
+      "required_dimensions": [
+        "content_identity_contract"
+      ]
+    }
+  }
+}

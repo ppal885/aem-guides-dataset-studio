@@ -1,6 +1,6 @@
 # UAC Reference Examples
 
-Use this file when normalizing Jira UAC or when a user asks for a test plan that should read like a strong manual QA sign-off note.
+This is a non-authoritative regression and evaluator catalog. Do not load it during production issue routing, contract extraction, AC drafting, threshold selection, or final rendering. Its issue keys, customers, values, surfaces, and historical outcomes may test whether a generic rule catches a known miss; they must never activate or authorize that rule for a new issue. Use the generic references and current evidence for production plans.
 
 ## What Good UAC Looks Like
 
@@ -19,6 +19,7 @@ Use this file when normalizing Jira UAC or when a user asks for a test plan that
 - Keep expected behaviour, out-of-scope, regression boundaries, and open questions visible instead of burying them inside generic scenario text.
 - Keep notes close to the scenario they constrain, for example folder upload is not allowed from a file-upload entry point.
 - Use plain English and observable results; avoid tables and implementation-only wording.
+- Historical excerpts below may preserve their original inline markup and legacy sphere labels for evidence fidelity. They are analysis-only: never copy their formatting into a generated AC. Normalize every emitted AC to `aem-guides-ac-v1` and paste-safe plain text first.
 
 ## Gold Reference: Assets UI Upload Parity
 
