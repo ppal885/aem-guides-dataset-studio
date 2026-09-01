@@ -23,6 +23,8 @@ the signal map is generic vocabulary, not product identifiers.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import re
 from pathlib import Path
@@ -30,6 +32,11 @@ from typing import Any
 
 
 BLOCK_ACTIVATORS = ("behavior_model", "evidence_catalog")
+MAX_OFFLINE_DOC_QUERIES = 6
+OFFLINE_DOC_RESULTS_PER_QUERY = 4
+MAX_OFFLINE_DOC_CANDIDATES = 8
+MAX_OFFLINE_DOC_DISTANCE = 0.5
+OFFLINE_HISTORY_RESULTS = 5
 
 # Generic token -> (dimension, candidate_template). Vocabulary only; no product
 # symbol, class, config key, or Jira id appears here.
@@ -132,7 +139,190 @@ def _match_signals(pairs: list[tuple[str, str]], generator: str) -> list[dict]:
     return list(seen.values())
 
 
-def _history_candidates(manifest: dict) -> tuple[list[dict], list[str]]:
+def _load_sibling_module(module_name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(module_name, Path(__file__).with_name(filename))
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_offline_retrieval():
+    """Test seam and fail-open loader for the optional local-Chroma provider."""
+    try:
+        return _load_sibling_module("offline_retrieval", "offline_retrieval.py")
+    except Exception:
+        return None
+
+
+def _load_feature_map():
+    try:
+        return _load_sibling_module("feature_map", "feature_map.py")
+    except Exception:
+        return None
+
+
+def _stable_suffix(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _query_text(pairs: list[tuple[str, str]], limit: int = 1_200) -> str:
+    return " ".join(" ".join(text.split()) for _, text in pairs if text.strip())[:limit]
+
+
+def _offline_doc_queries(
+    pairs: list[tuple[str, str]],
+    rag_probes: object,
+    feature_candidates: list[dict],
+) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Build bounded generic queries from current evidence and approved checklists."""
+    queries: list[tuple[str, str, tuple[str, ...]]] = []
+    if isinstance(rag_probes, list):
+        for index, probe in enumerate(rag_probes, start=1):
+            if isinstance(probe, str) and probe.strip():
+                queries.append((f"rag_probe:{index}", probe.strip(), ()))
+            if len(queries) >= 2:
+                break
+
+    # The feature map is Human-approved domain vocabulary. It may strengthen the
+    # retrieval query, but it is not evidence and cannot itself create a RAG result.
+    for candidate in feature_candidates:
+        feature = str(candidate.get("feature", "")).strip()
+        flows = [
+            str(value).strip()
+            for value in candidate.get("shared_flows") or []
+            if str(value).strip()
+        ]
+        text = " ".join((feature, *flows)).strip()
+        if text:
+            references = tuple(
+                str(value).strip()
+                for value in candidate.get("reference_urls") or []
+                if str(value).strip()
+            )
+            queries.append(
+                (f"feature_map:{candidate.get('surface', 'surface')}:{feature}", text, references)
+            )
+        if len(queries) >= MAX_OFFLINE_DOC_QUERIES - 1:
+            break
+
+    behavior = _query_text(pairs)
+    if behavior:
+        queries.append(("current_behavior", behavior, ()))
+
+    unique: list[tuple[str, str, tuple[str, ...]]] = []
+    seen: set[str] = set()
+    for label, text, references in queries:
+        key = " ".join(text.casefold().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append((label, text, references))
+        if len(unique) >= MAX_OFFLINE_DOC_QUERIES:
+            break
+    return unique
+
+
+def _offline_rag_candidates(
+    offline,
+    pairs: list[tuple[str, str]],
+    rag_probes: object,
+    feature_candidates: list[dict],
+) -> tuple[list[dict], list[str]]:
+    queries = _offline_doc_queries(pairs, rag_probes, feature_candidates)
+    if offline is None:
+        return [], [
+            "RAG_NEIGHBORHOOD: offline retrieval helper unavailable; no offline RAG candidate fabricated"
+        ]
+    if not queries:
+        return [], []
+
+    candidates: list[dict] = []
+    seen_sources: set[str] = set()
+    last_reason = "query_returned_no_rows"
+    for query_label, query, expected_references in queries:
+        rows = offline.retrieve_docs(query, OFFLINE_DOC_RESULTS_PER_QUERY)
+        status = offline.retrieval_status("docs")
+        last_reason = str(status.get("reason") or last_reason)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_url = str(row.get("url") or "").strip()
+            if expected_references and row_url not in set(expected_references):
+                continue
+            distance = row.get("distance")
+            if isinstance(distance, (int, float)) and float(distance) > MAX_OFFLINE_DOC_DISTANCE:
+                continue
+            source_ref = str(row.get("source_ref") or row.get("url") or row.get("title") or "").strip()
+            if not source_ref or source_ref.casefold() in seen_sources:
+                continue
+            seen_sources.add(source_ref.casefold())
+            title = str(row.get("title") or "").strip()
+            snippet = str(row.get("snippet") or "").strip()
+            display = title or (snippet[:180] + ("..." if len(snippet) > 180 else ""))
+            evidence = f"OFFLINE_CHROMA: {display}"
+            if row.get("url"):
+                evidence += f" <{row['url']}>"
+            candidates.append(
+                {
+                    "hypothesis_id": "",
+                    "dimension": "DOWNSTREAM_REGRESSION",
+                    "candidate": f"investigate adjacent documented product behavior: {display}",
+                    "reason": (
+                        "RAG_NEIGHBORHOOD: offline product-documentation neighbor retrieved; "
+                        "verify applicability and inspect the underlying source before promotion"
+                    ),
+                    "technical_basis": [
+                        f"RAG_NEIGHBORHOOD:offline_query:{query_label}",
+                        f"source_ref:{source_ref}",
+                        *(f"expected_reference:{value}" for value in expected_references),
+                    ],
+                    "current_evidence": [evidence],
+                    "status": "INVESTIGATION_CANDIDATE",
+                    "requires_more_evidence": True,
+                    "confidence": 0.3,
+                    "equivalence_key": f"RAG_NEIGHBORHOOD:{_stable_suffix(source_ref)}",
+                    "generator": "RAG_NEIGHBORHOOD",
+                    "source": "OFFLINE_CHROMA",
+                    "source_label": "OFFLINE_CHROMA",
+                    "authority_class": "SUPPORTING_DISCOVERY",
+                    "non_authoritative": True,
+                    "advisory_only": True,
+                    "offline_retrieval": True,
+                    "retrieved_title": title,
+                    "retrieved_url": str(row.get("url") or ""),
+                    "distance": distance,
+                }
+            )
+            if len(candidates) >= MAX_OFFLINE_DOC_CANDIDATES:
+                break
+        if str(status.get("status")) in {"UNAVAILABLE", "ERROR"}:
+            break
+        if len(candidates) >= MAX_OFFLINE_DOC_CANDIDATES:
+            break
+    if candidates:
+        return candidates, []
+    return [], [
+        f"RAG_NEIGHBORHOOD: offline retrieval produced no usable result ({last_reason}); "
+        "no offline RAG candidate fabricated"
+    ]
+
+
+def _issue_component(manifest: dict) -> str:
+    issue = manifest.get("issue") if isinstance(manifest.get("issue"), dict) else {}
+    raw = issue.get("components") or issue.get("component") or manifest.get("component")
+    if isinstance(raw, list):
+        return next((str(value).strip() for value in raw if str(value).strip()), "")
+    return str(raw or "").strip()
+
+
+def _issue_key(manifest: dict) -> str:
+    issue = manifest.get("issue") if isinstance(manifest.get("issue"), dict) else {}
+    return str(issue.get("key") or manifest.get("jira_key") or "").strip().upper()
+
+
+def _history_candidates(manifest: dict, pairs: list[tuple[str, str]], offline) -> tuple[list[dict], list[str]]:
     """Best-effort same-component history candidates; records a gap if no source."""
     gaps: list[str] = []
     # Live history evidence, when the author recorded it in the manifest.
@@ -158,9 +348,70 @@ def _history_candidates(manifest: dict) -> tuple[list[dict], list[str]]:
                 "generator": "HISTORY_NEIGHBORHOOD",
             })
         return cands, gaps
+    component = _issue_component(manifest)
+    query = _query_text(pairs)
+    if component:
+        query = f"{query} {component}".strip()
+    if offline is None or not query or not component:
+        reason = (
+            "offline retrieval helper unavailable" if offline is None
+            else "component or behavior query unavailable"
+        )
+        gaps.append(
+            "HISTORY_NEIGHBORHOOD: no live search_jira_history run recorded and "
+            f"{reason}; no history candidate fabricated"
+        )
+        return [], gaps
+
+    rows = offline.retrieve_history(query, component, OFFLINE_HISTORY_RESULTS)
+    target_key = _issue_key(manifest)
+    cands: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        jira_key = str(row.get("jira_key") or "").strip().upper()
+        if not jira_key or jira_key == target_key:
+            continue
+        title = str(row.get("title") or "").strip()
+        display = f"{jira_key}: {title}" if title else jira_key
+        cands.append(
+            {
+                "hypothesis_id": "",
+                "dimension": "DOWNSTREAM_REGRESSION",
+                "candidate": f"investigate whether same-component defect behavior from {display} can recur on the touched path",
+                "reason": (
+                    "HISTORY_NEIGHBORHOOD: offline same-component jira_qa neighbor; "
+                    "supporting discovery only, not a live history run"
+                ),
+                "technical_basis": [
+                    f"HISTORY_NEIGHBORHOOD:OFFLINE_CHROMA:{jira_key}",
+                    f"component:{component}",
+                ],
+                "current_evidence": [f"OFFLINE_CHROMA: {display}"],
+                "status": "INVESTIGATION_CANDIDATE",
+                "requires_more_evidence": True,
+                "confidence": 0.25,
+                "equivalence_key": f"HISTORY_NEIGHBORHOOD:{jira_key}",
+                "generator": "HISTORY_NEIGHBORHOOD",
+                "source": "OFFLINE_CHROMA",
+                "source_label": "OFFLINE_CHROMA",
+                "authority_class": "SUPPORTING_DISCOVERY",
+                "non_authoritative": True,
+                "advisory_only": True,
+                "offline_retrieval": True,
+                "indexed_history_run": False,
+                "jira_key": jira_key,
+                "retrieved_title": title,
+                "distance": row.get("distance"),
+            }
+        )
+    if cands:
+        return cands, gaps
+    status = offline.retrieval_status("history")
     gaps.append(
-        "HISTORY_NEIGHBORHOOD: no live search_jira_history run recorded and no offline "
-        "jira_qa result supplied in the manifest; no history candidate fabricated"
+        "HISTORY_NEIGHBORHOOD: no live search_jira_history run recorded and offline "
+        f"jira_qa produced no usable same-component result ({status.get('reason', 'empty')}); "
+        "no history candidate fabricated"
     )
     return [], gaps
 
@@ -174,45 +425,53 @@ def synthesize(manifest: dict | None) -> dict:
     pairs = _evidence_texts(data)
     candidates = _match_signals(pairs, "CODE_NEIGHBORHOOD")
 
+    # Load the curated checklist before offline RAG. Matched entries may provide
+    # bounded, Human-approved query vocabulary; they are never treated as evidence.
+    feature_candidates: list[dict] = []
+    feature_map = _load_feature_map()
+    if feature_map is None:
+        feature_gap = "FEATURE_MAP: curated feature map unavailable"
+    else:
+        try:
+            feature_candidates = feature_map.candidates_for(pairs)
+            feature_gap = ""
+        except Exception as exc:  # pragma: no cover - defensive
+            feature_gap = f"FEATURE_MAP: curated feature map unavailable ({type(exc).__name__})"
+
     rag = data.get("rag_probes")
     if isinstance(rag, list) and rag:
         rag_pairs = [(f"rag_probe:{p[:40]}", str(p)) for p in rag if isinstance(p, str)]
         candidates += _match_signals(rag_pairs, "RAG_NEIGHBORHOOD")
     gaps: list[str] = []
-    if not (isinstance(rag, list) and rag):
+
+    offline = _load_offline_retrieval()
+    offline_rag, offline_rag_gaps = _offline_rag_candidates(
+        offline, pairs, rag, feature_candidates
+    )
+    candidates += offline_rag
+    gaps += offline_rag_gaps
+    if not (isinstance(rag, list) and rag) and not offline_rag:
+        # Preserve the original gap text for callers that already depend on it.
         gaps.append("RAG_NEIGHBORHOOD: no rag_probes recorded; no RAG candidate generated")
 
-    hist_cands, hist_gaps = _history_candidates(data)
+    hist_cands, hist_gaps = _history_candidates(data, pairs, offline)
     candidates += hist_cands
     gaps += hist_gaps
 
     # LEARNED_PROBE candidates from the miss-probe library (UACDISCOVER-02).
     try:
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location(
-            "miss_probe_library", Path(__file__).with_name("miss_probe_library.py")
-        )
-        mpl = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mpl)  # type: ignore[union-attr]
+        mpl = _load_sibling_module("miss_probe_library", "miss_probe_library.py")
+        if mpl is None:
+            raise RuntimeError("miss-probe module loader unavailable")
         candidates += mpl.candidates_for(pairs)
     except Exception as exc:  # pragma: no cover - defensive
         gaps.append(f"LEARNED_PROBE: miss-probe library unavailable ({exc})")
 
-    # FEATURE_MAP candidates from the human-approved AEM/Guides domain checklist
-    # (UACDISCOVER-03). This is advisory and fail-open: a missing or malformed map
-    # contributes no candidates and cannot make canonical generation unavailable.
-    try:
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location(
-            "feature_map", Path(__file__).with_name("feature_map.py")
-        )
-        feature_map = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(feature_map)  # type: ignore[union-attr]
-        candidates += feature_map.candidates_for(pairs)
-    except Exception as exc:  # pragma: no cover - defensive
-        gaps.append(f"FEATURE_MAP: curated feature map unavailable ({exc})")
+    # FEATURE_MAP itself remains an independent advisory generator. Offline RAG
+    # results above exist only when a current local source was actually retrieved.
+    candidates += feature_candidates
+    if feature_gap:
+        gaps.append(feature_gap)
 
     # Assign stable ids.
     for i, cand in enumerate(candidates, start=1):
@@ -286,9 +545,14 @@ def review_notes(manifest: dict | None = None) -> list[str]:
             if cand.get("generator") == "FEATURE_MAP"
             else ""
         )
+        source_context = (
+            f", source_label={cand.get('source_label')}, authority={cand.get('authority_class')}"
+            if cand.get("source_label")
+            else ""
+        )
         notes.append(
             f"DISCOVERY: unrepresented dimension {cand['dimension']} "
-            f"(generator={cand['generator']}{feature_context}, "
+            f"(generator={cand['generator']}{feature_context}{source_context}, "
             f"evidence={','.join(cand['current_evidence'])}): "
             f"{cand['candidate']} - dispose or reject it in coverage_hypotheses/dimension_space"
         )

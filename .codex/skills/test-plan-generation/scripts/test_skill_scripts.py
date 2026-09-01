@@ -112,6 +112,7 @@ reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_req
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 feature_map_mod = _load("feature_map", "feature_map.py")
+offline_retrieval_mod = _load("offline_retrieval", "offline_retrieval.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -2906,6 +2907,8 @@ def test_component_reference_routing() -> None:
             "scripts/feature_map.py",
             "data/aem_feature_map.json",
             "references/aem-feature-map.md",
+            "scripts/offline_retrieval.py",
+            "references/offline-authoring-rag.md",
             "scripts/run_gates.py",
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
@@ -7029,8 +7032,186 @@ def test_feature_map() -> None:
     print("test_feature_map: OK")
 
 
+def test_offline_retrieval() -> None:
+    offline = offline_retrieval_mod
+    original_loader = offline._load_backend
+
+    class FakeVector:
+        def tolist(self):
+            return [0.1, 0.2, 0.3]
+
+    calls = []
+
+    def fake_query(collection, vector, k=5):
+        calls.append((collection, vector, k))
+        check("offline retrieval converts embedding to a plain list", isinstance(vector, list))
+        if collection == "docs":
+            return [
+                {
+                    "id": "doc-1",
+                    "document": "Experience Manager detects duplicate assets during upload.",
+                    "metadata": {
+                        "title": "Detect duplicate assets",
+                        "url": "https://experienceleague.adobe.com/example/detect-duplicate-assets",
+                        "source_type": "EXPERIENCE_LEAGUE",
+                        "authority": "OFFICIAL_CURRENT_PRODUCT_DOCUMENTATION",
+                    },
+                    "distance": 0.225,
+                }
+            ]
+        return [
+            {
+                "id": "EXAMPLE-9::acceptance_criteria_chunk::0",
+                "document": "Acceptance criteria: this Human answer must not be returned.",
+                "metadata": {
+                    "jira_key": "EXAMPLE-9",
+                    "title": "Hidden accepted UAC",
+                    "components": '["Asset Management"]',
+                    "chunk_type": "acceptance_criteria_chunk",
+                },
+                "distance": 0.1,
+            },
+            {
+                "id": "EXAMPLE-10::problem_chunk::0",
+                "document": (
+                    "Overwrite can leave the previous binary. "
+                    "Acceptance criteria: this later answer section is excluded."
+                ),
+                "metadata": {
+                    "jira_key": "EXAMPLE-10",
+                    "title": "Overwrite keeps the previous binary",
+                    "components": '["Asset Management"]',
+                    "chunk_type": "problem_chunk",
+                },
+                "distance": 0.31,
+            },
+            {
+                "id": "EXAMPLE-11::problem_chunk::0",
+                "document": "Unrelated publishing failure.",
+                "metadata": {
+                    "jira_key": "EXAMPLE-11",
+                    "title": "Unrelated publishing failure",
+                    "components": '["Publishing"]',
+                    "chunk_type": "problem_chunk",
+                },
+                "distance": 0.32,
+            },
+        ]
+
+    fake_backend = {
+        "embed_query": lambda query: FakeVector(),
+        "query_collection": fake_query,
+        "get_collection_count": lambda collection: 7,
+        "is_chroma_available": lambda: True,
+        "docs_collection": "docs",
+        "history_collection": "history",
+    }
+    offline._load_backend = lambda: fake_backend
+    docs = offline.retrieve_docs("duplicate detection on upload", 3)
+    check("offline docs normalize one retrieved row", len(docs) == 1)
+    doc = docs[0]
+    check("offline docs preserve title", doc["title"] == "Detect duplicate assets")
+    check("offline docs preserve URL", "detect-duplicate-assets" in doc["url"])
+    check("offline docs preserve distance", doc["distance"] == 0.225)
+    check("offline docs use OFFLINE_CHROMA", doc["source_label"] == "OFFLINE_CHROMA")
+    check("offline docs are supporting discovery", doc["authority_class"] == "SUPPORTING_DISCOVERY")
+    check("offline docs are non-authoritative", doc["non_authoritative"] is True)
+    check("offline docs record success", offline.retrieval_status("docs")["status"] == "SUCCESS")
+
+    history = offline.retrieve_history("asset upload overwrite", "Asset Management", 3)
+    check("offline history returns only same-component safe chunks", len(history) == 1)
+    check("offline history preserves Jira key", history[0]["jira_key"] == "EXAMPLE-10")
+    check("offline history never claims live indexed history", history[0]["indexed_history_run"] is False)
+    check("offline history strips embedded Human AC text", "acceptance criteria" not in history[0]["snippet"].casefold())
+    check("offline history is non-authoritative", history[0]["non_authoritative"] is True)
+
+    absent_backend = dict(fake_backend)
+    absent_backend["get_collection_count"] = lambda collection: 0
+    offline._load_backend = lambda: absent_backend
+    check("absent docs collection returns no result", offline.retrieve_docs("upload", 3) == [])
+    check(
+        "absent docs collection records a reason",
+        offline.retrieval_status("docs")["reason"] == "collection_absent_or_empty",
+    )
+    check("absent history collection returns no result", offline.retrieve_history("upload", "Asset Management", 3) == [])
+    check(
+        "absent history collection records a reason",
+        offline.retrieval_status("history")["reason"] == "collection_absent_or_empty",
+    )
+
+    offline._load_backend = lambda: None
+    check("unimportable backend returns no fabricated docs", offline.retrieve_docs("upload", 3) == [])
+    check(
+        "unimportable backend reason is recorded without raw exception text",
+        offline.retrieval_status("docs")["reason"] == "backend_package_not_importable",
+    )
+    offline._load_backend = original_loader
+    check("offline retrieval exercised both real collection contracts", {call[0] for call in calls} == {"docs", "history"})
+    print("test_offline_retrieval: OK")
+
+
 def test_dimension_synthesizer() -> None:
     ds = dimension_synthesizer_mod
+
+    class OfflineStub:
+        def __init__(self, available=True):
+            self.available = available
+            self.docs_calls = []
+            self.history_calls = []
+            self.statuses = {
+                "docs": {"status": "UNAVAILABLE", "reason": "collection_absent_or_empty"},
+                "history": {"status": "UNAVAILABLE", "reason": "collection_absent_or_empty"},
+            }
+
+        def retrieve_docs(self, query, k):
+            self.docs_calls.append((query, k))
+            if self.available and "duplicate detection" in str(query).casefold():
+                self.statuses["docs"] = {"status": "SUCCESS", "reason": "normalized_results"}
+                return [
+                    {
+                        "source_label": "OFFLINE_CHROMA",
+                        "authority_class": "SUPPORTING_DISCOVERY",
+                        "non_authoritative": True,
+                        "title": "Detect duplicate assets",
+                        "snippet": "Experience Manager detects duplicates during asset upload.",
+                        "url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/detect-duplicate-assets",
+                        "source_ref": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/detect-duplicate-assets",
+                        "distance": 0.225,
+                    }
+                ]
+            self.statuses["docs"] = {
+                "status": "EMPTY" if self.available else "UNAVAILABLE",
+                "reason": "query_returned_no_rows" if self.available else "collection_absent_or_empty",
+            }
+            return []
+
+        def retrieve_history(self, query, component, k):
+            self.history_calls.append((query, component, k))
+            if not self.available:
+                self.statuses["history"] = {
+                    "status": "UNAVAILABLE",
+                    "reason": "collection_absent_or_empty",
+                }
+                return []
+            self.statuses["history"] = {"status": "SUCCESS", "reason": "normalized_results"}
+            return [
+                {
+                    "source_label": "OFFLINE_CHROMA",
+                    "authority_class": "SUPPORTING_DISCOVERY",
+                    "non_authoritative": True,
+                    "indexed_history_run": False,
+                    "jira_key": "EXAMPLE-10",
+                    "title": "Overwrite keeps the previous binary",
+                    "distance": 0.31,
+                }
+            ]
+
+        def retrieval_status(self, kind):
+            return dict(self.statuses[kind])
+
+    original_offline_loader = ds._load_offline_retrieval
+    unavailable = OfflineStub(available=False)
+    ds._load_offline_retrieval = lambda: unavailable
 
     # Non-activated: no behavior_model or evidence_catalog.
     check("synthesizer not activated on empty manifest", ds.synthesize({})["activated"] is False)
@@ -7133,8 +7314,93 @@ def test_dimension_synthesizer() -> None:
         any("feature=DAM update-asset workflows" in note for note in represented_feature_notes),
     )
 
+    # A current behavior hit uses Human-approved feature-map vocabulary only to
+    # formulate the query; the candidate exists because a real local row was returned.
+    available = OfflineStub(available=True)
+    ds._load_offline_retrieval = lambda: available
+    before = json.loads(json.dumps(feature_manifest))
+    offline_result = ds.synthesize(feature_manifest)
+    offline_rag = [
+        candidate for candidate in offline_result["candidates"]
+        if candidate.get("generator") == "RAG_NEIGHBORHOOD"
+        and candidate.get("source_label") == "OFFLINE_CHROMA"
+    ]
+    check("offline RAG emits a retrieved duplicate-detection neighbor", len(offline_rag) == 1)
+    check(
+        "offline RAG current evidence includes the retrieved document title",
+        "Detect duplicate assets" in offline_rag[0]["current_evidence"][0],
+    )
+    check("offline RAG is supporting discovery", offline_rag[0]["authority_class"] == "SUPPORTING_DISCOVERY")
+    check("offline RAG is advisory and non-authoritative", offline_rag[0]["advisory_only"] is True and offline_rag[0]["non_authoritative"] is True)
+    check("offline RAG candidate validates in canonical hypothesis shape", coverage_mod.validate_coverage_block(offline_rag) == [])
+    check(
+        "feature-map expansion, not a hardcoded branch, formed the duplicate query",
+        any("duplicate detection" in query.casefold() for query, _ in available.docs_calls),
+    )
+    offline_history = [
+        candidate for candidate in offline_result["candidates"]
+        if candidate.get("generator") == "HISTORY_NEIGHBORHOOD"
+        and candidate.get("source_label") == "OFFLINE_CHROMA"
+    ]
+    # This fixture has no component, so the same-component history path stays honest.
+    check("offline history does not run without a component", offline_history == [] and available.history_calls == [])
+    check("offline synthesis does not mutate the manifest", feature_manifest == before)
+    check("offline synthesis never invents indexed_history_run", "indexed_history_run" not in feature_manifest)
+    check(
+        "offline RAG surfaces through the existing DISCOVERY note",
+        any(
+            "generator=RAG_NEIGHBORHOOD" in note
+            and "source_label=OFFLINE_CHROMA" in note
+            and "Detect duplicate assets" in note
+            for note in ds.review_notes(feature_manifest)
+        ),
+    )
+
+    history_manifest = json.loads(json.dumps(feature_manifest))
+    history_manifest["issue"] = {"key": "EXAMPLE-1", "components": ["Asset Management"]}
+    history_result = ds.synthesize(history_manifest)
+    history_candidates = [
+        candidate for candidate in history_result["candidates"]
+        if candidate.get("generator") == "HISTORY_NEIGHBORHOOD"
+        and candidate.get("source_label") == "OFFLINE_CHROMA"
+    ]
+    check("offline history emits a same-component investigation candidate", len(history_candidates) == 1)
+    check("offline history candidate explicitly remains non-live", history_candidates[0]["indexed_history_run"] is False)
+    check("offline history does not mutate the live-history flag", "indexed_history_run" not in history_manifest)
+
+    live_history = json.loads(json.dumps(history_manifest))
+    live_history["indexed_history_run"] = True
+    live_history["jira_history_queries"] = [{"component": "Platform", "scope": "cross_customer"}]
+    history_calls_before = len(available.history_calls)
+    live_result = ds.synthesize(live_history)
+    check("recorded live history suppresses offline history lookup", len(available.history_calls) == history_calls_before)
+    check(
+        "recorded live history remains distinguishable from OFFLINE_CHROMA",
+        any(
+            candidate.get("generator") == "HISTORY_NEIGHBORHOOD"
+            and not candidate.get("source_label")
+            for candidate in live_result["candidates"]
+        ),
+    )
+
+    ds._load_offline_retrieval = lambda: OfflineStub(available=False)
+    absent_result = ds.synthesize(history_manifest)
+    absent_offline = [
+        candidate for candidate in absent_result["candidates"]
+        if candidate.get("source_label") == "OFFLINE_CHROMA"
+    ]
+    check("absent collections fabricate no offline candidate", absent_offline == [])
+    check(
+        "absent collections record both offline generator gaps",
+        any("RAG_NEIGHBORHOOD" in gap and "collection_absent_or_empty" in gap for gap in absent_result["gaps"])
+        and any("HISTORY_NEIGHBORHOOD" in gap and "collection_absent_or_empty" in gap for gap in absent_result["gaps"]),
+    )
+
+    ds._load_offline_retrieval = lambda: available
+
     with tempfile.TemporaryDirectory() as tmp:
         gate = _load("run_gates_feature_map_integration", "run_gates.py")
+        gate.dimension_synthesizer_mod._load_offline_retrieval = lambda: available
         plan_path = Path(tmp) / "plan.md"
         combined_path = Path(tmp) / "combined.md"
         manifest_path = Path(tmp) / "manifest.json"
@@ -7157,6 +7423,16 @@ def test_dimension_synthesizer() -> None:
                 for note in gate_notes
             ),
         )
+        check(
+            "run_gates emits OFFLINE_CHROMA RAG REVIEW DISCOVERY note",
+            any(
+                note.startswith("REVIEW DISCOVERY:")
+                and "generator=RAG_NEIGHBORHOOD" in note
+                and "source_label=OFFLINE_CHROMA" in note
+                and "Detect duplicate assets" in note
+                for note in gate_notes
+            ),
+        )
         nonmatch_manifest = {
             "behavior_model": {
                 "facts": [{"fact": "The caret remains visible after typing.", "evidence_ids": ["E1"]}]
@@ -7174,6 +7450,7 @@ def test_dimension_synthesizer() -> None:
             "run_gates emits no FEATURE_MAP review for non-matching evidence",
             all("generator=FEATURE_MAP" not in note for note in nonmatch_notes),
         )
+    ds._load_offline_retrieval = original_offline_loader
     print("test_dimension_synthesizer: OK")
 
 
@@ -9229,6 +9506,7 @@ def main() -> int:
     test_reviewer_request_coverage()
     test_miss_probe_library()
     test_feature_map()
+    test_offline_retrieval()
     test_dimension_synthesizer()
     test_evidence_provenance()
     test_security_coverage()

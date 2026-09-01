@@ -20,11 +20,14 @@ Each candidate is tagged with the generating evidence label and generator:
   (evidence-catalog `source_ref`/`note`, `behavior_model.facts`, read/write paths). Example:
   a metadata / `jcr:content` read path proposes a `VALUE_SET_CHANNEL` candidate for
   repository-node value provenance — *discovered*, not remembered.
-- **RAG_NEIGHBORHOOD** — the same signal map over recorded `rag_probes`. No probes → a
-  recorded gap, not a candidate.
+- **RAG_NEIGHBORHOOD** — the same signal map over recorded `rag_probes`, plus
+  fail-open local product-documentation neighbors when recorded probes or current
+  behavior text can form a query. Offline results are explicitly supporting discovery;
+  when the local collection is unavailable the original no-probe gap remains visible.
 - **HISTORY_NEIGHBORHOOD** — recurring same-component defect classes from a recorded
-  `search_jira_history` run (or the offline `jira_qa` corpus, UACFIX-13). When neither
-  source is present it records a gap and fabricates nothing.
+  `search_jira_history` run, or from the local `jira_qa` collection when no live run is
+  recorded. Offline results never set `indexed_history_run=true`; when neither source
+  is available the generator records a gap and fabricates nothing.
 
 Candidates use the `coverage_hypotheses` item shape (`hypothesis_id`, `dimension`,
 `candidate`, `reason`, non-empty `technical_basis`, `current_evidence`,
@@ -44,3 +47,6 @@ candidate (the standard REVIEW contract).
 Generic and standard-library only. No product symbol, class, config key, or Jira id is
 hardcoded — the signal map is generic vocabulary. Non-activated or degraded input yields
 an empty candidate set with a recorded reason, never an invented candidate.
+
+Read `offline-authoring-rag.md` for the offline provider, query-expansion, provenance,
+Human-UAC exclusion, and live-history honesty contracts.
