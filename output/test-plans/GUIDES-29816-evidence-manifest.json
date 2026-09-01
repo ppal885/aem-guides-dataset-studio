@@ -200,6 +200,215 @@
       "qa_impact": "The current code reads only selected names; this decides whether CRX DE set but unselected properties are expected in the output or correctly excluded."
     }
   ],
+  "clarification": {
+    "schema_version": "aem-guides-clarification-v1",
+    "dimension_space": [
+      {
+        "dimension_id": "D-01",
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate": "source asset repository metadata node via CRX/DE (jcr:content/metadata)",
+        "material": true,
+        "materiality_reason": "The generated metadata.xml reads selected property values from the source asset repository node.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "BaseExecutor.getMetadataList repository property read"
+        ],
+        "ac_refs": [
+          "AC-16"
+        ]
+      },
+      {
+        "dimension_id": "D-02",
+        "axis": "OUTPUT_PRESET",
+        "candidate": "Native PDF in scope, with DITA-OT and other output presets retained as regression consumers",
+        "material": true,
+        "materiality_reason": "Publishing behavior differs by preset and engine while the metadata builder is shared.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "BaseExecutor nativeOutput branch and shared metadata builder"
+        ],
+        "ac_refs": [
+          "AC-14",
+          "AC-15"
+        ]
+      },
+      {
+        "dimension_id": "D-03",
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate": "native and DITA-OT executors that consume the shared BaseExecutor metadata path",
+        "material": true,
+        "materiality_reason": "A change in the shared metadata path can affect output engines outside the primary Native PDF flow.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "DitaOtExecutor and NodeJsExecutor shared BaseExecutor path"
+        ],
+        "ac_refs": [
+          "AC-15"
+        ]
+      },
+      {
+        "dimension_id": "D-04",
+        "axis": "CONFIG_BRANCH",
+        "candidate": "Metadata tab only, File (Asset) properties selected, and no File properties selected",
+        "material": true,
+        "materiality_reason": "Each preset configuration branch changes which metadata values are eligible for output.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "Native PDF preset configuration controls"
+        ],
+        "ac_refs": [
+          "AC-01",
+          "AC-12",
+          "AC-13"
+        ]
+      },
+      {
+        "dimension_id": "D-05",
+        "axis": "TOPIC_TYPE",
+        "candidate": "source map, direct topic, nested-map topic, and reused topic",
+        "material": true,
+        "materiality_reason": "Metadata must stay associated with the correct source asset across map and topic representations.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "current map/topic sourceProps path"
+        ],
+        "ac_refs": [
+          "AC-02",
+          "AC-03",
+          "AC-04",
+          "AC-05"
+        ]
+      },
+      {
+        "dimension_id": "D-06",
+        "axis": "LIFECYCLE",
+        "candidate": "first generation, generation for another map, and regeneration after selection changes",
+        "material": true,
+        "materiality_reason": "Repeated generation can expose stale metadata from a previous map or preset state.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "repeated-generation stale-state risk"
+        ],
+        "ac_refs": [
+          "AC-11"
+        ]
+      },
+      {
+        "dimension_id": "D-07",
+        "axis": "TERMINAL_STATE",
+        "candidate": "successful generation with a selected property absent on one source asset",
+        "material": true,
+        "materiality_reason": "A missing optional property must not turn a valid publish into a failed or partial output.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "property-existence guard in the metadata reader"
+        ],
+        "ac_refs": [
+          "AC-09"
+        ]
+      },
+      {
+        "dimension_id": "D-08",
+        "axis": "CONFIG_BRANCH",
+        "candidate": "properties that are always present versus properties included only when selected",
+        "material": true,
+        "materiality_reason": "The distinction changes the exact inclusion oracle but does not block validation of the reported missing selected properties.",
+        "resolution": "DEFERRED_OPEN_QUESTION",
+        "evidence_refs": [],
+        "ac_refs": [],
+        "open_question_ref": "OQ-01"
+      },
+      {
+        "dimension_id": "D-09",
+        "axis": "CONFIG_BRANCH",
+        "candidate": "the same property configured through both metadata controls",
+        "material": true,
+        "materiality_reason": "The precedence rule changes a conflict-case oracle but not the primary selected-property fix.",
+        "resolution": "DEFERRED_OPEN_QUESTION",
+        "evidence_refs": [],
+        "ac_refs": [],
+        "open_question_ref": "OQ-02"
+      },
+      {
+        "dimension_id": "D-10",
+        "axis": "TOPIC_TYPE",
+        "candidate": "one reused source topic appearing in multiple processing occurrences",
+        "material": true,
+        "materiality_reason": "The answer changes the expected entry cardinality while association correctness remains testable.",
+        "resolution": "DEFERRED_OPEN_QUESTION",
+        "evidence_refs": [],
+        "ac_refs": [],
+        "open_question_ref": "OQ-03"
+      },
+      {
+        "dimension_id": "D-11",
+        "axis": "CONFIG_BRANCH",
+        "candidate": "selected properties stored in the existing XMP packet or a separate sourceProps region",
+        "material": true,
+        "materiality_reason": "The exact storage location changes the inspection oracle but not whether the values are generated.",
+        "resolution": "DEFERRED_OPEN_QUESTION",
+        "evidence_refs": [],
+        "ac_refs": [],
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "dimension_id": "D-12",
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate": "repository-node value set through CRX/DE when the property name is not selected in the preset",
+        "material": true,
+        "materiality_reason": "The answer changes whether an unselected repository property is included, while selected repository values are already covered.",
+        "resolution": "DEFERRED_OPEN_QUESTION",
+        "evidence_refs": [
+          "current code reads configured property names from the repository node"
+        ],
+        "ac_refs": [],
+        "open_question_ref": "OQ-05"
+      }
+    ],
+    "questions_surfaced_to_user": [
+      {
+        "question_id": "CQ-01",
+        "question": "Which File (Asset) properties are always included and which require selection?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      },
+      {
+        "question_id": "CQ-02",
+        "question": "Which control wins when the same property is set through both metadata controls?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      },
+      {
+        "question_id": "CQ-03",
+        "question": "Does a reused topic produce one source entry or one entry per processing occurrence?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      },
+      {
+        "question_id": "CQ-04",
+        "question": "Where should selected properties appear inside metadata.xml?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      },
+      {
+        "question_id": "CQ-05",
+        "question": "Should an unselected repository property also be included in metadata.xml?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      }
+    ],
+    "authoring_gated_on_answers": true
+  },
   "enumerated_requirements": {
     "schema_version": "aem-guides-enumerated-requirements-v1",
     "active": false,

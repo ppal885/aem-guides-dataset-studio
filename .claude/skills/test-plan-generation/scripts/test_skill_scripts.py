@@ -112,6 +112,7 @@ human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.p
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
+clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -2745,11 +2746,17 @@ def test_component_reference_routing() -> None:
             "references/plain-language-ac-writing.md",
             "references/output-template.md",
             "references/quality-gate-checklist.md",
+            "references/clarification-gate.md",
             "scripts/ac_presentation.py",
             "scripts/ac_contract.py",
+            "scripts/clarification_gate.py",
             "scripts/extract_acs.py",
+            "scripts/publishing_scope_coverage.py",
             "scripts/render_compact_view.py",
+            "scripts/run_gates.py",
+            "scripts/shared_path_regression_coverage.py",
             "scripts/validate_test_plan.py",
+            "scripts/value_provenance_coverage.py",
             "scripts/test_skill_scripts.py",
         ):
             if variant == ".codex" and relative_path in codex_only_extensions:
@@ -2786,6 +2793,23 @@ def test_component_reference_routing() -> None:
             (variant_root / "references" / "component-platform.md").read_bytes()
             == (repo_root / "skills" / "test-plan-generation" / "references" / "component-platform.md").read_bytes(),
         )
+
+    for variant in (".codex", ".claude"):
+        global_root = Path.home() / variant / "skills" / "test-plan-generation"
+        for relative_path in (
+            "references/clarification-gate.md",
+            "scripts/clarification_gate.py",
+            "scripts/publishing_scope_coverage.py",
+            "scripts/run_gates.py",
+            "scripts/shared_path_regression_coverage.py",
+            "scripts/test_skill_scripts.py",
+            "scripts/value_provenance_coverage.py",
+        ):
+            check(
+                f"global {variant} clarification contract matches canonical: {relative_path}",
+                (global_root / relative_path).read_bytes()
+                == (repo_root / "skills" / "test-plan-generation" / relative_path).read_bytes(),
+            )
 
 
 def _relation(**over):
@@ -6845,6 +6869,174 @@ def test_shared_path_regression_coverage() -> None:
     print("test_shared_path_regression_coverage: OK")
 
 
+def test_clarification_gate() -> None:
+    cg = clarification_gate_mod
+    nl = chr(10)
+
+    plain_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The selected item remains visible after save.",
+        "",
+    ])
+    ok, messages = cg.validate(plain_plan, {})
+    check("non-activated plan may omit clarification", ok and messages == [])
+    ok, messages = cg.validate(plain_plan, {"clarification": []})
+    check(
+        "declared clarification must be an object",
+        not ok and any("must be an object" in message for message in messages),
+    )
+
+    ok, messages = cg.validate(plain_plan, {"behaviour_matters": True})
+    check(
+        "activated plan must declare clarification",
+        not ok and any("clarification block is required" in message for message in messages),
+    )
+
+    value_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: Selected File properties are written to metadata.xml for the topic.",
+        "",
+    ])
+    resolved_value = {
+        "behaviour_matters": True,
+        "open_questions": [],
+        "clarification": {
+            "schema_version": "aem-guides-clarification-v1",
+            "dimension_space": [
+                {
+                    "dimension_id": "D-01",
+                    "axis": "VALUE_SET_CHANNEL",
+                    "candidate": "repository metadata node via CRX/DE (jcr:content/metadata)",
+                    "material": True,
+                    "materiality_reason": "The output reads the property from the source asset.",
+                    "resolution": "COVERED_BY_AC",
+                    "evidence_refs": ["E-01"],
+                    "ac_refs": ["AC-01"],
+                }
+            ],
+            "questions_surfaced_to_user": [],
+            "authoring_gated_on_answers": True,
+        },
+    }
+    ok, messages = cg.validate(value_plan, resolved_value)
+    check("fully resolved clarification block passes", ok and messages == [])
+    check("clarification block is detected", cg.is_present(resolved_value))
+    check("clarification summary reports the dimension", "1 dimension" in cg.summarize(resolved_value))
+
+    unresolved = json.loads(json.dumps(resolved_value))
+    unresolved["clarification"]["dimension_space"][0]["resolution"] = "UNRESOLVED"
+    ok, messages = cg.validate(value_plan, unresolved)
+    check(
+        "material UNRESOLVED dimension fails",
+        not ok and any("must not remain UNRESOLVED" in message for message in messages),
+    )
+    check(
+        "every clarification failure has the stable prefix",
+        all(message.startswith("CLARIFICATION GATE:") for message in messages),
+    )
+
+    waiting = json.loads(json.dumps(resolved_value))
+    waiting["clarification"]["dimension_space"][0]["resolution"] = "RESOLVED_FROM_EVIDENCE"
+    waiting["clarification"]["questions_surfaced_to_user"] = [
+        {
+            "question_id": "CQ-01",
+            "question": "Which source controls the output value?",
+            "blocking": True,
+            "answer": "",
+            "answered_by": "",
+            "status": "WAITING",
+        }
+    ]
+    waiting["clarification"]["authoring_gated_on_answers"] = False
+    ok, messages = cg.validate(value_plan, waiting)
+    check(
+        "WAITING blocking question fails",
+        not ok and any("blocking question must be ANSWERED" in message for message in messages),
+    )
+    check(
+        "blocking question requires authoring gate assertion",
+        any("authoring_gated_on_answers must be true" in message for message in messages),
+    )
+
+    bad_ac = json.loads(json.dumps(resolved_value))
+    bad_ac["clarification"]["dimension_space"][0]["ac_refs"] = ["AC-99"]
+    ok, messages = cg.validate(value_plan, bad_ac)
+    check(
+        "COVERED_BY_AC must reference a plan AC",
+        not ok and any("AC-99" in message and "absent" in message for message in messages),
+    )
+
+    bad_oq = json.loads(json.dumps(resolved_value))
+    bad_oq["clarification"]["dimension_space"][0]["resolution"] = "DEFERRED_OPEN_QUESTION"
+    bad_oq["clarification"]["dimension_space"][0]["open_question_ref"] = "OQ-02"
+    ok, messages = cg.validate(value_plan, bad_oq)
+    check(
+        "deferred dimension must reference a declared Open Question",
+        not ok and any("OQ-02" in message and "not declared" in message for message in messages),
+    )
+
+    missing_value_axis = json.loads(json.dumps(resolved_value))
+    missing_value_axis["clarification"]["dimension_space"][0].update({
+        "axis": "TOPIC_TYPE",
+        "candidate": "topic",
+        "resolution": "RESOLVED_FROM_EVIDENCE",
+        "ac_refs": [],
+    })
+    ok, messages = cg.validate(value_plan, missing_value_axis)
+    check(
+        "value-write plan cannot omit VALUE_SET_CHANNEL",
+        not ok and any("requires a VALUE_SET_CHANNEL" in message for message in messages),
+    )
+
+    missing_repository_candidate = json.loads(json.dumps(resolved_value))
+    missing_repository_candidate["clarification"]["dimension_space"][0]["candidate"] = "authoring UI"
+    ok, messages = cg.validate(value_plan, missing_repository_candidate)
+    check(
+        "value-write dimension must enumerate CRX/DE or repository node",
+        not ok and any("CRX/DE or repository-node" in message for message in messages),
+    )
+
+    publishing_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The Native PDF output preset generates the expected document.",
+        "",
+    ])
+    publishing_manifest = json.loads(json.dumps(resolved_value))
+    publishing_manifest["clarification"]["dimension_space"][0].update({
+        "axis": "TOPIC_TYPE",
+        "candidate": "topic",
+        "resolution": "RESOLVED_FROM_EVIDENCE",
+        "ac_refs": [],
+    })
+    ok, messages = cg.validate(publishing_plan, publishing_manifest)
+    check(
+        "publishing plan must enumerate OUTPUT_PRESET",
+        not ok and any("requires an OUTPUT_PRESET" in message for message in messages),
+    )
+
+    shared_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: Shared code used by both output engines keeps the generated result unchanged.",
+        "**Regression Areas**",
+        "- Re-test both output engines because they use the same shared handler.",
+        "",
+    ])
+    shared_manifest = json.loads(json.dumps(resolved_value))
+    shared_manifest["clarification"]["dimension_space"][0].update({
+        "axis": "TOPIC_TYPE",
+        "candidate": "topic",
+        "resolution": "RESOLVED_FROM_EVIDENCE",
+        "ac_refs": [],
+    })
+    ok, messages = cg.validate(shared_plan, shared_manifest)
+    check(
+        "shared code plan must enumerate CODE_PATH_CONSUMER",
+        not ok and any("requires a CODE_PATH_CONSUMER" in message for message in messages),
+    )
+
+    print("test_clarification_gate: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6900,6 +7092,7 @@ def main() -> int:
     test_entry_point_equivalence()
     test_value_provenance_coverage()
     test_shared_path_regression_coverage()
+    test_clarification_gate()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
