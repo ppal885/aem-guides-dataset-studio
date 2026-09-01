@@ -74,12 +74,50 @@ def build_parser() -> argparse.ArgumentParser:
     score.add_argument("--markdown-out", type=Path, default=None)
     score.add_argument("--write-baseline", type=Path, default=None)
     score.add_argument("--skip-skill-self-tests", action="store_true")
+
+    offline = subparsers.add_parser(
+        "offline",
+        help="Offline history recall via local jira_qa Chroma (no live search_jira_history)",
+    )
+    offline.add_argument("--top-k", type=int, default=10)
+    offline.add_argument("--floors", type=Path, default=None)
+    offline.add_argument("--json-out", type=Path, default=None)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    # Accept the documented `--offline` form as an alias for the `offline` command.
+    if "--offline" in raw:
+        raw = [tok for tok in raw if tok != "--offline"]
+        if "offline" not in raw:
+            # Subcommand name must precede its options.
+            raw.insert(0, "offline")
+    args = build_parser().parse_args(raw)
     manifest = _load_manifest(args.manifest)
+
+    if args.command == "offline":
+        from app.benchmarks.test_plan_quality.offline_history import (
+            DEFAULT_RECALL_FLOOR,
+            run_offline_history,
+            render_offline_report,
+        )
+
+        floors_path = args.floors
+        if floors_path is None:
+            default_floors = PACKAGE_ROOT / "dataset" / "offline_recall_floors.yaml"
+            if default_floors.exists():
+                floors_path = default_floors
+        report = run_offline_history(
+            manifest, top_k=args.top_k, floors_path=floors_path
+        )
+        if args.json_out:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(
+                json.dumps(report, indent=2) + "\n", encoding="utf-8"
+            )
+        print(render_offline_report(report), end="")
+        return 0 if report["passed"] else 1
 
     if args.command == "validate":
         payload = {

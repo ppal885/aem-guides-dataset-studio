@@ -43,3 +43,17 @@
 - **CALS structural deletion:** a 6-row by 5-column CALS fixture deletes two rightmost columns. The contract must require a valid 6-row by 3-column result, no ghost column, retained cell order, and no orphan column/span metadata.
 - **`GUIDES-35437`:** a report mentions 411 cells and `largeFileTagCount`. The contract must classify configuration-driven working-as-designed behavior, test parsed-tag boundaries, and reject a hard-coded 411-cell defect or invented performance SLA.
 - **Exact-UAC provenance:** screenshot-only input and Jira CSV input without a verified SHA-256 source hash must not create an exact indexed UAC. A hashed Jira CSV or live Jira record may proceed idempotently.
+
+## Offline history mode (UACFIX-13)
+
+When the live `search_jira_history` MCP is unavailable, the history-dependent cases cannot be validated live. Run the offline monitor instead:
+
+```
+python scripts/run_test_plan_quality_benchmark.py --offline
+```
+
+- It retrieves candidate historical Jira keys per case from the local `jira_qa` ChromaDB corpus (`CHROMA_COLLECTION_JIRA_QA` via `embedding_service.embed_query` + `vector_store_service.query_collection`) and scores each case's history recall at k=10.
+- The output is always labelled `source=offline_chroma` and `indexed_history_run=false`. It is a **retrieval-regression monitor, never a live `indexed_history_run=true` claim** — do not cite an offline run as live history evidence in a plan or manifest.
+- Recall is scored against per-case floors in `backend/app/benchmarks/test_plan_quality/dataset/offline_recall_floors.yaml`. These are **regression floors set to the recall observed today**, not quality targets. Offline single-query dense retrieval over the chunk-level corpus recalls the specific expected-duplicate ticket for only a minority of cases at k=10 (it lacks live search's mechanism-qualified, component/customer-filtered ranking), so most floors are `0.0`; cases that currently recall their expected key are pinned higher so a drop is caught.
+- The run exits non-zero if any scored case falls below its floor, or if the local corpus is unavailable (fails closed rather than scoring a false pass).
+- "No expected history" (`expect_no_strong_history`) cases are not scored against a recall floor.

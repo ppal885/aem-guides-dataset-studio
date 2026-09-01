@@ -1,0 +1,18 @@
+# Offline history recall floors (UACFIX-13).
+#
+# These are REGRESSION floors for the offline jira_qa Chroma retrieval path used
+# when the live search_jira_history MCP is unavailable. They are set to the
+# recall actually observed today, so the suite fails only if offline retrieval
+# gets WORSE — they are NOT quality targets and NOT a substitute for a live
+# indexed_history_run=True benchmark.
+#
+# Honest note: offline single-query dense retrieval over the chunk-level jira_qa
+# corpus recalls the specific expected-duplicate ticket for only a minority of
+# cases at k=10 (it lacks the mechanism-qualified, component/customer-filtered
+# ranking of live search_jira_history). Most floors are therefore 0.0; the two
+# cases that currently recall their expected key are pinned at 1.0 so a drop is
+# caught. A corpus that goes missing fails closed regardless of floor.
+default_recall_floor: 0.0
+cases:
+  platform-content-fragment-copy-paste: 1.0
+  schematron-validation-popup: 1.0

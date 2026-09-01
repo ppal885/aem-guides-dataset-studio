@@ -144,7 +144,7 @@ Use this before calling a test plan review-ready.
 
 ## Enumerated And Operational Contract Gate
 
-- New manifests use schema `aem-guides-evidence-manifest-v3` and include versioned `enumerated_requirements` and `operational_contract` blocks for every plan; legacy v2 manifests remain readable without retroactive v3 semantic requirements.
+- New manifests use schema `aem-guides-evidence-manifest-v3` and include versioned `enumerated_requirements` and `operational_contract` blocks for every plan. Legacy v2 manifests remain readable, but any block activated by a current generic signal must be present and non-empty or carry a concrete attributable `block_waivers` record.
 
 - Every numbered, `-`, or `*` reporter item is transcribed in source order with the exact source count and one real AC, Open Question, or out-of-scope disposition. Unknown references, missing indices/items, and silently overloaded ACs fail.
 - Every active enumerated requirement list has a hash-bound source requirement ledger using `aem-guides-source-requirement-ledger-v1`, including when accepted UAC is absent and every AC is Proposed.
@@ -158,6 +158,8 @@ Use this before calling a test plan review-ready.
 
 ## Canonical Semantic Contract Gate
 
+- `manifest_completeness_gate` reuses existing behavior, publishing, value-write, shared-path, and clarification signals. Every activated block is non-empty or has one explicit waiver with `block`, concrete `reason`, and `waived_by`; omission never counts as a clean gate result.
+- `qe_completeness_coverage` activates for every real Open Question or regression item. Every Open Question is classified exactly once as a genuine product decision or rejected deferred coverage; every regression item is classified as a safety re-test or mapped to a real AC as in-scope behavior. A `QE COMPLETENESS REVIEW:` finding keeps the preflight receipt non-postable.
 - The manifest includes source-bound `contract_facts`; literal human terminology, exact labels/defaults/values/status/colors/counts/limits, scope, deployment/version, preset/output, and DITA-OT state are preserved or explicitly made an Open Question.
 - `issue_domains` has at least one evidence-backed active route. Publishing activates `publishing_scope`; generated artifact content/structure/delivery evidence independently activates `generated_output_contract`. Publishing configuration alone does not imply download delivery. Assets/content-version behavior activates `content_identity_contract`.
 - Every material behavior-graph node/edge has canonical evidence-ID provenance; each edge's authority is valid for its declared subject. It also records currentness, applicability, confidence, and verification state. Inference remains an investigation candidate.

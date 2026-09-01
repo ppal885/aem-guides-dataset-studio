@@ -5,11 +5,15 @@ simply not invoking a check: the evidence manifest is REQUIRED, and the manifest
 plus the combined plan+appendix are audited together.
 
 It runs, in order:
+  0. Executing-copy fingerprint comparison against the repository-owned
+     canonical skill. Drift is a non-failing REVIEW note that blocks posting.
   1. Manifest presence + completeness, including the five-source availability
      preflight and separate tool evidence for ask_dita_expert product-documentation
      probes, search_jira_history queries, evidence-graph provenance, and the
      internal principal-performance-QA assessment, plus hash-bound source
-     requirement fidelity whenever enumerated requirements are active.
+     requirement fidelity whenever enumerated requirements are active, plus
+     signal-activated XML/DITA security, localization regression, and upgrade/
+     migration operation coverage.
   2. Structural validation of the eleven-section bullet-only body
      (validate_test_plan.py).
   3. Deterministic rendering of the concise four-section chat/UI projection
@@ -25,7 +29,7 @@ It runs, in order:
 Usage:
   python scripts/run_gates.py --plan <body.md> --combined <plan+appendix.md> --manifest <manifest.json>
 
-Exit 0 only when everything passes; any failure prints FAIL lines and exits 1.
+Exit 0 when no hard failure exists. REVIEW notes keep the receipt non-postable.
 """
 
 from __future__ import annotations
@@ -111,14 +115,29 @@ evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_c
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
+root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
+security_coverage_mod = _load("security_coverage", "security_coverage.py")
+localization_regression_coverage_mod = _load(
+    "localization_regression_coverage", "localization_regression_coverage.py"
+)
+upgrade_migration_coverage_mod = _load(
+    "upgrade_migration_coverage", "upgrade_migration_coverage.py"
+)
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
+execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
+qe_completeness_coverage_mod = _load(
+    "qe_completeness_coverage", "qe_completeness_coverage.py"
+)
+manifest_completeness_gate_mod = _load(
+    "manifest_completeness_gate", "manifest_completeness_gate.py"
+)
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1827,10 +1846,40 @@ def check_coverage_gate(manifest_path: str | None) -> tuple[list[str], list[str]
     return [], notes
 
 
+def check_execution_outcome(
+    manifest_path: str | None,
+) -> tuple[list[str], list[str]]:
+    """Validate optional execution feedback as REVIEW-only advisory input."""
+    data = _load_manifest_dict(manifest_path)
+    if not data or "execution_outcome" not in data:
+        return [], []
+    problems = execution_outcome_mod.validate(data)
+    return [], [f"REVIEW execution-outcome: {problem}" for problem in problems]
+
+
+def check_executing_copy_drift(skill_root: str | Path | None = None) -> list[str]:
+    """Return a non-blocking, non-postable REVIEW note for bundle drift."""
+    executing_root = (
+        Path(skill_root).expanduser().resolve()
+        if skill_root is not None
+        else Path(__file__).resolve().parent.parent
+    )
+    try:
+        ok, drifted_files = skill_fingerprint_mod.verify(executing_root)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return [
+            "REVIEW EXECUTING COPY DRIFT: canonical comparison unavailable "
+            f"({type(exc).__name__})"
+        ]
+    if ok:
+        return []
+    return ["REVIEW EXECUTING COPY DRIFT: " + ", ".join(drifted_files)]
+
+
 def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys_path: str | None,
         skip_self_tests: bool) -> tuple[list[str], list[str]]:
     failures: list[str] = []
-    notes: list[str] = []
+    notes: list[str] = check_executing_copy_drift()
 
     failures += [f"[manifest] {f}" for f in check_manifest_completeness(manifest_path)]
 
@@ -1845,6 +1894,13 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         except (OSError, json.JSONDecodeError):
             manifest_data = {}
         if isinstance(manifest_data, dict):
+            _completeness_ok, completeness_messages = (
+                manifest_completeness_gate_mod.validate(body, manifest_data)
+            )
+            failures += [
+                f"[manifest-completeness] {problem}"
+                for problem in completeness_messages
+            ]
             failures += [
                 f"[open-questions] {problem}"
                 for problem in check_open_question_alignment(manifest_data, body)
@@ -1857,6 +1913,18 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 f"[publishing-scope] {problem}"
                 for problem in publishing_scope_coverage_mod.validate(manifest_data, body)
             ]
+            # Preserve the stable ROOT-CAUSE/FIX GATE: prefix owned by this
+            # signal-activated forcing gate.
+            failures += root_cause_fix_driven_mod.validate(body, manifest_data)
+            # Preserve the gate's stable SECURITY GATE: prefix.  Unlike ordinary
+            # validators, this forcing gate owns the user-facing failure prefix.
+            failures += security_coverage_mod.validate(body, manifest_data)
+            # Preserve the stable LOCALIZATION GATE: prefix owned by this
+            # signal-activated forcing gate.
+            failures += localization_regression_coverage_mod.validate(body, manifest_data)
+            # Preserve the stable MIGRATION GATE: prefix.  temporal_evidence
+            # owns version applicability; this gate owns operation coverage.
+            failures += upgrade_migration_coverage_mod.validate(body, manifest_data)
             failures += [
                 f"[uac-linter] {problem}"
                 for problem in uac_linter_mod.validate(manifest_data, body)
@@ -1869,6 +1937,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 f"[shared-path-regression] {problem}"
                 for problem in shared_path_regression_coverage_mod.validate(manifest_data, body)
             ]
+            # Preserve the stable QE COMPLETENESS GATE: prefix. This gate owns
+            # the explicit AC/Open Question/regression classification contract.
+            failures += qe_completeness_coverage_mod.validate(body, manifest_data)
+            notes += qe_completeness_coverage_mod.review(body, manifest_data)
             _clarification_ok, clarification_messages = clarification_gate_mod.validate(
                 body, manifest_data
             )
@@ -1963,6 +2035,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
     _srf, _srn = check_source_requirement_fidelity(manifest_path, body)
     failures += _srf
     notes += _srn
+    # Execution outcomes are supervisory feedback, not part of this plan's
+    # acceptance contract. Invalid records therefore create non-postable REVIEW
+    # notes without turning an otherwise-clean plan into a hard gate failure.
+    _eof, _eon = check_execution_outcome(manifest_path)
+    failures += _eof
+    notes += _eon
     _ocf, _ocn = check_operational_contract(manifest_path, body)
     failures += _ocf
     notes += _ocn
@@ -2059,13 +2137,21 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()
+            self_tests.test_root_cause_fix_driven()
+            self_tests.test_security_coverage()
+            self_tests.test_localization_regression_coverage()
+            self_tests.test_upgrade_migration_coverage()
             self_tests.test_repro_dimension_matrix()
             self_tests.test_acceptance_synthesizer()
             self_tests.test_uac_linter()
             self_tests.test_human_feedback_delta()
+            self_tests.test_execution_outcome()
             self_tests.test_entry_point_equivalence()
             self_tests.test_value_provenance_coverage()
             self_tests.test_shared_path_regression_coverage()
+            self_tests.test_qe_completeness_coverage()
+            if hasattr(self_tests, "test_skill_bundle_fingerprint"):
+                self_tests.test_skill_bundle_fingerprint()
             self_tests.test_clarification_gate()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
@@ -2121,6 +2207,7 @@ def _postability_review_present(notes: list[str]) -> bool:
     return any(
         str(note).startswith("REVIEW ")
         or str(note).startswith("CRITIC [NEEDS_REVIEW]")
+        or str(note).startswith("QE COMPLETENESS REVIEW:")
         for note in notes
     )
 

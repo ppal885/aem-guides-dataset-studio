@@ -137,6 +137,68 @@ suffice, the Experience League fallback may supply evidence — **labelled
 
 ---
 
+## 6a. macOS operator steps (cross-platform parity)
+
+The provider, modes, and authority invariant are identical on macOS and Windows — only
+the CLI install, secret store, shell-profile location, and connector-registration paths
+differ. Follow this section on macOS; the env vars in §2b and the health checks in §4 are
+otherwise unchanged.
+
+### Prerequisites (macOS)
+
+1. Adobe Okta SSO to `https://fluffyjaws.adobe.com` as in §1 (identical, browser-based).
+2. Install the FluffyJaws `fj` CLI / `fj-mcp` per the FluffyJaws operator guide. The exact
+   install (Homebrew tap or signed `.pkg`) is team-distributed — obtain it from the
+   FluffyJaws team; do not guess a formula name. Confirm with `fj --version` and, for
+   `SESSION_AUTH`, `fj login` (this starts the local `fj-mcp` session used by that mode).
+3. Human-only service-app registration and the operator-guide schemas (§1 steps 2–3) are
+   platform-independent and must already be done.
+
+### Connector registration on macOS
+
+- **Claude Desktop:** merge the FluffyJaws MCP connector entry into
+  `~/Library/Application Support/Claude/claude_desktop_config.json`
+  (the macOS equivalent of the Windows `%APPDATA%\Claude\claude_desktop_config.json`).
+- **Cursor:** `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in the repo.
+- **Claude Code:** register via `claude mcp add …` as with the studio's own MCP server.
+- Use the connector's canonical tool name / endpoint from the operator guide — record it in
+  config, never a guessed name.
+
+### Secrets on macOS (never plaintext)
+
+- Supply auth through the injected transport factory only (§2a). On macOS, source the
+  credential from the **login Keychain** (`security find-generic-password …`) or your
+  approved vault/CI secret — wired into the transport factory, not written to a file.
+- Do **not** place tokens, `X-User-Token`, service credentials, or session cookies in
+  `~/.zshrc`, `~/.zprofile`, `.env`, or any dotfile.
+
+### Env vars on macOS
+
+- macOS default shell is `zsh`; set the safe, non-secret §2b runtime knobs (e.g.
+  `FLUFFYJAWS_MODE`) in `~/.zshrc` or your process manager — the variable names and bounds
+  are identical to Windows. Only these non-secret knobs go in the shell profile.
+
+### Teammate distribution (macOS)
+
+- The unix MCP client bundle `release-artifacts/aem-guides-mcp-client-unix.zip` is the macOS/
+  Linux teammate artifact. Ensure it carries the same connector config template and the §2b
+  env defaults so a Mac teammate gets identical behavior to Windows. (See ONBOARDING.md for
+  the macOS/Linux install steps.)
+
+### Verify on macOS
+
+- Run the same provider pytest suite and shadow smoke from §4; paths are repo-relative and
+  unchanged. Confirm `probe()` reports the intended mode and that a `DISABLED` run is
+  byte-for-byte UAC-equivalent to a Windows `DISABLED` run.
+
+> **Skill-side note:** even with the connector registered, the skill process
+> (`fluffyjaws_evidence.probe()`) currently returns `available=False` by design — the live
+> bridge from the connector into the skill's Phase-3/4 retrieval is tracked as
+> `FJ-RUNTIME-BRIDGE-COMPLETE` and is not yet wired. Until then the skill uses the existing
+> RAG path and only *validates* a FluffyJaws evidence block if one is supplied.
+
+---
+
 ## 6. Secret-handling checklist (must all be true)
 
 - [ ] No token / secret / `X-User-Token` / session cookie in git, `.env`, logs, traces, fixtures, cache, or CI output

@@ -64,7 +64,7 @@ def is_present(manifest) -> bool:
     return isinstance(manifest, dict) and isinstance(manifest.get(BLOCK_NAME), dict)
 
 
-def _activation_signals(plan_body: str, manifest: dict) -> dict[str, bool]:
+def activation_signals(plan_body: str, manifest: dict) -> dict[str, bool]:
     """Return the generic signals that make clarification mandatory.
 
     The three plan detectors are the existing coverage-gate detectors.  Their
@@ -88,6 +88,10 @@ def _activation_signals(plan_body: str, manifest: dict) -> dict[str, bool]:
         "value_write": value_write,
         "shared_code_path": shared_path,
     }
+
+
+# Backward-compatible alias for callers that used the original private helper.
+_activation_signals = activation_signals
 
 
 def _known_open_question_ids(manifest: dict) -> set[str]:
@@ -120,7 +124,7 @@ def validate(plan_body, manifest) -> tuple[bool, list[str]]:
     if not isinstance(manifest, dict):
         return False, [_failure("manifest must be an object")]
 
-    signals = _activation_signals(plan_body, manifest)
+    signals = activation_signals(plan_body, manifest)
     activated = any(signals.values())
     if not is_present(manifest):
         if BLOCK_NAME in manifest:

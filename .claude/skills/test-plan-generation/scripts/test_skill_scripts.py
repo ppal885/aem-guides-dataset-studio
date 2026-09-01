@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -105,14 +106,32 @@ evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_c
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
+root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
+security_coverage_mod = _load("security_coverage", "security_coverage.py")
+localization_regression_coverage_mod = _load(
+    "localization_regression_coverage", "localization_regression_coverage.py"
+)
+upgrade_migration_coverage_mod = _load(
+    "upgrade_migration_coverage", "upgrade_migration_coverage.py"
+)
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
+execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
+qe_completeness_coverage_mod = _load(
+    "qe_completeness_coverage", "qe_completeness_coverage.py"
+)
+manifest_completeness_gate_mod = _load(
+    "manifest_completeness_gate", "manifest_completeness_gate.py"
+)
+skill_fingerprint_mod = _load(
+    "skill_bundle_fingerprint_for_self_tests", "skill_bundle_fingerprint.py"
+)
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -1222,7 +1241,7 @@ def test_run_gates() -> None:
         path.write_text(json.dumps(legacy_v2), encoding="utf-8")
         legacy_failures = run_gates.check_manifest_completeness(str(path))
         check(
-            "legacy v2 manifests do not retroactively require v3 semantic blocks",
+            "legacy v2 base-schema check stays readable before signal completeness",
             not any(
                 "missing required key" in failure
                 and any(key in failure for key in run_gates.SEMANTIC_MANIFEST_KEYS)
@@ -1756,6 +1775,108 @@ def test_run_gates() -> None:
             "full run gate rejects compact source AC syntax",
             any("[validate]" in problem and "machine-readable" in problem for problem in end_to_end_failures),
         )
+
+        fix_plan = _replace(
+            GOOD_PLAN,
+            "- Lifecycle understood as: Pre-Development UAC with no PR yet.",
+            "- Lifecycle understood as: Post-Fix Validation with an inspected candidate fix.",
+        )
+        fix_plan = _replace(
+            fix_plan,
+            "- Lifecycle stage is Pre-Development UAC and readiness target is UAC-ready.",
+            "- Lifecycle stage is Post-Fix Validation and readiness target is QE sign-off.",
+        )
+        fix_plan = _replace(
+            fix_plan,
+            "- No code changes yet — development has not started.",
+            "- The inspected fix narrows the resolver while preserving valid prior state.",
+        )
+        fix_plan = _replace(
+            fix_plan,
+            "- Not applicable — development has not started.",
+            "- The inspected change is recorded in the linked implementation evidence.",
+        )
+        fix_manifest = json.loads(json.dumps(full_manifest))
+        fix_manifest["root_cause_fix"] = {
+            "root_cause": "The resolver accepted an overly broad input set.",
+            "fix_contract": "Narrow eligible input processing without changing valid prior state.",
+            "fix_adds": ["Eligible inputs now produce the requested observable output."],
+            "fix_preserves": ["AC-01: The requested observable output remains correct."],
+            "fix_introduced_risks": [
+                {
+                    "risk": "The narrower selection could discard valid prior state.",
+                    "mapped_ac": "AC-02",
+                    "open_question_ref": None,
+                }
+            ],
+            "added_tests": [
+                {
+                    "path": "tests/unit/resolver-test",
+                    "layer": "unit",
+                    "proves": "The resolver accepts the intended input set.",
+                }
+            ],
+            "verification_performed": "One local build and the added unit test.",
+            "verification_gap": [
+                "End-to-end execution",
+                "Configuration variants",
+                "Shared consumers",
+            ],
+            "lifecycle_stage": "Post-Fix Validation",
+        }
+
+        def run_fix_fixture(plan_text: str, manifest_data: dict) -> list[str]:
+            plan_path.write_text(plan_text, encoding="utf-8")
+            combined_path.write_text(plan_text, encoding="utf-8")
+            path.write_text(json.dumps(manifest_data), encoding="utf-8")
+            fixture_failures, _ = run_gates.run(
+                str(plan_path), str(combined_path), str(path), None, True
+            )
+            return fixture_failures
+
+        positive_fix_failures = run_fix_fixture(fix_plan, fix_manifest)
+        check(
+            "run_gates adds no root-cause/fix failure for the complete fixture",
+            not any(
+                problem.startswith(root_cause_fix_driven_mod.PREFIX)
+                for problem in positive_fix_failures
+            ),
+        )
+
+        pre_development_fix = json.loads(json.dumps(fix_manifest))
+        pre_development_fix["root_cause_fix"]["lifecycle_stage"] = "Pre-Development"
+        preserve_missing_fix = json.loads(json.dumps(fix_manifest))
+        preserve_missing_fix["root_cause_fix"]["fix_preserves"] = [
+            "The requested observable output remains correct."
+        ]
+        unmapped_risk_fix = json.loads(json.dumps(fix_manifest))
+        unmapped_risk_fix["root_cause_fix"]["fix_introduced_risks"] = [
+            {
+                "risk": "The narrower selection could discard valid prior state.",
+                "mapped_ac": None,
+                "open_question_ref": None,
+            }
+        ]
+        not_covered_fix_plan = _replace(
+            fix_plan,
+            "Main feature coverage: Partially covered",
+            "Main feature coverage: Not covered",
+        )
+        integration_negatives = (
+            ("Pre-Development", fix_plan, pre_development_fix),
+            ("unguarded preserved invariant", fix_plan, preserve_missing_fix),
+            ("unmapped fix-introduced risk", fix_plan, unmapped_risk_fix),
+            ("added test reported Not covered", not_covered_fix_plan, fix_manifest),
+        )
+        for label, fixture_plan, fixture_manifest in integration_negatives:
+            fixture_failures = run_fix_fixture(fixture_plan, fixture_manifest)
+            check(
+                f"run_gates rejects fix-driven fixture: {label}",
+                any(
+                    problem.startswith(root_cause_fix_driven_mod.PREFIX)
+                    for problem in fixture_failures
+                ),
+            )
 
         base = {
             **dual_source,
@@ -2733,13 +2854,22 @@ def test_component_reference_routing() -> None:
         check(f"Platform component pack retains marker {marker}", marker in platform_reference)
 
     repo_root = _find_repo_root()
-    codex_only_extensions = {
-        "SKILL.md",
-        "references/quality-gate-checklist.md",
-        "scripts/test_skill_scripts.py",
-    }
-    for variant in (".codex", ".claude"):
-        variant_root = repo_root / variant / "skills" / "test-plan-generation"
+    canonical_root = repo_root / ".codex" / "skills" / "test-plan-generation"
+    copy_roots = (
+        ("repository Claude", repo_root / ".claude" / "skills" / "test-plan-generation"),
+        ("repository public", repo_root / "skills" / "test-plan-generation"),
+        (
+            "Windows bundle",
+            repo_root / "release-artifacts" / "aem-guides-mcp-client-windows"
+            / ".claude" / "skills" / "test-plan-generation",
+        ),
+        (
+            "Unix bundle",
+            repo_root / "release-artifacts" / "aem-guides-mcp-client-unix"
+            / ".claude" / "skills" / "test-plan-generation",
+        ),
+    )
+    for copy_label, variant_root in copy_roots:
         for relative_path in (
             "SKILL.md",
             "references/chat-deliverable.md",
@@ -2747,69 +2877,68 @@ def test_component_reference_routing() -> None:
             "references/output-template.md",
             "references/quality-gate-checklist.md",
             "references/clarification-gate.md",
+            "references/manifest-completeness.md",
+            "references/localization-regression-coverage.md",
+            "references/upgrade-migration-coverage.md",
+            "references/root-cause-fix-driven.md",
+            "references/security-coverage.md",
+            "references/execution-outcome-loop.md",
             "scripts/ac_presentation.py",
             "scripts/ac_contract.py",
             "scripts/clarification_gate.py",
             "scripts/extract_acs.py",
+            "scripts/manifest_completeness_gate.py",
+            "scripts/localization_regression_coverage.py",
+            "scripts/upgrade_migration_coverage.py",
+            "scripts/execution_outcome.py",
             "scripts/publishing_scope_coverage.py",
             "scripts/render_compact_view.py",
+            "scripts/root_cause_fix_driven.py",
             "scripts/run_gates.py",
+            "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
             "scripts/validate_test_plan.py",
             "scripts/value_provenance_coverage.py",
             "scripts/test_skill_scripts.py",
         ):
-            if variant == ".codex" and relative_path in codex_only_extensions:
-                # The repository Codex skill may carry fail-closed gates that have
-                # not yet been promoted to the canonical/Claude distribution.
-                continue
             check(
-                f"{variant} readability contract matches canonical: {relative_path}",
+                f"{copy_label} skill copy matches .codex source: {relative_path}",
                 (variant_root / relative_path).read_bytes()
-                == (repo_root / "skills" / "test-plan-generation" / relative_path).read_bytes(),
+                == (canonical_root / relative_path).read_bytes(),
             )
         check(
-            f"{variant} component router matches canonical",
+            f"{copy_label} component router matches .codex source",
             (variant_root / "scripts" / "component_reference_router.py").read_bytes()
-            == (repo_root / "skills" / "test-plan-generation" / "scripts" / "component_reference_router.py").read_bytes(),
+            == (canonical_root / "scripts" / "component_reference_router.py").read_bytes(),
         )
         check(
-            f"{variant} Authoring pack matches canonical",
+            f"{copy_label} Authoring pack matches .codex source",
             (variant_root / "references" / "component-authoring.md").read_bytes()
-            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-authoring.md").read_bytes(),
+            == (canonical_root / "references" / "component-authoring.md").read_bytes(),
         )
         check(
-            f"{variant} configuration-driven enumeration pack matches canonical",
+            f"{copy_label} configuration enumeration pack matches .codex source",
             (variant_root / "references" / "configuration-driven-enumerations.md").read_bytes()
-            == (repo_root / "skills" / "test-plan-generation" / "references" / "configuration-driven-enumerations.md").read_bytes(),
+            == (canonical_root / "references" / "configuration-driven-enumerations.md").read_bytes(),
         )
         check(
-            f"{variant} Integration pack matches canonical",
+            f"{copy_label} Integration pack matches .codex source",
             (variant_root / "references" / "component-integration.md").read_bytes()
-            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-integration.md").read_bytes(),
+            == (canonical_root / "references" / "component-integration.md").read_bytes(),
         )
         check(
-            f"{variant} Platform pack matches canonical",
+            f"{copy_label} Platform pack matches .codex source",
             (variant_root / "references" / "component-platform.md").read_bytes()
-            == (repo_root / "skills" / "test-plan-generation" / "references" / "component-platform.md").read_bytes(),
+            == (canonical_root / "references" / "component-platform.md").read_bytes(),
         )
 
     for variant in (".codex", ".claude"):
         global_root = Path.home() / variant / "skills" / "test-plan-generation"
-        for relative_path in (
-            "references/clarification-gate.md",
-            "scripts/clarification_gate.py",
-            "scripts/publishing_scope_coverage.py",
-            "scripts/run_gates.py",
-            "scripts/shared_path_regression_coverage.py",
-            "scripts/test_skill_scripts.py",
-            "scripts/value_provenance_coverage.py",
-        ):
-            check(
-                f"global {variant} clarification contract matches canonical: {relative_path}",
-                (global_root / relative_path).read_bytes()
-                == (repo_root / "skills" / "test-plan-generation" / relative_path).read_bytes(),
-            )
+        fingerprint_ok, drifted_files = skill_fingerprint_mod.verify(global_root)
+        check(
+            f"global {variant} enforced fingerprint matches .codex source",
+            fingerprint_ok and drifted_files == [],
+        )
 
 
 def _relation(**over):
@@ -4964,6 +5093,85 @@ def test_operational_contract() -> None:
     )
 
 
+def test_skill_bundle_fingerprint() -> None:
+    fp = skill_fingerprint_mod
+    repo_root = _find_repo_root()
+    canonical_root = repo_root / ".codex" / "skills" / "test-plan-generation"
+    sync_destinations = (
+        ("repository Claude", repo_root / ".claude" / "skills" / "test-plan-generation"),
+        ("repository public", repo_root / "skills" / "test-plan-generation"),
+        (
+            "Windows bundle",
+            repo_root / "release-artifacts" / "aem-guides-mcp-client-windows"
+            / ".claude" / "skills" / "test-plan-generation",
+        ),
+        (
+            "Unix bundle",
+            repo_root / "release-artifacts" / "aem-guides-mcp-client-unix"
+            / ".claude" / "skills" / "test-plan-generation",
+        ),
+        ("global Claude", Path.home() / ".claude" / "skills" / "test-plan-generation"),
+        ("global Codex", Path.home() / ".codex" / "skills" / "test-plan-generation"),
+    )
+    check(
+        "sync contract covers seven canonical and executing copies",
+        len(sync_destinations) + 1 == 7,
+    )
+
+    enforced = fp.enforced_relative_paths(canonical_root)
+    check("fingerprint has a non-empty enforced file set", bool(enforced))
+    for relative in fp.CODEX_ONLY_EXTENSIONS:
+        check(
+            f"Codex-only file is excluded from cross-copy fingerprint: {relative}",
+            relative not in enforced,
+        )
+    canonical_record = fp.fingerprint(canonical_root)
+    check(
+        "fingerprint exposes one hash per enforced file",
+        canonical_record["file_count"] == len(enforced)
+        and len(canonical_record["files"]) == len(enforced),
+    )
+
+    for label, copy_root in sync_destinations:
+        ok, drifted = fp.verify(copy_root)
+        check(f"{label} enforced fingerprint matches canonical", ok and drifted == [])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        injected_copy = Path(tmp) / "test-plan-generation"
+        for relative in enforced:
+            source = canonical_root / Path(relative)
+            target = injected_copy / Path(relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+        ok, drifted = fp.verify(injected_copy)
+        check("fresh enforced-file copy verifies", ok and drifted == [])
+
+        drift_relative = "scripts/run_gates.py"
+        drift_path = injected_copy / Path(drift_relative)
+        drift_path.write_bytes(drift_path.read_bytes() + b"\n# injected fingerprint drift\n")
+        ok, drifted = fp.verify(injected_copy)
+        check(
+            "injected drift is detected by relative file name",
+            not ok and drifted == [drift_relative],
+        )
+
+        gate = _load("run_gates_for_drift_test", "run_gates.py")
+        notes = gate.check_executing_copy_drift(injected_copy)
+        check(
+            "run_gates emits the required executing-copy REVIEW note",
+            len(notes) == 1
+            and notes[0].startswith("REVIEW EXECUTING COPY DRIFT:")
+            and drift_relative in notes[0],
+        )
+        check(
+            "executing-copy drift makes a receipt non-postable without a gate failure",
+            gate._postability_review_present(notes),
+        )
+
+    print("test_skill_bundle_fingerprint: OK")
+
+
 def test_gate_receipt_and_adapter() -> None:
     gate = _load("run_gates_for_receipt_test", "run_gates.py")
     adapter = _load("canonical_runtime_adapter_for_test", "canonical_runtime_adapter.py")
@@ -6583,6 +6791,1015 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_root_cause_fix_driven() -> None:
+    gate = root_cause_fix_driven_mod
+    nl = chr(10)
+
+    positive_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Lifecycle understood as: Post-Fix Validation with an inspected candidate fix.",
+        "",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given an item with eligible child text | When its label is resolved | Then the eligible child text appears in the label | Evidence: inspected fix contract.",
+        "- AC-02 [Proposed]: (Integration) Given an item with a nested primary child | When its label is resolved | Then the nested primary child remains separate from the parent label | Evidence: inspected fix invariant.",
+        "- AC-03 [Proposed]: (Negative) Given a sibling child with its own display meaning | When the parent label is resolved | Then the sibling value is not appended to the parent label | Evidence: fix-introduced risk analysis.",
+        "",
+        "**Automation Coverage & Gaps**",
+        "- Main feature coverage: Partially covered - an added unit test proves label collection and nested separation; end-to-end output remains uncovered.",
+        "",
+        "**Open Questions**",
+        "- OQ-01: Which additional display-bearing siblings are eligible. QA impact: the answer changes the negative fixture matrix.",
+        "",
+    ])
+    base_block = {
+        "root_cause_fix": {
+            "root_cause": "The resolver flattened child text without preserving semantic boundaries.",
+            "fix_contract": "Collect eligible child text while preserving excluded semantic children.",
+            "fix_adds": ["Eligible non-primary child text contributes to the label."],
+            "fix_preserves": [
+                "AC-02: Nested primary children remain separate from the parent label."
+            ],
+            "fix_introduced_risks": [
+                {
+                    "risk": "A sibling with separate display meaning could be appended.",
+                    "mapped_ac": "AC-03",
+                    "open_question_ref": None,
+                }
+            ],
+            "added_tests": [
+                {
+                    "path": "tests/unit/label-resolution.test",
+                    "layer": "unit",
+                    "proves": "Eligible child collection and nested separation.",
+                }
+            ],
+            "verification_performed": "One local build and the added unit test.",
+            "verification_gap": [
+                "Other preset and processing-engine combinations",
+                "Rendered end-to-end output",
+                "Consumers that share the resolver",
+            ],
+            "lifecycle_stage": "Post-Fix Validation",
+        }
+    }
+
+    check(
+        "fully populated fix-driven block passes",
+        gate.validate(positive_plan, base_block) == [],
+    )
+    check(
+        "positive fixture activates the fix-driven gate",
+        gate.is_present(positive_plan, base_block),
+    )
+
+    no_fix_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Lifecycle understood as: Pre-Development UAC; no development link, branch, or PR is present.",
+        "",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a toolbar action | When the user selects it | Then the panel opens | Evidence: current issue contract.",
+        "",
+    ])
+    no_fix_manifest = {
+        "issue": {"description": "The toolbar action does not open."},
+        "development_links": [],
+        "evidence_preflight": {
+            "claim_restrictions": [
+                "Jira history unavailable: no same-mechanism historical status, resolution, or fix-version claim is made."
+            ]
+        },
+    }
+    check("ticket with no positive fix signal stays inactive", not gate.is_present(no_fix_plan, no_fix_manifest))
+    check("ticket with no positive fix signal passes untouched", gate.validate(no_fix_plan, no_fix_manifest) == [])
+    check(
+        "an explicit fix branch activates without accepting a bare fix-version token",
+        gate.is_present("Fix branch: fix/child-selection", {}),
+    )
+
+    for signal_label, signal_manifest in (
+        ("root-cause statement", {"evidence": ["The root cause was an overly broad child-text traversal."]}),
+        ("pull request", {"development_links": ["https://git.example.invalid/team/repo/pull/123"]}),
+        ("commit", {"development_links": ["https://git.example.invalid/team/repo/commit/abcdef1234567890"]}),
+        ("branch", {"implementation_branch": ["feature/fix-child-selection"]}),
+        ("diff", {"evidence": ["diff --git a/Resolver.java b/Resolver.java"]}),
+        ("merged claim", {"evidence": ["The candidate fix was merged."]}),
+        ("cherry-picked claim", {"evidence": ["The candidate was cherry-picked to the release branch."]}),
+        ("hotfix claim", {"evidence": ["A hotfix is available for validation."]}),
+        ("fixed-in-build claim", {"evidence": ["Fixed in build 42."]}),
+        ("verified-in-build claim", {"evidence": ["Verified in build 42."]}),
+    ):
+        check(
+            f"documented activation signal is detected: {signal_label}",
+            gate.is_present("", signal_manifest),
+        )
+
+    for absent_claim in (
+        "The change is not merged.",
+        "The issue is not fixed in build 42.",
+        "The behavior was not verified in build 42.",
+        "No hotfix is available.",
+    ):
+        check(
+            f"negative fix-status claim stays inactive: {absent_claim}",
+            not gate.is_present(absent_claim, {}),
+        )
+
+    missing_block = {"issue": {"description": "Root cause: the resolver drops eligible child text."}}
+    problems = gate.validate(positive_plan, missing_block)
+    check("fix signal without root_cause_fix block fails", any("requires a root_cause_fix" in p for p in problems))
+    check("missing-block failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    pre_development = json.loads(json.dumps(base_block))
+    pre_development["root_cause_fix"]["lifecycle_stage"] = "Pre-Development"
+    problems = gate.validate(positive_plan, pre_development)
+    check("described fix with Pre-Development lifecycle fails", any("cannot be Pre-Development" in p for p in problems))
+    check("lifecycle failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    unguarded_preserve = json.loads(json.dumps(base_block))
+    unguarded_preserve["root_cause_fix"]["fix_preserves"] = [
+        "Nested primary children remain separate from the parent label."
+    ]
+    problems = gate.validate(positive_plan, unguarded_preserve)
+    check("preserved invariant without a guarding AC fails", any("must name the real AC-##" in p for p in problems))
+    check("preservation failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    unmapped_risk = json.loads(json.dumps(base_block))
+    unmapped_risk["root_cause_fix"]["fix_introduced_risks"] = [
+        {"risk": "A sibling value could be appended.", "mapped_ac": None, "open_question_ref": None}
+    ]
+    problems = gate.validate(positive_plan, unmapped_risk)
+    check("fix-introduced risk without AC or OQ fails", any("must map to a negative AC or an Open Question" in p for p in problems))
+    check("risk failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    not_covered_plan = positive_plan.replace(
+        "Main feature coverage: Partially covered",
+        "Main feature coverage: Not covered",
+    )
+    problems = gate.validate(not_covered_plan, base_block)
+    check("added test with Not covered main-feature verdict fails", any("Covered or Partially covered" in p for p in problems))
+    check("automation failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    missing_verification_gap = json.loads(json.dumps(base_block))
+    missing_verification_gap["root_cause_fix"]["verification_gap"] = []
+    problems = gate.validate(positive_plan, missing_verification_gap)
+    check("narrow verification without a named gap fails", any("requires verification_gap" in p for p in problems))
+
+    no_risks = json.loads(json.dumps(base_block))
+    no_risks["root_cause_fix"]["fix_introduced_risks"] = []
+    no_risks["root_cause_fix"]["no_new_risk_reason"] = "The fix narrows one local predicate and does not broaden any reader or writer."
+    check("empty risk list with concrete no-new-risk reason passes", gate.validate(positive_plan, no_risks) == [])
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads the root-cause/fix-driven gate",
+        'root_cause_fix_driven_mod = _load("root_cause_fix_driven"' in run_gates_source,
+    )
+    check(
+        "run_gates invokes the root-cause/fix-driven validator without hiding its prefix",
+        "failures += root_cause_fix_driven_mod.validate(body, manifest_data)" in run_gates_source,
+    )
+
+    print("test_root_cause_fix_driven: OK")
+
+
+def test_security_coverage() -> None:
+    gate = security_coverage_mod
+    nl = chr(10)
+
+    def block(input_record, reference_record, authz_record):
+        return {
+            "security_coverage": {
+                "schema_version": gate.SCHEMA_VERSION,
+                "dimensions": [input_record, reference_record, authz_record],
+            }
+        }
+
+    def not_applicable(dimension, reason):
+        return {
+            "dimension": dimension,
+            "disposition": "NOT_APPLICABLE",
+            "reason": reason,
+            "ac_refs": [],
+        }
+
+    input_na = not_applicable("INPUT_SAFETY", "No XML or DITA input is parsed.")
+    reference_na = not_applicable(
+        "REFERENCE_TRAVERSAL", "No DITA reference is resolved by the changed path."
+    )
+    authz_na = not_applicable("AUTHZ", "No endpoint, shared destination, role, or permission changes.")
+
+    plain_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a toolbar button | When the user selects it | Then the panel opens | Evidence: current UI contract.",
+        "",
+    ])
+    check("non-security plan passes without a security block", gate.validate(plain_plan, {}) == [])
+    check("non-security plan does not activate the security gate", not gate.is_present(plain_plan, {}))
+    check(
+        "explicit all-N/A security ledger passes for a non-security plan",
+        gate.validate(plain_plan, block(input_na, reference_na, authz_na)) == [],
+    )
+
+    input_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Negative) Given uploaded DITA content | When the XML parser processes it | Then the import reports a validation result | Evidence: upload contract.",
+        "",
+    ])
+    probs = gate.validate(input_plan, {})
+    check("XML ingest without a security ledger fails", bool(probs))
+    check("every XML ingest failure uses the stable prefix", all(p.startswith(gate.PREFIX) for p in probs))
+
+    weak_input = block(
+        {
+            "dimension": "INPUT_SAFETY",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The upload path parses DITA.",
+            "ac_refs": ["AC-01"],
+        },
+        reference_na,
+        authz_na,
+    )
+    probs = gate.validate(input_plan, weak_input)
+    check("XML ingest without XXE coverage fails", any("external-entity" in p for p in probs))
+    check("XML ingest without entity-expansion coverage fails", any("entity-expansion" in p for p in probs))
+    check("XML ingest without malformed input coverage fails", any("malformed" in p for p in probs))
+    check("XML ingest without oversized input coverage fails", any("oversized" in p for p in probs))
+
+    mention_only_input_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Negative) Given DITA with XXE, Billion Laughs entity expansion, malformed DITA input, or oversized DITA input | When the XML parser processes it | Then the case is recorded for later analysis | Evidence: security review.",
+        "",
+    ])
+    probs = gate.validate(mention_only_input_plan, weak_input)
+    check("mentioning XXE without disabling it does not satisfy coverage", any("external-entity" in p for p in probs))
+    check("mentioning entity expansion without a limit does not satisfy coverage", any("entity-expansion" in p for p in probs))
+    check("mentioning malformed input without a safe outcome does not satisfy coverage", any("malformed" in p for p in probs))
+    check("mentioning oversized input without a safe outcome does not satisfy coverage", any("oversized" in p for p in probs))
+
+    safe_input_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Negative) Given uploaded DITA content with XXE or external entities | When the XML parser processes it | Then external entities are disabled and the input is rejected | Evidence: security contract.",
+        "- AC-02 [Proposed]: (Negative) Given DITA content with Billion Laughs entity expansion | When the XML parser processes it | Then the configured entity expansion limit rejects the input | Evidence: security contract.",
+        "- AC-03 [Proposed]: (Negative) Given malformed DITA input or oversized DITA input beyond the file size limit | When it is uploaded | Then the import rejects it without processing the content | Evidence: security contract.",
+        "",
+    ])
+    safe_input = block(
+        {
+            "dimension": "INPUT_SAFETY",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The upload path parses user-supplied DITA.",
+            "ac_refs": ["AC-01", "AC-02", "AC-03"],
+        },
+        reference_na,
+        authz_na,
+    )
+    check("complete XML input-safety AC mapping passes", gate.validate(safe_input_plan, safe_input) == [])
+
+    oq_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given uploaded DITA content | When the XML parser processes it | Then the import reports a result | Evidence: upload contract.",
+        "**Open Questions**",
+        "- OQ-01: Should the parser disable XXE and external entities, reject Billion Laughs entity expansion at an entity limit, reject malformed DITA input, and reject oversized DITA input at the file size limit? QA impact: this defines the hostile-input fixtures and safe failure oracles.",
+        "",
+    ])
+    deferred_input = block(
+        {
+            "dimension": "INPUT_SAFETY",
+            "disposition": "OPEN_QUESTION",
+            "reason": "The hostile-input contract requires a product decision.",
+            "open_question_ref": "OQ-01",
+        },
+        reference_na,
+        authz_na,
+    )
+    check("complete QA-impact Open Question disposition passes", gate.validate(oq_plan, deferred_input) == [])
+
+    conref_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a topic with a conref | When the reference resolves | Then the target content appears | Evidence: reference contract.",
+        "",
+    ])
+    weak_reference = block(
+        input_na,
+        {
+            "dimension": "REFERENCE_TRAVERSAL",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The changed path resolves conref targets.",
+            "ac_refs": ["AC-01"],
+        },
+        authz_na,
+    )
+    probs = gate.validate(conref_plan, weak_reference)
+    check("conref plan without traversal coverage fails", any("path-traversal" in p for p in probs))
+
+    safe_conref_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Negative) Given a conref containing a path traversal outside the permitted content scope | When the reference resolves | Then the out-of-scope reference is blocked and cannot read outside the allowed content scope | Evidence: reference security contract.",
+        "",
+    ])
+    check(
+        "conref traversal protection passes",
+        gate.validate(safe_conref_plan, weak_reference) == [],
+    )
+
+    endpoint_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a REST endpoint that accepts user content | When a user submits a file | Then the file is processed | Evidence: endpoint contract.",
+        "",
+    ])
+    weak_authz = block(
+        input_na,
+        reference_na,
+        {
+            "dimension": "AUTHZ",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The endpoint accepts user-supplied content.",
+            "ac_refs": ["AC-01"],
+        },
+    )
+    probs = gate.validate(endpoint_plan, weak_authz)
+    check("content endpoint without unauthorized-role denial fails", any("unauthorized role" in p for p in probs))
+    check("content endpoint without escalation protection fails", any("privilege escalation" in p for p in probs))
+
+    publish_endpoint_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a REST publish endpoint that accepts user DITA content | When output is written to a shared location | Then publishing completes | Evidence: publishing contract.",
+        "",
+    ])
+    probs = gate.validate(publish_endpoint_plan, weak_authz)
+    check("publish endpoint without authorization coverage fails", any("unauthorized role" in p for p in probs))
+    check("publish endpoint failure preserves the SECURITY GATE prefix", all(p.startswith(gate.PREFIX) for p in probs))
+
+    safe_endpoint_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Negative) Given an unauthorized role | When it submits user content to the REST endpoint | Then access is denied | Evidence: authorization contract.",
+        "- AC-02 [Proposed]: (Negative) Given the changed REST endpoint | When a permitted user submits content | Then the path cannot cause privilege escalation or permission bypass | Evidence: authorization contract.",
+        "",
+    ])
+    safe_authz = block(
+        input_na,
+        reference_na,
+        {
+            "dimension": "AUTHZ",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The endpoint accepts user-supplied content.",
+            "ac_refs": ["AC-01", "AC-02"],
+        },
+    )
+    check("complete endpoint authorization mapping passes", gate.validate(safe_endpoint_plan, safe_authz) == [])
+
+    explicit_authz_na = block(
+        input_na,
+        reference_na,
+        not_applicable(
+            "AUTHZ",
+            "The signalled endpoint is behind an unchanged authorization boundary and the changed code cannot alter role enforcement.",
+        ),
+    )
+    check(
+        "genuinely inapplicable signalled dimension passes with a concrete reason",
+        gate.validate(endpoint_plan, explicit_authz_na) == [],
+    )
+
+    placeholder_reason = block(
+        input_na,
+        reference_na,
+        not_applicable("AUTHZ", "N/A"),
+    )
+    probs = gate.validate(plain_plan, placeholder_reason)
+    check("placeholder N/A reason fails", any("non-placeholder reason" in p for p in probs))
+
+    missing_dimension = {
+        "security_coverage": {
+            "dimensions": [input_na, reference_na],
+        }
+    }
+    probs = gate.validate(plain_plan, missing_dimension)
+    check("explicit security ledger cannot omit a dimension", any("silent for AUTHZ" in p for p in probs))
+    check("security summary reports clean complete ledger", "SecurityCoverage: CLEAN" in gate.summarize(plain_plan, block(input_na, reference_na, authz_na)))
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check("run_gates loads the security coverage gate", 'security_coverage_mod = _load("security_coverage"' in run_gates_source)
+    check("run_gates invokes security coverage validation", "security_coverage_mod.validate(body, manifest_data)" in run_gates_source)
+    check("run_gates preserves the security gate failure prefix", "failures += security_coverage_mod.validate(body, manifest_data)" in run_gates_source)
+
+    print("test_security_coverage: OK")
+
+
+def test_localization_regression_coverage() -> None:
+    gate = localization_regression_coverage_mod
+    nl = chr(10)
+
+    def block(state_record, xliff_record, project_record):
+        return {
+            "localization_coverage": {
+                "schema_version": gate.SCHEMA_VERSION,
+                "dimensions": [state_record, xliff_record, project_record],
+            }
+        }
+
+    def not_applicable(dimension, reason):
+        return {
+            "dimension": dimension,
+            "disposition": "NOT_APPLICABLE",
+            "reason": reason,
+            "ac_refs": [],
+        }
+
+    state_na = not_applicable(
+        "TRANSLATION_STATE",
+        "The changed UI control does not read or update translated source assets.",
+    )
+    xliff_na = not_applicable(
+        "XLIFF_ROUNDTRIP",
+        "The changed path does not modify source markup or XLIFF conversion.",
+    )
+    project_na = not_applicable(
+        "PROJECT_TYPES",
+        "The change does not create, add to, or scope a translation project.",
+    )
+
+    check(
+        "translation states remain the documented product set",
+        gate.TRANSLATION_STATUS_SET
+        == {
+            "Out of Date",
+            "In Progress",
+            "In Sync",
+            "Out of Sync",
+            "Missing copy",
+        },
+    )
+    check(
+        "translation project types remain the documented product set",
+        gate.PROJECT_TYPE_SET
+        == {
+            "newTranslationProject",
+            "xliffTranslationProject",
+            "newMultiLingualTranslationProject",
+            "addToExistingProject",
+            "newScopingTranslationProject",
+        },
+    )
+
+    plain_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a toolbar button | When the user selects it | Then the panel opens | Evidence: current UI contract.",
+        "",
+    ])
+    check("non-localization plan passes untouched", gate.validate(plain_plan, {}) == [])
+    check("non-localization plan does not activate the gate", not gate.is_present(plain_plan, {}))
+    cross_gate_manifest = {
+        "security_coverage": {
+            "dimensions": [
+                {
+                    "dimension": "AUTHZ",
+                    "disposition": "NOT_APPLICABLE",
+                    "reason": "No user content endpoint is changed.",
+                }
+            ]
+        }
+    }
+    check(
+        "another coverage ledger cannot self-activate localization",
+        gate.validate(plain_plan, cross_gate_manifest) == [],
+    )
+
+    metadata_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a topic metadata property | When the user updates it | Then the saved property is displayed | Evidence: metadata contract.",
+        "",
+    ])
+    probs = gate.validate(metadata_plan, {})
+    check("metadata change without localization coverage fails", bool(probs))
+    check("metadata failure uses the stable prefix", all(p.startswith(gate.PREFIX) for p in probs))
+
+    publishing_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a Native PDF output preset | When publishing completes | Then the generated output is available | Evidence: publishing contract.",
+        "",
+    ])
+    probs = gate.validate(publishing_plan, {})
+    check("publishing change without translation-state disposition fails", bool(probs))
+    check("publishing failure uses the stable prefix", all(p.startswith(gate.PREFIX) for p in probs))
+
+    component_manifest = {"issue": {"components": ["Translation"]}}
+    probs = gate.validate(plain_plan, component_manifest)
+    check("Translation component activates the gate", bool(probs))
+
+    explicit_na = block(
+        not_applicable(
+            "TRANSLATION_STATE",
+            "The metadata is local UI state and is not read by assets in translation projects.",
+        ),
+        xliff_na,
+        project_na,
+    )
+    check(
+        "activated metadata change passes when every dimension is dispositioned",
+        gate.validate(metadata_plan, explicit_na) == [],
+    )
+
+    weak_state_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given content already in a translation project | When its metadata changes | Then the translation status is refreshed | Evidence: translation contract.",
+        "",
+    ])
+    state_block = block(
+        {
+            "dimension": "TRANSLATION_STATE",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The metadata belongs to source content already in a translation project.",
+            "ac_refs": ["AC-01"],
+        },
+        xliff_na,
+        project_na,
+    )
+    probs = gate.validate(weak_state_plan, state_block)
+    check("translation-state coverage requires Out of Sync", any("Out of Sync" in p for p in probs))
+    check("translation-state coverage requires Missing copy", any("Missing copy" in p for p in probs))
+
+    state_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given content already in a translation project | When its metadata changes | Then its status becomes Out of Sync and a missing target is detected as Missing copy | Evidence: translation status contract.",
+        "",
+    ])
+    check(
+        "complete translation-state AC mapping passes",
+        gate.validate(state_plan, state_block) == [],
+    )
+
+    state_oq_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given topic metadata | When it changes | Then the value is saved | Evidence: metadata contract.",
+        "**Open Questions**",
+        "- OQ-01: For content already in a translation project, should the status become Out of Sync and should an absent target be detected as Missing copy? QA impact: the decision defines the translation-status regression oracles.",
+        "",
+    ])
+    state_oq_block = block(
+        {
+            "dimension": "TRANSLATION_STATE",
+            "disposition": "OPEN_QUESTION",
+            "reason": "The accepted translation-state effect is not yet defined.",
+            "open_question_ref": "OQ-01",
+        },
+        xliff_na,
+        project_na,
+    )
+    check(
+        "complete translation-state Open Question mapping passes",
+        gate.validate(state_oq_plan, state_oq_block) == [],
+    )
+
+    weak_structure_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given changed DITA element markup | When XLIFF export runs | Then an export file is created | Evidence: structure contract.",
+        "",
+    ])
+    structure_block = block(
+        not_applicable(
+            "TRANSLATION_STATE",
+            "The structural fixture is not enrolled in a translation project for this contract.",
+        ),
+        {
+            "dimension": "XLIFF_ROUNDTRIP",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The change modifies DITA element markup used by XLIFF conversion.",
+            "ac_refs": ["AC-01"],
+        },
+        project_na,
+    )
+    probs = gate.validate(weak_structure_plan, structure_block)
+    check("XLIFF coverage requires import", any("XLIFF import" in p for p in probs))
+    check("XLIFF coverage requires round-trip integrity", any("round-trip integrity" in p for p in probs))
+
+    structure_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given changed table element markup | When XLIFF export and import complete | Then the XLIFF round-trip preserves the table structure and content | Evidence: XLIFF conversion contract.",
+        "",
+    ])
+    check(
+        "complete XLIFF round-trip mapping passes",
+        gate.validate(structure_plan, structure_block) == [],
+    )
+
+    weak_project_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given translation project creation | When newTranslationProject is selected | Then the project is created | Evidence: translation project contract.",
+        "",
+    ])
+    project_block = block(
+        state_na,
+        xliff_na,
+        {
+            "dimension": "PROJECT_TYPES",
+            "disposition": "COVERED_BY_AC",
+            "reason": "The change modifies translation-project creation and project-type scope.",
+            "ac_refs": ["AC-01"],
+        },
+    )
+    probs = gate.validate(weak_project_plan, project_block)
+    check(
+        "one project type cannot satisfy the supported set",
+        any("xliffTranslationProject" in p and "newScopingTranslationProject" in p for p in probs),
+    )
+
+    project_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given translation project creation or scope | When the caller selects newTranslationProject, xliffTranslationProject, newMultiLingualTranslationProject, addToExistingProject, or newScopingTranslationProject | Then the selected supported project type is processed | Evidence: Translation Project API UAC reference.",
+        "",
+    ])
+    check(
+        "complete documented project-type set passes",
+        gate.validate(project_plan, project_block) == [],
+    )
+
+    placeholder = block(
+        not_applicable("TRANSLATION_STATE", "N/A"),
+        xliff_na,
+        project_na,
+    )
+    probs = gate.validate(plain_plan, placeholder)
+    check("placeholder localization N/A reason fails", any("non-placeholder reason" in p for p in probs))
+
+    missing_dimension = {
+        "localization_coverage": {
+            "dimensions": [state_na, xliff_na],
+        }
+    }
+    probs = gate.validate(plain_plan, missing_dimension)
+    check("localization ledger cannot omit a dimension", any("silent for PROJECT_TYPES" in p for p in probs))
+    check(
+        "localization summary reports clean complete ledger",
+        "LocalizationRegressionCoverage: CLEAN"
+        in gate.summarize(metadata_plan, explicit_na),
+    )
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads localization regression coverage",
+        'localization_regression_coverage_mod = _load(' in run_gates_source,
+    )
+    check(
+        "run_gates invokes localization regression validation",
+        "localization_regression_coverage_mod.validate(body, manifest_data)"
+        in run_gates_source,
+    )
+    check(
+        "run_gates preserves localization failure prefix",
+        "failures += localization_regression_coverage_mod.validate(body, manifest_data)"
+        in run_gates_source,
+    )
+
+    print("test_localization_regression_coverage: OK")
+
+
+def test_upgrade_migration_coverage() -> None:
+    gate = upgrade_migration_coverage_mod
+    nl = chr(10)
+
+    def block(*records):
+        return {
+            "upgrade_migration_coverage": {
+                "schema_version": gate.SCHEMA_VERSION,
+                "dimensions": list(records),
+            }
+        }
+
+    def covered(dimension, reason, *ac_refs):
+        return {
+            "dimension": dimension,
+            "disposition": "COVERED_BY_AC",
+            "reason": reason,
+            "ac_refs": list(ac_refs),
+        }
+
+    def open_question(dimension, reason, oq_ref):
+        return {
+            "dimension": dimension,
+            "disposition": "OPEN_QUESTION",
+            "reason": reason,
+            "open_question_ref": oq_ref,
+        }
+
+    def not_applicable(dimension, reason):
+        return {
+            "dimension": dimension,
+            "disposition": "NOT_APPLICABLE",
+            "reason": reason,
+            "ac_refs": [],
+        }
+
+    plain_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a toolbar action | When the user selects it | Then the panel opens | Evidence: current UI contract.",
+        "",
+    ])
+    check("non-migration plan passes untouched", gate.validate(plain_plan, {}) == [])
+    check("non-migration plan does not activate the gate", not gate.is_present(plain_plan, {}))
+
+    cross_gate_manifest = {
+        "localization_coverage": {
+            "dimensions": [
+                {
+                    "dimension": "TRANSLATION_STATE",
+                    "disposition": "NOT_APPLICABLE",
+                    "reason": "No data migration or release upgrade is changed.",
+                }
+            ]
+        }
+    }
+    check(
+        "another coverage ledger cannot self-activate migration",
+        gate.validate(plain_plan, cross_gate_manifest) == [],
+    )
+
+    temporal_only = {
+        "temporal_evidence": {
+            "items": [
+                {
+                    "evidence_id": "E-01",
+                    "applicability": "CURRENTLY_APPLICABLE",
+                    "currentness": "current release",
+                }
+            ]
+        }
+    }
+    check(
+        "temporal applicability without a migration operation stays inactive",
+        gate.validate(plain_plan, temporal_only) == [],
+    )
+    temporal_migration = {
+        "temporal_evidence": {
+            "items": [
+                {
+                    "evidence_id": "E-01",
+                    "fact": "The source release uses a stored-data migration to the target schema.",
+                }
+            ]
+        }
+    }
+    check(
+        "migration evidence still activates operation coverage",
+        bool(gate.validate(plain_plan, temporal_migration)),
+    )
+
+    signal_samples = (
+        "Upgrade the product instance from the source release to the target release.",
+        "The repository requires a stored data migration to the new schema.",
+        "Convert non-UUID identifiers to UUID identifiers.",
+        "Migrate the installation from on-premise to cloud.",
+        "The change must preserve backward compatibility.",
+    )
+    for sample in signal_samples:
+        check(
+            f"migration activation signal is recognized: {sample}",
+            bool(gate.detect_signals(sample, {})),
+        )
+
+    fix_boundary_manifest = {
+        "issue": {
+            "fix_versions": ["target release"],
+            "description": "This boundary changes the stored configuration format.",
+        }
+    }
+    check(
+        "fix-version plus persisted-format change activates the gate",
+        bool(gate.detect_signals("", fix_boundary_manifest)),
+    )
+    check(
+        "fix-version field alone does not invent a migration operation",
+        not gate.detect_signals("", {"issue": {"fix_versions": ["backlog"]}}),
+    )
+
+    migration_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Requested outcome: Convert non-UUID identifiers to UUID identifiers.",
+        "",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given legacy non-UUID records authored and stored in the old format before migration | When the source repository is prepared | Then the old records remain available as migration input | Evidence: migration contract.",
+        "- AC-02 [Proposed]: (Integration) Given an upgrade package | When the migration operation is run | Then it completes successfully | Evidence: migration contract.",
+        "- AC-03 [Proposed]: (Integration) Given a completed migration | When the operation is rerun | Then the rerunnable operation is idempotent | Evidence: migration contract.",
+        "- AC-04 [Proposed]: (Negative) Given a migration failure | When the operation stops | Then it reports the failure with an error status and reason | Evidence: migration error contract.",
+        "- AC-05 [Proposed]: (Integration) Given a partially migrated repository where non-UUID and UUID records coexist | When content is read | Then migrated UUID records and remaining legacy records are processed correctly together | Evidence: mixed-state contract.",
+        "- AC-06 [Proposed]: (Integration) Given a completed migration | When rollback is run | Then the previous stored data is restored successfully | Evidence: rollback contract.",
+        "",
+    ])
+    complete_block = block(
+        covered(
+            "PRE_STATE",
+            "Legacy identifiers stored before the operation are the migration input.",
+            "AC-01",
+        ),
+        covered(
+            "MIGRATION_EXECUTION",
+            "The operation, repeat policy, completion, and failure result are in scope.",
+            "AC-02",
+            "AC-03",
+            "AC-04",
+        ),
+        covered(
+            "POST_STATE_AND_MIXED",
+            "Non-UUID and UUID records can coexist during partial conversion.",
+            "AC-05",
+        ),
+        covered(
+            "ROLLBACK_OR_IRREVERSIBILITY",
+            "The approved contract supports restoring the previous stored state.",
+            "AC-06",
+        ),
+    )
+    check(
+        "fully covered non-UUID to UUID migration passes",
+        gate.validate(migration_plan, complete_block) == [],
+    )
+
+    problems = gate.validate(migration_plan, {})
+    check("migration signal without a coverage ledger fails", bool(problems))
+    check(
+        "every missing-ledger failure uses the stable prefix",
+        all(problem.startswith(gate.PREFIX) for problem in problems),
+    )
+
+    bad_pre = block(
+        covered(
+            "PRE_STATE",
+            "The source-state fixture is required.",
+            "AC-02",
+        ),
+        complete_block["upgrade_migration_coverage"]["dimensions"][1],
+        complete_block["upgrade_migration_coverage"]["dimensions"][2],
+        complete_block["upgrade_migration_coverage"]["dimensions"][3],
+    )
+    problems = gate.validate(migration_plan, bad_pre)
+    check(
+        "migration coverage cannot omit old authored or stored input",
+        any("old format or source version" in problem for problem in problems),
+    )
+
+    weak_execution = block(
+        complete_block["upgrade_migration_coverage"]["dimensions"][0],
+        covered(
+            "MIGRATION_EXECUTION",
+            "The operation runs to completion.",
+            "AC-02",
+        ),
+        complete_block["upgrade_migration_coverage"]["dimensions"][2],
+        complete_block["upgrade_migration_coverage"]["dimensions"][3],
+    )
+    problems = gate.validate(migration_plan, weak_execution)
+    check(
+        "migration execution requires a rerun or one-shot policy",
+        any("idempotent/rerunnable" in problem for problem in problems),
+    )
+    check(
+        "migration execution requires failure reporting",
+        any("failure reporting" in problem for problem in problems),
+    )
+
+    no_mixed_plan = migration_plan.replace(
+        "- AC-05 [Proposed]: (Integration) Given a partially migrated repository where non-UUID and UUID records coexist | When content is read | Then migrated UUID records and remaining legacy records are processed correctly together | Evidence: mixed-state contract.",
+        "- AC-05 [Proposed]: (Integration) Given migrated records | When the upgrade completes | Then UUID data in the target state remains readable | Evidence: post-state contract.",
+    )
+    problems = gate.validate(no_mixed_plan, complete_block)
+    check(
+        "non-UUID to UUID coverage requires the possible mixed state",
+        any("partial or old-and-new mixed state" in problem for problem in problems),
+    )
+    check(
+        "mixed-state failure preserves the stable prefix",
+        all(problem.startswith(gate.PREFIX) for problem in problems),
+    )
+
+    atomic_plan = no_mixed_plan + nl + (
+        "- Evidence note: the migration is atomic and has no partial or mixed state."
+    )
+    check(
+        "verified atomic operation does not invent mixed-state coverage",
+        gate.validate(atomic_plan, complete_block) == [],
+    )
+
+    bad_post_question = block(
+        complete_block["upgrade_migration_coverage"]["dimensions"][0],
+        complete_block["upgrade_migration_coverage"]["dimensions"][1],
+        open_question(
+            "POST_STATE_AND_MIXED",
+            "The target result is still under discussion.",
+            "OQ-01",
+        ),
+        complete_block["upgrade_migration_coverage"]["dimensions"][3],
+    )
+    post_question_plan = migration_plan + nl + (
+        "- OQ-01: What target state should be produced? QA impact: the answer defines the migrated-result oracle."
+    )
+    problems = gate.validate(post_question_plan, bad_post_question)
+    check(
+        "applicable post-state coverage cannot be parked in an Open Question",
+        any("must be covered by an AC" in problem for problem in problems),
+    )
+
+    oq_plan = migration_plan + nl + nl.join([
+        "**Open Questions**",
+        "- OQ-01: Which legacy content authored and stored in the old format before migration is required? QA impact: the answer defines the source-state fixtures.",
+        "- OQ-02: Is rollback supported to restore old stored data, or is the migration irreversible? QA impact: the answer defines recovery and sign-off coverage.",
+        "",
+    ])
+    oq_block = block(
+        open_question(
+            "PRE_STATE",
+            "The authoritative legacy fixture is not decided.",
+            "OQ-01",
+        ),
+        complete_block["upgrade_migration_coverage"]["dimensions"][1],
+        complete_block["upgrade_migration_coverage"]["dimensions"][2],
+        open_question(
+            "ROLLBACK_OR_IRREVERSIBILITY",
+            "The rollback contract is not decided by current evidence.",
+            "OQ-02",
+        ),
+    )
+    check(
+        "pre-state and rollback may use QA-impact Open Questions",
+        gate.validate(oq_plan, oq_block) == [],
+    )
+
+    explicit_na = block(
+        not_applicable(
+            "PRE_STATE",
+            "The ticket changes only the upgrade banner and reads no old stored content.",
+        ),
+        not_applicable(
+            "MIGRATION_EXECUTION",
+            "No upgrade or migration operation is invoked by the changed display path.",
+        ),
+        not_applicable(
+            "POST_STATE_AND_MIXED",
+            "The display-only change creates no migrated or mixed persisted state.",
+        ),
+        not_applicable(
+            "ROLLBACK_OR_IRREVERSIBILITY",
+            "The display-only change writes no state that could be rolled back.",
+        ),
+    )
+    display_upgrade_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a version upgrade banner | When the page opens | Then the banner is displayed | Evidence: display contract.",
+        "",
+    ])
+    check(
+        "activated but genuinely inapplicable dimensions pass with reasons",
+        gate.validate(display_upgrade_plan, explicit_na) == [],
+    )
+
+    placeholder = block(
+        not_applicable("PRE_STATE", "N/A"),
+        explicit_na["upgrade_migration_coverage"]["dimensions"][1],
+        explicit_na["upgrade_migration_coverage"]["dimensions"][2],
+        explicit_na["upgrade_migration_coverage"]["dimensions"][3],
+    )
+    problems = gate.validate(display_upgrade_plan, placeholder)
+    check(
+        "placeholder migration N/A reason fails",
+        any("non-placeholder reason" in problem for problem in problems),
+    )
+
+    missing_dimension = {
+        "upgrade_migration_coverage": {
+            "dimensions": complete_block["upgrade_migration_coverage"]["dimensions"][:3]
+        }
+    }
+    problems = gate.validate(migration_plan, missing_dimension)
+    check(
+        "migration ledger cannot omit rollback disposition",
+        any("silent for ROLLBACK_OR_IRREVERSIBILITY" in problem for problem in problems),
+    )
+    check(
+        "migration summary reports a clean complete ledger",
+        "UpgradeMigrationCoverage: CLEAN"
+        in gate.summarize(migration_plan, complete_block),
+    )
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(
+        encoding="utf-8"
+    )
+    check(
+        "run_gates loads upgrade migration coverage",
+        'upgrade_migration_coverage_mod = _load(' in run_gates_source,
+    )
+    check(
+        "run_gates invokes upgrade migration validation",
+        "upgrade_migration_coverage_mod.validate(body, manifest_data)"
+        in run_gates_source,
+    )
+    check(
+        "run_gates preserves migration failure prefix",
+        "failures += upgrade_migration_coverage_mod.validate(body, manifest_data)"
+        in run_gates_source,
+    )
+
+    print("test_upgrade_migration_coverage: OK")
+
+
 def test_repro_dimension_matrix() -> None:
     rm = repro_dimension_matrix_mod
 
@@ -6777,6 +7994,106 @@ def test_human_feedback_delta() -> None:
     print("test_human_feedback_delta: OK")
 
 
+def test_execution_outcome() -> None:
+    outcome = execution_outcome_mod
+
+    check("absent execution_outcome passes", outcome.validate({}) == [])
+
+    good_record = {
+        "execution_outcome": {
+            "plan_key": "plan-alpha",
+            "acs": [
+                {
+                    "ac_id": "AC-01",
+                    "execution": "FAIL",
+                    "found_defect": True,
+                    "defect_ref": "DEFECT-A",
+                }
+            ],
+            "escapes": [
+                {
+                    "defect_ref": "DEFECT-ESCAPE-A",
+                    "summary": "A material failure branch escaped the plan.",
+                    "should_have_been_covered_by": "FAILURE_RECOVERY",
+                    "first_missed_stage": "DISCOVERY",
+                }
+            ],
+            "source": "HUMAN",
+            "recorded_at": "2026-09-01T12:00:00+05:30",
+        }
+    }
+    check("well-formed execution outcome passes", outcome.validate(good_record) == [])
+
+    probes = outcome.to_candidate_miss_probes(good_record)
+    check("Human escape yields one miss-probe input", len(probes) == 1)
+    check(
+        "Human escape remains governed CANDIDATE",
+        probes[0]["source"] == "HUMAN"
+        and probes[0]["promotion_state"] == "CANDIDATE"
+        and probes[0]["auto_promote"] is False
+        and probes[0]["auto_author_ac"] is False,
+    )
+
+    model_record = json.loads(json.dumps(good_record))
+    model_record["execution_outcome"]["source"] = "MODEL"
+    check(
+        "MODEL-sourced execution outcome is rejected",
+        any("MODEL/AI" in problem for problem in outcome.validate(model_record)),
+    )
+
+    missing_attribution = json.loads(json.dumps(good_record))
+    escape = missing_attribution["execution_outcome"]["escapes"][0]
+    escape.pop("should_have_been_covered_by")
+    escape.pop("first_missed_stage")
+    missing_problems = outcome.validate(missing_attribution)
+    check(
+        "escape without dimension is rejected",
+        any("should_have_been_covered_by" in problem for problem in missing_problems),
+    )
+    check(
+        "escape without first stage is rejected",
+        any("first_missed_stage" in problem for problem in missing_problems),
+    )
+
+    second_record = json.loads(json.dumps(good_record))
+    second_record["execution_outcome"]["plan_key"] = "plan-beta"
+    second_record["execution_outcome"]["acs"][0]["defect_ref"] = "DEFECT-B"
+    second_record["execution_outcome"]["escapes"] = []
+    signals = outcome.dimension_priority_signals(
+        [good_record, second_record],
+        {"plan-alpha:AC-01": "FAILURE_RECOVERY", "plan-beta:AC-01": "FAILURE_RECOVERY"},
+    )
+    check(
+        "repeated real defects raise only the mapped dimension priority",
+        len(signals) == 1
+        and signals[0]["coverage_dimension"] == "FAILURE_RECOVERY"
+        and signals[0]["priority_action"] == "RAISE"
+        and signals[0]["auto_author_ac"] is False,
+    )
+
+    gate = _load("run_gates_for_execution_outcome", "run_gates.py")
+    with tempfile.TemporaryDirectory() as td:
+        manifest_path = Path(td) / "manifest.json"
+        malformed = json.loads(json.dumps(good_record))
+        malformed["execution_outcome"]["escapes"][0].pop("first_missed_stage")
+        manifest_path.write_text(json.dumps(malformed), encoding="utf-8")
+        gate_failures, gate_notes = gate.check_execution_outcome(str(manifest_path))
+        check("malformed outcome is not a hard gate failure", gate_failures == [])
+        check(
+            "malformed outcome creates a REVIEW note",
+            any(note.startswith("REVIEW execution-outcome:") for note in gate_notes),
+        )
+
+        manifest_path.write_text(json.dumps(good_record), encoding="utf-8")
+        gate_failures, gate_notes = gate.check_execution_outcome(str(manifest_path))
+        check(
+            "valid execution outcome adds no failure or review note",
+            gate_failures == [] and gate_notes == [],
+        )
+
+    print("test_execution_outcome: OK")
+
+
 def test_entry_point_equivalence() -> None:
     ep = entry_point_equivalence_mod
 
@@ -6867,6 +8184,276 @@ def test_shared_path_regression_coverage() -> None:
         "- Re-run the AEM Site and HTML5 output types with Retain temporary files and confirm the retained metadata.xml is unchanged (shared-path regression).", ""])
     check("shared code with shared-path regression passes", sp.validate({}, good) == [])
     print("test_shared_path_regression_coverage: OK")
+
+
+def test_qe_completeness_coverage() -> None:
+    gate = qe_completeness_coverage_mod
+    nl = chr(10)
+
+    clean_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The selected item remains visible after save.",
+        "**Open Questions**",
+        "- No open questions from current evidence",
+        "",
+    ])
+    check("plan with no real question or regression passes untouched", gate.validate(clean_plan, {}) == [])
+    check("clean plan does not activate QE completeness", not gate.is_present(clean_plan, {}))
+    plain_sentinel_plan = clean_plan.replace(
+        "- No open questions from current evidence",
+        "No open questions from current evidence",
+    )
+    check(
+        "exact unbulleted no-question sentinel also passes untouched",
+        gate.validate(plain_sentinel_plan, {}) == []
+        and not gate.is_present(plain_sentinel_plan, {}),
+    )
+
+    oq_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The selected item remains visible after save.",
+        "- AC-02: The selected item keeps the accepted label.",
+        "**Open Questions**",
+        "- OQ-01: Which label is the accepted product contract? QA impact: the answer selects the exact UI oracle.",
+        "",
+    ])
+    oq_manifest = {
+        "open_questions": [
+            {
+                "id": "OQ-01",
+                "question": "Which label is the accepted product contract?",
+            }
+        ]
+    }
+    problems = gate.validate(oq_plan, oq_manifest)
+    check("activated plan without qe_completeness fails", bool(problems))
+    check("missing qe_completeness uses the stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    deferred_manifest = json.loads(json.dumps(oq_manifest))
+    deferred_manifest["qe_completeness"] = {
+        "schema_version": gate.SCHEMA_VERSION,
+        "open_question_classification": [
+            {
+                "oq_ref": "OQ-01",
+                "category": "DEFERRED_COVERAGE",
+                "reason": "The expected label can be checked and belongs in acceptance.",
+                "promoted_ac_ref": "AC-02",
+                "can_be_ac_with_expected": True,
+            }
+        ],
+        "regression_classification": [],
+    }
+    problems = gate.validate(oq_plan, deferred_manifest)
+    check("DEFERRED_COVERAGE hard-fails even with a real promoted AC", any("DEFERRED_COVERAGE" in p for p in problems))
+    check("deferred coverage failure keeps the stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    unclassified_manifest = json.loads(json.dumps(oq_manifest))
+    unclassified_manifest["qe_completeness"] = {
+        "schema_version": gate.SCHEMA_VERSION,
+        "open_question_classification": [],
+        "regression_classification": [],
+    }
+    problems = gate.validate(oq_plan, unclassified_manifest)
+    check("Open Question missing from classification hard-fails", any("missing from open_question_classification" in p for p in problems))
+
+    regression_item = "P3 [Regression]: Re-run the unchanged export and confirm the saved output still opens."
+    regression_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The export produces the accepted output.",
+        "**Test Scenarios**",
+        f"- {regression_item}",
+        "",
+    ])
+    regression_manifest = {
+        "qe_completeness": {
+            "schema_version": gate.SCHEMA_VERSION,
+            "open_question_classification": [],
+            "regression_classification": [
+                {
+                    "item": regression_item,
+                    "category": "IN_SCOPE_BEHAVIOR",
+                    "ac_ref": "",
+                }
+            ],
+        }
+    }
+    problems = gate.validate(regression_plan, regression_manifest)
+    check("IN_SCOPE_BEHAVIOR without ac_ref hard-fails", any("requires ac_ref" in p for p in problems))
+
+    p3_item = "P3 [Regression] [AC-01]: Re-run the secondary entry point and confirm the accepted output."
+    safety_item = "Re-run an unchanged adjacent workflow and confirm its saved result is unchanged."
+    positive_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The secondary entry point produces the accepted output.",
+        "- AC-02: The selected item keeps the accepted label.",
+        "**Test Scenarios**",
+        f"- {p3_item}",
+        "**Regression Areas**",
+        f"- {safety_item}",
+        "**Open Questions**",
+        "- OQ-01: Which label is the accepted product contract? QA impact: the answer selects the exact UI oracle.",
+        "",
+    ])
+    positive_manifest = {
+        "open_questions": oq_manifest["open_questions"],
+        "qe_completeness": {
+            "schema_version": gate.SCHEMA_VERSION,
+            "open_question_classification": [
+                {
+                    "oq_ref": "OQ-01",
+                    "category": "GENUINE_PRODUCT_DECISION",
+                    "reason": "Only an authorized product decision can select the accepted label.",
+                    "can_be_ac_with_expected": False,
+                }
+            ],
+            "regression_classification": [
+                {
+                    "item": p3_item,
+                    "category": "IN_SCOPE_BEHAVIOR",
+                    "ac_ref": "AC-01",
+                },
+                {
+                    "item": safety_item,
+                    "category": "SAFETY_RETEST",
+                    "ac_ref": "",
+                },
+            ],
+        },
+    }
+    check("fully classified genuine decisions and regressions pass", gate.validate(positive_plan, positive_manifest) == [])
+    check("clean classified plan has no review", gate.review(positive_plan, positive_manifest) == [])
+
+    review_manifest = json.loads(json.dumps(positive_manifest))
+    review_record = review_manifest["qe_completeness"]["open_question_classification"][0]
+    review_record["can_be_ac_with_expected"] = True
+    review_notes = gate.review(positive_plan, review_manifest)
+    expected_review = (
+        "QE COMPLETENESS REVIEW: OQ-01 can be written as an AC with the QE-expected "
+        "contract and flagged for dev down-scope; prefer an AC over an Open Question."
+    )
+    check("QE-expected contract emits the exact REVIEW note", review_notes == [expected_review])
+    check("REVIEW case keeps hard validation green", gate.validate(positive_plan, review_manifest) == [])
+
+    promoted_manifest = json.loads(json.dumps(review_manifest))
+    promoted_manifest["qe_completeness"]["open_question_classification"][0]["promoted_ac_ref"] = "AC-02"
+    check("genuine decision promoted to a real AC passes", gate.validate(positive_plan, promoted_manifest) == [])
+    check("promoted genuine decision clears REVIEW", gate.review(positive_plan, promoted_manifest) == [])
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check("run_gates loads QE completeness", 'qe_completeness_coverage_mod = _load(' in run_gates_source)
+    check("run_gates invokes QE completeness validation", "qe_completeness_coverage_mod.validate(body, manifest_data)" in run_gates_source)
+    check("run_gates preserves the QE completeness prefix", "failures += qe_completeness_coverage_mod.validate(body, manifest_data)" in run_gates_source)
+    check("run_gates collects QE completeness REVIEW notes", "notes += qe_completeness_coverage_mod.review(body, manifest_data)" in run_gates_source)
+    run_gates = _load("run_gates_for_qe_completeness", "run_gates.py")
+    check("QE completeness REVIEW makes a receipt non-postable", run_gates._postability_review_present(review_notes))
+
+    print("test_qe_completeness_coverage: OK")
+
+
+def test_manifest_completeness_gate() -> None:
+    gate = manifest_completeness_gate_mod
+    nl = chr(10)
+    plain_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The selected item remains visible after save.",
+        "",
+    ])
+
+    ok, messages = gate.validate(plain_plan, {})
+    check("signal-free manifest has no completeness requirement", ok and messages == [])
+    check("signal-free manifest reports gate not active", not gate.is_present({}))
+
+    publishing_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: The Native PDF output preset generates the expected document.",
+        "",
+    ])
+    ok, messages = gate.validate(publishing_plan, {})
+    check(
+        "publishing signal without publishing_scope hard-fails",
+        not ok
+        and any("'publishing_scope' is absent or empty" in message for message in messages),
+    )
+    check(
+        "every completeness failure has the stable prefix",
+        all(message.startswith("COMPLETENESS GATE:") for message in messages),
+    )
+    check(
+        "publishing plan activates completeness",
+        gate.is_present({}, publishing_plan),
+    )
+
+    present = {"publishing_scope": {"schema_version": "fixture-v1"}}
+    ok, messages = gate.validate(publishing_plan, present)
+    check("non-empty publishing_scope satisfies completeness", ok and messages == [])
+
+    empty = {"publishing_scope": {}}
+    ok, messages = gate.validate(publishing_plan, empty)
+    check(
+        "empty publishing_scope does not satisfy completeness",
+        not ok and any("absent or empty" in message for message in messages),
+    )
+
+    scalar = {"publishing_scope": True}
+    ok, messages = gate.validate(publishing_plan, scalar)
+    check(
+        "scalar publishing_scope cannot impersonate a manifest block",
+        not ok and any("absent or empty" in message for message in messages),
+    )
+
+    waived = {
+        "block_waivers": [
+            {
+                "block": "publishing_scope",
+                "reason": "Legacy captured run did not store this structured block.",
+                "waived_by": "author",
+            }
+        ]
+    }
+    ok, messages = gate.validate(publishing_plan, waived)
+    check("reasoned attributable waiver satisfies completeness", ok and messages == [])
+
+    bad_waiver = json.loads(json.dumps(waived))
+    bad_waiver["block_waivers"][0]["reason"] = " "
+    ok, messages = gate.validate(publishing_plan, bad_waiver)
+    check(
+        "blank waiver reason hard-fails",
+        not ok and any("reason is required" in message for message in messages),
+    )
+
+    ok, messages = gate.validate(
+        plain_plan,
+        {"behaviour_matters": False, "behavior_model": {"versioned_models": ["v1"]}},
+    )
+    check("behaviour_matters false preserves behavior-block opt-out", ok and messages == [])
+
+    behavior_manifest = {
+        "behaviour_matters": True,
+        "clarification": {"schema_version": "fixture-v1"},
+    }
+    for block in gate.CORE_BEHAVIOR_BLOCKS:
+        behavior_manifest[block] = {"declared": True}
+    behavior_manifest["behavior_model"] = {
+        "trigger": ["versioned operation"],
+        "operations": ["render"],
+        "versioned_models": ["current and previous"],
+    }
+    ok, messages = gate.validate(plain_plan, behavior_manifest)
+    check(
+        "versioned behavior requires temporal_evidence",
+        not ok and any("'temporal_evidence'" in message for message in messages),
+    )
+    behavior_manifest["temporal_evidence"] = {"items": []}
+    ok, messages = gate.validate(plain_plan, behavior_manifest)
+    check("non-empty temporal_evidence satisfies version signal", ok and messages == [])
+
+    check(
+        "summary reports a clean positive fixture",
+        gate.summarize(present, publishing_plan).startswith(
+            "ManifestCompletenessGate: CLEAN"
+        ),
+    )
+    print("test_manifest_completeness_gate: OK")
 
 
 def test_clarification_gate() -> None:
@@ -7085,13 +8672,20 @@ def main() -> int:
     test_scope_applicability()
     test_ac_language_policy()
     test_publishing_scope_coverage()
+    test_root_cause_fix_driven()
+    test_security_coverage()
+    test_localization_regression_coverage()
+    test_upgrade_migration_coverage()
     test_repro_dimension_matrix()
     test_acceptance_synthesizer()
     test_uac_linter()
     test_human_feedback_delta()
+    test_execution_outcome()
     test_entry_point_equivalence()
     test_value_provenance_coverage()
     test_shared_path_regression_coverage()
+    test_qe_completeness_coverage()
+    test_manifest_completeness_gate()
     test_clarification_gate()
     test_terminal_states()
     test_concurrency_race()
@@ -7099,6 +8693,7 @@ def main() -> int:
     test_source_requirement_fidelity()
     test_ac_decidability()
     test_operational_contract()
+    test_skill_bundle_fingerprint()
     test_gate_receipt_and_adapter()
     test_contract_facts_and_integrity()
     test_issue_domain_routing_and_publishing_scope()
