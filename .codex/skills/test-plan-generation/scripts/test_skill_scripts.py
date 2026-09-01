@@ -105,6 +105,7 @@ evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_c
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
+repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6555,6 +6556,60 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_repro_dimension_matrix() -> None:
+    rm = repro_dimension_matrix_mod
+
+    check("absent repro_matrix passes", rm.validate({}) == [])
+
+    def wrap(cells, oqs=None):
+        m = {"repro_matrix": {"cells": cells}}
+        if oqs is not None:
+            m["open_questions"] = oqs
+        return m
+
+    ok = {"dimension": "CUSTOM_CONFIGURATION", "materiality": "MATERIAL",
+          "repro_status": "CUSTOMER_ONLY", "coverage_status": "OPEN_QUESTION",
+          "evidence": ["customer template differs"], "open_question_ref": "OQ-01"}
+    check("customer-only material diff with an Open Question passes",
+          rm.validate(wrap([ok], oqs=[{"id": "OQ-01"}])) == [])
+
+    # Concluding a material customer-only diff invalid is rejected.
+    rejected = dict(ok, coverage_status="REJECTED")
+    check("material customer-only diff cannot be REJECTED",
+          any("cannot be REJECTED" in p for p in rm.validate(wrap([rejected], oqs=[{"id": "OQ-01"}]))))
+
+    # Material unresolved diff without an Open Question is rejected.
+    no_oq = {"dimension": "PRODUCT_VERSION", "materiality": "MATERIAL",
+             "repro_status": "NOT_REPRODUCED", "coverage_status": "OPEN_QUESTION",
+             "evidence": ["repro only on 4.6"]}
+    check("material unresolved diff must reference an Open Question",
+          any("must reference an Open Question" in p for p in rm.validate(wrap([no_oq]))))
+
+    # Immaterial dimension in the matrix is overexpansion.
+    immat = {"dimension": "BROWSER", "materiality": "IMMATERIAL",
+             "repro_status": "NOT_APPLICABLE", "coverage_status": "NOT_TESTED",
+             "evidence": ["not relevant"]}
+    check("immaterial dimension is flagged as overexpansion",
+          any("must not be in the matrix" in p for p in rm.validate(wrap([immat]))))
+
+    # Confirmed repro covered by an AC passes with no Open Question needed.
+    confirmed = {"dimension": "PRESET", "materiality": "MATERIAL",
+                 "repro_status": "REPRO_CONFIRMED", "coverage_status": "COVERED_BY_AC",
+                 "evidence": ["reproduced on Native PDF preset"]}
+    check("confirmed repro covered by an AC passes", rm.validate(wrap([confirmed])) == [])
+
+    # Invalid enums rejected.
+    bad = {"dimension": "NOPE", "materiality": "MATERIAL", "repro_status": "X",
+           "coverage_status": "Y", "evidence": ["e"]}
+    check("invalid dimension/state enums rejected", len(rm.validate(wrap([bad]))) >= 2)
+
+    # Duplicate dimension rejected.
+    check("duplicate dimension rejected",
+          any("duplicate dimension" in p for p in rm.validate(wrap([confirmed, dict(confirmed)]))))
+
+    print("test_repro_dimension_matrix: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6602,6 +6657,8 @@ def main() -> int:
     test_evidence_conflict_resolver()
     test_scope_applicability()
     test_ac_language_policy()
+    test_publishing_scope_coverage()
+    test_repro_dimension_matrix()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
