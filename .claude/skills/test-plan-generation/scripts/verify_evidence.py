@@ -299,6 +299,156 @@ def verify_config_keys(manifest_path: str, clone_roots: list[str] | None) -> tup
     return failures, notes
 
 
+PROVENANCE_PREFIX = "PROVENANCE GATE:"
+# Evidence-catalog ids: either E<n> (E1, E12) or a >=2-hyphen tag (CODE-JOB-56).
+# A single-hyphen token such as a Jira issue key is deliberately excluded (Jira keys
+# have exactly one hyphen; catalog ids are E<n> or carry two or more hyphens).
+_EVIDENCE_ID_RE = re.compile(r"\b(?:E\d+|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+){2,})\b")
+_SHA256_RE = re.compile(r"^sha256:([0-9a-f]{64})$")
+_CATALOG_SOURCE_EXTS = SOURCE_EXTENSIONS
+
+
+def _sha256_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _catalog_entries(manifest: dict) -> list[dict]:
+    raw = manifest.get("evidence_catalog")
+    if isinstance(raw, dict):
+        raw = raw.get("sources") or raw.get("entries")
+    return [e for e in raw if isinstance(e, dict)] if isinstance(raw, list) else []
+
+
+def _entry_id(entry: dict) -> str:
+    return str(entry.get("id") or entry.get("source_id") or "").strip()
+
+
+def _entry_kind(entry: dict) -> str:
+    return str(entry.get("source_type") or entry.get("kind") or "").strip().lower()
+
+
+def _entry_unavailable(entry: dict) -> bool:
+    marker = str(entry.get("availability") or entry.get("status") or "").strip().lower()
+    return marker in {"unavailable", "degraded", "not_available", "missing_source"}
+
+
+def _cited_ids(text: str, manifest: dict) -> set[str]:
+    cited: set[str] = set(_EVIDENCE_ID_RE.findall(text or ""))
+    bm = manifest.get("behavior_model")
+    if isinstance(bm, dict):
+        for fact in bm.get("facts") or []:
+            if isinstance(fact, dict):
+                for eid in fact.get("evidence_ids") or []:
+                    if isinstance(eid, str) and eid.strip():
+                        cited.add(eid.strip())
+    return cited
+
+
+def verify_provenance(text: str, manifest_path: str | None) -> tuple[list[str], list[str]]:
+    """Anti-gaming provenance audit (UACFIX-12).
+
+    Activates only when the manifest declares an ``evidence_catalog``. Then every
+    evidence id cited in the plan or in ``behavior_model.facts`` must resolve to a
+    catalog entry; each code entry's ``source_ref`` must exist on disk with a
+    ``source_hash`` of ``sha256:<64 hex>`` matching the file; each rag entry must
+    correspond to a recorded ``rag_probes`` question. A dangling id is never
+    allowed; an entry explicitly marked unavailable (with a preflight
+    claim_restriction) is exempt from the disk/hash check only.
+    """
+    failures: list[str] = []
+    notes: list[str] = []
+    if not manifest_path or not Path(manifest_path).is_file():
+        return failures, notes
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return failures, notes
+    if not isinstance(manifest, dict):
+        return failures, notes
+    if manifest.get("behaviour_matters") is False:
+        return failures, notes  # documented opt-out, same as the RAG escape
+
+    entries = _catalog_entries(manifest)
+    if not entries:
+        return failures, notes  # backward-compatible: no catalog declared => no-op
+
+    def _p(msg: str) -> str:
+        return f"{PROVENANCE_PREFIX} {msg}"
+
+    catalog_ids = {_entry_id(e) for e in entries if _entry_id(e)}
+    restrictions = []
+    preflight = manifest.get("evidence_preflight")
+    if isinstance(preflight, dict):
+        restrictions = preflight.get("claim_restrictions") or []
+    has_restriction = bool([r for r in restrictions if str(r).strip()])
+
+    rag_probes = manifest.get("rag_probes")
+    rag_probe_set = {
+        str(p).strip().lower()
+        for p in (rag_probes if isinstance(rag_probes, list) else [])
+        if str(p).strip()
+    }
+
+    # 1) Every cited id must resolve to a catalog entry (dangling never allowed).
+    for cid in sorted(_cited_ids(text, manifest)):
+        if cid not in catalog_ids:
+            failures.append(_p(
+                f"cited evidence id '{cid}' does not resolve to an evidence_catalog entry"
+            ))
+
+    # 2) Catalog integrity per entry.
+    checked_code = 0
+    for entry in entries:
+        eid = _entry_id(entry) or "<no id>"
+        kind = _entry_kind(entry)
+        ref = str(entry.get("source_ref") or "").strip()
+        source_hash = str(entry.get("source_hash") or "").strip()
+        is_code = kind == "code" or (ref and ref.lower().endswith(_CATALOG_SOURCE_EXTS))
+
+        if is_code:
+            if _entry_unavailable(entry) and has_restriction:
+                notes.append(f"provenance: entry {eid} marked unavailable with a claim restriction; disk/hash skipped")
+                continue
+            if not ref:
+                failures.append(_p(f"code entry {eid} has no source_ref"))
+                continue
+            path = Path(ref)
+            if not path.is_file():
+                failures.append(_p(f"code entry {eid} source_ref does not exist on disk: {ref}"))
+                continue
+            m = _SHA256_RE.match(source_hash)
+            if not m:
+                failures.append(_p(
+                    f"code entry {eid} must carry source_hash 'sha256:<64 hex>' matching {ref}"
+                ))
+                continue
+            actual = _sha256_file(path)
+            if actual != m.group(1):
+                failures.append(_p(
+                    f"code entry {eid} source_hash mismatch for {ref} "
+                    f"(manifest {m.group(1)[:12]}..., file {actual[:12]}...)"
+                ))
+            else:
+                checked_code += 1
+        elif kind in {"rag", "rag_probe", "product_rag"}:
+            probe = str(entry.get("probe") or entry.get("source_ref") or "").strip().lower()
+            if not probe or probe not in rag_probe_set:
+                failures.append(_p(
+                    f"rag entry {eid} does not correspond to any recorded rag_probes question"
+                ))
+
+    notes.append(
+        f"provenance: catalog with {len(entries)} entry(s); verified {checked_code} code source_hash(es)"
+    )
+    return failures, notes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit cited evidence in a test plan.")
     parser.add_argument("plan", help="Markdown test-plan file to audit")
@@ -324,6 +474,9 @@ def main() -> int:
         att_failures, att_notes = verify_attachments(args.attachments_manifest)
         failures.extend(att_failures)
         notes.extend(att_notes)
+        pv_failures, pv_notes = verify_provenance(text, args.attachments_manifest)
+        failures.extend(pv_failures)
+        notes.extend(pv_notes)
 
     for note in notes:
         print(f"NOTE: {note}")

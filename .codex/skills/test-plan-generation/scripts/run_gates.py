@@ -1987,6 +1987,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         ck_fail, ck_notes = verify_mod.verify_config_keys(manifest_path, _croots)
         failures += [f"[verify] {f}" for f in ck_fail]
         notes += ck_notes
+        # Evidence provenance (UACFIX-12): cited ids resolve to the evidence_catalog,
+        # code entries exist on disk with a matching sha256, rag entries map to a probe.
+        # Preserves the stable PROVENANCE GATE: prefix owned by this check.
+        pv_fail, pv_notes = verify_mod.verify_provenance(combined, manifest_path)
+        failures += pv_fail
+        notes += pv_notes
 
     # Anti-hardcoding audit of the skill's own scripts/prompts.
     hc_fail, hc_notes = audit_mod.audit_paths([Path(__file__).resolve().parent.parent])
@@ -2143,6 +2149,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_publishing_scope_coverage()
             self_tests.test_root_cause_fix_driven()
             self_tests.test_reviewer_request_coverage()
+            self_tests.test_evidence_provenance()
             self_tests.test_security_coverage()
             self_tests.test_localization_regression_coverage()
             self_tests.test_upgrade_migration_coverage()

@@ -6793,6 +6793,83 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_evidence_provenance() -> None:
+    import hashlib
+
+    nl = chr(10)
+    with tempfile.TemporaryDirectory() as tmp:
+        code_path = Path(tmp) / "Handler.java"
+        code_path.write_text("class Handler { void run() {} }" + nl, encoding="utf-8")
+        good_hash = "sha256:" + hashlib.sha256(code_path.read_bytes()).hexdigest()
+        ref = code_path.as_posix()
+
+        plan = nl.join([
+            "**Acceptance Criteria**",
+            "- AC-01: The handler runs. Evidence: E1; RAG probe recorded.",
+            "",
+        ])
+
+        def manifest(entries, **extra):
+            data = {
+                "evidence_catalog": entries,
+                "rag_probes": ["how does the handler run in the product"],
+                "behavior_model": {"facts": [{"fact": "runs", "evidence_ids": ["E1"]}]},
+            }
+            data.update(extra)
+            return data
+
+        def write(data):
+            p = Path(tmp) / "m.json"
+            p.write_text(json.dumps(data), encoding="utf-8")
+            return str(p)
+
+        good_entries = [
+            {"id": "E1", "source_type": "code", "source_ref": ref, "source_hash": good_hash},
+            {"id": "E2", "source_type": "rag", "probe": "how does the handler run in the product"},
+        ]
+        f, _ = verify_mod.verify_provenance(plan, write(manifest(good_entries)))
+        check("provenance: well-formed catalog passes", f == [])
+
+        # No catalog -> no-op (backward compatible).
+        f, _ = verify_mod.verify_provenance(plan, write({"rag_probes": []}))
+        check("provenance: absent catalog is a clean pass", f == [])
+
+        # behaviour_matters False -> opt-out.
+        f, _ = verify_mod.verify_provenance(plan, write(manifest(good_entries, behaviour_matters=False)))
+        check("provenance: behaviour_matters false opts out", f == [])
+
+        # Dangling id (plan cites E9 not in catalog).
+        f, _ = verify_mod.verify_provenance(
+            plan.replace("E1;", "E1 E9;"), write(manifest(good_entries))
+        )
+        check(
+            "provenance: dangling id fails with prefix",
+            any(p.startswith(verify_mod.PROVENANCE_PREFIX) and "E9" in p for p in f),
+        )
+
+        # Missing source_ref path.
+        missing = [dict(good_entries[0], source_ref=(Path(tmp) / "nope.java").as_posix()), good_entries[1]]
+        f, _ = verify_mod.verify_provenance(plan, write(manifest(missing)))
+        check("provenance: missing path fails", any("does not exist on disk" in p for p in f))
+
+        # Hash mismatch.
+        bad_hash = [dict(good_entries[0], source_hash="sha256:" + "0" * 64), good_entries[1]]
+        f, _ = verify_mod.verify_provenance(plan, write(manifest(bad_hash)))
+        check("provenance: hash mismatch fails", any("source_hash mismatch" in p for p in f))
+
+        # RAG entry not matching a recorded probe.
+        bad_rag = [good_entries[0], {"id": "E2", "source_type": "rag", "probe": "unrelated probe"}]
+        f, _ = verify_mod.verify_provenance(plan, write(manifest(bad_rag)))
+        check("provenance: unrecorded rag probe fails", any("recorded rag_probes" in p for p in f))
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates invokes verify_provenance",
+        "verify_mod.verify_provenance(combined, manifest_path)" in run_gates_source,
+    )
+    print("test_evidence_provenance: OK")
+
+
 def test_reviewer_request_coverage() -> None:
     gate = reviewer_request_coverage_mod
     nl = chr(10)
@@ -8766,6 +8843,7 @@ def main() -> int:
     test_publishing_scope_coverage()
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
+    test_evidence_provenance()
     test_security_coverage()
     test_localization_regression_coverage()
     test_upgrade_migration_coverage()
