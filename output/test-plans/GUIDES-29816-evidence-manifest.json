@@ -193,6 +193,11 @@
       "id": "OQ-04",
       "question": "Should selected File (Asset) properties be written into the same XMP RDF packet that holds Metadata tab values or into a separate sourceProps region?",
       "qa_impact": "Determines the exact location testers and customer toolkit rules read for AC-03, AC-07, and AC-10."
+    },
+    {
+      "id": "OQ-05",
+      "question": "Should a metadata property present on the source asset repository node but not selected in the preset File (Asset) properties also be written to metadata.xml, or is inclusion strictly limited to the selected property names?",
+      "qa_impact": "The current code reads only selected names; this decides whether CRX DE set but unselected properties are expected in the output or correctly excluded."
     }
   ],
   "enumerated_requirements": {

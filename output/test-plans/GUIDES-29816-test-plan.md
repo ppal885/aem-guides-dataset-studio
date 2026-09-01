@@ -23,6 +23,7 @@
 - AC-13 [Proposed]: (Basic) Given a Native PDF preset with no File (Asset) properties selected | When Native PDF output is generated | Then generation succeeds with the existing metadata behaviour and File (Asset) properties remain optional | Evidence: Jira GUIDES-29816 regression boundary.
 - AC-14 [Proposed]: (Integration) Given the same source map and preset | When PDF output is generated with DITA-OT processing on and again with DITA-OT processing off | Then the existing metadata behaviour stays the same in both modes and only the Native PDF output adds the selected File (Asset) properties | Evidence: Jira GUIDES-29816; Starling BaseExecutor nativeOutput branch.
 - AC-15 [Proposed]: (Integration) Given the change to source metadata in metadata.xml | When output is generated for a non-Native-PDF preset such as AEM Site, HTML5, JSON, or DITA-OT PDF | Then that preset output is unchanged and the fix is scoped to the Native PDF preset only, unless shared-code analysis proves the metadata path is shared | Evidence: Jira GUIDES-29816 scope; Starling shared getMetadataList path review.
+- AC-16 [Proposed]: (Integration) Given a selected File (Asset) property whose value is set directly on the source asset repository metadata node through CRX DE or the DAM properties view | When Native PDF output is generated | Then the value written to metadata.xml is read from that asset jcr:content metadata node and matches the repository value regardless of how it was set | Evidence: Jira GUIDES-29816; Starling BaseExecutor.getMetadataList reads jcr:content metadata from the source node.
 
 **Expected Behaviour**
 
@@ -61,6 +62,7 @@
 - P1 [AC-09]: Action: leave a selected property absent on one topic while present on another. Expected: generation continues, no value is fabricated or borrowed, and other metadata is still written.
 - P2 [AC-11]: Action: generate for Map A, then Map B, then change the selection and regenerate. Expected: no stale carryover and the updated selection is reflected.
 - P2 [AC-07]: Action: compare the generated sourceProps structure against the established metadata.xml contract. Expected: property names, values, and source association match the existing structure with no Native PDF only shape.
+- P1 [AC-16]: Action: set a selected File (Asset) property value directly in CRX DE on the source asset jcr:content metadata node (not via the preset), then generate Native PDF and open the retained metadata.xml. Expected: the value in metadata.xml matches the repository node value.
 - P2 [AC-14]: Action: generate PDF using a DITA-OT engine preset and confirm its metadata.xml still exposes the source map path as before. Expected: DITA-OT PDF metadata behaviour is unchanged and only the native Native PDF path is affected by the fix.
 - P2 [AC-15]: Action: generate output for AEM Site, HTML5, and JSON presets before and after the change. Expected: their output is unchanged, confirming the fix is scoped to the Native PDF preset unless shared code is proven.
 - P3 [Regression] [AC-12, AC-13]: Action: generate with a Metadata tab only preset and separately with a preset that has no File (Asset) properties selected. Expected: existing PDF document metadata behaviour is unchanged and generation still succeeds.
@@ -84,6 +86,7 @@
 - AC-04, AC-05, AC-11 - Unverified: recommend an IT that covers multiple topics, a nested submap, a reused topic, and repeated generation for different maps and presets, asserting correct per-asset association and no stale carryover.
 - AC-08, AC-09 - Unverified: recommend an IT that injects XML-sensitive and Unicode values and an absent selected property, asserting valid XML, value fidelity, and safe continuation.
 - AC-12, AC-13 - Unverified: recommend a regression IT that generates with a Metadata tab only preset and with no File (Asset) properties selected, asserting unchanged existing metadata behaviour.
+- AC-16 - Unverified: recommend an IT that sets a metadata value directly on the asset jcr:content metadata node (repository/CRX DE) and asserts the retained metadata.xml reflects that value for the selected property.
 - AC-14, AC-15 - Unverified: recommend an engine-and-preset scope IT that generates DITA-OT PDF and non-Native-PDF presets before and after the change, asserting DITA-OT and other-preset metadata output is unchanged.
 
 **Open Questions**
@@ -92,3 +95,4 @@
 - OQ-02: When the same property is set on both the Metadata tab and the Advanced File (Asset) properties control, is one authoritative or are both retained. QA impact: this defines the precedence oracle for AC-01 and prevents inventing a rule.
 - OQ-03: For a topic reused multiple times in a map, does metadata.xml contain one source-asset entry or one entry per processing occurrence. QA impact: this defines the association oracle for AC-05.
 - OQ-04: Should the selected File (Asset) properties be written into the same XMP RDF packet that currently holds Metadata tab values or into a separate sourceProps region of metadata.xml. QA impact: this determines the exact location the tester and the customer toolkit rules read for AC-03, AC-07, and AC-10.
+- OQ-05: Should a metadata property that is present on the source asset repository node but is not selected in the preset File (Asset) properties also be written to metadata.xml, or is inclusion strictly limited to the selected property names. QA impact: the current code reads only the selected names, so this decides whether a CRX DE set but unselected property is expected in the output or correctly excluded.

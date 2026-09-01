@@ -3,33 +3,33 @@
   "passed": true,
   "postable": false,
   "issue": "GUIDES-29816",
-  "generated_at": "2026-09-01T05:02:12.387992+00:00",
+  "generated_at": "2026-09-01T06:09:29.966968+00:00",
   "validator": {
     "schema_version": "aem-guides-skill-bundle-fingerprint-v1",
     "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\skills\\test-plan-generation",
-    "sha256": "8c1f663dbabd8c99f66b396facf4e0be1650da2b1a32bdf1cdee8b08b55693bc",
-    "file_count": 114
+    "sha256": "5bc546e6f7cd8ca7fe4ce14d5a239bc373d4fe63871579af8bc4e8ad32aecb83",
+    "file_count": 124
   },
   "artifacts": {
     "plan": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
-      "sha256": "d054b9431c8bfa6c13ea5356e2182c959529bec953340c20bc1d23fad3577633"
+      "sha256": "4c091ca2cc7cd3c0fd68d45c69da6ddcd5b752714b18bb2f7e2a3ed4fcd325b7"
     },
     "manifest": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-evidence-manifest.json",
-      "sha256": "82467c6574bccc79923f3e24d16492f5f1e5896be104535c1a074b36d9c726d2"
+      "sha256": "d65cc29c4e59c71da70bd62dfe6b4071f95b70f43b44756d65b876966abe07d6"
     },
     "combined": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
-      "sha256": "d054b9431c8bfa6c13ea5356e2182c959529bec953340c20bc1d23fad3577633"
+      "sha256": "4c091ca2cc7cd3c0fd68d45c69da6ddcd5b752714b18bb2f7e2a3ed4fcd325b7"
     },
     "compact": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.compact.md",
-      "sha256": "5a5d34eedd17c3b7f1ae90cec3f5b104e87dadc04a47f5d362c8982c0a87efe9"
+      "sha256": "cec19abc8d7fde0183036f84c3bade31ff17271be03407ee2f9a29e04a0b46a1"
     },
     "extracted_acs": {
       "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.acceptance-criteria.json",
-      "sha256": "764636df9955eca38ce04073834d98c9353ddc8a314dcb3a9ce1171a95b38800"
+      "sha256": "24be7dd38bcf6ac762221000db93d854977cca3d70ef53bb41c4ecff2700b38d"
     }
   }
 }
