@@ -1,0 +1,35 @@
+{
+  "schema_version": "aem-guides-gate-receipt-v1",
+  "passed": true,
+  "postable": false,
+  "issue": "GUIDES-29816",
+  "generated_at": "2026-09-01T04:51:55.868347+00:00",
+  "validator": {
+    "schema_version": "aem-guides-skill-bundle-fingerprint-v1",
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\skills\\test-plan-generation",
+    "sha256": "8c1f663dbabd8c99f66b396facf4e0be1650da2b1a32bdf1cdee8b08b55693bc",
+    "file_count": 114
+  },
+  "artifacts": {
+    "plan": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
+      "sha256": "70d88af888b2c8142e601dde5f1a4e39eedf267786a81f5de98c291fc3dfa958"
+    },
+    "manifest": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-evidence-manifest.json",
+      "sha256": "82467c6574bccc79923f3e24d16492f5f1e5896be104535c1a074b36d9c726d2"
+    },
+    "combined": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-test-plan.md",
+      "sha256": "70d88af888b2c8142e601dde5f1a4e39eedf267786a81f5de98c291fc3dfa958"
+    },
+    "compact": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.compact.md",
+      "sha256": "8ef654ce7fb311e2c1e30487358a6f7c487f765a42f2c34f198019cea5ca695b"
+    },
+    "extracted_acs": {
+      "path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-29816-gate-receipt.acceptance-criteria.json",
+      "sha256": "5a91378dc4d53bdee51bee70859694cc83b7716b77e820e20e8433a05b35da36"
+    }
+  }
+}

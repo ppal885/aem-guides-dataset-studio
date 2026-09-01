@@ -1,0 +1,210 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-29816",
+    "summary": "Native PDF: map and topic File properties are not available in metadata.xml",
+    "description": "Native PDF temp metadata.xml receives only the output preset Metadata tab values and omits the Advanced tab File (Asset) properties, so selected source properties and the source map path do not reach Native PDF. Continuation of the sourceProps metadata.xml contract from GUIDES-17324 and GUIDES-17997 and the preset file-metadata configuration from GUIDES-3704.",
+    "status": "Open",
+    "priority": "Major",
+    "components": [
+      "Publishing"
+    ],
+    "labels": [
+      "Broadcom",
+      "Gulfstream",
+      "Plan_2611",
+      "Triaged"
+    ],
+    "fix_versions": [
+      "Backlog"
+    ]
+  },
+  "behaviour_matters": true,
+  "attachments": [
+    {
+      "id": "14330348",
+      "filename": "image-2025-05-28-12-58-40-803.png",
+      "downloaded_to": "C:\\Users\\PRASHA~1\\AppData\\Local\\Temp\\claude\\C--Users-prashantp-Videos-aem-guides-dataset-studio\\d7bf2345-2f6b-4330-adae-dd76498f965d\\scratchpad\\g29816_image-2025-05-28-12-58-40-803.png",
+      "analyzed": true,
+      "note": "Screenshot: Native PDF preset Metadata tab and Advanced File (Asset) properties (dc:description, dc:language, dc:title, docstate), Retain temporary files toggle, and an XMP RDF metadata.xml reflecting only the Metadata tab."
+    }
+  ],
+  "evidence_preflight": {
+    "mode": "degraded",
+    "checked_at": "2026-09-01T18:00:00+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "available",
+        "checked_via": "three lookup_aem_guides probes returned relevant chunks",
+        "reason": ""
+      },
+      "jira_history": {
+        "status": "unavailable",
+        "checked_via": "search_jira_history MCP not exposed this session",
+        "reason": "indexed history tool unavailable"
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "fetched live Jira GUIDES-29816 via JiraClient",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "inspected local Starling clone at captured SHA",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "no design link; backend/publishing metadata issue",
+        "reason": "not a design-dependent ticket"
+      }
+    },
+    "readiness_impact": "draft_only",
+    "readiness_impact_reason": "No accepted UAC and indexed Jira history unavailable, so all ACs stay Proposed and same-mechanism history is unvalidated.",
+    "claim_restrictions": [
+      "jira_history unavailable: no same-mechanism historical status, resolution, or fix-version claim is made.",
+      "ask_dita_expert unavailable: product-behaviour grounding used the lookup_aem_guides fallback and inspected Starling code."
+    ]
+  },
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "Native PDF output preset metadata.xml sourceProps damPath file properties",
+    "output preset advanced File properties metadata configuration publishing",
+    "metadata.xml sourceProps GUID damPath topic metadata all output types"
+  ],
+  "rag_probes_fallback_tool": "lookup_aem_guides",
+  "rag_probes_note": "ask_dita_expert unavailable this session; the three probes were run against the backend lookup_aem_guides vector store and returned relevant chunks including custom-metadata-into-DITA-OT-output.",
+  "jira_history_tool": "search_jira_history",
+  "indexed_history_run": "unavailable: search_jira_history MCP not exposed this session",
+  "jira_history_unavailable_reason": "search_jira_history MCP not exposed this session; continuation tickets cited as contract oracle only, not validated same-mechanism history.",
+  "jira_history_queries": [],
+  "evidence_graph": {
+    "requested": false,
+    "tool": "query_test_evidence_graph",
+    "status": "not_requested",
+    "influence_mode": "off",
+    "used_for_plan": false,
+    "generation_id": null,
+    "queries": [],
+    "degraded_reason": "Evidence graph not invoked; direct live Jira, RAG, and Starling code evidence retained.",
+    "not_requested_reason": "Direct live Jira, RAG fallback, and inspected Starling code fully covered the metadata-correctness behaviour; graph traversal was not needed."
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "not_required",
+    "risk_rating": "low",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "absent",
+        "finding": "Metadata correctness fix; no scale or cardinality contract in scope.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "absent",
+        "finding": "No concurrent-execution contract raised.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "absent",
+        "finding": "Single publish generation; no long-running loop.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "absent",
+        "finding": "No latency, timeout, or throughput ask.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "absent",
+        "finding": "No resource ceiling raised.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "absent",
+        "finding": "No queue or external dependency contract.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "absent",
+        "finding": "Stale-metadata-across-regeneration is a functional correctness concern (AC-11), not a performance signal.",
+        "evidence_refs": [
+          "Jira GUIDES-29816"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "Generate Native PDF and write metadata.xml",
+      "cardinality": "not_applicable",
+      "concurrency": "not_applicable",
+      "repetition": "not_applicable",
+      "duration": "not_applicable",
+      "note": "Metadata-correctness ticket; no performance workload in scope."
+    },
+    "metrics": [],
+    "test_types": [],
+    "oracle": {
+      "status": "not_applicable",
+      "source_ref": "Jira GUIDES-29816",
+      "thresholds": []
+    },
+    "performance_ac_ids": [],
+    "conditional_open_question_ref": "",
+    "rationale": "Principal-performance review found no scale, latency, resource, or queue signal; this is a metadata-correctness fix, so no Performance AC is required and the oracle is not_applicable."
+  },
+  "clones": [
+    {
+      "path": "C:\\starling",
+      "synced": false,
+      "sha": "fdfa72777a2d73b2cdba6d2bdd60ea5535bad75f",
+      "provisional": true,
+      "note": "Inspected at the captured SHA; guarded synchronization was not run because the worktree contains developer changes."
+    }
+  ],
+  "accepted_uac_present": false,
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Which File (Asset) properties are mandatory sourceProps for every asset versus added only when selected in the Advanced tab?",
+      "qa_impact": "Separates the always-present assertion in AC-02 from the selection-driven assertions in AC-03 and AC-06."
+    },
+    {
+      "id": "OQ-02",
+      "question": "When the same property is set on both the Metadata tab and the Advanced File (Asset) properties control, is one authoritative or are both retained?",
+      "qa_impact": "Defines the precedence oracle for AC-01 and prevents inventing a rule."
+    },
+    {
+      "id": "OQ-03",
+      "question": "For a topic reused multiple times in a map, does metadata.xml contain one source-asset entry or one entry per processing occurrence?",
+      "qa_impact": "Defines the association oracle for AC-05."
+    },
+    {
+      "id": "OQ-04",
+      "question": "Should selected File (Asset) properties be written into the same XMP RDF packet that holds Metadata tab values or into a separate sourceProps region?",
+      "qa_impact": "Determines the exact location testers and customer toolkit rules read for AC-03, AC-07, and AC-10."
+    }
+  ],
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": false,
+    "reason": "The description states a single defect (Advanced File properties absent from Native PDF metadata.xml) with no reporter-numbered or bulleted requirement list to transcribe.",
+    "items": []
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": false,
+    "reason": "The ticket concerns publishing metadata correctness, not a job, queue, retry, restart, listener, batch, migration, repair, or long-running operation.",
+    "dimensions": []
+  }
+}

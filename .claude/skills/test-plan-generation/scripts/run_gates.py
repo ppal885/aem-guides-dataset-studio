@@ -110,6 +110,7 @@ temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
+publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1816,6 +1817,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 for problem in check_uac_plan_alignment(manifest_data, body)
             ]
             failures += [
+                f"[publishing-scope] {problem}"
+                for problem in publishing_scope_coverage_mod.validate(manifest_data, body)
+            ]
+            failures += [
                 f"[performance] {problem}"
                 for problem in performance_mod.validate_plan_alignment(manifest_data, body)
             ]
@@ -1997,6 +2002,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_evidence_conflict_resolver()
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
+            self_tests.test_publishing_scope_coverage()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()

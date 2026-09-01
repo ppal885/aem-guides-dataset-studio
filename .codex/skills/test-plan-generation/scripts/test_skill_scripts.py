@@ -104,6 +104,7 @@ temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
+publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6521,6 +6522,37 @@ def test_ac_language_policy() -> None:
           any("REDUNDANT_AC" in p for p in lp.validate(wrap(dup))))
 
     print("test_ac_language_policy: OK")
+
+
+def test_publishing_scope_coverage() -> None:
+    ps = publishing_scope_coverage_mod
+
+    # Non-publishing ticket: not applicable, always clean.
+    non_pub = {"issue": {"components": ["Authoring"]}}
+    check("non-publishing ticket is not applicable", ps.validate(non_pub, "some plan text") == [])
+
+    pub = {"issue": {"components": ["Publishing"]}}
+    bare_plan = "**Acceptance Criteria**\n- AC-01 [Proposed]: (Basic) Given a preset | When output is generated | Then metadata is written | Evidence: Jira.\n"
+    probs = ps.validate(pub, bare_plan)
+    check("publishing plan without DITA-OT coverage is flagged",
+          any("DITA-OT processing" in p for p in probs))
+    check("publishing plan without preset scope is flagged",
+          any("preset IN-scope" in p for p in probs))
+
+    good_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-14 [Proposed]: (Integration) Given a PDF preset that uses the DITA-OT processing engine rather than the native engine | When output is generated | Then existing DITA-OT behaviour is unchanged | Evidence: Jira.\n"
+        "- AC-15 [Proposed]: (Integration) Given the change | When output is generated for a non-Native-PDF preset | Then it is out of scope unless shared-code analysis proves the path is shared | Evidence: Jira.\n"
+    )
+    check("publishing plan covering DITA-OT mode and preset scope passes",
+          ps.validate(pub, good_plan) == [])
+
+    # Text-signal activation (no component) also triggers.
+    text_pub = {"issue": {"components": []}}
+    check("output-preset text signal activates the check",
+          ps.validate(text_pub, "**Acceptance Criteria**\n- AC-01: native pdf output preset metadata\n") != [])
+
+    print("test_publishing_scope_coverage: OK")
 
 
 def main() -> int:
