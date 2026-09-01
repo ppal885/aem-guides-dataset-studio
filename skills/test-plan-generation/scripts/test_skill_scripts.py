@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -110,6 +111,7 @@ root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_drive
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
+feature_map_mod = _load("feature_map", "feature_map.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -2901,6 +2903,9 @@ def test_component_reference_routing() -> None:
             "scripts/dimension_synthesizer.py",
             "scripts/miss_probe_library.py",
             "data/miss_probes.json",
+            "scripts/feature_map.py",
+            "data/aem_feature_map.json",
+            "references/aem-feature-map.md",
             "scripts/run_gates.py",
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
@@ -6867,6 +6872,163 @@ def test_miss_probe_library() -> None:
     print("test_miss_probe_library: OK")
 
 
+def test_feature_map() -> None:
+    fm = feature_map_mod
+
+    feature_map = fm.load_map()
+    check("checked-in feature map passes strict governance", fm.validate_repository_map() == [])
+    check("feature map schema is v1", feature_map["schema_version"] == fm.SCHEMA_VERSION)
+    check("feature map is installed and approved", fm.is_present() is True)
+    check("feature map has four curated surfaces", len(feature_map["surfaces"]) == 4)
+    asset_surface = next(
+        (surface for surface in feature_map["surfaces"] if surface["surface"] == "ASSET_UPLOAD_DAM"),
+        None,
+    )
+    check("asset-upload surface is present", asset_surface is not None)
+    asset_features = {item["feature"] for item in asset_surface["native_features"]}
+    check(
+        "asset-upload surface contains the six required native features",
+        {
+            "duplicate detection",
+            "versioning and timeline",
+            "DAM update-asset workflows",
+            "processing profiles / metadata",
+            "smart tags",
+            "expiry",
+        }.issubset(asset_features),
+    )
+    check(
+        "every curated feature is Human-approved and cites Experience League",
+        all(
+            item["approval_status"] == fm.APPROVED_STATUS
+            and item["reference"].startswith("Experience League ")
+            and item["reference_urls"]
+            and all(url.startswith(fm.EXPERIENCE_LEAGUE_PREFIX) for url in item["reference_urls"])
+            for surface in feature_map["surfaces"]
+            for item in surface["native_features"]
+        ),
+    )
+    check(
+        "surface match phrases are generic lower-case text rather than code paths or identifiers",
+        all(
+            token == token.casefold()
+            and not any(mark in token for mark in ("/", "\\", "::", "(", ")", "."))
+            and not re.search(r"[a-z][a-z0-9]*[A-Z]", token)
+            for surface in feature_map["surfaces"]
+            for token in surface["match"]
+        ),
+    )
+
+    pairs = [
+        (
+            "E-UPLOAD",
+            "The asset upload uses the shared overwrite path after an upload conflict.",
+        )
+    ]
+    candidates = fm.candidates_for(pairs)
+    by_feature = {candidate["feature"]: candidate for candidate in candidates}
+    check("asset upload emits duplicate-detection candidate", "duplicate detection" in by_feature)
+    check("asset upload emits versioning candidate", "versioning and timeline" in by_feature)
+    duplicate = by_feature["duplicate detection"]
+    check("feature candidate generator is FEATURE_MAP", duplicate["generator"] == "FEATURE_MAP")
+    check("feature candidate status is investigation-only", duplicate["status"] == "INVESTIGATION_CANDIDATE")
+    check("feature candidate carries feature tag", duplicate["feature"] == "duplicate detection")
+    check("feature candidate carries implied dimension axis", duplicate["implied_dimension_axis"] == "CODE_PATH_CONSUMER")
+    check("feature candidate uses canonical coverage dimension", duplicate["dimension"] == "CONSUMER")
+    check("feature candidate carries reference tag", duplicate["reference"].startswith("Experience League "))
+    check("feature candidate cites matching evidence", "E-UPLOAD" in duplicate["current_evidence"])
+    check("feature candidate is explicitly advisory", duplicate["advisory_only"] is True)
+    check(
+        "feature and reference survive in technical basis",
+        any("duplicate detection" in basis for basis in duplicate["technical_basis"])
+        and any("reference:Experience League" in basis for basis in duplicate["technical_basis"]),
+    )
+
+    check(
+        "non-matching evidence contributes no feature-map candidate",
+        fm.candidates_for([("E-EDITOR", "The caret remains in the editor after typing.")]) == [],
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        malformed = Path(tmp) / "feature-map.json"
+        malformed.write_text("{not-json", encoding="utf-8")
+        check("malformed map loads as empty", fm.load_map(malformed)["surfaces"] == [])
+        check("malformed map contributes no candidate", fm.candidates_for(pairs, malformed) == [])
+        check("missing map contributes no candidate", fm.candidates_for(pairs, Path(tmp) / "missing.json") == [])
+
+        wrong_surfaces = Path(tmp) / "wrong-surfaces.json"
+        wrong_surfaces.write_text(
+            json.dumps(
+                {
+                    "schema_version": fm.SCHEMA_VERSION,
+                    "curation_status": fm.APPROVED_STATUS,
+                    "authority": "Adobe Experience League",
+                    "surfaces": 42,
+                }
+            ),
+            encoding="utf-8",
+        )
+        check("wrong-typed surfaces fail open", fm.load_map(wrong_surfaces)["surfaces"] == [])
+        check("wrong-typed surfaces contribute no candidate", fm.candidates_for(pairs, wrong_surfaces) == [])
+
+        wrong_features = Path(tmp) / "wrong-features.json"
+        wrong_features.write_text(
+            json.dumps(
+                {
+                    "schema_version": fm.SCHEMA_VERSION,
+                    "curation_status": fm.APPROVED_STATUS,
+                    "authority": "Adobe Experience League",
+                    "surfaces": [
+                        {
+                            "surface": "ASSET_UPLOAD_DAM",
+                            "match": ["asset upload"],
+                            "native_features": 42,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        check("wrong-typed native features fail open", fm.load_map(wrong_features)["surfaces"] == [])
+        check("wrong-typed native features contribute no candidate", fm.candidates_for(pairs, wrong_features) == [])
+
+        unapproved = Path(tmp) / "unapproved.json"
+        unapproved_data = json.loads(
+            (Path(__file__).resolve().parent.parent / "data" / "aem_feature_map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        unapproved_data["curation_status"] = "MODEL_PROPOSED"
+        unapproved.write_text(json.dumps(unapproved_data), encoding="utf-8")
+        check("non-Human-approved map is ignored", fm.load_map(unapproved)["surfaces"] == [])
+        check(
+            "strict governance rejects non-Human-approved checked-in data",
+            any("curation_status" in problem for problem in fm.validate_repository_map(unapproved)),
+        )
+
+        hidden_unapproved = Path(tmp) / "hidden-unapproved.json"
+        hidden_unapproved_data = json.loads(json.dumps(unapproved_data))
+        hidden_unapproved_data["curation_status"] = fm.APPROVED_STATUS
+        hidden_unapproved_data["surfaces"][0]["native_features"][0]["approval_status"] = "MODEL_PROPOSED"
+        hidden_unapproved.write_text(json.dumps(hidden_unapproved_data), encoding="utf-8")
+        check(
+            "strict governance rejects an unapproved entry instead of silently sanitizing it",
+            any("Human-approved" in problem for problem in fm.validate_repository_map(hidden_unapproved)),
+        )
+
+    all_surface_candidates = [
+        *candidates,
+        *fm.candidates_for([("E-PUBLISH", "Generate output with an output preset.")]),
+        *fm.candidates_for([("E-TRANSLATE", "Start a translation project for a target language.")]),
+    ]
+    check(
+        "every emitted feature candidate validates in canonical coverage-hypothesis shape",
+        coverage_mod.validate_coverage_block(all_surface_candidates) == [],
+    )
+
+    check("feature map summary reports approved entries", "approved feature(s)" in fm.summarize())
+    print("test_feature_map: OK")
+
+
 def test_dimension_synthesizer() -> None:
     ds = dimension_synthesizer_mod
 
@@ -6915,11 +7077,103 @@ def test_dimension_synthesizer() -> None:
         all("VALUE_SET_CHANNEL" not in n for n in ds.review_notes(represented)),
     )
 
-    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    feature_manifest = {
+        "behavior_model": {
+            "facts": [
+                {
+                    "fact": "The shared asset upload resolves an overwrite after an upload conflict.",
+                    "evidence_ids": ["E-UPLOAD"],
+                }
+            ]
+        },
+        "rag_probes": [],
+    }
+    feature_result = ds.synthesize(feature_manifest)
+    feature_candidates = [
+        candidate
+        for candidate in feature_result["candidates"]
+        if candidate.get("generator") == "FEATURE_MAP"
+    ]
+    feature_names = {candidate.get("feature") for candidate in feature_candidates}
+    check("synthesizer appends FEATURE_MAP duplicate detection", "duplicate detection" in feature_names)
+    check("synthesizer appends FEATURE_MAP versioning", "versioning and timeline" in feature_names)
     check(
-        "run_gates surfaces synthesizer review notes",
-        "dimension_synthesizer_mod.review_notes" in run_gates_source,
+        "feature-map candidate receives a stable synthesizer id",
+        all(candidate["hypothesis_id"].startswith("DS-") for candidate in feature_candidates),
     )
+    feature_notes = ds.review_notes(feature_manifest)
+    check(
+        "unrepresented feature-map candidate surfaces as DISCOVERY review",
+        any(
+            "DISCOVERY:" in note
+            and "generator=FEATURE_MAP" in note
+            and "feature=duplicate detection" in note
+            for note in feature_notes
+        ),
+    )
+
+    represented_feature = json.loads(json.dumps(feature_manifest))
+    represented_feature["coverage_hypotheses"] = [
+        {
+            "dimension": "CONSUMER",
+            "equivalence_key": next(
+                candidate["equivalence_key"]
+                for candidate in feature_candidates
+                if candidate["feature"] == "duplicate detection"
+            ),
+        }
+    ]
+    represented_feature_notes = ds.review_notes(represented_feature)
+    check(
+        "exactly represented feature-map candidate is suppressed",
+        all("feature=duplicate detection" not in note for note in represented_feature_notes),
+    )
+    check(
+        "other same-axis feature-map candidates remain visible",
+        any("feature=DAM update-asset workflows" in note for note in represented_feature_notes),
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        gate = _load("run_gates_feature_map_integration", "run_gates.py")
+        plan_path = Path(tmp) / "plan.md"
+        combined_path = Path(tmp) / "combined.md"
+        manifest_path = Path(tmp) / "manifest.json"
+        plan_path.write_text("# Test Plan\n", encoding="utf-8")
+        combined_path.write_text("# Test Plan\n", encoding="utf-8")
+        manifest_path.write_text(json.dumps(feature_manifest), encoding="utf-8")
+        _, gate_notes = gate.run(
+            str(plan_path),
+            str(combined_path),
+            str(manifest_path),
+            None,
+            True,
+        )
+        check(
+            "run_gates emits FEATURE_MAP REVIEW DISCOVERY note",
+            any(
+                note.startswith("REVIEW DISCOVERY:")
+                and "generator=FEATURE_MAP" in note
+                and "feature=duplicate detection" in note
+                for note in gate_notes
+            ),
+        )
+        nonmatch_manifest = {
+            "behavior_model": {
+                "facts": [{"fact": "The caret remains visible after typing.", "evidence_ids": ["E1"]}]
+            }
+        }
+        manifest_path.write_text(json.dumps(nonmatch_manifest), encoding="utf-8")
+        _, nonmatch_notes = gate.run(
+            str(plan_path),
+            str(combined_path),
+            str(manifest_path),
+            None,
+            True,
+        )
+        check(
+            "run_gates emits no FEATURE_MAP review for non-matching evidence",
+            all("generator=FEATURE_MAP" not in note for note in nonmatch_notes),
+        )
     print("test_dimension_synthesizer: OK")
 
 
@@ -8974,6 +9228,7 @@ def main() -> int:
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
     test_miss_probe_library()
+    test_feature_map()
     test_dimension_synthesizer()
     test_evidence_provenance()
     test_security_coverage()

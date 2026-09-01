@@ -1,58 +1,395 @@
 {
   "schema_version": "aem-guides-feature-map-v1",
-  "note": "Curated, human-approved map of native AEM/Guides features grouped by surface. Each feature names the shared flow it rides and the coverage dimension it implies, so discovery runs against a domain checklist, not only code symbols. Grounded in Experience League. Add a feature only when it is domain truth; never a code symbol, config key, or Jira id. Consumed by scripts/feature_map.py (UACDISCOVER-03) and surfaced by the dimension synthesizer as FEATURE_MAP candidates.",
+  "curation_status": "HUMAN_APPROVED",
+  "authority": "Adobe Experience League",
+  "note": "Curated, human-approved domain checklist. A match creates investigation candidates only. It never establishes Jira scope, acceptance truth, or an Acceptance Criterion.",
   "surfaces": [
     {
       "surface": "ASSET_UPLOAD_DAM",
-      "match": ["asset upload", "overwrite existing", "upload conflict", "dam upload", "file upload", "keep both", "create version", "asset version", "initiateupload", "completeupload"],
+      "match": [
+        "asset upload",
+        "overwrite",
+        "upload conflict",
+        "dam upload",
+        "file upload"
+      ],
       "native_features": [
         {
           "feature": "duplicate detection",
+          "shared_flows": [
+            "asset upload",
+            "asset ingestion"
+          ],
           "implied_dimension_axis": "CODE_PATH_CONSUMER",
-          "candidate_template": "native AEM Assets duplicate detection (checksum-based) still detects duplicates on the shared upload/overwrite flow and is neither suppressed nor bypassed",
-          "reference": "Experience League: Detect duplicate assets"
+          "candidate_template": "when native duplicate detection is enabled, duplicate checking and notification still run on the shared asset upload path, including same-content files with different names",
+          "reference": "Experience League detect-duplicate-assets",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/detect-duplicate-assets"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         },
         {
-          "feature": "asset versioning and timeline",
-          "implied_dimension_axis": "TERMINAL_STATE",
-          "candidate_template": "asset versioning and the Timeline version history behave correctly on overwrite (a new version is created or the configured version policy is honored)",
-          "reference": "Experience League: Manage asset versions"
-        },
-        {
-          "feature": "DAM update-asset workflow / processing",
-          "implied_dimension_axis": "CODE_PATH_CONSUMER",
-          "candidate_template": "the DAM update-asset / processing workflow (renditions, metadata extraction) still runs as configured after the upload or overwrite on both in-scope and out-of-scope paths",
-          "reference": "Experience League: Process assets / asset microservices"
-        },
-        {
-          "feature": "processing profiles and metadata profiles",
-          "implied_dimension_axis": "CONFIG_BRANCH",
-          "candidate_template": "folder processing profiles and metadata profiles still apply (or are correctly excluded) for the affected paths after the change",
-          "reference": "Experience League: Processing profiles / Metadata profiles"
-        },
-        {
-          "feature": "smart tags",
-          "implied_dimension_axis": "CODE_PATH_CONSUMER",
-          "candidate_template": "AI smart-tagging still triggers as configured on upload/overwrite where enabled and is unaffected where not",
-          "reference": "Experience League: Smart tags"
-        },
-        {
-          "feature": "asset expiry and on-time/off-time",
+          "feature": "versioning and timeline",
+          "shared_flows": [
+            "same-path asset upload",
+            "asset overwrite conflict"
+          ],
           "implied_dimension_axis": "LIFECYCLE",
-          "candidate_template": "asset expiry and on-time/off-time activation state is preserved or correctly re-evaluated after an overwrite",
-          "reference": "Experience League: Asset expiry"
+          "candidate_template": "the selected same-path upload action leaves the documented version and timeline result, including the available rollback behavior",
+          "reference": "Experience League add-assets and manage-digital-assets",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/add-assets",
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/manage-digital-assets"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "DAM update-asset workflows",
+          "shared_flows": [
+            "asset upload",
+            "asset update processing"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "on deployments where DAM Update Asset is used, its configured rendition, metadata, extraction, and transcoding steps still run for uploaded assets",
+          "reference": "Experience League assets-workflow and assets-cloud-changes",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/assets/using/assets-workflow",
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/assets-cloud-changes"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "processing profiles / metadata",
+          "shared_flows": [
+            "folder-scoped asset processing",
+            "asset metadata initialization"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "destination-folder or global processing and metadata profiles still apply according to their documented scope and produce the expected renditions and default metadata",
+          "reference": "Experience League asset-microservices-configure-and-use and metadata-profiles",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/asset-microservices-configure-and-use",
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/metadata-profiles"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         },
         {
           "feature": "metadata schema and required properties",
+          "shared_flows": [
+            "asset upload validation",
+            "asset metadata editing"
+          ],
           "implied_dimension_axis": "VALUE_SET_CHANNEL",
-          "candidate_template": "existing metadata (schema-driven and repository-node values) is preserved or correctly updated on overwrite, and required properties are not lost",
-          "reference": "Experience League: Metadata schemas"
+          "candidate_template": "the applicable metadata schema and mandatory-property indicators remain correct after upload or the selected same-path action, using the documented metadata outcome for that action",
+          "reference": "Experience League metadata-schemas",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/metadata-schemas"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         },
         {
-          "feature": "restrict / prevent duplicate upload configuration",
+          "feature": "smart tags",
+          "shared_flows": [
+            "post-upload asset processing",
+            "asset reprocessing"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "for supported asset types in Cloud Service, upload or reprocess still produces reviewable Smart Tags through the native processing path",
+          "reference": "Experience League smart-tags",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/smart-tags"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "expiry",
+          "shared_flows": [
+            "asset metadata state",
+            "scheduled asset expiration"
+          ],
+          "implied_dimension_axis": "LIFECYCLE",
+          "candidate_template": "the selected upload or update action leaves native asset-expiry status, restrictions, scheduled unpublish, and retry behavior correct",
+          "reference": "Experience League drm asset-expiration",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/drm"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "asset upload restrictions",
+          "shared_flows": [
+            "asset upload validation",
+            "asset type eligibility"
+          ],
           "implied_dimension_axis": "CONFIG_BRANCH",
-          "candidate_template": "any configured restrict-duplicate-upload behavior is honored consistently across in-scope and out-of-scope paths",
-          "reference": "Experience League: Detect duplicate assets (restrict uploads)"
+          "candidate_template": "on deployments with native asset upload restrictions, configured asset-type eligibility remains enforced on the shared upload path",
+          "reference": "Experience League configuring-asset-upload-restrictions",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-65/content/assets/administer/configuring-asset-upload-restrictions"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
+      "surface": "PUBLISHING_OUTPUT",
+      "match": [
+        "publish output",
+        "publishing",
+        "output generation",
+        "generate output",
+        "output preset"
+      ],
+      "native_features": [
+        {
+          "feature": "output preset consumers",
+          "shared_flows": [
+            "output generation",
+            "shared publishing services"
+          ],
+          "implied_dimension_axis": "OUTPUT_PRESET",
+          "candidate_template": "other supported output-preset consumers of the shared generation path are investigated, not only the named output type",
+          "reference": "Experience League generate-output-understand-presets",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-understand-presets"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "baseline version selection",
+          "shared_flows": [
+            "baseline publishing",
+            "referenced-content version resolution"
+          ],
+          "implied_dimension_axis": "LIFECYCLE",
+          "candidate_template": "baseline-driven generation still resolves the selected topic and referenced-content versions for label, date, and version selections",
+          "reference": "Experience League generate-output-use-baseline-for-publishing",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/work-with-baseline/generate-output-use-baseline-for-publishing"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "condition presets",
+          "shared_flows": [
+            "conditional output generation",
+            "output preset configuration"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "configured include, exclude, passthrough, and flag actions remain effective in the generated output",
+          "reference": "Experience League generate-output-use-condition-presets",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/conditional-content/generate-output-use-condition-presets"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "post-generation workflow",
+          "shared_flows": [
+            "output finalization",
+            "post-generation processing"
+          ],
+          "implied_dimension_axis": "TERMINAL_STATE",
+          "candidate_template": "when configured, the post-generation workflow runs on generated output and reaches its finalization step before the flow is treated as complete",
+          "reference": "Experience League using-post-generation-workflow",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/workflows/using-post-generation-workflow"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "DITA-OT processing on and off",
+          "shared_flows": [
+            "preset configuration",
+            "output generation"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "behaviour is verified with Enable DITA-OT Processing both on and off for the presets that support the toggle",
+          "reference": "Experience League configure-output-generation",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/configure-output-generation"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "native PDF content constructs",
+          "shared_flows": [
+            "native pdf generation",
+            "pdf template application"
+          ],
+          "implied_dimension_axis": "OUTPUT_PRESET",
+          "candidate_template": "native PDF template, table of contents, index, change bars, and metadata are produced correctly for the affected construct",
+          "reference": "Experience League native-pdf-output-generation",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/native-pdf/native-pdf-output-generation"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "generate-output entry points",
+          "shared_flows": [
+            "output generation trigger"
+          ],
+          "implied_dimension_axis": "ENTRY_POINT",
+          "candidate_template": "generation behaves consistently across its entry points including the map console, dashboard, scheduled generation, the api, and preview",
+          "reference": "Experience League generate-output-dita-map-console",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/generate-output-dita-map-console"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "publish to AEM Sites",
+          "shared_flows": [
+            "site output activation",
+            "replication"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "aem site output activation, replication to publish, and live copy relationships behave correctly for the generated site output",
+          "reference": "Experience League aem-site-output-generation",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/aem-site/aem-site-output-generation"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "generated artifact delivery and retain temporary files",
+          "shared_flows": [
+            "output packaging",
+            "temp file retention"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "the generated artifact is downloadable and complete, and retain temporary files exposes the expected intermediate output for the affected presets",
+          "reference": "Experience League generate-output-dita-map-console",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/generate-output-dita-map-console"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
+      "surface": "TRANSLATION",
+      "match": [
+        "translation",
+        "translate content",
+        "translation project",
+        "xliff",
+        "target language",
+        "language copy"
+      ],
+      "native_features": [
+        {
+          "feature": "translation status synchronization",
+          "shared_flows": [
+            "source revision changes",
+            "translation project status"
+          ],
+          "implied_dimension_axis": "LIFECYCLE",
+          "candidate_template": "Out of Sync, Missing Copy, In Progress, and In Sync remain accurate for each target language after source changes and refresh",
+          "reference": "Experience League translation-view-trans-state-6234",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/translate-content/translation-view-trans-state-6234"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "translation project modes and XLIFF round trip",
+          "shared_flows": [
+            "send for translation",
+            "translated content import"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "the relevant project mode still uses the shared translation flow, and XLIFF export and import produce the expected translated DITA content when human translation is configured",
+          "reference": "Experience League translate-documents-web-editor",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/translate-content/translate-documents-web-editor"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "completed translation project cleanup",
+          "shared_flows": [
+            "translation project completion",
+            "project cleanup"
+          ],
+          "implied_dimension_axis": "TERMINAL_STATE",
+          "candidate_template": "configured delete-or-disable cleanup after completion leaves reference translation status unchanged and leaves disabled projects non-editable",
+          "reference": "Experience League translate-documents-web-editor",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/translate-content/translate-documents-web-editor"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
+      "surface": "AUTHORING",
+      "match": [
+        "web editor",
+        "topic editor",
+        "map tree",
+        "conditional attribute",
+        "special character",
+        "editor view",
+        "authoring"
+      ],
+      "native_features": [
+        {
+          "feature": "tables",
+          "shared_flows": [
+            "table insertion",
+            "table cell editing",
+            "paste"
+          ],
+          "implied_dimension_axis": "TOPIC_TYPE",
+          "candidate_template": "insert and delete rows and columns and pasted tables keep valid table structure with no ghost or orphan cells",
+          "reference": "Experience League enable-view-pasted-tables",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/enable-view-pasted-tables"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "conditional attribute profiling",
+          "shared_flows": [
+            "conditional attribute application",
+            "profiling"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "applied conditional attributes profile the content correctly at author time and carry through to conditional output",
+          "reference": "Experience League conditional-attribute-profiling",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/conditional-content/conditional-attribute-profiling"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "editor views",
+          "shared_flows": [
+            "view switch",
+            "render"
+          ],
+          "implied_dimension_axis": "ENTRY_POINT",
+          "candidate_template": "switching between author, source, and preview preserves content, caret and selection, and unsaved edits",
+          "reference": "Experience League editor-views",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/author-content/web-editor/editor-views"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "special characters and symbols",
+          "shared_flows": [
+            "insert special character"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "configured special characters and symbols are insertable and preserved through save and output",
+          "reference": "Experience League enable-additional-special-characters",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/enable-additional-special-characters"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         }
       ]
     }

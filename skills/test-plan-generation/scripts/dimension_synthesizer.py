@@ -8,12 +8,14 @@ pipeline and clarification_gate.dimension_space. It never authors an AC and neve
 hard-fails; run_gates surfaces the candidates that are not yet represented as a
 non-blocking DISCOVERY review note.
 
-Three generators, each candidate tagged with the generating evidence and generator:
+Five generators, each candidate tagged with the generating evidence and generator:
   * CODE_NEIGHBORHOOD  - generic signals in cited code text/paths.
   * RAG_NEIGHBORHOOD   - recorded product-RAG probes.
   * HISTORY_NEIGHBORHOOD - same-component recurring defects (search_jira_history or
     the offline jira_qa corpus). When neither history source is available it records
     a gap; it never fabricates a candidate.
+  * LEARNED_PROBE - governed, reusable probes derived from Human-confirmed misses.
+  * FEATURE_MAP - curated native AEM/Guides features that ride a matched shared flow.
 
 Generic only.  Standard library only.  No concrete symbol or Jira key is hardcoded;
 the signal map is generic vocabulary, not product identifiers.
@@ -197,6 +199,21 @@ def synthesize(manifest: dict | None) -> dict:
     except Exception as exc:  # pragma: no cover - defensive
         gaps.append(f"LEARNED_PROBE: miss-probe library unavailable ({exc})")
 
+    # FEATURE_MAP candidates from the human-approved AEM/Guides domain checklist
+    # (UACDISCOVER-03). This is advisory and fail-open: a missing or malformed map
+    # contributes no candidates and cannot make canonical generation unavailable.
+    try:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "feature_map", Path(__file__).with_name("feature_map.py")
+        )
+        feature_map = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(feature_map)  # type: ignore[union-attr]
+        candidates += feature_map.candidates_for(pairs)
+    except Exception as exc:  # pragma: no cover - defensive
+        gaps.append(f"FEATURE_MAP: curated feature map unavailable ({exc})")
+
     # Assign stable ids.
     for i, cand in enumerate(candidates, start=1):
         cand["hypothesis_id"] = f"DS-{i:02d}"
@@ -216,6 +233,34 @@ def _represented_dimensions(manifest: dict) -> set[str]:
     return reps
 
 
+def _represented_feature_map_candidates(manifest: dict) -> set[str]:
+    """Return exact FEATURE_MAP equivalence keys explicitly dispositioned.
+
+    A broad dimension such as CODE_PATH_CONSUMER does not prove that every native
+    feature on a matched shared flow was investigated. Feature-map candidates are
+    therefore suppressed only by their exact equivalence key (or surface+feature
+    tags), while all pre-existing generators keep the legacy axis-level behavior.
+    """
+    represented: set[str] = set()
+    blocks: list[Any] = list(manifest.get("coverage_hypotheses") or [])
+    clarification = manifest.get("clarification")
+    if isinstance(clarification, dict):
+        blocks += list(clarification.get("dimension_space") or [])
+    for item in blocks:
+        if not isinstance(item, dict):
+            continue
+        equivalence_key = str(item.get("equivalence_key", "")).strip().casefold()
+        if equivalence_key.startswith("feature_map:"):
+            represented.add(equivalence_key)
+        surface = str(item.get("surface", "")).strip().upper()
+        feature = str(item.get("feature", "")).strip()
+        if surface and feature:
+            represented.add(
+                f"feature_map:{surface}:{re.sub(r'[^a-z0-9]+', '-', feature.casefold()).strip('-')}"
+            )
+    return represented
+
+
 def is_present(manifest: dict | None = None) -> bool:
     data = manifest if isinstance(manifest, dict) else {}
     return any(data.get(k) for k in BLOCK_ACTIVATORS)
@@ -228,13 +273,23 @@ def review_notes(manifest: dict | None = None) -> list[str]:
     if not result["activated"]:
         return []
     represented = _represented_dimensions(data)
+    represented_feature_map = _represented_feature_map_candidates(data)
     notes: list[str] = []
     for cand in result["candidates"]:
-        if cand["dimension"].upper() in represented:
+        if cand.get("generator") == "FEATURE_MAP":
+            if str(cand.get("equivalence_key", "")).casefold() in represented_feature_map:
+                continue
+        elif cand["dimension"].upper() in represented:
             continue
+        feature_context = (
+            f", feature={cand.get('feature')}, reference={cand.get('reference')}"
+            if cand.get("generator") == "FEATURE_MAP"
+            else ""
+        )
         notes.append(
             f"DISCOVERY: unrepresented dimension {cand['dimension']} "
-            f"(generator={cand['generator']}, evidence={','.join(cand['current_evidence'])}): "
+            f"(generator={cand['generator']}{feature_context}, "
+            f"evidence={','.join(cand['current_evidence'])}): "
             f"{cand['candidate']} - dispose or reject it in coverage_hypotheses/dimension_space"
         )
     return notes

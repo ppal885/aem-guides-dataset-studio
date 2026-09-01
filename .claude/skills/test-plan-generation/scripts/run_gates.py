@@ -2162,6 +2162,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_root_cause_fix_driven()
             self_tests.test_reviewer_request_coverage()
             self_tests.test_miss_probe_library()
+            if hasattr(self_tests, "test_feature_map"):
+                self_tests.test_feature_map()
             self_tests.test_dimension_synthesizer()
             self_tests.test_evidence_provenance()
             self_tests.test_security_coverage()
