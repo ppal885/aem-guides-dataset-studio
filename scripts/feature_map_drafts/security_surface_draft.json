@@ -1,0 +1,89 @@
+{
+  "surface": "SECURITY",
+  "curation_status": "PENDING_APPROVAL",
+  "authority": "Candidate domain checklist awaiting Human approval and Experience League URL confirmation.",
+  "note": "Every feature remains URL-unconfirmed and cannot enter the governed feature map until its Experience League source is confirmed and the entry is Human-approved. A Guides-specific source is still required before confirming endpoint authentication or CSRF coverage.",
+  "match": [
+    "permission",
+    "role",
+    "user group",
+    "acl",
+    "authorization",
+    "access control",
+    "privilege"
+  ],
+  "native_features": [
+    {
+      "feature": "role and permission matrix",
+      "shared_flows": [
+        "role-based action eligibility",
+        "permission evaluation"
+      ],
+      "implied_dimension_axis": "PERMISSION_ROLE",
+      "candidate_template": "each supported role can perform only the actions granted by the approved permission matrix across the affected workflow",
+      "reference": "Experience League user administration and security (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "user-group gating",
+      "shared_flows": [
+        "user-group membership resolution",
+        "feature and action gating"
+      ],
+      "implied_dimension_axis": "PERMISSION_ROLE",
+      "candidate_template": "feature visibility and action eligibility follow the logged-in user's effective group membership, including users in multiple supported groups",
+      "reference": "Experience League user administration and security (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "content ACL path enforcement",
+      "shared_flows": [
+        "repository path authorization",
+        "content read and write operations"
+      ],
+      "implied_dimension_axis": "PERMISSION_ROLE",
+      "candidate_template": "read and write operations enforce the effective ACL on the target content path and do not expose or modify content outside the allowed scope",
+      "reference": "Experience League user administration and security (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "denied and read-only operations do not mutate content",
+      "shared_flows": [
+        "authorization denial",
+        "read-only operation handling"
+      ],
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate_template": "a denied or read-only action reports the approved failure state and leaves content, metadata, workflow state, and history unchanged",
+      "reference": "Experience League user administration and security (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "endpoint authentication and CSRF protection",
+      "shared_flows": [
+        "authenticated endpoint invocation",
+        "state-changing request protection"
+      ],
+      "implied_dimension_axis": "PERMISSION_ROLE",
+      "candidate_template": "affected endpoints require the approved authenticated context and state-changing requests enforce the applicable CSRF protection without weakening authorized workflows",
+      "reference": "Experience League AEM Guides endpoint security (confirm Guides-specific URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "privilege-escalation boundary",
+      "shared_flows": [
+        "effective privilege calculation",
+        "cross-role and cross-path authorization"
+      ],
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate_template": "request parameters, alternate entry points, inherited groups, and path changes cannot grant a user a capability beyond the user's effective approved privileges",
+      "reference": "Experience League user administration and security (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    }
+  ]
+}

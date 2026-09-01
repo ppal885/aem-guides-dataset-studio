@@ -1,0 +1,75 @@
+{
+  "surface": "EDITOR_OXYGEN",
+  "curation_status": "PENDING_APPROVAL",
+  "authority": "Candidate domain checklist awaiting Human approval and Experience League URL confirmation.",
+  "note": "Every feature remains URL-unconfirmed and cannot enter the governed feature map until its Experience League source is confirmed and the entry is Human-approved.",
+  "match": [
+    "oxygen",
+    "edit in oxygen",
+    "desktop editor",
+    "oxygen framework",
+    "oxygen plugin"
+  ],
+  "native_features": [
+    {
+      "feature": "edit a topic or map in Oxygen and save it back",
+      "shared_flows": [
+        "open repository content in Oxygen",
+        "save topic or map changes back to AEM"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "a topic or map opened in Oxygen can be edited and saved back to the correct AEM repository item without losing content or metadata",
+      "reference": "Experience League edit in Oxygen (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "checkout, checkin, and lock handling",
+      "shared_flows": [
+        "repository checkout and checkin",
+        "authoring lock lifecycle"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "checkout, checkin, and lock state remain consistent between Oxygen and AEM from open through save, close, and failure recovery",
+      "reference": "Experience League edit in Oxygen (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "connection, framework, and plugin configuration",
+      "shared_flows": [
+        "AEM connection configuration",
+        "Oxygen framework and plugin setup"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "supported AEM connections, Oxygen frameworks, and plugin configurations enable the intended integration, while invalid or incomplete configuration does not corrupt repository content",
+      "reference": "Experience League configure edit in Oxygen (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "web editor and Oxygen behavior parity",
+      "shared_flows": [
+        "shared topic and map authoring",
+        "repository persistence across authoring clients"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "for the affected construct, when that construct is supported in both the web editor and Oxygen, each client preserves the same valid DITA structure and repository data",
+      "reference": "Experience League edit in Oxygen (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "Edit in Oxygen user-interface action",
+      "shared_flows": [
+        "repository action eligibility",
+        "launch Oxygen from AEM"
+      ],
+      "implied_dimension_axis": "ENTRY_POINT",
+      "candidate_template": "the Edit in Oxygen action appears only in supported contexts and opens the selected eligible topic or map through the configured integration",
+      "reference": "Experience League editor left panel and edit in Oxygen (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    }
+  ]
+}

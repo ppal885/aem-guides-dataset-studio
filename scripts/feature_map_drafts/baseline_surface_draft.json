@@ -1,0 +1,86 @@
+{
+  "surface": "BASELINE",
+  "curation_status": "PENDING_APPROVAL",
+  "authority": "Candidate domain checklist awaiting Human approval and Experience League URL confirmation.",
+  "note": "Every feature remains URL-unconfirmed and cannot enter the governed feature map until its Experience League source is confirmed and the entry is Human-approved.",
+  "match": [
+    "baseline",
+    "work with baseline",
+    "version-as-of",
+    "reference version resolution"
+  ],
+  "native_features": [
+    {
+      "feature": "create and edit a baseline",
+      "shared_flows": [
+        "baseline creation",
+        "baseline configuration update"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "creating or editing a baseline preserves additions, removals, and changes to the selected topic and map versions and makes the saved baseline available to its supported consumers",
+      "reference": "Experience League work with baselines (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "direct and indirect reference version resolution",
+      "shared_flows": [
+        "baseline reference traversal",
+        "topic and map version resolution"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "the baseline resolves the approved versions of both directly and indirectly referenced content throughout its lifecycle",
+      "reference": "Experience League work with baselines (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "label and date-based version selection",
+      "shared_flows": [
+        "baseline version selection",
+        "version-as-of resolution"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "Label and Date selections resolve the intended content versions as the repository history changes",
+      "reference": "Experience League work with baselines (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "baseline publishing",
+      "shared_flows": [
+        "baseline selection for output",
+        "publishing input resolution"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "publishing with a baseline uses its resolved content versions from generation start through the terminal output result",
+      "reference": "Experience League use a baseline for publishing (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "baseline translation project",
+      "shared_flows": [
+        "translation project creation",
+        "baseline version selection for translation"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "when Use Baseline is selected for a translation project, only the files and versions resolved by the chosen baseline are included in the project",
+      "reference": "Experience League use a baseline for translation (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "baseline snapshot integrity",
+      "shared_flows": [
+        "baseline snapshot creation",
+        "saved snapshot consumption"
+      ],
+      "implied_dimension_axis": "TERMINAL_STATE",
+      "candidate_template": "a static baseline preserves its selected versions, while an automatic or dynamic label-based baseline recalculates versions as documented; neither mode exposes a partially resolved or otherwise invalid snapshot",
+      "reference": "Experience League work with baselines (confirm URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    }
+  ]
+}
