@@ -111,6 +111,7 @@ uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
+shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6821,6 +6822,29 @@ def test_value_provenance_coverage() -> None:
     print("test_value_provenance_coverage: OK")
 
 
+def test_shared_path_regression_coverage() -> None:
+    sp = shared_path_regression_coverage_mod
+    nl = chr(10)
+    non_shared = nl.join(["**Acceptance Criteria**", "- AC-01: the job stops the loop.", ""])
+    check("no shared-path evidence is not applicable", sp.validate({}, non_shared) == [])
+
+    miss = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: metadata is built by shared code used by both engines; the AEM Site preset is out of scope.",
+        "**Regression Areas**", "- nothing relevant.", ""])
+    probs = sp.validate({}, miss)
+    check("shared code without regression coverage is flagged", any("shared-path regression coverage" in p for p in probs))
+    check("out-of-scope consumer on shared path is flagged", any("out of scope" in p for p in probs))
+
+    good = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: metadata is built by shared code used by both engines; other presets are covered as shared-path regression.",
+        "**Regression Areas**",
+        "- Re-run the AEM Site and HTML5 output types with Retain temporary files and confirm the retained metadata.xml is unchanged (shared-path regression).", ""])
+    check("shared code with shared-path regression passes", sp.validate({}, good) == [])
+    print("test_shared_path_regression_coverage: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6875,6 +6899,7 @@ def main() -> int:
     test_human_feedback_delta()
     test_entry_point_equivalence()
     test_value_provenance_coverage()
+    test_shared_path_regression_coverage()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
