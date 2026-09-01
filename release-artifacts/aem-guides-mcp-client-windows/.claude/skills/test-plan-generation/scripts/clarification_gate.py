@@ -34,6 +34,12 @@ AXES = (
     "CONFIG_BRANCH",
     "PERMISSION_ROLE",
     "MIGRATION_PATH",
+    # Aligned with feature_map.VALID_AXES / miss_probe_library.VALID_AXES so the same
+    # dimension axis is legal across the clarification, feature-map, and miss-probe surfaces.
+    "NEGATIVE_BOUNDARY",
+    "ENTRY_POINT",
+    "REPRO_DIMENSION",
+    "DOWNSTREAM_REGRESSION",
 )
 
 RESOLUTIONS = (
