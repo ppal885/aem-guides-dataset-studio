@@ -1,0 +1,135 @@
+{
+  "surface": "REVIEW",
+  "curation_status": "PENDING_APPROVAL",
+  "authority": "Grounded in the skill's review-workflow-uac.md domain contract; Experience League URLs UNCONFIRMED - the local corpus lacks clean review pages, needs a fresh crawl before merge",
+  "note": "All features URL-unconfirmed: cannot merge into the governed feature-map until each cites an Experience League URL. Feature list is domain-true and captured for activation once URLs are confirmed.",
+  "match": [
+    "review task",
+    "review comment",
+    "reviewer",
+    "incorporate comment",
+    "review panel",
+    "side by side",
+    "version comparison",
+    "review project"
+  ],
+  "native_features": [
+    {
+      "feature": "review task membership and selected-task state",
+      "shared_flows": [
+        "task selection",
+        "task membership resolution"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "the visible task list and default/selected task derive from the approved task-membership contract, and multi-task topics select correctly",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "review task states (current, open, closed)",
+      "shared_flows": [
+        "task lifecycle"
+      ],
+      "implied_dimension_axis": "TERMINAL_STATE",
+      "candidate_template": "supported task states show the correct labels and drive read-only/editable/importable behaviour",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "review comments, threads, replies and tags",
+      "shared_flows": [
+        "comment thread rendering",
+        "annotation store"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "comments, replies, tags, and authors render for the selected task/version and do not leak across tasks or topics",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "comment import and author incorporation",
+      "shared_flows": [
+        "comment import",
+        "incorporate into topic"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "importing or incorporating comments changes only the approved target version/content and is idempotent or duplicate-safe",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "version comparison / side-by-side diff",
+      "shared_flows": [
+        "version compare",
+        "annotation association"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "comparison names both sides and the topic identity and associates the correct comments/tags/replies with each version, not just opening a diff window",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "review panel / task dropdown and details",
+      "shared_flows": [
+        "review panel render",
+        "task switch"
+      ],
+      "implied_dimension_axis": "ENTRY_POINT",
+      "candidate_template": "the review panel, task dropdown, and details reflect the selected task and switching a task updates only the verified consumers once",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "reviewer roles and permissions",
+      "shared_flows": [
+        "review authorization"
+      ],
+      "implied_dimension_axis": "PERMISSION_ROLE",
+      "candidate_template": "view tasks/comments, import/incorporate, open details, compare versions, and download attachments each enforce the correct role/permission, and denied actions do not mutate content",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "review search and filter within loaded task scope",
+      "shared_flows": [
+        "comment search",
+        "filter"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "search and filter operate on the approved loaded scope and hidden or unloaded task data does not influence results unless cross-task search is in scope",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "topic switch task-selection state",
+      "shared_flows": [
+        "topic switch",
+        "task-selection reset/preserve"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "switching the open topic resets or preserves task selection per the approved state contract and leaves unrelated task/topic data unchanged",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "reviewer display name and fallback",
+      "shared_flows": [
+        "reviewer identity render"
+      ],
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate_template": "reviewer display name and its fallback behave per current implementation, including missing-name cases, without relying on historical UI text",
+      "reference": "review-workflow-uac (confirm EL URL)",
+      "reference_urls": [],
+      "url_confirmed": false
+    }
+  ]
+}

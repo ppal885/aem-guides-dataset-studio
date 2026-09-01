@@ -1,0 +1,207 @@
+{
+  "surface": "AUTHORING",
+  "curation_status": "APPROVED",
+  "authority": "Adobe Experience League (drafted from local aem_guides corpus; URLs confirmed only where the corpus returned a clean page)",
+  "note": "Large surface; may be split into EDITOR_CANVAS and MAP_AUTHORING sub-surfaces if it grows past ~15 features.",
+  "match": [
+    "author",
+    "editor",
+    "web editor",
+    "topic editor",
+    "insert",
+    "map tree",
+    "author-content"
+  ],
+  "native_features": [
+    {
+      "feature": "content reuse (conref, conkeyref, key references)",
+      "shared_flows": [
+        "reference insertion",
+        "reference resolution at author and output"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "conref/conkeyref/keyref insertion resolves the reused content, and broken or missing references are handled at author time and in output",
+      "reference": "Manage content / reuse content",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "cross-references and links (xref, related links, external links)",
+      "shared_flows": [
+        "link insertion",
+        "link resolution"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "xref, related-links, and external links preserve href, format, scope, and type and resolve to the correct target",
+      "reference": "Author content - links",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "map authoring (topicref, topichead, keydef, map tree, navtitle/locktitle)",
+      "shared_flows": [
+        "map tree editing",
+        "topicref insertion"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "adding/moving topicref, topichead, and keydef in the map tree preserves hierarchy, navtitle/locktitle, and key definitions",
+      "reference": "Map authoring / map console",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "tables (CALS and simpletable, row/column ops, pasted tables)",
+      "shared_flows": [
+        "table insertion",
+        "table cell editing",
+        "paste"
+      ],
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate_template": "insert/delete rows and columns and pasted tables keep valid CALS/simpletable structure with no ghost or orphan cells",
+      "reference": "Configure display of pasted tables",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/enable-view-pasted-tables"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
+    },
+    {
+      "feature": "media and image insertion (asset references from DAM)",
+      "shared_flows": [
+        "asset reference insertion",
+        "dam asset selector"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "inserted images/multimedia reference the correct DAM asset and render in author, preview, and output",
+      "reference": "Insert image / multimedia",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "conditional attribute profiling (apply DITAVAL at author)",
+      "shared_flows": [
+        "conditional attribute application",
+        "profiling"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "applied conditional attributes profile the content correctly at author time and carry through to conditional output",
+      "reference": "Conditional attribute profiling",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/conditional-content/conditional-attribute-profiling"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
+    },
+    {
+      "feature": "topic/map metadata and properties authoring",
+      "shared_flows": [
+        "properties panel",
+        "metadata write"
+      ],
+      "implied_dimension_axis": "VALUE_SET_CHANNEL",
+      "candidate_template": "topic and map metadata/properties set in the editor are stored on the correct node and propagate to output and reports",
+      "reference": "Author content - metadata",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "templates (topic and map templates)",
+      "shared_flows": [
+        "create from template"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "new topics/maps created from configured templates produce the expected structure and default content",
+      "reference": "Configure topic and map templates",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "version lifecycle (check-in/check-out, save, autosave, version history)",
+      "shared_flows": [
+        "save",
+        "version create",
+        "lock"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "check-out/check-in, save, autosave, and version history behave correctly and do not lose or misattribute edits",
+      "reference": "Author content - versions",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "editor views (Author / Source / Preview switching)",
+      "shared_flows": [
+        "view switch",
+        "render"
+      ],
+      "implied_dimension_axis": "ENTRY_POINT",
+      "candidate_template": "switching between Author, Source, and Preview preserves content, caret/selection, and unsaved edits",
+      "reference": "Editor views for topics",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/author-content/web-editor/editor-views"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
+    },
+    {
+      "feature": "special characters and symbols",
+      "shared_flows": [
+        "insert special character"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "configured special characters/symbols are insertable and preserved through save and output",
+      "reference": "Configure additional special characters in Editor toolbar",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/enable-additional-special-characters"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
+    },
+    {
+      "feature": "MathML and equations",
+      "shared_flows": [
+        "equation insertion",
+        "mathml rendering"
+      ],
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate_template": "MathML/equation insertion produces valid markup that renders in author, preview, and each output preset",
+      "reference": "Insert MathML / equations",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "track changes and change bars (author-side)",
+      "shared_flows": [
+        "track changes",
+        "annotation"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "track-changes and change-bar authoring records author edits correctly and integrates with review and output",
+      "reference": "Author content - track changes",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    },
+    {
+      "feature": "author-time validation (DTD/schema and Schematron)",
+      "shared_flows": [
+        "validation",
+        "save-time checks"
+      ],
+      "implied_dimension_axis": "TERMINAL_STATE",
+      "candidate_template": "DTD/schema and Schematron validation flags invalid content at author time with the correct messages and does not block valid content",
+      "reference": "Author content - validation / Schematron",
+      "reference_urls": [],
+      "url_confirmed": false,
+      "approval_status": "APPROVED_URL_UNCONFIRMED"
+    }
+  ]
+}

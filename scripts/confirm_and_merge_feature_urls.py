@@ -42,12 +42,8 @@ def _scratch_dir(explicit: str | None) -> Path:
     if explicit:
         return Path(explicit)
     # default: the session scratchpad gb_run sibling used for these drafts
-    guess = Path(
-        r"C:/Users/PRASHA~1/AppData/Local/Temp/claude/"
-        r"C--Users-prashantp-Videos-aem-guides-dataset-studio/"
-        r"d7bf2345-2f6b-4330-adae-dd76498f965d/scratchpad"
-    )
-    return guess
+    # Repo-tracked drafts so this runs on any box (VM included), not just the authoring session.
+    return REPO / "scripts" / "feature_map_drafts"
 
 
 def _slug(url: str) -> str:

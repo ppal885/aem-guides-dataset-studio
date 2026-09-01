@@ -1,0 +1,181 @@
+{
+  "surface": "PUBLISHING_OUTPUT",
+  "curation_status": "APPROVED",
+  "authority": "Adobe Experience League (drafted from local aem_guides corpus; confirm each URL on approval)",
+  "match": [
+    "publish",
+    "publishing",
+    "generate output",
+    "output generation",
+    "output preset",
+    "output type",
+    "dita-ot",
+    "native pdf",
+    "push to live"
+  ],
+  "native_features": [
+    {
+      "feature": "output preset types (all consumers of the shared generation path)",
+      "shared_flows": [
+        "output generation",
+        "preset-to-executor pipeline"
+      ],
+      "implied_dimension_axis": "OUTPUT_PRESET",
+      "candidate_template": "every supported output preset that consumes the shared generation path is considered - AEM Site (new and legacy), HTML5, Native AEM Site, Native PDF, DITA-OT PDF, EPUB, and custom/DITA-OT - not only the named output type",
+      "reference": "PDF preset types / Generate output: understand presets",
+      "reference_hint_from_corpus": "PDF preset types (dist 0.294)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-understand-presets"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "DITA-OT processing on/off",
+      "shared_flows": [
+        "preset configuration",
+        "output generation"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "behaviour is verified with Enable DITA-OT Processing both ON and OFF for the presets that support the toggle",
+      "reference": "Configure output generation / preset settings",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "baseline publishing (referenced-content version resolution)",
+      "shared_flows": [
+        "baseline generation",
+        "referenced-content version resolution"
+      ],
+      "implied_dimension_axis": "LIFECYCLE",
+      "candidate_template": "baseline-driven generation resolves the selected topic and referenced-content versions for label, date, and version-as-of selections",
+      "reference": "Generate output using a baseline for publishing",
+      "approval_status": "APPROVED_URL_UNCONFIRMED",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "condition presets / conditional content (DITAVAL)",
+      "shared_flows": [
+        "conditional output generation",
+        "filter application"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "configured include, exclude, passthrough, and flag conditions remain effective in the generated output",
+      "reference": "Use condition presets",
+      "reference_hint_from_corpus": "Use condition presets (dist 0.448)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/conditional-content/generate-output-use-condition-presets"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "Native PDF content constructs (template, TOC, index, changebars, metadata.xml)",
+      "shared_flows": [
+        "native pdf generation",
+        "pdf template application"
+      ],
+      "implied_dimension_axis": "OUTPUT_PRESET",
+      "candidate_template": "Native PDF template, table of contents, index, change bars, and metadata.xml are produced correctly for the affected construct",
+      "reference": "Native PDF | PDF output generation",
+      "reference_hint_from_corpus": "Native PDF (dist 0.291)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/native-pdf/native-pdf-output-generation"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "metadata propagation to output (source properties, native AEM Site baseline metadata)",
+      "shared_flows": [
+        "preset-to-output metadata assembly",
+        "native aem site incremental publish"
+      ],
+      "implied_dimension_axis": "VALUE_SET_CHANNEL",
+      "candidate_template": "source File/asset properties and preset metadata reach the generated output and native AEM Site baseline/incremental metadata propagates as documented",
+      "reference": "Native AEM Site baseline metadata (confirm exact EL page on approval)",
+      "approval_status": "APPROVED_URL_UNCONFIRMED",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "generate-output entry points (Map console, Dashboard, scheduled, API, Preview)",
+      "shared_flows": [
+        "output generation trigger"
+      ],
+      "implied_dimension_axis": "ENTRY_POINT",
+      "candidate_template": "generation behaves consistently across its entry points - Map console, output Dashboard, scheduled generation, the API, and Preview",
+      "reference": "Generate output for a DITA map from the Map console",
+      "reference_hint_from_corpus": "Generate output for a DITA map from the Map console (dist 0.231)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/generate-output-dita-map-console"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "output generation jobs, status, history and purge",
+      "shared_flows": [
+        "async output job",
+        "output history storage"
+      ],
+      "implied_dimension_axis": "TERMINAL_STATE",
+      "candidate_template": "the async output job reaches correct terminal states (success, failure, cancel) and output history retention/purge behaves per the configured period",
+      "reference": "Configure output generation",
+      "reference_hint_from_corpus": "Configure output generation (dist 0.442)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "publish to AEM Sites (activation, replication, live copy)",
+      "shared_flows": [
+        "site output activation",
+        "replication"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "AEM Site output activation, replication to publish, and live-copy relationships behave correctly for the generated site output",
+      "reference": "Publish output to AEM Sites (confirm exact EL page on approval)",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/aem-site/aem-site-output-generation"
+      ],
+      "url_confirmed": true
+    },
+    {
+      "feature": "EDS / GitHub-GitLab publishing profiles (Push to Live)",
+      "shared_flows": [
+        "eds publishing profile",
+        "push to live"
+      ],
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "EDS publishing profiles (GitHub and GitLab, cloud and self-hosted) authenticate and Push to Live commits/pushes content to the configured repo and branch, preserving the downstream EDS pipeline",
+      "reference": "EDS GitHub/GitLab publishing profile (confirm exact EL page on approval)",
+      "approval_status": "APPROVED_URL_UNCONFIRMED",
+      "reference_urls": [],
+      "url_confirmed": false
+    },
+    {
+      "feature": "generated-artifact delivery and retain temporary files",
+      "shared_flows": [
+        "output packaging",
+        "temp file retention"
+      ],
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate_template": "the generated artifact/package is downloadable and complete, and Retain temporary files exposes the expected intermediate output for the affected presets",
+      "reference": "Generate output / preview generated output",
+      "approval_status": "HUMAN_APPROVED",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/generate-output-dita-map-console"
+      ],
+      "url_confirmed": true
+    }
+  ]
+}
