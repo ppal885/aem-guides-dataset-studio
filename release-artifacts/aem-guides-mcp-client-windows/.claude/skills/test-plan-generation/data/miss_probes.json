@@ -99,6 +99,41 @@
       "counterexamples_checked": true,
       "equivalence_key": "stated-mechanism-entry-points",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-004",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "native pdf",
+          "generate pdf",
+          "pdf output",
+          "output preset",
+          "generate output",
+          "download as pdf",
+          "publish output",
+          "output generation"
+        ],
+        "component_scope": "Publishing"
+      },
+      "implied_dimension": {
+        "axis": "ENTRY_POINT",
+        "candidate_template": "when a ticket concerns an output-generation feature (Native PDF or any output), enumerate ALL generation entry points for that output - map/output-preset publishing, single-topic generation, editor Download-as action, generate-for-review, and baseline/versioned publishing - and assert consistent behaviour across every entry point, not only the default preset-publish path"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-OUTPUT-GENERATION-ENTRYPOINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Distinct from MP-003: MP-003 fires when the ticket NAMES a UI mechanism; MP-004 fires when the ticket names an OUTPUT-GENERATION feature that names NO entry point (e.g. 'Native PDF'). Such a feature always has several generation entry points sharing one engine, so the default preset-publish reading silently drops single-topic PDF, Download as PDF, review PDF, and baseline publishing.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "output-generation-entry-point-enumeration",
+      "status": "ACTIVE"
     }
   ]
 }
