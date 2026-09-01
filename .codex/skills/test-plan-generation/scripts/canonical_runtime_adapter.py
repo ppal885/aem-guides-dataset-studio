@@ -161,7 +161,7 @@ def main() -> int:
         encoding="utf-8",
     )
     print(args.out)
-    return 0 if result.status == "completed" else 2
+    return 0 if result.status in {"completed", "needs_human_review"} else 2
 
 
 if __name__ == "__main__":

@@ -38,11 +38,21 @@ _PRODUCT_TERMS = (
     "entries", "grouping", "reflects", "reflect", "updates", "updated", "produced",
     "produces", "generated site", "site navigation", "node", "nodes", "content", "link",
     "links", "matches", "matching", "value is", "equals", "correct output",
+    "download is available", "download button", "download link", "can download",
 )
 # Persisted/derived state outcomes.
 _STATE_TERMS = (
     "property", "jcr", "guides-navigation", "persisted", "stored", "well-formed",
     "state is", "collection", "field is", "database", "repository property",
+)
+_ARTIFACT_EXISTENCE_TERMS = (
+    "archive exists", "artifact exists", "file exists", "package exists",
+    "archive is generated", "file is generated",
+)
+_CONTENT_FIDELITY_TERMS = (
+    "content correct", "correct content", "matches the source", "expected files",
+    "expected hierarchy", "relative path", "no stale", "no duplicate", "no orphan",
+    "links correct", "metadata correct", "title correct", "order correct",
 )
 
 
@@ -71,7 +81,15 @@ def _has(text, terms):
 def is_diagnostic_only(outcome):
     """True when the outcome asserts a diagnostic/success signal but names no
     observable product or state outcome."""
-    return _has(outcome, _DIAGNOSTIC_TERMS) and not _has(outcome, _PRODUCT_TERMS) and not _has(outcome, _STATE_TERMS)
+    low = (outcome or "").lower()
+    artifact_exists_only = any(term in low for term in _ARTIFACT_EXISTENCE_TERMS) and not any(
+        term in low for term in _CONTENT_FIDELITY_TERMS
+    )
+    return artifact_exists_only or (
+        _has(outcome, _DIAGNOSTIC_TERMS)
+        and not _has(outcome, _PRODUCT_TERMS)
+        and not _has(outcome, _STATE_TERMS)
+    )
 
 
 def validate_scenario_oracles(block):

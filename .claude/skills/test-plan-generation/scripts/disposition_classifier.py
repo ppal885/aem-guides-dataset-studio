@@ -30,6 +30,25 @@ import re
 
 DISPOSITIONS = (
     "ACCEPTANCE_CONTRACT",
+    "PROPOSED_ACCEPTANCE_CONTRACT",
+    "SEMANTIC_REGRESSION",
+    "STRUCTURAL_REGRESSION",
+    "CONFIGURATION_VARIANT",
+    "REFERENCE_REGRESSION",
+    "GENERATED_OUTPUT_VALIDATION",
+    "NEGATIVE_BOUNDARY",
+    "FAILURE_RECOVERY",
+    "CROSS_MODE_REGRESSION",
+    "LIFECYCLE_COVERAGE",
+    "NFR_COVERAGE",
+    "PRODUCT_SCOPE_QUESTION",
+    "ENGINEERING_DESIGN_DECISION",
+    "TECHNICAL_NOTE",
+    "KNOWN_LIMITATION",
+    "INVESTIGATED_AND_REJECTED",
+    "UNSUPPORTED_INFERENCE",
+    # Retained compatibility values. New canonical manifests should prefer the
+    # more precise dispositions above.
     "REGRESSION_COVERAGE",
     "IMPLEMENTATION_ORACLE",
     "DIAGNOSTIC_CHECK",
@@ -79,9 +98,16 @@ def validate_disposition(entry):
         problems.append(f"{tag}: disposition '{disp}' must be one of {', '.join(DISPOSITIONS)}")
     if not (entry.get("statement") or "").strip():
         problems.append(f"{tag}: missing 'statement'")
+    source_refs = entry.get("source_refs")
+    if source_refs is not None and (
+        not isinstance(source_refs, list)
+        or not source_refs
+        or not all(isinstance(ref, str) and ref.strip() for ref in source_refs)
+    ):
+        problems.append(f"{tag}: source_refs must be a non-empty string list when present")
     # The core rule: an implementation-level statement cannot be an acceptance contract
     # unless the internal contract itself is explicitly the requirement.
-    if disp == "ACCEPTANCE_CONTRACT" and is_implementation_level(entry.get("statement", "")) \
+    if disp in ("ACCEPTANCE_CONTRACT", "PROPOSED_ACCEPTANCE_CONTRACT") and is_implementation_level(entry.get("statement", "")) \
             and not entry.get("internal_contract_is_requirement"):
         problems.append(
             f"{tag}: an implementation-level statement (HOW) is dispositioned ACCEPTANCE_CONTRACT - formal UAC "
@@ -91,6 +117,15 @@ def validate_disposition(entry):
     # An implementation oracle or a secondary defect must not be routed to a product AC.
     if disp in ("IMPLEMENTATION_ORACLE", "SECONDARY_DEFECT") and entry.get("maps_to_ac"):
         problems.append(f"{tag}: a {disp} must not map to a product Acceptance Criterion")
+    if disp in (
+        "SEMANTIC_REGRESSION", "STRUCTURAL_REGRESSION", "REFERENCE_REGRESSION",
+        "REGRESSION_COVERAGE", "IMPLEMENTATION_ORACLE", "TECHNICAL_NOTE",
+        "INVESTIGATED_AND_REJECTED", "OUT_OF_SCOPE", "UNSUPPORTED_INFERENCE",
+    ) and entry.get("maps_to_ac"):
+        problems.append(f"{tag}: {disp} is not an Acceptance Contract and must not map to an AC")
+    if disp in ("OPEN_QUESTION", "PRODUCT_SCOPE_QUESTION", "ENGINEERING_DESIGN_DECISION") \
+            and not entry.get("open_question_ref"):
+        problems.append(f"{tag}: {disp} requires open_question_ref")
     return problems
 
 
@@ -98,8 +133,16 @@ def validate_dispositions(block):
     if not isinstance(block, list):
         return ["dispositions must be a JSON list"]
     problems = []
+    finding_ids = set()
     for e in block:
         problems.extend(validate_disposition(e))
+        if isinstance(e, dict):
+            finding_id = str(e.get("finding_id", ""))
+            if not finding_id:
+                problems.append("each disposition requires finding_id")
+            elif finding_id in finding_ids:
+                problems.append(f"disposition finding_id duplicates {finding_id}")
+            finding_ids.add(finding_id)
     return problems
 
 

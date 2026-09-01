@@ -105,6 +105,17 @@ relationship_ui_surface_scope_mod = _load(
     "relationship_ui_surface_scope", "ui_surface_scope.py"
 )
 skill_fingerprint_mod = _load("skill_bundle_fingerprint", "skill_bundle_fingerprint.py")
+fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
+contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
+contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
+domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
+publishing_scope_mod = _load("publishing_scope", "publishing_scope.py")
+behavior_graph_mod = _load("behavior_graph", "behavior_graph.py")
+semantic_closure_mod = _load("semantic_closure", "semantic_closure.py")
+generated_output_mod = _load("generated_output_contract", "generated_output_contract.py")
+content_identity_mod = _load("content_identity_contract", "content_identity_contract.py")
+acceptance_promotion_mod = _load("acceptance_promotion", "acceptance_promotion.py")
+behavioral_completeness_mod = _load("behavioral_completeness", "behavioral_completeness.py")
 
 REQUIRED_MANIFEST_KEYS = (
     "schema_version",
@@ -125,6 +136,31 @@ REQUIRED_MANIFEST_KEYS = (
     "operational_contract",
 )
 
+SEMANTIC_MANIFEST_KEYS = (
+    "contract_facts",
+    "issue_domains",
+    "behavior_model",
+    "behavior_graph",
+    "semantic_closure",
+    "coverage_hypotheses",
+    "missing_questions",
+    "evidence_lifecycle",
+    "verifications",
+    "dispositions",
+    "acceptance_promotions",
+)
+
+# These blocks did not exist in the legacy v2 reasoning pipeline. Their presence
+# is therefore an unambiguous opt-in to the canonical v3 semantic pipeline even
+# when a transitional producer still labels the outer manifest v2.
+SEMANTIC_V3_ANCHOR_KEYS = (
+    "contract_facts",
+    "issue_domains",
+    "behavior_graph",
+    "semantic_closure",
+    "acceptance_promotions",
+)
+
 PREFLIGHT_SOURCE_KEYS = (
     "product_rag",
     "jira_history",
@@ -136,7 +172,12 @@ PREFLIGHT_STATUSES = {"available", "unavailable", "not_applicable"}
 PREFLIGHT_MODES = {"full", "degraded"}
 PREFLIGHT_READINESS_IMPACTS = {"none", "draft_only", "blocked"}
 UAC_FIDELITY_SCHEMA = "aem-guides-uac-fidelity-v1"
-MANIFEST_SCHEMA_VERSION = "aem-guides-evidence-manifest-v2"
+LEGACY_MANIFEST_SCHEMA_VERSION = "aem-guides-evidence-manifest-v2"
+MANIFEST_SCHEMA_VERSION = "aem-guides-evidence-manifest-v3"
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {
+    LEGACY_MANIFEST_SCHEMA_VERSION,
+    MANIFEST_SCHEMA_VERSION,
+}
 GATE_RECEIPT_SCHEMA_VERSION = "aem-guides-gate-receipt-v1"
 JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 PLAN_OQ_RE = re.compile(r"^- (OQ-\d{2}):\s+.+")
@@ -161,11 +202,14 @@ def manifest_issue_key(data: dict) -> str:
 
 def check_manifest_identity(data: dict) -> list[str]:
     failures: list[str] = []
-    if data.get("schema_version") != MANIFEST_SCHEMA_VERSION:
-        failures.append(f"manifest schema_version must be {MANIFEST_SCHEMA_VERSION}")
+    if data.get("schema_version") not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
+        failures.append(
+            "manifest schema_version must be one of "
+            + ", ".join(sorted(SUPPORTED_MANIFEST_SCHEMA_VERSIONS))
+        )
     issue_key = manifest_issue_key(data)
     if not JIRA_KEY_RE.fullmatch(issue_key):
-        failures.append("manifest issue must contain a canonical Jira key such as GUIDES-12345")
+        failures.append("manifest issue must contain a canonical Jira key such as PROJECT-12345")
     return failures
 
 
@@ -741,7 +785,13 @@ def check_manifest_completeness(path: str | None) -> list[str]:
     if not isinstance(data, dict):
         return ["evidence manifest must be a JSON object"]
     failures: list[str] = []
-    for key in REQUIRED_MANIFEST_KEYS:
+    required_keys = list(REQUIRED_MANIFEST_KEYS)
+    if (
+        data.get("schema_version") == MANIFEST_SCHEMA_VERSION
+        and data.get("behaviour_matters", True) is not False
+    ):
+        required_keys.extend(SEMANTIC_MANIFEST_KEYS)
+    for key in required_keys:
         if key not in data:
             failures.append(
                 f"manifest is missing required key '{key}' - every plan must declare "
@@ -792,6 +842,393 @@ def _open_question_ids(data: dict) -> list[str]:
         elif isinstance(oq, dict) and oq.get("id"):
             ids.append(str(oq["id"]))
     return ids
+
+
+def _mapping_block(data: dict, key: str) -> dict:
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _semantic_pipeline_declared(data: dict) -> bool:
+    return any(key in data for key in SEMANTIC_V3_ANCHOR_KEYS)
+
+
+def _text_fragments(value) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, dict):
+        result: list[str] = []
+        for nested in value.values():
+            result.extend(_text_fragments(nested))
+        return result
+    if isinstance(value, list):
+        result = []
+        for nested in value:
+            result.extend(_text_fragments(nested))
+        return result
+    return []
+
+
+def _contract_source_texts(data: dict) -> dict[str, str]:
+    """Return canonical source text keyed by stable contract-fact source refs.
+
+    Jira fields and attested attachment text are already part of the evidence
+    manifest. External captures can be added as hash-bound
+    ``contract_source_records`` records. Contract facts must quote one of these
+    sources exactly; a free-form source label is not evidence binding.
+    """
+    result: dict[str, str] = {}
+    issue = data.get("issue")
+    issue_key = manifest_issue_key(data)
+    if isinstance(issue, dict):
+        for field, value in issue.items():
+            if not isinstance(value, str) or not value:
+                continue
+            result[f"issue.{field}"] = value
+            if issue_key:
+                label = str(field).replace("_", " ")
+                result[f"Jira {label} {issue_key}"] = value
+
+    for field, label in (
+        ("source_acceptance_criteria", "Jira accepted UAC"),
+        ("accepted_uac", "Jira accepted UAC"),
+    ):
+        fragments = _text_fragments(data.get(field))
+        if fragments:
+            text = "\n".join(fragments)
+            result[field] = text
+            if issue_key:
+                result[f"{label} {issue_key}"] = text
+
+    attachments = data.get("attachments")
+    if isinstance(attachments, list):
+        for attachment in attachments:
+            if not isinstance(attachment, dict):
+                continue
+            text = next(
+                (
+                    attachment.get(name)
+                    for name in ("raw_text", "extracted_text", "ocr_text", "text")
+                    if isinstance(attachment.get(name), str) and attachment.get(name)
+                ),
+                None,
+            )
+            if text is None:
+                continue
+            for name in ("source_ref", "id", "name", "filename"):
+                ref = attachment.get(name)
+                if isinstance(ref, str) and ref.strip():
+                    result[ref] = text
+
+    records = data.get("contract_source_records")
+    if isinstance(records, list):
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            ref = record.get("source_ref")
+            raw_text = record.get("raw_text")
+            digest = record.get("sha256")
+            if not isinstance(ref, str) or not ref.strip() or not isinstance(raw_text, str):
+                continue
+            expected = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+            artifact_path_text = record.get("artifact_path")
+            artifact_digest = record.get("artifact_sha256")
+            if digest != expected or not isinstance(artifact_path_text, str):
+                continue
+            artifact_path = Path(artifact_path_text)
+            if not artifact_path.is_absolute() or not artifact_path.is_file():
+                continue
+            try:
+                artifact_bytes = artifact_path.read_bytes()
+            except OSError:
+                continue
+            if (
+                hashlib.sha256(artifact_bytes).hexdigest() == artifact_digest
+                and artifact_bytes == raw_text.encode("utf-8")
+            ):
+                result[ref] = raw_text
+    return result
+
+
+def _semantic_material_ids(data: dict) -> list[str]:
+    ids = []
+    ids.extend(contract_fact_mod.material_fact_ids(data.get("contract_facts")))
+    ids.extend(behavior_graph_mod.material_item_ids(data.get("behavior_graph")))
+    ids.extend(semantic_closure_mod.material_item_ids(data.get("semantic_closure")))
+    ids.extend(generated_output_mod.material_item_ids(data.get("generated_output_contract")))
+    ids.extend(content_identity_mod.material_item_ids(data.get("content_identity_contract")))
+    return [str(item) for item in ids if str(item).strip()]
+
+
+def _semantic_provenance_ids(data: dict) -> set[str]:
+    result = set(_contract_source_texts(data))
+    contract_facts = _mapping_block(data, "contract_facts")
+    result.update(
+        str(item.get("fact_id"))
+        for item in contract_facts.get("facts", []) or []
+        if isinstance(item, dict) and item.get("fact_id")
+    )
+    for item in data.get("evidence_lifecycle", []) or []:
+        if isinstance(item, dict) and item.get("evidence_id"):
+            result.add(str(item["evidence_id"]))
+    return result
+
+
+def _semantic_candidate_ids(data: dict) -> set[str]:
+    result = set(_semantic_material_ids(data))
+    result.update(
+        str(item.get("hypothesis_id"))
+        for item in data.get("coverage_hypotheses", []) or []
+        if isinstance(item, dict) and item.get("hypothesis_id")
+    )
+    return result
+
+
+def _candidate_authorities(data: dict) -> dict[str, set[str]]:
+    result: dict[str, set[str]] = {}
+    for fact in _mapping_block(data, "contract_facts").get("facts", []) or []:
+        if isinstance(fact, dict) and fact.get("fact_id") and fact.get("authority"):
+            result.setdefault(str(fact["fact_id"]), set()).add(str(fact["authority"]))
+    for edge in _mapping_block(data, "behavior_graph").get("edges", []) or []:
+        if isinstance(edge, dict) and edge.get("edge_id") and edge.get("authority"):
+            result.setdefault(str(edge["edge_id"]), set()).add(str(edge["authority"]))
+    for verification in data.get("verifications", []) or []:
+        if not isinstance(verification, dict) or not verification.get("hypothesis_id"):
+            continue
+        result.setdefault(str(verification["hypothesis_id"]), set()).update(
+            str(authority)
+            for authority in verification.get("supporting_authorities", []) or []
+            if str(authority).strip()
+        )
+    return result
+
+
+def _candidate_subjects(data: dict) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for fact in _mapping_block(data, "contract_facts").get("facts", []) or []:
+        if isinstance(fact, dict) and fact.get("fact_id") and fact.get("subject"):
+            result[str(fact["fact_id"])] = str(fact["subject"])
+    for edge in _mapping_block(data, "behavior_graph").get("edges", []) or []:
+        if isinstance(edge, dict) and edge.get("edge_id") and edge.get("subject"):
+            result[str(edge["edge_id"])] = str(edge["subject"])
+    for verification in data.get("verifications", []) or []:
+        if (
+            isinstance(verification, dict)
+            and verification.get("hypothesis_id")
+            and verification.get("subject")
+        ):
+            result[str(verification["hypothesis_id"])] = str(verification["subject"])
+    return result
+
+
+def validate_canonical_semantic_pipeline(
+    data: dict,
+    *,
+    plan_text: str = "",
+    include_plan_checks: bool = False,
+) -> list[str]:
+    """Validate the canonical fact -> domain -> graph -> closure -> promotion path."""
+    if not isinstance(data, dict):
+        return ["canonical semantic pipeline requires a manifest object"]
+    if data.get("behaviour_matters", True) is False:
+        return []
+    if (
+        data.get("schema_version") == LEGACY_MANIFEST_SCHEMA_VERSION
+        and not _semantic_pipeline_declared(data)
+    ):
+        return []
+    problems: list[str] = []
+    oq_ids = set(_open_question_ids(data))
+    problems.extend(
+        f"[behavior-model] {problem}"
+        for problem in behavior_mod.validate_behavior_model(data.get("behavior_model"))
+    )
+    problems.extend(
+        f"[contract-facts] {problem}"
+        for problem in contract_fact_mod.validate_contract_facts(
+            data.get("contract_facts"),
+            open_question_ids=oq_ids,
+            source_texts=_contract_source_texts(data),
+        )
+    )
+    problems.extend(
+        f"[domain-router] {problem}"
+        for problem in domain_router_mod.validate_issue_domains(
+            data.get("issue_domains"),
+            manifest=data,
+            plan_text=plan_text,
+            open_question_ids=oq_ids,
+        )
+    )
+    problems.extend(
+        f"[behavior-graph] {problem}"
+        for problem in behavior_graph_mod.validate_behavior_graph(
+            data.get("behavior_graph"),
+            evidence_ids=_semantic_provenance_ids(data),
+            open_question_ids=oq_ids,
+        )
+    )
+    material_nodes = behavior_graph_mod.material_node_ids(data.get("behavior_graph"))
+    domain_dimensions = domain_router_mod.required_dimensions(data.get("issue_domains"))
+    problems.extend(
+        f"[semantic-closure] {problem}"
+        for problem in semantic_closure_mod.validate_semantic_closure(
+            data.get("semantic_closure"),
+            material_entity_ids=material_nodes,
+            required_dimensions=domain_dimensions,
+            open_question_ids=oq_ids,
+        )
+    )
+
+    active_domains = set(domain_router_mod.active_domains(data.get("issue_domains")))
+    if "PUBLISHING" in active_domains:
+        problems.extend(
+            f"[publishing-scope] {problem}"
+            for problem in publishing_scope_mod.validate_publishing_scope(
+                data.get("publishing_scope"), open_question_ids=oq_ids
+            )
+        )
+    if generated_output_mod.is_present(data):
+        problems.extend(
+            f"[generated-output] {problem}"
+            for problem in generated_output_mod.validate_generated_output_contract(
+                data.get("generated_output_contract"), open_question_ids=oq_ids
+            )
+        )
+    if "ASSETS" in active_domains or content_identity_mod.is_present(data):
+        problems.extend(
+            f"[content-identity] {problem}"
+            for problem in content_identity_mod.validate_content_identity_contract(
+                data.get("content_identity_contract"), open_question_ids=oq_ids
+            )
+        )
+
+    problems.extend(
+        f"[missing-questions] {problem}"
+        for problem in mq_mod.validate_required_questions(data)
+    )
+    problems.extend(
+        f"[retrieval] {problem}"
+        for problem in mq_mod.check_retrieval_discipline(
+            data.get("missing_questions", []),
+            data.get("evidence_lifecycle", []),
+            open_question_ids=oq_ids,
+            hypothesis_ids={
+                str(item.get("hypothesis_id"))
+                for item in data.get("coverage_hypotheses", []) or []
+                if isinstance(item, dict) and item.get("hypothesis_id")
+            },
+        )
+    )
+    problems.extend(
+        f"[coverage] {problem}"
+        for problem in coverage_mod.validate_coverage_block(data.get("coverage_hypotheses"))
+    )
+    problems.extend(
+        f"[verification] {problem}"
+        for problem in verifier_mod.verify_all(
+            data.get("coverage_hypotheses"),
+            data.get("verifications"),
+            evidence_lifecycle=data.get("evidence_lifecycle"),
+            open_question_ids=oq_ids,
+        )
+    )
+    problems.extend(
+        f"[disposition] {problem}"
+        for problem in disposition_mod.validate_dispositions(data.get("dispositions"))
+    )
+
+    plan_ac_records = _plan_ac_records(plan_text) if include_plan_checks else []
+    ac_ids = {item["id"] for item in plan_ac_records} if include_plan_checks else None
+    ac_status_by_id = (
+        {item["id"]: item["status"] for item in plan_ac_records}
+        if include_plan_checks
+        else None
+    )
+    contract_fact_block = _mapping_block(data, "contract_facts")
+    fact_ids = {
+        str(item.get("fact_id"))
+        for item in (contract_fact_block.get("facts", []) or [])
+        if isinstance(item, dict) and item.get("fact_id")
+    }
+    problems.extend(
+        f"[acceptance-promotion] {problem}"
+        for problem in acceptance_promotion_mod.validate_acceptance_promotions(
+            data.get("acceptance_promotions"),
+            ac_ids=ac_ids,
+            known_candidate_ids=_semantic_candidate_ids(data),
+            contract_fact_ids=fact_ids,
+            candidate_authorities=_candidate_authorities(data),
+            candidate_subjects=_candidate_subjects(data),
+            dispositions=data.get("dispositions"),
+            ac_status_by_id=ac_status_by_id,
+            accepted_uac_present=data.get("accepted_uac_present"),
+        )
+    )
+    if include_plan_checks:
+        promotion_block = _mapping_block(data, "acceptance_promotions")
+        promoted = {
+            str(record.get("ac_ref"))
+            for record in (promotion_block.get("records", []) or [])
+            if isinstance(record, dict)
+            and record.get("decision") in ("PROMOTED_CONFIRMED", "PROMOTED_PROPOSED")
+        }
+        if promoted != ac_ids:
+            problems.append(
+                "[acceptance-promotion] every visible AC must be promoted exactly by the canonical gate; "
+                f"promoted={sorted(promoted)}, plan={sorted(ac_ids)}"
+            )
+        problems.extend(
+            f"[contract-integrity] {problem}"
+            for problem in contract_integrity_mod.validate_integrity(
+                data.get("contract_facts"), plan_text
+            )
+        )
+
+    problems.extend(
+        f"[behavioral-completeness] {problem}"
+        for problem in behavioral_completeness_mod.validate_behavioral_completeness(
+            data,
+            material_item_ids=_semantic_material_ids(data),
+            required_blocks=domain_router_mod.required_blocks(data.get("issue_domains")),
+        )
+    )
+    behavior_graph_block = _mapping_block(data, "behavior_graph")
+    graph_candidates = {
+        str(edge.get("hypothesis_ref"))
+        for edge in behavior_graph_block.get("edges", []) or []
+        if isinstance(edge, dict) and edge.get("verification_state") == "INVESTIGATION_CANDIDATE"
+    }
+    hypothesis_ids = {
+        str(item.get("hypothesis_id"))
+        for item in data.get("coverage_hypotheses", []) or []
+        if isinstance(item, dict) and item.get("hypothesis_id")
+    }
+    if not graph_candidates <= hypothesis_ids:
+        problems.append(
+            "[behavior-graph] investigation-candidate edges must enter coverage_hypotheses: "
+            + ", ".join(sorted(graph_candidates - hypothesis_ids))
+        )
+    return problems
+
+
+def check_canonical_semantic_pipeline(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    if data.get("behaviour_matters", True) is False:
+        return [], ["canonical semantic pipeline not required (behaviour_matters is false)"]
+    if (
+        data.get("schema_version") == LEGACY_MANIFEST_SCHEMA_VERSION
+        and not _semantic_pipeline_declared(data)
+    ):
+        return [], ["canonical semantic pipeline not present in legacy v2 manifest"]
+    failures = validate_canonical_semantic_pipeline(
+        data, plan_text=plan_text, include_plan_checks=True
+    )
+    return failures, ["canonical semantic pipeline validated"] if not failures else []
 
 
 def check_capability_eligibility(manifest_path: str | None, plan_text: str = "") -> tuple[list[str], list[str]]:
@@ -999,6 +1436,14 @@ def check_relationship_traversal(
             )
         )
 
+    # FluffyJaws supporting-discovery evidence (optional, backward-compatible).
+    # Absent -> clean pass. When present, enforce the SUPPORTING_DISCOVERY
+    # authority invariant and the no-direct-AC-promotion rule.
+    failures.extend(
+        f"[fluffyjaws] {problem}"
+        for problem in fluffyjaws_evidence_mod.validate_block(data)
+    )
+
     ui_block = data.get("ui_surface_scope")
     ui_edge_present = any(
         isinstance(edge, dict)
@@ -1180,12 +1625,17 @@ def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list
         return [], []
     if data.get("behaviour_matters", True) is False:
         return [], ["reasoning pipeline not required (behaviour_matters is false)"]
+    if (
+        data.get("schema_version") == LEGACY_MANIFEST_SCHEMA_VERSION
+        and not _semantic_pipeline_declared(data)
+    ):
+        return [], ["reasoning pipeline not present in legacy v2 manifest"]
     failures = []
-    if not behavior_mod.is_present(data):
-        failures.append(
-            "[reasoning-required] a behavior_model block is mandatory when behaviour_matters is true - model the "
-            "trigger/operations/state/consumers (unknowns allowed) before writing coverage"
-        )
+    for key in SEMANTIC_MANIFEST_KEYS:
+        if key not in data:
+            failures.append(
+                f"[reasoning-required] {key} block is mandatory when behaviour_matters is true"
+            )
     if coverage_mod.is_present(data) and data.get("coverage_hypotheses") and not verifier_mod.is_present(data):
         failures.append(
             "[reasoning-required] coverage_hypotheses are declared but no verifications block exists - every "
@@ -1215,7 +1665,15 @@ def check_retrieval(manifest_path: str | None) -> tuple[list[str], list[str]]:
     if not mq_mod.is_present(data):
         return [], ["retrieval-discipline check skipped (no missing_questions/evidence_lifecycle)"]
     failures = [f"[retrieval] {p}" for p in mq_mod.check_retrieval_discipline(
-        data.get("missing_questions", []), data.get("evidence_lifecycle", []))]
+        data.get("missing_questions", []),
+        data.get("evidence_lifecycle", []),
+        open_question_ids=set(_open_question_ids(data)),
+        hypothesis_ids={
+            str(item.get("hypothesis_id"))
+            for item in data.get("coverage_hypotheses", []) or []
+            if isinstance(item, dict) and item.get("hypothesis_id")
+        },
+    )]
     return failures, ["retrieval discipline validated"] if not failures else []
 
 
@@ -1224,7 +1682,11 @@ def check_verifications(manifest_path: str | None) -> tuple[list[str], list[str]
     if not verifier_mod.is_present(data):
         return [], ["hypothesis-verification check skipped (no verifications block)"]
     failures = [f"[verify-hyp] {p}" for p in verifier_mod.verify_all(
-        data.get("coverage_hypotheses", []), data.get("verifications", []))]
+        data.get("coverage_hypotheses", []),
+        data.get("verifications", []),
+        evidence_lifecycle=data.get("evidence_lifecycle", []),
+        open_question_ids=set(_open_question_ids(data)),
+    )]
     return failures, ["hypothesis verifications validated"] if not failures else []
 
 
@@ -1365,6 +1827,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
         _f, _n = _checker(manifest_path)
         failures += _f
         notes += _n
+    _csf, _csn = check_canonical_semantic_pipeline(manifest_path, body)
+    failures += _csf
+    notes += _csn
     # Implementation grounding: API/operation/backend tickets must cite the inspected handler.
     _igf, _ign = check_implementation_grounding(manifest_path, body)
     failures += _igf
@@ -1492,6 +1957,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_configuration_enumeration_scope()
             self_tests.test_ui_surface_scope()
             self_tests.test_role_provisioning()
+            self_tests.test_fluffyjaws_evidence()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
@@ -1499,6 +1965,17 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_ac_decidability()
             self_tests.test_operational_contract()
             self_tests.test_gate_receipt_and_adapter()
+            self_tests.test_contract_facts_and_integrity()
+            self_tests.test_issue_domain_routing_and_publishing_scope()
+            self_tests.test_behavior_graph_relation_ontology()
+            self_tests.test_semantic_closure_required()
+            self_tests.test_missing_question_directed_retrieval_by_subject()
+            self_tests.test_coverage_disposition_completeness()
+            self_tests.test_acceptance_promotion_authority()
+            self_tests.test_generated_output_contract()
+            self_tests.test_guides_48193_generated_artifact_regression()
+            self_tests.test_guides_45948_content_identity_regression()
+            self_tests.test_postability_semantic_reviews()
             notes.append("self-tests green")
         except AssertionError as exc:
             failures.append(f"[self-tests] {exc}")
@@ -1532,11 +2009,11 @@ def _derived_artifact_paths(receipt_path: Path) -> tuple[Path, Path]:
 
 def _postability_review_present(notes: list[str]) -> bool:
     """Return true for advisory findings that must be resolved before Jira posting."""
-    prefixes = (
-        "REVIEW ac-readability:",
-        "REVIEW scope-authority:",
+    return any(
+        str(note).startswith("REVIEW ")
+        or str(note).startswith("CRITIC [NEEDS_REVIEW]")
+        for note in notes
     )
-    return any(str(note).startswith(prefixes) for note in notes)
 
 
 def write_gate_receipt(
@@ -1622,7 +2099,7 @@ def main() -> int:
     postable = passed and not args.skip_self_tests and not postability_review
     if passed and postability_review:
         notes.append(
-            "posting blocked until readability and implementation-scope REVIEW items are resolved"
+            "posting blocked until all semantic, readability, and scope REVIEW items are resolved"
         )
     try:
         written_receipt = write_gate_receipt(

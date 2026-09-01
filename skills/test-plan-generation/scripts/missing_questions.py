@@ -43,6 +43,17 @@ PREFERRED_SOURCES = (
     "linked jira",
 )
 
+# Retrieval authority is subject-specific.  The order is intentional: product
+# decisions are not answered by code alone, while actual implementation is.
+SUBJECT_SOURCE_POLICY = {
+    "PRODUCT_CONTRACT": (
+        "linked jira", "attachments", "experience league", "rag", "historical jira",
+    ),
+    "DITA_SEMANTICS": ("dita 1.2", "dita 1.3", "dita-ot", "rag", "experience league"),
+    "ACTUAL_IMPLEMENTATION": ("current repository", "commits/pr", "existing automation"),
+    "CURRENT_UI": ("attachments", "experience league", "current repository"),
+}
+
 # Evidence lifecycle states (mandatory).
 EVIDENCE_STATUSES = ("RETRIEVED", "INSPECTED", "USED", "REJECTED")
 
@@ -66,6 +77,11 @@ class MissingQuestion:
     search_concepts: list = field(default_factory=list)
     blocking: bool = False
     if_unresolved: str = "OPEN_QUESTION"
+    material: bool = False
+    source_ref: str = ""       # SC-## / BGE-## / CF-## that generated the question
+    subject: str = ""
+    dimension: str = ""
+    open_question_ref: str = ""
 
     @classmethod
     def from_dict(cls, data):
@@ -82,6 +98,9 @@ class EvidenceItem:
     pass_label: str = "initial"   # one of RETRIEVAL_PASSES
     status: str = "RETRIEVED"     # one of EVIDENCE_STATUSES
     question_id: str = ""
+    hypothesis_id: str = ""
+    subject: str = ""
+    authority: str = ""
 
     @classmethod
     def from_dict(cls, data):
@@ -113,6 +132,24 @@ def validate_question(q):
                 problems.append(f"{tag}: preferred source '{s}' is not a known source ({', '.join(PREFERRED_SOURCES)})")
     if not isinstance(q.blocking, bool):
         problems.append(f"{tag}: blocking must be a boolean")
+    if not isinstance(q.material, bool):
+        problems.append(f"{tag}: material must be a boolean")
+    if q.material and not q.source_ref:
+        problems.append(f"{tag}: a material question requires source_ref")
+    if q.subject:
+        if q.subject not in SUBJECT_SOURCE_POLICY:
+            problems.append(
+                f"{tag}: subject must be one of {', '.join(SUBJECT_SOURCE_POLICY)}"
+            )
+        elif q.preferred_sources and not any(
+            _norm(source) in SUBJECT_SOURCE_POLICY[q.subject]
+            for source in q.preferred_sources
+        ):
+            problems.append(
+                f"{tag}: preferred_sources do not follow the {q.subject} source policy"
+            )
+    if q.material and not q.open_question_ref:
+        problems.append(f"{tag}: unresolved material question requires open_question_ref")
     if q.if_unresolved != "OPEN_QUESTION":
         problems.append(f"{tag}: if_unresolved must be 'OPEN_QUESTION' (an unresolved question becomes an Open Question)")
     return problems
@@ -131,14 +168,21 @@ def validate_evidence_item(e):
         problems.append(f"{tag}: pass '{e.pass_label}' must be one of {', '.join(RETRIEVAL_PASSES)}")
     if e.status not in EVIDENCE_STATUSES:
         problems.append(f"{tag}: status '{e.status}' must be one of {', '.join(EVIDENCE_STATUSES)}")
+    if e.subject and e.subject not in SUBJECT_SOURCE_POLICY:
+        problems.append(f"{tag}: unknown subject {e.subject!r}")
+    if e.authority and not e.subject:
+        problems.append(f"{tag}: authority requires subject")
     return problems
 
 
 # --- discipline helpers (unit-testable) --------------------------------------
 
 def requires_second_pass(questions):
-    """A directed second pass is required iff a material (blocking) question exists."""
-    return any(bool(getattr(q, "blocking", False)) for q in questions)
+    """Every material semantic gap requires directed second-pass retrieval."""
+    return any(
+        bool(getattr(q, "material", False) or getattr(q, "blocking", False))
+        for q in questions
+    )
 
 
 def _queries_by_pass(items, pass_label):
@@ -170,22 +214,86 @@ def is_resolved(question_id, items):
     return any(e.question_id == question_id and e.status == "USED" for e in items)
 
 
-def check_retrieval_discipline(questions_data, evidence_data):
+def check_retrieval_discipline(
+    questions_data,
+    evidence_data,
+    *,
+    open_question_ids=None,
+    hypothesis_ids=None,
+):
     """Cross-block discipline. Returns problem strings."""
     problems = []
     questions = [MissingQuestion.from_dict(x) for x in (questions_data or [])]
     items = [EvidenceItem.from_dict(x) for x in (evidence_data or [])]
+    known_questions = {}
+    known_open_questions = None if open_question_ids is None else set(open_question_ids)
+    known_hypotheses = None if hypothesis_ids is None else set(hypothesis_ids)
 
     for q in questions:
         problems.extend(validate_question(q))
+        if q.question_id in known_questions:
+            problems.append(f"missing_question question_id duplicates {q.question_id}")
+        elif q.question_id:
+            known_questions[q.question_id] = q
+        if (
+            q.open_question_ref
+            and known_open_questions is not None
+            and q.open_question_ref not in known_open_questions
+        ):
+            problems.append(
+                f"missing_question {q.question_id or '?'} references undeclared Open Question {q.open_question_ref}"
+            )
+        if (
+            q.hypothesis_id
+            and known_hypotheses is not None
+            and q.hypothesis_id not in known_hypotheses
+        ):
+            problems.append(
+                f"missing_question {q.question_id or '?'} references unknown hypothesis {q.hypothesis_id}"
+            )
+    evidence_ids = set()
     for e in items:
         problems.extend(validate_evidence_item(e))
+        if e.evidence_id in evidence_ids:
+            problems.append(f"evidence_lifecycle evidence_id duplicates {e.evidence_id}")
+        elif e.evidence_id:
+            evidence_ids.add(e.evidence_id)
+        if e.question_id and e.question_id not in known_questions:
+            problems.append(
+                f"evidence {e.evidence_id or '?'} references unknown question {e.question_id}"
+            )
+        if (
+            e.hypothesis_id
+            and known_hypotheses is not None
+            and e.hypothesis_id not in known_hypotheses
+        ):
+            problems.append(
+                f"evidence {e.evidence_id or '?'} references unknown hypothesis {e.hypothesis_id}"
+            )
+        if e.status in ("USED", "REJECTED") and not (e.question_id or e.hypothesis_id):
+            problems.append(
+                f"evidence {e.evidence_id or '?'} with status {e.status} requires question_id or hypothesis_id"
+            )
+        question = known_questions.get(e.question_id)
+        if question is not None and e.status == "USED" and question.subject:
+            allowed_sources = SUBJECT_SOURCE_POLICY.get(question.subject, ())
+            if _norm(e.source) not in allowed_sources:
+                problems.append(
+                    f"evidence {e.evidence_id or '?'} source {e.source!r} cannot resolve "
+                    f"a {question.subject} question"
+                )
+            if e.subject and e.subject != question.subject:
+                problems.append(
+                    f"evidence {e.evidence_id or '?'} subject {e.subject!r} does not match "
+                    f"question subject {question.subject!r}"
+                )
 
     # duplicate retrieval loop
     for key in find_duplicate_retrievals(items):
         problems.append(f"duplicate retrieval detected (query, source)={key} - prevent retrieval loops")
 
-    # material question -> a genuinely new second-pass retrieval must exist
+    # Every material question -> its own genuinely new directed retrieval.  One
+    # broad query cannot silently stand in for several different semantic gaps.
     if requires_second_pass(questions):
         second = [e for e in items if e.pass_label in ("second", "third")]
         if not second:
@@ -198,6 +306,22 @@ def check_retrieval_discipline(questions_data, evidence_data):
                 "second-pass retrieval only repeats initial Jira-keyword queries - the second query must be "
                 "derived from the missing question, not the initial keywords"
             )
+        initial_queries = _queries_by_pass(items, "initial")
+        for q in questions:
+            if not q.material:
+                continue
+            linked = [
+                e for e in items
+                if e.question_id == q.question_id and e.pass_label in ("second", "third")
+            ]
+            if not linked:
+                problems.append(
+                    f"material question {q.question_id or '?'} has no linked directed second-pass retrieval"
+                )
+            elif not any(_norm(e.query) not in initial_queries for e in linked):
+                problems.append(
+                    f"material question {q.question_id or '?'} only repeats an initial query"
+                )
 
     # unresolved material questions must remain OPEN_QUESTION (already enforced per-question),
     # and must not silently claim resolution without a USED evidence item
@@ -207,6 +331,105 @@ def check_retrieval_discipline(questions_data, evidence_data):
             # routed to Open Questions - enforced by if_unresolved == OPEN_QUESTION above.
             pass
 
+    return problems
+
+
+def required_question_requirements(manifest):
+    """Derive question requirements from unresolved material semantic records."""
+    required = []
+    closure = manifest.get("semantic_closure", {}) if isinstance(manifest, dict) else {}
+    if not isinstance(closure, dict):
+        closure = {}
+    for record in closure.get("records", []) or []:
+        if isinstance(record, dict) and record.get("status") == "UNRESOLVED_AND_EXPOSED":
+            required.append({
+                "source_ref": str(record.get("closure_id", "")),
+                "subject": str(record.get("subject", "PRODUCT_CONTRACT")),
+                "dimension": str(record.get("dimension", "")),
+                "open_question_ref": str(record.get("open_question_ref", "")),
+            })
+    graph = manifest.get("behavior_graph", {}) if isinstance(manifest, dict) else {}
+    if not isinstance(graph, dict):
+        graph = {}
+    for edge in graph.get("edges", []) or []:
+        if (
+            isinstance(edge, dict)
+            and edge.get("material") is True
+            and edge.get("verification_state") == "UNRESOLVED"
+        ):
+            required.append({
+                "source_ref": str(edge.get("edge_id", "")),
+                "subject": str(edge.get("subject", "ACTUAL_IMPLEMENTATION")),
+                "dimension": str(edge.get("relation_type", "")),
+                "open_question_ref": str(edge.get("open_question_ref", "")),
+            })
+    facts = manifest.get("contract_facts", {}) if isinstance(manifest, dict) else {}
+    if not isinstance(facts, dict):
+        facts = {}
+    for fact in facts.get("facts", []) or []:
+        if (
+            isinstance(fact, dict)
+            and fact.get("material") is True
+            and fact.get("integrity") == "EXPLICITLY_FLAGGED_AS_AMBIGUOUS"
+        ):
+            required.append({
+                "source_ref": str(fact.get("fact_id", "")),
+                "subject": str(fact.get("subject", "PRODUCT_CONTRACT")),
+                "dimension": str(fact.get("category", "")),
+                "open_question_ref": str(fact.get("open_question_ref", "")),
+            })
+    return [item for item in required if item["source_ref"]]
+
+
+def required_question_sources(manifest):
+    return [item["source_ref"] for item in required_question_requirements(manifest)]
+
+
+def derive_missing_question_stubs(manifest):
+    """Return deterministic stubs the reasoning layer must answer or expose."""
+    stubs = []
+    for index, requirement in enumerate(required_question_requirements(manifest), 1):
+        dimension = requirement["dimension"].replace("_", " ").lower()
+        subject = requirement["subject"]
+        lead = {
+            "PRODUCT_CONTRACT": "What is the intended product behavior",
+            "DITA_SEMANTICS": "What do the governing DITA semantics require",
+            "ACTUAL_IMPLEMENTATION": "What does the current implementation do",
+            "CURRENT_UI": "What does the current UI show",
+        }.get(subject, "What behavior is required")
+        stubs.append({
+            "question_id": f"MQ-{index:02d}",
+            **requirement,
+            "question": f"{lead} for {dimension}?",
+            "material": True,
+            "if_unresolved": "OPEN_QUESTION",
+        })
+    return stubs
+
+
+def validate_required_questions(manifest):
+    """Ensure semantic unknowns automatically become directed questions."""
+    questions = [
+        MissingQuestion.from_dict(item)
+        for item in (manifest.get("missing_questions", []) or [])
+        if isinstance(item, dict)
+    ]
+    by_source = {q.source_ref: q for q in questions if q.source_ref and q.material}
+    problems = []
+    for requirement in required_question_requirements(manifest):
+        source_ref = requirement["source_ref"]
+        question = by_source.get(source_ref)
+        if question is None:
+            problems.append(
+                f"material unresolved candidate {source_ref} did not generate a missing_question"
+            )
+            continue
+        for field in ("subject", "dimension", "open_question_ref"):
+            if str(getattr(question, field, "")) != requirement[field]:
+                problems.append(
+                    f"material question for {source_ref} has {field}={getattr(question, field, '')!r}; "
+                    f"expected {requirement[field]!r}"
+                )
     return problems
 
 

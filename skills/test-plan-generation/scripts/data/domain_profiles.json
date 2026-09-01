@@ -1,0 +1,70 @@
+{
+  "schema_version": "aem-guides-domain-profiles-v1",
+  "domains": {
+    "PUBLISHING": {
+      "signals": ["publish", "publishing", "output preset", "generate output", "dita-ot", "native pdf", "aem sites"],
+      "required_dimensions": ["PUBLISHING_MODE", "LIFECYCLE", "DEPLOYMENT_APPLICABILITY"],
+      "required_blocks": ["publishing_scope"]
+    },
+    "AUTHORING": {
+      "signals": ["web editor", "authoring", "topic editor", "full tags view"],
+      "required_dimensions": ["DIRECT_CONSUMERS", "CROSS_SURFACE_SYNC", "ROLE_PROFILE_APPLICABILITY"],
+      "required_blocks": []
+    },
+    "CONTENT_MANAGEMENT": {
+      "signals": ["content management", "repository asset", "move asset", "rename asset"],
+      "required_dimensions": ["LIFECYCLE", "PERSISTED_STATE", "REFERENCED_CONTENT"],
+      "required_blocks": []
+    },
+    "SEARCH_QUERY": {
+      "signals": ["search query", "query builder", "search result", "runtime node traversal"],
+      "required_dimensions": ["GOVERNING_CONFIGURATION", "DOWNSTREAM_PROCESSOR", "NEGATIVE_STATE"],
+      "required_blocks": []
+    },
+    "WORKFLOW_JOB": {
+      "signals": ["workflow", "sling job", "job consumer", "scheduled job"],
+      "required_dimensions": ["LIFECYCLE", "PERSISTED_STATE", "NEGATIVE_STATE"],
+      "required_blocks": []
+    },
+    "MIGRATION": {
+      "signals": ["migration", "migrate", "upgrade migration"],
+      "required_dimensions": ["VERSION_APPLICABILITY", "LIFECYCLE", "BACKWARD_COMPATIBILITY"],
+      "required_blocks": []
+    },
+    "PERFORMANCE": {
+      "signals": ["performance", "latency", "throughput", "bulk publish", "thousands of documents"],
+      "required_dimensions": ["NFR_RISK", "NEGATIVE_STATE"],
+      "required_blocks": []
+    },
+    "TRANSLATION": {
+      "signals": ["translation", "translation project", "language copy"],
+      "required_dimensions": ["LIFECYCLE", "CROSS_SURFACE_SYNC", "LOCALE_APPLICABILITY"],
+      "required_blocks": []
+    },
+    "BASELINE": {
+      "signals": ["baseline", "baseline version", "baseline collection"],
+      "required_dimensions": ["VERSION_APPLICABILITY", "PERSISTED_STATE", "REFERENCED_CONTENT"],
+      "required_blocks": []
+    },
+    "ASSETS": {
+      "signals": ["dam asset", "asset version", "image asset", "asset browser"],
+      "required_dimensions": ["CONTENT_IDENTITY", "LIFECYCLE", "REFERENCED_CONTENT"],
+      "required_blocks": ["content_identity_contract"]
+    },
+    "EXTENSION_FRAMEWORK": {
+      "signals": ["extension framework", "extension api", "custom extension"],
+      "required_dimensions": ["DIRECT_CONSUMERS", "BACKWARD_COMPATIBILITY", "VERSION_APPLICABILITY"],
+      "required_blocks": []
+    },
+    "API": {
+      "signals": ["rest api", "api request", "api endpoint", "http request"],
+      "required_dimensions": ["DIRECT_CONSUMERS", "NEGATIVE_STATE", "VERSION_APPLICABILITY"],
+      "required_blocks": []
+    },
+    "OTHER": {
+      "signals": [],
+      "required_dimensions": ["DIRECT_CONSUMERS", "NEGATIVE_STATE"],
+      "required_blocks": []
+    }
+  }
+}

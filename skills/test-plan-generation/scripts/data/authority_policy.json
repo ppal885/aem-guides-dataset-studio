@@ -1,0 +1,38 @@
+{
+  "schema_version": "aem-guides-subject-authority-v1",
+  "subjects": {
+    "PRODUCT_CONTRACT": {
+      "ranking": [
+        "HUMAN_ACCEPTED_AC",
+        "APPROVED_PRODUCT_DECISION",
+        "EXPLICIT_HUMAN_DECISION",
+        "JIRA_EXPECTED_BEHAVIOR",
+        "CUSTOMER_EXPLICIT_REQUEST",
+        "CURRENT_ACCEPTED_PRODUCT_CONTRACT",
+        "PR_IMPLEMENTATION",
+        "DOCUMENTATION",
+        "INFERENCE"
+      ],
+      "acceptance_authorities": [
+        "HUMAN_ACCEPTED_AC",
+        "APPROVED_PRODUCT_DECISION",
+        "EXPLICIT_HUMAN_DECISION",
+        "JIRA_EXPECTED_BEHAVIOR",
+        "CUSTOMER_EXPLICIT_REQUEST",
+        "CURRENT_ACCEPTED_PRODUCT_CONTRACT"
+      ]
+    },
+    "DITA_SEMANTICS": {
+      "ranking": ["DITA_SPEC", "AEM_GUIDES_DOC", "DITA_OT", "CURRENT_IMPLEMENTATION", "HISTORICAL_JIRA", "INFERENCE"],
+      "acceptance_authorities": ["DITA_SPEC", "AEM_GUIDES_DOC"]
+    },
+    "ACTUAL_IMPLEMENTATION": {
+      "ranking": ["CURRENT_RUNTIME", "CURRENT_IMPLEMENTATION", "PR_IMPLEMENTATION", "CURRENT_TESTS", "DOCUMENTATION", "HISTORICAL_IMPLEMENTATION"],
+      "acceptance_authorities": []
+    },
+    "CURRENT_UI": {
+      "ranking": ["CURRENT_RUNTIME", "AEM_GUIDES_DOC", "HISTORICAL_SCREENSHOT", "HISTORICAL_DOCUMENTATION"],
+      "acceptance_authorities": ["CURRENT_RUNTIME", "AEM_GUIDES_DOC"]
+    }
+  }
+}

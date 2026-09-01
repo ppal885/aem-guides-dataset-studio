@@ -32,9 +32,8 @@ CLAIM_PHRASES = (
 
 # Negation-plus-verb constructions ("neither class checks X()", "does not validate Y") that a
 # plain substring list cannot catch because the negation and the verb are separated by the
-# claim's own subject. Found missing this exact real-world phrasing on GUIDES-47692's PR-author
-# comment ("neither class checks DatabaseConf.isDbEnabled()") during verification - added after
-# that gap was caught by testing the heuristic against a real comment, not just synthetic cases.
+# claim's own subject. Regression testing found a real comment shaped like "neither class
+# checks <gate>()"; the generic syntax, not the historical issue identity, activates this check.
 CLAIM_PATTERNS = (
     re.compile(r"\bneither\b[^.?!]{0,60}\b(checks?|validates?|verifies?|gates?|handles?)\b", re.IGNORECASE),
     re.compile(r"\b(does not|doesn't|did not|didn't|never)\b[^.?!]{0,40}\b(check|validate|verify|gate|handle)s?\b", re.IGNORECASE),

@@ -101,11 +101,11 @@ Use this before writing the `Open Questions` section. Ask only questions that af
 - What output oracle should be checked: generated files, navigation, TOC, links, images, variables, index terms, numbering, styling, language, accessibility, or logs?
 - Should failures be validated in UI status, publishing logs, generated output, or backend job status?
 
-## Native AEM Site Baseline Metadata Questions
+## Baseline-Aware Publishing Metadata Questions
 
-- Confirm the output type is Native AEM Site only and old AEM Site is out of scope.
-- Which baseline types must be tested: static baseline, dynamic baseline, old baseline, new baseline, or all of these?
-- Which output preset and `metadatalist` fields are expected, including custom metadata fields?
-- Is `Use map properties` enabled at preset level, and which map metadata should fall back to topic level when topic metadata is missing?
-- Should incremental publishing, full publishing, and copy-to topics all be verified against baseline metadata resolution?
-- Which metadata should explicitly remain out of scope, such as multimedia metadata or chunked content modes?
+- Which output type/preset and DITA-OT mode are in scope, and which related outputs are explicitly out of scope?
+- Which baseline types and existing/new baseline records must be tested?
+- Which metadata source/configuration and standard/custom fields are expected?
+- What precedence applies between map, topic, baseline-version, and working-copy metadata?
+- Are incremental, full, copy-to, and map-to-topic propagation paths in scope?
+- Which metadata/content types or publishing modes are explicitly out of scope?

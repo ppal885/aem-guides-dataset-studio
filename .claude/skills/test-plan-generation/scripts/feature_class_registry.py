@@ -36,6 +36,12 @@ terminal_states_mod = _load_peer("terminal_states", "terminal_states.py")
 configuration_enumeration_mod = _load_peer(
     "configuration_enumeration_scope", "configuration_enumeration_scope.py"
 )
+generated_output_mod = _load_peer(
+    "generated_output_contract", "generated_output_contract.py"
+)
+content_identity_mod = _load_peer(
+    "content_identity_contract", "content_identity_contract.py"
+)
 
 
 def _load_registry():
@@ -87,6 +93,8 @@ DIMENSION_VALIDATORS = {
     "configuration_enumeration_scope": (
         configuration_enumeration_mod.validate_configuration_enumeration_scope
     ),
+    "generated_output_contract": generated_output_mod.validate_generated_output_contract,
+    "content_identity_contract": content_identity_mod.validate_content_identity_contract,
 }
 
 

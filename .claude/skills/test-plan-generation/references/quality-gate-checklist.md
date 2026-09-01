@@ -4,24 +4,25 @@ Use this before calling a test plan review-ready.
 
 ## Component And Mechanism Routing
 
-- [ ] `component_reference_router.py` was run before loading detailed UAC examples, and only the returned focused pack (plus any justified fallback) was read.
+- [ ] `audit_production_hardcoding.py` passes; historical issue identities and fixture thresholds exist only in explicitly non-authoritative regression/evaluation catalogs.
+- [ ] `component_reference_router.py` was run before loading a component contract, and only its returned generic focused pack was read; historical example catalogs were not loaded for production drafting.
 - [ ] A canonical Jira component was used when present; any inferred component records whether it came from accepted UAC, summary, or description.
 - [ ] If accepted UAC changed the ticket mechanism, stale description requirements were not merged into Confirmed ACs.
 - [ ] Generic image-selection wording was not expanded into multi-selection, cross-folder selection, or an invented selection limit.
 - [ ] Closed/Duplicate history without accepted UAC remains Proposed-only and cites neither a verified fix nor a Confirmed behavior contract.
 - [ ] Map-Xref display-label plans resolve titles only for repository-local map targets, preserve `href`, `format`, `scope`, `type`, and destination semantics, and prove `scope="external"` or external-URI Xrefs receive no repository map-title lookup.
-- [ ] Missing map title, duplicate title, affected UI surfaces, specialized map types, and duplicate-target Jira are Open Questions unless current evidence resolves them.
-- [ ] Map View hierarchy-count plans reset to a cold Map View state and prove the reported seven-node `map2` fixture shows `7 selected` on the first interaction; a later correct selection cannot mask an initial `1 selected` failure.
-- [ ] The expected seven-node set includes the selected map and selected descendants and is checked against both checkbox state and footer count, with explicit DITA, Markdown, and DITAVAL fixtures.
+- [ ] Missing map title, duplicate title, affected UI surfaces, specialized map types, and duplicate-target contract are Open Questions unless current evidence resolves them.
+- [ ] Map View hierarchy-count plans reset to the current issue's defined cold state and prove the source-backed selected set/count on the first interaction; a later correct selection cannot mask an initial failure.
+- [ ] The expected selected set and supported content types come from current evidence and are checked against both visible selection state and the displayed count; no historical count or type list is imported.
 - [ ] Repeated-node identity, collapsed/unloaded descendants, partial-selection propagation, cycles, persistence, and performance remain Open Questions or out of scope unless current evidence defines them.
 - [ ] Asset CRUD API plans separate filename, path, and GUID identity; distinguish caller content from template content; and verify metadata by read-back rather than only a successful response.
 - [ ] UPDATE-as-UPSERT plans cover existing/missing targets against force-create omitted/false/true and never assume the flag name, default, target identity, status code, atomicity, or supported asset matrix without accepted evidence.
-- [ ] CRUD plans preserve the documented legacy form-encoded baseline only when verified on the target build, and never confuse UPDATE `createrev`, DELETE `force`, or an unaccepted UPDATE force-create parameter.
-- [ ] Bulk same-name overwrite plans treat `GUIDES-30459` as caution-only history, preserve the SP21/SP22 ambiguity, and require a terminal UI/API state plus per-asset read-back without inventing a supported batch threshold, SLA, atomicity model, or root cause.
+- [ ] CRUD plans discover current endpoint/field/default behavior from the target handler and approved contract, keep operation controls independent, and never import a legacy endpoint or parameter from a historical example.
+- [ ] Bulk same-name overwrite plans preserve current environment/version conflicts, require a terminal UI/API state plus per-asset read-back, and do not import a historical batch size, threshold, SLA, atomicity model, or root cause.
 - [ ] `/bin/fmdita/import`, CSRF requests, login redirect, loader, configuration changes, and Product Assets Upload Process observations remain diagnostic evidence unless a verified common mechanism promotes them.
 - [ ] Explorer sorting plans keep display label, sort key, sort direction, folder default, and per-user override separate; changing `File name` versus `Title` is not treated as proof that ordering changed.
-- [ ] When the supplied Explorer mockup is inspected, plans use the dedicated header sort affordance and do not retain implicit display-preference coupling as the selected interaction.
-- [ ] A static sort-icon mockup proves only the independent header entry point; without accepted UAC or interactive design evidence, menu/cycle behavior, keys, direction semantics, defaults, and runtime results remain `[Proposed]` or Open Questions.
+- [ ] A dedicated Explorer sort affordance is selected only when current accepted UAC or inspected design/runtime evidence shows it; no historical mockup selects the interaction.
+- [ ] A static sort-icon mockup proves only what is visibly rendered; without accepted UAC or interactive evidence, menu/cycle behavior, keys, direction semantics, defaults, and runtime results remain Open Questions rather than ACs.
 - [ ] Feature-flagged Explorer sorting covers flag OFF, flag ON, and the button's first-render default state; the flag's configured default value and the control's default sort state are tested as separate facts.
 - [ ] If the flag key/default, OFF-state presentation, ON-state key/direction, or reload boundary is absent, the plan keeps it Proposed or asks an Open Question instead of inventing hidden, disabled, ascending, or persistent behavior.
 - [ ] Default-state validation checks both control state and resulting item order; a static upward-arrow icon alone never proves that ascending order is active.
@@ -83,8 +84,8 @@ Use this before calling a test plan review-ready.
 - Edge cases are derived from UAC, PR diff, code branches, API contracts, configs, old automation failures, and similar Jira history.
 - Authoring viewport tickets preserve the active element/caret and insertion location across typing, paste, reference picker close/cancel, repetition, and layout reflow without automatically adding left-panel, save/reopen, editor-parity, data-loss, or performance-SLA claims.
 - Map Preview restoration and Author-canvas viewport stability remain separate historical mechanisms unless direct state-restoration/editor-scroll evidence connects them.
-- CALS multi-column deletion uses a 6-row by 5-column integrity fixture and proves the 6-row by 3-column result, no ghost column, retained content order, and no orphan span/column metadata.
-- `GUIDES-35437` is treated as `largeFileTagCount` configuration behavior and is tested at parsed-tag boundaries rather than converted into a 411-cell defect.
+- CALS multi-column deletion derives counts and selected positions from current evidence, proves the row count is unchanged and exactly the selected columns are removed, and checks for no ghost column, retained content order, and no orphan span/column metadata.
+- When current evidence names `largeFileTagCount`, it is tested at effective parsed-tag boundaries; observed UI/structure counts are not converted into product thresholds or defects.
 - Exact screenshot-only Jira records are not indexed; exact historical UAC requires live Jira or hashed Jira CSV provenance.
 - Integration impact identifies adjacent workflows, shared APIs/components, configs, roles, output types, and automation areas that can break.
 - `ask_dita_expert` was used for behaviour facts when available and relevant. If unavailable, exact acceptance-contract, log, current-code, design, or implementation evidence supports each retained claim; unsupported claims remain unknown or blocked.
@@ -100,8 +101,8 @@ Use this before calling a test plan review-ready.
 - Every acceptance criterion cites an underlying source through its final `| Evidence:` field; candidate graph claims and path-only citations are rejected regardless of scenario priority.
 - The evidence manifest contains a complete `aem-guides-performance-assessment-v1` review of all seven canonical risk categories, with source-backed findings and one `required`, `conditional`, or `not_required` decision.
 - A `required` decision has quantified workload, metrics, test types, approved/controlled numeric or source-backed comparative thresholds, matching `performance_ac_ids`, and mapped Performance scenarios; each visible Performance AC has a numeric workload and measurable outcome.
-- Every historical performance Jira is classified as `same_mechanism`, `shared_execution_path`, or `area_only`; retained same-mechanism/shared-path contracts record the exact mechanism, quantified workload, measurable oracle, and underlying Jira/code evidence, force a required Performance AC, and never survive only as a Regression Areas mention.
-- A plan mentioning `GUIDES-37915` for a verified SubjectScheme enumdefs/shared title-resolution path uses the Jira-backed same-dataset benchmark, approximately 200 concurrent users, and the 2x response-time gain contract in a Performance AC and mapped benchmark scenario.
+- Every historical performance issue is classified as `same_mechanism`, `shared_execution_path`, or `area_only`; retained same-mechanism/shared-path contracts record current applicability, exact provenance, mechanism, quantified workload, measurable oracle, and code evidence, and never survive only as a Regression Areas mention.
+- No historical issue key or remembered workload/oracle activates a Performance AC. A retained source-backed contract promotes only after shared-path proof and target-environment applicability are verified; otherwise performance remains conditional with an Open Question.
 - A `conditional` decision emits no Performance AC and has a performance-related Open Question with QA impact; `not_required` emits no Performance AC or reader-facing filler.
 - No `Performance Analysis` or equivalent plan section/bullet was added; the assessment remains internal and only its justified AC or conditional question is visible.
 - Graph unavailability is recorded as degraded mode and is not a Draft blocker when authoritative direct evidence already covers the behavior.
@@ -143,7 +144,8 @@ Use this before calling a test plan review-ready.
 
 ## Enumerated And Operational Contract Gate
 
-- The manifest uses schema `aem-guides-evidence-manifest-v2` and includes versioned `enumerated_requirements` and `operational_contract` blocks for every plan.
+- New manifests use schema `aem-guides-evidence-manifest-v3` and include versioned `enumerated_requirements` and `operational_contract` blocks for every plan; legacy v2 manifests remain readable without retroactive v3 semantic requirements.
+
 - Every numbered, `-`, or `*` reporter item is transcribed in source order with the exact source count and one real AC, Open Question, or out-of-scope disposition. Unknown references, missing indices/items, and silently overloaded ACs fail.
 - Every active enumerated requirement list has a hash-bound source requirement ledger using `aem-guides-source-requirement-ledger-v1`, including when accepted UAC is absent and every AC is Proposed.
 - Each source ledger record has a stable ID/type/locator, exact raw text, and matching SHA-256; each ordered item's text equals its verbatim source substring and exactly matches its corresponding enumerated requirement text and disposition.
@@ -153,6 +155,17 @@ Use this before calling a test plan review-ready.
 - Active operational contracts disposition trigger/deployment scope; acquisition/query/iteration/mutation/save/refresh failure points; separate success, failure, cancellation, shutdown, retry exhaustion, and recovery outcomes; retry taxonomy/attempts/backoff/log bound; a numeric/configured progress bound; partial-write recovery and idempotency; concurrent same/overlapping/unrelated targets and source add/delete/rename/update snapshot behavior; queue isolation; observability/context fallback; recovery safety; and deterministic automation.
 - Event/async behavior includes versioned `concurrency_race_analysis` with real AC/OQ/out-of-scope dispositions for create-then-delete, restart-mid-processing, and duplicate-event races.
 - Automation search records exact repositories, revisions, search terms, and symbols before declaring an operational AC Not covered; the gap names deterministic injection, polling/timeout, output-integrity assertion, and cleanup.
+
+## Canonical Semantic Contract Gate
+
+- The manifest includes source-bound `contract_facts`; literal human terminology, exact labels/defaults/values/status/colors/counts/limits, scope, deployment/version, preset/output, and DITA-OT state are preserved or explicitly made an Open Question.
+- `issue_domains` has at least one evidence-backed active route. Publishing activates `publishing_scope`; generated artifact content/structure/delivery evidence independently activates `generated_output_contract`. Publishing configuration alone does not imply download delivery. Assets/content-version behavior activates `content_identity_contract`.
+- Every material behavior-graph node/edge has canonical evidence-ID provenance; each edge's authority is valid for its declared subject. It also records currentness, applicability, confidence, and verification state. Inference remains an investigation candidate.
+- `semantic_closure` explicitly dispositioned every canonical dimension for every material entity. No missing record is interpreted as `NOT_APPLICABLE`.
+- Every material unresolved fact/edge/closure record has a linked subject-aware question, visible `OQ-##`, and a genuinely new question-linked second-pass retrieval. Every terminal evidence record points to a declared question or hypothesis. Verification evidence is USED, subject-matched, authority-matched, and bound to that same hypothesis. No result is not rejection.
+- Every material item is dispositioned exactly once. Every visible AC has one successful acceptance-promotion record whose candidate, subject, authority, disposition, mapped AC, and status agree; current code/PR/tests alone cannot authorize product acceptance behavior.
+- When generated artifact validation is active, it reaches the real artifact. Archive/download checks cover primary-content inventory, exclusions, root/hierarchy/relative paths, content fidelity, stale/duplicate/orphan state, activation, and status consistency; existence or logs alone cannot pass. `DELIVERY_AVAILABLE` is covered only when delivery is in scope, explicitly rejected when it is out of scope, and linked to an Open Question when delivery scope is unresolved.
+- Any `REVIEW` or `CRITIC [NEEDS_REVIEW]` note makes the gate receipt non-postable.
 
 ## Draft When
 
@@ -198,9 +211,9 @@ Use this before calling a test plan review-ready.
 - Pre-development `Code Touched` says no code changes exist and cites exact current implementation/automation findings where available; `Lines Changed` is not applicable.
 - Implementation/post-fix `Code Touched` and `Lines Changed` cite real PR/Git evidence.
 - Design-dependent UI flows state whether Figma MCP, screenshots, or pasted design notes were inspected.
-- Native AEM Site baseline metadata plans state baseline type, output preset `metadatalist`, custom metadata expectation, copy-to/incremental scope, and explicit out-of-scope items when applicable.
+- Baseline-aware metadata plans state the current output/preset, DITA-OT mode, baseline types, metadata source/configuration, propagation precedence, full/incremental/copy-to scope, and explicit out-of-scope items; no old output matrix is imported.
 - Review identity/role display plans cover reviewer task page, editor review right panel, tagging, replies, nested reply ladder, project-specific role mapping, search non-impact, and notifications/email no-regression expectations when applicable.
-- Review task-history/right-panel plans cover author persona, current/open/closed task dropdown, `Current` tag, selected-task metadata, read-only previous comments, import disabled state for non-current tasks, selected-task search/filter scoping, side-by-side diff, topic-switch reset, feature flag on/off, user-name fallback, and both-editor compatibility questions when applicable.
+- Review task/history plans derive actor, surface, task states, selected/default rule, comment permissions, search/filter scope, version comparison, topic-switch behavior, configuration, display fallback, and cross-editor scope from current evidence; historical UI elements/defaults are not imported.
 - On-premise release/upgrade plans state source/target version coverage, retained custom config expectations, changed defaults, manual steps, and backward-compatibility risks when applicable.
 - Relevant product and automation clones are either inspected or explicitly marked unavailable.
 - Existing automation coverage and automation coverage gaps are mapped into `Test Scenarios` or `Regression Areas`.

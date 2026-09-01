@@ -39,6 +39,9 @@ _explorer = _load("semantic_relationship_explorer", "semantic_relationship_explo
 _relevance = _load("relevance_prioritizer", "relevance_prioritizer.py")
 _cap_elig = _load("capability_eligibility_explorer", "capability_eligibility_explorer.py")
 _scope = _load("scope_conflict_resolver", "scope_conflict_resolver.py")
+_closure = _load("semantic_closure", "semantic_closure.py")
+_graph = _load("behavior_graph", "behavior_graph.py")
+_domains = _load("issue_domain_router", "issue_domain_router.py")
 
 
 # Map coverage-hypothesis dimensions to the gate's dimension names.
@@ -156,6 +159,25 @@ def evaluate(manifest):
         dims["BEHAVIOR_MODEL"] = COVERED if ok else NEEDS_REVIEW
         if not ok:
             reasons["review"].append("BEHAVIOR_MODEL: the behavior model is missing/incomplete")
+        closure = manifest.get("semantic_closure")
+        graph = manifest.get("behavior_graph")
+        if not isinstance(closure, dict) or not isinstance(graph, dict):
+            dims["SEMANTIC_CLOSURE"] = NEEDS_REVIEW
+            reasons["review"].append(
+                "SEMANTIC_CLOSURE: behavior_model alone is not completeness; behavior_graph and semantic_closure are required"
+            )
+        else:
+            closure_problems = _closure.validate_semantic_closure(
+                closure,
+                material_entity_ids=_graph.material_node_ids(graph),
+                required_dimensions=_domains.required_dimensions(manifest.get("issue_domains")),
+                open_question_ids=_open_question_ids(manifest),
+            )
+            dims["SEMANTIC_CLOSURE"] = COVERED if not closure_problems else NEEDS_REVIEW
+            if closure_problems:
+                reasons["review"].append(
+                    "SEMANTIC_CLOSURE: one or more material applicability dimensions are missing or unresolved incorrectly"
+                )
 
     # Meta dimension: SECOND_PASS_RETRIEVAL (activated by a material question).
     mq = manifest.get("missing_questions", []) or []

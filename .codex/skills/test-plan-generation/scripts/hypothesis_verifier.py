@@ -28,18 +28,38 @@ Hard anti-hallucination rules (all generic, no domain/construct/Jira rules):
 Stdlib only. Same dataclass/validate pattern (no future-annotations import).
 """
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 VERDICTS = ("CONFIRMED", "INFERRED_HIGH_CONFIDENCE", "REJECTED", "UNRESOLVED")
 
 # Authorities that can, on their own, establish a CONFIRMED behavior.
 AUTHORITATIVE_FOR_CONFIRMED = frozenset({
-    "JIRA", "AEM_GUIDES_DOC", "EXPERIENCE_LEAGUE", "DITA_SPEC", "DITA_OT", "CURRENT_IMPLEMENTATION",
+    "JIRA", "JIRA_EXPECTED_BEHAVIOR", "CUSTOMER_EXPLICIT_REQUEST",
+    "HUMAN_ACCEPTED_AC", "APPROVED_PRODUCT_DECISION", "EXPLICIT_HUMAN_DECISION",
+    "CURRENT_ACCEPTED_PRODUCT_CONTRACT", "AEM_GUIDES_DOC", "EXPERIENCE_LEAGUE",
+    "DITA_SPEC", "DITA_OT", "CURRENT_RUNTIME", "CURRENT_IMPLEMENTATION", "PR_IMPLEMENTATION",
 })
 # Authorities that are evidence but NOT sufficient alone to confirm current product behavior.
 INSUFFICIENT_ALONE = frozenset({"EXISTING_AUTOMATION", "HISTORICAL_BEHAVIOR"})
 ALL_AUTHORITIES = AUTHORITATIVE_FOR_CONFIRMED | INSUFFICIENT_ALONE
+
+_AUTHORITY_POLICY_PATH = Path(__file__).with_name("data") / "authority_policy.json"
+with _AUTHORITY_POLICY_PATH.open(encoding="utf-8") as _authority_policy_file:
+    SUBJECT_POLICIES = json.load(_authority_policy_file).get("subjects", {})
+ALL_AUTHORITIES = ALL_AUTHORITIES | frozenset(
+    authority
+    for policy in SUBJECT_POLICIES.values()
+    for authority in policy.get("ranking", [])
+)
+
+# Authorities that can establish intended PRODUCT_CONTRACT behaviour.  Code/PR/
+# runtime can establish actual implementation only and must not authorize an AC.
+PRODUCT_CONTRACT_AUTHORITIES = frozenset(
+    SUBJECT_POLICIES.get("PRODUCT_CONTRACT", {}).get("acceptance_authorities", [])
+)
 
 # Where a verified hypothesis is allowed to land.
 DISPOSITIONS = ("ACCEPTANCE_CRITERION", "INFERRED_AC", "REGRESSION", "OPEN_QUESTION", "EXCLUDED", "CONTEXT")
@@ -68,6 +88,7 @@ class Verification:
     disposition: str = ""
     open_question_ref: str = ""
     note: str = ""
+    subject: str = ""
 
     @classmethod
     def from_dict(cls, data):
@@ -76,7 +97,7 @@ class Verification:
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
-def validate_verification(v):
+def validate_verification(v, *, evidence_by_id=None, open_question_ids=None):
     problems = []
     tag = f"verification '{v.hypothesis_id or '?'}'"
 
@@ -97,6 +118,28 @@ def validate_verification(v):
             f"(UNRESOLVED->OPEN_QUESTION only; REJECTED never enters an AC/regression/open-question)"
         )
 
+    if not v.subject:
+        problems.append(f"{tag}: subject is required for subject-specific authority")
+    elif v.subject not in SUBJECT_POLICIES:
+        problems.append(f"{tag}: unknown subject {v.subject!r}")
+
+    if v.subject in SUBJECT_POLICIES:
+        allowed_for_subject = set(SUBJECT_POLICIES[v.subject].get("ranking", []))
+        for authority in v.supporting_authorities:
+            if authority not in allowed_for_subject:
+                problems.append(
+                    f"{tag}: authority {authority!r} is not valid for subject {v.subject}"
+                )
+
+    if v.disposition in ("ACCEPTANCE_CRITERION", "INFERRED_AC"):
+        if not set(v.supporting_authorities) & PRODUCT_CONTRACT_AUTHORITIES:
+            problems.append(
+                f"{tag}: actual implementation/PR/test evidence alone cannot authorize an Acceptance Criterion; "
+                "add product-contract authority or route it to regression/implementation coverage"
+            )
+        if v.subject != "PRODUCT_CONTRACT":
+            problems.append(f"{tag}: an Acceptance Criterion requires subject PRODUCT_CONTRACT")
+
     # Any conflict (incl. spec-vs-implementation divergence) forces UNRESOLVED.
     if v.conflict and v.verdict != "UNRESOLVED":
         problems.append(
@@ -105,6 +148,8 @@ def validate_verification(v):
         )
 
     if v.verdict == "CONFIRMED":
+        if not v.supporting_evidence:
+            problems.append(f"{tag}: CONFIRMED requires supporting_evidence")
         if v.similarity_only:
             problems.append(f"{tag}: CONFIRMED cannot rest on embedding/keyword similarity alone")
         authoritative = [a for a in v.supporting_authorities if a in AUTHORITATIVE_FOR_CONFIRMED]
@@ -137,27 +182,96 @@ def validate_verification(v):
     elif v.verdict == "UNRESOLVED":
         if not v.open_question_ref:
             problems.append(f"{tag}: UNRESOLVED must reference an Open Question (open_question_ref)")
+        elif open_question_ids is not None and v.open_question_ref not in set(open_question_ids):
+            problems.append(f"{tag}: open_question_ref is not declared")
         if not (v.conflict or v.product_decision_required or v.insufficient):
             problems.append(
                 f"{tag}: UNRESOLVED must state a reason (conflict / product_decision_required / insufficient)"
             )
 
+    if evidence_by_id is not None:
+        used_refs = list(v.supporting_evidence) + list(v.disproving_evidence)
+        for evidence_id in used_refs:
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence is None:
+                problems.append(f"{tag}: evidence reference {evidence_id!r} is unknown")
+                continue
+            if evidence.get("status") != "USED":
+                problems.append(f"{tag}: evidence {evidence_id!r} must have status USED")
+            evidence_subject = str(evidence.get("subject", ""))
+            if evidence_subject and v.subject and evidence_subject != v.subject:
+                problems.append(
+                    f"{tag}: evidence {evidence_id!r} has subject {evidence_subject}, expected {v.subject}"
+                )
+            evidence_hypothesis = str(evidence.get("hypothesis_id", ""))
+            if evidence_hypothesis != v.hypothesis_id:
+                problems.append(
+                    f"{tag}: evidence {evidence_id!r} is not bound to hypothesis {v.hypothesis_id!r}"
+                )
+        supporting_authorities = {
+            str(evidence_by_id[evidence_id].get("authority", ""))
+            for evidence_id in v.supporting_evidence
+            if evidence_id in evidence_by_id
+        }
+        for authority in v.supporting_authorities:
+            if authority not in supporting_authorities:
+                problems.append(
+                    f"{tag}: supporting authority {authority!r} is not bound to supporting_evidence"
+                )
     return problems
 
 
-def verify_all(coverage_hypotheses, verifications):
+def verify_all(
+    coverage_hypotheses,
+    verifications,
+    *,
+    evidence_lifecycle=None,
+    open_question_ids=None,
+):
     """Cross-check: every coverage hypothesis is verified to a terminal verdict, and
     every verification is internally valid. Returns problem strings."""
     problems = []
+    hypotheses = list(coverage_hypotheses or [])
+    known_hypothesis_ids = [
+        h.get("hypothesis_id") if isinstance(h, dict) else getattr(h, "hypothesis_id", "")
+        for h in hypotheses
+    ]
+    known_hypothesis_ids = [str(item) for item in known_hypothesis_ids if item]
+    evidence_by_id = None
+    if evidence_lifecycle is not None:
+        evidence_by_id = {}
+        for item in evidence_lifecycle or []:
+            if not isinstance(item, dict) or not item.get("evidence_id"):
+                continue
+            evidence_id = str(item["evidence_id"])
+            if evidence_id in evidence_by_id:
+                problems.append(f"evidence_lifecycle evidence_id duplicates {evidence_id}")
+            else:
+                evidence_by_id[evidence_id] = item
     verifs = [Verification.from_dict(x) for x in (verifications or [])]
     for v in verifs:
-        problems.extend(validate_verification(v))
+        problems.extend(
+            validate_verification(
+                v,
+                evidence_by_id=evidence_by_id,
+                open_question_ids=open_question_ids,
+            )
+        )
 
-    verified_ids = {v.hypothesis_id for v in verifs if v.hypothesis_id}
-    for h in (coverage_hypotheses or []):
+    counts = {}
+    for verification in verifs:
+        if verification.hypothesis_id:
+            counts[verification.hypothesis_id] = counts.get(verification.hypothesis_id, 0) + 1
+    known = set(known_hypothesis_ids)
+    for verification_id, count in counts.items():
+        if verification_id not in known:
+            problems.append(f"verification references unknown hypothesis {verification_id!r}")
+        if count > 1:
+            problems.append(f"hypothesis {verification_id!r} has more than one verification")
+    for h in hypotheses:
         hid = h.get("hypothesis_id") if isinstance(h, dict) else getattr(h, "hypothesis_id", "")
         status = h.get("status") if isinstance(h, dict) else getattr(h, "status", "")
-        if hid and hid not in verified_ids:
+        if hid and counts.get(str(hid), 0) == 0:
             problems.append(
                 f"coverage hypothesis '{hid}' (status {status}) has no verification - every candidate must reach a "
                 f"terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)"

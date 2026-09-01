@@ -1,6 +1,6 @@
 # Authoring State and Structural UAC Contract
 
-Use this reference only after current Jira/UAC evidence activates one of the routes below. Current Jira/UAC always overrides this learned candidate contract.
+Use this generic relationship reference only after current Jira/UAC evidence activates one of the routes below. It supplies investigation dimensions, not pre-approved AC text or historical fixture values.
 
 ## Route 1 - Authoring Viewport Stability
 
@@ -16,25 +16,25 @@ Use this reference only after current Jira/UAC evidence activates one of the rou
 ## Route 2 - Map Preview State Restoration
 
 - Activation requires Map Preview or map-preview-specific state.
-- Preserve selected topic, relative scroll location, right-panel/condition state, and applied filtering when switching tabs or returning from Edit during an active session.
-- Topic refresh and full-map toolbar refresh must fetch latest content without resetting the selected topic, relative scroll location, or condition state.
+- Enumerate only the preview state named by current scope, such as selected topic, relative scroll location, panel state, or applied filtering. Preserve each named state across only the transitions authorized by current evidence.
+- Include topic refresh, full-map refresh, tab switching, or Edit-return only when current scope names the transition or verified code proves the same state owner/consumer path.
 - Cover standard maps, bookmaps, and subject schemes only when current UAC names that matrix; references such as topic, DITAVAL, Markdown, and non-DITA assets are likewise evidence-gated.
 - Do not inherit Author-canvas caret or reference-picker focus requirements.
 
 ## Route 3 - CALS Multi-Column Deletion
 
-- Prepare a 6-row by 5-column CALS table with unique row-column labels.
-- Deleting the two selected rightmost columns must leave exactly 6 rows and 3 visible columns.
+- Derive the starting row/column count and selected-column set from current evidence; use unique cell labels so the expected retained structure is explicit.
+- Deleting selected columns must preserve the original row count and reduce the visible column count by exactly the number of distinct columns deleted.
 - No blank ghost column may remain in Author view.
 - Source structure must preserve retained cell order/content and contain no orphan `colspec`, `namest`, `nameend`, or other span metadata targeting removed columns.
-- Include a valid adjacent span fixture. Do not add `simpletable` or `reltable` parity unless current Jira/UAC names it.
+- Include adjacent/crossing span fixtures only when current evidence or inspected branch behavior makes span handling applicable. Do not add `simpletable` or `reltable` parity unless current Jira/UAC names it.
 
-## Route 4 - GUIDES-35437 Large-File Safeguard
+## Route 4 - Configuration-Driven Large-File Safeguard
 
 - Classify the behavior as configuration-driven working as designed when evidence identifies `largeFileTagCount`.
 - Record the effective configuration and test immediately below and at/above its parsed DITA tag-count threshold.
 - Verify dirty-state and undo/redo behavior changes at the configured parsed-tag boundary.
-- Do not treat 411 table cells as a hard-coded product threshold or defect; cell count is not equivalent to parsed tag count.
+- Do not treat an observed table-cell, UI-item, or file count as a hard-coded product threshold or defect; those counts are not equivalent to parsed tag count.
 - Do not derive a performance SLA from the customer-observed cell count.
 
 ## Historical Similarity Boundary

@@ -1,52 +1,51 @@
 # Platform UAC Contracts
 
-Load this focused pack only when the component router returns `Platform` for a covered mechanism. Current Jira/UAC remains the authority.
+Load this focused pack only when the component router returns `Platform` for a covered mechanism. Current accepted scope and verified evidence remain the authority. The patterns below are generic investigation rules; they contain no historical-ticket authority.
 
-## Bulk Same-Name Asset Overwrite and Session Contract - GUIDES-30459
+## Bulk Same-Name Asset Overwrite and Session Contract
 
-Use this as **candidate historical learning only**. `GUIDES-30459` was closed because the failure was unclear or could not be reproduced consistently; it has no accepted UAC, confirmed root cause, implemented-fix evidence, or verified QA oracle.
+Activate only when current evidence combines a bulk or batch asset import with same-name overwrite/re-upload and an observable terminal-state, session, authentication, CSRF, or stuck-processing symptom. A ticket key, customer name, old batch count, or old release cannot activate this contract.
 
 ### Evidence Boundary
 
-- The reported fixture is AEM 6.5 On-Prem with Guides 5.0 UUID. The supplied evidence conflicts on AEM SP21 versus SP22, so the exact service-pack boundary is an Open Question.
-- Initial upload of roughly 200 assets reportedly completes. Re-uploading the same names to overwrite them can show a generic error plus a forced login redirect, or an indefinitely pending loader.
-- Smaller batches below roughly 100 reportedly complete with a conflict warning. Treat `100` and `200` only as observed test fixtures, never as a supported product threshold or SLA.
-- The observed network path includes `POST /bin/fmdita/import`, repeated CSRF-token requests, and a later login redirect. These are failure signatures, not proof that Guides import, CSRF handling, session expiry, CDN behavior, or Assets post-processing is the root cause.
-- Raising upload-related limits and changing the Product Assets Upload Process are diagnostic matrix inputs. Neither is an accepted fix or root-cause conclusion.
+- Preserve the exact deployment, AEM service pack, Guides build, authentication topology, import API, batch cardinality, file mix, and configuration values from current evidence. Conflicts become Open Questions; do not choose an old value from memory.
+- Treat login redirects, CSRF retries, generic errors, pending loaders, and import endpoint traffic as failure signatures. They do not prove which layer is the root cause.
+- Configuration changes and raised limits are diagnostic matrix inputs unless accepted evidence identifies them as the supported fix or contract.
+- A reported small or large batch is a reproduction fixture, not a supported maximum, SLA, timeout, or resource ceiling.
 
 ### Proposed Acceptance Contract
 
-- With an authenticated author and an existing same-name asset set, an overwrite batch reaches an observable terminal success or failure state; it does not remain indefinitely pending.
-- Starting the overwrite must not silently redirect an otherwise authenticated author to the login page. If authentication really expires, the UI must distinguish that state from an import failure and preserve a recoverable user action.
-- A failed overwrite exits processing and presents an actionable error instead of only a generic message, stuck loader, or forced logout.
-- A successful overwrite is verified by reading back every targeted asset's binary/content identity and repository state. An HTTP success response or disappearing loader alone is insufficient.
-- The initial-upload control remains valid for the same fixture, and retrying an overwrite does not create duplicate assets or an ambiguous partial result.
-- Batch boundaries, timeout values, memory/CPU targets, atomicity, partial-success semantics, retry behavior, and supported maximum file count remain Open Questions until current product evidence defines them.
+- With an authenticated author and an existing same-name asset set, an overwrite batch reaches an observable terminal success, partial-success, or failure state defined by accepted evidence; it does not remain indefinitely pending.
+- Starting an overwrite must not silently redirect an otherwise authenticated author to login. If authentication expires, the UI/API distinguishes that state from an import failure and provides the approved recovery action.
+- A failed overwrite exits processing and presents an actionable result instead of only a generic message, stuck loader, or forced logout.
+- A successful overwrite is verified by reading back every targeted asset's content identity and repository state. An HTTP success response or disappearing loader alone is insufficient.
+- The initial-upload control remains valid for the same current fixture, and retrying an overwrite does not create duplicate assets or an unexplained partial result.
+- Batch limits, timeouts, resources, atomicity, partial-success semantics, retry behavior, and supported file counts remain Open Questions until an approved source defines them.
 
 ### Test Matrix
 
-- Compare initial upload with same-name overwrite using identical asset sets and clean sessions.
-- Exercise an observed smaller batch and the reported 200-asset batch without turning those counts into product limits.
-- Capture `/bin/fmdita/import`, CSRF, login redirect, UI loader/error, repository read-back, and server logs on the same timestamped run.
-- Repeat with the supplied upload-limit and Product Assets Upload Process configurations only as diagnostics; do not accept a configuration change unless it produces repeatable terminal behavior and complete asset integrity.
-- If testing after an upgrade or on another topology, keep environment/version conclusions separate from the original On-Prem report.
+- Compare initial upload with same-name overwrite using identical source assets and controlled session state.
+- Exercise cardinalities explicitly supplied by current evidence plus one justified boundary. Do not import counts from historical examples.
+- Correlate the import request, CSRF/authentication events, UI terminal state, repository read-back, and server logs in the same timestamped run.
+- Treat configuration changes as controlled diagnostic variants. Accept them only when they produce repeatable terminal behavior and complete asset integrity under the approved contract.
+- When testing another deployment or release, keep its result separate from the source environment rather than silently generalizing.
 
 ### Historical Similarity Rule
 
-- Retain another Jira only when it shares same-name overwrite/bulk import plus the `/bin/fmdita/import` route, terminal-state failure, session/login redirect, CSRF loop, or a verified common root cause.
+- Retain another issue only when it shares the overwrite/import mechanism plus a matching terminal-state signature, authentication transition, or verified common execution path/root cause.
 - A generic large-file upload, DAM workflow, timeout, or performance issue is area-only similarity.
-- `GUIDES-14743` may be a risk signal for `/bin/fmdita/import` stuck-pending behavior, but without verified common root cause/fix/oracle it cannot supply expected behavior or a Confirmed AC.
+- Historical evidence may propose a retrieval hypothesis. It cannot provide a workload, expected outcome, threshold, or Confirmed AC unless the exact fact is current, applicable, source-backed, and authorized for that subject.
 
 ### Open Questions
 
-- Which AEM service pack and exact Guides build reproduce the issue?
-- What is the supported batch-size, request-size, timeout, and resource envelope for this import path?
+- Which deployment, AEM service pack, and Guides build reproduce the issue?
+- What workload, request size, timeout, and resource envelope is approved for this import path?
 - Is the expected overwrite result atomic, partially reportable, or retryable per asset?
-- Which layer owns the login redirect: session expiry, CSRF handling, CDN/authentication, Assets processing, or Guides import?
+- Which layer owns the terminal failure: session expiry, CSRF handling, CDN/authentication, Assets processing, or Guides import?
 - What exact UI and API contract distinguishes success, validation conflict, partial failure, authentication expiry, and server failure?
 
 ### Reject
 
-- Do not claim data loss, a fixed threshold, an asynchronous implementation, a missing index, or a Product Assets Upload Process root cause without direct evidence.
-- Do not promote a non-reproducible closed Jira into a trusted behavior claim.
-- Do not convert `200 assets` or `under 100` into performance acceptance numbers.
+- Do not claim data loss, a fixed threshold, an asynchronous implementation, a missing index, or a configuration root cause without direct evidence.
+- Do not promote a non-reproducible historical issue into a trusted behavior claim.
+- Do not convert observed batch sizes or durations into performance acceptance numbers.

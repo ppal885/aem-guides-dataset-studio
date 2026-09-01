@@ -19,8 +19,8 @@ Usage:
 
 tickets.json:
     [
-      {"key": "GUIDES-44288", "repo": "C:\\starling", "pr": 8089},
-      {"key": "GUIDES-49507", "repo": "C:\\xmleditor\\xmleditor", "pr": 8069, "base": "origin/develop"}
+      {"key": "<ISSUE-KEY-1>", "repo": "C:\\product-repo", "pr": 1234},
+      {"key": "<ISSUE-KEY-2>", "repo": "C:\\editor-repo", "pr": 1235, "base": "origin/develop"}
     ]
 
 "base" defaults to "origin/develop" when omitted.

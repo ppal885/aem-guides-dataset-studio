@@ -10,8 +10,9 @@ MOVE / KEEP_BOTH set) and its behaviour is gated by a SET of co-located CONFIG
 keys (several properties under one OSGi PID). If the plan asserts the contract
 only for the reported operation and the one config key the ticket named, it
 silently omits the other operations and the adjacent config surface the fix
-interacts with. That is exactly how GUIDES-46111 shipped without an
-Overwrite-vs-Move isolation AC and without a version-on-overwrite AC.
+interacts with. Historical regression fixtures demonstrated both operation
+isolation and adjacent version-policy omissions; neither example is an
+activation rule for this explorer.
 
 This module makes the discipline mandatory and generic: when the plan grounds a
 handler / operation / config artifact, it must ENUMERATE each dimension of that

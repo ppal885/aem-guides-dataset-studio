@@ -47,7 +47,12 @@ MODEL_LIST_FIELDS = (
     "producers", "processors", "consumers",
     "write_paths", "read_paths", "update_paths", "remove_paths", "recompute_paths",
     "configuration_branches", "fallback_paths",
+    "configuration_dependencies",
+    "generated_artifacts", "artifact_shapes",
+    "shared_processors", "error_paths", "persisted_state",
+    "downstream_decision_consumers",
     "execution_modes", "publishing_modes",
+    "deployment_modes", "roles_profiles",
     "versioned_models",
     "side_effects",
     "constraints", "unknowns",
@@ -102,8 +107,17 @@ class BehaviorModel:
     recompute_paths: list = field(default_factory=list)
     configuration_branches: list = field(default_factory=list)
     fallback_paths: list = field(default_factory=list)
+    configuration_dependencies: list = field(default_factory=list)
+    generated_artifacts: list = field(default_factory=list)
+    artifact_shapes: list = field(default_factory=list)
+    shared_processors: list = field(default_factory=list)
+    error_paths: list = field(default_factory=list)
+    persisted_state: list = field(default_factory=list)
+    downstream_decision_consumers: list = field(default_factory=list)
     execution_modes: list = field(default_factory=list)
     publishing_modes: list = field(default_factory=list)
+    deployment_modes: list = field(default_factory=list)
+    roles_profiles: list = field(default_factory=list)
     versioned_models: list = field(default_factory=list)
     side_effects: list = field(default_factory=list)
     constraints: list = field(default_factory=list)

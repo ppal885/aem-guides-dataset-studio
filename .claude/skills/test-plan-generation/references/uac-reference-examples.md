@@ -1,6 +1,6 @@
 # UAC Reference Examples
 
-Use this file when normalizing Jira UAC or when a user asks for a test plan that should read like a strong manual QA sign-off note.
+This is a non-authoritative regression and evaluator catalog. Do not load it during production issue routing, contract extraction, AC drafting, threshold selection, or final rendering. Its issue keys, customers, values, surfaces, and historical outcomes may test whether a generic rule catches a known miss; they must never activate or authorize that rule for a new issue. Use the generic references and current evidence for production plans.
 
 ## What Good UAC Looks Like
 

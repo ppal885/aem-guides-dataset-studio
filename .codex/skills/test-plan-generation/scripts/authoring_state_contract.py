@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-SCHEMA_VERSION = "aem-guides-authoring-state-contract-v1"
+SCHEMA_VERSION = "aem-guides-authoring-state-contract-v2"
 
 _MAP_PREVIEW_RE = re.compile(
     r"\bmap\s+preview\b|\bpreview\s+mode\b.*\bmap\b|\bcondition(?:s)?\s+panel\b",
@@ -25,7 +25,7 @@ _CALS_DELETE_RE = re.compile(
     r"(?=.*\b(?:two|2|multiple)\s+(?:selected\s+)?columns?\b)",
     re.I | re.S,
 )
-_LARGE_FILE_RE = re.compile(r"\blargeFileTagCount\b|\bGUIDES-35437\b", re.I)
+_LARGE_FILE_RE = re.compile(r"\blargeFileTagCount\b", re.I)
 
 
 def classify_contract(issue_text: str) -> str | None:
@@ -147,24 +147,24 @@ def _cals_delete(evidence: str) -> dict[str, object]:
             _ac(
                 "AC-01",
                 "Basic",
-                "a valid CALS table contains 6 rows and 5 columns with distinct content in every cell",
-                "the author selects the two rightmost columns and deletes the selected columns",
-                "the table contains exactly 6 rows and 3 visible columns with no blank ghost column",
+                "a valid CALS table has a source-defined row and column count with distinct content in every cell",
+                "the author deletes the source-defined set of selected columns",
+                "the row count is unchanged, the visible column count decreases by the number of distinct deleted columns, and no blank ghost column remains",
                 evidence,
             ),
             _ac(
                 "AC-02",
                 "Integration",
-                "the two selected columns are deleted from the 6 by 5 CALS table",
+                "the source-defined selected columns are deleted from the CALS table",
                 "the resulting Author and Source representations are inspected",
                 "remaining cell content and order are preserved and no orphan column or span metadata references a deleted column",
                 evidence,
             ),
         ],
         "test_scenarios": [
-            "Test data to prepare: a 6-row by 5-column CALS table whose cells contain unique row-column labels, plus cells with valid row or column spans adjacent to but not crossing the deleted columns.",
-            "P0 [AC-01, AC-02]: Action: select the two rightmost columns and choose Delete > Columns. Expected: a structurally valid 6 by 3 table remains, no ghost column is rendered, and every retained label stays in its original relative order.",
-            "P1 [AC-02]: Action: repeat deletion next to valid spans and inspect Source view. Expected: retained spans remain valid and no column specification or span endpoint targets a removed column.",
+            "Test data to prepare: use the source-defined CALS row/column counts and selected-column positions; give every cell a unique row-column label. Add span cases only when current evidence makes them applicable.",
+            "P0 [AC-01, AC-02]: Action: delete the source-defined selected columns. Expected: the row count is unchanged, the visible column count decreases by the distinct deleted-column count, no ghost column appears, and every retained label keeps its relative order.",
+            "P1 [AC-02]: Action: when span handling is applicable, repeat next to the source-defined spans and inspect Source view. Expected: retained spans remain valid and no column specification or span endpoint targets a removed column.",
         ],
         "forbidden_automatic_scope": ["simpletable or reltable parity unless current Jira/UAC names it"],
         "performance_decision": "not_required",
@@ -192,12 +192,12 @@ def _large_file_configuration(evidence: str) -> dict[str, object]:
             ),
         ],
         "test_scenarios": [
-            "Test data to prepare: record the effective largeFileTagCount value and create topics immediately below and at or above that parsed-tag threshold; do not infer the threshold from a 411-cell observation.",
+            "Test data to prepare: record the effective largeFileTagCount value and create topics immediately below and at or above that parsed-tag threshold; do not infer the threshold from an observed UI or structure count.",
             "P0 [AC-01, AC-02]: Action: edit both boundary topics and compare dirty-state plus undo or redo availability. Expected: behavior changes only at the configured parsed-tag boundary and matches the documented large-file safeguard.",
         ],
         "classification": "working_as_designed_configuration",
         "forbidden_automatic_scope": [
-            "classifying 411 table cells as a product defect",
+            "classifying an observed UI or structure count as the product threshold",
             "treating cell count as equivalent to parsed DITA tag count",
             "inventing a performance SLA",
         ],

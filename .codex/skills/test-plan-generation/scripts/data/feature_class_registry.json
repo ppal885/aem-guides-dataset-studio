@@ -63,6 +63,35 @@
       "required_dimensions": [
         "configuration_enumeration_scope"
       ]
+    },
+    "generated_artifact_delivery": {
+      "signals": [
+        "download archive",
+        "downloadable archive",
+        "generated artifact",
+        "output package",
+        "temporary files",
+        "intermediate files",
+        "retain temporary files"
+      ],
+      "required_dimensions": [
+        "generated_output_contract"
+      ]
+    },
+    "content_identity_lifecycle": {
+      "signals": [
+        "latest asset",
+        "current asset",
+        "asset version",
+        "previous version",
+        "stale asset",
+        "move asset",
+        "rename asset",
+        "republish asset"
+      ],
+      "required_dimensions": [
+        "content_identity_contract"
+      ]
     }
   }
 }

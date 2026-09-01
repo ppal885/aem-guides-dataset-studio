@@ -1,78 +1,40 @@
-# Review Workflow UAC
+# Review Workflow Contract
 
-Use this file when Jira scope mentions review tasks, review comments, author incorporation of final review comments, editor review right panel, selected/current/closed review task state, review-task dropdowns, read-only review comments, comment import, side-by-side diff, or review-task details.
+Use this generic reference when current evidence names review tasks, review comments, author incorporation, a review panel, task selection/state, comment import, version comparison, or review-task details. It is not a gold-ticket prompt. Current accepted scope and verified current implementation/design decide every surface, actor, state, label, default, permission, and action.
 
-## Gold Reference: Review Task History Panel For Current Topic
+## Scope and Identity
 
-Use this as the quality bar for tickets where authors need to view current and previous review tasks for the currently open topic inside a new review panel/workflow. The important quality signal is that task selection changes the visible read-only comments and task metadata without mixing comments from other tasks or topics.
+- Record the named actor/role, editor/surface, topic/file identity, review-task identity, task states, selected/default task rule, topic version, comment thread identity, and feature-flag/configuration boundary.
+- Keep task membership, selected task, current/open/closed state, topic version, comment visibility, import eligibility, editability, search/filter scope, and diff comparison as separate dimensions.
+- Do not assume a right panel, dropdown, `Current` tag, details icon, feature flag, both editors, attachment support, or revert behavior unless current evidence places it in scope.
+- When a topic belongs to multiple tasks, derive the list and default selection from the approved task-membership/state contract. Never use a historical UI default as authority.
 
-**Scope**
+## Generic Behavior Relationships
 
-- Persona is Author, because final review comments are incorporated by authors.
-- Show open and closed review tasks that contain the currently open topic.
-- Provide a dropdown listing review tasks that contain the topic.
-- Show task state such as active/current/open or closed.
-- Show project name and task details through the details icon.
-- Show previous versions of the topic for the selected review task as read-only.
-- Show diff between the current task working copy and the previous topic version with comments incorporated.
-- Keep changes behind the required feature flag.
-- Validate compatibility with both editors only after dev/PM confirms both editors are in scope.
+- Changing the selected task updates only consumers verified to read selected-task state. Comments or metadata from another task/topic must not leak into the result.
+- Read-only, editable, and importable states require independent permission and task-state rules.
+- Search/filter operates on the approved loaded scope; hidden/unloaded task data must not influence results unless current evidence explicitly requires cross-task search.
+- Version comparison must name both sides, the topic/file identity, and which comments/tags/replies/attachments belong to the selected version.
+- Switching topics resets or preserves task selection only according to the approved state contract.
+- User/reviewer display names and fallback behavior require current UI/implementation evidence; historical screenshots cannot set the label/fallback.
+- Feature/configuration OFF, ON, activation boundary, first-render state, and rollback behavior are separate facts.
 
-**UAC**
+## Test Oracles
 
-- If a topic belongs to multiple review tasks, open or closed, all matching tasks must be listed in the right-panel dropdown.
-- The initially selected review task should be the current review task and should show a `Current` tag.
-- Changing the selected review task updates the right panel with that task's review information, state, project name, and task details.
-- Comments from the selected review task appear in read-only mode and are specific to the current file/topic.
-- Only comments from the current review task can be imported; import is disabled for previous or closed review tasks.
-- Filtering and search operate only on the selected review task's loaded comments and are not affected by comments from other unloaded tasks.
-- The side-by-side view shows selected task comments for that topic version, including comments, tags, and replies.
-- Attachment download behavior in side-by-side view is a confirmation point and should not be assumed until owner/dev confirms it.
-- Changing the topic in the editor resets the right panel to the current review task for the newly opened topic.
-- Reviewer and user names in comments and replies must render correctly and follow existing fallback behavior.
-- Revert-version behavior is an open question and must be confirmed before QA treats it as in scope.
+- Use fixtures with distinct task IDs, topic IDs, states, project metadata, comment authors, tags, replies, and version content so cross-task/topic leakage is visible.
+- Verify visible task list and selected state against repository/API membership, not UI text alone.
+- Verify task switching changes each in-scope consumer once and leaves unrelated topic/task data unchanged.
+- Verify denied or read-only actions remain unavailable and do not mutate comments or topic content.
+- Verify import or incorporation changes only the approved target version/content and is idempotent or duplicate-safe according to current evidence.
+- Verify comparison output identifies the correct versions and associated annotations; a diff window opening is not enough.
 
-**Test Cases To Verify**
+## Required Open Questions
 
-- Verify an author opening a topic that is part of one active review task sees that task selected with the `Current` tag.
-- Verify an author opening a topic that belongs to multiple open and closed review tasks sees all matching tasks in the right-panel dropdown.
-- Verify selecting a closed review task updates task state, project name, task details, and comments for that selected task only.
-- Verify comments from a previous or closed task are read-only and cannot be edited or imported.
-- Verify the import option remains enabled only for the current review task and is disabled for all previous or closed review tasks.
-- Verify search filters only the loaded comments for the selected review task and does not match hidden or unloaded comments from other tasks.
-- Verify comment filters apply only to the selected task and preserve the selected task state after clearing filters.
-- Verify side-by-side diff opens from the diff icon and compares the current task working copy against the selected previous topic version.
-- Verify side-by-side diff displays comments, tags, and replies for the selected topic version.
-- Verify attachment visibility or download in side-by-side view only if confirmed in Jira/dev comments; otherwise keep it as an open question.
-- Verify switching the open topic in the editor resets the right panel to the current review task for the new topic.
-- Verify user/reviewer names in comments and replies display correctly, including fallback cases for missing profile fields.
-- Verify feature flag off hides or disables the new panel/workflow and preserves existing review behavior.
-- Verify feature flag on enables the new panel/workflow without regressing existing current-review comments.
-- Verify both editors only if confirmed in scope; otherwise mark editor compatibility as an open question.
-
-**Regression Areas To Carry Forward**
-
-- Editor review right panel task selection and reset behavior.
-- Review task dropdown population for current topic membership.
-- Current/open/closed task state labels and `Current` tag rendering.
-- Project name and review task details icon.
-- Read-only rendering for previous or closed task comments.
-- Import-comment eligibility and disabled-state logic.
-- Search and filter scoping to selected task comments.
-- Side-by-side diff launch and topic version comparison.
-- Comments, tags, replies, and attachment handling in side-by-side view.
-- User/reviewer display names and existing fallback behavior.
-- Feature flag on/off behavior and rollback safety.
-- Old editor and new editor compatibility if both are confirmed in scope.
-- Automation coverage for review panels, dropdown selection, search/filter, import disabled state, and topic-switch reset.
-
-**Open Questions To Carry Forward**
-
-- Feature flag: What is the exact flag name, default state, and environment where QA should validate on/off behavior?
-- Editor compatibility: Are both old editor and new editor in scope, and are there any known UI differences?
-- Revert version: Is revert-version behavior in scope, and what should happen for previous or closed review tasks?
-- Attachments: Should side-by-side view show, preview, and download comment attachments for the selected review task?
-- Search/filter: Should search and filter remain available for non-current tasks, or should they be removed if unsupported?
-- Task states: What exact labels should be shown for active/current/open and closed tasks?
-- Permissions: Which author roles can view previous task comments, import current comments, open task details, and open side-by-side diff?
-- Data setup: What fixture should QA use for a topic present in multiple open and closed review tasks with comments, tags, replies, and attachments?
+- Which actor roles and permissions can view tasks/comments, import/incorporate comments, open details, compare versions, or download attachments?
+- Which task states are supported, what exact labels are shown, and which state/task is selected first?
+- Which editor/surfaces are in scope and do they share state/implementation?
+- What feature/configuration key, default, activation boundary, and OFF/ON presentation apply?
+- Are previous-task comments read-only, searchable/filterable, importable, or editable?
+- Which versions are compared, and are tags, replies, attachments, and revert actions included?
+- What happens when task membership changes, the selected task closes/deletes, permissions change, or the open topic changes?
+- What fixture represents multiple tasks and versions without relying on historical customer data?

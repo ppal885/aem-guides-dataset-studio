@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "test-plan-reference-routing-v9"
+SCHEMA_VERSION = "test-plan-reference-routing-v10"
 CANONICAL_COMPONENTS = (
     "Editor",
     "Authoring",
@@ -78,7 +78,7 @@ _BULK_ASSET_OVERWRITE_OPERATION_RE = re.compile(
     re.I,
 )
 _BULK_ASSET_OVERWRITE_CONTEXT_RE = re.compile(
-    r"\b(?:assets?|files?|batch|200\+?|two\s+hundred)\b|/bin/fmdita/import\b",
+    r"\b(?:assets?|files?|batch|bulk\s+import|import\s+request)\b|/bin/fmdita/import\b",
     re.I,
 )
 _BULK_ASSET_OVERWRITE_FAILURE_RE = re.compile(
@@ -388,8 +388,8 @@ def route_references(
         references.append("references/component-platform.md")
         load_full_reference = False
     else:
-        references.append("references/uac-reference-examples.md")
-        load_full_reference = True
+        warnings.append("no_focused_component_pack")
+        load_full_reference = False
 
     accepted_labels = {
         re.sub(r"[^a-z0-9]+", "", _clean(label).casefold()) for label in labels

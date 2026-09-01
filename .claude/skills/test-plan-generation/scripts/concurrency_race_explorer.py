@@ -4,10 +4,9 @@ event-driven mechanism.
 
 WHY THIS EXISTS
 ---------------
-GUIDES-47692 (map-delete parent-property cleanup) had a real, confirmed-unaddressed
-race: a topic added to a map that's deleted again before the map's identifier was ever
-cached left the cleanup un-run. This was only caught because the class's own Javadoc
-happened to call it out - nothing forced the check. The same three race shapes recur
+Regression evidence exposed a create-then-delete race in which cleanup depended on an
+identifier that had not yet reached an in-memory cache. The issue identity is not an
+activation rule; current event-driven evidence is. The same three race shapes recur
 across AEM Guides' JCR-listener/Sling-job features generically:
 
   CREATE_THEN_DELETE_RACE      - resource created then deleted again before some

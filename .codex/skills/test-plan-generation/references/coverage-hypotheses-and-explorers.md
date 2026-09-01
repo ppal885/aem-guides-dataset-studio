@@ -32,7 +32,7 @@ create an Acceptance Criterion in this stage.
 }
 ```
 
-`run_gates.py` validates the block when present (backward-compatible): every
+`run_gates.py` requires and validates the block for every behavioral plan: every
 hypothesis needs a `dimension` from the vocabulary, a `candidate`, a `reason`, and
 a non-empty `technical_basis` (no speculation), and the set must already be
 collapsed (no equivalent duplicates — `equivalence_key` marks a family that one
@@ -93,5 +93,24 @@ consumer / spec relationship / scale signal.
 
 Every explorer produces `INVESTIGATION_CANDIDATE`s (or references existing verified
 evidence). Record them in `coverage_hypotheses`. Do **not** generate final UAC here.
-Collapse behaviorally equivalent candidates. Irrelevant dimensions simply do not
-activate — an empty/absent set is valid when the BehaviorModel supports no candidate.
+Collapse behaviorally equivalent candidates. `coverage_hypotheses` may be empty
+only after the mandatory `semantic_closure` applicability matrix proves that no
+material graph edge remains an investigation candidate. The block itself is never
+absent from a gated behavioral manifest.
+
+## Mandatory semantic closure and directed retrieval
+
+For every material behavior-graph entity, record every canonical dimension in
+`semantic_closure`: governing semantics/attributes/configuration, direct and sibling
+consumers, alternate mechanisms/representations, parent/child/hierarchy/specialization,
+referenced and nested referenced content, fallback and value states, lifecycle,
+cross-surface synchronization, downstream processing, generated output, persisted
+state, version/deployment/role applicability, content identity, and justified NFR
+risk. Each record must be covered, investigated and rejected, or unresolved and
+exposed. An omitted record is a gate failure.
+
+Every unresolved material record generates a linked technical question. Record its
+subject (`PRODUCT_CONTRACT`, `DITA_SEMANTICS`, `ACTUAL_IMPLEMENTATION`, or `CURRENT_UI`),
+preferred authoritative sources, derived search concepts, visible `OQ-##`, and a new
+question-linked second-pass retrieval. An empty retrieval result leaves the question
+unresolved; it does not disprove the candidate.

@@ -58,6 +58,9 @@ authoring_state_mod = _load("authoring_state_contract", "authoring_state_contrac
 component_router_mod = _load("component_reference_router", "component_reference_router.py")
 explorer_mod = _load("semantic_relationship_explorer", "semantic_relationship_explorer.py")
 audit_mod = _load("anti_hardcoding_audit", "anti_hardcoding_audit.py")
+production_hardcoding_mod = _load(
+    "audit_production_hardcoding", "audit_production_hardcoding.py"
+)
 behavior_mod = _load("behavior_model", "behavior_model.py")
 coverage_mod = _load("coverage_hypotheses", "coverage_hypotheses.py")
 mq_mod = _load("missing_questions", "missing_questions.py")
@@ -96,10 +99,21 @@ configuration_enumeration_mod = _load(
 )
 ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
+fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
 ac_presentation_mod = _load("ac_presentation", "ac_presentation.py")
+contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
+contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
+domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
+publishing_scope_mod = _load("publishing_scope", "publishing_scope.py")
+behavior_graph_mod = _load("behavior_graph", "behavior_graph.py")
+semantic_closure_mod = _load("semantic_closure", "semantic_closure.py")
+generated_output_mod = _load("generated_output_contract", "generated_output_contract.py")
+content_identity_mod = _load("content_identity_contract", "content_identity_contract.py")
+acceptance_promotion_mod = _load("acceptance_promotion", "acceptance_promotion.py")
+behavioral_completeness_mod = _load("behavioral_completeness", "behavioral_completeness.py")
 
 
 GOOD_PLAN = """**Understanding From Jira**
@@ -876,6 +890,250 @@ def _full_preflight() -> dict:
     }
 
 
+def _canonical_semantic_fixture() -> dict:
+    closure_records = [
+        {
+            "closure_id": f"SC-{index:02d}",
+            "entity_ref": "BGN-01",
+            "dimension": dimension,
+            "subject": "PRODUCT_CONTRACT",
+            "applicability": "NOT_APPLICABLE",
+            "status": "INVESTIGATED_AND_REJECTED",
+            "reason": "No evidence makes this dimension applicable to the generic fixture.",
+            "disposition_ref": "CD-03",
+        }
+        for index, dimension in enumerate(semantic_closure_mod.CLOSURE_DIMENSIONS, 1)
+    ]
+    non_acceptance_sources = ["BGN-01", *[item["closure_id"] for item in closure_records]]
+    return {
+        "issue": {
+            "key": "GUIDES-100",
+            "description": "The requested behavior produces correct observable output and retains valid prior state.",
+        },
+        "contract_facts": {
+            "schema_version": "aem-guides-contract-facts-v1",
+            "contract_state": "EVIDENCE_BACKED_PROPOSED_CONTRACT",
+            "source_refs": ["Jira description GUIDES-100"],
+            "facts": [
+                {
+                    "fact_id": "CF-01",
+                    "category": "DIRECT_EXPECTED_BEHAVIOR",
+                    "literal": "correct observable output",
+                    "normalized": "correct observable output",
+                    "source_ref": "Jira description GUIDES-100",
+                    "subject": "PRODUCT_CONTRACT",
+                    "authority": "JIRA_EXPECTED_BEHAVIOR",
+                    "material": True,
+                    "protected_terms": ["correct observable output"],
+                    "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "ac_ref": "AC-01",
+                },
+                {
+                    "fact_id": "CF-02",
+                    "category": "COMPATIBILITY_REQUIREMENTS",
+                    "literal": "retains valid prior state",
+                    "normalized": "retains valid prior state",
+                    "source_ref": "Jira description GUIDES-100",
+                    "subject": "PRODUCT_CONTRACT",
+                    "authority": "JIRA_EXPECTED_BEHAVIOR",
+                    "material": True,
+                    "protected_terms": ["retains valid prior state"],
+                    "integrity": "PRESERVED",
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "ac_ref": "AC-02",
+                },
+            ],
+        },
+        "issue_domains": {
+            "schema_version": "aem-guides-issue-domains-v1",
+            "primary_domain": "OTHER",
+            "routes": [
+                {
+                    "domain": "OTHER",
+                    "status": "ACTIVE",
+                    "reason": "The generic fixture intentionally has no specialized domain.",
+                    "evidence": ["Jira description GUIDES-100"],
+                }
+            ],
+        },
+        "behavior_model": {
+            "trigger": ["the system runs"],
+            "operations": ["produce the requested result"],
+            "outputs": ["correct observable output"],
+            "affected_state": ["valid prior state"],
+            "confidence": 0.8,
+        },
+        "behavior_graph": {
+            "schema_version": "aem-guides-behavior-graph-v1",
+            "nodes": [
+                {
+                    "node_id": "BGN-01",
+                    "kind": "PRODUCT_BEHAVIOR",
+                    "label": "Requested observable behavior",
+                    "material": True,
+                    "provenance": ["Jira description GUIDES-100"],
+                }
+            ],
+            "edges": [],
+            "traversal_paths": [],
+        },
+        "semantic_closure": {
+            "schema_version": "aem-guides-semantic-closure-v1",
+            "records": closure_records,
+        },
+        "coverage_hypotheses": [],
+        "missing_questions": [],
+        "evidence_lifecycle": [],
+        "verifications": [],
+        "dispositions": [
+            {
+                "finding_id": "CD-01",
+                "statement": "The requested observable output is proposed acceptance behavior.",
+                "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+                "source_refs": ["CF-01"],
+                "maps_to_ac": "AC-01",
+            },
+            {
+                "finding_id": "CD-02",
+                "statement": "Valid prior state remains intact.",
+                "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+                "source_refs": ["CF-02"],
+                "maps_to_ac": "AC-02",
+            },
+            {
+                "finding_id": "CD-03",
+                "statement": "The remaining generic closure dimensions were explicitly investigated.",
+                "disposition": "INVESTIGATED_AND_REJECTED",
+                "source_refs": non_acceptance_sources,
+            },
+        ],
+        "acceptance_promotions": {
+            "schema_version": "aem-guides-acceptance-promotions-v1",
+            "records": [
+                {
+                    "promotion_id": "AP-01",
+                    "candidate_ref": "CF-01",
+                    "decision": "PROMOTED_PROPOSED",
+                    "ac_ref": "AC-01",
+                    "subject": "PRODUCT_CONTRACT",
+                    "intended_behavior_authorities": ["JIRA_EXPECTED_BEHAVIOR"],
+                    "scope_established": True,
+                    "observable": True,
+                    "testable": True,
+                    "regression_only": False,
+                    "implementation_only": False,
+                    "conflicts_accepted_uac": False,
+                    "unresolved_decision_refs": [],
+                    "exact_value_fact_refs": [],
+                    "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+                    "disposition_ref": "CD-01",
+                },
+                {
+                    "promotion_id": "AP-02",
+                    "candidate_ref": "CF-02",
+                    "decision": "PROMOTED_PROPOSED",
+                    "ac_ref": "AC-02",
+                    "subject": "PRODUCT_CONTRACT",
+                    "intended_behavior_authorities": ["JIRA_EXPECTED_BEHAVIOR"],
+                    "scope_established": True,
+                    "observable": True,
+                    "testable": True,
+                    "regression_only": False,
+                    "implementation_only": False,
+                    "conflicts_accepted_uac": False,
+                    "unresolved_decision_refs": [],
+                    "exact_value_fact_refs": [],
+                    "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+                    "disposition_ref": "CD-02",
+                },
+            ],
+        },
+    }
+
+
+def _publishing_scope_fixture() -> dict:
+    stages = (
+        "SOURCE_CONTENT", "MAP_ROOT_CONTEXT", "PRESET", "PROFILE_CONFIG",
+        "FILTER_KEY_REFERENCE_RESOLUTION", "SEMANTIC_PROCESSING", "INTERMEDIATE_REPRESENTATION",
+        "TRANSFORMER", "OUTPUT_BUILDER", "POST_GENERATION", "GENERATED_ARTIFACT",
+        "PERSISTED_REPOSITORY_STATE", "ACTIVATION_PUBLICATION", "STATUS_HISTORY_LOGGING",
+    )
+    return {
+        "schema_version": "aem-guides-publishing-scope-v1",
+        "primary_publishing_mode": "AEM_SITES",
+        "primary_preset_type": "AEM Sites",
+        "enable_dita_ot_processing": "OFF",
+        "aem_sites_implementation": "NATIVE",
+        "deployment_mode": "CLOUD",
+        "in_scope": ["AEM Sites output"],
+        "out_of_scope": ["other output presets"],
+        "shared_path_outputs": [],
+        "shared_path_reason": "No shared output path was found.",
+        "open_question_refs": [],
+        "transformation_stages": [
+            {
+                "stage": stage,
+                "applicability": "APPLICABLE",
+                "reason": "The publishing path was inspected for this stage.",
+            }
+            for stage in stages
+        ],
+    }
+
+
+def _generated_output_fixture() -> dict:
+    return {
+        "schema_version": "aem-guides-generated-output-contract-v2",
+        "artifact_kind": "ARCHIVE",
+        "entry_surface": "Output history",
+        "delivery_in_scope": True,
+        "download_surface": "Download archive action",
+        "output_identity": "archive for the selected generation",
+        "payload_inventory": [
+            {"item_id": "GOI-01", "item": "generated intermediate content", "role": "PRIMARY_CONTENT", "disposition": "INCLUDED"},
+            {"item_id": "GOI-02", "item": "generation log", "role": "DIAGNOSTIC", "disposition": "INCLUDED"},
+        ],
+        "structure": {
+            "root": "single generation root",
+            "hierarchy": "source hierarchy is preserved",
+            "relative_path_policy": "paths remain relative to the generation root",
+        },
+        "oracles": [
+            {
+                "oracle_id": f"GO-{index:02d}",
+                "oracle_type": oracle_type,
+                "applicability": "APPLICABLE" if oracle_type in {"ARTIFACT_EXISTS", "CONTENT_CORRECT", "HIERARCHY_CORRECT", "OUTPUT_PATH_CORRECT", "NO_STALE_OUTPUT", "STATUS_MATCHES_REAL_OUTPUT", "DELIVERY_AVAILABLE"} else "NOT_APPLICABLE",
+                "status": "COVERED" if oracle_type in {"ARTIFACT_EXISTS", "CONTENT_CORRECT", "HIERARCHY_CORRECT", "OUTPUT_PATH_CORRECT", "NO_STALE_OUTPUT", "STATUS_MATCHES_REAL_OUTPUT", "DELIVERY_AVAILABLE"} else "INVESTIGATED_AND_REJECTED",
+                "expected": f"Explicit applicability decision for {oracle_type}.",
+                "disposition_ref": "CD-GO",
+            }
+            for index, oracle_type in enumerate(generated_output_mod.ORACLE_TYPES, 1)
+        ],
+    }
+
+
+def _content_identity_fixture() -> dict:
+    return {
+        "schema_version": "aem-guides-content-identity-contract-v1",
+        "identity_source": "current repository asset identity",
+        "selection_policy": "CURRENT",
+        "fallback_policy": "NO_FALLBACK",
+        "migration_behavior": "UNCHANGED",
+        "lifecycle": [
+            {
+                "state_id": f"CI-{index:02d}",
+                "operation": operation,
+                "applicability": "APPLICABLE",
+                "status": "COVERED",
+                "expected_identity": "The current source asset identity is used.",
+                "disposition_ref": "CD-CI",
+            }
+            for index, operation in enumerate(content_identity_mod.OPERATIONS, 1)
+        ],
+    }
+
+
 def test_run_gates() -> None:
     import json
 
@@ -890,8 +1148,12 @@ def test_run_gates() -> None:
         check("run_gates flags missing manifest keys", any("clones" in f for f in failures) and any("rag_probes" in f for f in failures))
 
         dual_source = {
-            "schema_version": "aem-guides-evidence-manifest-v2",
-            "issue": "GUIDES-100",
+            **_canonical_semantic_fixture(),
+            "schema_version": "aem-guides-evidence-manifest-v3",
+            "issue": {
+                "key": "GUIDES-100",
+                "description": "The requested behavior produces correct observable output and retains valid prior state.",
+            },
             "attachments": [],
             "evidence_preflight": _full_preflight(),
             "rag_tool": "ask_dita_expert",
@@ -940,6 +1202,37 @@ def test_run_gates() -> None:
                 "reason": "The fixture is a synchronous non-operational behavior.",
             },
         }
+
+        legacy_v2 = json.loads(json.dumps(dual_source))
+        legacy_v2["schema_version"] = "aem-guides-evidence-manifest-v2"
+        for key in run_gates.SEMANTIC_MANIFEST_KEYS:
+            legacy_v2.pop(key, None)
+        path.write_text(json.dumps(legacy_v2), encoding="utf-8")
+        legacy_failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "legacy v2 manifests do not retroactively require v3 semantic blocks",
+            not any(
+                "missing required key" in failure
+                and any(key in failure for key in run_gates.SEMANTIC_MANIFEST_KEYS)
+                for failure in legacy_failures
+            ),
+        )
+
+        non_behavior = json.loads(json.dumps(dual_source))
+        non_behavior["behaviour_matters"] = False
+        non_behavior["behaviour_not_applicable_reason"] = "This is a pure internal bookkeeping check."
+        for key in run_gates.SEMANTIC_MANIFEST_KEYS:
+            non_behavior.pop(key, None)
+        path.write_text(json.dumps(non_behavior), encoding="utf-8")
+        non_behavior_failures = run_gates.check_manifest_completeness(str(path))
+        check(
+            "behaviour_matters false waives v3 semantic manifest keys",
+            not any(
+                "missing required key" in failure
+                and any(key in failure for key in run_gates.SEMANTIC_MANIFEST_KEYS)
+                for failure in non_behavior_failures
+            ),
+        )
 
         proposed_enumerated = json.loads(json.dumps(dual_source))
         proposed_enumerated["enumerated_requirements"] = {
@@ -1859,14 +2152,19 @@ def test_authoring_state_contract() -> None:
     )
     check("CALS deletion gets the structural route", cals["route"] == "cals_multi_column_delete")
     cals_text = "\n".join([*cals["acceptance_criteria"], *cals["test_scenarios"]])
-    for marker in ("6 rows and 5 columns", "6 rows and 3 visible columns", "ghost column", "span metadata"):
+    for marker in (
+        "source-defined row and column count",
+        "visible column count decreases by the number of distinct deleted columns",
+        "ghost column",
+        "span metadata",
+    ):
         check(f"CALS deletion contract contains {marker}", marker in cals_text)
 
     large_file = authoring_state_mod.derive_contract(
-        "GUIDES-35437: Ctrl+Z changed after 411 cells; largeFileTagCount controls the large-file safeguard."
+        "Ctrl+Z changes after the configured boundary; largeFileTagCount controls the large-file safeguard."
     )
     check(
-        "GUIDES-35437 is configuration-driven working-as-designed behavior",
+        "large-file safeguard is configuration-driven working-as-designed behavior",
         large_file["route"] == "large_file_configuration"
         and large_file["classification"] == "working_as_designed_configuration",
     )
@@ -1875,8 +2173,13 @@ def test_authoring_state_contract() -> None:
     )
     check("large-file contract uses parsed tag threshold", "parsed-tag threshold" in large_file_text)
     check(
-        "large-file contract does not create a 411-cell AC",
-        all("411" not in criterion for criterion in large_file["acceptance_criteria"]),
+        "large-file contract does not create an observed-count AC",
+        all("observed count" not in criterion for criterion in large_file["acceptance_criteria"]),
+    )
+    key_only = authoring_state_mod.derive_contract("Historical issue GUIDES-35437")
+    check(
+        "historical issue key alone cannot activate the large-file route",
+        key_only["route"] is None,
     )
 
 
@@ -1909,65 +2212,24 @@ def test_uac_fidelity_reference() -> None:
         "scripts/component_reference_router.py",
         "references/component-authoring.md",
         "references/component-integration.md",
-        "For GUIDES-34915-style scope pivots",
-        "For GUIDES-34580-style Closed/Duplicate history",
-        "For Map View hierarchy-selection counts",
-        "For GUIDES-41093-style Explorer sorting enhancements",
+        "When a later accepted scope conflicts with an older description",
+        "For map-Xref display labels, separate visible text from destination semantics",
+        "For hierarchy-selection counts, derive the expected selected set and count from the current fixture",
+        "For Explorer sorting, keep display label, sort key, sort direction",
         "For asset CRUD API requests",
     ):
         check(f"skill retains UAC fidelity marker {marker}", marker in skill_text)
     for marker in (
-        "## Gold Reference: GUIDES-38333 Native PDF Reltable Parity",
-        "ENABLE_RELATED_LINKS_FOR_NATIVE_PDF",
-        "-Dargs.rellinks=nofamily",
-        "OOS-03",
-        "AC-06 [Confirmed]",
-        "## Gold Reference: GUIDES-49325 Native AEM Site Baseline Metadata",
-        "NATIVE_AEMSITE",
-        "Baseline_v2.0",
-        "metadatalist",
-        "GUIDES-53306",
-        "AC-12 [Confirmed]",
-        "## Gold Reference: GUIDES-10878 Baseline-Aware Map Preview",
-        "UAC-16",
-        "AC-10 [Proposed]",
-        "dynamic/static loader behavior while OOS-01 excludes dynamic baselines",
-        "## Caution Reference: GUIDES-31711 DITAVAL Taxonomy Complaint Closed as Working as Designed",
-        "The DITA standard does not prescribe AEM Guides UI taxonomy",
-        "No Confirmed AC is justified by GUIDES-31711",
-        "## Caution Reference: GUIDES-30001 Configuration-Gated Navtitle Button",
-        '"required": {"navtitle": true}',
-        "No Confirmed AC is justified by GUIDES-30001",
-        "## Caution Reference: GUIDES-28847 Metadata Filter Index Incident",
-        "damAssetLucene",
-        "No Confirmed AC is justified by GUIDES-28847",
-        "## Caution Reference: GUIDES-28667 Custom Preview Button Configuration Migration",
-        "jira_comment_configuration_migration",
-        "No Confirmed AC is justified by GUIDES-28667",
-        "## Accepted Reference: GUIDES-28443 Bulk Metadata Manage Recovery",
-        "bin/guides/v1/map/reports/metadata/tags/common",
-        "allAssets=true",
-        "GUIDES-29778",
-        "performance_contract_complete=false",
-        "release_scope_source=jira_comment_release_scope",
-        "The supplied screenshot shows a service-outage banner only",
-        "## Product-Fix Reference: GUIDES-25769 Author-View Image Move Data Loss",
-        "No Confirmed AC is justified by GUIDES-25769",
-        "jira_comment_version_validation",
-        "behavior_contract_complete=false",
-        "both `Automated` and `Won't_Automate`",
-        "## Accepted Comment-Scope Reference: GUIDES-23526 Folder-Profile Condition Preservation",
-        "uac_source_origin=jira_comment_accepted_scope",
-        "Existing-condition boundary",
-        "group removal and yellow color reset",
-        "AC-04 [Proposed]: (Reports)",
-        "cross_touchpoint_taxonomy",
-        "## Deterministic Performance Reference: GUIDES-37722 With GUIDES-37915",
-        "A qualifying historical performance Jira must not remain only under Regression Areas",
-        "approximately 200 concurrent users",
-        "p95 response time improves by at least 2x",
+        "non-authoritative regression and evaluator catalog",
+        "must never activate or authorize that rule for a new issue",
+        "## What Good UAC Looks Like",
+        "## Gold Reference:",
+        "## Caution Reference:",
+        "[Proposed]",
+        "[Confirmed]",
+        "Open Question",
     ):
-        check(f"UAC reference retains marker {marker}", marker in reference_text)
+        check(f"regression catalog retains generic fixture boundary {marker}", marker in reference_text)
     check(
         "quality gate enforces accepted UAC fidelity",
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
@@ -1980,8 +2242,8 @@ def test_uac_fidelity_reference() -> None:
         "## Route 1 - Authoring Viewport Stability",
         "## Route 2 - Map Preview State Restoration",
         "## Route 3 - CALS Multi-Column Deletion",
-        "## Route 4 - GUIDES-35437 Large-File Safeguard",
-        "6-row by 5-column CALS table",
+        "## Route 4 - Configuration-Driven Large-File Safeguard",
+        "Derive the starting row/column count",
         "largeFileTagCount",
         "Screenshot-only and pasted examples",
     ):
@@ -2015,7 +2277,7 @@ def test_component_reference_routing() -> None:
             "the latest image version and load with lazy-loading without layout jank."
         ),
         resolution="Fixed",
-        labels=["UAC_Done", "Hyundai"],
+        labels=["UAC_Done", "Customer-A"],
     )
     check("thumbnail scope routes to Authoring", thumbnail["primary_component"] == "Authoring")
     check(
@@ -2128,10 +2390,10 @@ def test_component_reference_routing() -> None:
         component="Authoring",
         summary="Incorrect selected items in Map View",
         acceptance_criteria=(
-            "In a fresh Guides 4.6 Map View, selecting map2 for the first time must immediately "
-            "display 7 selected rather than 1 selected. The seven-node selected set includes map2 "
-            "and all selected child nodes; later correct selections cannot mask the first failure. "
-            "The hierarchy can contain DITA files, Markdown files, and DITAVAL files."
+            "In a fresh Map View, selecting root-map for the first time must immediately "
+            "display 9 selected rather than 2 selected. The selected set includes root-map "
+            "and every child node named by this fixture; later correct selections cannot mask "
+            "the first failure."
         ),
         resolution="Fixed",
         labels=["Authoring", "UAC_Done"],
@@ -2158,7 +2420,7 @@ def test_component_reference_routing() -> None:
             "with ascending and descending direction plus a per-user session override."
         ),
         resolution="Working as Designed",
-        labels=["Red Hat"],
+        labels=["Customer-B"],
     )
     check(
         "Explorer filename/title sorting routes to Authoring",
@@ -2249,7 +2511,7 @@ def test_component_reference_routing() -> None:
             "Guides has no folder delete action and users currently use Assets UI. "
             "The customer also asks for restore or trash behavior."
         ),
-        labels=["Hyundai"],
+        labels=["Customer-C"],
     )
     check(
         "folder deletion routes to Authoring",
@@ -2316,18 +2578,20 @@ def test_component_reference_routing() -> None:
     check(
         "generic API wording does not trigger asset CRUD learning",
         "asset_crud_api_contract" not in generic_api["mechanisms"]
-        and generic_api["load_full_uac_reference"] is True,
+        and generic_api["load_full_uac_reference"] is False
+        and generic_api["references"] == ["references/component-routing.md"]
+        and "no_focused_component_pack" in generic_api["warnings"],
     )
 
     bulk_overwrite = component_router_mod.route_references(
-        summary="Abnormal behavior when overwriting 200+ assets",
+        summary="Abnormal behavior when overwriting a batch of assets",
         description=(
-            "The initial upload of 200 assets succeeds, but re-uploading the same-name assets "
+            "The initial bulk upload succeeds, but re-uploading the same-name asset batch "
             "through /bin/fmdita/import can remain stuck on a loader or show a generic error "
             "and redirect the authenticated author to login after repeated CSRF token requests."
         ),
         resolution="Cannot Reproduce",
-        labels=["Hyundai"],
+        labels=["Customer-D"],
     )
     check(
         "bulk overwrite/session failure routes to Platform",
@@ -2361,52 +2625,45 @@ def test_component_reference_routing() -> None:
         "generic upload wording does not trigger bulk overwrite learning",
         "bulk_asset_overwrite_session" not in generic_upload["mechanisms"],
     )
+    historical_count_only = component_router_mod.route_references(
+        summary="Overwrite 200 with a stuck loader",
+        description="A remembered count and symptom are provided without the required mechanism context.",
+    )
+    check(
+        "historical count cannot replace mechanism context in routing",
+        "bulk_asset_overwrite_session" not in historical_count_only["mechanisms"],
+    )
 
     skill_root = Path(__file__).resolve().parents[1]
     authoring_reference = (skill_root / "references" / "component-authoring.md").read_text(
         encoding="utf-8"
     )
     for marker in (
-        "## Asset-Browser Thumbnail Contract — GUIDES-34915",
-        "does not prove multi-selection",
-        "## Map-Xref Display Label Contract — GUIDES-34580",
-        "Closed as Duplicate",
-        "`href`, `format`, `scope`, and `type`",
+        "## Asset-Browser Thumbnail Contract",
+        "does not authorize new multi-selection behavior",
+        "## Map-Xref Display Label Contract",
+        "`href`, `format`, `scope`, `type`",
         '`scope="external"`',
-        "no repository map-title lookup is applied",
         "## Map View Hierarchy Selection-Count Contract",
-        "selected map node itself and every descendant node",
-        "visible node occurrences or unique asset identity",
-        "DITA, Markdown, and DITAVAL",
-        "selecting `map2` initially shows `1 selected`",
-        "first selection must immediately show `7 selected`",
-        "warm second selection cannot validate this defect",
-        "## Explorer Filename/Title Sorting Contract — GUIDES-41093",
-        "display label, sort key, sort direction, folder default, and per-user override",
-        "dedicated sort affordance in the Explorer header",
-        "static mockup does not show the opened control",
-        "## Feature-Flag and Default-State Matrix",
-        "feature flag is OFF",
-        "feature flag is ON",
-        "upward arrow in a static mockup is not proof of ascending order",
-        "configured default value separate from the sort button's first-render default state",
-        "do not retain implicit display-preference coupling",
-        "documented workaround and comparison surface",
-        "folder-level Assets configuration only the initial default",
-        "Reject generic repository ordering",
-        "## Folder Deletion Release-Evolution Contract - GUIDES-19345",
-        "not proof of an implemented Guides folder-delete workflow",
-        "governed **file deletion**",
-        "does not, by itself, prove",
-        "Do not infer restore, trash",
-        "Assets UI file deletion as boundary/comparison evidence",
+        "Derive the expected selected-node set",
+        "cold first selection and a repeat selection separately",
+        "Do not import a count, map name, file-type list, or version from another issue",
+        "## SubjectScheme Title Resolution and Enumdefs Performance",
+        "shared execution path",
+        "Without all of those, performance is conditional",
+        "## Explorer Filename/Title Sorting Contract",
+        "display label, sort key, sort direction, folder default, per-user override",
+        "A historical or static mockup cannot select the interaction",
+        "## Folder Deletion Contract",
+        "File deletion documentation does not prove folder deletion",
+        "Historical feature requests are product-evolution context only",
         "## Configuration-Driven Conditional Attribute Discovery and Label Contract",
         "canary conditional attribute",
-        "absent from every inspected legacy hardcoded allowlist",
-        "raw XML attribute name and value do not change",
-        "added, renamed, and removed configuration entries",
-        "schema/DTD/specialization and folder/global/workspace profile gates",
-        "already-rendered rows or an open dropdown only when accepted UAC defines live propagation",
+        "absent from inspected hardcoded allowlists",
+        "raw XML attribute name or value",
+        "added, renamed, and removed entries",
+        "actual schema/DTD/specialization and profile gates",
+        "Require live updates only when accepted evidence defines them",
     ):
         check(f"Authoring component pack retains marker {marker}", marker in authoring_reference)
 
@@ -2432,24 +2689,19 @@ def test_component_reference_routing() -> None:
     )
     for marker in (
         "## Asset CRUD API Import Contract",
-        "### Documented Current API Baseline",
-        "POST /bin/fmdita/xmleditor/create",
-        "operation=getdita",
-        "operation=postDita",
-        "`createrev` controls revision creation",
-        "POST /bin/guides/assets/delete",
-        "delete-only `force` parameter",
-        "template-only CREATE request with `parent`, `name`, `title`, and `template`",
-        "`operation=postDita` with `editorData`, `path`, and `createrev=false` or `true`",
-        "`operation=getdita`, `path`, and `type=UUID`",
-        "no partial new asset, duplicate identity, or partially updated metadata/content remains",
-        "filename, repository path, and GUID",
-        "target `exists` and `missing`",
-        "force-create `omitted`, `false`, and `true`",
-        "every generated criterion remains `[Proposed]`",
-        "a successful HTTP response alone is insufficient",
-        "must not be confused with UPDATE `createrev` or DELETE `force`",
-        "Reject editor CRUD",
+        "Historical tickets and supplied-document examples are regression fixtures only",
+        "The word `API`, a historical issue key, or an old API document alone is insufficient",
+        "Keep filename, repository path, product identity/GUID, version identity",
+        "Keep CREATE, READ/download, UPDATE, DELETE, and UPSERT controls independent",
+        "Discover and record each current endpoint, HTTP method, content type",
+        "never copy an endpoint, parameter, default, or status from a historical example",
+        "test existing and missing targets",
+        "no duplicate identity appears",
+        "Keep version/revision creation on an existing target separate from missing-target creation",
+        "Keep delete reference-bypass/force behavior separate from UPDATE creation behavior",
+        "Transport success alone is not a business-success oracle",
+        "What identifies an UPDATE target",
+        "Historical evidence may create a hypothesis only after same-mechanism verification",
     ):
         check(f"Integration component pack retains marker {marker}", marker in integration_reference)
 
@@ -2457,15 +2709,15 @@ def test_component_reference_routing() -> None:
         encoding="utf-8"
     )
     for marker in (
-        "## Bulk Same-Name Asset Overwrite and Session Contract - GUIDES-30459",
-        "candidate historical learning only",
-        "SP21 versus SP22",
-        "POST /bin/fmdita/import",
-        "never as a supported product threshold or SLA",
-        "observable terminal success or failure state",
+        "## Bulk Same-Name Asset Overwrite and Session Contract",
+        "no historical-ticket authority",
+        "A ticket key, customer name, old batch count, or old release cannot activate",
+        "import endpoint traffic as failure signatures",
+        "not a supported maximum, SLA, timeout, or resource ceiling",
+        "observable terminal success, partial-success, or failure state",
         "verified by reading back every targeted asset",
-        "Product Assets Upload Process",
-        "GUIDES-14743",
+        "Do not import counts from historical examples",
+        "Historical evidence may propose a retrieval hypothesis",
         "Do not claim data loss",
     ):
         check(f"Platform component pack retains marker {marker}", marker in platform_reference)
@@ -2691,6 +2943,40 @@ def test_anti_hardcoding() -> None:
     check("the real skill directory passes the anti-hardcoding audit", failures == [])
 
 
+def test_production_jira_hardcoding_audit() -> None:
+    audit = production_hardcoding_mod
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "references").mkdir()
+        (root / "scripts").mkdir()
+        (root / "SKILL.md").write_text(
+            "For GUIDES-99999, always require the remembered workload.", encoding="utf-8"
+        )
+        failures = audit.audit(root)
+        check(
+            "a concrete historical issue key in production instructions fails",
+            any("concrete GUIDES issue key" in failure for failure in failures),
+        )
+        (root / "SKILL.md").write_text(
+            "Route from current mechanism evidence; issue identity is not authority.",
+            encoding="utf-8",
+        )
+        (root / "references" / "uac-reference-examples.md").write_text(
+            "Regression fixture GUIDES-99999 with an old observed workload.",
+            encoding="utf-8",
+        )
+        check(
+            "explicit regression fixture catalog is excluded from production audit",
+            audit.audit(root) == [],
+        )
+
+    skill_root = Path(__file__).resolve().parents[1]
+    check(
+        "active skill has no historical Jira identity or fixture threshold",
+        audit.audit(skill_root) == [],
+    )
+
+
 def test_behavior_model() -> None:
     bm = behavior_mod
     F = lambda **k: dict(k)  # noqa: E731 - tiny fact builder for fixtures
@@ -2863,6 +3149,74 @@ def test_missing_questions() -> None:
     check("evidence with out-of-bound pass is rejected",
           any("pass" in p for p in mq.check_retrieval_discipline([Q(blocking=False)], [E("fourth")])))
 
+    # Adversarial referential integrity: a retrieved fact must be linked to a
+    # declared reasoning object, and its source must be authoritative for the
+    # missing question's subject.
+    contract_q = Q(
+        subject="PRODUCT_CONTRACT", material=True, source_ref="CF-01",
+        open_question_ref="OQ-01", preferred_sources=["linked jira"],
+    )
+    wrong_source = [
+        E(),
+        E(
+            "second", evidence_id="E2", query="approved intended behavior",
+            source="current repository", status="USED", question_id="Q-01",
+            subject="PRODUCT_CONTRACT",
+        ),
+    ]
+    check(
+        "implementation retrieval cannot resolve a product-contract question",
+        any(
+            "cannot resolve" in p
+            for p in mq.check_retrieval_discipline(
+                [contract_q], wrong_source, open_question_ids={"OQ-01"}
+            )
+        ),
+    )
+    unlinked_used = [E(status="USED", question_id="", hypothesis_id="")]
+    check(
+        "USED evidence must reference a question or hypothesis",
+        any(
+            "question_id or hypothesis_id" in p
+            for p in mq.check_retrieval_discipline([], unlinked_used)
+        ),
+    )
+    unknown_question = [E(status="USED", question_id="Q-GHOST")]
+    check(
+        "evidence cannot reference an undeclared question",
+        any(
+            "unknown question" in p
+            for p in mq.check_retrieval_discipline([], unknown_question)
+        ),
+    )
+    unknown_hypothesis = [E(status="USED", hypothesis_id="H-GHOST")]
+    check(
+        "evidence cannot reference an undeclared hypothesis",
+        any(
+            "unknown hypothesis" in p
+            for p in mq.check_retrieval_discipline(
+                [], unknown_hypothesis, hypothesis_ids=set()
+            )
+        ),
+    )
+    check(
+        "a missing question cannot reference an undeclared hypothesis",
+        any(
+            "unknown hypothesis" in p
+            for p in mq.check_retrieval_discipline(
+                [Q(blocking=False)], [], hypothesis_ids=set()
+            )
+        ),
+    )
+    duplicate_ids = [E(), E(evidence_id="E1", query="different query")]
+    check(
+        "duplicate evidence ids are rejected",
+        any(
+            "evidence_id duplicates" in p
+            for p in mq.check_retrieval_discipline([], duplicate_ids)
+        ),
+    )
+
     # absent blocks are backward-compatible
     check("missing_questions/evidence absent is not a failure", mq.is_present({"issue": "X"}) is False)
 
@@ -2872,13 +3226,18 @@ def test_hypothesis_verifier() -> None:
 
     def V(**k):
         base = {"hypothesis_id": "H-01", "verdict": "CONFIRMED",
-                "supporting_authorities": ["CURRENT_IMPLEMENTATION"], "supporting_evidence": ["E5"],
-                "disposition": "ACCEPTANCE_CRITERION"}
+                "supporting_authorities": ["JIRA_EXPECTED_BEHAVIOR"], "supporting_evidence": ["E5"],
+                "disposition": "ACCEPTANCE_CRITERION", "subject": "PRODUCT_CONTRACT"}
         base.update(k)
         return base
 
     # (1) a plausible hypothesis is CONFIRMED on authoritative evidence -> AC
     check("plausible hypothesis confirmed on authoritative evidence", hv.validate_verification(hv.Verification.from_dict(V())) == [])
+    code_only_ac = V(supporting_authorities=["CURRENT_IMPLEMENTATION"])
+    check(
+        "current implementation alone cannot authorize an AC",
+        any("cannot authorize" in p for p in hv.validate_verification(hv.Verification.from_dict(code_only_ac))),
+    )
 
     # (2) a plausible hypothesis is REJECTED with disproving evidence -> excluded
     rej = V(verdict="REJECTED", disproving_evidence=["E7"], disposition="EXCLUDED", supporting_authorities=[])
@@ -2912,7 +3271,7 @@ def test_hypothesis_verifier() -> None:
     check("UNRESOLVED without an open_question_ref is rejected", any("open_question_ref" in p for p in hv.validate_verification(hv.Verification.from_dict(unres_no_oq))))
 
     # INFERRED_HIGH_CONFIDENCE stays inferred (a product decision means it should be CONFIRMED)
-    inferred_ok = V(verdict="INFERRED_HIGH_CONFIDENCE", supporting_evidence=["E1", "E2"], disposition="INFERRED_AC", supporting_authorities=["CURRENT_IMPLEMENTATION"])
+    inferred_ok = V(verdict="INFERRED_HIGH_CONFIDENCE", supporting_evidence=["E1", "E2"], disposition="REGRESSION", supporting_authorities=["CURRENT_IMPLEMENTATION"], subject="ACTUAL_IMPLEMENTATION")
     check("inferred-high-confidence with 2+ facts and no product decision passes", hv.validate_verification(hv.Verification.from_dict(inferred_ok)) == [])
     inferred_pd = V(verdict="INFERRED_HIGH_CONFIDENCE", supporting_evidence=["E1", "E2"], product_decision=True, disposition="INFERRED_AC")
     check("inferred verdict with an explicit product decision is rejected", any("should be CONFIRMED" in p for p in hv.validate_verification(hv.Verification.from_dict(inferred_pd))))
@@ -2925,6 +3284,72 @@ def test_hypothesis_verifier() -> None:
     check("every coverage hypothesis must be verified (unverified is flagged)",
           any("H-02" in p and "no verification" in p for p in problems))
     check("verified hypothesis is not flagged", not any("H-01" in p and "no verification" in p for p in problems))
+
+    # Adversarial joins: a verdict cannot cite a globally known but
+    # subject-ineligible authority, an unknown hypothesis, duplicate terminal
+    # verdicts, or evidence owned by another hypothesis.
+    wrong_subject_authority = V(
+        verdict="CONFIRMED", disposition="REGRESSION",
+        supporting_authorities=["CURRENT_IMPLEMENTATION"],
+        subject="PRODUCT_CONTRACT",
+    )
+    check(
+        "authority is validated against the hypothesis subject",
+        any(
+            "not valid for subject" in p
+            for p in hv.validate_verification(
+                hv.Verification.from_dict(wrong_subject_authority)
+            )
+        ),
+    )
+    no_evidence = V(supporting_evidence=[])
+    check(
+        "CONFIRMED requires a concrete evidence reference",
+        any(
+            "requires supporting_evidence" in p
+            for p in hv.validate_verification(hv.Verification.from_dict(no_evidence))
+        ),
+    )
+    check(
+        "verification cannot target an undeclared hypothesis",
+        any(
+            "unknown hypothesis" in p
+            for p in hv.verify_all([], [V(hypothesis_id="H-GHOST")])
+        ),
+    )
+    check(
+        "a hypothesis cannot have two terminal verifications",
+        any(
+            "more than one verification" in p
+            for p in hv.verify_all(
+                [{"hypothesis_id": "H-01", "status": "INVESTIGATION_CANDIDATE"}],
+                [V(), V()],
+            )
+        ),
+    )
+    evidence = [{
+        "evidence_id": "E5", "status": "USED", "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR", "hypothesis_id": "H-01",
+    }]
+    check(
+        "verification passes when evidence, authority, subject, and hypothesis agree",
+        hv.verify_all(
+            [{"hypothesis_id": "H-01", "status": "INVESTIGATION_CANDIDATE"}],
+            [V()], evidence_lifecycle=evidence,
+        ) == [],
+    )
+    wrong_owner = json.loads(json.dumps(evidence))
+    wrong_owner[0]["hypothesis_id"] = "H-02"
+    check(
+        "verification rejects evidence owned by another hypothesis",
+        any(
+            "not bound to hypothesis" in p
+            for p in hv.verify_all(
+                [{"hypothesis_id": "H-01", "status": "INVESTIGATION_CANDIDATE"}],
+                [V()], evidence_lifecycle=wrong_owner,
+            )
+        ),
+    )
 
     # absent block is backward compatible
     check("verifications absent is not a failure", hv.is_present({"issue": "X"}) is False)
@@ -3094,16 +3519,19 @@ def test_reasoning_required() -> None:
         f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behaviour_matters": False}))[0]
         check("behaviour_matters false waives the reasoning requirement", f == [])
 
-        # behavior_model present, no coverage -> satisfied
+        # behavior_model alone is no longer semantic completeness
         f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm}))[0]
-        check("behavior_model present satisfies the requirement", f == [])
+        check(
+            "behavior_model alone cannot satisfy the canonical pipeline",
+            any("contract_facts" in x for x in f) and any("semantic_closure" in x for x in f),
+        )
 
         # coverage declared without verifications -> required failure
         f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm, "coverage_hypotheses": cov}))[0]
         check("coverage hypotheses without verifications is rejected", any("no verifications block" in x for x in f))
 
-        # full reasoning set -> satisfied
-        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", "behavior_model": bm, "coverage_hypotheses": cov, "verifications": verif}))[0]
+        # full canonical reasoning set -> satisfied
+        f = run_gates.check_reasoning_required(_write(tmp, {"issue": "X", **_canonical_semantic_fixture()}))[0]
         check("full reasoning set satisfies the requirement", f == [])
 
 
@@ -3209,6 +3637,15 @@ def test_oracle_builder() -> None:
     check("success + observable output is not diagnostic-only",
           ob.is_diagnostic_only("generation succeeds and the navigation shows the grouping entry") is False)
     check("state oracle counts as observable", ob.is_diagnostic_only("no error and the guides-navigation property is intact") is False)
+    check(
+        "delivery availability is a product-visible oracle when delivery is in scope",
+        ob.classify_oracle("the download is available to the author") == "PRIMARY_PRODUCT_ORACLE"
+        and ob.is_diagnostic_only("the download is available to the author") is False,
+    )
+    check(
+        "bare internal archive existence remains diagnostic-only",
+        ob.is_diagnostic_only("the archive exists") is True,
+    )
 
     # manifest scenario_oracles: a P0/P1 needs a PRIMARY_PRODUCT_ORACLE
     bad = [{"scenario_id": "P0-1", "priority": "P0", "oracles": [{"type": "DIAGNOSTIC_SIGNAL", "statement": "no NPE"}]}]
@@ -4510,8 +4947,8 @@ def test_gate_receipt_and_adapter() -> None:
         ),
     )
     check(
-        "ordinary advisory notes do not block posting",
-        not gate._postability_review_present(["REVIEW feature-classification: inspect"]),
+        "semantic advisory notes also block posting",
+        gate._postability_review_present(["REVIEW feature-classification: inspect"]),
     )
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -4704,6 +5141,8 @@ def test_feature_class_registry() -> None:
             "configuration_driven_enumeration": [
                 "configuration_enumeration_scope",
             ],
+            "generated_artifact_delivery": ["generated_output_contract"],
+            "content_identity_lifecycle": ["content_identity_contract"],
         },
     )
     for class_name, signal in (
@@ -4711,6 +5150,8 @@ def test_feature_class_registry() -> None:
         ("access_control", "authorization"),
         ("async_job", "sling job"),
         ("configuration_driven_enumeration", "configured attribute"),
+        ("generated_artifact_delivery", "download archive"),
+        ("content_identity_lifecycle", "latest asset"),
     ):
         check(
             f"registry detects {class_name} from a seeded signal",
@@ -5022,6 +5463,799 @@ def test_terminal_states() -> None:
     )
 
 
+def _publishing_semantic_manifest() -> dict:
+    manifest = _canonical_semantic_fixture()
+    manifest["issue"] = {
+        "key": "GUIDES-100",
+        "description": (
+            "Retain temporary files and provide a download archive after AEM Sites publishing. "
+            "The requested behavior produces correct observable output and retains valid prior state."
+        ),
+    }
+    manifest["issue_domains"] = {
+        "schema_version": "aem-guides-issue-domains-v1",
+        "primary_domain": "PUBLISHING",
+        "routes": [
+            {
+                "domain": "PUBLISHING",
+                "status": "ACTIVE",
+                "reason": "The requested behavior creates a publishing artifact.",
+                "evidence": ["Jira description GUIDES-100"],
+            }
+        ],
+    }
+    manifest["publishing_scope"] = _publishing_scope_fixture()
+    manifest["generated_output_contract"] = _generated_output_fixture()
+    output_ids = generated_output_mod.material_item_ids(manifest["generated_output_contract"])
+    manifest["dispositions"].append(
+        {
+            "finding_id": "CD-GO",
+            "statement": "Generated output inventory and output-fidelity oracles are validated.",
+            "disposition": "GENERATED_OUTPUT_VALIDATION",
+            "source_refs": output_ids,
+        }
+    )
+    return manifest
+
+
+def _asset_identity_semantic_manifest() -> dict:
+    manifest = _canonical_semantic_fixture()
+    manifest["issue"] = {
+        "key": "GUIDES-100",
+        "description": (
+            "Publishing a referenced image asset must use the current asset version after update, move, or rename. "
+            "The requested behavior produces correct observable output and retains valid prior state."
+        ),
+    }
+    manifest["issue_domains"] = {
+        "schema_version": "aem-guides-issue-domains-v1",
+        "primary_domain": "ASSETS",
+        "routes": [
+            {
+                "domain": "ASSETS",
+                "status": "ACTIVE",
+                "reason": "The behavior is controlled by DAM asset identity and lifecycle.",
+                "evidence": ["Jira description GUIDES-100"],
+            },
+            {
+                "domain": "PUBLISHING",
+                "status": "ACTIVE",
+                "reason": "The current asset identity must reach the generated publishing output.",
+                "evidence": ["Jira description GUIDES-100"],
+            }
+        ],
+    }
+    manifest["publishing_scope"] = _publishing_scope_fixture()
+    manifest["generated_output_contract"] = _generated_output_fixture()
+    manifest["content_identity_contract"] = _content_identity_fixture()
+    output_ids = generated_output_mod.material_item_ids(manifest["generated_output_contract"])
+    manifest["dispositions"].append(
+        {
+            "finding_id": "CD-GO",
+            "statement": "Generated output is compared with the current source asset identity.",
+            "disposition": "GENERATED_OUTPUT_VALIDATION",
+            "source_refs": output_ids,
+        }
+    )
+    identity_ids = content_identity_mod.material_item_ids(manifest["content_identity_contract"])
+    manifest["dispositions"].append(
+        {
+            "finding_id": "CD-CI",
+            "statement": "Current content identity is validated across lifecycle operations.",
+            "disposition": "LIFECYCLE_COVERAGE",
+            "source_refs": identity_ids,
+        }
+    )
+    return manifest
+
+
+def test_contract_facts_and_integrity() -> None:
+    block = _canonical_semantic_fixture()["contract_facts"]
+    check(
+        "source-bound contract facts validate",
+        contract_fact_mod.validate_contract_facts(block, open_question_ids=set()) == [],
+    )
+    check(
+        "contract facts must quote their canonical source exactly",
+        any(
+            "exact excerpt" in problem
+            for problem in contract_fact_mod.validate_contract_facts(
+                block,
+                open_question_ids=set(),
+                source_texts={"Jira description GUIDES-100": "different source text"},
+            )
+        ),
+    )
+    check(
+        "protected exact source terms survive in their ACs",
+        contract_integrity_mod.validate_integrity(block, GOOD_PLAN) == [],
+    )
+    lost = GOOD_PLAN.replace("correct observable output", "a result")
+    check(
+        "silently dropped contract wording fails integrity",
+        any("silently lost" in p for p in contract_integrity_mod.validate_integrity(block, lost)),
+    )
+    ambiguous = json.loads(json.dumps(block))
+    ambiguous["facts"][0]["integrity"] = "EXPLICITLY_FLAGGED_AS_AMBIGUOUS"
+    check(
+        "ambiguous contract fact cannot be routed directly to an AC",
+        any("ambiguous facts" in p for p in contract_fact_mod.validate_contract_facts(ambiguous)),
+    )
+
+
+def test_issue_domain_routing_and_publishing_scope() -> None:
+    manifest = _publishing_semantic_manifest()
+    check(
+        "publishing evidence activates the publishing domain",
+        domain_router_mod.classify(manifest) == ["PUBLISHING"],
+    )
+    check(
+        "inflected publishing, API delivery, and bulk scale activate independent routes",
+        domain_router_mod.classify({
+            "issue": {
+                "description": "Users publish in bulk through APIs, with 2k or 3k documents in one action."
+            }
+        }) == ["PUBLISHING", "PERFORMANCE", "API"],
+    )
+    check(
+        "published and singular API wording are recognized",
+        domain_router_mod.classify({
+            "issue": {"description": "Documents are published using an API."}
+        }) == ["PUBLISHING", "API"],
+    )
+    check(
+        "negated and explicitly unaffected domains do not self-activate",
+        domain_router_mod.classify({
+            "issue": {
+                "description": "Publishing and performance are not in scope; the output preset is unaffected."
+            }
+        }) == [],
+    )
+    check(
+        "a negative performance instruction does not activate a performance route",
+        domain_router_mod.classify({
+            "issue": {"description": "Output generation must not be tested for performance."}
+        }) == [],
+    )
+    check(
+        "structured out-of-scope values cannot activate a domain",
+        domain_router_mod.classify({
+            "issue": {
+                "description": "The authoring label changes.",
+                "out_of_scope": ["publishing", "API", "bulk performance"],
+            }
+        }) == ["AUTHORING"],
+    )
+    check(
+        "a positive clause after a negated clause remains discoverable",
+        domain_router_mod.classify({
+            "issue": {
+                "description": "Performance is not affected, but documents are published through APIs."
+            }
+        }) == ["PUBLISHING", "API"],
+    )
+    publishing_route = {
+        "schema_version": "aem-guides-issue-domains-v1",
+        "primary_domain": "PUBLISHING",
+        "routes": [{
+            "domain": "PUBLISHING", "status": "ACTIVE", "reason": "Publishing is explicit.",
+            "evidence": ["ticket description"],
+        }],
+    }
+    check(
+        "publishing configuration does not imply a generated-download contract",
+        domain_router_mod.required_blocks(publishing_route) == ["publishing_scope"]
+        and "GENERATED_OUTPUT" not in domain_router_mod.required_dimensions(publishing_route),
+    )
+    check(
+        "publishing domain and scope validate",
+        domain_router_mod.validate_issue_domains(
+            manifest["issue_domains"], manifest=manifest, open_question_ids=set()
+        ) == []
+        and publishing_scope_mod.validate_publishing_scope(
+            manifest["publishing_scope"], open_question_ids=set()
+        ) == [],
+    )
+    missing_scope = dict(manifest)
+    missing_scope.pop("publishing_scope")
+    check(
+        "active publishing route requires its scope contract",
+        any(
+            "publishing_scope" in p
+            for p in domain_router_mod.validate_issue_domains(
+                missing_scope["issue_domains"], manifest=missing_scope
+            )
+        ),
+    )
+    unresolved = json.loads(json.dumps(manifest["publishing_scope"]))
+    unresolved["enable_dita_ot_processing"] = "UNRESOLVED"
+    check(
+        "unresolved DITA-OT state requires an Open Question",
+        any(
+            "open_question_refs" in p
+            for p in publishing_scope_mod.validate_publishing_scope(unresolved)
+        ),
+    )
+    unresolved["open_question_refs"] = ["OQ-99"]
+    check(
+        "an empty Open Question registry rejects invented references",
+        any(
+            "undeclared Open Question" in p
+            for p in publishing_scope_mod.validate_publishing_scope(
+                unresolved, open_question_ids=set()
+            )
+        ),
+    )
+
+
+def test_behavior_graph_relation_ontology() -> None:
+    def graph(relation):
+        return {
+            "schema_version": "aem-guides-behavior-graph-v1",
+            "nodes": [
+                {"node_id": "BGN-01", "kind": "PRODUCT_BEHAVIOR", "label": "source", "material": True, "provenance": ["source:1"]},
+                {"node_id": "BGN-02", "kind": "PROCESSOR", "label": "target", "material": True, "provenance": ["source:2"]},
+            ],
+            "edges": [
+                {
+                    "edge_id": "BGE-01", "source": "BGN-01", "target": "BGN-02",
+                    "relation_type": relation, "provenance": ["source:3"],
+                    "subject": "ACTUAL_IMPLEMENTATION", "authority": "CURRENT_IMPLEMENTATION",
+                    "currentness": "CURRENT", "applicability": "APPLICABLE", "confidence": 0.8,
+                    "verification_state": "CONFIRMED", "material": True,
+                }
+            ],
+            "traversal_paths": [{"path_id": "P-01", "edge_refs": ["BGE-01"]}],
+        }
+
+    check(
+        "every canonical relation family is accepted",
+        all(behavior_graph_mod.validate_behavior_graph(graph(rel)) == [] for rel in behavior_graph_mod.RELATION_TYPES),
+    )
+    inferred = graph("READ_BY")
+    inferred["edges"][0]["authority"] = "INFERENCE"
+    check(
+        "graph inference cannot silently become confirmed",
+        any("inference" in p for p in behavior_graph_mod.validate_behavior_graph(inferred)),
+    )
+    wrong_subject = graph("READ_BY")
+    wrong_subject["edges"][0]["subject"] = "UNKNOWN_SUBJECT"
+    wrong_subject["edges"][0]["authority"] = "CURRENT_IMPLEMENTATION"
+    check(
+        "graph authority is validated against a declared subject policy",
+        any(
+            ".subject must be one of" in p
+            for p in behavior_graph_mod.validate_behavior_graph(wrong_subject)
+        ),
+    )
+    fake_provenance = graph("READ_BY")
+    check(
+        "graph provenance must resolve in the canonical evidence registry",
+        any(
+            "unknown evidence reference" in p
+            for p in behavior_graph_mod.validate_behavior_graph(
+                fake_provenance, evidence_ids=set()
+            )
+        ),
+    )
+    unresolved_graph = graph("READ_BY")
+    unresolved_graph["edges"][0].update({
+        "verification_state": "UNRESOLVED", "open_question_ref": "OQ-GHOST",
+    })
+    check(
+        "unresolved graph edges cannot invent Open Question references",
+        any(
+            "declared open_question_ref" in p
+            for p in behavior_graph_mod.validate_behavior_graph(
+                unresolved_graph, open_question_ids=set()
+            )
+        ),
+    )
+    too_deep = graph("READ_BY")
+    too_deep["traversal_paths"][0]["edge_refs"] = ["BGE-01"] * 5
+    check(
+        "behavior traversal is bounded",
+        any("four-hop" in p for p in behavior_graph_mod.validate_behavior_graph(too_deep)),
+    )
+
+
+def test_semantic_closure_required() -> None:
+    manifest = _canonical_semantic_fixture()
+    run_gates = _load("run_gates_semantic_closure", "run_gates.py")
+    check(
+        "complete canonical semantic pipeline passes",
+        run_gates.validate_canonical_semantic_pipeline(
+            manifest, plan_text=GOOD_PLAN, include_plan_checks=True
+        ) == [],
+    )
+    check(
+        "behavior model alone cannot pass semantic coverage",
+        coverage_gate_mod.evaluate(
+            {"behavior_model": {"trigger": ["publish"], "operations": ["generate"]}}
+        )["semantic_gate"] == "NEEDS_REVIEW",
+    )
+    check(
+        "complete applicability matrix passes",
+        semantic_closure_mod.validate_semantic_closure(
+            manifest["semantic_closure"],
+            material_entity_ids=["BGN-01"],
+            required_dimensions=["DIRECT_CONSUMERS", "NEGATIVE_STATE"],
+        ) == [],
+    )
+    for key in ("contract_facts", "behavior_graph", "semantic_closure"):
+        malformed = json.loads(json.dumps(manifest))
+        malformed[key] = []
+        check(
+            f"wrong-typed {key} fails gracefully",
+            isinstance(
+                run_gates.validate_canonical_semantic_pipeline(malformed), list
+            ),
+        )
+    incomplete = json.loads(json.dumps(manifest["semantic_closure"]))
+    incomplete["records"] = incomplete["records"][:-1]
+    check(
+        "a silently omitted semantic dimension fails",
+        any(
+            "silently omits" in p
+            for p in semantic_closure_mod.validate_semantic_closure(
+                incomplete, material_entity_ids=["BGN-01"]
+            )
+        ),
+    )
+    wildcard = json.loads(json.dumps(manifest["semantic_closure"]))
+    wildcard["records"][0]["entity_ref"] = "*"
+    check(
+        "wildcard closure cannot hide per-entity applicability gaps",
+        any(
+            "is not accepted" in p
+            for p in semantic_closure_mod.validate_semantic_closure(
+                wildcard, material_entity_ids=["BGN-01"]
+            )
+        ),
+    )
+
+
+def test_missing_question_directed_retrieval_by_subject() -> None:
+    manifest = _canonical_semantic_fixture()
+    record = manifest["semantic_closure"]["records"][0]
+    record.update(
+        {
+            "applicability": "UNRESOLVED",
+            "status": "UNRESOLVED_AND_EXPOSED",
+            "open_question_ref": "OQ-01",
+        }
+    )
+    record.pop("disposition_ref")
+    manifest["open_questions"] = [
+        {"id": "OQ-01", "question": "What is the intended product behavior?", "qa_impact": "Changes the expected result."}
+    ]
+    check(
+        "unresolved closure automatically requires a question",
+        any("did not generate" in p for p in mq_mod.validate_required_questions(manifest)),
+    )
+    stub = mq_mod.derive_missing_question_stubs(manifest)[0]
+    check(
+        "missing-question stub preserves subject, dimension, and visible Open Question",
+        stub["subject"] == "PRODUCT_CONTRACT"
+        and stub["dimension"] == record["dimension"]
+        and stub["open_question_ref"] == "OQ-01",
+    )
+    manifest["missing_questions"] = [
+        {
+            "question_id": "MQ-01", "question": "What is the intended product behavior?",
+            "why_it_matters": "It changes the acceptance oracle.", "preferred_sources": ["linked jira"],
+            "search_concepts": ["approved intended behavior"], "blocking": True,
+            "material": True, "source_ref": record["closure_id"], "subject": "PRODUCT_CONTRACT",
+            "dimension": record["dimension"], "open_question_ref": "OQ-01",
+            "if_unresolved": "OPEN_QUESTION",
+        }
+    ]
+    manifest["evidence_lifecycle"] = [
+        {"evidence_id": "E-01", "source": "linked jira", "query": "original ticket keywords", "pass": "initial", "status": "INSPECTED", "question_id": ""},
+        {"evidence_id": "E-02", "source": "linked jira", "query": "approved intended behavior", "pass": "second", "status": "REJECTED", "question_id": "MQ-01"},
+    ]
+    check("generated material question is linked", mq_mod.validate_required_questions(manifest) == [])
+    check(
+        "directed subject-specific retrieval is recorded even when no answer is found",
+        mq_mod.check_retrieval_discipline(
+            manifest["missing_questions"], manifest["evidence_lifecycle"]
+        ) == [],
+    )
+
+
+def test_coverage_disposition_completeness() -> None:
+    base = {"dispositions": []}
+    check(
+        "undispositioned material candidate fails",
+        any(
+            "no coverage disposition" in p
+            for p in behavioral_completeness_mod.validate_behavioral_completeness(
+                base, material_item_ids=["CF-01"]
+            )
+        ),
+    )
+    one = {
+        "dispositions": [
+            {"finding_id": "CD-01", "statement": "covered", "disposition": "TECHNICAL_NOTE", "source_refs": ["CF-01"]}
+        ]
+    }
+    check(
+        "exactly-once disposition passes",
+        behavioral_completeness_mod.validate_behavioral_completeness(
+            one, material_item_ids=["CF-01"]
+        ) == [],
+    )
+    duplicate = json.loads(json.dumps(one))
+    duplicate["dispositions"].append(
+        {"finding_id": "CD-02", "statement": "again", "disposition": "TECHNICAL_NOTE", "source_refs": ["CF-01"]}
+    )
+    check(
+        "duplicate disposition fails",
+        any(
+            "more than once" in p
+            for p in behavioral_completeness_mod.validate_behavioral_completeness(
+                duplicate, material_item_ids=["CF-01"]
+            )
+        ),
+    )
+
+
+def test_acceptance_promotion_authority() -> None:
+    manifest = _canonical_semantic_fixture()
+    record = manifest["acceptance_promotions"]["records"][0]
+    block = {"schema_version": "aem-guides-acceptance-promotions-v1", "records": [record]}
+    kwargs = {
+        "ac_ids": {"AC-01"}, "known_candidate_ids": {"CF-01"},
+        "contract_fact_ids": {"CF-01"},
+        "candidate_authorities": {"CF-01": {"JIRA_EXPECTED_BEHAVIOR"}},
+        "candidate_subjects": {"CF-01": "PRODUCT_CONTRACT"},
+        "dispositions": [manifest["dispositions"][0]],
+        "ac_status_by_id": {"AC-01": "Proposed"},
+        "accepted_uac_present": False,
+    }
+    check(
+        "Jira expected behavior can support a Proposed AC",
+        acceptance_promotion_mod.validate_acceptance_promotions(block, **kwargs) == [],
+    )
+    code_only = json.loads(json.dumps(block))
+    code_only["records"][0]["intended_behavior_authorities"] = ["PR_IMPLEMENTATION"]
+    check(
+        "PR implementation alone cannot promote an AC",
+        any("cannot authorize" in p for p in acceptance_promotion_mod.validate_acceptance_promotions(code_only, **kwargs)),
+    )
+    regression = json.loads(json.dumps(block))
+    regression["records"][0]["regression_only"] = True
+    check(
+        "regression-only candidate cannot promote",
+        any("regression-only" in p for p in acceptance_promotion_mod.validate_acceptance_promotions(regression, **kwargs)),
+    )
+    duplicate = json.loads(json.dumps(block))
+    duplicate_record = json.loads(json.dumps(record))
+    duplicate_record["promotion_id"] = "AP-02"
+    duplicate["records"].append(duplicate_record)
+    check(
+        "a candidate and AC cannot be promoted more than once",
+        any(
+            "promoted more than once" in p
+            for p in acceptance_promotion_mod.validate_acceptance_promotions(
+                duplicate, **kwargs
+            )
+        ),
+    )
+    unbound_authority = json.loads(json.dumps(block))
+    unbound_authority["records"][0]["intended_behavior_authorities"] = [
+        "APPROVED_PRODUCT_DECISION"
+    ]
+    check(
+        "a promotion cannot borrow authority from another candidate",
+        any(
+            "not bound to candidate" in p
+            for p in acceptance_promotion_mod.validate_acceptance_promotions(
+                unbound_authority, **kwargs
+            )
+        ),
+    )
+    wrong_candidate_subject_kwargs = dict(kwargs)
+    wrong_candidate_subject_kwargs["candidate_subjects"] = {
+        "CF-01": "ACTUAL_IMPLEMENTATION"
+    }
+    check(
+        "product acceptance cannot relabel an implementation candidate",
+        any(
+            "does not match candidate" in p
+            for p in acceptance_promotion_mod.validate_acceptance_promotions(
+                block, **wrong_candidate_subject_kwargs
+            )
+        ),
+    )
+    wrong_disposition = json.loads(json.dumps(block))
+    wrong_disposition["records"][0]["disposition_ref"] = "CD-02"
+    wrong_disposition_kwargs = dict(kwargs)
+    wrong_disposition_kwargs["dispositions"] = manifest["dispositions"][:2]
+    check(
+        "promotion disposition must cover the same candidate and AC",
+        any(
+            "does not cover candidate" in p or "different AC" in p
+            for p in acceptance_promotion_mod.validate_acceptance_promotions(
+                wrong_disposition, **wrong_disposition_kwargs
+            )
+        ),
+    )
+    unaccepted_confirmed = json.loads(json.dumps(block))
+    unaccepted_confirmed["records"][0].update({
+        "decision": "PROMOTED_CONFIRMED",
+        "disposition": "ACCEPTANCE_CONTRACT",
+        "intended_behavior_authorities": ["HUMAN_ACCEPTED_AC"],
+    })
+    confirmed_disposition = json.loads(json.dumps(manifest["dispositions"][0]))
+    confirmed_disposition["disposition"] = "ACCEPTANCE_CONTRACT"
+    confirmed_kwargs = dict(kwargs)
+    confirmed_kwargs.update({
+        "candidate_authorities": {"CF-01": {"HUMAN_ACCEPTED_AC"}},
+        "dispositions": [confirmed_disposition],
+        "ac_status_by_id": {"AC-01": "Confirmed"},
+        "accepted_uac_present": False,
+    })
+    check(
+        "Confirmed promotion requires an accepted UAC contract",
+        any(
+            "accepted_uac_present=true" in p
+            for p in acceptance_promotion_mod.validate_acceptance_promotions(
+                unaccepted_confirmed, **confirmed_kwargs
+            )
+        ),
+    )
+
+
+def test_generated_output_contract() -> None:
+    good = _generated_output_fixture()
+    check(
+        "complete generated-output contract passes",
+        generated_output_mod.validate_generated_output_contract(good) == [],
+    )
+    legacy = json.loads(json.dumps(good))
+    legacy["schema_version"] = "aem-guides-generated-output-contract-v1"
+    legacy.pop("delivery_in_scope")
+    legacy["oracles"] = [
+        oracle for oracle in legacy["oracles"]
+        if oracle["oracle_type"] != "DELIVERY_AVAILABLE"
+    ]
+    check(
+        "legacy v1 generated-output contracts remain readable",
+        generated_output_mod.validate_generated_output_contract(legacy) == [],
+    )
+    delivery_out = json.loads(json.dumps(good))
+    delivery_out["delivery_in_scope"] = False
+    delivery_out.pop("download_surface")
+    delivery_out_oracle = next(
+        oracle for oracle in delivery_out["oracles"]
+        if oracle["oracle_type"] == "DELIVERY_AVAILABLE"
+    )
+    delivery_out_oracle.update({
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "expected": "Delivery is outside the source-backed scope.",
+    })
+    check(
+        "delivery availability is not required when delivery is out of scope",
+        generated_output_mod.validate_generated_output_contract(delivery_out) == [],
+    )
+    mismatched_delivery = json.loads(json.dumps(good))
+    mismatched_delivery["delivery_in_scope"] = False
+    check(
+        "an out-of-scope delivery cannot retain a covered availability oracle",
+        any(
+            "DELIVERY_AVAILABLE must follow" in p
+            for p in generated_output_mod.validate_generated_output_contract(
+                mismatched_delivery
+            )
+        ),
+    )
+    missing_delivery_surface = json.loads(json.dumps(good))
+    missing_delivery_surface.pop("download_surface")
+    check(
+        "in-scope delivery requires its real delivery surface",
+        any(
+            "requires a download_surface" in p
+            for p in generated_output_mod.validate_generated_output_contract(
+                missing_delivery_surface
+            )
+        ),
+    )
+    unresolved_delivery = json.loads(json.dumps(good))
+    unresolved_delivery["delivery_in_scope"] = "UNRESOLVED"
+    unresolved_delivery["delivery_scope_open_question_ref"] = "OQ-GHOST"
+    unresolved_delivery_oracle = next(
+        oracle for oracle in unresolved_delivery["oracles"]
+        if oracle["oracle_type"] == "DELIVERY_AVAILABLE"
+    )
+    unresolved_delivery_oracle.update({
+        "applicability": "UNRESOLVED",
+        "status": "UNRESOLVED_AND_EXPOSED",
+        "open_question_ref": "OQ-GHOST",
+    })
+    check(
+        "unresolved delivery cannot invent an Open Question",
+        any(
+            "declared" in p
+            for p in generated_output_mod.validate_generated_output_contract(
+                unresolved_delivery, open_question_ids=set()
+            )
+        ),
+    )
+    split_delivery_question = json.loads(json.dumps(unresolved_delivery))
+    split_delivery_question["delivery_scope_open_question_ref"] = "OQ-01"
+    split_delivery_question_oracle = next(
+        oracle for oracle in split_delivery_question["oracles"]
+        if oracle["oracle_type"] == "DELIVERY_AVAILABLE"
+    )
+    split_delivery_question_oracle["open_question_ref"] = "OQ-02"
+    check(
+        "delivery scope and availability cannot point to different questions",
+        any(
+            "same Open Question" in p
+            for p in generated_output_mod.validate_generated_output_contract(
+                split_delivery_question, open_question_ids={"OQ-01", "OQ-02"}
+            )
+        ),
+    )
+    logs_only = json.loads(json.dumps(good))
+    logs_only["payload_inventory"] = [
+        {"item_id": "GOI-01", "item": "generation log", "role": "DIAGNOSTIC", "disposition": "INCLUDED"}
+    ]
+    check(
+        "logs-only archive is not accepted as generated output",
+        any("PRIMARY_CONTENT" in p for p in generated_output_mod.validate_generated_output_contract(logs_only)),
+    )
+    existence_only = json.loads(json.dumps(good))
+    existence_only["oracles"] = [existence_only["oracles"][0]]
+    check(
+        "artifact-existence-only coverage fails",
+        any("CONTENT_CORRECT" in p for p in generated_output_mod.validate_generated_output_contract(existence_only)),
+    )
+    check("archive-exists text is not a sufficient product oracle", oracle_mod.is_diagnostic_only("the archive exists"))
+
+
+def test_generated_artifact_delivery_regression() -> None:
+    manifest = _publishing_semantic_manifest()
+    manifest["generated_output_contract"]["payload_inventory"] = [
+        {"item_id": "GOI-01", "item": "generation logs", "role": "DIAGNOSTIC", "disposition": "INCLUDED"}
+    ]
+    run_gates = _load("run_gates_generated_artifact", "run_gates.py")
+    problems = run_gates.validate_canonical_semantic_pipeline(manifest)
+    check(
+        "generated-artifact contract rejects a logs-only downloadable archive",
+        any("PRIMARY_CONTENT" in p for p in problems),
+    )
+
+
+def test_content_identity_lifecycle_regression() -> None:
+    good = _asset_identity_semantic_manifest()
+    check(
+        "current-identity lifecycle contract passes",
+        content_identity_mod.validate_content_identity_contract(good["content_identity_contract"]) == [],
+    )
+    stale_fallback = json.loads(json.dumps(good))
+    stale_fallback["content_identity_contract"]["fallback_policy"] = "APPROVED_FALLBACK"
+    stale_fallback["content_identity_contract"].pop("fallback_authority", None)
+    run_gates = _load("run_gates_content_identity", "run_gates.py")
+    problems = run_gates.validate_canonical_semantic_pipeline(stale_fallback)
+    check(
+        "content-identity contract rejects an unauthorized previous-version fallback",
+        any("fallback_authority" in p for p in problems),
+    )
+    invented_migration = json.loads(json.dumps(good["content_identity_contract"]))
+    invented_migration["migration_behavior"] = "MIGRATE"
+    check(
+        "legacy migration cannot be invented without authority",
+        any("migration_authority" in p for p in content_identity_mod.validate_content_identity_contract(invented_migration)),
+    )
+
+
+def test_postability_semantic_reviews() -> None:
+    run_gates = _load("run_gates_postability", "run_gates.py")
+    check(
+        "every semantic REVIEW blocks posting",
+        run_gates._postability_review_present(
+            ["REVIEW feature-classification: generated artifact class is undeclared"]
+        ) is True,
+    )
+
+
+def test_fluffyjaws_evidence() -> None:
+    fj = fluffyjaws_evidence_mod
+
+    # Backward-compatible: absent block is a clean pass.
+    check("absent fluffyjaws block passes", fj.validate_block({}) == [])
+
+    # Flag-gated probe defaults to disabled + unavailable.
+    default_probe = fj.probe(env={})
+    check(
+        "probe defaults to DISABLED/unavailable",
+        default_probe == {"mode": "FLUFFYJAWS_DISABLED", "available": False},
+    )
+    shadow_probe = fj.probe(env={"SKILL_FLUFFYJAWS_MODE": "FLUFFYJAWS_SHADOW"})
+    check(
+        "probe never reports available without an injected transport",
+        shadow_probe["mode"] == "FLUFFYJAWS_SHADOW" and shadow_probe["available"] is False,
+    )
+
+    # Disabled/unavailable with discoveries is rejected.
+    disabled_with_ev = {
+        "fluffyjaws": {
+            "mode": "FLUFFYJAWS_DISABLED",
+            "available": False,
+            "discoveries": [
+                {"query": "q", "authority": "SUPPORTING_DISCOVERY", "regrounded_evidence_id": "E1"}
+            ],
+        },
+        "evidence_authority": {"items": [
+            {"evidence_id": "E1", "statement": "s", "status": "CONFIRMED", "authority": "SPECIFICATION_AUTHORITY"}
+        ]},
+    }
+    check(
+        "discoveries while disabled are rejected",
+        any("DISABLED/unavailable" in p for p in fj.validate_block(disabled_with_ev)),
+    )
+
+    # A grounded shadow discovery that re-grounds into a first-class source passes.
+    good = {
+        "fluffyjaws": {
+            "mode": "FLUFFYJAWS_SHADOW",
+            "available": True,
+            "discoveries": [
+                {"query": "native pdf file properties", "authority": "SUPPORTING_DISCOVERY", "regrounded_evidence_id": "E1"}
+            ],
+        },
+        "evidence_authority": {"items": [
+            {"evidence_id": "E1", "statement": "s", "status": "CONFIRMED", "authority": "PRODUCT_REQUIREMENT_AUTHORITY"}
+        ]},
+    }
+    check("grounded shadow discovery passes", fj.validate_block(good) == [])
+
+    # Non-supporting authority is rejected.
+    bad_auth = {
+        "fluffyjaws": {"mode": "FLUFFYJAWS_SHADOW", "available": True, "discoveries": [
+            {"query": "q", "authority": "SPECIFICATION_AUTHORITY", "regrounded_evidence_id": "E1"}
+        ]},
+        "evidence_authority": {"items": [
+            {"evidence_id": "E1", "statement": "s", "status": "CONFIRMED", "authority": "SPECIFICATION_AUTHORITY"}
+        ]},
+    }
+    check(
+        "FluffyJaws cannot claim a first-class authority",
+        any("SUPPORTING_DISCOVERY" in p for p in fj.validate_block(bad_auth)),
+    )
+
+    # Missing / non-authoritative re-grounding is rejected.
+    ungrounded = {
+        "fluffyjaws": {"mode": "FLUFFYJAWS_SHADOW", "available": True, "discoveries": [
+            {"query": "q", "authority": "SUPPORTING_DISCOVERY"}
+        ]},
+        "evidence_authority": {"items": []},
+    }
+    check(
+        "discovery without re-grounding is rejected",
+        any("regrounded_evidence_id" in p for p in fj.validate_block(ungrounded)),
+    )
+
+    # Direct AC promotion is rejected.
+    promotes = {
+        "fluffyjaws": {"mode": "FLUFFYJAWS_SHADOW", "available": True, "discoveries": [
+            {"query": "q", "authority": "SUPPORTING_DISCOVERY", "regrounded_evidence_id": "E1", "promotes_ac": True}
+        ]},
+        "evidence_authority": {"items": [
+            {"evidence_id": "E1", "statement": "s", "status": "CONFIRMED", "authority": "IMPLEMENTATION_AUTHORITY"}
+        ]},
+    }
+    check(
+        "no FluffyJaws -> AC promotion path",
+        any("promotes_ac" in p for p in fj.validate_block(promotes)),
+    )
+
+    print("test_fluffyjaws_evidence: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -5032,6 +6266,7 @@ def main() -> int:
     test_compact_view()
     test_semantic_explorer()
     test_anti_hardcoding()
+    test_production_jira_hardcoding_audit()
     test_behavior_model()
     test_coverage_hypotheses()
     test_missing_questions()
@@ -5063,6 +6298,7 @@ def main() -> int:
     test_configuration_enumeration_scope()
     test_ui_surface_scope()
     test_role_provisioning()
+    test_fluffyjaws_evidence()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
@@ -5070,6 +6306,17 @@ def main() -> int:
     test_ac_decidability()
     test_operational_contract()
     test_gate_receipt_and_adapter()
+    test_contract_facts_and_integrity()
+    test_issue_domain_routing_and_publishing_scope()
+    test_behavior_graph_relation_ontology()
+    test_semantic_closure_required()
+    test_missing_question_directed_retrieval_by_subject()
+    test_coverage_disposition_completeness()
+    test_acceptance_promotion_authority()
+    test_generated_output_contract()
+    test_generated_artifact_delivery_regression()
+    test_content_identity_lifecycle_regression()
+    test_postability_semantic_reviews()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
