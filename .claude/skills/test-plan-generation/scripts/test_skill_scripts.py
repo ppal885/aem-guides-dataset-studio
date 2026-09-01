@@ -107,6 +107,7 @@ ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
+uac_linter_mod = _load("uac_linter", "uac_linter.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6647,6 +6648,57 @@ def test_acceptance_synthesizer() -> None:
     print("test_acceptance_synthesizer: OK")
 
 
+def test_uac_linter() -> None:
+    ul = uac_linter_mod
+
+    # No plan, no block -> clean.
+    check("empty inputs pass", ul.validate({}, "") == [])
+
+    good_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Basic) Given a preset | When output is generated | Then metadata.xml contains the map properties | Evidence: Jira.\n"
+        "- AC-02 [Proposed]: (Basic) Given a topic | When output is generated | Then metadata.xml contains the topic properties | Evidence: Jira.\n"
+        "**Expected Behaviour**\n- x\n"
+    )
+    check("distinct ACs pass", ul.validate({}, good_plan) == [])
+
+    dup_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Basic) Given a preset | When output is generated | Then metadata.xml contains the map properties | Evidence: Jira.\n"
+        "- AC-02 [Proposed]: (Basic) Given a preset | When output is generated | Then metadata.xml contains the map properties | Evidence: Jira.\n"
+    )
+    check("duplicate AC outcome is flagged",
+          any("DUPLICATE_AC" in p for p in ul.validate({}, dup_plan)))
+
+    # Opt-in testability block: complete record passes.
+    good_block = {"uac_linter": {"testability": [
+        {"ac_ref": "AC-01", "condition_or_state": "preset set", "expected_behavior": "properties written",
+         "observable_oracle": "metadata.xml", "scope": "Native PDF", "evidence": ["Jira"]}
+    ]}}
+    check("complete testability record passes", ul.validate(good_block, good_plan) == [])
+
+    missing = {"uac_linter": {"testability": [{"ac_ref": "AC-01", "condition_or_state": "x"}]}}
+    probs = ul.validate(missing, good_plan)
+    check("missing oracle in testability flagged", any("observable_oracle" in p for p in probs))
+
+    unknown_ac = {"uac_linter": {"testability": [
+        {"ac_ref": "AC-99", "condition_or_state": "a", "expected_behavior": "b",
+         "observable_oracle": "c", "scope": "d", "evidence": ["e"]}
+    ]}}
+    check("testability ac_ref not in plan flagged",
+          any("not an AC in the plan" in p for p in ul.validate(unknown_ac, good_plan)))
+
+    contra = {"uac_linter": {"testability": [], "oq_ac_contradictions": ["AC-01 vs OQ-02"]}}
+    check("AC/OQ contradiction flagged",
+          any("OQ_CONTRADICTS_AC" in p for p in ul.validate(contra, good_plan)))
+
+    scope_mm = {"uac_linter": {"testability": [], "scope_mismatch_acs": ["AC-05"]}}
+    check("scope mismatch flagged",
+          any("SCOPE_MISMATCH" in p for p in ul.validate(scope_mm, good_plan)))
+
+    print("test_uac_linter: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6697,6 +6749,7 @@ def main() -> int:
     test_publishing_scope_coverage()
     test_repro_dimension_matrix()
     test_acceptance_synthesizer()
+    test_uac_linter()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
