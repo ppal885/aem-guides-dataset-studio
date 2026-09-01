@@ -1,8 +1,8 @@
 {
   "surface": "REVIEW",
   "curation_status": "PENDING_APPROVAL",
-  "authority": "Grounded in the skill's review-workflow-uac.md domain contract; Experience League URLs UNCONFIRMED - the local corpus lacks clean review pages, needs a fresh crawl before merge",
-  "note": "All features URL-unconfirmed: cannot merge into the governed feature-map until each cites an Experience League URL. Feature list is domain-true and captured for activation once URLs are confirmed.",
+  "authority": "Grounded in the skill's review-workflow-uac.md domain contract, with Experience League source approval recorded per feature.",
+  "note": "Only entries with explicit Human approval and a reviewed Experience League source may enter the governed feature map. Other entries remain pending.",
   "match": [
     "review task",
     "review comment",
@@ -21,10 +21,13 @@
         "task membership resolution"
       ],
       "implied_dimension_axis": "CONFIG_BRANCH",
-      "candidate_template": "the visible task list and default/selected task derive from the approved task-membership contract, and multi-task topics select correctly",
-      "reference": "review-workflow-uac (confirm EL URL)",
-      "reference_urls": [],
-      "url_confirmed": false
+      "candidate_template": "when View all review tasks is enabled, the task dropdown lists the indexed review tasks associated with the open topic, marks Current by default, and opens a selected non-Current task's topic version and comments read-only",
+      "reference": "Experience League review-address-review-comments",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-address-review-comments"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
     },
     {
       "feature": "review task states (current, open, closed)",
@@ -80,10 +83,13 @@
         "task switch"
       ],
       "implied_dimension_axis": "ENTRY_POINT",
-      "candidate_template": "the review panel, task dropdown, and details reflect the selected task and switching a task updates only the verified consumers once",
-      "reference": "review-workflow-uac (confirm EL URL)",
-      "reference_urls": [],
-      "url_confirmed": false
+      "candidate_template": "the Review panel task dropdown and Review details show the selected task's name, review version, status, and comments, and switching tasks changes that selected-task context",
+      "reference": "Experience League review-address-review-comments",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-address-review-comments"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
     },
     {
       "feature": "reviewer roles and permissions",

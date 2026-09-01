@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Auto-confirm Experience League URLs for pending feature-map features and merge
-the confirmed ones into the governed feature-map.
+"""Discover Experience League URL candidates and merge only Human-approved sources.
 
-For every feature still marked URL-unconfirmed in the scratch surface drafts, this
-queries the local aem_guides corpus; if the top hit is an AEM Guides Experience
-League page under the distance threshold, it reports the confirmation. It merges
-only drafts whose curation_status is already APPROVED; PENDING_APPROVAL drafts
-remain pending for Human review. Eligible entries are conformed to strict
-feature_map governance and merged into data/aem_feature_map.json. Features whose
-page is still not in the corpus stay unconfirmed (honest - no fabricated URL).
-Run AFTER refreshing the crawl (scripts/vm_ingest_review_authoring_publishing_gaps.sh).
+For every feature that is not already active, this queries the local aem_guides
+corpus and reports a candidate when the top AEM Guides Experience League hit is
+within the distance threshold. Similarity is discovery evidence only: it never
+sets Human approval and never writes a discovered URL into the governed map.
+
+A feature becomes merge-eligible only when its draft entry explicitly contains
+``approval_status=HUMAN_APPROVED``, ``url_confirmed=true``, and one or more valid
+``reference_urls``. This per-feature contract allows a partially reviewed surface
+to remain ``PENDING_APPROVAL`` while its individually approved entries are merged.
+Run after refreshing the crawl
+(``scripts/vm_ingest_review_authoring_publishing_gaps.sh``).
 
 Default is a dry run (report only). Pass --apply to write the merged map.
 
@@ -26,7 +28,7 @@ import stat
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 REPO = Path(__file__).resolve().parents[1]
 BACKEND = REPO / "backend"
@@ -34,6 +36,8 @@ SKILL = REPO / ".codex" / "skills" / "test-plan-generation"
 FEATURE_MAP = SKILL / "data" / "aem_feature_map.json"
 DISTANCE_MAX = 0.35  # honesty threshold: a weak hit must not auto-stamp a URL
 MAX_DRAFT_BYTES = 1024 * 1024
+HUMAN_APPROVED = "HUMAN_APPROVED"
+UNAPPROVED_DISCOVERY_STATUSES = {"", "PENDING_APPROVAL", "APPROVED_URL_UNCONFIRMED"}
 
 # scratch drafts holding the pending (url_confirmed=false) features
 DRAFTS = {
@@ -75,17 +79,33 @@ def _is_guides_url(value: object) -> bool:
         parsed = urlsplit(value.strip())
     except ValueError:
         return False
+    raw_path = parsed.path
+    lowered_path = raw_path.casefold()
+    decoded_path = unquote(raw_path)
+    path_segments = decoded_path.split("/")
+    has_unsafe_segment = any(segment in {".", ".."} for segment in path_segments)
+    has_encoded_path_control = any(
+        token in lowered_path for token in ("%2e", "%2f", "%5c")
+    )
+    has_percent_encoding = "%" in raw_path
+    guides_prefix = "/en/docs/experience-manager-guides/"
+    document_path = (
+        decoded_path[len(guides_prefix) :].strip("/")
+        if decoded_path.startswith(guides_prefix)
+        else ""
+    )
     return (
         parsed.scheme == "https"
         and parsed.netloc == "experienceleague.adobe.com"
-        and parsed.path.startswith("/en/docs/experience-manager-guides/")
+        and decoded_path.startswith(guides_prefix)
+        and bool(document_path)
+        and not has_unsafe_segment
+        and not has_encoded_path_control
+        and not has_percent_encoding
+        and "\\" not in decoded_path
         and not parsed.query
         and not parsed.fragment
     )
-
-
-def _slug(url: str) -> str:
-    return url.rstrip("/").rsplit("/", 1)[-1]
 
 
 def _query_top(fm_query: str):
@@ -151,7 +171,110 @@ def _load_draft(
         draft.get("native_features"), list
     ):
         return None, "draft match and native_features must be lists"
+    seen_feature_names: set[str] = set()
+    for feature in draft["native_features"]:
+        if not isinstance(feature, dict):
+            continue
+        feature_name = str(feature.get("feature", "")).strip()
+        if not feature_name:
+            continue
+        feature_key = feature_name.casefold()
+        if feature_key in seen_feature_names:
+            return None, f"duplicate feature name in draft: {feature_name}"
+        seen_feature_names.add(feature_key)
     return draft, None
+
+
+def _approved_source(
+    feature: dict,
+) -> tuple[tuple[str, list[str]] | None, str | None]:
+    """Return an explicitly Human-approved source, or a validation problem.
+
+    Empty approval fields mean that the feature is still a discovery candidate.
+    Partially populated approval fields fail closed instead of being inferred.
+    """
+    approval = str(feature.get("approval_status", "")).strip().upper()
+    url_confirmed = feature.get("url_confirmed", False)
+    reference = str(feature.get("reference", "")).strip()
+    reference_urls = feature.get("reference_urls", [])
+    if approval in UNAPPROVED_DISCOVERY_STATUSES:
+        if url_confirmed is False and not reference_urls:
+            return None, None
+        return None, "an unapproved feature cannot declare a confirmed source"
+    if approval != HUMAN_APPROVED:
+        return None, f"approval_status must be {HUMAN_APPROVED}"
+    if url_confirmed is not True:
+        return None, "url_confirmed must be true for a Human-approved feature"
+    if not reference.startswith("Experience League "):
+        return None, "reference must start with 'Experience League '"
+    if (
+        not isinstance(reference_urls, list)
+        or not reference_urls
+        or any(not _is_guides_url(url) for url in reference_urls)
+    ):
+        return None, "reference_urls must contain only canonical AEM Guides Experience League URLs"
+    return (reference, [str(url).strip() for url in reference_urls]), None
+
+
+def _conformed_feature(
+    feature: dict,
+    *,
+    axis: str,
+    reference: str,
+    reference_urls: list[str],
+) -> dict:
+    """Build the governed feature-map representation from an approved draft entry."""
+    return {
+        "feature": str(feature["feature"]).strip(),
+        "shared_flows": [str(flow).strip() for flow in feature["shared_flows"]],
+        "implied_dimension_axis": axis,
+        "candidate_template": str(feature["candidate_template"]).strip(),
+        "reference": reference,
+        "reference_urls": list(reference_urls),
+        "approval_status": HUMAN_APPROVED,
+    }
+
+
+def _legacy_confirmed_source(feature: dict) -> list[str] | None:
+    """Recognize a valid pre-contract source without making it merge-eligible.
+
+    Older tracked drafts recorded Human approval and a canonical URL but used a
+    descriptive reference label. Those entries remain reportable and read-only;
+    only the stricter current contract can authorize a new map write.
+    """
+    approval = str(feature.get("approval_status", "")).strip().upper()
+    reference = str(feature.get("reference", "")).strip()
+    reference_urls = feature.get("reference_urls", [])
+    if (
+        approval != HUMAN_APPROVED
+        or feature.get("url_confirmed") is not True
+        or not reference
+        or reference.startswith("Experience League ")
+        or not isinstance(reference_urls, list)
+        or not reference_urls
+        or any(not _is_guides_url(url) for url in reference_urls)
+    ):
+        return None
+    return [str(url).strip() for url in reference_urls]
+
+
+def _active_feature(surface: dict | None, feature_name: str) -> dict | None:
+    """Find one active feature by its stable case-insensitive name."""
+    if not isinstance(surface, dict):
+        return None
+    native_features = surface.get("native_features", [])
+    if not isinstance(native_features, list):
+        return None
+    key = feature_name.casefold()
+    return next(
+        (
+            item
+            for item in native_features
+            if isinstance(item, dict)
+            and str(item.get("feature", "")).strip().casefold() == key
+        ),
+        None,
+    )
 
 
 def _write_validated_map(data: dict, fm) -> list[str]:
@@ -213,8 +336,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     surfaces_by_name = {s["surface"]: s for s in data["surfaces"]}
 
-    confirmed, merged, approval_pending = [], [], []
-    still_pending, input_failures = [], []
+    already_active, legacy_confirmed, merge_eligible, url_candidates = [], [], [], []
+    still_unresolved, input_failures = [], []
     for surface_name, draft_file in DRAFTS.items():
         path = scratch / draft_file
         if not path.is_file():
@@ -226,16 +349,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"(skip {surface_name}: {draft_problem})")
             input_failures.append(f"{surface_name}: {draft_problem}")
             continue
-        draft_is_human_approved = (
-            str(draft.get("curation_status", "")).strip().upper() == "APPROVED"
-        )
+        seen_draft_features: set[str] = set()
         for feature_index, feat in enumerate(draft["native_features"], start=1):
             if not isinstance(feat, dict):
-                still_pending.append(
-                    (surface_name, f"feature #{feature_index}", "feature must be an object")
+                input_failures.append(
+                    f"{surface_name} feature #{feature_index}: feature must be an object"
                 )
-                continue
-            if feat.get("url_confirmed"):
                 continue
             feature = str(feat.get("feature", "")).strip()
             candidate_template = str(feat.get("candidate_template", "")).strip()
@@ -247,26 +366,104 @@ def main(argv: list[str] | None = None) -> int:
                 or not shared_flows
                 or any(not isinstance(flow, str) or not flow.strip() for flow in shared_flows)
             ):
-                still_pending.append(
+                input_failures.append(
+                    f"{surface_name} {feature or f'feature #{feature_index}'}: "
+                    "incomplete feature contract"
+                )
+                continue
+            feature_key = feature.casefold()
+            if feature_key in seen_draft_features:
+                input_failures.append(
+                    f"{surface_name} {feature}: duplicate feature name in draft"
+                )
+                continue
+            seen_draft_features.add(feature_key)
+            axis = str(feat.get("implied_dimension_axis", "")).upper()
+            if axis not in fm.VALID_AXES:
+                input_failures.append(f"{surface_name} {feature}: invalid axis {axis}")
+                continue
+
+            surf = surfaces_by_name.get(surface_name)
+            active = _active_feature(surf, feature)
+            if active is not None:
+                approved_source, source_problem = _approved_source(feat)
+                if source_problem:
+                    if _legacy_confirmed_source(feat) is None:
+                        input_failures.append(
+                            f"{surface_name} {feature}: {source_problem}"
+                        )
+                        continue
+                elif approved_source is not None:
+                    reference, reference_urls = approved_source
+                    expected = _conformed_feature(
+                        feat,
+                        axis=axis,
+                        reference=reference,
+                        reference_urls=reference_urls,
+                    )
+                    if active != expected:
+                        input_failures.append(
+                            f"{surface_name} {feature}: active map differs from its "
+                            "Human-approved draft entry"
+                        )
+                        continue
+                already_active.append(
                     (
                         surface_name,
-                        feature or f"feature #{feature_index}",
-                        "incomplete feature contract",
+                        feature,
+                        list(active.get("reference_urls", [])),
                     )
                 )
                 continue
-            axis = str(feat.get("implied_dimension_axis", "")).upper()
-            if axis not in fm.VALID_AXES:
-                still_pending.append((surface_name, feature, f"invalid axis {axis}"))
+
+            legacy_source_urls = _legacy_confirmed_source(feat)
+            if legacy_source_urls is not None:
+                legacy_confirmed.append((surface_name, feature, legacy_source_urls))
                 continue
+
+            approved_source, source_problem = _approved_source(feat)
+            if source_problem:
+                input_failures.append(f"{surface_name} {feature}: {source_problem}")
+                continue
+
+            if approved_source is not None:
+                reference, reference_urls = approved_source
+                conformed = _conformed_feature(
+                    feat,
+                    axis=axis,
+                    reference=reference,
+                    reference_urls=reference_urls,
+                )
+                if surf is None:
+                    surf = {
+                        "surface": surface_name,
+                        "match": list(draft.get("match", [])),
+                        "native_features": [],
+                    }
+                    data["surfaces"].append(surf)
+                    surfaces_by_name[surface_name] = surf
+                surf["native_features"].append(conformed)
+                merge_eligible.append((surface_name, feature, reference_urls))
+                continue
+
             query = f"{feature} {candidate_template[:80]}"
-            hit = _query_top(query)
+            try:
+                hit = _query_top(query)
+            except Exception as exc:  # advisory lookup must fail open without leaking details
+                still_unresolved.append(
+                    (
+                        surface_name,
+                        feature,
+                        f"retrieval unavailable ({type(exc).__name__})",
+                    )
+                )
+                continue
             if not hit:
-                still_pending.append((surface_name, feature, "no confident corpus hit"))
+                still_unresolved.append((surface_name, feature, "no eligible top corpus hit"))
                 continue
             url, _title, dist = hit
             if dist > args.distance_max:
-                still_pending.append(
+                still_unresolved.append(
                     (
                         surface_name,
                         feature,
@@ -274,46 +471,23 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 continue
-            confirmed.append((surface_name, feature, round(dist, 3), url))
-            if not draft_is_human_approved:
-                approval_pending.append((surface_name, feature, round(dist, 3), url))
-                still_pending.append(
-                    (
-                        surface_name,
-                        feature,
-                        "URL confirmed, but the draft still awaits Human approval",
-                    )
-                )
-                continue
-            conformed = {
-                "feature": feature,
-                "shared_flows": [flow.strip() for flow in shared_flows],
-                "implied_dimension_axis": axis,
-                "candidate_template": candidate_template,
-                "reference": "Experience League " + _slug(url),
-                "reference_urls": [url],
-                "approval_status": "HUMAN_APPROVED",
-            }
-            # merge into the surface (create it if new, e.g. REVIEW)
-            surf = surfaces_by_name.get(surface_name)
-            if surf is None:
-                surf = {"surface": surface_name, "match": draft.get("match", []), "native_features": []}
-                data["surfaces"].append(surf)
-                surfaces_by_name[surface_name] = surf
-            existing_features = {
-                str(existing.get("feature", "")).strip().casefold()
-                for existing in surf["native_features"]
-                if isinstance(existing, dict)
-            }
-            if conformed["feature"].casefold() not in existing_features:
-                surf["native_features"].append(conformed)
-                merged.append((surface_name, feature, round(dist, 3), url))
+            url_candidates.append((surface_name, feature, round(dist, 3), url))
 
-    print(f"\n=== CONFIRMED {len(confirmed)} ===")
-    for s, f, d, u in confirmed:
-        print(f"  [{s}] {f}  (dist {d})  {u}")
-    print(f"\n=== STILL PENDING {len(still_pending)} ===")
-    for s, f, why in still_pending:
+    print(f"\n=== ALREADY ACTIVE {len(already_active)} ===")
+    for surface_name, feature, urls in already_active:
+        suffix = f"  {'; '.join(urls)}" if urls else ""
+        print(f"  [{surface_name}] {feature}{suffix}")
+    print(f"\n=== LEGACY SOURCE CONFIRMATIONS (NO MERGE) {len(legacy_confirmed)} ===")
+    for surface_name, feature, urls in legacy_confirmed:
+        print(f"  [{surface_name}] {feature}  {'; '.join(urls)}")
+    print(f"\n=== HUMAN-APPROVED MERGE ELIGIBLE {len(merge_eligible)} ===")
+    for surface_name, feature, urls in merge_eligible:
+        print(f"  [{surface_name}] {feature}  {'; '.join(urls)}")
+    print(f"\n=== URL CANDIDATES AWAITING HUMAN APPROVAL {len(url_candidates)} ===")
+    for surface_name, feature, distance, url in url_candidates:
+        print(f"  [{surface_name}] {feature}  (dist {distance})  {url}")
+    print(f"\n=== STILL UNRESOLVED {len(still_unresolved)} ===")
+    for s, f, why in still_unresolved:
         print(f"  [{s}] {f}  - {why}")
 
     if input_failures:
@@ -322,26 +496,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {failure}")
         return 2
 
-    if args.apply and merged:
+    if args.apply and merge_eligible:
         post = _write_validated_map(data, fm)
         if post:
             print("\nREFUSING: governance failed before atomic merge:", post)
             return 3
-        print(f"\nAPPLIED: merged {len(merged)} feature(s); feature-map now has "
+        print(f"\nAPPLIED: merged {len(merge_eligible)} Human-approved feature(s); "
+              "feature-map now has "
               f"{len(data['surfaces'])} surfaces. Governance clean.")
         print("NEXT: sync copies+globals, bump the surface-count self-test if a new surface was added, run self-tests, commit.")
-    elif merged:
-        print(f"\nDRY RUN: {len(merged)} feature(s) would merge. Re-run with --apply to write.")
-    elif approval_pending:
+    elif merge_eligible:
         print(
-            f"\nNO MERGE: {len(approval_pending)} URL-confirmed feature(s) still await "
-            "Human approval."
+            f"\nDRY RUN: {len(merge_eligible)} Human-approved feature(s) would merge. "
+            "Re-run with --apply to write."
         )
-    elif confirmed:
-        print("\nAll confirmed features are already present; no map change is needed.")
+    elif url_candidates:
+        print(
+            f"\nNO MERGE: {len(url_candidates)} discovered URL candidate(s) still "
+            "require explicit Human source approval in their draft entries."
+        )
+    elif (already_active or legacy_confirmed) and not still_unresolved:
+        print("\nAll configured features are already active; no map change is needed.")
     else:
-        print("\nNothing confirmable yet - refresh the crawl "
-              "(scripts/vm_ingest_review_authoring_publishing_gaps.sh) first.")
+        print("\nNo new Human-approved feature is merge-eligible. Review unresolved "
+              "features or refresh the crawl before retrying.")
     return 0
 
 

@@ -1,12 +1,13 @@
 {
   "surface": "BASELINE",
   "curation_status": "PENDING_APPROVAL",
-  "authority": "Candidate domain checklist awaiting Human approval and Experience League URL confirmation.",
-  "note": "Every feature remains URL-unconfirmed and cannot enter the governed feature map until its Experience League source is confirmed and the entry is Human-approved.",
+  "authority": "Candidate domain checklist with approval recorded per feature; unapproved entries remain discovery-only.",
+  "note": "Only entries with explicit Human approval and a reviewed Experience League source may enter the governed feature map. Other entries remain pending.",
   "match": [
     "baseline",
     "work with baseline",
     "version-as-of",
+    "version as of",
     "reference version resolution"
   ],
   "native_features": [
@@ -64,11 +65,14 @@
         "translation project creation",
         "baseline version selection for translation"
       ],
-      "implied_dimension_axis": "LIFECYCLE",
-      "candidate_template": "when Use Baseline is selected for a translation project, only the files and versions resolved by the chosen baseline are included in the project",
-      "reference": "Experience League use a baseline for translation (confirm URL)",
-      "reference_urls": [],
-      "url_confirmed": false
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate_template": "when Use Baseline is selected, the Translation page shows the files in the chosen baseline for selection and creates the translation project with the selected topic versions",
+      "reference": "Experience League translate-documents-web-editor",
+      "reference_urls": [
+        "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/translate-content/translate-documents-web-editor"
+      ],
+      "url_confirmed": true,
+      "approval_status": "HUMAN_APPROVED"
     },
     {
       "feature": "baseline snapshot integrity",

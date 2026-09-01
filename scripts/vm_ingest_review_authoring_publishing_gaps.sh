@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Targeted Experience League crawl refresh for feature-map URL confirmation.
+# Targeted Experience League crawl refresh for feature-map source discovery.
 #
 # MUST run on the VM (or another host with internet access to Experience League,
 # the embedding model, and the local aem_guides Chroma collection). This script
@@ -231,7 +231,7 @@ fi
   --max-chunks "$ENRICH_MAX_CHUNKS" \
   --upsert-chroma
 
-echo "== 3. Auto-confirm Experience League URLs for pending features =="
+echo "== 3. Discover URL candidates and merge explicitly Human-approved sources =="
 confirm_args=()
 [ "${APPLY:-0}" = "1" ] && confirm_args+=(--apply)
 # Override only when drafts intentionally live outside scripts/feature_map_drafts.
@@ -239,5 +239,5 @@ confirm_args=()
 "$PY" scripts/confirm_and_merge_feature_urls.py "${confirm_args[@]}"
 
 echo "== Done =="
-echo "If APPLY=1 merged features, sync skill copies/globals, update the surface-count"
+echo "If APPLY=1 merged Human-approved features, sync skill copies/globals, update the surface-count"
 echo "self-test to the actual merged count, run all self-tests and the hardcoding audit, then commit."

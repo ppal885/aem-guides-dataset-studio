@@ -115,6 +115,16 @@ For every proposed entry:
 3. Write generic match phrases, not implementation identifiers.
 4. State the deployment, configuration, content-type, or lifecycle qualification
    in the candidate when one exists.
-5. Set `approval_status` only after Human review.
-6. Add a positive match, adjacent non-match, fail-open, and copy-parity test.
-7. Run the complete self-tests and production anti-hardcoding audit before release.
+5. Treat a vector-distance hit as a URL candidate only. Similarity cannot confirm
+   that the page supports the feature and cannot grant Human approval.
+6. After Human review of both the feature and its source, set the draft entry's
+   `approval_status` to `HUMAN_APPROVED`, `url_confirmed` to `true`, and
+   `reference_urls` to the reviewed canonical Experience League URL or URLs. A
+   surface draft may remain `PENDING_APPROVAL` while selected entries are approved.
+7. Keep unapproved, partially populated, or source-mismatched entries out of the
+   governed map. The confirmation utility reports already-active, merge-eligible,
+   URL-candidate, and unresolved entries as separate sets. A valid source approval
+   recorded before the current reference-label contract is reported separately as
+   legacy/read-only; it cannot authorize a new merge.
+8. Add a positive match, adjacent non-match, fail-open, and copy-parity test.
+9. Run the complete self-tests and production anti-hardcoding audit before release.

@@ -6884,7 +6884,7 @@ def test_feature_map() -> None:
     check("checked-in feature map passes strict governance", fm.validate_repository_map() == [])
     check("feature map schema is v1", feature_map["schema_version"] == fm.SCHEMA_VERSION)
     check("feature map is installed and approved", fm.is_present() is True)
-    check("feature map has five curated surfaces", len(feature_map["surfaces"]) == 5)
+    check("feature map has six curated surfaces", len(feature_map["surfaces"]) == 6)
     asset_surface = next(
         (surface for surface in feature_map["surfaces"] if surface["surface"] == "ASSET_UPLOAD_DAM"),
         None,
@@ -6953,6 +6953,74 @@ def test_feature_map() -> None:
         "non-matching evidence contributes no feature-map candidate",
         fm.candidates_for([("E-EDITOR", "The caret remains in the editor after typing.")]) == [],
     )
+    baseline_candidates = fm.candidates_for(
+        [("E-BASELINE", "Create a translation project and select Use Baseline.")]
+    )
+    baseline_translation = next(
+        (
+            candidate
+            for candidate in baseline_candidates
+            if candidate.get("feature") == "baseline translation project"
+        ),
+        None,
+    )
+    check(
+        "baseline evidence emits the approved translation-project candidate",
+        baseline_translation is not None,
+    )
+    check(
+        "baseline translation candidate preserves its direct Experience League source",
+        baseline_translation is not None
+        and "translate-documents-web-editor"
+        in " ".join(baseline_translation.get("reference_urls", [])),
+    )
+    check(
+        "baseline translation is a configuration-branch investigation",
+        baseline_translation is not None
+        and baseline_translation.get("implied_dimension_axis") == "CONFIG_BRANCH",
+    )
+    adjacent_translation_candidates = fm.candidates_for(
+        [("E-TRANSLATION", "Create a translation project for selected topics.")]
+    )
+    check(
+        "translation evidence without a baseline signal does not activate baseline translation",
+        not any(
+            candidate.get("feature") == "baseline translation project"
+            for candidate in adjacent_translation_candidates
+        ),
+    )
+    check(
+        "Oxygen remains outside the governed map pending sufficient source approval",
+        not any(surface.get("surface") == "EDITOR_OXYGEN" for surface in feature_map["surfaces"]),
+    )
+    review_surface = next(
+        (surface for surface in feature_map["surfaces"] if surface["surface"] == "REVIEW"),
+        None,
+    )
+    baseline_surface = next(
+        (surface for surface in feature_map["surfaces"] if surface["surface"] == "BASELINE"),
+        None,
+    )
+    check(
+        "baseline surface contains only the approved translation-project feature",
+        baseline_surface is not None
+        and [
+            feature.get("feature") for feature in baseline_surface.get("native_features", [])
+        ]
+        == ["baseline translation project"],
+    )
+    review_urls = [
+        url
+        for feature in (review_surface or {}).get("native_features", [])
+        for url in feature.get("reference_urls", [])
+    ]
+    check(
+        "review membership and panel candidates use the direct review-comments source",
+        review_surface is not None
+        and len(review_surface.get("native_features", [])) == 2
+        and all("review-address-review-comments" in url for url in review_urls)
+        and not any("review-manage-tasks-review-dashboard" in url for url in review_urls),
+    )
     with tempfile.TemporaryDirectory() as tmp:
         malformed = Path(tmp) / "feature-map.json"
         malformed.write_text("{not-json", encoding="utf-8")
@@ -7020,14 +7088,18 @@ def test_feature_map() -> None:
             any("Human-approved" in problem for problem in fm.validate_repository_map(hidden_unapproved)),
         )
 
-    all_surface_candidates = [
-        *candidates,
-        *fm.candidates_for([("E-PUBLISH", "Generate output with an output preset.")]),
-        *fm.candidates_for([("E-TRANSLATE", "Start a translation project for a target language.")]),
+    surface_candidate_sets = [
+        candidates,
+        fm.candidates_for([("E-PUBLISH", "Generate output with an output preset.")]),
+        fm.candidates_for([("E-TRANSLATE", "Start a translation project for a target language.")]),
+        baseline_candidates,
     ]
     check(
         "every emitted feature candidate validates in canonical coverage-hypothesis shape",
-        coverage_mod.validate_coverage_block(all_surface_candidates) == [],
+        all(
+            coverage_mod.validate_coverage_block(candidate_set) == []
+            for candidate_set in surface_candidate_sets
+        ),
     )
 
     check("feature map summary reports approved entries", "approved feature(s)" in fm.summarize())

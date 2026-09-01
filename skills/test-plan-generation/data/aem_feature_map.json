@@ -470,10 +470,10 @@
             "task membership resolution"
           ],
           "implied_dimension_axis": "CONFIG_BRANCH",
-          "candidate_template": "the visible task list and default/selected task derive from the approved task-membership contract, and multi-task topics select correctly",
-          "reference": "Experience League review-manage-tasks-review-dashboard",
+          "candidate_template": "when View all review tasks is enabled, the task dropdown lists the indexed review tasks associated with the open topic, marks Current by default, and opens a selected non-Current task's topic version and comments read-only",
+          "reference": "Experience League review-address-review-comments",
           "reference_urls": [
-            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-manage-tasks-review-dashboard"
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-address-review-comments"
           ],
           "approval_status": "HUMAN_APPROVED"
         },
@@ -484,10 +484,36 @@
             "task switch"
           ],
           "implied_dimension_axis": "ENTRY_POINT",
-          "candidate_template": "the review panel, task dropdown, and details reflect the selected task and switching a task updates only the verified consumers once",
-          "reference": "Experience League review-manage-tasks-review-dashboard",
+          "candidate_template": "the Review panel task dropdown and Review details show the selected task's name, review version, status, and comments, and switching tasks changes that selected-task context",
+          "reference": "Experience League review-address-review-comments",
           "reference_urls": [
-            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-manage-tasks-review-dashboard"
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-address-review-comments"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
+      "surface": "BASELINE",
+      "match": [
+        "baseline",
+        "work with baseline",
+        "version-as-of",
+        "version as of",
+        "reference version resolution"
+      ],
+      "native_features": [
+        {
+          "feature": "baseline translation project",
+          "shared_flows": [
+            "translation project creation",
+            "baseline version selection for translation"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "when Use Baseline is selected, the Translation page shows the files in the chosen baseline for selection and creates the translation project with the selected topic versions",
+          "reference": "Experience League translate-documents-web-editor",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/translate-content/translate-documents-web-editor"
           ],
           "approval_status": "HUMAN_APPROVED"
         }
