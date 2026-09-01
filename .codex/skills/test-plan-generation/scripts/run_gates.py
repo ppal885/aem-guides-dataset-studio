@@ -1973,8 +1973,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_coverage_disposition_completeness()
             self_tests.test_acceptance_promotion_authority()
             self_tests.test_generated_output_contract()
-            self_tests.test_guides_48193_generated_artifact_regression()
-            self_tests.test_guides_45948_content_identity_regression()
+            self_tests.test_generated_artifact_delivery_regression()
+            self_tests.test_content_identity_lifecycle_regression()
             self_tests.test_postability_semantic_reviews()
             notes.append("self-tests green")
         except AssertionError as exc:
