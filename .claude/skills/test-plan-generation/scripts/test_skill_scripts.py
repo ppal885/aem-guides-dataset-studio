@@ -103,6 +103,7 @@ fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
+ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6461,6 +6462,67 @@ def test_scope_applicability() -> None:
     print("test_scope_applicability: OK")
 
 
+def test_ac_language_policy() -> None:
+    lp = ac_language_policy_mod
+
+    check("absent ac_synthesis passes", lp.validate({}) == [])
+
+    def wrap(final_acs, source=None):
+        b = {"ac_synthesis": {"final_acs": final_acs}}
+        if source is not None:
+            b["ac_synthesis"]["source_candidate_ids"] = source
+        return b
+
+    good = {"ac_ref": "AC-01", "title": "Deleted-preset data is removed on cleanup",
+            "body": "When cleanup completes, deleted-preset execution data must be absent and valid data must remain.",
+            "candidate_ids": ["CF-09"]}
+    check("clear final AC passes", lp.validate(wrap([good])) == [])
+
+    vague = dict(good, ac_ref="AC-02", body="The job should work correctly after the fix.")
+    check("vague expectation flagged",
+          any("VAGUE_EXPECTATION" in p for p in lp.validate(wrap([vague]))))
+
+    bad_title = dict(good, ac_ref="AC-03", title="Regression behavior")
+    check("unclear title flagged",
+          any("UNCLEAR_AC_TITLE" in p for p in lp.validate(wrap([bad_title]))))
+
+    leak = dict(good, ac_ref="AC-04",
+                body="PurgePresetExecutionDataJob.process() must break the loop on error.")
+    check("implementation leak flagged",
+          any("IMPLEMENTATION_DETAIL_LEAK" in p for p in lp.validate(wrap([leak]))))
+
+    leak_ok = dict(leak, technical_artifact_is_requirement=True)
+    check("declared technical-artifact AC is allowed", lp.validate(wrap([leak_ok])) == [])
+
+    multi = dict(good, ac_ref="AC-05", distinct_contract_count=2)
+    check("multiple contracts flagged",
+          any("MULTIPLE_UNRELATED_CONTRACTS" in p for p in lp.validate(wrap([multi]))))
+
+    # MATERIAL_CANDIDATE_LOSS: a dropped source candidate is caught.
+    lossy = {"ac_ref": "AC-01", "title": "Merged cleanup contract",
+             "body": "Deleted-preset data must be removed while valid data remains.",
+             "candidate_ids": ["CF-09"], "merged_candidate_ids": ["CF-09"]}
+    check("material candidate loss flagged",
+          any("MATERIAL_CANDIDATE_LOSS" in p for p in lp.validate(wrap([lossy], source=["CF-09", "CF-03"]))))
+    check("full retention passes",
+          lp.validate(wrap([dict(lossy, merged_candidate_ids=["CF-09", "CF-03"])], source=["CF-09", "CF-03"])) == [])
+
+    # HIDDEN_MATERIAL_SCENARIO: merge hiding a distinct material dimension.
+    hidden = {"ac_ref": "AC-01", "title": "Combined failure and success behavior",
+              "body": "Cleanup reports failures and returns succeeded when done.",
+              "candidate_ids": ["CF-02", "CF-04"], "merged_candidate_ids": ["CF-02", "CF-04"],
+              "distinct_material_dimensions": ["failure"]}
+    check("hidden material dimension flagged",
+          any("HIDDEN_MATERIAL_SCENARIO" in p for p in lp.validate(wrap([hidden]))))
+
+    # REDUNDANT_AC: duplicate bodies.
+    dup = [good, dict(good, ac_ref="AC-09")]
+    check("redundant AC flagged",
+          any("REDUNDANT_AC" in p for p in lp.validate(wrap(dup))))
+
+    print("test_ac_language_policy: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6507,6 +6569,7 @@ def main() -> int:
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_scope_applicability()
+    test_ac_language_policy()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
