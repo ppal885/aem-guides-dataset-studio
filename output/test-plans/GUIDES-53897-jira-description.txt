@@ -1,0 +1,229 @@
+*Summary:* 
+
+
+
+When the Query Builder query throws {{RuntimeNodeTraversalException}} because it exceeds the 100,000-node read limit, the exception is caught and logged, but the {{while (true)}} loop continues. The job increments the offset and retries indefinitely, generating continuous errors and log flooding instead of failing or terminating the job.
+
+
+
+*Background:*
+
+
+
+This cleanup operation is started as a job (topic = "com/adobe/guides/presetexecutiondata/delete") in the async queue "Guides Administrative Task Queue". It finds all of the Guides maps in the repo using this query:
+
+{code:java}
+
+/jcr:root/content/dam//element(*, dam:Asset)[(jcr:like(fn:name(), '%.ditamap'))] option(offset 0, limit 50)
+
+{code}
+
+which uses the index "damAssetLucene".
+
+
+
+Once the thread has a result list of maps, it performs the purge cleanup.
+
+
+
+*Problem Description:*
+
+
+
+But if the query throws an exception (any exception), the process() method swallows it, logs the message below, and repeats query. It repeats like this forever. 
+
+
+
+Once the job (thread) starts it runs infinitely if the query hits the query traversal limit. 
+
+
+
+The only "break" statement for the while() loop in this method is when the query returns an empty result set. This needs to be fixed so that it breaks the loop when an "org.apache.jackrabbit.oak.query.RuntimeNodeTraversalException" is caught. It might be a good idea to break out of the loop when some other exceptions are caught; catching all exceptions and continuing like nothing is wrong is just not a good.
+
+
+
+Other issues with this code that should be addressed:
+
+ # Perhaps a custom index would help with this query. The OOTB index (damAssetLucene) does have a property under indexRules for "function name()", but it does not seem to be used.
+
+ # The executor unconditionally returns a successful result after the loop exits. Partial or failed processing is not reflected in the Sling job result, allowing an incompletely processed purge to be reported as successful.
+
+ # Pagination progress is advanced independently of successful page completion. If query execution, deletion, or persistence fails, the current page may be skipped and never retried, resulting in incomplete cleanup and silent data omission.
+
+ # {{PurgePresetExecutionDataJob}} does not honor Sling job cancellation. The executor never checks {{{}JobExecutionContext.isStopped(){}}}, so a running invocation cannot terminate cooperatively after cancellation or administrative shutdown.
+
+ # The job uses offset-based pagination for a large DAM query. Each page may rescan or discard an increasing number of preceding results, causing progressively higher read cost and making the query vulnerable to Oak read-limit failures. The implementation should consider keyset/path-based pagination or a more selective indexed property.
+
+ # The job uses offset pagination across independently acquired sessions without a stable checkpoint. Concurrent repository changes can shift result positions and cause assets to be skipped or processed more than once.
+
+ # The executor has no upper bound on execution duration, page count, or mutation count. Its termination depends solely on a successful empty query result, allowing repository growth or query instability to produce an unbounded execution.
+
+ # The executor does not report structured Sling job progress or job-context status. Operational users cannot reliably distinguish an active, stalled, failed, or repeatedly retrying execution from queue state alone.
+
+ # Failure logging does not include the Sling job ID, pagination offset, last processed path, or query parameters. This makes it difficult to correlate repeated failures with a specific job execution or determine whether progress is being made.
+
+
+
+Error messages when traversal limit is reached, and exception is caught:
+
+{code:java}
+
+10.08.2026 23:06:42.977 *ERROR* [sling-threadpool-49cffec2-def1-4cbc-b1c6-bcba4ca88344-(apache-sling-job-thread-pool)-1-Guides Administrative Task Queue(com/adobe/guides/presetexecutiondata/delete)] com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob Error while purging folder profile preset execution data from map context
+
+org.apache.jackrabbit.oak.query.RuntimeNodeTraversalException: The query read or traversed more than 100000 nodes. To avoid affecting other tasks, processing was stopped.
+
+	at org.apache.jackrabbit.oak.query.FilterIterators.checkReadLimit(FilterIterators.java:70) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.cursor.Cursors.checkReadLimit(Cursors.java:45) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:433) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:414) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.Iterators$5.computeNext(Iterators.java:673) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.cursor.PathCursor.hasNext(PathCursor.java:69) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor.hasNext(FulltextIndex.java:459) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.ast.SelectorImpl.nextInternal(SelectorImpl.java:529) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.ast.SelectorImpl.next(SelectorImpl.java:522) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.fetchNext(QueryImpl.java:932) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.hasNext(QueryImpl.java:959) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.fetch(QueryResultImpl.java:103) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:128) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:83) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.delegate.SessionDelegate$SynchronizedIterator.next(SessionDelegate.java:771) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.PrefetchIterator.next(PrefetchIterator.java:88) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.commons.iterator.RangeIteratorAdapter.next(RangeIteratorAdapter.java:152) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at org.apache.jackrabbit.commons.iterator.RangeIteratorDecorator.next(RangeIteratorDecorator.java:92) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at org.apache.jackrabbit.commons.iterator.RowIteratorAdapter.nextRow(RowIteratorAdapter.java:76) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:945) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:932) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl.execute(QueryImpl.java:588) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl.getResult(QueryImpl.java:111) [com.day.cq.cq-search:5.12.28]
+
+	at com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob.process(PurgePresetExecutionDataJob.java:61) [com.adobe.fmdita.publish-listener:5.1.3]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl.startJob(JobQueueImpl.java:351) [org.apache.sling.event:4.3.14]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl.access$100(JobQueueImpl.java:60) [org.apache.sling.event:4.3.14]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl$1.run(JobQueueImpl.java:287) [org.apache.sling.event:4.3.14]
+
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+
+
+11.08.2026 19:17:18.773 *WARN* [sling-threadpool-49cffec2-def1-4cbc-b1c6-bcba4ca88344-(apache-sling-job-thread-pool)-1-Guides Administrative Task Queue(com/adobe/guides/presetexecutiondata/delete)] org.apache.jackrabbit.oak.query.FilterIterators The query read or traversed more than 100000 nodes.
+
+org.apache.jackrabbit.oak.query.RuntimeNodeTraversalException: The query read or traversed more than 100000 nodes. To avoid affecting other tasks, processing was stopped.
+
+	at org.apache.jackrabbit.oak.query.FilterIterators.checkReadLimit(FilterIterators.java:70) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.cursor.Cursors.checkReadLimit(Cursors.java:45) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:433) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:414) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.Iterators$5.computeNext(Iterators.java:673) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.guava.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140) [org.apache.jackrabbit.guava:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.cursor.PathCursor.hasNext(PathCursor.java:69) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor.hasNext(FulltextIndex.java:459) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.ast.SelectorImpl.nextInternal(SelectorImpl.java:529) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.ast.SelectorImpl.next(SelectorImpl.java:522) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.fetchNext(QueryImpl.java:932) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.hasNext(QueryImpl.java:959) [org.apache.jackrabbit.oak-core:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.fetch(QueryResultImpl.java:103) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:128) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:83) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.delegate.SessionDelegate$SynchronizedIterator.next(SessionDelegate.java:771) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.oak.jcr.query.PrefetchIterator.next(PrefetchIterator.java:88) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]
+
+	at org.apache.jackrabbit.commons.iterator.RangeIteratorAdapter.next(RangeIteratorAdapter.java:152) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at org.apache.jackrabbit.commons.iterator.RangeIteratorDecorator.next(RangeIteratorDecorator.java:92) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at org.apache.jackrabbit.commons.iterator.RowIteratorAdapter.nextRow(RowIteratorAdapter.java:76) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]
+
+	at com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:945) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:932) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl.execute(QueryImpl.java:588) [com.day.cq.cq-search:5.12.28]
+
+	at com.day.cq.search.impl.builder.QueryImpl.getResult(QueryImpl.java:111) [com.day.cq.cq-search:5.12.28]
+
+	at com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob.process(PurgePresetExecutionDataJob.java:61) [com.adobe.fmdita.publish-listener:5.1.3]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl.startJob(JobQueueImpl.java:351) [org.apache.sling.event:4.3.14]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl.access$100(JobQueueImpl.java:60) [org.apache.sling.event:4.3.14]
+
+	at org.apache.sling.event.impl.jobs.queues.JobQueueImpl$1.run(JobQueueImpl.java:287) [org.apache.sling.event:4.3.14]
+
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+{code}
+
+*Customer Context:*
+
+• IMS Org ID : 626005D45C0E70940A495E90@AdobeOrg
+
+• Account : BROADCOM CORPORATION
+
+• Program/Env : cm-pTD2-ePROD (author) – AEM Managed Services
+
+• Product : AEM 6.51.LTS + Guides 5.1.4 (same code appears in 2026.8.0)
+
+
+
+*Business Impact:*
+
+• P1 incident (INC3380232): job produced ~1 GB/min of error.log, filling /mnt to 98 % (474 GB) and causing author instability.
+
+• Ongoing P2: job still triggers every minute, generating traversal WARN/ERROR spam that grows logs 2–4× normal size, threatening disk & performance.
+
+• Authoring teams periodically blocked; customer has delayed deployments awaiting RCA & fix.

@@ -1,5 +1,5 @@
 {
-  "schema_version": "aem-guides-evidence-manifest-v2",
+  "schema_version": "aem-guides-evidence-manifest-v3",
   "issue": {
     "key": "GUIDES-53897",
     "summary": "PurgePresetExecutionDataJob executes infinitely when query fails with RuntimeNodeTraversalException",
@@ -1220,5 +1220,1211 @@
         ]
       }
     ]
-  }
+  },
+  "contract_source_records": [
+    {
+      "source_ref": "Jira description GUIDES-53897",
+      "raw_text": "*Summary:*\u00a0\n\n\n\nWhen the Query Builder query throws\u00a0{{RuntimeNodeTraversalException}}\u00a0because it exceeds the 100,000-node read limit, the exception is caught and logged, but the\u00a0{{while (true)}}\u00a0loop continues. The job increments the offset and retries indefinitely, generating continuous errors and log flooding instead of failing or terminating the job.\n\n\n\n*Background:*\n\n\n\nThis cleanup operation is started as a job (topic = \"com/adobe/guides/presetexecutiondata/delete\") in the async queue \"Guides Administrative Task Queue\". It finds all of the Guides maps in the repo using this query:\n\n{code:java}\n\n/jcr:root/content/dam//element(*, dam:Asset)[(jcr:like(fn:name(), '%.ditamap'))] option(offset 0, limit 50)\n\n{code}\n\nwhich uses the index \"damAssetLucene\".\n\n\n\nOnce the thread has a result list of maps, it performs the purge cleanup.\n\n\n\n*Problem Description:*\n\n\n\nBut if the query throws an exception (any exception), the process() method swallows it, logs the message below, and repeats query. It repeats like this forever.\u00a0\n\n\n\nOnce the job (thread) starts it runs infinitely if the query hits the query traversal limit.\u00a0\n\n\n\nThe only \"break\" statement for the while() loop in this method is when the query returns an empty result set. This needs to be fixed so that it breaks the loop when an \"org.apache.jackrabbit.oak.query.RuntimeNodeTraversalException\" is caught. It might be a good idea to break out of the loop when some other exceptions are caught; catching all exceptions and continuing like nothing is wrong is just not a good.\n\n\n\nOther issues with this code that should be addressed:\n\n # Perhaps a custom index would help with this query. The OOTB index (damAssetLucene) does have a property under indexRules for \"function name()\", but it does not seem to be used.\n\n # The executor unconditionally returns a successful result after the loop exits. Partial or failed processing is not reflected in the Sling job result, allowing an incompletely processed purge to be reported as successful.\n\n # Pagination progress is advanced independently of successful page completion. If query execution, deletion, or persistence fails, the current page may be skipped and never retried, resulting in incomplete cleanup and silent data omission.\n\n # {{PurgePresetExecutionDataJob}}\u00a0does not honor Sling job cancellation. The executor never checks\u00a0{{{}JobExecutionContext.isStopped(){}}}, so a running invocation cannot terminate cooperatively after cancellation or administrative shutdown.\n\n # The job uses offset-based pagination for a large DAM query. Each page may rescan or discard an increasing number of preceding results, causing progressively higher read cost and making the query vulnerable to Oak read-limit failures. The implementation should consider keyset/path-based pagination or a more selective indexed property.\n\n # The job uses offset pagination across independently acquired sessions without a stable checkpoint. Concurrent repository changes can shift result positions and cause assets to be skipped or processed more than once.\n\n # The executor has no upper bound on execution duration, page count, or mutation count. Its termination depends solely on a successful empty query result, allowing repository growth or query instability to produce an unbounded execution.\n\n # The executor does not report structured Sling job progress or job-context status. Operational users cannot reliably distinguish an active, stalled, failed, or repeatedly retrying execution from queue state alone.\n\n # Failure logging does not include the Sling job ID, pagination offset, last processed path, or query parameters. This makes it difficult to correlate repeated failures with a specific job execution or determine whether progress is being made.\n\n\n\nError messages when traversal limit is reached, and exception is caught:\n\n{code:java}\n\n10.08.2026 23:06:42.977 *ERROR* [sling-threadpool-49cffec2-def1-4cbc-b1c6-bcba4ca88344-(apache-sling-job-thread-pool)-1-Guides Administrative Task Queue(com/adobe/guides/presetexecutiondata/delete)] com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob Error while purging folder profile preset execution data from map context\n\norg.apache.jackrabbit.oak.query.RuntimeNodeTraversalException: The query read or traversed more than 100000 nodes. To avoid affecting other tasks, processing was stopped.\n\n\tat org.apache.jackrabbit.oak.query.FilterIterators.checkReadLimit(FilterIterators.java:70) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.cursor.Cursors.checkReadLimit(Cursors.java:45) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:433) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:414) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.Iterators$5.computeNext(Iterators.java:673) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.cursor.PathCursor.hasNext(PathCursor.java:69) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor.hasNext(FulltextIndex.java:459) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.ast.SelectorImpl.nextInternal(SelectorImpl.java:529) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.ast.SelectorImpl.next(SelectorImpl.java:522) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.fetchNext(QueryImpl.java:932) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.hasNext(QueryImpl.java:959) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.fetch(QueryResultImpl.java:103) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:128) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:83) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.delegate.SessionDelegate$SynchronizedIterator.next(SessionDelegate.java:771) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.PrefetchIterator.next(PrefetchIterator.java:88) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.commons.iterator.RangeIteratorAdapter.next(RangeIteratorAdapter.java:152) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat org.apache.jackrabbit.commons.iterator.RangeIteratorDecorator.next(RangeIteratorDecorator.java:92) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat org.apache.jackrabbit.commons.iterator.RowIteratorAdapter.nextRow(RowIteratorAdapter.java:76) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:945) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:932) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl.execute(QueryImpl.java:588) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl.getResult(QueryImpl.java:111) [com.day.cq.cq-search:5.12.28]\n\n\tat com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob.process(PurgePresetExecutionDataJob.java:61) [com.adobe.fmdita.publish-listener:5.1.3]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl.startJob(JobQueueImpl.java:351) [org.apache.sling.event:4.3.14]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl.access$100(JobQueueImpl.java:60) [org.apache.sling.event:4.3.14]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl$1.run(JobQueueImpl.java:287) [org.apache.sling.event:4.3.14]\n\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)\n\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)\n\n\tat java.base/java.lang.Thread.run(Thread.java:1583)\n\n\n\n11.08.2026 19:17:18.773 *WARN* [sling-threadpool-49cffec2-def1-4cbc-b1c6-bcba4ca88344-(apache-sling-job-thread-pool)-1-Guides Administrative Task Queue(com/adobe/guides/presetexecutiondata/delete)] org.apache.jackrabbit.oak.query.FilterIterators The query read or traversed more than 100000 nodes.\n\norg.apache.jackrabbit.oak.query.RuntimeNodeTraversalException: The query read or traversed more than 100000 nodes. To avoid affecting other tasks, processing was stopped.\n\n\tat org.apache.jackrabbit.oak.query.FilterIterators.checkReadLimit(FilterIterators.java:70) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.cursor.Cursors.checkReadLimit(Cursors.java:45) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:433) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor$1.next(FulltextIndex.java:414) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.Iterators$5.computeNext(Iterators.java:673) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.AbstractIterator.tryToComputeNext(AbstractIterator.java:145) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.guava.common.collect.AbstractIterator.hasNext(AbstractIterator.java:140) [org.apache.jackrabbit.guava:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.cursor.PathCursor.hasNext(PathCursor.java:69) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.plugins.index.search.spi.query.FulltextIndex$FulltextPathCursor.hasNext(FulltextIndex.java:459) [org.apache.jackrabbit.oak-lucene:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.ast.SelectorImpl.nextInternal(SelectorImpl.java:529) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.ast.SelectorImpl.next(SelectorImpl.java:522) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.fetchNext(QueryImpl.java:932) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.query.QueryImpl$RowIterator.hasNext(QueryImpl.java:959) [org.apache.jackrabbit.oak-core:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.fetch(QueryResultImpl.java:103) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:128) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.QueryResultImpl$1.next(QueryResultImpl.java:83) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.delegate.SessionDelegate$SynchronizedIterator.next(SessionDelegate.java:771) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.oak.jcr.query.PrefetchIterator.next(PrefetchIterator.java:88) [org.apache.jackrabbit.oak-jcr:1.78.1.B002]\n\n\tat org.apache.jackrabbit.commons.iterator.RangeIteratorAdapter.next(RangeIteratorAdapter.java:152) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat org.apache.jackrabbit.commons.iterator.RangeIteratorDecorator.next(RangeIteratorDecorator.java:92) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat org.apache.jackrabbit.commons.iterator.RowIteratorAdapter.nextRow(RowIteratorAdapter.java:76) [org.apache.jackrabbit.jackrabbit-jcr-commons:2.22.1]\n\n\tat com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:945) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl$RowIterAdapter.next(QueryImpl.java:932) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl.execute(QueryImpl.java:588) [com.day.cq.cq-search:5.12.28]\n\n\tat com.day.cq.search.impl.builder.QueryImpl.getResult(QueryImpl.java:111) [com.day.cq.cq-search:5.12.28]\n\n\tat com.adobe.aem.guides.publish.job.PurgePresetExecutionDataJob.process(PurgePresetExecutionDataJob.java:61) [com.adobe.fmdita.publish-listener:5.1.3]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl.startJob(JobQueueImpl.java:351) [org.apache.sling.event:4.3.14]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl.access$100(JobQueueImpl.java:60) [org.apache.sling.event:4.3.14]\n\n\tat org.apache.sling.event.impl.jobs.queues.JobQueueImpl$1.run(JobQueueImpl.java:287) [org.apache.sling.event:4.3.14]\n\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)\n\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)\n\n\tat java.base/java.lang.Thread.run(Thread.java:1583)\n\n{code}\n\n*Customer Context:*\n\n\u2022 IMS Org ID : 626005D45C0E70940A495E90@AdobeOrg\n\n\u2022 Account : BROADCOM CORPORATION\n\n\u2022 Program/Env : cm-pTD2-ePROD (author) \u2013 AEM Managed Services\n\n\u2022 Product : AEM 6.51.LTS + Guides 5.1.4 (same code appears in 2026.8.0)\n\n\n\n*Business Impact:*\n\n\u2022 P1 incident (INC3380232): job produced ~1 GB/min of error.log, filling /mnt to 98 % (474 GB) and causing author instability.\n\n\u2022 Ongoing P2: job still triggers every minute, generating traversal WARN/ERROR spam that grows logs 2\u20134\u00d7 normal size, threatening disk & performance.\n\n\u2022 Authoring teams periodically blocked; customer has delayed deployments awaiting RCA & fix.",
+      "sha256": "a476ad6dc30b081ea4cb1847824ee27e4d5d42699bff64091905e263b2143eb2",
+      "artifact_path": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\output\\test-plans\\GUIDES-53897-jira-description.txt",
+      "artifact_sha256": "a476ad6dc30b081ea4cb1847824ee27e4d5d42699bff64091905e263b2143eb2"
+    }
+  ],
+  "contract_facts": {
+    "schema_version": "aem-guides-contract-facts-v1",
+    "contract_state": "EVIDENCE_BACKED_PROPOSED_CONTRACT",
+    "source_refs": [
+      "Jira description GUIDES-53897"
+    ],
+    "facts": [
+      {
+        "fact_id": "CF-01",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "RuntimeNodeTraversalException",
+        "normalized": "On a repository read-limit query error, no later page query runs in the same execution.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "RuntimeNodeTraversalException"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-01"
+      },
+      {
+        "fact_id": "CF-02",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "Sling job result",
+        "normalized": "A failed query, cleanup, delete, or persistence step is reported in the Sling job result.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "Sling job result"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-02"
+      },
+      {
+        "fact_id": "CF-03",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "Pagination progress",
+        "normalized": "Pagination progress does not advance when the current page fails.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "Pagination progress"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-03"
+      },
+      {
+        "fact_id": "CF-04",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "query",
+        "normalized": "When a later query returns no maps and all pages succeeded, the job returns succeeded.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "query"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-04"
+      },
+      {
+        "fact_id": "CF-05",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "query",
+        "normalized": "When the initial query returns no maps, the job returns succeeded without cleanup.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "query"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-05"
+      },
+      {
+        "fact_id": "CF-06",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "Sling job cancellation",
+        "normalized": "On Sling job cancellation or shutdown, no new page starts and success is not reported.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "Sling job cancellation"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-06"
+      },
+      {
+        "fact_id": "CF-07",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "offset",
+        "normalized": "One failure event records job id, pagination offset, last path, query params, and exception.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "offset"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-07"
+      },
+      {
+        "fact_id": "CF-08",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "query",
+        "normalized": "Query attempts and failure events stay within the approved retry policy limit.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "query"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-08"
+      },
+      {
+        "fact_id": "CF-09",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "execution data",
+        "normalized": "Deleted-preset execution data is removed while valid-preset data remains.",
+        "source_ref": "Jira description GUIDES-53897",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "protected_terms": [
+          "execution data"
+        ],
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-09"
+      }
+    ]
+  },
+  "behavior_graph": {
+    "schema_version": "aem-guides-behavior-graph-v1",
+    "nodes": [
+      {
+        "node_id": "BGN-01",
+        "kind": "SERVICE",
+        "label": "PurgePresetExecutionDataJob.process cleanup execution",
+        "material": true,
+        "provenance": [
+          "CF-01",
+          "CF-04"
+        ]
+      },
+      {
+        "node_id": "BGN-02",
+        "kind": "PERSISTED_STATE",
+        "label": "Preset execution data on DITA maps",
+        "material": false,
+        "provenance": [
+          "CF-09"
+        ]
+      },
+      {
+        "node_id": "BGN-03",
+        "kind": "CONFIGURATION",
+        "label": "Guides Administrative Task Queue configuration",
+        "material": false,
+        "provenance": [
+          "CF-08"
+        ]
+      },
+      {
+        "node_id": "BGN-04",
+        "kind": "PROCESSOR",
+        "label": "Query Builder map query over damAssetLucene",
+        "material": false,
+        "provenance": [
+          "CF-01"
+        ]
+      },
+      {
+        "node_id": "BGN-05",
+        "kind": "PERSISTED_STATE",
+        "label": "Sling job result / pagination offset",
+        "material": false,
+        "provenance": [
+          "CF-02",
+          "CF-07"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "BGE-01",
+        "source": "BGN-01",
+        "target": "BGN-04",
+        "relation_type": "EXECUTED_BY",
+        "provenance": [
+          "CF-01"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.9,
+        "verification_state": "CONFIRMED",
+        "material": false
+      },
+      {
+        "edge_id": "BGE-02",
+        "source": "BGN-01",
+        "target": "BGN-02",
+        "relation_type": "WRITTEN_BY",
+        "provenance": [
+          "CF-09"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.85,
+        "verification_state": "CONFIRMED",
+        "material": false
+      },
+      {
+        "edge_id": "BGE-03",
+        "source": "BGN-01",
+        "target": "BGN-03",
+        "relation_type": "CONFIGURED_BY",
+        "provenance": [
+          "CF-08"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.8,
+        "verification_state": "CONFIRMED",
+        "material": false
+      },
+      {
+        "edge_id": "BGE-04",
+        "source": "BGN-01",
+        "target": "BGN-05",
+        "relation_type": "PERSISTS_THROUGH",
+        "provenance": [
+          "CF-02",
+          "CF-07"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.8,
+        "verification_state": "CONFIRMED",
+        "material": false
+      }
+    ],
+    "traversal_paths": [
+      {
+        "edge_refs": [
+          "BGE-01",
+          "BGE-04"
+        ]
+      }
+    ]
+  },
+  "semantic_closure": {
+    "schema_version": "aem-guides-semantic-closure-v1",
+    "records": [
+      {
+        "closure_id": "SC-01",
+        "entity_ref": "BGN-01",
+        "dimension": "GOVERNING_SEMANTICS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-01"
+      },
+      {
+        "closure_id": "SC-02",
+        "entity_ref": "BGN-01",
+        "dimension": "CONTROLLING_ATTRIBUTES",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-02"
+      },
+      {
+        "closure_id": "SC-03",
+        "entity_ref": "BGN-01",
+        "dimension": "GOVERNING_CONFIGURATION",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Ordered single-worker queue with retries governs execution.",
+        "disposition_ref": "DISP-SC-03"
+      },
+      {
+        "closure_id": "SC-04",
+        "entity_ref": "BGN-01",
+        "dimension": "DIRECT_CONSUMERS",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Scheduler triggers the purge job as the direct consumer.",
+        "disposition_ref": "DISP-SC-04"
+      },
+      {
+        "closure_id": "SC-05",
+        "entity_ref": "BGN-01",
+        "dimension": "SIBLING_CONSUMERS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-05"
+      },
+      {
+        "closure_id": "SC-06",
+        "entity_ref": "BGN-01",
+        "dimension": "ALTERNATE_MECHANISMS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-06"
+      },
+      {
+        "closure_id": "SC-07",
+        "entity_ref": "BGN-01",
+        "dimension": "PARENT_CONTEXT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-07"
+      },
+      {
+        "closure_id": "SC-08",
+        "entity_ref": "BGN-01",
+        "dimension": "CHILD_CONTEXT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-08"
+      },
+      {
+        "closure_id": "SC-09",
+        "entity_ref": "BGN-01",
+        "dimension": "HIERARCHY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-09"
+      },
+      {
+        "closure_id": "SC-10",
+        "entity_ref": "BGN-01",
+        "dimension": "SPECIALIZATIONS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-10"
+      },
+      {
+        "closure_id": "SC-11",
+        "entity_ref": "BGN-01",
+        "dimension": "REFERENCED_CONTENT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-11"
+      },
+      {
+        "closure_id": "SC-12",
+        "entity_ref": "BGN-01",
+        "dimension": "NESTED_REFERENCED_CONTENT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-12"
+      },
+      {
+        "closure_id": "SC-13",
+        "entity_ref": "BGN-01",
+        "dimension": "ALTERNATE_REPRESENTATION",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-13"
+      },
+      {
+        "closure_id": "SC-14",
+        "entity_ref": "BGN-01",
+        "dimension": "FALLBACK",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "UNRESOLVED",
+        "status": "UNRESOLVED_AND_EXPOSED",
+        "reason": "Undecided design; see OQ-04.",
+        "open_question_ref": "OQ-04"
+      },
+      {
+        "closure_id": "SC-15",
+        "entity_ref": "BGN-01",
+        "dimension": "ABSENT_VALUE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Empty result page is the only current loop break condition.",
+        "disposition_ref": "DISP-SC-15"
+      },
+      {
+        "closure_id": "SC-16",
+        "entity_ref": "BGN-01",
+        "dimension": "INVALID_VALUE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Read-limit RuntimeNodeTraversalException is the invalid/failed query path.",
+        "disposition_ref": "DISP-SC-16"
+      },
+      {
+        "closure_id": "SC-17",
+        "entity_ref": "BGN-01",
+        "dimension": "POSITIVE_STATE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Successful full pass returns succeeded after empty page.",
+        "disposition_ref": "DISP-SC-17"
+      },
+      {
+        "closure_id": "SC-18",
+        "entity_ref": "BGN-01",
+        "dimension": "NEGATIVE_STATE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Query/delete/save failure must be reported, not swallowed.",
+        "disposition_ref": "DISP-SC-18"
+      },
+      {
+        "closure_id": "SC-19",
+        "entity_ref": "BGN-01",
+        "dimension": "LIFECYCLE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Job start, paging, cancellation, and terminal result form the lifecycle.",
+        "disposition_ref": "DISP-SC-19"
+      },
+      {
+        "closure_id": "SC-20",
+        "entity_ref": "BGN-01",
+        "dimension": "CROSS_SURFACE_SYNC",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-20"
+      },
+      {
+        "closure_id": "SC-21",
+        "entity_ref": "BGN-01",
+        "dimension": "DOWNSTREAM_PROCESSOR",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Query Builder over damAssetLucene is the downstream processor that can hit the read limit.",
+        "disposition_ref": "DISP-SC-21"
+      },
+      {
+        "closure_id": "SC-22",
+        "entity_ref": "BGN-01",
+        "dimension": "GENERATED_OUTPUT",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "No rendered output; cleanup mutates repository state only.",
+        "disposition_ref": "DISP-SC-22"
+      },
+      {
+        "closure_id": "SC-23",
+        "entity_ref": "BGN-01",
+        "dimension": "PERSISTED_STATE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Pagination offset and deleted preset data are persisted state.",
+        "disposition_ref": "DISP-SC-23"
+      },
+      {
+        "closure_id": "SC-24",
+        "entity_ref": "BGN-01",
+        "dimension": "VERSION_APPLICABILITY",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Defect applies to the current shipped job implementation.",
+        "disposition_ref": "DISP-SC-24"
+      },
+      {
+        "closure_id": "SC-25",
+        "entity_ref": "BGN-01",
+        "dimension": "DEPLOYMENT_APPLICABILITY",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Reproduced on large On-Premise repositories.",
+        "disposition_ref": "DISP-SC-25"
+      },
+      {
+        "closure_id": "SC-26",
+        "entity_ref": "BGN-01",
+        "dimension": "ROLE_PROFILE_APPLICABILITY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-26"
+      },
+      {
+        "closure_id": "SC-27",
+        "entity_ref": "BGN-01",
+        "dimension": "PUBLISHING_MODE",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-27"
+      },
+      {
+        "closure_id": "SC-28",
+        "entity_ref": "BGN-01",
+        "dimension": "BACKWARD_COMPATIBILITY",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "UNRESOLVED",
+        "status": "UNRESOLVED_AND_EXPOSED",
+        "reason": "Undecided design; see OQ-05.",
+        "open_question_ref": "OQ-05"
+      },
+      {
+        "closure_id": "SC-29",
+        "entity_ref": "BGN-01",
+        "dimension": "LOCALE_APPLICABILITY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-29"
+      },
+      {
+        "closure_id": "SC-30",
+        "entity_ref": "BGN-01",
+        "dimension": "CONTENT_IDENTITY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "Backend async cleanup job; no DITA-content semantics on this dimension.",
+        "disposition_ref": "DISP-SC-30"
+      },
+      {
+        "closure_id": "SC-31",
+        "entity_ref": "BGN-01",
+        "dimension": "NFR_RISK",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "Infinite loop causes log flooding and near-full disk (performance/NFR risk).",
+        "disposition_ref": "DISP-SC-31"
+      }
+    ]
+  },
+  "dispositions": [
+    {
+      "finding_id": "DISP-CF-01",
+      "source_refs": [
+        "CF-01"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-01",
+      "statement": "On a repository read-limit query error, no later page query runs in the same execution."
+    },
+    {
+      "finding_id": "DISP-CF-02",
+      "source_refs": [
+        "CF-02"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-02",
+      "statement": "A failed query, cleanup, delete, or persistence step is reported in the Sling job result."
+    },
+    {
+      "finding_id": "DISP-CF-03",
+      "source_refs": [
+        "CF-03"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-03",
+      "statement": "Pagination progress does not advance when the current page fails."
+    },
+    {
+      "finding_id": "DISP-CF-04",
+      "source_refs": [
+        "CF-04"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-04",
+      "statement": "When a later query returns no maps and all pages succeeded, the job returns succeeded."
+    },
+    {
+      "finding_id": "DISP-CF-05",
+      "source_refs": [
+        "CF-05"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-05",
+      "statement": "When the initial query returns no maps, the job returns succeeded without cleanup."
+    },
+    {
+      "finding_id": "DISP-CF-06",
+      "source_refs": [
+        "CF-06"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-06",
+      "statement": "On Sling job cancellation or shutdown, no new page starts and success is not reported."
+    },
+    {
+      "finding_id": "DISP-CF-07",
+      "source_refs": [
+        "CF-07"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-07",
+      "statement": "One failure event records job id, pagination offset, last path, query params, and exception."
+    },
+    {
+      "finding_id": "DISP-CF-08",
+      "source_refs": [
+        "CF-08"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-08",
+      "statement": "Query attempts and failure events stay within the approved retry policy limit."
+    },
+    {
+      "finding_id": "DISP-CF-09",
+      "source_refs": [
+        "CF-09"
+      ],
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "maps_to_ac": "AC-09",
+      "statement": "Deleted-preset execution data is removed while valid-preset data remains."
+    },
+    {
+      "finding_id": "DISP-BGN-01",
+      "source_refs": [
+        "BGN-01"
+      ],
+      "disposition": "LIFECYCLE_COVERAGE",
+      "statement": "The cleanup execution lifecycle (start, paging, terminal result) is the core behavior under test."
+    },
+    {
+      "finding_id": "DISP-SC-01",
+      "source_refs": [
+        "SC-01"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-02",
+      "source_refs": [
+        "SC-02"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-03",
+      "source_refs": [
+        "SC-03"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Ordered single-worker queue with retries governs execution."
+    },
+    {
+      "finding_id": "DISP-SC-04",
+      "source_refs": [
+        "SC-04"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Scheduler triggers the purge job as the direct consumer."
+    },
+    {
+      "finding_id": "DISP-SC-05",
+      "source_refs": [
+        "SC-05"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-06",
+      "source_refs": [
+        "SC-06"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-07",
+      "source_refs": [
+        "SC-07"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-08",
+      "source_refs": [
+        "SC-08"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-09",
+      "source_refs": [
+        "SC-09"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-10",
+      "source_refs": [
+        "SC-10"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-11",
+      "source_refs": [
+        "SC-11"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-12",
+      "source_refs": [
+        "SC-12"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-13",
+      "source_refs": [
+        "SC-13"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-14",
+      "source_refs": [
+        "SC-14"
+      ],
+      "disposition": "OPEN_QUESTION",
+      "statement": "Undecided design; see OQ-04.",
+      "open_question_ref": "OQ-04"
+    },
+    {
+      "finding_id": "DISP-SC-15",
+      "source_refs": [
+        "SC-15"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Empty result page is the only current loop break condition."
+    },
+    {
+      "finding_id": "DISP-SC-16",
+      "source_refs": [
+        "SC-16"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Read-limit RuntimeNodeTraversalException is the invalid/failed query path."
+    },
+    {
+      "finding_id": "DISP-SC-17",
+      "source_refs": [
+        "SC-17"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Successful full pass returns succeeded after empty page."
+    },
+    {
+      "finding_id": "DISP-SC-18",
+      "source_refs": [
+        "SC-18"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Query/delete/save failure must be reported, not swallowed."
+    },
+    {
+      "finding_id": "DISP-SC-19",
+      "source_refs": [
+        "SC-19"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Job start, paging, cancellation, and terminal result form the lifecycle."
+    },
+    {
+      "finding_id": "DISP-SC-20",
+      "source_refs": [
+        "SC-20"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-21",
+      "source_refs": [
+        "SC-21"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Query Builder over damAssetLucene is the downstream processor that can hit the read limit."
+    },
+    {
+      "finding_id": "DISP-SC-22",
+      "source_refs": [
+        "SC-22"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "No rendered output; cleanup mutates repository state only."
+    },
+    {
+      "finding_id": "DISP-SC-23",
+      "source_refs": [
+        "SC-23"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Pagination offset and deleted preset data are persisted state."
+    },
+    {
+      "finding_id": "DISP-SC-24",
+      "source_refs": [
+        "SC-24"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Defect applies to the current shipped job implementation."
+    },
+    {
+      "finding_id": "DISP-SC-25",
+      "source_refs": [
+        "SC-25"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Reproduced on large On-Premise repositories."
+    },
+    {
+      "finding_id": "DISP-SC-26",
+      "source_refs": [
+        "SC-26"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-27",
+      "source_refs": [
+        "SC-27"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-28",
+      "source_refs": [
+        "SC-28"
+      ],
+      "disposition": "OPEN_QUESTION",
+      "statement": "Undecided design; see OQ-05.",
+      "open_question_ref": "OQ-05"
+    },
+    {
+      "finding_id": "DISP-SC-29",
+      "source_refs": [
+        "SC-29"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-30",
+      "source_refs": [
+        "SC-30"
+      ],
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "Backend async cleanup job; no DITA-content semantics on this dimension."
+    },
+    {
+      "finding_id": "DISP-SC-31",
+      "source_refs": [
+        "SC-31"
+      ],
+      "disposition": "REGRESSION_COVERAGE",
+      "statement": "Infinite loop causes log flooding and near-full disk (performance/NFR risk)."
+    }
+  ],
+  "acceptance_promotions": {
+    "schema_version": "aem-guides-acceptance-promotions-v1",
+    "records": [
+      {
+        "promotion_id": "AP-01",
+        "candidate_ref": "CF-01",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-01",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-01"
+      },
+      {
+        "promotion_id": "AP-02",
+        "candidate_ref": "CF-02",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-02",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-02"
+      },
+      {
+        "promotion_id": "AP-03",
+        "candidate_ref": "CF-03",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-03",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-03"
+      },
+      {
+        "promotion_id": "AP-04",
+        "candidate_ref": "CF-04",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-04",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-04"
+      },
+      {
+        "promotion_id": "AP-05",
+        "candidate_ref": "CF-05",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-05",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-05"
+      },
+      {
+        "promotion_id": "AP-06",
+        "candidate_ref": "CF-06",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-06",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-06"
+      },
+      {
+        "promotion_id": "AP-07",
+        "candidate_ref": "CF-07",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-07",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-07"
+      },
+      {
+        "promotion_id": "AP-08",
+        "candidate_ref": "CF-08",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-08",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-08"
+      },
+      {
+        "promotion_id": "AP-09",
+        "candidate_ref": "CF-09",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-09",
+        "subject": "PRODUCT_CONTRACT",
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "scope_established": true,
+        "observable": true,
+        "testable": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "unresolved_decision_refs": [],
+        "exact_value_fact_refs": [],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+        "disposition_ref": "DISP-CF-09"
+      }
+    ]
+  },
+  "issue_domains": {
+    "schema_version": "aem-guides-issue-domains-v1",
+    "primary_domain": "WORKFLOW_JOB",
+    "routes": [
+      {
+        "domain": "WORKFLOW_JOB",
+        "status": "ACTIVE",
+        "reason": "WORKFLOW_JOB is exercised by the paging cleanup job defect.",
+        "evidence": [
+          "Jira description GUIDES-53897"
+        ]
+      }
+    ]
+  },
+  "coverage_hypotheses": [],
+  "missing_questions": [
+    {
+      "question_id": "MQ-01",
+      "source_ref": "SC-14",
+      "subject": "PRODUCT_CONTRACT",
+      "dimension": "FALLBACK",
+      "open_question_ref": "OQ-04",
+      "question": "What product contract governs FALLBACK for the purge cleanup job?",
+      "why_it_matters": "FALLBACK is undecided (OQ-04); it changes the sign-off oracle for the fixed job.",
+      "preferred_sources": [
+        "linked jira",
+        "rag"
+      ],
+      "search_concepts": [
+        "purge preset execution data fallback policy",
+        "OQ-04"
+      ],
+      "material": true,
+      "blocking": true,
+      "if_unresolved": "OPEN_QUESTION"
+    },
+    {
+      "question_id": "MQ-02",
+      "source_ref": "SC-28",
+      "subject": "PRODUCT_CONTRACT",
+      "dimension": "BACKWARD_COMPATIBILITY",
+      "open_question_ref": "OQ-05",
+      "question": "What product contract governs BACKWARD_COMPATIBILITY for the purge cleanup job?",
+      "why_it_matters": "BACKWARD_COMPATIBILITY is undecided (OQ-05); it changes the sign-off oracle for the fixed job.",
+      "preferred_sources": [
+        "linked jira",
+        "rag"
+      ],
+      "search_concepts": [
+        "purge preset execution data backward_compatibility policy",
+        "OQ-05"
+      ],
+      "material": true,
+      "blocking": true,
+      "if_unresolved": "OPEN_QUESTION"
+    }
+  ],
+  "evidence_lifecycle": [
+    {
+      "evidence_id": "EV-MQ-01",
+      "question_id": "MQ-01",
+      "source": "linked jira",
+      "query": "GUIDES-53897 OQ-04 fallback decision for purge cleanup job",
+      "pass": "second",
+      "status": "USED"
+    },
+    {
+      "evidence_id": "EV-MQ-02",
+      "question_id": "MQ-02",
+      "source": "linked jira",
+      "query": "GUIDES-53897 OQ-05 backward_compatibility decision for purge cleanup job",
+      "pass": "second",
+      "status": "USED"
+    }
+  ],
+  "verifications": []
 }
