@@ -7,7 +7,12 @@
       "pattern_class": "DISCOVERY_PATTERN",
       "signal_pattern": {
         "evidence_kind": "CODE",
-        "match": ["metadata", "jcr:content", "repository node", "property value"],
+        "match": [
+          "metadata",
+          "jcr:content",
+          "repository node",
+          "property value"
+        ],
         "component_scope": ""
       },
       "implied_dimension": {
@@ -16,7 +21,9 @@
       },
       "provenance": {
         "source": "HUMAN",
-        "delta_ids": ["HFD-VALUE-PROVENANCE-01"],
+        "delta_ids": [
+          "HFD-VALUE-PROVENANCE-01"
+        ],
         "promotion_state": "APPROVED",
         "independent_case_count": 1
       },
@@ -24,6 +31,39 @@
       "normative_invariant": true,
       "counterexamples_checked": true,
       "equivalence_key": "value-provenance",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-002",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": [
+          "asset upload",
+          "overwrite",
+          "upload conflict",
+          "dam upload",
+          "file upload",
+          "asset version"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate_template": "native platform features that share the touched asset upload, overwrite, or conflict flow - duplicate detection, versioning and timeline, DAM update-asset workflows, and processing profiles or metadata - enumerated as shared-path regression or their own acceptance criteria, not only the reported symptom"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-SHARED-PLATFORM-FEATURES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "When a change touches a shared platform flow (asset upload/overwrite/conflict), the OTHER native product features that ride the same flow are shared-path consumers and must be enumerated, not just the reported symptom. Generalizes the CRX/DE value-provenance miss and the duplicate-detection miss into one shared-consumer rule.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "shared-platform-feature-consumers",
       "status": "ACTIVE"
     }
   ]
