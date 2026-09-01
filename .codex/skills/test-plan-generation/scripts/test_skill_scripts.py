@@ -6882,7 +6882,7 @@ def test_feature_map() -> None:
     check("checked-in feature map passes strict governance", fm.validate_repository_map() == [])
     check("feature map schema is v1", feature_map["schema_version"] == fm.SCHEMA_VERSION)
     check("feature map is installed and approved", fm.is_present() is True)
-    check("feature map has four curated surfaces", len(feature_map["surfaces"]) == 4)
+    check("feature map has five curated surfaces", len(feature_map["surfaces"]) == 5)
     asset_surface = next(
         (surface for surface in feature_map["surfaces"] if surface["surface"] == "ASSET_UPLOAD_DAM"),
         None,

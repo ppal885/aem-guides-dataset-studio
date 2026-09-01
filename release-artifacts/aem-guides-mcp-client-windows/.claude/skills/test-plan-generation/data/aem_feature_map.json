@@ -281,6 +281,20 @@
             "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/generate-output/generate-output-dita-map-console"
           ],
           "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "baseline publishing (referenced-content version resolution)",
+          "shared_flows": [
+            "baseline generation",
+            "referenced-content version resolution"
+          ],
+          "implied_dimension_axis": "LIFECYCLE",
+          "candidate_template": "baseline-driven generation resolves the selected topic and referenced-content versions for label, date, and version-as-of selections",
+          "reference": "Experience League generate-output-use-baseline-for-publishing",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/work-with-baseline/generate-output-use-baseline-for-publishing"
+          ],
+          "approval_status": "HUMAN_APPROVED"
         }
       ]
     },
@@ -404,6 +418,76 @@
           "reference": "Experience League enable-additional-special-characters",
           "reference_urls": [
             "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/enable-additional-special-characters"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "map authoring (topicref, topichead, keydef, map tree, navtitle/locktitle)",
+          "shared_flows": [
+            "map tree editing",
+            "topicref insertion"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "adding/moving topicref, topichead, and keydef in the map tree preserves hierarchy, navtitle/locktitle, and key definitions",
+          "reference": "Experience League map-editor-advanced-map-editor",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/author-content/map-editor/map-editor-advanced-map-editor"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "templates (topic and map templates)",
+          "shared_flows": [
+            "create from template"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "new topics/maps created from configured templates produce the expected structure and default content",
+          "reference": "Experience League create-maps-customized-templates",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/author-content/map-editor/create-maps-customized-templates"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
+      "surface": "REVIEW",
+      "match": [
+        "review task",
+        "review comment",
+        "reviewer",
+        "incorporate comment",
+        "review panel",
+        "side by side",
+        "version comparison",
+        "review project"
+      ],
+      "native_features": [
+        {
+          "feature": "review task membership and selected-task state",
+          "shared_flows": [
+            "task selection",
+            "task membership resolution"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "the visible task list and default/selected task derive from the approved task-membership contract, and multi-task topics select correctly",
+          "reference": "Experience League review-manage-tasks-review-dashboard",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-manage-tasks-review-dashboard"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "review panel / task dropdown and details",
+          "shared_flows": [
+            "review panel render",
+            "task switch"
+          ],
+          "implied_dimension_axis": "ENTRY_POINT",
+          "candidate_template": "the review panel, task dropdown, and details reflect the selected task and switching a task updates only the verified consumers once",
+          "reference": "Experience League review-manage-tasks-review-dashboard",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-manage-tasks-review-dashboard"
           ],
           "approval_status": "HUMAN_APPROVED"
         }
