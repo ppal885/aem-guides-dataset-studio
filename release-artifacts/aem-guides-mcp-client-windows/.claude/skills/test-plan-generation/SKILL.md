@@ -432,6 +432,32 @@ These are permanent, human-set, and each is enforced by a named gate so it canno
 - **Publishing tickets:** the ACs must cover DITA-OT processing ON and OFF and preset IN-scope / OUT-of-scope. Enforced by `publishing_scope_coverage`.
 - **Value/metadata/property tickets:** the ACs must cover the value's provenance channels beyond the authoring UI - repository node via CRX/DE (`jcr:content/metadata`), source map/topic file, API/import, migration. Enforced by `value_provenance_coverage`.
 - **Shared implementation path:** when code shows a path shared across consumers (a base class/method extended or used by several output types, engines, callers, or surfaces), the other consumers are SHARED-PATH REGRESSION (re-test their output unchanged), never silently out of scope. Enforced by `shared_path_regression_coverage`.
+- **Ask before authoring:** enumerate the full dimension space and resolve or ask every MATERIAL dimension BEFORE writing any AC. A blocking question must be answered (by evidence or by the user) before the AC it governs is authored; unknowns are never silently assumed. Enforced by `clarification_gate` and specified in "## Ask-First Clarification Workflow".
+
+## Ask-First Clarification Workflow
+
+Root cause of recurring misses: the plan is authored on assumptions and unknowns are only *documented* in Open Questions after the fact. This workflow makes discovery active and makes asking a required step, not an afterthought. Run it after the BehaviorModel and coverage-hypotheses passes, and BEFORE writing acceptance criteria.
+
+**1. Enumerate the dimension space.** For the ticket, list every axis that could change behaviour, not just the one the Jira names:
+- VALUE_SET_CHANNEL - every way a written value/property can be set: authoring UI, config/preset, source map/topic file, repository node via CRX/DE (`jcr:content/metadata`), API/import, migration.
+- CODE_PATH_CONSUMER - every consumer of a touched shared path (base class/method, each output type/engine/caller/surface).
+- OUTPUT_PRESET - AEM Sites (new/legacy), HTML5, Native AEM Site, Native PDF, DITA-OT PDF; and DITA-OT processing ON vs OFF for publishing tickets.
+- TOPIC_TYPE, TERMINAL_STATE, LIFECYCLE, CONFIG_BRANCH, PERMISSION_ROLE, MIGRATION_PATH as applicable.
+
+**2. Mark materiality.** For each candidate decide `material: true/false` with a one-line reason. Non-material axes are recorded and dropped; they are not carried as questions.
+
+**3. Resolve from evidence first.** For each material dimension, try to answer from code (grep the handler for where the value is read/written), RAG, historical Jira, or the diff. Record the resolving `file:line` or evidence id. Do not ask the user what the evidence can answer.
+
+**4. Ask the residual blocking questions - and WAIT.** For every material dimension still unresolved that would change an AC's correctness or scope, surface a concise, decision-shaped question to the user in chat and STOP. Do not author the governed AC on an assumption. Only genuinely non-blocking gaps (they do not change any AC, only add nice-to-have coverage) may be deferred straight to Open Questions.
+
+**When to ask vs. resolve silently vs. defer:**
+- ASK the user when the answer changes an AC's correctness, an in/out-of-scope decision, or the pass/fail oracle, AND the evidence cannot settle it (e.g. which source file a preset reads; whether an old endpoint is removed or kept; the approved SLA/threshold for a cited workload).
+- RESOLVE SILENTLY when code/RAG/history answers it - cite the evidence, no question.
+- DEFER to Open Questions only when the gap is non-blocking (adds coverage but does not change any AC or scope call).
+
+**5. Confirm assumptions before posting.** Show the assumptions made and the draft AC wording in chat for confirm/correct BEFORE posting anywhere (Jira/file). Corrections belong before the post, not after.
+
+**6. Record it in the manifest** `clarification` block (`dimension_space`, `questions_surfaced_to_user`, `authoring_gated_on_answers`) so `clarification_gate` can enforce that no material dimension was left UNRESOLVED and no blocking question was left unanswered. Never fabricate a user answer to pass the gate; a `WAITING` blocking question means authoring has not started.
 
 ## Hard Rules
 
