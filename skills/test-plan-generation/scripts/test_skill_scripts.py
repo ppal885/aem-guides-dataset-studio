@@ -107,6 +107,7 @@ scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
+reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -2894,6 +2895,7 @@ def test_component_reference_routing() -> None:
             "scripts/publishing_scope_coverage.py",
             "scripts/render_compact_view.py",
             "scripts/root_cause_fix_driven.py",
+            "scripts/reviewer_request_coverage.py",
             "scripts/run_gates.py",
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
@@ -6791,6 +6793,96 @@ def test_publishing_scope_coverage() -> None:
     print("test_publishing_scope_coverage: OK")
 
 
+def test_reviewer_request_coverage() -> None:
+    gate = reviewer_request_coverage_mod
+    nl = chr(10)
+
+    plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-13: Map Preview shows the same corrected index labels as the generated PDF.",
+        "",
+        "**Open Questions**",
+        "- OQ-02: Does single-topic download share the same collector. QA impact: sets scope.",
+        "",
+    ])
+
+    def block(entries):
+        return {"reviewer_requests": entries}
+
+    covered = {
+        "request_id": "RR-01",
+        "source": "jira_comment",
+        "reviewer": "reviewer",
+        "raw_text": "also check Map Preview",
+        "surface_or_behavior": "Map Preview index labels",
+        "disposition": "COVERED_BY_AC",
+        "ac_refs": ["AC-13"],
+    }
+
+    check("no signal passes untouched", gate.validate(plan, {}) == [])
+    check("covered reviewer request passes", gate.validate(plan, block([covered])) == [])
+
+    bad_disp = dict(covered, disposition="REGRESSION")
+    problems = gate.validate(plan, block([bad_disp]))
+    check(
+        "regression disposition is rejected with the prefix",
+        any(p.startswith(gate.PREFIX) and "disposition" in p for p in problems),
+    )
+
+    no_refs = dict(covered)
+    no_refs.pop("ac_refs")
+    check(
+        "covered-by-ac without ac_refs fails",
+        any("no ac_refs" in p for p in gate.validate(plan, block([no_refs]))),
+    )
+
+    missing_ref = dict(covered, ac_refs=["AC-99"])
+    check(
+        "ac_refs absent from the plan fail",
+        any("not present in the plan" in p for p in gate.validate(plan, block([missing_ref]))),
+    )
+
+    dangling_oq = {
+        "request_id": "RR-02",
+        "source": "jira_comment",
+        "reviewer": "reviewer",
+        "raw_text": "also check temp files",
+        "surface_or_behavior": "temp-file representation",
+        "disposition": "OPEN_QUESTION_UNRESOLVED_PATH",
+        "open_question_ref": "OQ-77",
+    }
+    check(
+        "unresolved-path open question must be known",
+        any("not a known Open Question" in p for p in gate.validate(plan, block([dangling_oq]))),
+    )
+
+    imperative_manifest = {
+        "reviewer_comments": ["Please also check the sorting of index terms with child elements."],
+    }
+    check(
+        "imperative comment with no block fails",
+        any("no reviewer_requests block" in p for p in gate.validate(plan, imperative_manifest)),
+    )
+
+    uncaptured = dict(imperative_manifest, reviewer_requests=[covered])
+    check(
+        "imperative comment not captured by any entry fails",
+        any("not captured" in p for p in gate.validate(plan, uncaptured)),
+    )
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads the reviewer-request gate",
+        'reviewer_request_coverage_mod = _load("reviewer_request_coverage"' in run_gates_source,
+    )
+    check(
+        "run_gates invokes the reviewer-request validator without hiding its prefix",
+        "failures += reviewer_request_coverage_mod.validate(body, manifest_data)" in run_gates_source,
+    )
+
+    print("test_reviewer_request_coverage: OK")
+
+
 def test_root_cause_fix_driven() -> None:
     gate = root_cause_fix_driven_mod
     nl = chr(10)
@@ -8673,6 +8765,7 @@ def main() -> int:
     test_ac_language_policy()
     test_publishing_scope_coverage()
     test_root_cause_fix_driven()
+    test_reviewer_request_coverage()
     test_security_coverage()
     test_localization_regression_coverage()
     test_upgrade_migration_coverage()

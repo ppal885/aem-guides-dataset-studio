@@ -116,6 +116,7 @@ scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
+reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
 localization_regression_coverage_mod = _load(
     "localization_regression_coverage", "localization_regression_coverage.py"
@@ -1916,6 +1917,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             # Preserve the stable ROOT-CAUSE/FIX GATE: prefix owned by this
             # signal-activated forcing gate.
             failures += root_cause_fix_driven_mod.validate(body, manifest_data)
+            # Preserve the stable REVIEWER-REQUEST GATE: prefix owned by this
+            # signal-activated forcing gate.
+            failures += reviewer_request_coverage_mod.validate(body, manifest_data)
             # Preserve the gate's stable SECURITY GATE: prefix.  Unlike ordinary
             # validators, this forcing gate owns the user-facing failure prefix.
             failures += security_coverage_mod.validate(body, manifest_data)
@@ -2138,6 +2142,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()
             self_tests.test_root_cause_fix_driven()
+            self_tests.test_reviewer_request_coverage()
             self_tests.test_security_coverage()
             self_tests.test_localization_regression_coverage()
             self_tests.test_upgrade_migration_coverage()
