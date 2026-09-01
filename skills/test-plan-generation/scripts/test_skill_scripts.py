@@ -110,6 +110,7 @@ acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthes
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
+value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6804,6 +6805,25 @@ def test_entry_point_equivalence() -> None:
     print("test_entry_point_equivalence: OK")
 
 
+def test_value_provenance_coverage() -> None:
+    vp = value_provenance_coverage_mod
+    nl = chr(10)
+    non_value = nl.join(["**Acceptance Criteria**", "- AC-01: the job stops the loop.", ""])
+    check("non-value plan is not applicable", vp.validate({}, non_value) == [])
+    bad = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: selected File properties are written to metadata.xml for the topic.",
+        "**Expected**", ""])
+    check("value plan without provenance is flagged", any("provenance" in p for p in vp.validate({}, bad)))
+    good = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: selected File properties are written to metadata.xml.",
+        "- AC-02: the value is read from the asset jcr:content metadata node set via CRX DE.",
+        "**Expected**", ""])
+    check("value plan with repository provenance passes", vp.validate({}, good) == [])
+    print("test_value_provenance_coverage: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6857,6 +6877,7 @@ def main() -> int:
     test_uac_linter()
     test_human_feedback_delta()
     test_entry_point_equivalence()
+    test_value_provenance_coverage()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()

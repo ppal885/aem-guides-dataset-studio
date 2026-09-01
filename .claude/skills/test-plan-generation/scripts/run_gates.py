@@ -116,6 +116,7 @@ acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthes
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
+value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1859,6 +1860,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 for problem in uac_linter_mod.validate(manifest_data, body)
             ]
             failures += [
+                f"[value-provenance] {problem}"
+                for problem in value_provenance_coverage_mod.validate(manifest_data, body)
+            ]
+            failures += [
                 f"[performance] {problem}"
                 for problem in performance_mod.validate_plan_alignment(manifest_data, body)
             ]
@@ -2046,6 +2051,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_uac_linter()
             self_tests.test_human_feedback_delta()
             self_tests.test_entry_point_equivalence()
+            self_tests.test_value_provenance_coverage()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
