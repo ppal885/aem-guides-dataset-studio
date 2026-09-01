@@ -101,6 +101,7 @@ ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
+evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6321,6 +6322,81 @@ def test_temporal_evidence() -> None:
     print("test_temporal_evidence: OK")
 
 
+def test_evidence_conflict_resolver() -> None:
+    cr = evidence_conflict_resolver_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent conflict_resolution passes", cr.validate({}) == [])
+
+    def wrap(conflict):
+        return {"conflict_resolution": {"conflicts": [conflict]}}
+
+    base = {
+        "claim_id": "C1", "normalized_claim": "x",
+        "supporting_evidence_ids": ["E1"], "conflicting_evidence_ids": ["E2"],
+    }
+
+    # Invalid conflict type / resolution rejected.
+    bad_type = dict(base, conflict_type="NOPE", resolution="UNRESOLVED", question_type="GENERAL")
+    check("invalid conflict_type rejected", any("conflict_type" in p for p in cr.validate(wrap(bad_type))))
+
+    # INVARIANT 1: code-vs-doc resolving in favor of implementation is rejected.
+    code_wins = dict(base, conflict_type="PRODUCT_DOC_VS_CODE",
+                     resolution="RESOLVED_BY_HIGHER_AUTHORITY",
+                     winning_authority="VERIFIED_CURRENT_IMPLEMENTATION",
+                     question_type="PRODUCT_PROMISE", resolution_reason="code says so")
+    check("implementation cannot win over the contract (defect, not rewrite)",
+          any("DEFECT" in p or "IMPLEMENTATION_DEVIATES_FROM_CONTRACT" in p for p in cr.validate(wrap(code_wins))))
+
+    # Correct: code differs -> IMPLEMENTATION_DEVIATES_FROM_CONTRACT with reason passes.
+    defect = dict(base, conflict_type="PRODUCT_DOC_VS_CODE",
+                  resolution="IMPLEMENTATION_DEVIATES_FROM_CONTRACT",
+                  question_type="PRODUCT_PROMISE",
+                  resolution_reason="doc promises A; code produces B -> defect")
+    check("documented defect resolution passes", cr.validate(wrap(defect)) == [])
+
+    # INVARIANT 2: FluffyJaws / SUPPORTING_DISCOVERY can never win.
+    fj_wins = dict(base, conflict_type="HUMAN_DECISION_VS_DOC",
+                   resolution="RESOLVED_BY_HIGHER_AUTHORITY",
+                   winning_authority="SUPPORTING_DISCOVERY",
+                   question_type="GENERAL", resolution_reason="fluffyjaws said so")
+    check("SUPPORTING_DISCOVERY cannot be the winning authority",
+          any("SUPPORTING_DISCOVERY" in p for p in cr.validate(wrap(fj_wins))))
+
+    # Question-specific authority: code cannot settle a normative question.
+    normative = dict(base, conflict_type="NORMATIVE_VS_IMPLEMENTATION",
+                     resolution="RESOLVED_BY_HIGHER_AUTHORITY",
+                     winning_authority="VERIFIED_CURRENT_IMPLEMENTATION",
+                     question_type="NORMATIVE_SEMANTIC", resolution_reason="r")
+    check("implementation cannot settle a normative question",
+          any("not appropriate for question_type" in p or "DEFECT" in p for p in cr.validate(wrap(normative))))
+
+    normative_ok = dict(base, conflict_type="NORMATIVE_VS_IMPLEMENTATION",
+                        resolution="RESOLVED_BY_HIGHER_AUTHORITY",
+                        winning_authority="NORMATIVE_SEMANTIC",
+                        question_type="NORMATIVE_SEMANTIC",
+                        resolution_reason="DITA 1.3 defines the meaning")
+    check("normative authority settles a normative question", cr.validate(wrap(normative_ok)) == [])
+
+    # Non-settling state supporting an AC without safe disposition is rejected.
+    unresolved_ac = dict(base, conflict_type="SCOPE_CONFLICT", resolution="PRODUCT_DECISION_REQUIRED",
+                         question_type="GENERAL", supports_ac=True)
+    check("non-settling state cannot silently support an AC",
+          any("must be dispositioned" in p for p in cr.validate(wrap(unresolved_ac))))
+
+    unresolved_ok = dict(unresolved_ac, disposition="OPEN_QUESTION")
+    check("dispositioned open conflict passes", cr.validate(wrap(unresolved_ok)) == [])
+
+    # Missing competing evidence rejected.
+    no_ev = {"claim_id": "C1", "normalized_claim": "x", "conflict_type": "VERSION_CONFLICT",
+             "resolution": "REFERENCE_ONLY", "question_type": "GENERAL",
+             "supporting_evidence_ids": [], "conflicting_evidence_ids": []}
+    check("competing evidence must be preserved",
+          any("non-empty list" in p for p in cr.validate(wrap(no_ev))))
+
+    print("test_evidence_conflict_resolver: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6365,6 +6441,7 @@ def main() -> int:
     test_role_provisioning()
     test_fluffyjaws_evidence()
     test_temporal_evidence()
+    test_evidence_conflict_resolver()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()

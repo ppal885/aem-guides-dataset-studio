@@ -107,6 +107,7 @@ relationship_ui_surface_scope_mod = _load(
 skill_fingerprint_mod = _load("skill_bundle_fingerprint", "skill_bundle_fingerprint.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
+evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1454,6 +1455,14 @@ def check_relationship_traversal(
         for problem in temporal_evidence_mod.validate(data)
     )
 
+    # Evidence-conflict resolver (UACFIX-02, optional, backward-compatible).
+    # Absent -> clean pass. When present, enforce question-specific authority,
+    # the implementation-deviation-is-a-defect rule, and no-FluffyJaws-winner.
+    failures.extend(
+        f"[conflict-resolver] {problem}"
+        for problem in evidence_conflict_resolver_mod.validate(data)
+    )
+
     ui_block = data.get("ui_surface_scope")
     ui_edge_present = any(
         isinstance(edge, dict)
@@ -1969,6 +1978,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_role_provisioning()
             self_tests.test_fluffyjaws_evidence()
             self_tests.test_temporal_evidence()
+            self_tests.test_evidence_conflict_resolver()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
