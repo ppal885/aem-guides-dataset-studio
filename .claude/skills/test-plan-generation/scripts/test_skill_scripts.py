@@ -102,6 +102,7 @@ role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
+scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6397,6 +6398,69 @@ def test_evidence_conflict_resolver() -> None:
     print("test_evidence_conflict_resolver: OK")
 
 
+def test_scope_applicability() -> None:
+    sa = scope_applicability_mod
+
+    check("absent scope_applicability passes", sa.validate({}) == [])
+
+    def wrap(*cands, outcome="Fix the purge cleanup job"):
+        return {"scope_applicability": {"primary_customer_outcome": outcome, "candidates": list(cands)}}
+
+    direct = {"candidate_ref": "CF-01", "scope_status": "DIRECT_SCOPE",
+              "scope_basis": "CURRENT_JIRA_AFFECTED_SURFACE",
+              "customer_contract_relation": "PRIMARY", "scope_evidence_ids": ["CF-01"]}
+
+    check("grounded direct-scope candidate passes", sa.validate(wrap(direct)) == [])
+
+    # Name-only expansion into scope is rejected.
+    name_only = {"candidate_ref": "X1", "scope_status": "SHARED_PATH_REGRESSION",
+                 "scope_basis": "SAME_FEATURE_NAME", "customer_contract_relation": "SECONDARY_SHARED",
+                 "scope_evidence_ids": ["E1"], "shared_path_evidence": ["E1"]}
+    check("name-only scope expansion is rejected",
+          any("name-only basis" in p for p in sa.validate(wrap(direct, name_only))))
+
+    # In-scope candidate without evidence is rejected.
+    no_ev = {"candidate_ref": "X2", "scope_status": "DIRECT_SCOPE",
+             "scope_basis": "IMPLEMENTATION_APPLICABILITY", "customer_contract_relation": "PRIMARY",
+             "scope_evidence_ids": []}
+    check("in-scope candidate needs evidence",
+          any("scope_evidence_ids" in p for p in sa.validate(wrap(no_ev))))
+
+    # SHARED_PATH_REGRESSION must be evidenced and not PRIMARY.
+    shared_primary = {"candidate_ref": "X3", "scope_status": "SHARED_PATH_REGRESSION",
+                      "scope_basis": "SHARED_IMPLEMENTATION_PATH", "customer_contract_relation": "PRIMARY",
+                      "scope_evidence_ids": ["E1"], "shared_path_evidence": ["E1"]}
+    check("shared-path regression must stay distinct from primary",
+          any("must not be PRIMARY" in p for p in sa.validate(wrap(direct, shared_primary))))
+
+    shared_ok = {"candidate_ref": "X3", "scope_status": "SHARED_PATH_REGRESSION",
+                 "scope_basis": "SHARED_IMPLEMENTATION_PATH", "customer_contract_relation": "SECONDARY_SHARED",
+                 "scope_evidence_ids": ["E1"], "shared_path_evidence": ["shared job executor path E1"]}
+    check("evidenced shared-path regression passes", sa.validate(wrap(direct, shared_ok)) == [])
+
+    # REFERENCE_ONLY cannot promote an AC.
+    ref_promote = {"candidate_ref": "X4", "scope_status": "REFERENCE_ONLY",
+                   "scope_basis": "SEMANTIC_APPLICABILITY", "customer_contract_relation": "NOT_CONTRACT",
+                   "promotes_ac": True}
+    check("reference-only cannot promote an AC",
+          any("must not promote an AC" in p for p in sa.validate(wrap(direct, ref_promote))))
+
+    # UNRESOLVED_SCOPE must map to an Open Question.
+    unresolved = {"candidate_ref": "X5", "scope_status": "UNRESOLVED_SCOPE",
+                  "scope_basis": "SHARED_SEMANTIC_PATH", "customer_contract_relation": "SECONDARY_SHARED"}
+    check("unresolved scope must become an Open Question",
+          any("open_question_ref" in p for p in sa.validate(wrap(direct, unresolved))))
+
+    unresolved_ok = dict(unresolved, open_question_ref="OQ-09")
+    check("unresolved scope with Open Question passes", sa.validate(wrap(direct, unresolved_ok)) == [])
+
+    # Target-surface-first: candidates without a primary DIRECT_SCOPE anchor are rejected.
+    check("scope must anchor on the primary outcome",
+          any("must begin from a DIRECT_SCOPE" in p for p in sa.validate(wrap(shared_ok))))
+
+    print("test_scope_applicability: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6442,6 +6506,7 @@ def main() -> int:
     test_fluffyjaws_evidence()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
+    test_scope_applicability()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
