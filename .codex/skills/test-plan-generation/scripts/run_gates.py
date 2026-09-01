@@ -115,6 +115,7 @@ repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_ma
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
+entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 contract_fact_mod = _load("contract_fact_extractor", "contract_fact_extractor.py")
 contract_integrity_mod = _load("contract_integrity_gate", "contract_integrity_gate.py")
 domain_router_mod = _load("issue_domain_router", "issue_domain_router.py")
@@ -1499,6 +1500,13 @@ def check_relationship_traversal(
         for problem in human_feedback_delta_mod.validate(data)
     )
 
+    # Entry-point equivalence (UACFIX-04, optional, backward-compatible). Absent -> pass.
+    # Same user intent != same implementation; shared regression needs shared-path evidence.
+    failures.extend(
+        f"[entry-point] {problem}"
+        for problem in entry_point_equivalence_mod.validate(data)
+    )
+
     # UAC language & readability policy (UACFIX-LANGUAGE-01, optional, backward-compatible).
     # Absent ac_synthesis -> pass. Enforces MATERIAL_CANDIDATE_LOSS=0 and language lints.
     failures.extend(
@@ -2037,6 +2045,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_acceptance_synthesizer()
             self_tests.test_uac_linter()
             self_tests.test_human_feedback_delta()
+            self_tests.test_entry_point_equivalence()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()

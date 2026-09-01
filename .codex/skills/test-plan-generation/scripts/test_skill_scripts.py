@@ -109,6 +109,7 @@ repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_ma
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
+entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 terminal_states_mod = _load("terminal_states", "terminal_states.py")
 ac_contract_mod = _load("ac_contract_readability", "ac_contract.py")
 ac_readability_mod = _load("ac_readability_review", "ac_readability.py")
@@ -6753,6 +6754,56 @@ def test_human_feedback_delta() -> None:
     print("test_human_feedback_delta: OK")
 
 
+def test_entry_point_equivalence() -> None:
+    ep = entry_point_equivalence_mod
+
+    check("absent entry_point_equivalence passes", ep.validate({}) == [])
+
+    def wrap(*cands, oqs=None):
+        m = {"entry_point_equivalence": {"candidates": list(cands)}}
+        if oqs is not None:
+            m["open_questions"] = oqs
+        return m
+
+    # Shared handler with impl evidence -> shared regression passes.
+    shared = {"entry_point_id": "EP-01", "product_action": "Generate PDF",
+              "surface": "context menu", "equivalence_type": "SAME_HANDLER",
+              "implementation_handler": "BaseExecutor.process", "shared_processing_path": "OT executor",
+              "disposition": "SHARED_REGRESSION", "evidence": ["same handler in code"], "applicability": "APPLICABLE"}
+    check("shared-handler regression with evidence passes", ep.validate(wrap(shared)) == [])
+
+    # Same user intent promoted to regression -> rejected.
+    intent = {"entry_point_id": "EP-02", "product_action": "Download PDF",
+              "surface": "toolbar", "equivalence_type": "SAME_USER_INTENT",
+              "disposition": "SHARED_REGRESSION", "evidence": ["looks similar"], "applicability": "UNRESOLVED"}
+    check("same-user-intent cannot be promoted to regression",
+          any("same user intent is not same implementation" in p for p in ep.validate(wrap(intent))))
+
+    # Shared type without shared-path evidence -> rejected.
+    no_ev = dict(shared, entry_point_id="EP-03", implementation_handler="", shared_processing_path="")
+    check("shared-type promotion needs shared-path evidence",
+          any("shared_processing_path or" in p for p in ep.validate(wrap(no_ev))))
+
+    # Different implementation cannot be shared regression.
+    diff = {"entry_point_id": "EP-04", "product_action": "Preview", "surface": "preview",
+            "equivalence_type": "DIFFERENT_IMPLEMENTATION", "disposition": "SHARED_REGRESSION",
+            "evidence": ["separate code"], "applicability": "NOT_APPLICABLE"}
+    check("different-implementation cannot be shared regression",
+          any("must not be promoted" in p for p in ep.validate(wrap(diff))))
+
+    # Unknown relationship as OQ needs searched sources + declared OQ.
+    unknown = {"entry_point_id": "EP-05", "product_action": "Download PDF", "surface": "toolbar",
+               "equivalence_type": "UNKNOWN_RELATIONSHIP", "disposition": "OPEN_QUESTION",
+               "evidence": ["unclear"], "applicability": "UNRESOLVED", "open_question_ref": "OQ-01"}
+    check("OQ entry point without searched_sources flagged",
+          any("searched_sources" in p for p in ep.validate(wrap(unknown, oqs=[{"id": "OQ-01"}]))))
+
+    unknown_ok = dict(unknown, searched_sources=["GitHub code", "product docs", "IT tests"])
+    check("investigated OQ entry point passes", ep.validate(wrap(unknown_ok, oqs=[{"id": "OQ-01"}])) == [])
+
+    print("test_entry_point_equivalence: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -6805,6 +6856,7 @@ def main() -> int:
     test_acceptance_synthesizer()
     test_uac_linter()
     test_human_feedback_delta()
+    test_entry_point_equivalence()
     test_terminal_states()
     test_concurrency_race()
     test_enumerated_coverage()
