@@ -554,17 +554,16 @@ def test_ac_readability() -> None:
     )
     technical_projection = ac_presentation_mod.project_ac_for_people(
         technical_tokens,
-        include_status=True,
+        include_status=False,
         header_bullet=False,
     )
     check(
-        "plain presentation preserves technical token text exactly",
+        "plain presentation is one line and preserves technical token text exactly",
         technical_projection
         == (
-            "AC-01 [Proposed]\n"
-            "- Starting point: largeFileTagCount is 100 for map.ditamap in v2.0.\n"
-            "- Action: POST /bin/fmdita/import runs.\n"
-            "- Expected result: the GUIDES-44288 fixture creates one DITA-OT output."
+            "AC-01: largeFileTagCount is 100 for map.ditamap in v2.0; "
+            "when POST /bin/fmdita/import runs, "
+            "the GUIDES-44288 fixture creates one DITA-OT output."
         ),
     )
 
@@ -2055,17 +2054,15 @@ def test_compact_view() -> None:
     )
     acceptance_block = compact.split("**Test Scenarios**", 1)[0]
     check(
-        "compact ACs use three simple lines and hide internal record labels",
+        "compact ACs use one plain line and hide internal record labels",
         (
-            "- AC-01\n"
-            "  - Starting point: an input.\n"
-            "  - Action: the system runs.\n"
-            "  - Expected result: it produces the correct observable output."
+            "- AC-01: an input; when the system runs, "
+            "it produces the correct observable output."
         )
         in acceptance_block
         and "Given " not in acceptance_block
-        and "When " not in acceptance_block
         and "Then " not in acceptance_block
+        and "Starting point:" not in acceptance_block
         and " | " not in acceptance_block
         and "[Proposed]" not in acceptance_block
         and "Evidence:" not in acceptance_block,
