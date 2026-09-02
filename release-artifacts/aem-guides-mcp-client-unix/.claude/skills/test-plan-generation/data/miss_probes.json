@@ -134,6 +134,44 @@
       "counterexamples_checked": true,
       "equivalence_key": "output-generation-entry-point-enumeration",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-005",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "automatically added",
+          "auto-populate",
+          "auto populate",
+          "derived from",
+          "default attribute",
+          "required attribute",
+          "populate the attribute",
+          "refresh navigation title",
+          "auto-fill",
+          "attribute is not added",
+          "attribute not added"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate_template": "when a feature auto-derives or auto-populates an attribute or value onto a construct (for example a navigation/label/type attribute added on reference insertion), enumerate the full derivation surface, not only the one path the reporter used: (1) every insertion or trigger entry point (dialog, drag-and-drop, source typing, API) plus any explicit refresh or recompute action; (2) the construct's specializations, applying the derivation only where it is semantically valid and skipping resource-only or non-navigation variants; (3) reuse consumers of the derived value (keyref or conref, reuse across multiple parents, and cross-reference or link-text resolution); (4) editor parity across every editor that implements the population; (5) overwrite versus preserve of an existing author-set value; (6) the storage form (attribute versus element) and which form consumers read; (7) the fallback when the derivation source is empty, missing, external, or non-native"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-ATTRIBUTE-VALUE-DERIVATION-ENUMERATION-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Generic enumeration for attribute-value derivation / auto-population features. Such a feature is never a single code path: the derived value flows through several insertion entry points, several specializations of the target construct, reuse consumers that read it, more than one editor, an explicit refresh action, and an overwrite policy, and it may live as an attribute or an element. Collapsing it to the one reporter-used path silently drops the rest. Complements MP-003 (stated UI mechanism) and MP-004 (output-generation entry points).",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "attribute-value-derivation-enumeration",
+      "status": "ACTIVE"
     }
   ]
 }
