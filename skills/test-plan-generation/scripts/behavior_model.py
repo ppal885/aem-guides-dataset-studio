@@ -152,7 +152,7 @@ def _writer_flagged_unknown(model):
     return False
 
 
-def validate_behavior_model(data):
+def validate_behavior_model(data, *, require_grounding=False):
     """Return a list of problem strings for a manifest `behavior_model` block.
 
     Empty list == valid. Enforces structure, evidence discipline on facts, a
@@ -166,6 +166,29 @@ def validate_behavior_model(data):
     for f in MODEL_LIST_FIELDS + ("facts", "behavior_chains"):
         if f in data and not isinstance(data[f], list):
             problems.append(f"behavior_model.{f} must be a list")
+
+    if require_grounding:
+        for f in ("trigger", "operations", "inputs", "outputs", "affected_state",
+                  "consumers", "processors", "write_paths", "read_paths", "facts"):
+            if f not in data:
+                problems.append(f"behavior_model.{f} must be explicitly recorded (unknowns are not facts)")
+        if not data.get("facts"):
+            problems.append("behavior_model.facts requires at least one inspected, evidence-grounded fact")
+
+    # Do not let malformed external JSON crash the gate before it records failure.
+    if problems:
+        return problems
+    for raw in [data, *data.get("facts", [])]:
+        if not isinstance(raw, dict):
+            return ["behavior_model.facts entries must be objects"]
+        confidence = raw.get("confidence", 0.0)
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            return ["behavior_model confidence must be numeric"]
+    for fact in data.get("facts", []):
+        if not isinstance(fact.get("evidence_ids"), list) or not all(
+            isinstance(eid, str) and eid.strip() for eid in fact.get("evidence_ids", [])
+        ):
+            return ["behavior_model fact evidence_ids must be a list of non-empty source IDs"]
 
     model = BehaviorModel.from_dict(data)
 

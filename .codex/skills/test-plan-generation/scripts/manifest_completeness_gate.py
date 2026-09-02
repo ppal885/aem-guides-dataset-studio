@@ -7,9 +7,9 @@ is applicable.  This module closes that gap without inventing a second signal
 path.  It reuses the existing publishing, value-provenance, shared-path,
 clarification, and behavior-model detectors.
 
-An activated block must be present and non-empty.  A producer may instead record
-an explicit, attributable waiver in ``manifest.block_waivers``.  Waivers make an
-omission visible; they do not make the omitted reasoning true.
+Activated blocks must be populated. Behavioral core waivers require a genuine
+reviewed escape; every reasoning waiver is REVIEW/non-postable. Legacy structural
+waivers remain traceable migration omissions, not proof of executed reasoning.
 
 Generic only.  Standard library only.
 """
@@ -45,6 +45,43 @@ CORE_BEHAVIOR_BLOCKS = (
     "acceptance_promotions",
 )
 
+# v2 is a read/migration format, not a way to disable behavioral reasoning.
+PROTECTED_BEHAVIOR_BLOCKS = frozenset({
+    "behavior_model", "coverage_hypotheses", "verifications",
+})
+REASONING_BLOCKS = frozenset(CORE_BEHAVIOR_BLOCKS) | frozenset({
+    "change_impact", "scope_applicability", "entry_point_equivalence",
+    "clarification", "temporal_evidence", "generated_output_contract",
+})
+LEGACY_SCHEMA = "aem-guides-evidence-manifest-v2"
+
+
+def _text(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _reviewed_escape(waiver: dict) -> bool:
+    """An attributable recorded review, never an author-generated approval."""
+    review = waiver.get("reviewed_escape")
+    return (
+        isinstance(review, dict)
+        and review.get("decision") == "APPROVED"
+        and bool(_text(review.get("reviewed_by")))
+        and bool(_text(review.get("review_ref")))
+        and _text(review.get("reviewed_by")).casefold()
+        != _text(waiver.get("waived_by")).casefold()
+    )
+
+
+def _needs_reviewed_escape(manifest: dict, block: str) -> bool:
+    if block not in REASONING_BLOCKS:
+        return False
+    return (
+        manifest.get("schema_version") != LEGACY_SCHEMA
+        or (manifest.get("behaviour_matters", True) is not False
+            and block in PROTECTED_BEHAVIOR_BLOCKS)
+    )
+
 # Public, deterministic SIGNAL -> REQUIRED_BLOCK registry.  Signal computation
 # lives in ``detect_signals`` below and delegates to the existing detectors.
 SIGNAL_REQUIRED_BLOCKS = {
@@ -73,6 +110,14 @@ def _is_non_empty(value) -> bool:
     # not count as a declaration because they would keep the owning validator
     # from receiving its real schema.
     return isinstance(value, (dict, list)) and bool(value)
+
+
+def _block_present(manifest: dict, block: str) -> bool:
+    # No missing questions is a valid outcome of investigation. The owning
+    # validators still require a question for each unresolved material subject.
+    if block == "missing_questions" and manifest.get(block) == []:
+        return True
+    return _is_non_empty(manifest.get(block))
 
 
 def _behavior_fields(manifest: dict) -> dict:
@@ -159,9 +204,9 @@ def _waivers(manifest: dict) -> tuple[dict[str, dict], list[str]]:
         if not isinstance(waiver, dict):
             problems.append(_failure(f"{tag} must be an object"))
             continue
-        block = str(waiver.get("block", "") or "").strip()
-        reason = str(waiver.get("reason", "") or "").strip()
-        waived_by = str(waiver.get("waived_by", "") or "").strip()
+        block = _text(waiver.get("block"))
+        reason = _text(waiver.get("reason"))
+        waived_by = _text(waiver.get("waived_by"))
         if not block:
             problems.append(_failure(f"{tag}.block is required"))
         if not reason:
@@ -169,6 +214,13 @@ def _waivers(manifest: dict) -> tuple[dict[str, dict], list[str]]:
         if not waived_by:
             problems.append(_failure(f"{tag}.waived_by is required"))
         if not block:
+            continue
+        if _needs_reviewed_escape(manifest, block) and not _reviewed_escape(waiver):
+            problems.append(_failure(
+                f"{tag}: '{block}' cannot be waived by the author; populate real reasoning "
+                "or record reviewed_escape with decision=APPROVED, a distinct reviewed_by, "
+                "and review_ref. A reviewed escape remains non-postable."
+            ))
             continue
         if block in indexed:
             problems.append(
@@ -180,6 +232,26 @@ def _waivers(manifest: dict) -> tuple[dict[str, dict], list[str]]:
     return indexed, problems
 
 
+def waiver_allows_omission(manifest: dict, block: str) -> bool:
+    waivers, _ = _waivers(manifest)
+    # An invalid waiver still hard-fails validate(), but must not invalidate an
+    # unrelated, valid migration waiver and produce misleading cascade errors.
+    return block in waivers
+
+
+def review_notes(manifest: dict) -> list[str]:
+    """Every reasoning waiver, including a transition waiver, blocks posting."""
+    raw = manifest.get(WAIVER_BLOCK, [])
+    if not isinstance(raw, list):
+        return []
+    return [
+        f"REVIEW REASONING WAIVER: {waiver['block']} was waived; "
+        "this is an incomplete reasoning record, not a postable v3 plan."
+        for waiver in raw
+        if isinstance(waiver, dict) and _text(waiver.get("block")) in REASONING_BLOCKS
+    ]
+
+
 def validate(plan_body, manifest) -> tuple[bool, list[str]]:
     """Validate all signal-activated blocks and explicit omission waivers."""
     if not isinstance(plan_body, str):
@@ -189,14 +261,15 @@ def validate(plan_body, manifest) -> tuple[bool, list[str]]:
 
     waivers, messages = _waivers(manifest)
     for block, signal_names in required_blocks(plan_body, manifest).items():
-        if _is_non_empty(manifest.get(block)) or block in waivers:
+        if _block_present(manifest, block) or block in waivers:
             continue
         signals = ", ".join(signal_names)
         messages.append(
             _failure(
                 f"required manifest block '{block}' is absent or empty; activated "
-                f"by signal(s): {signals}. Add a non-empty block or an explicit "
-                "manifest.block_waivers entry with block, reason, and waived_by."
+                f"by signal(s): {signals}. Populate the real v3 block; an exceptional "
+                "omission must satisfy the reviewed-escape/migration policy, and "
+                "a reasoning waiver remains REVIEW/non-postable."
             )
         )
     return not messages, messages
@@ -211,12 +284,14 @@ def summarize(manifest, plan_body: str = "") -> str:
     missing = [
         block
         for block in requirements
-        if not _is_non_empty(manifest.get(block)) and block not in waivers
+        if not _block_present(manifest, block) and block not in waivers
     ]
-    status = "CLEAN" if not missing and not waiver_problems else "ISSUES"
+    status = "ISSUES" if not validate(plan_body, manifest)[0] else (
+        "REVIEW" if review_notes(manifest) else "CLEAN"
+    )
     active = [name for name, enabled in detect_signals(plan_body, manifest).items() if enabled]
     satisfied = sum(
-        1 for block in requirements if _is_non_empty(manifest.get(block))
+        1 for block in requirements if _block_present(manifest, block)
     )
     waived = sum(1 for block in requirements if block in waivers)
     return (
@@ -247,6 +322,8 @@ def main() -> int:
     ok, messages = validate(plan_body, manifest)
     for message in messages:
         print(message)
+    for note in review_notes(manifest):
+        print(note)
     return 0 if ok else 1
 
 

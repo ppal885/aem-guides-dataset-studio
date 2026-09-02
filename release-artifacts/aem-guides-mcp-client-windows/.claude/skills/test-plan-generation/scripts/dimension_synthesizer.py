@@ -30,6 +30,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import coverage_hypotheses
+
 
 BLOCK_ACTIVATORS = ("behavior_model", "evidence_catalog")
 MAX_OFFLINE_DOC_QUERIES = 6
@@ -423,7 +425,8 @@ def synthesize(manifest: dict | None) -> dict:
         return {"candidates": [], "gaps": ["not activated: no behavior_model or evidence_catalog"], "activated": False}
 
     pairs = _evidence_texts(data)
-    candidates = _match_signals(pairs, "CODE_NEIGHBORHOOD")
+    exploration = coverage_hypotheses.generate_from_model(data)
+    candidates = exploration["candidates"] + _match_signals(pairs, "CODE_NEIGHBORHOOD")
 
     # Load the curated checklist before offline RAG. Matched entries may provide
     # bounded, Human-approved query vocabulary; they are never treated as evidence.
@@ -473,10 +476,28 @@ def synthesize(manifest: dict | None) -> dict:
     if feature_gap:
         gaps.append(feature_gap)
 
-    # Assign stable ids.
-    for i, cand in enumerate(candidates, start=1):
-        cand["hypothesis_id"] = f"DS-{i:02d}"
-    return {"candidates": candidates, "gaps": gaps, "activated": True}
+    # Normalize discovery axes into the existing v3 vocabulary. Keep the exact
+    # axis/probe/feature identity: a broad family cannot stand in for its siblings.
+    for cand in candidates:
+        axis = cand["dimension"]
+        if axis in coverage_hypotheses.DISCOVERY_DIMENSION_BY_AXIS:
+            cand.setdefault("implied_dimension_axis", axis)
+            cand["dimension"] = coverage_hypotheses.DISCOVERY_DIMENSION_BY_AXIS[axis]
+        cand["hypothesis_id"] = "DS-" + _stable_suffix(
+            f"{cand['generator']}:{cand['dimension']}:{cand.get('equivalence_key') or cand['candidate']}"
+        )
+    # Recorded history queries can share a family. Collapse only exact family
+    # keys, preserving all generator provenance on the retained representative.
+    kept = {}
+    for cand in candidates:
+        key = (cand["dimension"], cand.get("equivalence_key") or cand["candidate"])
+        if key in kept:
+            for field in ("technical_basis", "current_evidence"):
+                kept[key][field] = list(dict.fromkeys(kept[key][field] + cand[field]))
+        else:
+            kept[key] = cand
+    return {"candidates": list(kept.values()), "gaps": gaps, "activated": True,
+            "explorers": exploration["explorers"]}
 
 
 def _represented_dimensions(manifest: dict) -> set[str]:
@@ -484,6 +505,8 @@ def _represented_dimensions(manifest: dict) -> set[str]:
     for h in manifest.get("coverage_hypotheses") or []:
         if isinstance(h, dict) and h.get("dimension"):
             reps.add(str(h["dimension"]).upper())
+            if h.get("implied_dimension_axis"):
+                reps.add(str(h["implied_dimension_axis"]).upper())
     clar = manifest.get("clarification")
     if isinstance(clar, dict):
         for d in clar.get("dimension_space") or []:
@@ -533,12 +556,19 @@ def review_notes(manifest: dict | None = None) -> list[str]:
         return []
     represented = _represented_dimensions(data)
     represented_feature_map = _represented_feature_map_candidates(data)
+    represented_keys = {
+        str(item.get("equivalence_key", "")).casefold()
+        for item in data.get("coverage_hypotheses", []) if isinstance(item, dict)
+    }
     notes: list[str] = []
     for cand in result["candidates"]:
         if cand.get("generator") == "FEATURE_MAP":
             if str(cand.get("equivalence_key", "")).casefold() in represented_feature_map:
                 continue
-        elif cand["dimension"].upper() in represented:
+        elif cand.get("generator") in coverage_hypotheses.EXPLORATION_FIELDS:
+            if str(cand.get("equivalence_key", "")).casefold() in represented_keys:
+                continue
+        elif str(cand.get("implied_dimension_axis") or cand["dimension"]).upper() in represented:
             continue
         feature_context = (
             f", feature={cand.get('feature')}, reference={cand.get('reference')}"
@@ -551,7 +581,7 @@ def review_notes(manifest: dict | None = None) -> list[str]:
             else ""
         )
         notes.append(
-            f"DISCOVERY: unrepresented dimension {cand['dimension']} "
+            f"DISCOVERY: unrepresented dimension {cand.get('implied_dimension_axis') or cand['dimension']} "
             f"(generator={cand['generator']}{feature_context}{source_context}, "
             f"evidence={','.join(cand['current_evidence'])}): "
             f"{cand['candidate']} - dispose or reject it in coverage_hypotheses/dimension_space"

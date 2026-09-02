@@ -110,6 +110,8 @@ def _covered_axes(manifest: dict[str, Any]) -> set[str]:
     for hyp in (manifest.get("coverage_hypotheses") or []) if isinstance(manifest, dict) else []:
         if isinstance(hyp, dict) and hyp.get("dimension"):
             axes.add(str(hyp.get("dimension", "")).upper())
+            if hyp.get("implied_dimension_axis"):
+                axes.add(str(hyp["implied_dimension_axis"]).upper())
     axes.discard("")
     return axes
 
@@ -141,7 +143,8 @@ def validate(plan_body: str = "", manifest: dict[str, Any] | None = None) -> lis
                 continue
         problems.append(_problem(
             f"probe {pid} ({axis}) matched the evidence but its dimension is not covered - "
-            f"add a clarification dimension of axis {axis} that resolves it, or record a "
+            f"record a coverage hypothesis with implied_dimension_axis {axis}, "
+            f"a resolved clarification dimension, or a "
             f"{DISPOSITION_BLOCK} entry {{probe_id:{pid}, disposition, reason}} explicitly "
             f"rejecting or scoping it out"
         ))

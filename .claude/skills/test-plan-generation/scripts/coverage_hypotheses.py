@@ -24,6 +24,7 @@ Stdlib only. Same dataclass/validate pattern (no future-annotations import).
 """
 
 from dataclasses import dataclass, field
+import hashlib
 from typing import Any
 
 
@@ -44,6 +45,95 @@ COVERAGE_DIMENSIONS = (
     "BACKWARD_COMPATIBILITY",
     "DOWNSTREAM_REGRESSION",
 )
+
+# Reuse discovery axes without replacing their identity with a broader family.
+# `dimension` is the v3 family; `implied_dimension_axis` survives for probe coverage.
+DISCOVERY_DIMENSION_BY_AXIS = {
+    "VALUE_SET_CHANNEL": "CONTRACT_BOUNDARY", "CODE_PATH_CONSUMER": "CONSUMER",
+    "OUTPUT_PRESET": "PUBLISHING_MODE", "TOPIC_TYPE": "TYPE_ABSTRACTION",
+    "TERMINAL_STATE": "STATE_PARTITION", "LIFECYCLE": "LIFECYCLE",
+    "CONFIG_BRANCH": "CONFIGURATION", "PERMISSION_ROLE": "STATE_PARTITION",
+    "MIGRATION_PATH": "BACKWARD_COMPATIBILITY", "NEGATIVE_BOUNDARY": "STATE_PARTITION",
+    "ENTRY_POINT": "CONTRACT_BOUNDARY", "REPRO_DIMENSION": "NFR_RISK",
+    "DOWNSTREAM_REGRESSION": "DOWNSTREAM_REGRESSION",
+}
+
+# All explorers run; only evidence-backed signals emit candidates. These are
+# questions about supplied model relationships, never lists of product features.
+EXPLORATION_FIELDS = {
+    "CONTRACT_BOUNDARY": ("trigger", "inputs", "constraints"),
+    "CONSUMER": ("consumers", "downstream_decision_consumers", "shared_processors"),
+    "STATE_PARTITION": ("affected_state", "fallback_paths", "error_paths"),
+    "TYPE_ABSTRACTION": ("capabilities",),
+    "REFERENCE_ARTIFACT": ("generated_artifacts", "artifact_shapes"),
+    "DITA_SEMANTIC_DEPENDENCY": (),
+    "LIFECYCLE": ("write_paths", "read_paths", "update_paths", "remove_paths", "recompute_paths"),
+    "CONFIGURATION": ("configuration_branches", "configuration_dependencies"),
+    "PUBLISHING_MODE": ("publishing_modes", "execution_modes"),
+    "NFR_RISK": (),
+    "BACKWARD_COMPATIBILITY": ("versioned_models", "deployment_modes"),
+    "DOWNSTREAM_REGRESSION": ("side_effects", "processors"),
+}
+_FACT_SIGNALS = {
+    "TYPE_ABSTRACTION": ("interface", "superclass", "polymorphic", "supported types", "generic model"),
+    "REFERENCE_ARTIFACT": ("reference", "artifact"),
+    "NFR_RISK": ("bulk", "recursive", "large collection", "many references", "backlog", "per-reference"),
+}
+
+
+def generate_from_model(manifest):
+    """Return grounded exploration candidates and a trace of every family check.
+
+    Claude authors the model from inspected evidence. Python enumerates questions
+    over that model; it cannot supply facts, verification verdicts, or ACs.
+    """
+    model = manifest.get("behavior_model", {}) if isinstance(manifest, dict) else {}
+    model = model if isinstance(model, dict) else {}
+    raw_facts = model.get("facts", [])
+    facts = [f for f in (raw_facts if isinstance(raw_facts, list) else []) if isinstance(f, dict)
+             and isinstance(f.get("fact"), str) and f["fact"].strip()
+             and isinstance(f.get("evidence_ids"), list) and f["evidence_ids"]
+             and all(isinstance(e, str) and e.strip() for e in f["evidence_ids"])
+             and isinstance(f.get("authority"), str) and f["authority"].strip()]
+    evidence_ids = sorted({eid for f in facts for eid in f["evidence_ids"]})
+    candidates, trace = [], []
+    for dimension, fields in EXPLORATION_FIELDS.items():
+        basis = []
+        if facts:
+            for name in fields:
+                values = model.get(name)
+                if isinstance(values, list):
+                    for value in values:
+                        if isinstance(value, str) and value.strip():
+                            basis.append(f"behavior_model.{name}: {value.strip()}")
+                        elif isinstance(value, dict) and isinstance(value.get("name"), str):
+                            basis.append(f"behavior_model.{name}: {value['name']}")
+            for fact in facts:
+                if (dimension == "DITA_SEMANTIC_DEPENDENCY"
+                    and fact["authority"] in {"DITA_SPEC", "DITA_OT"}) or any(
+                    token in fact["fact"].casefold() for token in _FACT_SIGNALS.get(dimension, ())
+                ):
+                    basis.append(f"behavior_model.fact: {fact['fact']}")
+        basis = list(dict.fromkeys(basis))
+        trace.append({"generator": dimension,
+                      "status": "ACTIVATED" if basis else "NO_GROUNDED_SIGNAL",
+                      "technical_basis": basis})
+        # One representative per family/model neighborhood, no Cartesian product.
+        # Claude may split independent consumers after inspecting applicability.
+        if basis:
+            key = f"EXPLORER:{dimension}:" + hashlib.sha256(
+                "\n".join(sorted(basis)).encode("utf-8")
+            ).hexdigest()[:16]
+            candidates.append({
+                "hypothesis_id": "", "dimension": dimension,
+                "candidate": f"Investigate {dimension.lower().replace('_', ' ')} for {basis[0]}",
+                "reason": "An inspected behavior-model relationship activates this exploration family.",
+                "technical_basis": basis, "current_evidence": evidence_ids,
+                "generator": dimension, "equivalence_key": key,
+                "status": "INVESTIGATION_CANDIDATE", "requires_more_evidence": True,
+                "confidence": 0.0, "authority_class": "SUPPORTING_DISCOVERY",
+            })
+    return {"candidates": candidates, "explorers": trace}
 
 # A hypothesis starts as a candidate and only later (Prompt 4) reaches a terminal
 # status. Mirrors semantic_relationship_explorer's status machine.
@@ -132,7 +222,7 @@ def collapse_hypotheses(hypotheses):
     return kept, collapsed
 
 
-def validate_coverage_block(data):
+def validate_coverage_block(data, *, require_ids=False):
     """Validate a manifest `coverage_hypotheses` list. Returns problem strings.
 
     Enforces per-hypothesis structure/evidence discipline AND that the recorded set
@@ -141,6 +231,28 @@ def validate_coverage_block(data):
     problems = []
     if not isinstance(data, list):
         return ["coverage_hypotheses must be a JSON list"]
+    if any(not isinstance(x, dict) for x in data):
+        return ["coverage_hypotheses entries must be objects"]
+    ids = set()
+    for item in data:
+        hid = item.get("hypothesis_id")
+        if require_ids and (not isinstance(hid, str) or not hid.strip() or hid in ids):
+            problems.append("coverage_hypotheses requires unique non-empty hypothesis_id values")
+        elif isinstance(hid, str) and hid.strip():
+            ids.add(hid)
+        for name in ("dimension", "candidate", "reason", "status", "equivalence_key", "behavioral_distance"):
+            if name in item and not isinstance(item[name], str):
+                problems.append(f"hypothesis {hid!r}: {name} must be a string")
+        for name in ("confidence", "relevance_score"):
+            if name in item and (isinstance(item[name], bool) or not isinstance(item[name], (int, float))):
+                problems.append(f"hypothesis {hid!r}: {name} must be numeric")
+        basis = item.get("technical_basis")
+        if not isinstance(basis, list) or not basis or not all(
+            isinstance(value, str) and value.strip() for value in basis
+        ):
+            problems.append(f"hypothesis {hid!r}: no technical_basis or malformed signals - supply a non-empty list of technical signals")
+    if problems:
+        return problems
     hyps = [CoverageHypothesis.from_dict(x) for x in data]
     for h in hyps:
         problems.extend(validate_hypothesis(h))

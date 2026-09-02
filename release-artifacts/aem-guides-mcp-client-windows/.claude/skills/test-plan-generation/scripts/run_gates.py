@@ -119,6 +119,7 @@ root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_drive
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 reproducibility_gate_mod = _load("reproducibility_gate", "reproducibility_gate.py")
 probe_coverage_gate_mod = _load("probe_coverage_gate", "probe_coverage_gate.py")
+dita_semantics_activation_mod = _load("dita_semantics_activation", "dita_semantics_activation.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 security_coverage_mod = _load("security_coverage", "security_coverage.py")
@@ -994,6 +995,11 @@ def _semantic_material_ids(data: dict) -> list[str]:
     ids.extend(semantic_closure_mod.material_item_ids(data.get("semantic_closure")))
     ids.extend(generated_output_mod.material_item_ids(data.get("generated_output_contract")))
     ids.extend(content_identity_mod.material_item_ids(data.get("content_identity_contract")))
+    # Discovery hypotheses are first-class disposition subjects too. Previously
+    # their promotions were accepted as candidates but completeness rejected their
+    # disposition references, making the real v3 authoring path unusable.
+    ids.extend(item["hypothesis_id"] for item in data.get("coverage_hypotheses", []) or []
+               if isinstance(item, dict) and item.get("hypothesis_id"))
     return [str(item) for item in ids if str(item).strip()]
 
 
@@ -1159,7 +1165,7 @@ def validate_canonical_semantic_pipeline(
     )
     problems.extend(
         f"[coverage] {problem}"
-        for problem in coverage_mod.validate_coverage_block(data.get("coverage_hypotheses"))
+        for problem in coverage_mod.validate_coverage_block(data.get("coverage_hypotheses"), require_ids=True)
     )
     problems.extend(
         f"[verification] {problem}"
@@ -1722,14 +1728,9 @@ def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list
         return [], []
     if data.get("behaviour_matters", True) is False:
         return [], ["reasoning pipeline not required (behaviour_matters is false)"]
-    if (
-        data.get("schema_version") == LEGACY_MANIFEST_SCHEMA_VERSION
-        and not _semantic_pipeline_declared(data)
-    ):
-        return [], ["reasoning pipeline not present in legacy v2 manifest"]
     failures = []
     for key in SEMANTIC_MANIFEST_KEYS:
-        if key not in data:
+        if key not in data and not manifest_completeness_gate_mod.waiver_allows_omission(data, key):
             failures.append(
                 f"[reasoning-required] {key} block is mandatory when behaviour_matters is true"
             )
@@ -1738,14 +1739,25 @@ def check_reasoning_required(manifest_path: str | None) -> tuple[list[str], list
             "[reasoning-required] coverage_hypotheses are declared but no verifications block exists - every "
             "candidate must reach a terminal verdict before the plan is delivered"
         )
-    return failures, ["reasoning pipeline requirements satisfied"] if not failures else []
+    notes = manifest_completeness_gate_mod.review_notes(data)
+    if not failures and not notes:
+        notes.append("reasoning pipeline requirements satisfied")
+    return failures, notes
 
 
 def check_behavior_model(manifest_path: str | None) -> tuple[list[str], list[str]]:
     data = _load_manifest_dict(manifest_path)
     if not behavior_mod.is_present(data):
         return [], ["behavior model check skipped (no behavior_model block declared)"]
-    failures = [f"[behavior-model] {p}" for p in behavior_mod.validate_behavior_model(data["behavior_model"])]
+    failures = [f"[behavior-model] {p}" for p in behavior_mod.validate_behavior_model(
+        data["behavior_model"], require_grounding=data.get("behaviour_matters", True) is not False
+    )]
+    if not failures and data.get("behaviour_matters", True) is not False:
+        catalog_ids = {verify_mod._entry_id(entry) for entry in verify_mod._catalog_entries(data)}
+        for fact in data["behavior_model"].get("facts", []):
+            for eid in fact["evidence_ids"]:
+                if eid not in catalog_ids:
+                    failures.append(f"[behavior-model] fact evidence {eid!r} must resolve to an inspected evidence_catalog source")
     return failures, ["behavior model validated"] if not failures else []
 
 
@@ -1753,7 +1765,7 @@ def check_coverage_hypotheses(manifest_path: str | None) -> tuple[list[str], lis
     data = _load_manifest_dict(manifest_path)
     if not coverage_mod.is_present(data):
         return [], ["coverage-hypotheses check skipped (no coverage_hypotheses block)"]
-    failures = [f"[coverage] {p}" for p in coverage_mod.validate_coverage_block(data["coverage_hypotheses"])]
+    failures = [f"[coverage] {p}" for p in coverage_mod.validate_coverage_block(data["coverage_hypotheses"], require_ids=True)]
     return failures, ["coverage hypotheses validated"] if not failures else []
 
 
@@ -1906,6 +1918,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 f"[manifest-completeness] {problem}"
                 for problem in completeness_messages
             ]
+            notes += manifest_completeness_gate_mod.review_notes(manifest_data)
             failures += [
                 f"[open-questions] {problem}"
                 for problem in check_open_question_alignment(manifest_data, body)
@@ -1932,6 +1945,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             # signal-activated forcing gate (an activated miss-probe's dimension
             # must be covered or explicitly dispositioned).
             failures += probe_coverage_gate_mod.validate(body, manifest_data)
+            # Preserve the stable DITA SEMANTICS GATE: prefix owned by this
+            # signal-activated forcing gate (a named DITA construct must have its
+            # governing/dependent neighbourhood assessed).
+            failures += dita_semantics_activation_mod.validate(body, manifest_data)
             # Preserve the gate's stable SECURITY GATE: prefix.  Unlike ordinary
             # validators, this forcing gate owns the user-facing failure prefix.
             failures += security_coverage_mod.validate(body, manifest_data)
@@ -2175,6 +2192,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_reproducibility_gate()
             if hasattr(self_tests, "test_probe_coverage_gate"):
                 self_tests.test_probe_coverage_gate()
+            if hasattr(self_tests, "test_dita_semantics_activation"):
+                self_tests.test_dita_semantics_activation()
             self_tests.test_miss_probe_library()
             if hasattr(self_tests, "test_feature_map"):
                 self_tests.test_feature_map()
@@ -2195,6 +2214,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             if hasattr(self_tests, "test_skill_bundle_fingerprint"):
                 self_tests.test_skill_bundle_fingerprint()
             self_tests.test_clarification_gate()
+            self_tests.test_manifest_completeness_gate()
+            self_tests.test_v3_authoring_pipeline()
             self_tests.test_terminal_states()
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()

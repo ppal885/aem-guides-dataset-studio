@@ -43,18 +43,37 @@ empty arrays, `null`, strings, booleans, and numbers do not satisfy the gate. A
 schema-bearing object is non-empty, but it must still pass its owning validator.
 
 The completeness gate does not validate the internal schema of the required block.
-It only prevents the owning gate from being skipped. `run_gates.py` continues to run
+It only prevents the owning gate from being skipped. An explicit empty
+`missing_questions` list is allowed when investigation found no remaining question;
+the material-gap and retrieval validators still run. `run_gates.py` continues to run
 the owning validator afterward.
 
-## Explicit waiver
+## Migration waivers and reviewed escapes
 
-If a producer cannot populate an activated block, it must record the omission:
+New behavioral plans must follow `v3-reasoning-authoring.md`, not use a v2 fixture
+and blanket waivers. When behavior matters, `behavior_model`,
+`coverage_hypotheses`, and `verifications` cannot use ordinary author waivers in
+either schema. Omitting them hard-fails.
+
+A reasoning waiver in v3, or a protected core-block waiver in v2, requires a
+recorded `reviewed_escape` object with `decision: APPROVED`, a non-empty
+`reviewed_by` distinct from `waived_by`, and a non-empty `review_ref` identifying
+the actual review. This records Human review; it cannot authenticate the reviewer.
+Never invent that approval. The escape remains REVIEW and **non-postable**.
+
+For the transition window, other structural v2 waivers retain their existing
+presence behavior. Every reasoning waiver, even an unused or reviewed one, emits
+`REVIEW REASONING WAIVER` and makes the receipt non-postable. This includes semantic,
+retrieval, disposition, promotion, shared-path, and applicability blocks. A waiver
+does not turn off validation of a populated block or authorize a partial record.
+
+Example of an attributable non-core legacy omission (not a new authoring template):
 
 ```json
 {
   "block_waivers": [
     {
-      "block": "temporal_evidence",
+      "block": "publishing_scope",
       "reason": "No version-scoped source was available in this legacy captured run.",
       "waived_by": "author"
     }
@@ -62,15 +81,16 @@ If a producer cannot populate an activated block, it must record the omission:
 }
 ```
 
-Every waiver must be an object with a non-empty `block`, `reason`, and `waived_by`.
+Every waiver must be an object with string-valued, non-empty `block`, `reason`, and `waived_by`.
 Duplicate waivers for one block fail. A waiver is traceability, not acceptance truth:
 it neither creates evidence nor makes the omitted gate pass semantically.
 
 ## Failure contract
 
 Every hard failure begins with `COMPLETENESS GATE:` and names the missing block plus
-the signal or signals that activated it. The author must either populate the real
-block or add an attributable waiver with a concrete reason.
+the signal or signals that activated it. Populate real reasoning to clear it.
+An exceptional reviewed omission is an incomplete review record, not a passing
+reasoning pipeline or permission to post. Missing-source honesty still applies.
 
 Run the gate directly with:
 

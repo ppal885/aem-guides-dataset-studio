@@ -111,6 +111,7 @@ root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_drive
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 reproducibility_gate_mod = _load("reproducibility_gate", "reproducibility_gate.py")
 probe_coverage_gate_mod = _load("probe_coverage_gate", "probe_coverage_gate.py")
+dita_semantics_activation_mod = _load("dita_semantics_activation", "dita_semantics_activation.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 feature_map_mod = _load("feature_map", "feature_map.py")
@@ -2905,9 +2906,11 @@ def test_component_reference_routing() -> None:
             "scripts/reviewer_request_coverage.py",
             "scripts/reproducibility_gate.py",
             "scripts/probe_coverage_gate.py",
+            "scripts/dita_semantics_activation.py",
             "scripts/dimension_synthesizer.py",
             "scripts/miss_probe_library.py",
             "data/miss_probes.json",
+            "data/dita_constructs.json",
             "scripts/feature_map.py",
             "data/aem_feature_map.json",
             "references/aem-feature-map.md",
@@ -7329,7 +7332,7 @@ def test_dimension_synthesizer() -> None:
     check("synthesizer activated with behavior_model", result["activated"] is True)
     value_cands = [
         c for c in result["candidates"]
-        if c["dimension"] == "VALUE_SET_CHANNEL" and c["generator"] == "CODE_NEIGHBORHOOD"
+        if c.get("implied_dimension_axis") == "VALUE_SET_CHANNEL" and c["generator"] == "CODE_NEIGHBORHOOD"
     ]
     check("emits a VALUE_SET_CHANNEL code-neighborhood candidate", len(value_cands) == 1)
     check("candidate cites the generating evidence id", "E1" in value_cands[0]["current_evidence"])
@@ -7844,6 +7847,58 @@ def test_probe_coverage_gate() -> None:
     )
 
     print("test_probe_coverage_gate: OK")
+
+
+def test_dita_semantics_activation() -> None:
+    gate = dita_semantics_activation_mod
+    nl = chr(10)
+
+    plan = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: @navtitle is not added to a topicref when required; @locktitle governs it.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given navtitle required | When inserted | Then navtitle is set | Evidence: Jira.",
+    ])
+    manifest = {"issue": {"summary": "navtitle attribute not added", "description": "topichead and locktitle"}, "behaviour_matters": True}
+
+    check("named DITA construct activates the gate", gate.is_present(plan, manifest))
+    probs = gate.validate(plan, manifest)
+    check("construct without a dita_semantics block fails", any("DITA SEMANTICS GATE:" in p for p in probs))
+
+    # active:true delegates to the strict explorer (coverage_gate); this gate is satisfied.
+    m_active = dict(manifest, dita_semantics={"active": True})
+    check("active:true satisfies the activation gate", gate.validate(plan, m_active) == [])
+
+    # active:false requires primary_constructs + a substantive neighbourhood_assessment.
+    m_thin = dict(manifest, dita_semantics={"active": False, "primary_constructs": ["navtitle"], "neighbourhood_assessment": "too short"})
+    check("active:false with a thin assessment fails", gate.validate(plan, m_thin) != [])
+    m_full = dict(manifest, dita_semantics={
+        "active": False,
+        "primary_constructs": ["navtitle", "locktitle"],
+        "neighbourhood_assessment": "navtitle is derived from the referenced <title> and governed by locktitle; topichead is the href-less variant covered by AC-07.",
+    })
+    check("active:false with a full assessment passes", gate.validate(plan, m_full) == [])
+
+    # No construct named -> not activated (backward-compatible).
+    quiet = {"issue": {"summary": "backend null guard on a job id", "description": "unrelated"}, "behaviour_matters": True}
+    quiet_plan = "**Acceptance Criteria**\n- AC-01: Given x When y Then z | Evidence: Jira.\n"
+    check("no construct is not activated", not gate.is_present(quiet_plan, quiet))
+    check("no-construct plan passes", gate.validate(quiet_plan, quiet) == [])
+
+    # behaviour_matters false opts out entirely.
+    check("behaviour_matters false opts out", gate.validate(plan, dict(manifest, behaviour_matters=False)) == [])
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads the dita-semantics activation gate",
+        'dita_semantics_activation_mod = _load("dita_semantics_activation"' in run_gates_source,
+    )
+    check(
+        "run_gates invokes the dita-semantics validator without hiding its prefix",
+        "failures += dita_semantics_activation_mod.validate(body, manifest_data)" in run_gates_source,
+    )
+
+    print("test_dita_semantics_activation: OK")
 
 
 def test_root_cause_fix_driven() -> None:
@@ -9511,6 +9566,173 @@ def test_manifest_completeness_gate() -> None:
     print("test_manifest_completeness_gate: OK")
 
 
+def test_v3_authoring_pipeline() -> None:
+    """Synthetic evidence exercises authoring, not a fixture with skipped blocks."""
+    import copy
+
+    gate = manifest_completeness_gate_mod
+    ds = dimension_synthesizer_mod
+    run_gates = _load("run_gates", "run_gates.py")
+    model = {
+        "trigger": ["select an item"], "operations": ["display the selected item"],
+        "inputs": ["selected item"], "outputs": ["selected item is visible"],
+        "affected_state": ["current selection"], "consumers": [], "processors": [],
+        "write_paths": [], "read_paths": [],
+        "facts": [{"fact": "The supplied selection is displayed.", "evidence_ids": ["E1"],
+                   "authority": "JIRA", "confidence": 1.0}],
+    }
+    check("grounded authoring model passes", behavior_mod.validate_behavior_model(model, require_grounding=True) == [])
+    ungrounded = dict(model, facts=[])
+    check("empty facts cannot impersonate behavioral understanding",
+          bool(behavior_mod.validate_behavior_model(ungrounded, require_grounding=True)))
+    malformed = dict(model, facts=[{"fact": "x", "evidence_ids": 5}])
+    check("wrong-typed fact evidence fails without crashing",
+          bool(behavior_mod.validate_behavior_model(malformed, require_grounding=True)))
+
+    rich_model = dict(model,
+        consumers=["reader"], capabilities=[{"name": "supported item kinds"}],
+        generated_artifacts=["result document"], configuration_branches=["enabled and disabled"],
+        publishing_modes=["configured output"], write_paths=["item writer"],
+        versioned_models=["earlier saved state"], side_effects=["consumer cache"],
+        facts=model["facts"] + [{"fact": "Bulk traversal follows reference semantics.",
+                                "evidence_ids": ["E2"], "authority": "DITA_SPEC", "confidence": 1.0}])
+    all_families = coverage_mod.generate_from_model({"behavior_model": rich_model})
+    check("all twelve exploration families execute and activate on grounded signals",
+          {x["dimension"] for x in all_families["candidates"]}
+          == set(coverage_mod.EXPLORATION_FIELDS) and len(all_families["explorers"]) == 12)
+    check("exploration candidates carry non-empty technical basis and no verdict",
+          all(x["technical_basis"] and x["status"] == "INVESTIGATION_CANDIDATE"
+              for x in all_families["candidates"]))
+    check("ungrounded model emits no exploration guesses",
+          coverage_mod.generate_from_model({"behavior_model": ungrounded})["candidates"] == [])
+    check("simple UI does not activate irrelevant exploration families",
+          {x["dimension"] for x in coverage_mod.generate_from_model({"behavior_model": model})["candidates"]}
+          == {"CONTRACT_BOUNDARY", "STATE_PARTITION"})
+
+    offline_loader = ds._load_offline_retrieval
+    ds._load_offline_retrieval = lambda: None
+    try:
+        manifest = _canonical_semantic_fixture()
+        manifest.update(schema_version="aem-guides-evidence-manifest-v3", behaviour_matters=True,
+                        behavior_model=model, clarification={"schema_version": "fixture-v1"},
+                        evidence_catalog=[{"id": "E1", "kind": "jira", "source_ref": "synthetic issue capture"}])
+        generated = ds.synthesize(manifest)
+        check("all generated candidates are legal v3 hypotheses",
+              coverage_mod.validate_coverage_block(generated["candidates"]) == [])
+        check("generation is stable and does not mutate its input",
+              generated == ds.synthesize(manifest) and manifest["coverage_hypotheses"] == [])
+        manifest["coverage_hypotheses"] = generated["candidates"]
+        check("retained explorer candidates clear discovery review", ds.review_notes(manifest) == [])
+        first_hid = generated["candidates"][0]["hypothesis_id"]
+        for index, hyp in enumerate(manifest["coverage_hypotheses"]):
+            hyp.update(status="CONFIRMED", requires_more_evidence=False)
+            eid, hid = f"EV-{index}", hyp["hypothesis_id"]
+            subject = "PRODUCT_CONTRACT" if index == 0 else "ACTUAL_IMPLEMENTATION"
+            authority = "JIRA_EXPECTED_BEHAVIOR" if index == 0 else "CURRENT_IMPLEMENTATION"
+            manifest["evidence_lifecycle"].append({
+                "evidence_id": eid, "hypothesis_id": hid, "source": "current repository" if index else "linked jira",
+                "query": f"inspect observed relationship {index}", "pass": "initial", "status": "USED",
+                "subject": subject, "authority": authority,
+            })
+            manifest["verifications"].append({
+                "hypothesis_id": hid, "verdict": "CONFIRMED", "subject": subject,
+                "supporting_authorities": [authority], "supporting_evidence": [eid],
+                "disposition": "ACCEPTANCE_CRITERION" if index == 0 else "REGRESSION",
+            })
+            if index:
+                manifest["dispositions"].append({
+                    "finding_id": f"CD-H-{index}", "source_refs": [hid],
+                    "statement": "The selected item remains visible.", "disposition": "REGRESSION_COVERAGE",
+                })
+        manifest["dispositions"][0]["source_refs"].append(first_hid)
+        manifest["acceptance_promotions"]["records"][0]["candidate_ref"] = first_hid
+        pipeline_problems = run_gates.validate_canonical_semantic_pipeline(manifest)
+        assert not pipeline_problems, pipeline_problems
+        check("v3 model, hypotheses, evidence, verification, disposition and promotion validate together", True)
+        check("complete reasoning record needs no block waivers", gate.validate("", manifest)[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manifest.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            check("strict authoring model runs through run_gates", run_gates.check_behavior_model(str(path))[0] == [])
+            check("real v3 hypotheses satisfy reasoning-required", run_gates.check_reasoning_required(str(path))[0] == [])
+            check("terminal verification runs through run_gates", run_gates.check_verifications(str(path))[0] == [])
+            check("actual evidence ledger runs through retrieval gate", run_gates.check_retrieval(str(path))[0] == [])
+        incomplete = copy.deepcopy(manifest)
+        incomplete["verifications"].pop()
+        check("dropping a candidate verdict fails", any("no verification" in p
+              for p in run_gates.validate_canonical_semantic_pipeline(incomplete)))
+        missing_disposition = copy.deepcopy(manifest)
+        missing_disposition["dispositions"].pop()
+        check("verified hypotheses cannot silently lose their disposition",
+              any("has no coverage disposition" in p for p in run_gates.validate_canonical_semantic_pipeline(missing_disposition)))
+        anonymous = copy.deepcopy(manifest)
+        anonymous["coverage_hypotheses"][0]["hypothesis_id"] = ""
+        check("authoring rejects anonymous candidates before verification",
+              any("non-empty hypothesis_id" in p for p in run_gates.validate_canonical_semantic_pipeline(anonymous)))
+        wrong_authority = copy.deepcopy(manifest)
+        wrong_authority["verifications"][0]["supporting_authorities"] = ["CURRENT_IMPLEMENTATION"]
+        check("implementation authority cannot be relabelled as acceptance truth",
+              bool(run_gates.validate_canonical_semantic_pipeline(wrong_authority)))
+
+        upload = {"behavior_model": dict(model, facts=[{
+            "fact": "The shared asset upload overwrites a repository node property.",
+            "evidence_ids": ["E-UPLOAD"], "authority": "CURRENT_IMPLEMENTATION", "confidence": 1.0}])}
+        upload_candidates = ds.synthesize(upload)["candidates"]
+        check("feature-map and learned-probe candidates both run", {"FEATURE_MAP", "LEARNED_PROBE"}
+              <= {h["generator"] for h in upload_candidates})
+        check("all discovery axes normalize into valid hypotheses",
+              coverage_mod.validate_coverage_block(upload_candidates) == [])
+        axes = probe_coverage_gate_mod._covered_axes({"coverage_hypotheses": upload_candidates})
+        check("hypotheses alone preserve discovery-axis probe coverage", "CODE_PATH_CONSUMER" in axes and "VALUE_SET_CHANNEL" in axes)
+        activated = probe_coverage_gate_mod.activated_probes("asset upload overwrite", {})
+        check("real active probes accept hypothesis dimensions without parallel clarification",
+              probe_coverage_gate_mod.validate("asset upload overwrite", {
+                  "coverage_hypotheses": [{"dimension": p["axis"]} for p in activated]}) == [])
+    finally:
+        ds._load_offline_retrieval = offline_loader
+
+    legacy = {"schema_version": gate.LEGACY_SCHEMA, "behaviour_matters": True,
+              "block_waivers": [{"block": b, "reason": "Legacy capture lacks this block.", "waived_by": "author"}
+                                for b in gate.CORE_BEHAVIOR_BLOCKS],
+              "clarification": {"schema_version": "fixture-v1"}}
+    ok, problems = gate.validate("", legacy)
+    check("blanket behavioral v2 waivers hard-fail all three protected blocks",
+          not ok and all(any(b in p and "cannot be waived" in p for p in problems)
+                         for b in gate.PROTECTED_BEHAVIOR_BLOCKS))
+    check("every reasoning waiver emits non-postable REVIEW", len(gate.review_notes(legacy)) == len(gate.CORE_BEHAVIOR_BLOCKS))
+    check("reasoning waiver reviews engage the actual posting guard",
+          run_gates._postability_review_present(gate.review_notes(legacy)))
+    reviewed = copy.deepcopy(legacy)
+    for waiver in reviewed["block_waivers"]:
+        if waiver["block"] in gate.PROTECTED_BEHAVIOR_BLOCKS:
+            waiver["reviewed_escape"] = {"decision": "APPROVED", "reviewed_by": "QE reviewer",
+                                         "review_ref": "synthetic migration review"}
+    check("reviewed legacy escape is accepted as a review record", gate.validate("", reviewed)[0])
+    check("reviewed escape never reports CLEAN", "REVIEW" in gate.summarize(reviewed))
+    self_review = copy.deepcopy(reviewed)
+    self_review["block_waivers"][2]["reviewed_escape"]["reviewed_by"] = "author"
+    check("author self-review cannot bypass protected blocks", not gate.validate("", self_review)[0])
+    modern = dict(reviewed, schema_version="aem-guides-evidence-manifest-v3")
+    check("v3 reasoning waivers require explicit reviewed escapes", not gate.validate("", modern)[0])
+    structural = {"block_waivers": [{"block": "publishing_scope", "reason": "Legacy capture.", "waived_by": "author"}]}
+    check("legacy structural waiver behavior is unchanged", gate.validate("", structural)[0] and not gate.review_notes(structural))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "legacy.json"
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+        failures, notes = run_gates.check_reasoning_required(str(path))
+        check("run_gates no longer silently skips behavioral v2 reasoning", bool(failures) and any(n.startswith("REVIEW") for n in notes))
+
+    questions = [{"question_id": f"Q-{i}", "question": f"Which consumer owns state {i}?",
+                  "why_it_matters": "Changes the test scope.", "hypothesis_id": f"H-{i}",
+                  "preferred_sources": ["current repository"], "search_concepts": [f"state {i}"],
+                  "blocking": True, "material": False} for i in (1, 2)]
+    evidence = [{"evidence_id": "E-SECOND", "source": "current repository", "query": "inspect consumer state 1",
+                 "pass": "second", "status": "USED", "question_id": "Q-1", "hypothesis_id": "H-1"}]
+    check("one question's second pass cannot satisfy another blocking question",
+          any("Q-2 has no linked" in p for p in mq_mod.check_retrieval_discipline(questions, evidence)))
+    print("test_v3_authoring_pipeline: OK")
+
+
 def test_clarification_gate() -> None:
     cg = clarification_gate_mod
     nl = chr(10)
@@ -9731,6 +9953,7 @@ def main() -> int:
     test_reviewer_request_coverage()
     test_reproducibility_gate()
     test_probe_coverage_gate()
+    test_dita_semantics_activation()
     test_miss_probe_library()
     test_feature_map()
     test_offline_retrieval()
@@ -9749,6 +9972,7 @@ def main() -> int:
     test_shared_path_regression_coverage()
     test_qe_completeness_coverage()
     test_manifest_completeness_gate()
+    test_v3_authoring_pipeline()
     test_clarification_gate()
     test_terminal_states()
     test_concurrency_race()

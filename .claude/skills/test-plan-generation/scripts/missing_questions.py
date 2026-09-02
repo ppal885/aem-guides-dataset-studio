@@ -308,7 +308,7 @@ def check_retrieval_discipline(
             )
         initial_queries = _queries_by_pass(items, "initial")
         for q in questions:
-            if not q.material:
+            if not (q.material or q.blocking):
                 continue
             linked = [
                 e for e in items

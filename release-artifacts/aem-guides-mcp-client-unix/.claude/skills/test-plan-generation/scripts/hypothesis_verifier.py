@@ -276,6 +276,10 @@ def verify_all(
                 f"coverage hypothesis '{hid}' (status {status}) has no verification - every candidate must reach a "
                 f"terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)"
             )
+        if status in VERDICTS:
+            for v in verifs:
+                if v.hypothesis_id == hid and v.verdict != status:
+                    problems.append(f"hypothesis {hid!r} terminal status {status} disagrees with verification {v.verdict}")
     return problems
 
 
