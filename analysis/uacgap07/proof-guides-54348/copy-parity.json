@@ -1,0 +1,58 @@
+[
+  {
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\.codex\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\.claude\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\release-artifacts\\aem-guides-mcp-client-windows\\.claude\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\release-artifacts\\aem-guides-mcp-client-unix\\.claude\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\.codex\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  },
+  {
+    "root": "C:\\Users\\prashantp\\.claude\\skills\\test-plan-generation",
+    "sha256": "f193a209b3a10307c3bc09180c1644e5dd008bcf0d15144ca9ded6f2306a5951",
+    "file_count": 164,
+    "enforced_bytes_match": true,
+    "skill_md_matches": true,
+    "test_script_matches": true
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "repository": "C:\\api automation\\dxml-it-tests",
+  "branch": "fix-changebars-nativepdf-lapwing-benchmark",
+  "pre_sync_sha": "46709a94fbf357a6277f780202401149c5820054",
+  "pre_sync_dirty": true,
+  "fetch": "failed",
+  "pull": "not run",
+  "stash_oid": "",
+  "stash_ref": "",
+  "restore_command": "",
+  "status": "blocked",
+  "reason": "From git.corp.adobe.com:AdobeStarling/dxml-it-tests\n * [new branch]          GUIDES-55514        -> origin/GUIDES-55514\n   fbe85e448..7977c0c25  develop             -> origin/develop\n * [new branch]          fix-GUIDES-54383    -> origin/fix-GUIDES-54383\n * [new branch]          fix-baseline-test-2 -> origin/fix-baseline-test-2\n   4d5917d49..3a417da73  mcp-it-fix          -> origin/mcp-it-fix\n ! [rejected]            v2026.6.0           -> v2026.6.0  (would clobber existing tag)"
+}

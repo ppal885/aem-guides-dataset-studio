@@ -1,0 +1,40 @@
+{
+  "schema_version": "aem-guides-v3-scaffold-policy-v1",
+  "question_leads": {
+    "PRODUCT_CONTRACT": "What is the intended product behavior",
+    "DITA_SEMANTICS": "What do the governing DITA semantics require",
+    "ACTUAL_IMPLEMENTATION": "What does the current implementation do",
+    "CURRENT_UI": "What does the current UI show"
+  },
+  "material_by_kind": {
+    "PRODUCT_BEHAVIOR": true, "CONTENT": true, "DITA_ENTITY": true,
+    "CONFIGURATION": true, "ATTRIBUTE": true, "UI_SURFACE": true,
+    "API": true, "PROCESSOR": true, "SERVICE": true,
+    "PERSISTED_STATE": true, "GENERATED_ARTIFACT": true, "PRESET": true,
+    "PROFILE": false, "ROLE": false, "DEPLOYMENT": false, "VERSION": false,
+    "OTHER": true
+  },
+  "entity_fields": {
+    "processors": {"kind": "PROCESSOR", "relation_type": "PROCESSED_BY", "dimension": "DOWNSTREAM_REGRESSION"},
+    "shared_processors": {"kind": "PROCESSOR", "relation_type": "PROCESSED_BY", "dimension": "CONSUMER"},
+    "consumers": {"kind": "OTHER", "relation_type": "CONSUMED_BY", "dimension": "CONSUMER"},
+    "downstream_decision_consumers": {"kind": "OTHER", "relation_type": "CONSUMED_BY", "dimension": "CONSUMER"},
+    "attributes": {"kind": "ATTRIBUTE", "relation_type": "CONTROLLING_ATTRIBUTE", "dimension": "CONFIGURATION"},
+    "configuration_dependencies": {"kind": "CONFIGURATION", "relation_type": "CONFIGURED_BY", "dimension": "CONFIGURATION"},
+    "configuration_branches": {"kind": "CONFIGURATION", "relation_type": "CONFIGURED_BY", "dimension": "CONFIGURATION"},
+    "configuration": {"kind": "CONFIGURATION", "relation_type": "CONFIGURED_BY", "dimension": "CONFIGURATION"},
+    "config": {"kind": "CONFIGURATION", "relation_type": "CONFIGURED_BY", "dimension": "CONFIGURATION"},
+    "affected_state": {"kind": "OTHER", "relation_type": "REFERENCES", "dimension": "STATE_PARTITION"},
+    "persisted_state": {"kind": "PERSISTED_STATE", "relation_type": "PERSISTS_THROUGH", "dimension": "LIFECYCLE"},
+    "state": {"kind": "OTHER", "relation_type": "REFERENCES", "dimension": "STATE_PARTITION"},
+    "inputs": {"kind": "CONTENT", "relation_type": "REQUIRES", "dimension": "CONTRACT_BOUNDARY"},
+    "outputs": {"kind": "GENERATED_ARTIFACT", "relation_type": "AFFECTS_OUTPUT_OF", "dimension": "REFERENCE_ARTIFACT"},
+    "generated_artifacts": {"kind": "GENERATED_ARTIFACT", "relation_type": "AFFECTS_OUTPUT_OF", "dimension": "REFERENCE_ARTIFACT"},
+    "write_paths": {"kind": "SERVICE", "relation_type": "WRITTEN_BY", "dimension": "LIFECYCLE"},
+    "read_paths": {"kind": "SERVICE", "relation_type": "READ_BY", "dimension": "LIFECYCLE"},
+    "producers": {"kind": "SERVICE", "relation_type": "GENERATED_BY", "dimension": "LIFECYCLE"},
+    "roles_profiles": {"kind": "PROFILE", "relation_type": "ROLE_DEPENDENT", "dimension": "STATE_PARTITION"},
+    "versioned_models": {"kind": "VERSION", "relation_type": "VERSION_DEPENDENT", "dimension": "BACKWARD_COMPATIBILITY"},
+    "deployment_modes": {"kind": "DEPLOYMENT", "relation_type": "DEPLOYMENT_DEPENDENT", "dimension": "BACKWARD_COMPATIBILITY"}
+  }
+}

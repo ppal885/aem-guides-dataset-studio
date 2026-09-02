@@ -23,7 +23,114 @@ Record extra model relationships only when supported: configuration branches,
 fallbacks, capabilities, artifact shapes, shared processors, execution/publishing
 modes, versioned models, side effects, and state-update/remove paths.
 
-## 2. Execute discovery, do not hand-enumerate dimensions afterward
+## 2. Scaffold, then disposition (do not hand-type the closure matrix)
+
+After modeling the inspected behavior and declaring `evidence_catalog`, run:
+
+```text
+python scripts/v3_scaffold.py --manifest manifest.json
+python scripts/v3_scaffold.py --manifest manifest.scaffold.json --out manifest.review.json --inspected-file path/to/inspected-file.py
+```
+
+The first command creates `manifest.scaffold.json`. The second illustrates adding
+an explicitly selected source file while saving to a new destination. Existing
+files are never overwritten. Relative inspected-file paths resolve against the
+input manifest's directory, not the shell's working directory. No network,
+corpus ingestion, provider call, LLM invocation, or source-tree scan is performed.
+Exit 0 means **scaffold written**, not gate passed or plan postable.
+
+The command generates or extends four existing blocks:
+
+- `behavior_graph`: model-role nodes and typed candidate edges with catalog IDs.
+  Edge hypotheses are appended to `coverage_hypotheses` so there are no dangling
+  `hypothesis_ref` values. Roles do not imply a verified method-call graph.
+- `semantic_closure`: every material node x every current `CLOSURE_DIMENSIONS`
+  value (currently 31). IDs can grow beyond three digits; no rows are truncated.
+- `missing_questions`: one contextual stub per unresolved closure, material edge,
+  ambiguous material fact, and unresolved verification. Stubs preserve the source,
+  dimension, subject and existing OQ; they add source-policy hints and entity-based
+  search concepts. They are labelled `PYTHON_SCAFFOLD`, **not Claude questions**.
+- `evidence_catalog` and `evidence_lifecycle`: SHA-256 binding of files selected
+  through repeated `--inspected-file` flags or manifest `inspected_files` strings.
+  File content is not copied. Binding records only RETRIEVED bytes, with blank
+  query/authority/subject. Record the real inspection and bindings before USED.
+
+### Entity provenance and materiality
+
+Existing model string lists work unchanged. A node can use evidence from a fact
+that explicitly contains its exact entity phrase. When that wording does not
+match, provide the explicit binding in `behavior_model.entity_evidence`:
+
+```json
+{"processors:value resolver": ["E1"], "consumers:details panel": ["E2"]}
+```
+
+The key is `<model-field>:<exact entity label>`. Alternatively, a list item may be
+`{"name":"value resolver","evidence_ids":["E1"],"material":true}` with an
+optional canonical graph `kind`. Supported fields include processors, consumers,
+attributes, configuration dependencies/branches, affected/persisted state,
+inputs/outputs/artifacts, read/write paths, producers, roles, versions and
+deployment modes; `configuration`, `config` and `state` are optional aliases. Missing or unavailable
+IDs produce gaps and empty provenance, not invented evidence or borrowed catalog
+hits. The graph gate rejects the incomplete binding.
+
+Generic field/role mappings and per-kind material defaults live in
+`scripts/data/v3_scaffold_policy.json`, checked against the canonical graph and
+coverage vocabularies when loaded. There are no product construct-pair rules.
+An explicit node `kind` uses that kind's default, not the original field's default;
+an explicit boolean `material` takes precedence.
+
+Behavior/state/processor/consumer/configuration entities default material. Role,
+version and deployment context defaults non-material; inspect these defaults and
+change them when relevant. All generated nodes/edges start
+`verification_state=INVESTIGATION_CANDIDATE`, `confidence=0`, `currentness=UNKNOWN`
+and `applicability=UNRESOLVED`. Edges start with inference authority. Verify and set the correct
+subject/source authority; the generator never asserts current implementation.
+
+### Required author edits
+
+Generated graph, closure and file-use rows carry `author_review_required=true`.
+Closure defaults are NOT_APPLICABLE / INVESTIGATED_AND_REJECTED with an
+`AUTHOR MUST CONFIRM` reason and blank `disposition_ref`. These are **placeholder
+enum values, not completed rejection verdicts**. Gates reject them even if an
+author fills a disposition ID or flips the review flag without replacing the
+placeholder reason. No AC, verification verdict or acceptance promotion is
+generated.
+
+For each closure row, inspect the relationship, replace the reason with the real
+evidence-based decision, and set `author_review_required=false`:
+
+- Not applicable: keep NOT_APPLICABLE / INVESTIGATED_AND_REJECTED and link a real
+  rejection `disposition_ref`.
+- Applicable and verified: set APPLICABLE / COVERED and link its real disposition.
+- Still unknown: set UNRESOLVED / UNRESOLVED_AND_EXPOSED, remove any rejection
+  destination and link the real `open_question_ref`.
+
+Review graph entities/edges and replace their `review_note` similarly. For file
+use, record the actual query, subject, authority, question/hypothesis bindings and
+inspection note; only then mark USED. Hashing alone is not inspection or use.
+The command does not fabricate OQ IDs, second-pass queries or retrieval results.
+Missing OQ links and unperformed second passes remain gate failures.
+
+Rerun after marking closure/verification rows UNRESOLVED to append their question
+stubs. Existing graph decisions, closure rows, questions, evidence usage and IDs
+are preserved, not reset. New model entities/dimensions append new IDs. If a
+source changes, a new evidence ID is created; old hashes and decisions remain
+intact and must be reassessed. Deleted/renamed model entities are not silently
+pruned: reconcile stale graph rows yourself. Do not reuse a reviewed graph for
+changed behavior without rechecking its evidence and scope.
+
+If a selected absolute file path already has a catalog ID but no hash, the helper
+fills that hash in place, preserving model references to the ID. It never replaces
+an existing non-empty hash with different bytes or chooses between ambiguous IDs.
+
+Continue with discovery and actual investigation below. Populate the other
+required authored blocks (`contract_facts`, `issue_domains`, verifications,
+dispositions, promotions) from evidence; the scaffold does not waive them.
+Finally run the normal `run_gates.py --plan ... --combined ... --manifest ...
+--receipt ...`. The scaffold is not a replacement gate or canonical runtime.
+
+## 3. Execute discovery, do not hand-enumerate dimensions afterward
 
 Run the installed copy's `scripts/dimension_synthesizer.py --manifest <path> --json`.
 Its `explorers` trace records all twelve family checks: CONTRACT_BOUNDARY,
@@ -45,7 +152,7 @@ Discovery is SUPPORTING only. A matched feature, historical analogy, RAG snippet
 or generated candidate does not establish current applicability or acceptance.
 Never paste candidate wording straight into an AC.
 
-## 3. Investigate missing evidence
+## 4. Investigate missing evidence
 
 For each material or blocking gap, author a contextual `missing_questions` record:
 `question_id`, `hypothesis_id`, `question`, `why_it_matters`, `preferred_sources`,
@@ -62,7 +169,7 @@ when a provider is absent. Empty/unavailable retrieval leaves the candidate
 unresolved, not disproved. If no question remains, an explicit empty
 `missing_questions` list is valid; the material-gap validators still run.
 
-## 4. Verify, disposition, then promote
+## 5. Verify, disposition, then promote
 
 Every candidate needs exactly one `verifications` entry, even when rejected:
 CONFIRMED, INFERRED_HIGH_CONFIDENCE, REJECTED, or UNRESOLVED. Use

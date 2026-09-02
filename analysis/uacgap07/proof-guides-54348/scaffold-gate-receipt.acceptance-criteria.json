@@ -1,0 +1,233 @@
+[
+  {
+    "id": "AC-01",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "a profile whose ui_config.json sets ditaAttributes.required.navtitle to true",
+    "when": "an author inserts an existing DITA topic as a reference in the Map Editor and saves",
+    "then": "the saved <topicref> in Source mode carries a @navtitle attribute",
+    "evidence": "Jira GUIDES-54348 expected result; documented behaviour Include @navtitle attribute by default",
+    "raw": "AC-01 [Proposed]: (Basic) Given a profile whose ui_config.json sets ditaAttributes.required.navtitle to true | When an author inserts an existing DITA topic as a reference in the Map Editor and saves | Then the saved <topicref> in Source mode carries a @navtitle attribute | Evidence: Jira GUIDES-54348 expected result; documented behaviour Include @navtitle attribute by default.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-02",
+    "status": "Proposed",
+    "sphere": "Basic",
+    "given": "navtitle is required and a topic with a known <title> is referenced",
+    "when": "the topicref is inserted",
+    "then": "the @navtitle value equals the referenced topic's <title> text exactly",
+    "evidence": "Jira GUIDES-54348 example navtitle=\"Topic 1\"; xmleditor insert_topicref_controller updateNavTitle derives navtitle from the fetched title",
+    "raw": "AC-02 [Proposed]: (Basic) Given navtitle is required and a topic with a known <title> is referenced | When the topicref is inserted | Then the @navtitle value equals the referenced topic's <title> text exactly | Evidence: Jira GUIDES-54348 example navtitle=\"Topic 1\"; xmleditor insert_topicref_controller updateNavTitle derives navtitle from the fetched title.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-03",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required",
+    "when": "a topic reference is added through each map insertion entry point - the Insert Topic Reference dialog and drag-and-drop from the repository panel",
+    "then": "@navtitle is auto-populated identically for both, not only for the dialog path",
+    "evidence": "xmleditor insert_topicref_controller.ts and util/drag.ts both read the required-navtitle setting; GUIDES-54348 repro adds a reference",
+    "raw": "AC-03 [Proposed]: (Integration) Given navtitle is required | When a topic reference is added through each map insertion entry point - the Insert Topic Reference dialog and drag-and-drop from the repository panel | Then @navtitle is auto-populated identically for both, not only for the dialog path | Evidence: xmleditor insert_topicref_controller.ts and util/drag.ts both read the required-navtitle setting; GUIDES-54348 repro adds a reference.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-04",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "a profile where navtitle is not marked required (ditaAttributes.required has no navtitle or it is false)",
+    "when": "a topic reference is inserted",
+    "then": "@navtitle is not auto-added, preserving the existing default behaviour",
+    "evidence": "xmleditor forceNavTitle is gated on the required-navtitle setting; GUIDES-54348 preconditions",
+    "raw": "AC-04 [Proposed]: (Negative) Given a profile where navtitle is not marked required (ditaAttributes.required has no navtitle or it is false) | When a topic reference is inserted | Then @navtitle is not auto-added, preserving the existing default behaviour | Evidence: xmleditor forceNavTitle is gated on the required-navtitle setting; GUIDES-54348 preconditions.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-05",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required in a Global Profile and separately in a Folder Profile",
+    "when": "a topic reference is inserted under each profile's scope",
+    "then": "@navtitle is auto-populated in both, driven by ui_config.json ditaAttributes.required.navtitle",
+    "evidence": "Jira GUIDES-54348 preconditions Global or Folder Profile; xmleditor app_view updateDitaRequiredAttrs reads ditaAttributes.required",
+    "raw": "AC-05 [Proposed]: (Integration) Given navtitle is required in a Global Profile and separately in a Folder Profile | When a topic reference is inserted under each profile's scope | Then @navtitle is auto-populated in both, driven by ui_config.json ditaAttributes.required.navtitle | Evidence: Jira GUIDES-54348 preconditions Global or Folder Profile; xmleditor app_view updateDitaRequiredAttrs reads ditaAttributes.required.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-06",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required",
+    "when": "a topicref is inserted on an element where the DTD permits @navtitle",
+    "then": "@navtitle is added, and where the DTD does not permit it @navtitle is not added, so no DTD-invalid markup is produced",
+    "evidence": "Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:114 isValidAttr('navtitle') DTD guard",
+    "raw": "AC-06 [Proposed]: (Integration) Given navtitle is required | When a topicref is inserted on an element where the DTD permits @navtitle | Then @navtitle is added, and where the DTD does not permit it @navtitle is not added, so no DTD-invalid markup is produced | Evidence: Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:114 isValidAttr('navtitle') DTD guard.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-07",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required",
+    "when": "an author creates a topichead (a topicref with no href)",
+    "then": "the required-navtitle configuration is honoured consistently for the topichead, whose navigation label is @navtitle rather than a referenced title",
+    "evidence": "OASIS DITA topichead/navtitle model; historical GUIDES-10509 navtitle for topichead",
+    "raw": "AC-07 [Proposed]: (Integration) Given navtitle is required | When an author creates a topichead (a topicref with no href) | Then the required-navtitle configuration is honoured consistently for the topichead, whose navigation label is @navtitle rather than a referenced title | Evidence: OASIS DITA topichead/navtitle model; historical GUIDES-10509 navtitle for topichead.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-08",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required",
+    "when": "a reference to another map is inserted (a mapref or a topicref with format ditamap)",
+    "then": "@navtitle is auto-populated from the referenced map's <title>",
+    "evidence": "Jira GUIDES-54348; OASIS DITA 1.2 mapref https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/mapref.html; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:82 getTitles",
+    "raw": "AC-08 [Proposed]: (Integration) Given navtitle is required | When a reference to another map is inserted (a mapref or a topicref with format ditamap) | Then @navtitle is auto-populated from the referenced map's <title> | Evidence: Jira GUIDES-54348; OASIS DITA 1.2 mapref https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/mapref.html; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:82 getTitles.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-09",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "navtitle is required and the referenced topic has an empty or missing <title>",
+    "when": "the reference is inserted",
+    "then": "@navtitle is set to a defined fallback (empty or the reference identifier) without an editor error and without blocking the save",
+    "evidence": "xmleditor updateNavTitle title handling; GUIDES-54348 derivation from title",
+    "raw": "AC-09 [Proposed]: (Negative) Given navtitle is required and the referenced topic has an empty or missing <title> | When the reference is inserted | Then @navtitle is set to a defined fallback (empty or the reference identifier) without an editor error and without blocking the save | Evidence: xmleditor updateNavTitle title handling; GUIDES-54348 derivation from title.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-10",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "@navtitle has been auto-populated on a topicref",
+    "when": "the map is saved, reopened, and edited further",
+    "then": "@navtitle persists in Source mode across the round trip and is not stripped by later edits",
+    "evidence": "Jira GUIDES-54348 repro inspects Source mode after save; historical GUIDES-2413 navTitle save behaviour",
+    "raw": "AC-10 [Proposed]: (Integration) Given @navtitle has been auto-populated on a topicref | When the map is saved, reopened, and edited further | Then @navtitle persists in Source mode across the round trip and is not stripped by later edits | Evidence: Jira GUIDES-54348 repro inspects Source mode after save; historical GUIDES-2413 navTitle save behaviour.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-11",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "@navtitle is present on a topicref and @locktitle is set to yes",
+    "when": "the map is used in navigation and generated output",
+    "then": "the auto-populated @navtitle is used as the display title per the locktitle semantics, and adding @navtitle does not change @locktitle behaviour",
+    "evidence": "Jira GUIDES-54348; OASIS DITA 1.2 topicref navtitle/locktitle https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/topicref.html; historical GUIDES-10509 navtitle/topichead in output",
+    "raw": "AC-11 [Proposed]: (Integration) Given @navtitle is present on a topicref and @locktitle is set to yes | When the map is used in navigation and generated output | Then the auto-populated @navtitle is used as the display title per the locktitle semantics, and adding @navtitle does not change @locktitle behaviour | Evidence: Jira GUIDES-54348; OASIS DITA 1.2 topicref navtitle/locktitle https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/topicref.html; historical GUIDES-10509 navtitle/topichead in output.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-12",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "navtitle is required",
+    "when": "multiple topic references are added in one action (multi-select insert or multi-item drag-and-drop)",
+    "then": "each inserted <topicref> independently receives its own @navtitle from its own referenced title with no cross-over between items",
+    "evidence": "xmleditor insertUpdatedNodes iterates paths and titles; GUIDES-54348 add-reference flow",
+    "raw": "AC-12 [Proposed]: (Negative) Given navtitle is required | When multiple topic references are added in one action (multi-select insert or multi-item drag-and-drop) | Then each inserted <topicref> independently receives its own @navtitle from its own referenced title with no cross-over between items | Evidence: xmleditor insertUpdatedNodes iterates paths and titles; GUIDES-54348 add-reference flow.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-13",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "several attributes are marked required in ditaAttributes.required (for example navtitle and another attribute)",
+    "when": "a topic reference is inserted",
+    "then": "every required attribute the editor supports auto-populating is applied, so the fix is not limited to navtitle in isolation",
+    "evidence": "xmleditor PAGE_REQUIRED_DITA_ATTRIBUTES model; historical GUIDES-45251 drag-drop not adding the type attribute",
+    "raw": "AC-13 [Proposed]: (Integration) Given several attributes are marked required in ditaAttributes.required (for example navtitle and another attribute) | When a topic reference is inserted | Then every required attribute the editor supports auto-populating is applied, so the fix is not limited to navtitle in isolation | Evidence: xmleditor PAGE_REQUIRED_DITA_ATTRIBUTES model; historical GUIDES-45251 drag-drop not adding the type attribute.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-14",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a topicref whose navtitle was auto-populated and whose referenced topic is reused as content elsewhere (an xref or link with keyref to it, or the same topic referenced in more than one map)",
+    "when": "the reuse consumer resolves its navigation or link text",
+    "then": "it resolves to the populated navtitle consistently, and the populated form (the @navtitle attribute the editor writes today versus the <topicmeta><navtitle> element that keyref link-text resolution reads) is defined and consumed correctly",
+    "evidence": "Jira GUIDES-54348; OASIS DITA 1.2 topicmeta navtitle and keyref link-text resolution https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/topicmeta.html; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:115 writes the @navtitle attribute",
+    "raw": "AC-14 [Proposed]: (Integration) Given a topicref whose navtitle was auto-populated and whose referenced topic is reused as content elsewhere (an xref or link with keyref to it, or the same topic referenced in more than one map) | When the reuse consumer resolves its navigation or link text | Then it resolves to the populated navtitle consistently, and the populated form (the @navtitle attribute the editor writes today versus the <topicmeta><navtitle> element that keyref link-text resolution reads) is defined and consumed correctly | Evidence: Jira GUIDES-54348; OASIS DITA 1.2 topicmeta navtitle and keyref link-text resolution https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/topicmeta.html; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:115 writes the @navtitle attribute.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-15",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required",
+    "when": "a topic reference is added in the New Editor map surface as well as the xmleditor Map Editor",
+    "then": "@navtitle is auto-populated in both editors, since the New Editor exposes its own navtitle field and the drag-drop and insert paths must behave consistently across editors",
+    "evidence": "Jira GUIDES-54348; new_editor content_properties_panel navtitle field; historical GUIDES-45251 New Editor drag-drop attribute gap",
+    "raw": "AC-15 [Proposed]: (Integration) Given navtitle is required | When a topic reference is added in the New Editor map surface as well as the xmleditor Map Editor | Then @navtitle is auto-populated in both editors, since the New Editor exposes its own navtitle field and the drag-drop and insert paths must behave consistently across editors | Evidence: Jira GUIDES-54348; new_editor content_properties_panel navtitle field; historical GUIDES-45251 New Editor drag-drop attribute gap.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-16",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "a topicref with a stale or missing navtitle",
+    "when": "the author invokes the Refresh navigation title attribute action",
+    "then": "@navtitle is re-derived from the current referenced topic title, consistent with the auto-population on insert",
+    "evidence": "Jira GUIDES-54348; new_editor Refresh navigation title attribute action and canRefreshNavTitle config",
+    "raw": "AC-16 [Proposed]: (Integration) Given a topicref with a stale or missing navtitle | When the author invokes the Refresh navigation title attribute action | Then @navtitle is re-derived from the current referenced topic title, consistent with the auto-population on insert | Evidence: Jira GUIDES-54348; new_editor Refresh navigation title attribute action and canRefreshNavTitle config.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-17",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "navtitle is required",
+    "when": "a key definition (keydef with keys and href) is created by referencing a topic",
+    "then": "@navtitle is not force-added to the keydef, because a keydef is a non-navigation key definition and required-navtitle applies to navigation-bearing references",
+    "evidence": "Jira GUIDES-54348; xmleditor src/util/drag.ts:88 createKeyDefData emits keydef with keys and href only; OASIS DITA keydef model",
+    "raw": "AC-17 [Proposed]: (Negative) Given navtitle is required | When a key definition (keydef with keys and href) is created by referencing a topic | Then @navtitle is not force-added to the keydef, because a keydef is a non-navigation key definition and required-navtitle applies to navigation-bearing references | Evidence: Jira GUIDES-54348; xmleditor src/util/drag.ts:88 createKeyDefData emits keydef with keys and href only; OASIS DITA keydef model.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-18",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required and a glossary term is referenced",
+    "when": "a glossref is created for a glossentry",
+    "then": "its navigation title is derived appropriately for the glossref specialization rather than left empty",
+    "evidence": "Jira GUIDES-54348; xmleditor src/util/drag.ts:72 glossref creation for glossentry; OASIS DITA glossref model",
+    "raw": "AC-18 [Proposed]: (Integration) Given navtitle is required and a glossary term is referenced | When a glossref is created for a glossentry | Then its navigation title is derived appropriately for the glossref specialization rather than left empty | Evidence: Jira GUIDES-54348; xmleditor src/util/drag.ts:72 glossref creation for glossentry; OASIS DITA glossref model.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-19",
+    "status": "Proposed",
+    "sphere": "Integration",
+    "given": "navtitle is required in a bookmap",
+    "when": "specialized reference types such as chapter and appendix reference a topic",
+    "then": "@navtitle is auto-populated on those specialized references as it is on a plain topicref",
+    "evidence": "Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:49 chapter handling; OASIS DITA bookmap chapter and appendix model",
+    "raw": "AC-19 [Proposed]: (Integration) Given navtitle is required in a bookmap | When specialized reference types such as chapter and appendix reference a topic | Then @navtitle is auto-populated on those specialized references as it is on a plain topicref | Evidence: Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:49 chapter handling; OASIS DITA bookmap chapter and appendix model.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-20",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "a topicref that already has an author-entered @navtitle",
+    "when": "the reference is re-inserted or the map is edited under a required-navtitle profile",
+    "then": "the existing author navtitle value is preserved and is replaced only when the author explicitly refreshes it",
+    "evidence": "xmleditor updateNavTitle setAttribute writes navtitle without checking for an existing value; GUIDES-54348 auto-population intent",
+    "raw": "AC-20 [Proposed]: (Negative) Given a topicref that already has an author-entered @navtitle | When the reference is re-inserted or the map is edited under a required-navtitle profile | Then the existing author navtitle value is preserved and is replaced only when the author explicitly refreshes it | Evidence: xmleditor updateNavTitle setAttribute writes navtitle without checking for an existing value; GUIDES-54348 auto-population intent.",
+    "schema_version": "aem-guides-ac-v1"
+  },
+  {
+    "id": "AC-21",
+    "status": "Proposed",
+    "sphere": "Negative",
+    "given": "navtitle is required and the reference target is external or non-DITA (scope external, or a format that is not dita or ditamap such as a PDF or URL)",
+    "when": "the reference is inserted",
+    "then": "@navtitle is set to a defined fallback rather than a DITA title, without an editor error",
+    "evidence": "Jira GUIDES-54348 derivation from title; OASIS DITA topicref scope and format model",
+    "raw": "AC-21 [Proposed]: (Negative) Given navtitle is required and the reference target is external or non-DITA (scope external, or a format that is not dita or ditamap such as a PDF or URL) | When the reference is inserted | Then @navtitle is set to a defined fallback rather than a DITA title, without an editor error | Evidence: Jira GUIDES-54348 derivation from title; OASIS DITA topicref scope and format model.",
+    "schema_version": "aem-guides-ac-v1"
+  }
+]

@@ -1,0 +1,78 @@
+
+Issue Key:   GUIDES-54348
+Summary:     {Break} navtitle attribute is not automatically added to topicrefs in a DITA map
+Type:        Bug
+Status:      In UAC
+Priority:    Critical
+Labels:      Guides_Manual_Break
+
+Description:
+h1. Bug: {{navtitle}} attribute is not automatically added to topicrefs in a DITA map
+h2. Summary
+
+The {{navtitle}} attribute is not automatically added to newly inserted {{<topicref>}} elements in a DITA map when {{navtitle}} is configured as required in {{{}ui_config.json{}}}.
+h2. Preconditions
+
+Configure the applicable Global Profile or Folder Profile with:
+
+ 
+
+{{"ditaAttributes": {
+"attributes": [],
+"constraint": false,
+"required":
+
+{ "navtitle": true }
+
+}}}
+h2. Steps to Reproduce
+ # Open AEM Guides.
+
+ # Apply the {{ui_config.json}} configuration with {{navtitle}} set to {{{}true{}}}.
+
+ # Open a DITA map in the Map Editor.
+
+ # Add an existing DITA topic as a reference inside the map.
+
+ # Save the map.
+
+ # Open the map in Source mode.
+
+ # Inspect the newly added {{{}<topicref>{}}}.
+
+h2. Actual Result
+
+The newly added topic reference does not contain the {{navtitle}} attribute.
+
+Example:
+
+ 
+
+{{<topicref href="topic1.dita"/>}}
+h2. Expected Result
+
+The {{navtitle}} attribute should automatically be added to every newly added {{<topicref>}} and its value should be derived from the {{<title>}} of the referenced topic, as documented.
+
+Example:
+
+ 
+
+{{<topicref href="topic1.dita" navtitle="Topic 1"/>}}
+h2. Impact
+
+Users must manually add the {{navtitle}} attribute to topic references even though the configuration explicitly enables automatic {{navtitle}} population.
+h2. Documentation Reference
+
+Adobe Experience Manager Guides — *Include @navtitle attribute by default*
+
+The documented behavior states that when {{navtitle}} is configured as required, references added to a map should automatically receive the {{@navtitle}} attribute populated from the referenced content title.
+
+ 
+
+!image-2026-08-14-16-56-10-577.png!
+
+ 
+
+!image-2026-08-14-16-17-03-712.png|width=2551,height=1594!
+
+

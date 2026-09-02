@@ -1,0 +1,76 @@
+{
+  "live_jira": {
+    "tool": "get_jira_issue_with_comments",
+    "success": true,
+    "excluded_from_acceptance": "One AI-generated AC comment; not Human-approved truth."
+  },
+  "product_rag": {
+    "status": "unavailable",
+    "health_probe": "Caller stopped waiting without a health response",
+    "probes": [
+      {
+        "question": "AEM Guides ui_config.json ditaAttributes.required.navtitle true auto-populate navtitle on inserting topicref in Map Editor: Include @navtitle attribute by default.",
+        "result": {
+          "status": "CALLER_TIMEOUT",
+          "timeout_ms": 30000
+        },
+        "elapsed_ms": 30002
+      },
+      {
+        "question": "AEM Guides Map Editor Insert Topic Reference and repository drag and drop: when navtitle is required how is the referenced topic title populated and saved?",
+        "result": {
+          "status": "CALLER_TIMEOUT",
+          "timeout_ms": 30000
+        },
+        "elapsed_ms": 30001
+      },
+      {
+        "question": "AEM Guides required navtitle Global Profile Folder Profile: documented behavior for empty title, missing href, mapref and DTD-invalid navtitle; distinguish unknown product decisions.",
+        "result": {
+          "status": "CALLER_TIMEOUT",
+          "timeout_ms": 30000
+        },
+        "elapsed_ms": 30001
+      }
+    ]
+  },
+  "history": [
+    {
+      "query": "navtitle ditaAttributes required not automatically added",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"schema_version\": \"jira-history-search-v2\",\n  \"query_fingerprint\": \"feeb01d18f4bdf9fab6cbab455eee6b060503cb71d85e648182866661c573409\",\n  \"searched_jira_qa\": true,\n  \"indexed_chunks\": 22504,\n  \"component_filter\": \"Editor\",\n  \"customer_filter\": null,\n  \"match_count\": 0,\n  \"results\": [],\n  \"rejected_candidate_count\": 0,\n  \"rejected_candidates\": [],\n  \"qualification_rule\": \"A result requires a shared root cause, behaviour contract, error signature, API route, configuration key, or strong DITA/output/symptom combination. Domain, customer, and component remain ranking-only signals.\",\n  \"note\": \"Searched 22504 indexed jira_qa chunks and found no match above threshold for this query/filters. This means no similar ticket surfaced, NOT that the ticket does not exist. Broaden the query or intentionally drop the component/customer filter and retry before asserting there is no history.\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": "{\n  \"schema_version\": \"jira-history-search-v2\",\n  \"query_fingerprint\": \"feeb01d18f4bdf9fab6cbab455eee6b060503cb71d85e648182866661c573409\",\n  \"searched_jira_qa\": true,\n  \"indexed_chunks\": 22504,\n  \"component_filter\": \"Editor\",\n  \"customer_filter\": null,\n  \"match_count\": 0,\n  \"results\": [],\n  \"rejected_candidate_count\": 0,\n  \"rejected_candidates\": [],\n  \"qualification_rule\": \"A result requires a shared root cause, behaviour contract, error signature, API route, configuration key, or strong DITA/output/symptom combination. Domain, customer, and component remain ranking-only signals.\",\n  \"note\": \"Searched 22504 indexed jira_qa chunks and found no match above threshold for this query/filters. This means no similar ticket surfaced, NOT that the ticket does not exist. Broaden the query or intentionally drop the component/customer filter and retry before asserting there is no history.\"\n}"
+        },
+        "isError": false
+      }
+    },
+    {
+      "query": "Map Editor required attribute population title drag insertion",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"schema_version\": \"jira-history-search-v2\",\n  \"query_fingerprint\": \"cb493cdec24c8209767c54e1b0ab4a8661fc27e922fba2a9e0cdf893cf35d431\",\n  \"searched_jira_qa\": true,\n  \"indexed_chunks\": 22504,\n  \"component_filter\": \"Editor\",\n  \"customer_filter\": null,\n  \"match_count\": 0,\n  \"results\": [],\n  \"rejected_candidate_count\": 0,\n  \"rejected_candidates\": [],\n  \"qualification_rule\": \"A result requires a shared root cause, behaviour contract, error signature, API route, configuration key, or strong DITA/output/symptom combination. Domain, customer, and component remain ranking-only signals.\",\n  \"note\": \"Searched 22504 indexed jira_qa chunks and found no match above threshold for this query/filters. This means no similar ticket surfaced, NOT that the ticket does not exist. Broaden the query or intentionally drop the component/customer filter and retry before asserting there is no history.\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": "{\n  \"schema_version\": \"jira-history-search-v2\",\n  \"query_fingerprint\": \"cb493cdec24c8209767c54e1b0ab4a8661fc27e922fba2a9e0cdf893cf35d431\",\n  \"searched_jira_qa\": true,\n  \"indexed_chunks\": 22504,\n  \"component_filter\": \"Editor\",\n  \"customer_filter\": null,\n  \"match_count\": 0,\n  \"results\": [],\n  \"rejected_candidate_count\": 0,\n  \"rejected_candidates\": [],\n  \"qualification_rule\": \"A result requires a shared root cause, behaviour contract, error signature, API route, configuration key, or strong DITA/output/symptom combination. Domain, customer, and component remain ranking-only signals.\",\n  \"note\": \"Searched 22504 indexed jira_qa chunks and found no match above threshold for this query/filters. This means no similar ticket surfaced, NOT that the ticket does not exist. Broaden the query or intentionally drop the component/customer filter and retry before asserting there is no history.\"\n}"
+        },
+        "isError": false
+      }
+    }
+  ],
+  "documentation": {
+    "url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/auto-add-navtitle",
+    "checked_via": "web search, exact page text returned",
+    "accepted_fact": "Requiring navtitle in the applicable Global or Folder profile enables population from the referenced content title.",
+    "authority": "AEM_GUIDES_DOC"
+  }
+}
+

@@ -2227,6 +2227,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_issue_domain_routing_and_publishing_scope()
             self_tests.test_behavior_graph_relation_ontology()
             self_tests.test_semantic_closure_required()
+            self_tests.test_v3_scaffolding()
             self_tests.test_missing_question_directed_retrieval_by_subject()
             self_tests.test_coverage_disposition_completeness()
             self_tests.test_acceptance_promotion_authority()

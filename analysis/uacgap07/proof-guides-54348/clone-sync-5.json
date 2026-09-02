@@ -1,0 +1,20 @@
+{
+  "repository": "C:\\editor-e2e\\guides-editor-e2e",
+  "branch": "main",
+  "pre_sync_sha": "b65b71e5237b579de60b9e14746e64cd6538c52c",
+  "pre_sync_dirty": false,
+  "fetch": "succeeded",
+  "pull": "not needed",
+  "stash_oid": "",
+  "stash_ref": "",
+  "restore_command": "",
+  "upstream": "origin/main",
+  "ahead_before": 0,
+  "behind_before": 0,
+  "status": "synchronized",
+  "post_sync_sha": "b65b71e5237b579de60b9e14746e64cd6538c52c",
+  "post_sync_dirty": false,
+  "ahead_after": 0,
+  "behind_after": 0,
+  "evidence_ref": "HEAD"
+}

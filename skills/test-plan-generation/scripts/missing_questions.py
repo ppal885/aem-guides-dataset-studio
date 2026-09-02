@@ -25,6 +25,9 @@ Stdlib only. Same dataclass/validate pattern (no future-annotations import).
 """
 
 from dataclasses import dataclass, field
+import json
+from pathlib import Path
+from scaffold_support import next_id, object_list, pending_review
 
 
 # Where a missing question should be answered. Generic source catalogue.
@@ -223,6 +226,9 @@ def check_retrieval_discipline(
 ):
     """Cross-block discipline. Returns problem strings."""
     problems = []
+    for index, raw in enumerate(evidence_data or []):
+        if isinstance(raw, dict) and pending_review(raw):
+            problems.append(f"evidence_lifecycle[{index}]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use")
     questions = [MissingQuestion.from_dict(x) for x in (questions_data or [])]
     items = [EvidenceItem.from_dict(x) for x in (evidence_data or [])]
     known_questions = {}
@@ -341,7 +347,8 @@ def required_question_requirements(manifest):
     if not isinstance(closure, dict):
         closure = {}
     for record in closure.get("records", []) or []:
-        if isinstance(record, dict) and record.get("status") == "UNRESOLVED_AND_EXPOSED":
+        if isinstance(record, dict) and (record.get("status") == "UNRESOLVED_AND_EXPOSED"
+                                         or record.get("applicability") == "UNRESOLVED"):
             required.append({
                 "source_ref": str(record.get("closure_id", "")),
                 "subject": str(record.get("subject", "PRODUCT_CONTRACT")),
@@ -378,6 +385,18 @@ def required_question_requirements(manifest):
                 "dimension": str(fact.get("category", "")),
                 "open_question_ref": str(fact.get("open_question_ref", "")),
             })
+    hypotheses = {row.get("hypothesis_id"): row for row in manifest.get("coverage_hypotheses", []) or []
+                  if isinstance(row, dict)}
+    for verification in manifest.get("verifications", []) or []:
+        if isinstance(verification, dict) and verification.get("verdict") == "UNRESOLVED":
+            hid = str(verification.get("hypothesis_id", ""))
+            hypothesis = hypotheses.get(hid, {})
+            required.append({
+                "source_ref": hid, "hypothesis_id": hid,
+                "subject": verification.get("subject") or hypothesis.get("subject") or "PRODUCT_CONTRACT",
+                "dimension": str(hypothesis.get("dimension", "")),
+                "open_question_ref": str(verification.get("open_question_ref", "")),
+            })
     return [item for item in required if item["source_ref"]]
 
 
@@ -386,23 +405,46 @@ def required_question_sources(manifest):
 
 
 def derive_missing_question_stubs(manifest):
-    """Return deterministic stubs the reasoning layer must answer or expose."""
+    """Return only missing contextual stubs; never claim Claude authored them.
+
+    Retain actual OQ/hypothesis references. A missing OQ remains blank for the
+    author rather than inventing a visible decision or a completed second pass.
+    """
+    policy = json.loads((Path(__file__).with_name("data") / "v3_scaffold_policy.json").read_text(encoding="utf-8"))
+    leads = policy.get("question_leads") if isinstance(policy, dict) else None
+    if (not isinstance(leads, dict) or set(leads) != set(SUBJECT_SOURCE_POLICY)
+            or any(not isinstance(value, str) or not value.strip() for value in leads.values())):
+        raise ValueError("scaffold policy requires a non-empty question lead per canonical subject")
     stubs = []
-    for index, requirement in enumerate(required_question_requirements(manifest), 1):
+    existing = object_list(manifest.get("missing_questions", []), "missing_questions")
+    nodes = {row.get("node_id"): row for row in manifest.get("behavior_graph", {}).get("nodes", [])}
+    records = {row.get("closure_id"): row for row in manifest.get("semantic_closure", {}).get("records", [])}
+    hypotheses = {row.get("hypothesis_id"): row for row in manifest.get("coverage_hypotheses", []) or []}
+    edges = {row.get("edge_id"): row for row in manifest.get("behavior_graph", {}).get("edges", [])}
+    facts = {row.get("fact_id"): row for row in manifest.get("contract_facts", {}).get("facts", [])}
+    for requirement in required_question_requirements(manifest):
+        if any(row.get("source_ref") == requirement["source_ref"] for row in existing + stubs):
+            continue
         dimension = requirement["dimension"].replace("_", " ").lower()
         subject = requirement["subject"]
-        lead = {
-            "PRODUCT_CONTRACT": "What is the intended product behavior",
-            "DITA_SEMANTICS": "What do the governing DITA semantics require",
-            "ACTUAL_IMPLEMENTATION": "What does the current implementation do",
-            "CURRENT_UI": "What does the current UI show",
-        }.get(subject, "What behavior is required")
+        ref = requirement["source_ref"]
+        record = records.get(ref, {})
+        entity = nodes.get(record.get("entity_ref"), {}).get("label")
+        hypothesis = hypotheses.get(requirement.get("hypothesis_id"), {})
+        edge = edges.get(ref, {})
+        entity = entity or hypothesis.get("candidate") or nodes.get(edge.get("target"), {}).get("label") or facts.get(ref, {}).get("literal") or ref
+        lead = leads.get(subject, "What behavior is required")
         stubs.append({
-            "question_id": f"MQ-{index:02d}",
+            "question_id": next_id(existing + stubs, "question_id", "MQ"),
             **requirement,
-            "question": f"{lead} for {dimension}?",
+            "question": f"{lead} for {entity} with respect to {dimension}?",
+            "why_it_matters": f"Resolving {dimension} for {entity} determines coverage and the expected outcome.",
+            "search_concepts": list(dict.fromkeys([str(entity), dimension])),
+            "preferred_sources": list(SUBJECT_SOURCE_POLICY.get(subject, ())),
+            "blocking": True,
             "material": True,
             "if_unresolved": "OPEN_QUESTION",
+            "generator": "PYTHON_SCAFFOLD",
         })
     return stubs
 

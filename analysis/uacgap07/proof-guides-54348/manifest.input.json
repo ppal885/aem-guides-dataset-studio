@@ -1,0 +1,181 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v3",
+  "issue": {
+    "key": "GUIDES-54348",
+    "summary": "navtitle attribute is not automatically added to topicrefs in a DITA map",
+    "description": "\nIssue Key:   GUIDES-54348\nSummary:     {Break} navtitle attribute is not automatically added to topicrefs in a DITA map\nType:        Bug\nStatus:      In UAC\nPriority:    Critical\nLabels:      Guides_Manual_Break\n\nDescription:\nh1. Bug: {{navtitle}} attribute is not automatically added to topicrefs in a DITA map\r\nh2. Summary\r\n\r\nThe {{navtitle}} attribute is not automatically added to newly inserted {{<topicref>}} elements in a DITA map when {{navtitle}} is configured as required in {{{}ui_config.json{}}}.\r\nh2. Preconditions\r\n\r\nConfigure the applicable Global Profile or Folder Profile with:\r\n\r\n \r\n\r\n{{\"ditaAttributes\": {\r\n\"attributes\": [],\r\n\"constraint\": false,\r\n\"required\":\r\n\r\n{ \"navtitle\": true }\r\n\r\n}}}\r\nh2. Steps to Reproduce\r\n # Open AEM Guides.\r\n\r\n # Apply the {{ui_config.json}} configuration with {{navtitle}} set to {{{}true{}}}.\r\n\r\n # Open a DITA map in the Map Editor.\r\n\r\n # Add an existing DITA topic as a reference inside the map.\r\n\r\n # Save the map.\r\n\r\n # Open the map in Source mode.\r\n\r\n # Inspect the newly added {{{}<topicref>{}}}.\r\n\r\nh2. Actual Result\r\n\r\nThe newly added topic reference does not contain the {{navtitle}} attribute.\r\n\r\nExample:\r\n\r\n \r\n\r\n{{<topicref href=\"topic1.dita\"/>}}\r\nh2. Expected Result\r\n\r\nThe {{navtitle}} attribute should automatically be added to every newly added {{<topicref>}} and its value should be derived from the {{<title>}} of the referenced topic, as documented.\r\n\r\nExample:\r\n\r\n \r\n\r\n{{<topicref href=\"topic1.dita\" navtitle=\"Topic 1\"/>}}\r\nh2. Impact\r\n\r\nUsers must manually add the {{navtitle}} attribute to topic references even though the configuration explicitly enables automatic {{navtitle}} population.\r\nh2. Documentation Reference\r\n\r\nAdobe Experience Manager Guides — *Include @navtitle attribute by default*\r\n\r\nThe documented behavior states that when {{navtitle}} is configured as required, references added to a map should automatically receive the {{@navtitle}} attribute populated from the referenced content title.\r\n\r\n \r\n\r\n!image-2026-08-14-16-56-10-577.png!\r\n\r\n \r\n\r\n!image-2026-08-14-16-17-03-712.png|width=2551,height=1594!\n"
+  },
+  "behaviour_matters": true,
+  "block_waivers": [],
+  "accepted_uac_present": false,
+  "behavior_model": {
+    "trigger": [
+      "Insert an existing DITA topic into a map using a profile that requires navtitle"
+    ],
+    "operations": [
+      "Fetch referenced titles",
+      "Populate a DTD-valid navigation attribute",
+      "Insert the reference and save the map"
+    ],
+    "inputs": [
+      "Referenced topic title",
+      "Applicable profile configuration"
+    ],
+    "outputs": [
+      "New topicref carrying navtitle"
+    ],
+    "affected_state": [
+      "Saved map source"
+    ],
+    "processors": [
+      "InsertTopicrefController.updateNavTitle",
+      "drag.createTopicRefData",
+      "app_view.updateDitaRequiredAttrs"
+    ],
+    "consumers": [
+      "Source view"
+    ],
+    "attributes": [
+      "navtitle"
+    ],
+    "configuration": [
+      "ditaAttributes.required.navtitle"
+    ],
+    "read_paths": [
+      "dita.getTitles",
+      "PAGE_REQUIRED_DITA_ATTRIBUTES"
+    ],
+    "write_paths": [
+      "html.setAttribute in updateNavTitle"
+    ],
+    "facts": [
+      {
+        "fact": "Jira requires a newly inserted topicref to carry navtitle from the referenced topic title, visible in saved Source mode.",
+        "evidence_ids": [
+          "EC-JIRA"
+        ],
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "confidence": 1
+      },
+      {
+        "fact": "The documented profile configuration enables navtitle population from the referenced title.",
+        "evidence_ids": [
+          "EC-DOC"
+        ],
+        "authority": "AEM_GUIDES_DOC",
+        "confidence": 1
+      },
+      {
+        "fact": "InsertTopicrefController.updateNavTitle uses the required flag and DTD validity before html.setAttribute; its caller fetches per-path titles using dita.getTitles.",
+        "evidence_ids": [
+          "EC-INSERT"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.8
+      },
+      {
+        "fact": "drag.createTopicRefData has a separate required-navtitle check and uses PAGE_FILE_TITLES.",
+        "evidence_ids": [
+          "EC-DRAG"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.8
+      },
+      {
+        "fact": "app_view.updateDitaRequiredAttrs stores ditaAttributes.required in PAGE_REQUIRED_DITA_ATTRIBUTES.",
+        "evidence_ids": [
+          "EC-APPVIEW",
+          "EC-MODEL"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.8
+      }
+    ],
+    "entity_evidence": {
+      "inputs:Referenced topic title": [
+        "EC-JIRA",
+        "EC-INSERT"
+      ],
+      "inputs:Applicable profile configuration": [
+        "EC-DOC",
+        "EC-APPVIEW"
+      ],
+      "outputs:New topicref carrying navtitle": [
+        "EC-JIRA",
+        "EC-INSERT"
+      ],
+      "affected_state:Saved map source": [
+        "EC-JIRA"
+      ],
+      "consumers:Source view": [
+        "EC-JIRA"
+      ],
+      "attributes:navtitle": [
+        "EC-JIRA",
+        "EC-INSERT"
+      ],
+      "configuration:ditaAttributes.required.navtitle": [
+        "EC-DOC",
+        "EC-APPVIEW"
+      ],
+      "read_paths:dita.getTitles": [
+        "EC-INSERT"
+      ],
+      "read_paths:PAGE_REQUIRED_DITA_ATTRIBUTES": [
+        "EC-APPVIEW",
+        "EC-MODEL"
+      ],
+      "write_paths:html.setAttribute in updateNavTitle": [
+        "EC-INSERT"
+      ]
+    },
+    "unknowns": [
+      "The inspected candidate branch only wires refresh; no runtime proof shows it fixes automatic insertion.",
+      "Exact approved empty-title, specialization, update and reuse contracts remain unverified."
+    ],
+    "confidence": 0.8
+  },
+  "evidence_catalog": {
+    "sources": [
+      {
+        "id": "EC-INSERT",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/controllers/dialogs/insert_topicref_controller.ts"
+      },
+      {
+        "id": "EC-DRAG",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/util/drag.ts"
+      },
+      {
+        "id": "EC-APPVIEW",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/views/app_view.tsx"
+      },
+      {
+        "id": "EC-MODEL",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/common/model.ts"
+      },
+      {
+        "id": "EC-JIRA",
+        "source_type": "jira",
+        "source_ref": "https://jira.corp.adobe.com/browse/GUIDES-54348",
+        "authority": "JIRA_EXPECTED_BEHAVIOR"
+      },
+      {
+        "id": "EC-DOC",
+        "source_type": "documentation",
+        "source_ref": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/editor-configs/auto-add-navtitle",
+        "authority": "AEM_GUIDES_DOC"
+      }
+    ]
+  },
+  "inspected_files": [
+    "C:/xmleditor/xmleditor/src/controllers/dialogs/insert_topicref_controller.ts",
+    "C:/xmleditor/xmleditor/src/util/drag.ts",
+    "C:/xmleditor/xmleditor/src/views/app_view.tsx",
+    "C:/xmleditor/xmleditor/src/common/model.ts"
+  ]
+}
+

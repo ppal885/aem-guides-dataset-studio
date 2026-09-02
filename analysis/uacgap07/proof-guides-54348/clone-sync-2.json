@@ -1,0 +1,16 @@
+{
+  "repository": "C:\\UI TEST\\guides-ui-tests",
+  "branch": "develop",
+  "pre_sync_sha": "cfc419965a69b2698a637bde209f08485e5055c4",
+  "pre_sync_dirty": true,
+  "fetch": "succeeded",
+  "pull": "not run",
+  "stash_oid": "",
+  "stash_ref": "",
+  "restore_command": "",
+  "upstream": "origin/develop",
+  "ahead_before": 9,
+  "behind_before": 0,
+  "status": "blocked",
+  "reason": "Dirty worktree; rerun with --stash-dirty"
+}

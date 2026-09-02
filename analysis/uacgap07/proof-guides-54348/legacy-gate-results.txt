@@ -1,0 +1,95 @@
+NOTE: REVIEW ac-readability: AC-03 uses a vague surface (the dialog); name the exact screen
+NOTE: REVIEW ac-readability: AC-14 too long in Given, Then; split into short sentences
+NOTE: REVIEW ac-readability: AC-21 too long in Given; split into short sentences
+NOTE: REVIEW ac-readability: AC-08 summarizes outcomes already stated by earlier criteria; remove the recap or state one new observable result
+NOTE: REVIEW ac-readability: AC-21 summarizes outcomes already stated by earlier criteria; remove the recap or state one new observable result
+NOTE: REVIEW REASONING WAIVER: contract_facts was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: issue_domains was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: missing_questions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: dispositions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: acceptance_promotions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: change_impact was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: scope_applicability was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: entry_point_equivalence was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: four-section compact view renderable
+NOTE: verified 4 source-file citation(s); skipped 2 unverifiable-by-design path(s)
+NOTE: manifest records 3 RAG probe(s)
+NOTE: manifest declares 3 attachment(s); 3 attested analyzed and present
+NOTE: config-key reality: grepped 0 CODE/OSGI-provenance key(s) against the clone
+NOTE: provenance: catalog with 7 entry(s); verified 4 code source_hash(es)
+NOTE: REVIEW DISCOVERY: unrepresented dimension CONTRACT_BOUNDARY (generator=CONTRACT_BOUNDARY, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate contract boundary for behavior_model.trigger: author inserts an existing DITA topic as a reference into a map in the Map Editor under a required-navtitle profile - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension CONSUMER (generator=CONSUMER, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate consumer for behavior_model.consumers: map navigation and TOC - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension STATE_PARTITION (generator=STATE_PARTITION, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate state partition for behavior_model.affected_state: the @navtitle attribute on the topicref node in the saved map source - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension REFERENCE_ARTIFACT (generator=REFERENCE_ARTIFACT, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate reference artifact for behavior_model.fact: documented behaviour requires @navtitle to be auto-populated from the referenced content title when navtitle is configured required - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension DITA_SEMANTIC_DEPENDENCY (generator=DITA_SEMANTIC_DEPENDENCY, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate dita semantic dependency for behavior_model.fact: in the DITA model @navtitle provides the navigation title and @locktitle governs whether it overrides the referenced title - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension LIFECYCLE (generator=LIFECYCLE, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate lifecycle for behavior_model.write_paths: html.setAttribute writes @navtitle when required and DTD-valid - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension CONFIGURATION (generator=CONFIGURATION, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate configuration for behavior_model.configuration_branches: ditaAttributes.required.navtitle true vs false/absent - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension DOWNSTREAM_REGRESSION (generator=DOWNSTREAM_REGRESSION, evidence=EC-APPVIEW,EC-DITASPEC,EC-DOC,EC-DRAG,EC-INSERT,EC-MODEL): Investigate downstream regression for behavior_model.processors: InsertTopicrefController.updateNavTitle - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension REPRO_DIMENSION (generator=CODE_NEIGHBORHOOD, evidence=EC-DITASPEC): concurrency and terminal-state matrix (success, failure, cancel, retry exhaustion) - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension REPRO_DIMENSION (generator=RAG_NEIGHBORHOOD, evidence=rag_probe:navtitle locktitle title topicref DITA m): concurrency and terminal-state matrix (success, failure, cancel, retry exhaustion) - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: anti-hardcoding audit scanned 152 file(s)
+NOTE: REVIEW REASONING WAIVER: contract_facts was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: issue_domains was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: missing_questions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: dispositions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: acceptance_promotions was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: change_impact was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: scope_applicability was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: REVIEW REASONING WAIVER: entry_point_equivalence was waived; this is an incomplete reasoning record, not a postable v3 plan.
+NOTE: behavior model validated
+NOTE: coverage hypotheses validated
+NOTE: retrieval discipline validated
+NOTE: hypothesis verifications validated
+NOTE: DITA semantic gate skipped (no active DITA semantics)
+NOTE: semantic coverage gate: PASS
+NOTE: implementation grounding validated
+NOTE: capability eligibility not applicable (no multi-action surface signals)
+NOTE: REVIEW affected-surface: a handler/operation/config artifact is grounded but no affected_surface_dimensions enumeration is declared - enumerate the affected surface's operation enum and co-located config keys and map each value to a covering AC or an out-of-scope disposition
+NOTE: comment claims not applicable (no current-behaviour comment phrasing detected)
+NOTE: pr supersession not applicable (no pr_references declared)
+NOTE: REVIEW feature-classification: detected class(es) ui_display_label; declare feature_classification and its required dimensions
+NOTE: REVIEW: relationship-like evidence was detected (settings/configuration JSON signal), but construct_relationships is not declared; run the code and corpus one-hop traversal.
+NOTE: concurrency race analysis not applicable
+NOTE: reporter-enumerated requirements dispositioned
+NOTE: operational incident/job contract dispositioned
+NOTE: scope reconciliation not applicable (no fix-vs-multi-problem signal)
+NOTE: uac-integration: coverage gate is PASS
+NOTE: final plan consumes the reasoning outputs (open questions surfaced; evidence trace valid)
+NOTE: pre-UAC critic: PASS
+NOTE: gate receipt: C:\Users\prashantp\AppData\Local\Temp\uacgap07-before-receipt.json (not postable)
+FAIL: [contract-facts] contract_facts must be an object
+FAIL: [domain-router] issue_domains must be an object
+FAIL: [behavior-graph] behavior_graph.nodes[0].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[1].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[2].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[3].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[4].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[0].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[0].confidence must be between 0 and 1
+FAIL: [behavior-graph] behavior_graph.edges[0].verification_state must be one of INVESTIGATION_CANDIDATE, CONFIRMED, REJECTED, UNRESOLVED
+FAIL: [behavior-graph] behavior_graph.edges[0].material must be a boolean
+FAIL: [behavior-graph] behavior_graph.edges[1].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[1].confidence must be between 0 and 1
+FAIL: [behavior-graph] behavior_graph.edges[1].verification_state must be one of INVESTIGATION_CANDIDATE, CONFIRMED, REJECTED, UNRESOLVED
+FAIL: [behavior-graph] behavior_graph.edges[1].material must be a boolean
+FAIL: [behavior-graph] behavior_graph.edges[2].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[2].confidence must be between 0 and 1
+FAIL: [behavior-graph] behavior_graph.edges[2].verification_state must be one of INVESTIGATION_CANDIDATE, CONFIRMED, REJECTED, UNRESOLVED
+FAIL: [behavior-graph] behavior_graph.edges[2].material must be a boolean
+FAIL: [behavior-graph] behavior_graph.edges[3].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[3].confidence must be between 0 and 1
+FAIL: [behavior-graph] behavior_graph.edges[3].verification_state must be one of INVESTIGATION_CANDIDATE, CONFIRMED, REJECTED, UNRESOLVED
+FAIL: [behavior-graph] behavior_graph.edges[3].material must be a boolean
+FAIL: [missing-questions] material unresolved candidate SC-13 did not generate a missing_question
+FAIL: [missing-questions] material unresolved candidate SC-15 did not generate a missing_question
+FAIL: [missing-questions] material unresolved candidate H-05 did not generate a missing_question
+FAIL: [missing-questions] material unresolved candidate H-09 did not generate a missing_question
+FAIL: [missing-questions] material unresolved candidate H-10 did not generate a missing_question
+FAIL: [missing-questions] material unresolved candidate H-12 did not generate a missing_question
+FAIL: [disposition] dispositions must be a JSON list
+FAIL: [acceptance-promotion] acceptance_promotions must be an object
+FAIL: [acceptance-promotion] every visible AC must be promoted exactly by the canonical gate; promoted=[], plan=['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05', 'AC-06', 'AC-07', 'AC-08', 'AC-09', 'AC-10', 'AC-11', 'AC-12', 'AC-13', 'AC-14', 'AC-15', 'AC-16', 'AC-17', 'AC-18', 'AC-19', 'AC-20', 'AC-21']
+FAIL: [contract-integrity] contract_facts must be present before contract integrity can run
+FAIL: [behavioral-completeness] dispositions must be a list for behavioral completeness
+
+GATE FAILED (34 issue(s)) - do not deliver this plan as validated.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from scaffold_support import pending_review
 
 
 SCHEMA_VERSION = "aem-guides-semantic-closure-v1"
@@ -51,11 +52,13 @@ def validate_semantic_closure(
             problems.append(f"{tag} must be an object")
             continue
         closure_id = str(record.get("closure_id", ""))
-        if not re.fullmatch(r"SC-\d{2,3}", closure_id):
+        if not re.fullmatch(r"SC-\d{2,}", closure_id):
             problems.append(f"{tag}.closure_id must use stable SC-## form")
         elif closure_id in seen:
             problems.append(f"{tag}.closure_id duplicates {closure_id}")
         seen.add(closure_id)
+        if pending_review(record):
+            problems.append(f"{tag}: author must confirm scaffold applicability and replace the reason placeholder")
         entity_ref = str(record.get("entity_ref", ""))
         if entity_ref != "*" and entity_ref not in entities:
             problems.append(f"{tag}.entity_ref must reference a material behavior node or '*' ")
@@ -70,6 +73,8 @@ def validate_semantic_closure(
         elif entity_ref == "*":
             wildcard_dimensions.add(dimension)
         else:
+            if (entity_ref, dimension) in covered_pairs:
+                problems.append(f"{tag}: duplicate entity/dimension closure decision")
             covered_pairs.add((entity_ref, dimension))
         if record.get("subject") not in SUBJECTS:
             problems.append(f"{tag}.subject must be one of {', '.join(SUBJECTS)}")

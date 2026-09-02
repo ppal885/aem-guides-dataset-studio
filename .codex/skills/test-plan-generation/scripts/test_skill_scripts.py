@@ -9601,6 +9601,48 @@ def test_manifest_completeness_gate() -> None:
     print("test_manifest_completeness_gate: OK")
 
 
+def test_v3_scaffolding() -> None:
+    _load("test_v3_scaffold", "test_v3_scaffold.py").run_tests(check)
+    scaffolder = _load("v3_scaffold", "v3_scaffold.py")
+    gates = _load("run_gates_v3_scaffold", "run_gates.py")
+    manifest = _canonical_semantic_fixture()
+    source_id = manifest["contract_facts"]["source_refs"][0]
+    manifest["behavior_model"] = {
+        "trigger": ["a value is requested"], "operations": ["resolve the value"],
+        "processors": ["value resolver"],
+        "facts": [{"fact": "A value resolver supplies the requested value.", "evidence_ids": [source_id],
+                   "authority": "JIRA", "confidence": 1.0}],
+    }
+    manifest["evidence_catalog"] = [{"id": source_id, "source_type": "jira"}]
+    manifest.pop("behavior_graph")
+    manifest.pop("semantic_closure")
+    draft = scaffolder.scaffold(manifest)
+    check("canonical gate rejects generated review placeholders", any("author must confirm" in p
+          for p in gates.validate_canonical_semantic_pipeline(draft)))
+    # Synthetic author decisions exercise the full existing semantic pipeline.
+    # The generator itself must not create any of these verdicts/dispositions.
+    for row in draft["behavior_graph"]["nodes"] + draft["behavior_graph"]["edges"]:
+        row.update(author_review_required=False, review_note="Reviewed against this synthetic fixture's source.")
+    edge = draft["behavior_graph"]["edges"][0]
+    edge.update(verification_state="REJECTED", applicability="NOT_APPLICABLE")
+    hypothesis = draft["coverage_hypotheses"][0]
+    hypothesis["status"] = "REJECTED"
+    for row in draft["semantic_closure"]["records"]:
+        row.update(author_review_required=False, reason="The fixture's reviewed scalar contract excludes this relationship.", disposition_ref="CD-03")
+    draft["evidence_lifecycle"] = [{"evidence_id": source_id, "source": "linked jira",
+        "query": "Inspect the scalar contract boundary", "pass": "initial", "status": "USED",
+        "hypothesis_id": hypothesis["hypothesis_id"], "subject": "PRODUCT_CONTRACT", "authority": "JIRA_EXPECTED_BEHAVIOR"}]
+    draft["verifications"] = [{"hypothesis_id": hypothesis["hypothesis_id"], "verdict": "REJECTED",
+        "disproving_evidence": [source_id], "subject": "PRODUCT_CONTRACT", "disposition": "EXCLUDED"}]
+    draft["dispositions"][2]["source_refs"] = [
+        *behavior_graph_mod.material_item_ids(draft["behavior_graph"]),
+        *semantic_closure_mod.material_item_ids(draft["semantic_closure"]), hypothesis["hypothesis_id"],
+    ]
+    problems = gates.validate_canonical_semantic_pipeline(draft)
+    check("scaffold then author disposition passes canonical semantic gates", problems == [])
+    check("scaffolding does not expand the fixture's acceptance set", draft["acceptance_promotions"] == manifest["acceptance_promotions"])
+
+
 def test_v3_authoring_pipeline() -> None:
     """Synthetic evidence exercises authoring, not a fixture with skipped blocks."""
     import copy
@@ -10022,6 +10064,7 @@ def main() -> int:
     test_issue_domain_routing_and_publishing_scope()
     test_behavior_graph_relation_ontology()
     test_semantic_closure_required()
+    test_v3_scaffolding()
     test_missing_question_directed_retrieval_by_subject()
     test_coverage_disposition_completeness()
     test_acceptance_promotion_authority()

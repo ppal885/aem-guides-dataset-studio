@@ -10,6 +10,7 @@ import re
 import json
 from collections.abc import Mapping
 from pathlib import Path
+from scaffold_support import pending_review
 
 
 SCHEMA_VERSION = "aem-guides-behavior-graph-v1"
@@ -75,11 +76,13 @@ def validate_behavior_graph(block, *, evidence_ids=None, open_question_ids=None)
             problems.append(f"{tag} must be an object")
             continue
         node_id = str(node.get("node_id", ""))
-        if not re.fullmatch(r"BGN-\d{2}", node_id):
+        if not re.fullmatch(r"BGN-\d{2,}", node_id):
             problems.append(f"{tag}.node_id must use stable BGN-## form")
         elif node_id in node_ids:
             problems.append(f"{tag}.node_id duplicates {node_id}")
         node_ids.add(node_id)
+        if pending_review(node):
+            problems.append(f"{tag}: author must confirm scaffold entity and replace the review placeholder")
         if node.get("kind") not in NODE_KINDS:
             problems.append(f"{tag}.kind must be one of {', '.join(NODE_KINDS)}")
         if not str(node.get("label", "")).strip():
@@ -102,11 +105,13 @@ def validate_behavior_graph(block, *, evidence_ids=None, open_question_ids=None)
             problems.append(f"{tag} must be an object")
             continue
         edge_id = str(edge.get("edge_id", ""))
-        if not re.fullmatch(r"BGE-\d{2}", edge_id):
+        if not re.fullmatch(r"BGE-\d{2,}", edge_id):
             problems.append(f"{tag}.edge_id must use stable BGE-## form")
         elif edge_id in edge_ids:
             problems.append(f"{tag}.edge_id duplicates {edge_id}")
         edge_ids.add(edge_id)
+        if pending_review(edge):
+            problems.append(f"{tag}: author must confirm scaffold relationship and replace the review placeholder")
         for endpoint in ("source", "target"):
             if edge.get(endpoint) not in node_ids:
                 problems.append(f"{tag}.{endpoint} must reference a declared behavior node")

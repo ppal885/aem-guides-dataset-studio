@@ -1,0 +1,2247 @@
+ChromaDB not installed
+ChromaDB not installed
+ChromaDB not installed
+ChromaDB not installed
+ChromaDB not installed
+ChromaDB not installed
+ChromaDB not installed
+ok: good plan passes
+ok: automation requires one main feature coverage verdict
+ok: acceptance criterion without source is rejected
+ok: compact renderer AC syntax is rejected as a durable source record
+ok: paste-unsafe AC markup is rejected: backticks/code spans
+ok: paste-unsafe AC markup is rejected: strikethrough
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: Markdown link
+ok: grossly overlong Then clause is rejected with rewrite guidance
+ok: graph path alone cannot support P0 acceptance
+ok: graph path containing a Jira key is still rejected
+ok: area-only similarity (no match strength) is rejected
+ok: AC missing the sphere tag is rejected
+ok: AC with an uncontrolled sphere is rejected
+ok: AC with reordered fields is rejected
+ok: AC with an embedded field label is rejected
+ok: AC without terminal punctuation is rejected
+ok: AC with an extra field is rejected
+ok: duplicate AC IDs are rejected
+ok: Performance AC without quantified workload is rejected
+ok: Performance AC without measurable oracle is rejected
+ok: quantified evidence-backed Performance AC passes
+ok: AC with no scenario mapping is rejected
+ok: AC with no automation verdict is rejected
+ok: scenario without AC mapping is rejected
+ok: Test Scenarios without a Test data to prepare bullet is rejected
+ok: customer context source is required
+ok: scenario Action and Expected wording is required
+ok: terse keyword-fragment Regression Areas bullet is rejected
+ok: open question stating QA impact passes
+ok: open question without QA impact is rejected
+ok: duplicate Open Question IDs are rejected
+ok: non-contiguous Open Question IDs are rejected
+ok: no-open-questions declaration cannot coexist with a real question
+ok: stable contiguous Test Scenario IDs pass
+ok: duplicate Test Scenario IDs are rejected
+ok: Scope From Git citing a clone without sync/SHA state is rejected
+ok: Scope From Git citing a clone with a provisional SHA acknowledgment passes
+ok: Regression Areas citing a Jira key absent from Known Bugs is rejected
+ok: short technical AC remains valid
+ok: technical identifiers remain readable tokens
+ok: plain presentation is one line and preserves technical token text exactly
+ok: one coupled safety result remains allowed
+ok: complex legal-style phrase is rejected with a simple replacement
+ok: ordinary clause density is reviewed instead of hard-failed by the legacy contract
+ok: double-negative outcome is rejected
+ok: When cannot hide a second action after and then
+ok: and/or is rejected in favor of an exact choice
+ok: semicolon-separated outcomes are rejected
+ok: AC clauses cannot depend on another AC reference
+ok: 29-word outcome emits a loud readability review
+ok: three-sentence outcome emits review without hard failure
+ok: clause-heavy outcome emits review without hard failure
+ok: tester jargon emits review: Widget.render
+ok: tester jargon emits review: loadCurrentValue()
+ok: tester jargon emits review: C:/repo/Widget.java:42
+ok: tester jargon emits review: baseline-relative
+ok: tester jargon emits review: materialization
+ok: tester jargon emits review: p95
+ok: tester jargon emits review: heap
+ok: tester jargon emits review: GC
+ok: tester jargon emits review: suffix path
+ok: tester jargon emits review: render condition
+ok: tester jargon emits review: non-asset resource
+ok: tester jargon emits review: per-asset gating
+ok: code and jargon in Evidence do not trigger tester-text review
+ok: developer note outside the AC is not treated as tester text
+ok: generic surface emits exact-screen review
+ok: declared exact screen suppresses vague-surface review
+ok: long Given clause emits the same first-read review as a long outcome
+ok: combined recap of two earlier outcomes is reviewed
+ok: POSIX absolute source path is recognized
+ok: existing file + valid line passes
+ok: out-of-range line is failed
+ok: real symbol next to a single file passes
+ok: invented symbol next to a single file is failed
+ok: missing source file is failed
+ok: runtime/relative/space-root paths are skipped, not failed
+ok: backtick path with spaces is verified when it exists
+ok: backtick path with spaces is failed when missing
+ok: invented Jira key is flagged against manifest
+ok: Partially covered without code evidence is failed
+ok: Partially covered with code evidence passes
+ok: only Not-covered needs no code evidence
+ok: manifest with real download + analyzed passes
+ok: manifest with missing download is failed
+ok: manifest entry not attested analyzed is failed
+ok: fewer than three RAG probes is failed when behaviour matters
+ok: three RAG probes passes
+ok: one probe passes when behaviour_matters is false
+ok: run_gates requires a manifest
+ok: run_gates flags missing manifest keys
+ok: legacy v2 base-schema check stays readable before signal completeness
+ok: behaviour_matters false waives v3 semantic manifest keys
+ok: run_gates requires source fidelity for Proposed enumerated requirements
+ok: principal performance assessment accepts an evidence-backed not-required decision
+ok: not-required performance assessment aligns with a plan containing no Performance AC
+ok: run_gates rejects an incomplete principal performance risk review
+ok: malformed performance arrays fail closed without crashing
+ok: required principal performance assessment passes schema validation
+ok: required performance decision fails when the plan omits a Performance AC
+ok: required performance decision aligns with a quantitative Performance AC
+ok: not-required decision rejects an invented Performance AC
+ok: manager feedback fails when historical performance Jira is only a passive regression
+ok: current performance Jira is not misclassified as historical evidence
+ok: same-path historical SubjectScheme performance contract passes schema validation
+ok: retained historical SubjectScheme contract emits a mapped Performance AC
+ok: retained historical performance AC cannot omit its mapped benchmark scenario
+ok: retained historical performance Jira must be cited by the Performance AC
+ok: area-only historical performance cannot be retained
+ok: retained same-path history cannot be classified not-required
+ok: conditional principal performance assessment passes schema validation
+ok: conditional performance decision requires a QA-impact Open Question
+ok: conditional performance decision aligns after its QA-impact question is visible
+ok: run_gates flags a clone with no sha and not provisional
+ok: run_gates rejects Jira search as product-doc RAG
+ok: run_gates requires same and cross-customer Jira searches
+ok: run_gates rejects noncanonical Jira components
+ok: run_gates rejects graph paths without leaf citations
+ok: run_gates rejects shadow graph influence
+ok: run_gates allows explicit graph degraded mode
+ok: run_gates passes a complete manifest
+ok: Confirmed ACs are forbidden when no accepted UAC exists
+ok: manifest and visible Open Question IDs must match exactly
+ok: combined artifact accepts only the exact plan plus Appendix A
+ok: combined artifact rejects a mutated plan body
+ok: full run gate rejects compact source AC syntax
+ok: run_gates adds no root-cause/fix failure for the complete fixture
+ok: run_gates rejects fix-driven fixture: Pre-Development
+ok: run_gates rejects fix-driven fixture: unguarded preserved invariant
+ok: run_gates rejects fix-driven fixture: unmapped fix-introduced risk
+ok: run_gates rejects fix-driven fixture: added test reported Not covered
+ok: accepted UAC requires fidelity audit
+ok: complete UAC fidelity audit passes
+ok: unmapped accepted UAC clause is rejected
+ok: passing audit cannot hide scope expansion
+ok: blocked UAC fidelity audit cannot pass final gate
+ok: preflight rejects configuration as proof of availability
+ok: preflight rejects a failed call labelled available
+ok: preflight rejects a timestamp without timezone
+ok: preflight requires a not-applicable reason
+ok: preflight rejects full mode when a source is unavailable
+ok: preflight accepts a complete degraded manifest
+ok: degraded preflight requires claim restrictions
+ok: full preflight aligns with the visible evidence boundary
+ok: degraded preflight rejects a falsely full evidence boundary
+ok: degraded preflight aligns when unavailable sources and limits are visible
+ok: degraded evidence boundary must name each unavailable source
+ok: implementation review cannot stay ready when Git is unavailable
+ok: implementation review accepts explicit degraded readiness
+ok: post-fix validation is blocked when Git fix evidence is unavailable
+ok: extract_acs parses both canonical ACs
+ok: extract_acs maps stable automation fields
+ok: extract_acs fails closed on malformed input
+ok: extract_acs emits no partial payload for compact display syntax
+ok: extract_acs emits no payload for paste-unsafe AC markup
+ok: extract_acs leaves non-gross clarity review to the readability gate
+ok: compact view renders without problems
+ok: compact view exposes exactly the requested headings
+ok: compact view keeps analysis in the durable artifact
+ok: compact view does not leak hidden record sections
+ok: compact view keeps validated Test Scenarios
+ok: compact ACs use one plain line and hide internal record labels
+ok: compact Jira list keeps only key and title
+ok: compact automation states main coverage and high-level target
+ok: compact view hides Open Questions but durable record keeps them
+ok: compact renderer emits nothing for a noncanonical source AC
+ok: compact view renders a deterministic no-Jira result
+ok: material relation with no evidence is rejected
+ok: unknown relation type is rejected
+ok: well-formed relation validates clean
+ok: immaterial relation without evidence is allowed
+ok: CONTROLS lands in controlling_constructs bucket
+ok: hypotheses include material non-rejected deps
+ok: hypotheses exclude rejected and immaterial
+ok: equivalent hypotheses collapse to representatives
+ok: navtitle fixture passes the semantic gate
+ok: navtitle fixture exposes unresolved semantics
+ok: uninvestigated governing dependency makes the gate NEEDS_REVIEW
+ok: conref fixture passes the gate (generalizes beyond navtitle)
+ok: keyref fixture passes the gate (generalizes beyond navtitle)
+ok: inactive DITA semantics gate is SKIPPED
+ok: clean production code passes the audit
+ok: `if navtitle:` production guard is flagged
+ok: construct guard with an example/provenance marker is exempt
+ok: construct->construct pair literal is flagged
+ok: ambiguous-only literals / `if data:` are not flagged
+ok: bare construct rule-arrow in a prompt is flagged
+ok: example-marked rule-arrow in a prompt is exempt
+ok: test_*.py files are skipped by the audit
+ok: the real skill directory passes the anti-hardcoding audit
+ok: behavior_model valid for ui ticket
+ok: behavior_model valid for backend ticket
+ok: behavior_model valid for config ticket
+ok: behavior_model valid for publishing ticket
+ok: behavior_model valid for dita ticket
+ok: behavior_model valid for persistence_ok ticket
+ok: empty behavior_model is rejected
+ok: fact without evidence_ids is rejected
+ok: fact with unknown authority is rejected
+ok: confidence out of range is rejected
+ok: non-list model field is rejected
+ok: state removal without a writer path is rejected
+ok: state removal passes when the missing writer is flagged in unknowns
+ok: behavior_model absent is not a failure
+ok: valid coverage candidate passes
+ok: candidate status is INVESTIGATION_CANDIDATE by default
+ok: candidate with no technical_basis is rejected
+ok: unknown dimension is rejected
+ok: invalid status is rejected
+ok: confidence out of range is rejected
+ok: equivalent candidates are flagged for collapse
+ok: collapse keeps one representative of an equivalent family
+ok: distinct candidates both pass and do not collapse
+ok: coverage_hypotheses absent is not a failure
+ok: valid missing_question passes
+ok: material question requires a second pass
+ok: no material question -> no second pass required
+ok: material question without a second pass is rejected
+ok: second query identical to initial is rejected
+ok: a genuinely new second-pass query is detected
+ok: USED evidence resolves the question
+ok: REJECTED-only evidence leaves the question unresolved
+ok: unresolved question must declare if_unresolved OPEN_QUESTION
+ok: duplicate (query,source) retrieval is flagged
+ok: question without search_concepts is rejected
+ok: evidence with unknown status is rejected
+ok: evidence with out-of-bound pass is rejected
+ok: implementation retrieval cannot resolve a product-contract question
+ok: USED evidence must reference a question or hypothesis
+ok: evidence cannot reference an undeclared question
+ok: evidence cannot reference an undeclared hypothesis
+ok: a missing question cannot reference an undeclared hypothesis
+ok: duplicate evidence ids are rejected
+ok: missing_questions/evidence absent is not a failure
+ok: plausible hypothesis confirmed on authoritative evidence
+ok: current implementation alone cannot authorize an AC
+ok: hypothesis rejected with disproving evidence
+ok: REJECTED cannot enter an AC
+ok: conflicting evidence cannot be CONFIRMED
+ok: conflict resolved as UNRESOLVED->Open Question passes
+ok: spec-vs-impl divergence forces UNRESOLVED
+ok: existing test alone cannot CONFIRM current contract
+ok: embedding similarity alone cannot CONFIRM
+ok: UNRESOLVED cannot become an AC
+ok: UNRESOLVED without an open_question_ref is rejected
+ok: inferred-high-confidence with 2+ facts and no product decision passes
+ok: inferred verdict with an explicit product decision is rejected
+ok: every coverage hypothesis must be verified (unverified is flagged)
+ok: verified hypothesis is not flagged
+ok: authority is validated against the hypothesis subject
+ok: CONFIRMED requires a concrete evidence reference
+ok: verification cannot target an undeclared hypothesis
+ok: a hypothesis cannot have two terminal verifications
+ok: verification passes when evidence, authority, subject, and hypothesis agree
+ok: verification rejects evidence owned by another hypothesis
+ok: verifications absent is not a failure
+ok: fully explored plan passes the coverage gate
+ok: covered dimension marked COVERED
+ok: rejected candidate marked INVESTIGATED_AND_REJECTED
+ok: exposed unresolved marked UNRESOLVED_AND_EXPOSED
+ok: discovered-but-unexplored contract/consumer -> NEEDS_REVIEW
+ok: NEEDS_REVIEW blocks final delivery
+ok: hidden unresolved hypothesis -> FAIL
+ok: unevaluated NFR signal -> NEEDS_REVIEW
+ok: material question without a new second pass -> NEEDS_REVIEW
+ok: investigated-and-rejected candidate -> PASS
+ok: active DITA dep left uninvestigated folds into NEEDS_REVIEW
+ok: coverage gate not present without reasoning blocks
+ok: coverage gate present with a reasoning block
+ok: unresolved surfaced in plan Open Questions passes integration
+ok: unresolved missing from plan Open Questions fails integration
+ok: valid evidence_trace passes integration
+ok: evidence_trace with unknown ac_id fails
+ok: AC tracing to a REJECTED hypothesis fails
+ok: evidence_trace without evidence_ids fails
+ok: integration skipped without reasoning blocks
+ok: behavior_model mandatory when behaviour_matters
+ok: behaviour_matters false waives the reasoning requirement
+ok: behavior_model alone cannot satisfy the canonical pipeline
+ok: coverage hypotheses without verifications is rejected
+ok: full reasoning set satisfies the requirement
+ok: prioritizer ranks DIRECT before GENERIC
+ok: direct_semantic_dependency infers DIRECT
+ok: same_code_path infers ONE_HOP
+ok: no signal defaults to GENERIC_REGRESSION
+ok: DIRECT is high relevance
+ok: GENERIC is not high relevance
+ok: unexplored HIGH-relevance hypothesis is flagged
+ok: verified HIGH-relevance hypothesis clears the flag
+ok: HIGH-relevance without priority_reason is flagged
+ok: invalid behavioral_distance is flagged
+ok: unexplored DIRECT dependency blocks the gate via RELEVANCE_PRIORITIZATION
+ok: observable outcome is not implementation-level
+ok: class.method reference is implementation-level
+ok: camelCase method call is implementation-level
+ok: naming a property/output alone is not implementation-level
+ok: impl-level ACCEPTANCE_CONTRACT is rejected
+ok: impl-level AC allowed when internal contract IS the requirement
+ok: impl-level statement is fine as IMPLEMENTATION_ORACLE
+ok: IMPLEMENTATION_ORACLE mapped to an AC is rejected
+ok: unknown disposition rejected
+ok: implementation-mechanism AC in the plan is flagged
+ok: observable AC in the plan is not flagged
+ok: observable outcome is a product oracle
+ok: property outcome is a state oracle
+ok: no-exception is a diagnostic signal
+ok: no-exception-only is diagnostic-only
+ok: success + observable output is not diagnostic-only
+ok: state oracle counts as observable
+ok: delivery availability is a product-visible oracle when delivery is in scope
+ok: bare internal archive existence remains diagnostic-only
+ok: P0 with only a diagnostic oracle is rejected
+ok: P0 with a product oracle passes
+ok: diagnostic-only P0 scenario is flagged
+ok: observable P0 scenario is not flagged
+ok: persisted/subsequent-run signals activate the explorer
+ok: stateless UI ticket does not activate
+ok: remove_paths is a structural activation signal
+ok: well-formed state_compatibility passes
+ok: missing BUGGY-old state origin is flagged
+ok: recovery-of-old-state AC without evidence is rejected
+ok: recovery-of-old-state AC with evidence is allowed
+ok: unknown recovery requirement forced to OPEN_QUESTION
+ok: semantic-equivalence surface as REFERENCE_ORACLE passes
+ok: semantic-equivalence-only REGRESSION_TARGET is rejected
+ok: no-evidence-of-impact REGRESSION_TARGET is rejected
+ok: shared-path REGRESSION_TARGET with evidence passes
+ok: shared-path REGRESSION_TARGET without evidence is rejected
+ok: invalid impact_class rejected
+ok: invalid role rejected
+ok: two+ publishing modes is a multi-output signal
+ok: single publishing mode is not a multi-output signal
+ok: fully-verified EQUIVALENT_PATH passes
+ok: EQUIVALENT_PATH with an unverified dimension is rejected
+ok: EQUIVALENT_PATH without evidence is rejected
+ok: UNKNOWN equivalence as Open Question passes
+ok: UNKNOWN equivalence asserted as regression is rejected
+ok: well-formed PARTIALLY_EQUIVALENT passes
+ok: PARTIALLY_EQUIVALENT without a boundary is rejected
+ok: DIFFERENT_PATH generating regression is rejected
+ok: invalid classification rejected
+ok: equivalent scenario collapses cleanly
+ok: reduce keeps one representative
+ok: collapsing across different signatures is rejected
+ok: scenario with a distinguishing factor cannot be collapsed
+ok: distinguishing scenario is fine as a representative
+ok: redundant representatives are flagged
+ok: incomplete signature is rejected
+ok: invalid distinguishing factor is rejected
+ok: spec-vs-impl conflict preserved as Open Question passes
+ok: latest-comment resolution is forbidden
+ok: highest-similarity resolution is forbidden
+ok: explicit-decision resolution passes
+ok: resolving toward superseded evidence is rejected
+ok: RESOLVED without resolved_by is rejected
+ok: bad status rejected
+ok: bad authority rejected
+ok: conflict referencing unknown id rejected
+ok: well-formed change_impact passes
+ok: missing changed is rejected
+ok: missing cannot_affect is rejected
+ok: missing can_affect is rejected
+ok: regression target without shared-path evidence is rejected
+ok: regression target in cannot_affect is a contradiction
+ok: product_contract_considered false is rejected
+ok: semantic_behavior_considered false is rejected
+ok: change_impact block is a change signal
+ok: fix_available flag is a change signal
+ok: no fix signal without a diff/PR/fix
+ok: clean reasoned plan passes the critic
+ok: relationship umbrella satisfies breadth exploration in the critic
+ok: unexplored direct dependency -> NEEDS_REFINEMENT
+ok: Q3 flags the unexplored direct dependency
+ok: Q4 flags an implementation-detail AC
+ok: Q10 flags a diagnostic-only scenario
+ok: hidden unresolved decision -> critic FAIL
+ok: first repair pass is allowed
+ok: second repair pass is refused
+ok: repair_passes over the limit is rejected
+ok: repair_passes within the limit passes
+ok: named API/servlet artifact activates implementation grounding
+ok: plain UI ticket does not activate
+ok: current-behaviour assertion about an API is detected
+ok: no assertion when API not mentioned
+ok: well-formed implementation_grounding passes
+ok: material artifact not inspected is rejected
+ok: material artifact without file:line evidence is rejected
+ok: unverified ticket premise is rejected
+ok: verified premise (code contradicts ticket) is allowed
+ok: empty named_artifacts is rejected
+ok: invalid artifact kind is rejected
+ok: config_key with verified provenance passes
+ok: config_key UNVERIFIED provenance without OQ is rejected
+ok: config_key UNVERIFIED provenance with OQ ref passes
+ok: empty known Open Question set rejects implementation-grounding reference
+ok: config_key invalid provenance rejected
+ok: config_key missing provenance is review-only, not a validate failure
+ok: premise_holds 'unresolved' without a note is rejected
+ok: premise_holds 'unresolved' with a note passes
+ok: premise_holds invalid string value is rejected
+ok: dependency_resolution with valid status passes
+ok: dependency_resolution invalid status is rejected
+ok: dependency_resolution UNRESOLVED_NO_ACCESS without a note is rejected
+ok: dependency_resolution UNRESOLVED_NO_ACCESS with a note passes
+ok: multi-action toolbar activates
+ok: single-action ticket does not activate (Case A)
+ok: distinct per-capability predicates pass (Case C)
+ok: material predicate without evidence rejected
+ok: invalid predicate dimension rejected
+ok: empty capabilities rejected
+ok: shared predicate group with evidence passes (Case B)
+ok: shared group without evidence is flagged for review
+ok: group with unknown capability rejected
+ok: no multiselect -> no selection requirement (Case D)
+ok: multiselect UNKNOWN without open question rejected
+ok: multiselect UNKNOWN with open-question ref allowed
+ok: empty known Open Question set rejects capability reference
+ok: semantic-collision evidence cannot support predicate
+ok: behavior_model with capabilities[] validates
+ok: behavior_model capability missing name rejected
+ok: capability predicate outranks historical similarity (Item 18)
+ok: coverage_gate emits AFFECTED_CAPABILITIES_DECOMPOSED
+ok: coverage_gate emits JIRA_SCOPE_VS_FIX_RECONCILED
+ok: coverage_gate FAILs a hidden scope mismatch (Item 19)
+ok: entry points with resolved consistency pass
+ok: multiple entry points without consistency rejected
+ok: VERIFIED_SAME without evidence rejected
+ok: entry-point Open Question reference passes when declared
+ok: empty known Open Question set rejects entry-point reference
+ok: invalid entry-point form rejected
+ok: responsive signals + <2 entry points is under-explored
+ok: no responsive signals -> not under-explored
+ok: CONFIG term without a config key is flagged
+ok: CONFIG term citing xmleditor.autocheckout is not flagged
+ok: CONFIG prerequisite without an open-question ref is rejected
+ok: CONFIG prerequisite surfaced as an open question passes
+ok: fix + multi-problem activates
+ok: no fix signal does not activate
+ok: pre-development plan text does not create a false fix-scope conflict
+ok: full alignment passes with no open question (Case E)
+ok: partial alignment without open question rejected
+ok: partial alignment with open question passes
+ok: empty known Open Question set rejects scope-conflict reference
+ok: unresolved_scope_without_open_question detects hidden mismatch
+ok: unresolved scope rejects undeclared Open Question reference
+ok: unresolved scope accepts declared Open Question reference
+ok: secondary-defect thread mapped to AC rejected (Case F)
+ok: invalid thread status rejected
+ok: invalid alignment rejected
+ok: PR-only extra behavior is detected generically
+ok: Jira-authorized behavior is not treated as implementation-only
+ok: implementation-only AC requires a real scope Open Question
+ok: implementation-only Proposed AC passes with a declared scope question
+ok: named product authority can approve implementation-discovered scope
+ok: well-formed affected_surface passes
+ok: uncovered enum value is rejected
+ok: COVERED without an ac is rejected
+ok: ac not defined in the plan is rejected
+ok: OUT_OF_SCOPE without a reason is rejected
+ok: OUT_OF_SCOPE with a reason passes
+ok: empty known Open Question set rejects affected-surface reference
+ok: invalid dimension kind is rejected
+ok: empty dimensions is rejected
+ok: grounded config_key activates affected-surface
+ok: no grounding does not activate affected-surface
+ok: feature registry cleanly skips without signals
+ok: detected feature class without declaration is REVIEW only
+ok: declared feature class requires its dimension block
+ok: complete feature class contract passes
+ok: every registry dimension has a validator
+ok: seeded class-to-dimension mappings stay exact
+ok: registry detects ui_display_label from a seeded signal
+ok: registry detects access_control from a seeded signal
+ok: registry detects async_job from a seeded signal
+ok: registry detects configuration_driven_enumeration from a seeded signal
+ok: registry detects generated_artifact_delivery from a seeded signal
+ok: registry detects content_identity_lifecycle from a seeded signal
+ok: registry detects plural and inflected UI display-label signals
+ok: ordinary grouping language does not imply access control
+ok: validator decision text cannot self-activate a feature class
+ok: relationship traversal umbrella self-test
+ok: configuration enumeration dimensions self-test
+ok: catalog-complete UI surface scope passes
+ok: missed catalog surface is a hard failure
+ok: unknown construct requests catalog review without failing
+ok: UI surface scope rejects unknown AC references
+ok: UI surface scope rejects Jira-only rendering grounding
+ok: catalog helper is append-only and idempotent
+ok: grounded three-actor provisioning matrix passes
+ok: actor requires an explicit privilege class
+ok: actor rejects an unknown privilege class
+ok: actor grounding requires a checkable citation
+ok: actor grounding rejects a Jira-only citation
+ok: delegated actor requires withheld groups
+ok: non-admin actor requires withheld groups
+ok: actor requires explicit auto-added group disposition
+ok: no automatic group uses explicit none instead of an empty list
+ok: actor named by an AC must map back to that AC
+ok: generic contributor actor cannot bypass the provisioning matrix
+ok: absent fluffyjaws block passes
+ok: probe defaults to DISABLED/unavailable
+ok: probe never reports available without an injected transport
+ok: discoveries while disabled are rejected
+ok: grounded shadow discovery passes
+ok: FluffyJaws cannot claim a first-class authority
+ok: discovery without re-grounding is rejected
+ok: no FluffyJaws -> AC promotion path
+test_fluffyjaws_evidence: OK
+ok: absent temporal metadata passes
+ok: empty manifest not flagged present
+ok: invalid temporal state rejected
+ok: UNKNOWN_VERSION cannot silently support an AC
+ok: unknown-version claim is safe when dispositioned
+ok: currently-applicable evidence may support an AC
+ok: SUPERSEDED must record superseded_by/conflict_with
+ok: normative record not superseded by recency alone
+ok: version conflict must preserve both records
+ok: marked version conflict passes
+test_temporal_evidence: OK
+ok: absent conflict_resolution passes
+ok: invalid conflict_type rejected
+ok: implementation cannot win over the contract (defect, not rewrite)
+ok: documented defect resolution passes
+ok: SUPPORTING_DISCOVERY cannot be the winning authority
+ok: implementation cannot settle a normative question
+ok: normative authority settles a normative question
+ok: non-settling state cannot silently support an AC
+ok: dispositioned open conflict passes
+ok: competing evidence must be preserved
+test_evidence_conflict_resolver: OK
+ok: absent scope_applicability passes
+ok: grounded direct-scope candidate passes
+ok: name-only scope expansion is rejected
+ok: in-scope candidate needs evidence
+ok: shared-path regression must stay distinct from primary
+ok: evidenced shared-path regression passes
+ok: reference-only cannot promote an AC
+ok: unresolved scope must become an Open Question
+ok: unresolved scope with Open Question passes
+ok: scope must anchor on the primary outcome
+test_scope_applicability: OK
+ok: absent ac_synthesis passes
+ok: clear final AC passes
+ok: vague expectation flagged
+ok: unclear title flagged
+ok: implementation leak flagged
+ok: declared technical-artifact AC is allowed
+ok: multiple contracts flagged
+ok: material candidate loss flagged
+ok: full retention passes
+ok: hidden material dimension flagged
+ok: redundant AC flagged
+test_ac_language_policy: OK
+ok: non-publishing ticket is not applicable
+ok: publishing plan without DITA-OT coverage is flagged
+ok: publishing plan without preset scope is flagged
+ok: publishing plan covering DITA-OT mode and preset scope passes
+ok: output-preset text signal activates the check
+ok: neighbour-only native-pdf mention does not classify as publishing
+ok: neighbour-only native-pdf plan is not flagged
+ok: own-section native-pdf mention still classifies as publishing
+test_publishing_scope_coverage: OK
+ok: fully populated fix-driven block passes
+ok: positive fixture activates the fix-driven gate
+ok: ticket with no positive fix signal stays inactive
+ok: ticket with no positive fix signal passes untouched
+ok: an explicit fix branch activates without accepting a bare fix-version token
+ok: documented activation signal is detected: root-cause statement
+ok: documented activation signal is detected: pull request
+ok: documented activation signal is detected: commit
+ok: documented activation signal is detected: branch
+ok: documented activation signal is detected: diff
+ok: documented activation signal is detected: merged claim
+ok: documented activation signal is detected: cherry-picked claim
+ok: documented activation signal is detected: hotfix claim
+ok: documented activation signal is detected: fixed-in-build claim
+ok: documented activation signal is detected: verified-in-build claim
+ok: negative fix-status claim stays inactive: The change is not merged.
+ok: negative fix-status claim stays inactive: The issue is not fixed in build 42.
+ok: negative fix-status claim stays inactive: The behavior was not verified in build 42.
+ok: negative fix-status claim stays inactive: No hotfix is available.
+ok: fix signal without root_cause_fix block fails
+ok: missing-block failures use stable prefix
+ok: described fix with Pre-Development lifecycle fails
+ok: lifecycle failures use stable prefix
+ok: preserved invariant without a guarding AC fails
+ok: preservation failures use stable prefix
+ok: fix-introduced risk without AC or OQ fails
+ok: risk failures use stable prefix
+ok: added test with Not covered main-feature verdict fails
+ok: automation failures use stable prefix
+ok: narrow verification without a named gap fails
+ok: empty risk list with concrete no-new-risk reason passes
+ok: run_gates loads the root-cause/fix-driven gate
+ok: run_gates invokes the root-cause/fix-driven validator without hiding its prefix
+test_root_cause_fix_driven: OK
+ok: no signal passes untouched
+ok: covered reviewer request passes
+ok: regression disposition is rejected with the prefix
+ok: covered-by-ac without ac_refs fails
+ok: ac_refs absent from the plan fail
+ok: unresolved-path open question must be known
+ok: imperative comment with no block fails
+ok: imperative comment not captured by any entry fails
+ok: run_gates loads the reviewer-request gate
+ok: run_gates invokes the reviewer-request validator without hiding its prefix
+test_reviewer_request_coverage: OK
+ok: no not-reproducible signal is not activated
+ok: no-signal plan passes
+ok: signal without block activates
+ok: signal without reproducibility block fails
+ok: unconfirmed without strategy fails
+ok: claimed strategy without content fails
+ok: fix ACs not gated fails
+ok: complete reproduction plan passes
+ok: run_gates loads the reproducibility gate
+ok: run_gates invokes the reproducibility validator without hiding its prefix
+test_reproducibility_gate: OK
+ok: output-generation evidence activates a probe
+ok: activated probe without a covering dimension fails
+ok: covering the axis via a clarification dimension passes
+ok: explicit probe disposition satisfies the gate
+ok: ENTRY_POINT probe unsatisfied without a dimension or block
+ok: populated entry_point_equivalence block satisfies the ENTRY_POINT probe
+ok: no matching probe is not activated
+ok: no-probe plan passes
+ok: run_gates loads the probe-coverage gate
+ok: run_gates invokes the probe-coverage validator without hiding its prefix
+test_probe_coverage_gate: OK
+ok: named DITA construct activates the gate
+ok: construct without a dita_semantics block fails
+ok: active:true satisfies the activation gate
+ok: active:false with a thin assessment fails
+ok: active:false with a full assessment passes
+ok: no construct is not activated
+ok: no-construct plan passes
+ok: behaviour_matters false opts out
+ok: run_gates loads the dita-semantics activation gate
+ok: run_gates invokes the dita-semantics validator without hiding its prefix
+test_dita_semantics_activation: OK
+ok: library loads seeded probes
+ok: seeded MP-001 present
+ok: seeded probe is ACTIVE
+ok: seeded probe axis is VALUE_SET_CHANNEL
+ok: model-sourced probe is not ACTIVE
+ok: language pattern is retired
+ok: single-literal probe is not ACTIVE
+ok: validating probe is SHADOW
+ok: learned candidate emitted for matching evidence
+ok: learned candidate axis is VALUE_SET_CHANNEL
+ok: learned candidate carries probe id
+ok: learned candidate cites the evidence label
+ok: learned candidate technical_basis names the probe and delta
+ok: no learned candidate without a match
+ok: absent miss_probe_activity passes
+ok: unknown probe id flagged
+test_miss_probe_library: OK
+ok: checked-in feature map passes strict governance
+ok: feature map schema is v1
+ok: feature map is installed and approved
+ok: feature map has six curated surfaces
+ok: asset-upload surface is present
+ok: asset-upload surface contains the six required native features
+ok: every curated feature is Human-approved and cites Experience League
+ok: surface match phrases are generic lower-case text rather than code paths or identifiers
+ok: asset upload emits duplicate-detection candidate
+ok: asset upload emits versioning candidate
+ok: feature candidate generator is FEATURE_MAP
+ok: feature candidate status is investigation-only
+ok: feature candidate carries feature tag
+ok: feature candidate carries implied dimension axis
+ok: feature candidate uses canonical coverage dimension
+ok: feature candidate carries reference tag
+ok: feature candidate cites matching evidence
+ok: feature candidate is explicitly advisory
+ok: feature and reference survive in technical basis
+ok: non-matching evidence contributes no feature-map candidate
+ok: baseline evidence emits the approved translation-project candidate
+ok: baseline translation candidate preserves its direct Experience League source
+ok: baseline translation is a configuration-branch investigation
+ok: translation evidence without a baseline signal does not activate baseline translation
+ok: Oxygen remains outside the governed map pending sufficient source approval
+ok: baseline surface contains only the approved translation-project feature
+ok: review membership and panel candidates use the direct review-comments source
+ok: malformed map loads as empty
+ok: malformed map contributes no candidate
+ok: missing map contributes no candidate
+ok: wrong-typed surfaces fail open
+ok: wrong-typed surfaces contribute no candidate
+ok: wrong-typed native features fail open
+ok: wrong-typed native features contribute no candidate
+ok: non-Human-approved map is ignored
+ok: strict governance rejects non-Human-approved checked-in data
+ok: strict governance rejects an unapproved entry instead of silently sanitizing it
+ok: every emitted feature candidate validates in canonical coverage-hypothesis shape
+ok: feature map summary reports approved entries
+test_feature_map: OK
+ok: synthesizer not activated on empty manifest
+ok: no review notes when not activated
+ok: synthesizer activated with behavior_model
+ok: emits a VALUE_SET_CHANNEL code-neighborhood candidate
+ok: candidate cites the generating evidence id
+ok: candidate has non-empty technical_basis
+ok: records a history gap when no source
+ok: records a rag gap when no probes
+ok: unrepresented candidate surfaces as a DISCOVERY note
+ok: represented dimension is not re-surfaced
+ok: synthesizer appends FEATURE_MAP duplicate detection
+ok: synthesizer appends FEATURE_MAP versioning
+ok: feature-map candidate receives a stable synthesizer id
+ok: unrepresented feature-map candidate surfaces as DISCOVERY review
+ok: exactly represented feature-map candidate is suppressed
+ok: other same-axis feature-map candidates remain visible
+ok: offline RAG emits a retrieved duplicate-detection neighbor
+ok: offline RAG current evidence includes the retrieved document title
+ok: offline RAG is supporting discovery
+ok: offline RAG is advisory and non-authoritative
+ok: offline RAG candidate validates in canonical hypothesis shape
+ok: feature-map expansion, not a hardcoded branch, formed the duplicate query
+ok: offline history does not run without a component
+ok: offline synthesis does not mutate the manifest
+ok: offline synthesis never invents indexed_history_run
+ok: offline RAG surfaces through the existing DISCOVERY note
+ok: offline history emits a same-component investigation candidate
+ok: offline history candidate explicitly remains non-live
+ok: offline history does not mutate the live-history flag
+ok: recorded live history suppresses offline history lookup
+ok: recorded live history remains distinguishable from OFFLINE_CHROMA
+ok: absent collections fabricate no offline candidate
+ok: absent collections record both offline generator gaps
+ok: run_gates emits FEATURE_MAP REVIEW DISCOVERY note
+ok: run_gates emits OFFLINE_CHROMA RAG REVIEW DISCOVERY note
+ok: run_gates emits no FEATURE_MAP review for non-matching evidence
+test_dimension_synthesizer: OK
+ok: provenance: well-formed catalog passes
+ok: provenance: absent catalog is a clean pass
+ok: provenance: behaviour_matters false opts out
+ok: provenance: dangling id fails with prefix
+ok: provenance: missing path fails
+ok: provenance: hash mismatch fails
+ok: provenance: unrecorded rag probe fails
+ok: run_gates invokes verify_provenance
+test_evidence_provenance: OK
+ok: non-security plan passes without a security block
+ok: non-security plan does not activate the security gate
+ok: explicit all-N/A security ledger passes for a non-security plan
+ok: XML ingest without a security ledger fails
+ok: every XML ingest failure uses the stable prefix
+ok: XML ingest without XXE coverage fails
+ok: XML ingest without entity-expansion coverage fails
+ok: XML ingest without malformed input coverage fails
+ok: XML ingest without oversized input coverage fails
+ok: mentioning XXE without disabling it does not satisfy coverage
+ok: mentioning entity expansion without a limit does not satisfy coverage
+ok: mentioning malformed input without a safe outcome does not satisfy coverage
+ok: mentioning oversized input without a safe outcome does not satisfy coverage
+ok: complete XML input-safety AC mapping passes
+ok: complete QA-impact Open Question disposition passes
+ok: conref plan without traversal coverage fails
+ok: conref traversal protection passes
+ok: content endpoint without unauthorized-role denial fails
+ok: content endpoint without escalation protection fails
+ok: publish endpoint without authorization coverage fails
+ok: publish endpoint failure preserves the SECURITY GATE prefix
+ok: complete endpoint authorization mapping passes
+ok: genuinely inapplicable signalled dimension passes with a concrete reason
+ok: placeholder N/A reason fails
+ok: explicit security ledger cannot omit a dimension
+ok: security summary reports clean complete ledger
+ok: run_gates loads the security coverage gate
+ok: run_gates invokes security coverage validation
+ok: run_gates preserves the security gate failure prefix
+test_security_coverage: OK
+ok: translation states remain the documented product set
+ok: translation project types remain the documented product set
+ok: non-localization plan passes untouched
+ok: non-localization plan does not activate the gate
+ok: another coverage ledger cannot self-activate localization
+ok: metadata change without localization coverage fails
+ok: metadata failure uses the stable prefix
+ok: publishing change without translation-state disposition fails
+ok: publishing failure uses the stable prefix
+ok: Translation component activates the gate
+ok: activated metadata change passes when every dimension is dispositioned
+ok: translation-state coverage requires Out of Sync
+ok: translation-state coverage requires Missing copy
+ok: complete translation-state AC mapping passes
+ok: complete translation-state Open Question mapping passes
+ok: XLIFF coverage requires import
+ok: XLIFF coverage requires round-trip integrity
+ok: complete XLIFF round-trip mapping passes
+ok: one project type cannot satisfy the supported set
+ok: complete documented project-type set passes
+ok: placeholder localization N/A reason fails
+ok: localization ledger cannot omit a dimension
+ok: localization summary reports clean complete ledger
+ok: run_gates loads localization regression coverage
+ok: run_gates invokes localization regression validation
+ok: run_gates preserves localization failure prefix
+test_localization_regression_coverage: OK
+ok: non-migration plan passes untouched
+ok: non-migration plan does not activate the gate
+ok: another coverage ledger cannot self-activate migration
+ok: temporal applicability without a migration operation stays inactive
+ok: migration evidence still activates operation coverage
+ok: migration activation signal is recognized: Upgrade the product instance from the source release to the target release.
+ok: migration activation signal is recognized: The repository requires a stored data migration to the new schema.
+ok: migration activation signal is recognized: Convert non-UUID identifiers to UUID identifiers.
+ok: migration activation signal is recognized: Migrate the installation from on-premise to cloud.
+ok: migration activation signal is recognized: The change must preserve backward compatibility.
+ok: fix-version plus persisted-format change activates the gate
+ok: fix-version field alone does not invent a migration operation
+ok: fully covered non-UUID to UUID migration passes
+ok: migration signal without a coverage ledger fails
+ok: every missing-ledger failure uses the stable prefix
+ok: migration coverage cannot omit old authored or stored input
+ok: migration execution requires a rerun or one-shot policy
+ok: migration execution requires failure reporting
+ok: non-UUID to UUID coverage requires the possible mixed state
+ok: mixed-state failure preserves the stable prefix
+ok: verified atomic operation does not invent mixed-state coverage
+ok: applicable post-state coverage cannot be parked in an Open Question
+ok: pre-state and rollback may use QA-impact Open Questions
+ok: activated but genuinely inapplicable dimensions pass with reasons
+ok: placeholder migration N/A reason fails
+ok: migration ledger cannot omit rollback disposition
+ok: migration summary reports a clean complete ledger
+ok: run_gates loads upgrade migration coverage
+ok: run_gates invokes upgrade migration validation
+ok: run_gates preserves migration failure prefix
+test_upgrade_migration_coverage: OK
+ok: absent repro_matrix passes
+ok: customer-only material diff with an Open Question passes
+ok: material customer-only diff cannot be REJECTED
+ok: material unresolved diff must reference an Open Question
+ok: immaterial dimension is flagged as overexpansion
+ok: confirmed repro covered by an AC passes
+ok: invalid dimension/state enums rejected
+ok: duplicate dimension rejected
+test_repro_dimension_matrix: OK
+ok: absent ac_synthesis passes
+ok: ac_synthesis without synthesis_group is not activated
+ok: fully-traced grouped AC passes
+ok: unknown synthesis_group rejected
+ok: missing evidence_ids trace flagged
+ok: missing scope_basis trace flagged
+ok: missing oracle trace flagged
+ok: merged candidate not in candidate_ids is flagged
+test_acceptance_synthesizer: OK
+ok: empty inputs pass
+ok: distinct ACs pass
+ok: duplicate AC outcome is flagged
+ok: complete testability record passes
+ok: missing oracle in testability flagged
+ok: testability ac_ref not in plan flagged
+ok: AC/OQ contradiction flagged
+ok: scope mismatch flagged
+test_uac_linter: OK
+ok: absent human_feedback_delta passes
+ok: multi-case human approved delta passes
+ok: FluffyJaws delta cannot be VALIDATING/APPROVED
+ok: AI review delta cannot be promoted
+ok: language delta cannot be DISCOVERY_PATTERN
+ok: language delta as rendering pattern passes
+ok: coverage add without first_failed_stage flagged
+ok: single-case approval without invariant/severe flagged
+ok: approval without counterexample search flagged
+test_human_feedback_delta: OK
+ok: absent execution_outcome passes
+ok: well-formed execution outcome passes
+ok: Human escape yields one miss-probe input
+ok: Human escape remains governed CANDIDATE
+ok: MODEL-sourced execution outcome is rejected
+ok: escape without dimension is rejected
+ok: escape without first stage is rejected
+ok: repeated real defects raise only the mapped dimension priority
+ok: malformed outcome is not a hard gate failure
+ok: malformed outcome creates a REVIEW note
+ok: valid execution outcome adds no failure or review note
+test_execution_outcome: OK
+ok: absent entry_point_equivalence passes
+ok: shared-handler regression with evidence passes
+ok: same-user-intent cannot be promoted to regression
+ok: shared-type promotion needs shared-path evidence
+ok: different-implementation cannot be shared regression
+ok: OQ entry point without searched_sources flagged
+ok: investigated OQ entry point passes
+test_entry_point_equivalence: OK
+ok: non-value plan is not applicable
+ok: value plan without provenance is flagged
+ok: value plan with repository provenance passes
+test_value_provenance_coverage: OK
+ok: no shared-path evidence is not applicable
+ok: shared code without regression coverage is flagged
+ok: out-of-scope consumer on shared path is flagged
+ok: shared code with shared-path regression passes
+test_shared_path_regression_coverage: OK
+ok: plan with no real question or regression passes untouched
+ok: clean plan does not activate QE completeness
+ok: exact unbulleted no-question sentinel also passes untouched
+ok: activated plan without qe_completeness fails
+ok: missing qe_completeness uses the stable prefix
+ok: DEFERRED_COVERAGE hard-fails even with a real promoted AC
+ok: deferred coverage failure keeps the stable prefix
+ok: Open Question missing from classification hard-fails
+ok: IN_SCOPE_BEHAVIOR without ac_ref hard-fails
+ok: fully classified genuine decisions and regressions pass
+ok: clean classified plan has no review
+ok: QE-expected contract emits the exact REVIEW note
+ok: REVIEW case keeps hard validation green
+ok: genuine decision promoted to a real AC passes
+ok: promoted genuine decision clears REVIEW
+ok: run_gates loads QE completeness
+ok: run_gates invokes QE completeness validation
+ok: run_gates preserves the QE completeness prefix
+ok: run_gates collects QE completeness REVIEW notes
+ok: QE completeness REVIEW makes a receipt non-postable
+test_qe_completeness_coverage: OK
+ok: sync contract covers seven canonical and executing copies
+ok: fingerprint has a non-empty enforced file set
+ok: Codex-only file is excluded from cross-copy fingerprint: SKILL.md
+ok: Codex-only file is excluded from cross-copy fingerprint: scripts/test_skill_scripts.py
+ok: Codex-only file is excluded from cross-copy fingerprint: references/quality-gate-checklist.md
+ok: fingerprint exposes one hash per enforced file
+ok: repository Claude enforced fingerprint matches canonical
+ok: repository public enforced fingerprint matches canonical
+ok: Windows bundle enforced fingerprint matches canonical
+Scaffold not written: output already exists; choose a new --out path
+Scaffold not written: output already exists; choose a new --out path
+Scaffold not written: manifest requires a behavior_model object
+ok: Unix bundle enforced fingerprint matches canonical
+ok: global Claude enforced fingerprint matches canonical
+ok: global Codex enforced fingerprint matches canonical
+ok: fresh enforced-file copy verifies
+ok: injected drift is detected by relative file name
+ok: run_gates emits the required executing-copy REVIEW note
+ok: executing-copy drift makes a receipt non-postable without a gate failure
+test_skill_bundle_fingerprint: OK
+ok: non-activated plan may omit clarification
+ok: declared clarification must be an object
+ok: activated plan must declare clarification
+ok: fully resolved clarification block passes
+ok: clarification block is detected
+ok: clarification summary reports the dimension
+ok: material UNRESOLVED dimension fails
+ok: every clarification failure has the stable prefix
+ok: WAITING blocking question fails
+ok: blocking question requires authoring gate assertion
+ok: COVERED_BY_AC must reference a plan AC
+ok: deferred dimension must reference a declared Open Question
+ok: value-write plan cannot omit VALUE_SET_CHANNEL
+ok: value-write dimension must enumerate CRX/DE or repository node
+ok: publishing plan must enumerate OUTPUT_PRESET
+ok: shared code plan must enumerate CODE_PATH_CONSUMER
+test_clarification_gate: OK
+ok: signal-free manifest has no completeness requirement
+ok: signal-free manifest reports gate not active
+ok: publishing signal without publishing_scope hard-fails
+ok: every completeness failure has the stable prefix
+ok: publishing plan activates completeness
+ok: non-empty publishing_scope satisfies completeness
+ok: empty publishing_scope does not satisfy completeness
+ok: scalar publishing_scope cannot impersonate a manifest block
+ok: reasoned attributable waiver satisfies completeness
+ok: blank waiver reason hard-fails
+ok: behaviour_matters false preserves behavior-block opt-out
+ok: versioned behavior requires temporal_evidence
+ok: non-empty temporal_evidence satisfies version signal
+ok: summary reports a clean positive fixture
+test_manifest_completeness_gate: OK
+ok: grounded authoring model passes
+ok: empty facts cannot impersonate behavioral understanding
+ok: wrong-typed fact evidence fails without crashing
+ok: all twelve exploration families execute and activate on grounded signals
+ok: exploration candidates carry non-empty technical basis and no verdict
+ok: ungrounded model emits no exploration guesses
+ok: simple UI does not activate irrelevant exploration families
+ok: all generated candidates are legal v3 hypotheses
+ok: generation is stable and does not mutate its input
+ok: retained explorer candidates clear discovery review
+ok: v3 model, hypotheses, evidence, verification, disposition and promotion validate together
+ok: complete reasoning record needs no block waivers
+ok: strict authoring model runs through run_gates
+ok: real v3 hypotheses satisfy reasoning-required
+ok: terminal verification runs through run_gates
+ok: actual evidence ledger runs through retrieval gate
+ok: dropping a candidate verdict fails
+ok: verified hypotheses cannot silently lose their disposition
+ok: authoring rejects anonymous candidates before verification
+ok: implementation authority cannot be relabelled as acceptance truth
+ok: feature-map and learned-probe candidates both run
+ok: all discovery axes normalize into valid hypotheses
+ok: hypotheses alone preserve discovery-axis probe coverage
+ok: real active probes accept hypothesis dimensions without parallel clarification
+ok: blanket behavioral v2 waivers hard-fail all three protected blocks
+ok: every reasoning waiver emits non-postable REVIEW
+ok: reasoning waiver reviews engage the actual posting guard
+ok: reviewed legacy escape is accepted as a review record
+ok: reviewed escape never reports CLEAN
+ok: author self-review cannot bypass protected blocks
+ok: v3 reasoning waivers require explicit reviewed escapes
+ok: legacy structural waiver behavior is unchanged
+ok: run_gates no longer silently skips behavioral v2 reasoning
+ok: one question's second pass cannot satisfy another blocking question
+test_v3_authoring_pipeline: OK
+ok: all terminal states with valid references pass
+ok: missing terminal state fails
+ok: terminal state rejects unknown AC reference
+ok: versioned concurrency race contract passes with real references
+ok: empty known AC set rejects a concurrency AC reference
+ok: inactive concurrency contract requires a reason
+ok: event-driven behavior is detected
+ok: complete enumerated source disposition passes
+ok: empty known Open Question set rejects an enumerated reference
+ok: missing enumerated source item is a hard failure
+ok: independent enumerated items cannot silently overload one AC
+ok: ordinary Markdown bullets activate enumerated coverage
+ok: detected source list cannot be bypassed with active false
+ok: Proposed-only enumerated source still requires the fidelity ledger
+ok: rewritten enumerated text cannot pass beside the original verbatim source
+ok: invented semantic atom text is rejected
+ok: automatic scope protection blocks user-level loss even when its atom is omitted
+ok: automatic scope protection recognizes per-user and hyphenated level terms
+ok: user-level to folder-profile substitution fails semantic fidelity
+ok: an evidence conflict passes only when a real Open Question preserves the atom
+ok: dropping an exact configuration path fails fidelity
+ok: source raw-text hash mismatch fails closed
+ok: complete Proposed source ledger passes independently of acceptance authority
+ok: skill retains source-fidelity marker aem-guides-source-requirement-ledger-v1
+ok: skill retains source-fidelity marker source_requirement_ledger
+ok: skill retains source-fidelity marker accepted_uac_present=false
+ok: quality checklist requires source requirement fidelity
+ok: unresolved decision marker is a hard AC failure
+ok: unrelated retry number does not make a vague log bound measurable
+ok: explicitly bound outcome is decidable
+ok: implementation-choice menu is a hard AC failure
+ok: ambiguous terminal result is a hard AC failure
+ok: non-finite negative is a hard AC failure
+ok: unresolved prose in Evidence does not poison parsed behavior fields
+ok: complete operational contract passes
+ok: shutdown must be dispositioned separately from cancellation
+ok: empty AC set rejects invented operational references
+ok: strong operational signal requires the contract
+ok: operational signal cannot be bypassed by active false
+ok: configuration activation restart does not imply an async operational contract
+ok: restart remains operational when recurring job evidence is present
+ok: readability REVIEW prevents a postable receipt
+ok: scope-authority REVIEW prevents a postable receipt
+ok: semantic advisory notes also block posting
+ok: hash-bound receipt authorizes the exact current artifacts
+ok: stale receipt is rejected after plan mutation
+ok: stale receipt is rejected after validator mutation
+ok: skip-self-test style non-postable receipt is rejected
+ok: source-bound contract facts validate
+ok: contract facts must quote their canonical source exactly
+ok: protected exact source terms survive in their ACs
+ok: silently dropped contract wording fails integrity
+ok: ambiguous contract fact cannot be routed directly to an AC
+ok: publishing evidence activates the publishing domain
+ok: inflected publishing, API delivery, and bulk scale activate independent routes
+ok: published and singular API wording are recognized
+ok: negated and explicitly unaffected domains do not self-activate
+ok: a negative performance instruction does not activate a performance route
+ok: structured out-of-scope values cannot activate a domain
+ok: a positive clause after a negated clause remains discoverable
+ok: publishing configuration does not imply a generated-download contract
+ok: publishing domain and scope validate
+ok: active publishing route requires its scope contract
+ok: unresolved DITA-OT state requires an Open Question
+ok: an empty Open Question registry rejects invented references
+ok: every canonical relation family is accepted
+ok: graph inference cannot silently become confirmed
+ok: graph authority is validated against a declared subject policy
+ok: graph provenance must resolve in the canonical evidence registry
+ok: unresolved graph edges cannot invent Open Question references
+ok: behavior traversal is bounded
+ok: complete canonical semantic pipeline passes
+ok: behavior model alone cannot pass semantic coverage
+ok: complete applicability matrix passes
+ok: wrong-typed contract_facts fails gracefully
+ok: wrong-typed behavior_graph fails gracefully
+ok: wrong-typed semantic_closure fails gracefully
+ok: a silently omitted semantic dimension fails
+ok: wildcard closure cannot hide per-entity applicability gaps
+ok: scaffold does not mutate input
+ok: model roles produce typed candidate nodes and edges
+ok: graph provenance comes only from bound facts
+ok: nodes and edges retain explicit unknown verification context
+ok: scaffold vocabulary is data-backed and canonical
+ok: malformed policy cannot introduce invented vocabulary
+ok: malformed policy cannot introduce invented vocabulary
+ok: malformed policy cannot introduce invented vocabulary
+ok: materiality follows actual node kind with explicit author override
+ok: configuration model field is scaffolded
+ok: closure matrix excludes nonmaterial context nodes
+ok: closure scaffold emits complete per-node matrix
+ok: closure never asserts applicability or a disposition
+ok: scaffold emits no verdicts, ACs or fake unresolved questions
+ok: candidate graph edges are declared hypotheses
+ok: fresh scaffold deterministically reruns
+ok: malformed existing node fails with a controlled validation error
+ok: one contextual question per unresolved closure and verification
+ok: questions use subject-specific source vocabulary
+ok: unresolved question does not invent second-pass retrieval
+ok: rerun preserves authored rows and IDs
+ok: new entities append without renumbering decisions
+ok: unreviewed graph defaults cannot validate
+ok: filling disposition IDs cannot launder default rejection
+ok: reviewed candidate graph validates without auto-confirmation
+ok: author-dispositioned closure can validate
+ok: conflicting duplicate closure pair fails
+ok: unavailable sources never become invented graph provenance
+ok: unmentioned entity cannot borrow arbitrary catalog evidence
+ok: large matrices have valid unique IDs without truncation
+ok: file binding hashes exact bytes and resolves relative path
+ok: hash helper completes existing file IDs without breaking model bindings
+ok: binding does not invent a query, authority, use or second pass
+ok: pending binding is rejected even if marked USED
+ok: file entries use existing provenance validator contract
+ok: same file binding is idempotent and preserves lifecycle edits
+ok: changed bytes never overwrite old evidence
+ok: missing files and directories yield gaps without evidence
+Scaffold: 6 nodes, 5 edges, 186 closure records, 0 questions; 197 rows await author review. This is not a gate pass or posting authority.
+Written: C:\Users\prashantp\AppData\Local\Temp\v3-scaffold-e75c62vd\manifest.scaffold.json
+ok: CLI creates a separate scaffold
+ok: CLI refuses overwriting input or existing output
+ok: malformed manifest yields controlled failure and no file
+ok: canonical gate rejects generated review placeholders
+ok: scaffold then author disposition passes canonical semantic gates
+ok: scaffolding does not expand the fixture's acceptance set
+ok: unresolved closure automatically requires a question
+ok: missing-question stub preserves subject, dimension, and visible Open Question
+ok: generated material question is linked
+ok: directed subject-specific retrieval is recorded even when no answer is found
+ok: undispositioned material candidate fails
+ok: exactly-once disposition passes
+ok: duplicate disposition fails
+ok: Jira expected behavior can support a Proposed AC
+ok: PR implementation alone cannot promote an AC
+ok: regression-only candidate cannot promote
+ok: a candidate and AC cannot be promoted more than once
+ok: a promotion cannot borrow authority from another candidate
+ok: product acceptance cannot relabel an implementation candidate
+ok: promotion disposition must cover the same candidate and AC
+ok: Confirmed promotion requires an accepted UAC contract
+ok: complete generated-output contract passes
+ok: legacy v1 generated-output contracts remain readable
+ok: delivery availability is not required when delivery is out of scope
+ok: an out-of-scope delivery cannot retain a covered availability oracle
+ok: in-scope delivery requires its real delivery surface
+ok: unresolved delivery cannot invent an Open Question
+ok: delivery scope and availability cannot point to different questions
+ok: logs-only archive is not accepted as generated output
+ok: artifact-existence-only coverage fails
+ok: archive-exists text is not a sufficient product oracle
+ok: generated-artifact contract rejects a logs-only downloadable archive
+ok: current-identity lifecycle contract passes
+ok: content-identity contract rejects an unauthorized previous-version fallback
+ok: legacy migration cannot be invented without authority
+ok: every semantic REVIEW blocks posting
+NOTE: REVIEW ac-readability: AC-03 uses a vague surface (the dialog); name the exact screen
+NOTE: REVIEW ac-readability: AC-14 too long in Given, Then; split into short sentences
+NOTE: REVIEW ac-readability: AC-21 too long in Given; split into short sentences
+NOTE: REVIEW ac-readability: AC-08 summarizes outcomes already stated by earlier criteria; remove the recap or state one new observable result
+NOTE: REVIEW ac-readability: AC-21 summarizes outcomes already stated by earlier criteria; remove the recap or state one new observable result
+NOTE: four-section compact view renderable
+NOTE: verified 4 source-file citation(s); skipped 2 unverifiable-by-design path(s)
+NOTE: manifest declares 0 attachment(s); 0 attested analyzed and present
+NOTE: provenance: catalog with 6 entry(s); verified 4 code source_hash(es)
+NOTE: REVIEW DISCOVERY: unrepresented dimension CONTRACT_BOUNDARY (generator=CONTRACT_BOUNDARY, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate contract boundary for behavior_model.trigger: Insert an existing DITA topic into a map using a profile that requires navtitle - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension CONSUMER (generator=CONSUMER, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate consumer for behavior_model.consumers: Source view - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension STATE_PARTITION (generator=STATE_PARTITION, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate state partition for behavior_model.affected_state: Saved map source - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension REFERENCE_ARTIFACT (generator=REFERENCE_ARTIFACT, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate reference artifact for behavior_model.fact: Jira requires a newly inserted topicref to carry navtitle from the referenced topic title, visible in saved Source mode. - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension LIFECYCLE (generator=LIFECYCLE, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate lifecycle for behavior_model.write_paths: html.setAttribute in updateNavTitle - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: REVIEW DISCOVERY: unrepresented dimension DOWNSTREAM_REGRESSION (generator=DOWNSTREAM_REGRESSION, evidence=EC-APPVIEW,EC-DOC,EC-DRAG,EC-INSERT,EC-JIRA,EC-MODEL): Investigate downstream regression for behavior_model.processors: InsertTopicrefController.updateNavTitle - dispose or reject it in coverage_hypotheses/dimension_space
+NOTE: anti-hardcoding audit scanned 152 file(s)
+NOTE: coverage hypotheses validated
+NOTE: DITA semantic gate skipped (no active DITA semantics)
+NOTE: semantic coverage gate: NEEDS_REVIEW
+NOTE: REVIEW DOWNSTREAM_REGRESSION: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW CONSUMER_EXPLORATION: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW CONFIGURATION: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW STATE_PARTITIONS: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW CONTRACT_BOUNDARY: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW REFERENCE_ARTIFACT: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW LIFECYCLE: a candidate was discovered but not investigated to a terminal verdict
+NOTE: REVIEW BEHAVIOR_MODEL: the behavior model is missing/incomplete
+NOTE: REVIEW SEMANTIC_CLOSURE: one or more material applicability dimensions are missing or unresolved incorrectly
+NOTE: REVIEW SECOND_PASS_RETRIEVAL: a material question exists but no new directed second-pass query was run
+NOTE: implementation grounding not applicable (no API/implementation signals)
+NOTE: capability eligibility not applicable (no multi-action surface signals)
+NOTE: affected surface not applicable (no handler/operation/config artifact grounded)
+NOTE: comment claims not applicable (no current-behaviour comment phrasing detected)
+NOTE: pr supersession not applicable (no pr_references declared)
+NOTE: REVIEW feature-classification: detected class(es) ui_display_label; declare feature_classification and its required dimensions
+NOTE: REVIEW: relationship-like evidence was detected (settings/configuration JSON signal), but construct_relationships is not declared; run the code and corpus one-hop traversal.
+NOTE: concurrency race analysis not applicable
+NOTE: operational incident/job contract dispositioned
+NOTE: scope reconciliation not applicable (no fix-vs-multi-problem signal)
+NOTE: uac-integration: coverage gate is NEEDS_REVIEW
+NOTE: pre-UAC critic: FAIL
+NOTE: CRITIC [MISSING] Did we expose unresolved product decisions? - UNRESOLVED hypothesis 'H-BG-8a3c7e70fdecbe3546987c25' (open question 'OQ-01') is not surfaced in the plan's Open Questions section - an unresolved item must be exposed, never dropped
+NOTE: self-tests green
+NOTE: gate receipt: C:\Users\prashantp\Videos\aem-guides-dataset-studio\analysis\uacgap07\proof-guides-54348\scaffold-gate-receipt.json (not postable)
+FAIL: [manifest] manifest is missing required key 'attachments' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'evidence_preflight' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'rag_tool' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'rag_probes' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'jira_history_tool' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'jira_history_queries' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'indexed_history_run' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'evidence_graph' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'performance_assessment' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'clones' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'enumerated_requirements' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'operational_contract' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'contract_facts' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'issue_domains' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'dispositions' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] manifest is missing required key 'acceptance_promotions' - every plan must declare preflight status, both RAG tool paths, their queries, attachments, and clone state
+FAIL: [manifest] evidence_preflight must be an object
+FAIL: [manifest] rag_tool must be 'ask_dita_expert'; product-documentation evidence cannot come from search_jira_history
+FAIL: [manifest] jira_history_tool must be 'search_jira_history'; Jira history cannot come from ask_dita_expert
+FAIL: [manifest] rag_probes must be a list of ask_dita_expert questions
+FAIL: [manifest] jira_history_queries must be a list of search_jira_history call records
+FAIL: [manifest] evidence_graph must be an object describing graph status and queries
+FAIL: [manifest] performance_assessment must be an object
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'contract_facts' is absent or empty; activated by signal(s): behaviour_reasoning. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'issue_domains' is absent or empty; activated by signal(s): behaviour_reasoning. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'dispositions' is absent or empty; activated by signal(s): behaviour_reasoning. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'acceptance_promotions' is absent or empty; activated by signal(s): behaviour_reasoning. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'clarification' is absent or empty; activated by signal(s): clarification_reasoning, shared_code_path. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'change_impact' is absent or empty; activated by signal(s): shared_code_path. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'scope_applicability' is absent or empty; activated by signal(s): shared_code_path. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [manifest-completeness] COMPLETENESS GATE: required manifest block 'entry_point_equivalence' is absent or empty; activated by signal(s): shared_code_path. Populate the real v3 block; an exceptional omission must satisfy the reviewed-escape/migration policy, and a reasoning waiver remains REVIEW/non-postable.
+FAIL: [open-questions] manifest open_questions IDs must exactly match visible plan Open Questions; manifest=['OQ-01'], plan=['OQ-01', 'OQ-02', 'OQ-03', 'OQ-04', 'OQ-05', 'OQ-06']
+FAIL: PROBE COVERAGE GATE: probe MP-001 (VALUE_SET_CHANNEL) matched the evidence but its dimension is not covered - record a coverage hypothesis with implied_dimension_axis VALUE_SET_CHANNEL, a resolved clarification dimension, or a probe_dispositions entry {probe_id:MP-001, disposition, reason} explicitly rejecting or scoping it out
+FAIL: PROBE COVERAGE GATE: probe MP-002 (CODE_PATH_CONSUMER) matched the evidence but its dimension is not covered - record a coverage hypothesis with implied_dimension_axis CODE_PATH_CONSUMER, a resolved clarification dimension, or a probe_dispositions entry {probe_id:MP-002, disposition, reason} explicitly rejecting or scoping it out
+FAIL: PROBE COVERAGE GATE: probe MP-003 (ENTRY_POINT) matched the evidence but its dimension is not covered - record a coverage hypothesis with implied_dimension_axis ENTRY_POINT, a resolved clarification dimension, or a probe_dispositions entry {probe_id:MP-003, disposition, reason} explicitly rejecting or scoping it out
+FAIL: PROBE COVERAGE GATE: probe MP-005 (VALUE_SET_CHANNEL) matched the evidence but its dimension is not covered - record a coverage hypothesis with implied_dimension_axis VALUE_SET_CHANNEL, a resolved clarification dimension, or a probe_dispositions entry {probe_id:MP-005, disposition, reason} explicitly rejecting or scoping it out
+FAIL: DITA SEMANTICS GATE: named DITA construct(s) [glossref, keydef, keyref, locktitle, mapref, navref] carry governing semantics, but no dita_semantics block is declared - add one that is either active:true (the strict semantic explorer runs) or active:false with a neighbourhood_assessment naming the governing/dependent neighbours considered and where they are covered
+FAIL: SECURITY GATE: security signals activate INPUT_SAFETY, REFERENCE_TRAVERSAL, but the security_coverage block is missing
+FAIL: LOCALIZATION GATE: localization signals activate TRANSLATION_STATE, XLIFF_ROUNDTRIP, but the localization_coverage block is missing
+FAIL: MIGRATION GATE: upgrade or migration signals (COMPATIBILITY_BOUNDARY) require an upgrade_migration_coverage block
+FAIL: QE COMPLETENESS GATE: the plan contains real Open Questions or regression items, but the qe_completeness block is missing
+FAIL: [clarification] CLARIFICATION GATE: clarification block is required because ask-first signals were found: behaviour_matters, behavior_reasoning_block, shared_code_path
+FAIL: [performance] performance assessment cannot be aligned because it is missing
+FAIL: [reasoning-required] contract_facts block is mandatory when behaviour_matters is true
+FAIL: [reasoning-required] issue_domains block is mandatory when behaviour_matters is true
+FAIL: [reasoning-required] dispositions block is mandatory when behaviour_matters is true
+FAIL: [reasoning-required] acceptance_promotions block is mandatory when behaviour_matters is true
+FAIL: [behavior-model] behavior_model.facts[0]: authority 'JIRA_EXPECTED_BEHAVIOR' must be one of JIRA, AEM_GUIDES_DOC, EXPERIENCE_LEAGUE, DITA_SPEC, DITA_OT, CURRENT_IMPLEMENTATION, EXISTING_AUTOMATION, HISTORICAL_BEHAVIOR
+FAIL: [retrieval] evidence_lifecycle[0]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[1]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[2]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[3]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence 'EC-INSERT': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-DRAG': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-APPVIEW': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-MODEL': missing query (what was actually retrieved)
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] a material (blocking) missing_question exists but no second-pass retrieval is recorded - directed second retrieval is required when a material question exists
+FAIL: [retrieval] material question MQ-01 has no linked directed second-pass retrieval
+FAIL: [retrieval] material question MQ-02 has no linked directed second-pass retrieval
+FAIL: [verify-hyp] verification 'H-BG-8a3c7e70fdecbe3546987c25': disposition '' must be one of ACCEPTANCE_CRITERION, INFERRED_AC, REGRESSION, OPEN_QUESTION, EXCLUDED, CONTEXT
+FAIL: [verify-hyp] verification 'H-BG-8a3c7e70fdecbe3546987c25': UNRESOLVED must state a reason (conflict / product_decision_required / insufficient)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-2ebe6b1f685cd0518228f805' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-4c91ee6e4a2e4ec4731291a1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-60020dd836bb6315bf7e0f9f' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-74b03d8c04b2b7eaad75f98d' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-a55b1b7dd547afd02b455aba' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-3c6fb457758866d225f4bb5a' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-6137204cc4e562b49e7adbb1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-1bd6691025c3a39479f5f2e1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-bf891b950eb539ec13437cde' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-65de6aec7e48e8585f9543da' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-45082de7cd2820484902d40d' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verify-hyp] coverage hypothesis 'H-BG-48998739d00739ac3f20f621' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [coverage-gate] unresolved review: DOWNSTREAM_REGRESSION: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: CONSUMER_EXPLORATION: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: CONFIGURATION: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: STATE_PARTITIONS: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: CONTRACT_BOUNDARY: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: REFERENCE_ARTIFACT: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: LIFECYCLE: a candidate was discovered but not investigated to a terminal verdict
+FAIL: [coverage-gate] unresolved review: BEHAVIOR_MODEL: the behavior model is missing/incomplete
+FAIL: [coverage-gate] unresolved review: SEMANTIC_CLOSURE: one or more material applicability dimensions are missing or unresolved incorrectly
+FAIL: [coverage-gate] unresolved review: SECOND_PASS_RETRIEVAL: a material question exists but no new directed second-pass query was run
+FAIL: [behavior-model] behavior_model.facts[0]: authority 'JIRA_EXPECTED_BEHAVIOR' must be one of JIRA, AEM_GUIDES_DOC, EXPERIENCE_LEAGUE, DITA_SPEC, DITA_OT, CURRENT_IMPLEMENTATION, EXISTING_AUTOMATION, HISTORICAL_BEHAVIOR
+FAIL: [contract-facts] contract_facts must be an object
+FAIL: [domain-router] issue_domains must be an object
+FAIL: [behavior-graph] behavior_graph.nodes[0]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[0].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[1]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[2]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[3]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[4]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[4].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[5]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[5].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[6]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[6].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[7]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[7].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[8]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[8].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[9]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[9].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[10]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[10].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.nodes[11]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[12]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.nodes[13]: author must confirm scaffold entity and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[0]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[1]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[2]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[3]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[3].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[4]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[4].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[5]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[5].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[6]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[6].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[7]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[7].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[8]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[8].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[9]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[9].provenance contains an unknown evidence reference
+FAIL: [behavior-graph] behavior_graph.edges[10]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[11]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [behavior-graph] behavior_graph.edges[12]: author must confirm scaffold relationship and replace the review placeholder
+FAIL: [semantic-closure] semantic_closure.records[0]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[0].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[1]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[1].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[2]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[2].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[3]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[3].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[5]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[5].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[6]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[6].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[7]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[7].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[8]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[8].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[9]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[9].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[10]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[10].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[11]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[11].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[12]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[12].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[13]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[13].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[14]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[14].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[15]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[15].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[16]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[16].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[17]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[17].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[18]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[18].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[19]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[19].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[20]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[20].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[21]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[21].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[22]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[22].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[23]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[23].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[24]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[24].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[25]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[25].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[26]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[26].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[27]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[27].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[28]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[28].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[29]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[29].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[30]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[30].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[31]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[31].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[32]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[32].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[33]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[33].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[34]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[34].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[35]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[35].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[36]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[36].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[37]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[37].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[38]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[38].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[39]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[39].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[40]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[40].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[41]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[41].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[42]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[42].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[43]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[43].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[44]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[44].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[45]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[45].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[46]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[46].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[47]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[47].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[48]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[48].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[49]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[49].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[50]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[50].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[51]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[51].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[52]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[52].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[53]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[53].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[54]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[54].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[55]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[55].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[56]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[56].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[57]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[57].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[58]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[58].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[59]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[59].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[60]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[60].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[61]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[61].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[62]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[62].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[63]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[63].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[64]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[64].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[65]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[65].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[66]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[66].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[67]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[67].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[68]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[68].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[69]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[69].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[70]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[70].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[71]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[71].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[72]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[72].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[73]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[73].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[74]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[74].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[75]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[75].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[76]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[76].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[77]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[77].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[78]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[78].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[79]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[79].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[80]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[80].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[81]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[81].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[82]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[82].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[83]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[83].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[84]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[84].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[85]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[85].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[86]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[86].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[87]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[87].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[88]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[88].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[89]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[89].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[90]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[90].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[91]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[91].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[92]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[92].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[93]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[93].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[94]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[94].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[95]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[95].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[96]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[96].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[97]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[97].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[98]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[98].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[99]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[99].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[100]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[100].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[101]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[101].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[102]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[102].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[103]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[103].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[104]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[104].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[105]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[105].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[106]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[106].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[107]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[107].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[108]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[108].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[109]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[109].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[110]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[110].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[111]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[111].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[112]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[112].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[113]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[113].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[114]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[114].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[115]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[115].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[116]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[116].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[117]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[117].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[118]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[118].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[119]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[119].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[120]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[120].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[121]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[121].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[122]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[122].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[123]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[123].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[124]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[124].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[125]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[125].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[126]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[126].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[127]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[127].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[128]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[128].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[129]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[129].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[130]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[130].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[131]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[131].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[132]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[132].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[133]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[133].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[134]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[134].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[135]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[135].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[136]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[136].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[137]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[137].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[138]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[138].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[139]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[139].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[140]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[140].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[141]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[141].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[142]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[142].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[143]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[143].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[144]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[144].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[145]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[145].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[146]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[146].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[147]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[147].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[148]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[148].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[149]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[149].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[150]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[150].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[151]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[151].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[152]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[152].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[153]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[153].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[154]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[154].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[155]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[155].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[156]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[156].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[157]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[157].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[158]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[158].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[159]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[159].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[160]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[160].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[161]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[161].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[162]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[162].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[163]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[163].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[164]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[164].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[165]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[165].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[166]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[166].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[167]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[167].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[168]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[168].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[169]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[169].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[170]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[170].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[171]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[171].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[172]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[172].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[173]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[173].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[174]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[174].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[175]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[175].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[176]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[176].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[177]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[177].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[178]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[178].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[179]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[179].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[180]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[180].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[181]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[181].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[182]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[182].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[183]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[183].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[184]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[184].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[185]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[185].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[186]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[186].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[187]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[187].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[188]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[188].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[189]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[189].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[190]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[190].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[191]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[191].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[192]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[192].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[193]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[193].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[194]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[194].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[195]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[195].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[196]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[196].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[197]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[197].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[198]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[198].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[199]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[199].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[200]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[200].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[201]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[201].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[202]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[202].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[203]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[203].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[204]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[204].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[205]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[205].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[206]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[206].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[207]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[207].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[208]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[208].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[209]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[209].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[210]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[210].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[211]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[211].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[212]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[212].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[213]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[213].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[214]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[214].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[215]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[215].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[216]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[216].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[217]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[217].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[218]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[218].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[219]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[219].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[220]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[220].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[221]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[221].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[222]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[222].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[223]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[223].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[224]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[224].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[225]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[225].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[226]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[226].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[227]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[227].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[228]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[228].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[229]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[229].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[230]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[230].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[231]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[231].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[232]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[232].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[233]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[233].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[234]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[234].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[235]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[235].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[236]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[236].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[237]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[237].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[238]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[238].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[239]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[239].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[240]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[240].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[241]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[241].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[242]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[242].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[243]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[243].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[244]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[244].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[245]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[245].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[246]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[246].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[247]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[247].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[248]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[248].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[249]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[249].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[250]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[250].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[251]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[251].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[252]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[252].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[253]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[253].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[254]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[254].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[255]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[255].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[256]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[256].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[257]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[257].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[258]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[258].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[259]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[259].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[260]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[260].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[261]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[261].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[262]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[262].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[263]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[263].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[264]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[264].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[265]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[265].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[266]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[266].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[267]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[267].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[268]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[268].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[269]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[269].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[270]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[270].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[271]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[271].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[272]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[272].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[273]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[273].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[274]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[274].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[275]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[275].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[276]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[276].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[277]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[277].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[278]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[278].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[279]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[279].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[280]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[280].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[281]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[281].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[282]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[282].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[283]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[283].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[284]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[284].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[285]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[285].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[286]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[286].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[287]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[287].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[288]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[288].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[289]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[289].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[290]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[290].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[291]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[291].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[292]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[292].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[293]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[293].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[294]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[294].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[295]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[295].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[296]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[296].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[297]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[297].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[298]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[298].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[299]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[299].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[300]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[300].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[301]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[301].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[302]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[302].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[303]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[303].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[304]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[304].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[305]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[305].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[306]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[306].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[307]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[307].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[308]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[308].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[309]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[309].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[310]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[310].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[311]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[311].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[312]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[312].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[313]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[313].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[314]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[314].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[315]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[315].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[316]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[316].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[317]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[317].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[318]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[318].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[319]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[319].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[320]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[320].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[321]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[321].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[322]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[322].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[323]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[323].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[324]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[324].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[325]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[325].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[326]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[326].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[327]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[327].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[328]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[328].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[329]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[329].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[330]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[330].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[331]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[331].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[332]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[332].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[333]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[333].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[334]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[334].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[335]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[335].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[336]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[336].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[337]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[337].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[338]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[338].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[339]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[339].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[340]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[340].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[341]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[341].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[342]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[342].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[343]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[343].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[344]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[344].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[345]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[345].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[346]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[346].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[347]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[347].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[348]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[348].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[349]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[349].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[350]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[350].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[351]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[351].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[352]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[352].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[353]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[353].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[354]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[354].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[355]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[355].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[356]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[356].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[357]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[357].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[358]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[358].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[359]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[359].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[360]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[360].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[361]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[361].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[362]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[362].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[363]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[363].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[364]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[364].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[365]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[365].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[366]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[366].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[367]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[367].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[368]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[368].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[369]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[369].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[370]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[370].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[371]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[371].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[372]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[372].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[373]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[373].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[374]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[374].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[375]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[375].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[376]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[376].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[377]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[377].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[378]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[378].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[379]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[379].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[380]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[380].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[381]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[381].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[382]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[382].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[383]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[383].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[384]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[384].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[385]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[385].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[386]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[386].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[387]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[387].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[388]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[388].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[389]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[389].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[390]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[390].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[391]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[391].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[392]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[392].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[393]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[393].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[394]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[394].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[395]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[395].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[396]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[396].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[397]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[397].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[398]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[398].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[399]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[399].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[400]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[400].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[401]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[401].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[402]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[402].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[403]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[403].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[404]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[404].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[405]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[405].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[406]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[406].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[407]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[407].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[408]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[408].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[409]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[409].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[410]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[410].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[411]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[411].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[412]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[412].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[413]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[413].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[414]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[414].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[415]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[415].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[416]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[416].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[417]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[417].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[418]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[418].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[419]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[419].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[420]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[420].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[421]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[421].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[422]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[422].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[423]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[423].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[424]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[424].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[425]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[425].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[426]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[426].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[427]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[427].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[428]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[428].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[429]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[429].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[430]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[430].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[431]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[431].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[432]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[432].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [semantic-closure] semantic_closure.records[433]: author must confirm scaffold applicability and replace the reason placeholder
+FAIL: [semantic-closure] semantic_closure.records[433].INVESTIGATED_AND_REJECTED requires disposition_ref
+FAIL: [retrieval] evidence_lifecycle[0]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[1]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[2]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence_lifecycle[3]: author must confirm inspection/bindings; scaffold cannot prove retrieval or use
+FAIL: [retrieval] evidence 'EC-INSERT': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-DRAG': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-APPVIEW': missing query (what was actually retrieved)
+FAIL: [retrieval] evidence 'EC-MODEL': missing query (what was actually retrieved)
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] duplicate retrieval detected (query, source)=('', 'current repository') - prevent retrieval loops
+FAIL: [retrieval] a material (blocking) missing_question exists but no second-pass retrieval is recorded - directed second retrieval is required when a material question exists
+FAIL: [retrieval] material question MQ-01 has no linked directed second-pass retrieval
+FAIL: [retrieval] material question MQ-02 has no linked directed second-pass retrieval
+FAIL: [verification] verification 'H-BG-8a3c7e70fdecbe3546987c25': disposition '' must be one of ACCEPTANCE_CRITERION, INFERRED_AC, REGRESSION, OPEN_QUESTION, EXCLUDED, CONTEXT
+FAIL: [verification] verification 'H-BG-8a3c7e70fdecbe3546987c25': UNRESOLVED must state a reason (conflict / product_decision_required / insufficient)
+FAIL: [verification] coverage hypothesis 'H-BG-2ebe6b1f685cd0518228f805' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-4c91ee6e4a2e4ec4731291a1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-60020dd836bb6315bf7e0f9f' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-74b03d8c04b2b7eaad75f98d' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-a55b1b7dd547afd02b455aba' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-3c6fb457758866d225f4bb5a' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-6137204cc4e562b49e7adbb1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-1bd6691025c3a39479f5f2e1' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-bf891b950eb539ec13437cde' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-65de6aec7e48e8585f9543da' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-45082de7cd2820484902d40d' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [verification] coverage hypothesis 'H-BG-48998739d00739ac3f20f621' (status INVESTIGATION_CANDIDATE) has no verification - every candidate must reach a terminal verdict (CONFIRMED / INFERRED_HIGH_CONFIDENCE / REJECTED / UNRESOLVED)
+FAIL: [disposition] dispositions must be a JSON list
+FAIL: [acceptance-promotion] acceptance_promotions must be an object
+FAIL: [acceptance-promotion] every visible AC must be promoted exactly by the canonical gate; promoted=[], plan=['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05', 'AC-06', 'AC-07', 'AC-08', 'AC-09', 'AC-10', 'AC-11', 'AC-12', 'AC-13', 'AC-14', 'AC-15', 'AC-16', 'AC-17', 'AC-18', 'AC-19', 'AC-20', 'AC-21']
+FAIL: [contract-integrity] contract_facts must be present before contract integrity can run
+FAIL: [behavioral-completeness] dispositions must be a list for behavioral completeness
+FAIL: [enumerated-coverage] manifest requires a versioned enumerated_requirements block, active or explicitly inactive with a reason
+FAIL: [uac-integration] UNRESOLVED hypothesis 'H-BG-8a3c7e70fdecbe3546987c25' (open question 'OQ-01') is not surfaced in the plan's Open Questions section - an unresolved item must be exposed, never dropped
+
+GATE FAILED (1032 issue(s)) - do not deliver this plan as validated.

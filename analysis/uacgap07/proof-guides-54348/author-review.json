@@ -1,0 +1,25 @@
+{
+  "review_origin": "CODEX_SOURCE_INSPECTION_NOT_HUMAN_APPROVAL",
+  "open_question": {
+    "id": "OQ-01",
+    "question": "Does the refresh-only candidate branch also fix automatic navtitle population during insertion, or is a separate insertion fix required?",
+    "qa_impact": "The insert-and-save acceptance test remains separate from refresh-event routing. Do not sign off automatic insertion using a refresh-button dispatch test."
+  },
+  "closure_review": {
+    "scaffold_key": "behavior_model",
+    "dimension": "SIBLING_CONSUMERS",
+    "applicability": "UNRESOLVED",
+    "status": "UNRESOLVED_AND_EXPOSED",
+    "reason": "The complete fetched branch diff changes refresh-event routing but no insertion function. The live issue reports automatic insertion, so refresh and insertion cannot yet be treated as equivalent fixes.",
+    "open_question_ref": "OQ-01",
+    "disposition_ref": "",
+    "author_review_required": false
+  },
+  "verification_review": {
+    "scaffold_key": "processors:InsertTopicrefController.updateNavTitle",
+    "verdict": "UNRESOLVED",
+    "subject": "ACTUAL_IMPLEMENTATION",
+    "open_question_ref": "OQ-01",
+    "reason": "The insertion routine exists in inspected source, but the candidate branch only wires refresh and no candidate-build execution proves the reported automatic-insertion defect is fixed."
+  }
+}
