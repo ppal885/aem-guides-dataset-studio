@@ -261,6 +261,15 @@ class JiraClient:
             "POST", f"/rest/api/{self._api}/issue/{issue_key}/comment", json_data={"body": body}
         )
 
+    def update_comment(self, issue_key: str, comment_id: str, body: str) -> dict:
+        """Edit an existing comment in place (used to correct Jira-wiki-markup artifacts
+        such as AC ids rendering with strikethrough)."""
+        return self._request(
+            "PUT",
+            f"/rest/api/{self._api}/issue/{issue_key}/comment/{comment_id}",
+            json_data={"body": body},
+        )
+
     def set_acceptance_criteria(
         self,
         issue_key: str,
