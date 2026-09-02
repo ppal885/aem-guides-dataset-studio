@@ -7830,6 +7830,22 @@ def test_probe_coverage_gate() -> None:
     ])
     check("explicit probe disposition satisfies the gate", gate.validate(pub_plan, manifest_disp) == [])
 
+    # UACGAP-06: a populated entry_point_equivalence block satisfies an ENTRY_POINT probe.
+    ep_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: a topicref is added via drag and drop and a toolbar button.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Integration) Given x | When added via any entry point | Then y | Evidence: Jira.",
+    ])
+    ep_manifest = {"issue": {"summary": "drag and drop insert not adding attribute", "components": ["Editor"]}}
+    ep_active = [p for p in gate.activated_probes(ep_plan, ep_manifest) if not p["shadow"]]
+    if any(p["axis"] == "ENTRY_POINT" for p in ep_active):
+        check("ENTRY_POINT probe unsatisfied without a dimension or block",
+              any("ENTRY_POINT" in p for p in gate.validate(ep_plan, ep_manifest)))
+        ep_with_block = dict(ep_manifest, entry_point_equivalence={"candidates": [{"entry_point_id": "EP-01"}]})
+        check("populated entry_point_equivalence block satisfies the ENTRY_POINT probe",
+              not any("ENTRY_POINT" in p for p in gate.validate(ep_plan, ep_with_block)))
+
     # No probe token in the evidence -> not activated, clean pass (backward-compatible).
     quiet_plan = "**Acceptance Criteria**\n- AC-01 [Proposed]: (Basic) Given a thing | When acted | Then result | Evidence: Jira.\n"
     quiet_manifest = {"issue": {"summary": "an unrelated backend null guard", "components": ["Miscellaneous"]}}
@@ -7899,6 +7915,25 @@ def test_dita_semantics_activation() -> None:
     )
 
     print("test_dita_semantics_activation: OK")
+
+
+def test_evidence_anchor_recognition() -> None:
+    # UACGAP-05: a bare inspected code path (relative source file, optionally :line)
+    # is a first-class Evidence anchor - no Jira/URL prefix required.
+    rx = validate_mod.UNDERLYING_SOURCE_RE
+    for s in [
+        "xmleditor src/util/drag.ts:88 createKeyDefData",
+        "Starling libs/fmdita/pdf/Basic/content.css .entry border rule",
+        "insert_topicref_controller.ts:106-115 forceNavTitle",
+        "app/services/foo.py:12",
+    ]:
+        check(f"inspected code path is a valid evidence anchor: {s!r}", bool(rx.search(s)))
+    for s in ["OASIS DITA keydef model", "the referenced topic title"]:
+        check(f"bare prose without an anchor still fails: {s!r}", not rx.search(s))
+    # existing anchors still work
+    check("jira key still anchors", bool(rx.search("Jira GUIDES-54348 expected result")))
+    check("url still anchors", bool(rx.search("https://experienceleague.adobe.com/x")))
+    print("test_evidence_anchor_recognition: OK")
 
 
 def test_root_cause_fix_driven() -> None:
@@ -9954,6 +9989,7 @@ def main() -> int:
     test_reproducibility_gate()
     test_probe_coverage_gate()
     test_dita_semantics_activation()
+    test_evidence_anchor_recognition()
     test_miss_probe_library()
     test_feature_map()
     test_offline_retrieval()

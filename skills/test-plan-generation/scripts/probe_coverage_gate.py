@@ -112,6 +112,12 @@ def _covered_axes(manifest: dict[str, Any]) -> set[str]:
             axes.add(str(hyp.get("dimension", "")).upper())
             if hyp.get("implied_dimension_axis"):
                 axes.add(str(hyp["implied_dimension_axis"]).upper())
+    # UACGAP-06: a populated entry_point_equivalence block is a first-class way to
+    # disposition the ENTRY_POINT axis (its own gate validates the block's shape),
+    # so it satisfies an ENTRY_POINT probe just like a clarification dimension.
+    epe = manifest.get("entry_point_equivalence") if isinstance(manifest, dict) else None
+    if isinstance(epe, dict) and isinstance(epe.get("candidates"), list) and epe["candidates"]:
+        axes.add("ENTRY_POINT")
     axes.discard("")
     return axes
 

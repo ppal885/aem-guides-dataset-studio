@@ -47,7 +47,11 @@ NO_OPEN_QUESTIONS = "- No open questions from current evidence"
 UNDERLYING_SOURCE_RE = re.compile(
     r"(?i:https?)://|\b[A-Z][A-Z0-9]+-\d+\b|(?i:\b(?:Jira (?:UAC|description|comment)|"
     r"RAG (?:URL|chunk)|DITA (?:spec|source)|Figma (?:node|frame)|attachment(?: ID)?|"
-    r"source file|commit [0-9a-f]{7,40})\b)|(?i:\b(?:DOC|SPEC|CHUNK|SOURCE):\S+)|[A-Za-z]:[\\/]",
+    r"source file|commit [0-9a-f]{7,40})\b)|(?i:\b(?:DOC|SPEC|CHUNK|SOURCE):\S+)|[A-Za-z]:[\\/]|"
+    # UACGAP-05: an inspected code path is a first-class anchor - a relative source
+    # file (optionally with a :line or :line-range) counts on its own, no Jira/URL prefix.
+    r"(?i:[\w./\\-]+\.(?:ts|tsx|js|jsx|mjs|cjs|java|py|xsl|xslt|css|scss|less|xml|html|htm|"
+    r"dita|ditamap|ditaval|json|properties|yaml|yml|md)(?::\d+(?:-\d+)?)?)",
 )
 GRAPH_PATH_ONLY_RE = re.compile(
     r"(?i)^(?:graph[- ]?)?path(?:\s+id)?(?:\s*[:=]\s*|\s+)\S+$"
