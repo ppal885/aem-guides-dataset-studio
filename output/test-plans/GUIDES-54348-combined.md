@@ -41,6 +41,7 @@
 
 - Lifecycle stage: Pre-Development, In UAC; no development branch, PR, commit, or fix version metadata links a change yet, though the issue targets fix version 2610.
 - Editor clone inspected but not synchronised: C:\xmleditor\xmleditor; the topicref-insertion and config-mapping sources were read directly, no guarded fetch was run, so no captured SHA is claimed and the paths are provisional pending verification on the 2610 build.
+- Fix-scope resolution (branch origin/GUIDES-54348 at 999cd1e44311a0874e643f3d2d4827cb435b0821): the branch wires AUTHOR_REFRESH_NAV_TITLE to a refresh-navtitle command and does not modify the insertion functions (insert_topicref_controller.updateNavTitle / util/drag.ts). Because the ticket's Expected Result requires @navtitle to be added automatically on insertion, the accepted acceptance oracle is automatic insertion (AC-01) and the Refresh action is a complementary capability (AC-16), not a substitute; the refresh-only branch does not on its own satisfy the reported automatic-insertion failure, so a fix to the insertion path is expected. If the team instead intends to redefine scope to refresh-only, that is a requirement change requiring explicit product sign-off.
 
 **Code Touched**
 
