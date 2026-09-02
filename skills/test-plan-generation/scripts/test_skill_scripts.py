@@ -55,6 +55,7 @@ def _find_repo_root() -> Path:
 
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
+jira_safe_text_mod = _load("jira_safe_text", "jira_safe_text.py")
 verify_mod = _load("verify_evidence", "verify_evidence.py")
 authoring_state_mod = _load("authoring_state_contract", "authoring_state_contract.py")
 component_router_mod = _load("component_reference_router", "component_reference_router.py")
@@ -2920,6 +2921,7 @@ def test_component_reference_routing() -> None:
             "scripts/security_coverage.py",
             "scripts/shared_path_regression_coverage.py",
             "scripts/validate_test_plan.py",
+            "scripts/jira_safe_text.py",
             "scripts/value_provenance_coverage.py",
             "scripts/test_skill_scripts.py",
         ):
@@ -7936,6 +7938,35 @@ def test_evidence_anchor_recognition() -> None:
     print("test_evidence_anchor_recognition: OK")
 
 
+def test_jira_safe_text() -> None:
+    j = jira_safe_text_mod
+    nl = chr(10)
+    raw = nl.join([
+        "* *AC-01 — Navtitle added*: With `ditaAttributes.required.navtitle` set, see [doc](https://x.y/z).",
+        "OQ-03: the fallback question.",
+    ])
+    # strip_markup removes wiki/markdown markers
+    stripped = j.strip_markup(raw)
+    check("strip_markup removes asterisks", "*" not in stripped)
+    check("strip_markup removes backticks", "`" not in stripped)
+    check("strip_markup removes em dash", "—" not in stripped)
+    check("strip_markup converts md link to text (url)", "doc (https://x.y/z)" in stripped)
+
+    # a plain body with an issue-key-shaped label is still flagged (Jira would strike it)
+    plain = "AC-01 (Navtitle added): the criterion. OQ-03: the question."
+    probs = j.validate_jira_safe(plain)
+    check("issue-key-shaped label is flagged outside noformat", any("auto-link" in p for p in probs))
+
+    # jira_comment_body wraps in {noformat}, which neutralizes markup AND key auto-linking
+    body = j.jira_comment_body(raw)
+    check("jira_comment_body wraps in noformat", body.startswith("{noformat}") and body.rstrip().endswith("{noformat}"))
+    check("wrapped body preserves the AC label literally", "AC-01" in body)
+    check("wrapped body has no residual markup", "*" not in body and "`" not in body)
+    check("validate passes for a noformat-wrapped body", j.validate_jira_safe(body) == [])
+
+    print("test_jira_safe_text: OK")
+
+
 def test_root_cause_fix_driven() -> None:
     gate = root_cause_fix_driven_mod
     nl = chr(10)
@@ -10032,6 +10063,7 @@ def main() -> int:
     test_probe_coverage_gate()
     test_dita_semantics_activation()
     test_evidence_anchor_recognition()
+    test_jira_safe_text()
     test_miss_probe_library()
     test_feature_map()
     test_offline_retrieval()
