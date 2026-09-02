@@ -1,0 +1,3141 @@
+{
+  "schema_version": "aem-guides-evidence-manifest-v2",
+  "issue": {
+    "key": "GUIDES-54348",
+    "summary": "{Break} navtitle attribute is not automatically added to topicrefs in a DITA map",
+    "description": "When ui_config.json sets ditaAttributes.required.navtitle to true (Global or Folder Profile), a newly inserted <topicref> in the Map Editor is saved without @navtitle. Expected: every newly added <topicref> receives @navtitle populated from the referenced topic's <title> (e.g. <topicref href=\"topic1.dita\" navtitle=\"Topic 1\"/>), per the documented behaviour 'Include @navtitle attribute by default'. Critical bug, In UAC, component Editor, fix version 2610.",
+    "status": "In UAC",
+    "resolution": "None",
+    "priority": "Critical",
+    "components": [
+      "Editor"
+    ],
+    "labels": [
+      "Guides_Manual_Break"
+    ],
+    "fix_versions": [
+      "2610"
+    ]
+  },
+  "behaviour_matters": true,
+  "block_waivers": [
+    {
+      "block": "publishing_scope",
+      "reason": "Editor-side insertion bug, not an output-generation ticket; the signal-activated publishing gate does not apply.",
+      "waived_by": "author"
+    },
+    {
+      "block": "change_impact",
+      "reason": "v2 fixture predates the structured change-impact block; shared-path regression is covered in the plan.",
+      "waived_by": "author"
+    },
+    {
+      "block": "scope_applicability",
+      "reason": "v2 fixture predates the structured scope-applicability block; no shared-path scope promoted.",
+      "waived_by": "author"
+    },
+    {
+      "block": "entry_point_equivalence",
+      "reason": "v2 fixture predates the structured entry-point-equivalence block; entry-point consistency is covered by AC-03.",
+      "waived_by": "author"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "image-2026-08-14-16-17-03-712.png",
+      "filename": "image-2026-08-14-16-17-03-712.png",
+      "downloaded_to": "C:/Users/PRASHA~1/AppData/Local/Temp/claude/C--Users-prashantp-Videos-aem-guides-dataset-studio/d7bf2345-2f6b-4330-adae-dd76498f965d/scratchpad/g54348/image-2026-08-14-16-17-03-712.png",
+      "analyzed": true,
+      "note": "Map Editor showing a topicref to 'Fidelity Capital Markets (FCM) Liaison Desk'; the Content properties Attributes panel lists only format=dita - no navtitle - confirming the actual result."
+    },
+    {
+      "id": "image-2026-08-14-16-56-10-577.png",
+      "filename": "image-2026-08-14-16-56-10-577.png",
+      "downloaded_to": "C:/Users/PRASHA~1/AppData/Local/Temp/claude/C--Users-prashantp-Videos-aem-guides-dataset-studio/d7bf2345-2f6b-4330-adae-dd76498f965d/scratchpad/g54348/image-2026-08-14-16-56-10-577.png",
+      "analyzed": true,
+      "note": "Map Editor topicref view with DevTools open; corroborates the topicref/title state in the editor."
+    },
+    {
+      "id": "image-2026-08-14-16-16-20-316.png",
+      "filename": "image-2026-08-14-16-16-20-316.png",
+      "downloaded_to": "C:/Users/PRASHA~1/AppData/Local/Temp/claude/C--Users-prashantp-Videos-aem-guides-dataset-studio/d7bf2345-2f6b-4330-adae-dd76498f965d/scratchpad/g54348/image-2026-08-14-16-16-20-316.png",
+      "analyzed": true,
+      "note": "Additional Map Editor screenshot supporting the reproduction context."
+    }
+  ],
+  "evidence_preflight": {
+    "mode": "degraded",
+    "checked_at": "2026-09-02T14:00:00+05:30",
+    "sources": {
+      "product_rag": {
+        "status": "unavailable",
+        "checked_via": "ask_dita_expert not reachable this pass",
+        "reason": "product RAG unavailable; grounding used the ticket's cited documentation, the inspected xmleditor code, and the OASIS DITA topicref/navtitle model"
+      },
+      "jira_history": {
+        "status": "unavailable",
+        "checked_via": "search_jira_history MCP not exposed; offline jira_qa corpus consulted for advisory candidates only",
+        "reason": "indexed-history tool unavailable; offline candidates are advisory and unvalidated"
+      },
+      "live_jira": {
+        "status": "available",
+        "checked_via": "fetched live Jira GUIDES-54348 via JiraClient including the three screenshots",
+        "reason": ""
+      },
+      "git": {
+        "status": "available",
+        "checked_via": "inspected the xmleditor clone (insert_topicref_controller.ts, util/drag.ts, app_view.tsx, model.ts); every cited path is disk-verifiable",
+        "reason": ""
+      },
+      "figma": {
+        "status": "not_applicable",
+        "checked_via": "no design link; editor-behaviour bug",
+        "reason": "not a design-dependent ticket"
+      }
+    },
+    "readiness_impact": "draft_only",
+    "readiness_impact_reason": "No accepted UAC and no fix exist, so all ACs stay Proposed; the current-behaviour code and config key are inspected but the fix is not yet designed.",
+    "claim_restrictions": [
+      "jira_history unavailable: no validated same-mechanism historical status, resolution, or fix-version claim is made; offline candidates are advisory.",
+      "product_rag unavailable: product-behaviour grounding used the ticket's documentation, the inspected xmleditor code, and the OASIS DITA model.",
+      "no fix or PR exists: the implicated code is current implementation, not changed code, and the clone was not synchronised so no SHA is claimed."
+    ]
+  },
+  "rag_tool": "ask_dita_expert",
+  "rag_probes": [
+    "Include navtitle attribute by default map topicref required ditaAttributes",
+    "navtitle locktitle title topicref DITA map navigation title",
+    "ui_config.json ditaAttributes required attributes constraint"
+  ],
+  "rag_probes_fallback_tool": "lookup_aem_guides",
+  "rag_probes_note": "ask_dita_expert and the lookup fallback were not reachable this pass; probes are recorded as intended and grounding used the ticket's cited documentation, the inspected editor code, and the OASIS DITA topicref/navtitle model.",
+  "jira_history_tool": "search_jira_history",
+  "indexed_history_run": "unavailable: search_jira_history MCP not exposed this session; the offline jira_qa corpus was consulted for advisory same-mechanism candidates only, all to be validated live before relying on mutable status.",
+  "jira_history_unavailable_reason": "search_jira_history MCP not available this session; offline jira_qa corpus candidates are advisory and unvalidated.",
+  "jira_history_queries": [],
+  "jira_history_offline_candidates": [
+    "GUIDES-45251 [New Editor] Drag dropping topic or map is not adding type attribute (Editor)",
+    "GUIDES-10509 Native pdf - navtitle for topichead is not honoured (Native_PDF, Publishing)",
+    "GUIDES-2413 Error saving a bookmap after updating navTitle for Topic (Miscellaneous)",
+    "GUIDES-971 Title given while creating a new dita topic should be text of title (Miscellaneous)"
+  ],
+  "evidence_graph": {
+    "requested": false,
+    "tool": "query_test_evidence_graph",
+    "status": "not_requested",
+    "influence_mode": "off",
+    "used_for_plan": false,
+    "generation_id": null,
+    "queries": [],
+    "degraded_reason": "Evidence graph not invoked; live Jira, the screenshots, the inspected editor code, and offline history covered the plan scope.",
+    "not_requested_reason": "Direct evidence (screenshots + code + documented behaviour) fully covered the insertion behaviour; graph traversal was not needed."
+  },
+  "performance_assessment": {
+    "schema_version": "aem-guides-performance-assessment-v1",
+    "decision": "not_required",
+    "risk_rating": "low",
+    "signal_review": {
+      "data_volume_or_cardinality_growth": {
+        "status": "absent",
+        "finding": "Attribute-population correctness on insert; no scale contract.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "concurrency_or_contention": {
+        "status": "absent",
+        "finding": "Single-author editor insertion; no concurrency.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "repetition_or_long_duration": {
+        "status": "absent",
+        "finding": "No long-running loop.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "latency_timeout_or_throughput": {
+        "status": "absent",
+        "finding": "No latency or throughput ask.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "cpu_memory_gc_or_storage": {
+        "status": "absent",
+        "finding": "No resource ceiling raised.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "queue_backlog_or_external_dependency": {
+        "status": "absent",
+        "finding": "No queue or external dependency.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      },
+      "persistence_cleanup_or_stale_state": {
+        "status": "absent",
+        "finding": "Navtitle persistence is a functional correctness check, not a performance signal.",
+        "evidence_refs": [
+          "Jira GUIDES-54348"
+        ]
+      }
+    },
+    "workload_model": {
+      "operation": "insert a topic reference into a map",
+      "cardinality": "single or small multi-select",
+      "concurrency": "n/a",
+      "repetition": "n/a",
+      "duration": "n/a"
+    },
+    "metrics": [],
+    "test_types": [],
+    "oracle": {
+      "status": "not_applicable",
+      "source_ref": "Jira GUIDES-54348 (attribute correctness, no SLA)",
+      "thresholds": []
+    },
+    "performance_ac_ids": [],
+    "conditional_open_question_ref": "",
+    "rationale": "An editor attribute-population correctness bug with no scale, concurrency, or latency signal; no performance AC is required."
+  },
+  "clones": [
+    {
+      "path": "C:\\xmleditor\\xmleditor",
+      "synced": false,
+      "sha": "provisional",
+      "provisional": true,
+      "note": "insert_topicref_controller.ts, util/drag.ts, app_view.tsx, model.ts inspected; guarded fetch not run."
+    }
+  ],
+  "accepted_uac_present": false,
+  "open_questions": [
+    {
+      "id": "OQ-01",
+      "question": "Does the fix populate navtitle only on newly inserted topicrefs, or should it also back-fill existing topicrefs that lack navtitle when a map is opened under a required-navtitle profile?",
+      "qa_impact": "Sets whether the regression check asserts existing refs are untouched or updated."
+    },
+    {
+      "id": "OQ-02",
+      "question": "When the referenced topic's <title> later changes, should the previously auto-populated @navtitle stay static or be re-synced?",
+      "qa_impact": "Defines the title-change scenario oracle and whether a sync test is required."
+    },
+    {
+      "id": "OQ-03",
+      "question": "For a referenced topic with an empty or missing <title>, what is the exact required fallback for @navtitle (empty attribute, omitted, or reference identifier)?",
+      "qa_impact": "Fixes the boundary oracle for AC-09."
+    },
+    {
+      "id": "OQ-04",
+      "question": "Does the fix populate the @navtitle attribute or the <topicmeta><navtitle> element, and which form do keyref/xref link-text resolution and other reuse consumers read?",
+      "qa_impact": "Decides whether AC-14 asserts attribute-form or element-form reuse; the @navtitle attribute is deprecated in favour of the <navtitle> element in DITA 1.2."
+    },
+    {
+      "id": "OQ-05",
+      "question": "Which topicref specializations are in scope for required-navtitle - should keydef (resource-only) and reltable cells be excluded while chapter, appendix, topicref, and mapref are included?",
+      "qa_impact": "Sets the specialization matrix for AC-17 to AC-19."
+    },
+    {
+      "id": "OQ-06",
+      "question": "On re-insert or Refresh navigation title, should an existing author-edited navtitle be overwritten or preserved (the current code overwrites unconditionally)?",
+      "qa_impact": "Fixes the oracle for AC-16 and AC-20."
+    }
+  ],
+  "qe_completeness": {
+    "schema_version": "aem-guides-qe-completeness-v1",
+    "open_question_classification": [
+      {
+        "oq_ref": "OQ-01",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "Whether the fix back-fills existing topicrefs is a product scope decision; both behaviours are defensible.",
+        "can_be_ac_with_expected": false
+      },
+      {
+        "oq_ref": "OQ-02",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "Static versus re-synced navtitle on later title change is a product semantics decision.",
+        "can_be_ac_with_expected": false
+      },
+      {
+        "oq_ref": "OQ-03",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "The empty-title fallback value is a product decision QA must confirm before asserting it.",
+        "can_be_ac_with_expected": true,
+        "promoted_ac_ref": "AC-09"
+      },
+      {
+        "oq_ref": "OQ-04",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "Whether the editor writes the deprecated @navtitle attribute or the <topicmeta><navtitle> element, and which form reuse consumers read, is a product/DITA-contract decision.",
+        "can_be_ac_with_expected": true,
+        "promoted_ac_ref": "AC-14"
+      },
+      {
+        "oq_ref": "OQ-05",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "Which DITA specializations force navtitle (navigation-bearing vs resource-only) is a product/DITA-contract decision.",
+        "can_be_ac_with_expected": true,
+        "promoted_ac_ref": "AC-17"
+      },
+      {
+        "oq_ref": "OQ-06",
+        "category": "GENUINE_PRODUCT_DECISION",
+        "reason": "Overwrite-vs-preserve of an author-edited navtitle on refresh/re-insert is a product decision; the current code overwrites unconditionally.",
+        "can_be_ac_with_expected": true,
+        "promoted_ac_ref": "AC-20"
+      }
+    ],
+    "regression_classification": [
+      {
+        "item": "Re-test inserting topic references with navtitle not required so the default no-navtitle behaviour is preserved.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-04"
+      },
+      {
+        "item": "Re-test other required ditaAttributes so the fix does not change attributes other than navtitle unexpectedly.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-13"
+      },
+      {
+        "item": "Re-test the other topicref attributes (href, format, type, keys, keyref) so navtitle population does not drop or alter them, informed by the sibling-attribute gap in GUIDES-45251.",
+        "category": "SAFETY_RETEST"
+      },
+      {
+        "item": "Re-test map save, validation, and reopen so navtitle does not break map serialization or DTD validation.",
+        "category": "SAFETY_RETEST"
+      },
+      {
+        "item": "Re-test the generated-output navigation labels and bookmarks that consume navtitle so the auto-populated value renders correctly downstream, informed by GUIDES-10509.",
+        "category": "SAFETY_RETEST"
+      },
+      {
+        "item": "Re-test existing maps opened after the fix so previously saved topicrefs are not rewritten or corrupted on open.",
+        "category": "SAFETY_RETEST"
+      },
+      {
+        "item": "Re-test both navtitle-population consumers (the Insert Topic Reference dialog and the drag-and-drop path) that share the required-attribute logic, so a fix in the shared path does not regress either entry point.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-03"
+      },
+      {
+        "item": "Re-test reuse consumers (keyref/xref link-text resolution and topics referenced in multiple maps) so the auto-populated navtitle resolves consistently for reused content.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-14"
+      },
+      {
+        "item": "Re-test the New Editor map surface and the Refresh navigation title action so navtitle behaviour is consistent across editors and the refresh path.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-15"
+      },
+      {
+        "item": "Re-test specialized references (keydef, glossref, chapter, appendix, reltable, navref) so required-navtitle is applied only where navigation applies and non-navigation references are not broken.",
+        "category": "IN_SCOPE_BEHAVIOR",
+        "ac_ref": "AC-17"
+      }
+    ]
+  },
+  "clarification": {
+    "schema_version": "aem-guides-clarification-v1",
+    "dimension_space": [
+      {
+        "dimension_id": "D-01",
+        "axis": "ENTRY_POINT",
+        "candidate": "topicref insertion entry points: Insert Topic Reference dialog and drag-and-drop from the repository panel",
+        "material": true,
+        "materiality_reason": "Both paths independently read the required-navtitle setting, so navtitle population must be verified for each, not only the dialog the reporter used.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor insert_topicref_controller.ts",
+          "xmleditor util/drag.ts"
+        ],
+        "ac_refs": [
+          "AC-03"
+        ]
+      },
+      {
+        "dimension_id": "D-02",
+        "axis": "CONFIG_BRANCH",
+        "candidate": "ditaAttributes.required.navtitle true versus false/absent, in Global and Folder profiles",
+        "material": true,
+        "materiality_reason": "The behaviour is gated on the required-navtitle config across profile scopes.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor app_view.tsx updateDitaRequiredAttrs"
+        ],
+        "ac_refs": [
+          "AC-01",
+          "AC-04",
+          "AC-05"
+        ]
+      },
+      {
+        "dimension_id": "D-03",
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate": "the @navtitle attribute written on the <topicref> node in the map source, verifiable in Source mode and CRX/DE",
+        "material": true,
+        "materiality_reason": "The defect is a missing attribute value on the persisted node; the written value and its derivation from the referenced title are the core value-set channel.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "Jira GUIDES-54348 Source-mode inspection"
+        ],
+        "ac_refs": [
+          "AC-01",
+          "AC-02"
+        ]
+      },
+      {
+        "dimension_id": "D-04",
+        "axis": "TOPIC_TYPE",
+        "candidate": "reference targets: topicref to a topic, topichead without href, mapref to a sub-map, and keyref-based reference",
+        "material": true,
+        "materiality_reason": "Navtitle derivation differs by reference target, and topichead/mapref are governing neighbours in the DITA model.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "OASIS DITA topicref/topichead/mapref model"
+        ],
+        "ac_refs": [
+          "AC-07",
+          "AC-08"
+        ]
+      },
+      {
+        "dimension_id": "D-05",
+        "axis": "NEGATIVE_BOUNDARY",
+        "candidate": "referenced topic with an empty or missing <title>, and elements where the DTD disallows navtitle",
+        "material": true,
+        "materiality_reason": "Boundary inputs must not produce editor errors or DTD-invalid markup.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor updateNavTitle DTD guard"
+        ],
+        "ac_refs": [
+          "AC-06",
+          "AC-09"
+        ]
+      },
+      {
+        "dimension_id": "D-06",
+        "axis": "DOWNSTREAM_REGRESSION",
+        "candidate": "@locktitle interplay and navtitle consumption in navigation and generated output",
+        "material": true,
+        "materiality_reason": "navtitle governs the navigation display title with locktitle, and downstream output consumes it; the fix must not disturb these.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "OASIS DITA navtitle/locktitle",
+          "historical GUIDES-10509"
+        ],
+        "ac_refs": [
+          "AC-11"
+        ]
+      },
+      {
+        "dimension_id": "D-07",
+        "axis": "TERMINAL_STATE",
+        "candidate": "navtitle persistence across save, reopen, and further edits",
+        "material": true,
+        "materiality_reason": "The reporter verifies the attribute in Source mode after save; persistence across the round trip is the observable terminal state.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "Jira GUIDES-54348 repro"
+        ],
+        "ac_refs": [
+          "AC-10"
+        ]
+      },
+      {
+        "dimension_id": "D-08",
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate": "the shared required-navtitle population logic consumed by both the Insert Topic Reference dialog and the drag-and-drop path",
+        "material": true,
+        "materiality_reason": "Both consumers read PAGE_REQUIRED_DITA_ATTRIBUTES.navtitle and populate the attribute, so a fix in the shared path must be verified against both consumers.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor insert_topicref_controller.ts",
+          "xmleditor util/drag.ts"
+        ],
+        "ac_refs": [
+          "AC-03"
+        ]
+      },
+      {
+        "dimension_id": "D-09",
+        "axis": "DOWNSTREAM_REGRESSION",
+        "candidate": "reuse consumers of navtitle: keyref/xref link-text resolution and topics referenced in multiple maps, and the @navtitle attribute versus <topicmeta><navtitle> element form",
+        "material": true,
+        "materiality_reason": "navtitle is consumed as reusable link/navigation text; the populated form (deprecated attribute vs element) determines whether reuse consumers resolve it.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "OASIS DITA 1.2 topicmeta navtitle",
+          "xmleditor insert_topicref_controller.ts:115"
+        ],
+        "ac_refs": [
+          "AC-14"
+        ]
+      },
+      {
+        "dimension_id": "D-10",
+        "axis": "TOPIC_TYPE",
+        "candidate": "topicref specializations: keydef (resource-only), glossref, chapter/appendix bookmap types, reltable cells, and navref",
+        "material": true,
+        "materiality_reason": "Required-navtitle must apply to navigation-bearing references and be skipped for non-navigation ones (keydef/reltable), so the specialization set is a distinct coverage axis.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor util/drag.ts keydef/glossref/reltable",
+          "xmleditor insert_topicref_controller.ts:49 chapter"
+        ],
+        "ac_refs": [
+          "AC-17",
+          "AC-18",
+          "AC-19"
+        ]
+      },
+      {
+        "dimension_id": "D-11",
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate": "editor parity: the New Editor map surface and its Refresh navigation title action versus the xmleditor Map Editor",
+        "material": true,
+        "materiality_reason": "navtitle population is implemented per editor; both editors and the explicit refresh action must behave consistently.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "new_editor content_properties_panel navtitle",
+          "new_editor Refresh navigation title action"
+        ],
+        "ac_refs": [
+          "AC-15",
+          "AC-16"
+        ]
+      },
+      {
+        "dimension_id": "D-12",
+        "axis": "NEGATIVE_BOUNDARY",
+        "candidate": "external or non-DITA reference targets (scope external, non-dita/ditamap format) and an already author-set navtitle",
+        "material": true,
+        "materiality_reason": "These inputs must not produce an editor error, an overwrite of author data, or an invalid navtitle.",
+        "resolution": "COVERED_BY_AC",
+        "evidence_refs": [
+          "xmleditor updateNavTitle",
+          "OASIS DITA topicref scope/format"
+        ],
+        "ac_refs": [
+          "AC-20",
+          "AC-21"
+        ]
+      }
+    ],
+    "questions_surfaced_to_user": [
+      {
+        "question_id": "CQ-01",
+        "question": "Should the fix back-fill existing topicrefs missing navtitle on open, or only populate newly inserted ones?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      },
+      {
+        "question_id": "CQ-02",
+        "question": "What is the exact navtitle fallback when the referenced topic has no title?",
+        "blocking": false,
+        "answer": "",
+        "answered_by": "",
+        "status": "WAITING"
+      }
+    ],
+    "authoring_gated_on_answers": true
+  },
+  "enumerated_requirements": {
+    "schema_version": "aem-guides-enumerated-requirements-v1",
+    "active": false,
+    "reason": "Single defect with an expected-result example, no reporter-numbered requirement list to transcribe.",
+    "items": []
+  },
+  "operational_contract": {
+    "schema_version": "aem-guides-operational-contract-v1",
+    "active": false,
+    "reason": "The reported defect is editor attribute-population correctness on topicref insertion, not a job, queue, retry, restart, batch, or migration operation.",
+    "dimensions": []
+  },
+  "implementation_grounding": {
+    "active": true,
+    "note": "The editor code implementing the intended navtitle behaviour and the config key were inspected in the xmleditor clone; this confirms the reporter's config shape is the one the code reads, so the defect is downstream of the configuration. Provisional (clone not synchronised).",
+    "named_artifacts": [
+      {
+        "artifact": "ditaAttributes.required.navtitle (ui_config.json)",
+        "kind": "config_key",
+        "material": true,
+        "inspected": true,
+        "key_provenance": "CODE",
+        "evidence": [
+          "xmleditor src/views/app_view.tsx:117 updateDitaRequiredAttrs(_.get(config,'ditaAttributes.required'))",
+          "xmleditor src/common/model.ts:108 PAGE_REQUIRED_DITA_ATTRIBUTES = page.required_dita_attributes"
+        ],
+        "premise": "the reporter's ditaAttributes.required.navtitle is exactly the config key the editor reads",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "InsertTopicrefController.updateNavTitle",
+        "kind": "method",
+        "material": true,
+        "inspected": true,
+        "evidence": [
+          "xmleditor src/controllers/dialogs/insert_topicref_controller.ts:106-115 forceNavTitle then setAttribute navtitle when DTD-valid"
+        ],
+        "premise": "the Insert Topic Reference dialog sets navtitle only when navtitle is required and the DTD permits it",
+        "premise_verified": true,
+        "premise_holds": true
+      },
+      {
+        "artifact": "util/drag.ts drag-insertion navtitle path",
+        "kind": "method",
+        "material": true,
+        "inspected": true,
+        "evidence": [
+          "xmleditor src/util/drag.ts:67,76 forceNavTitle from PAGE_REQUIRED_DITA_ATTRIBUTES.navtitle"
+        ],
+        "premise": "the drag-and-drop insertion path also gates navtitle on the required-navtitle setting",
+        "premise_verified": true,
+        "premise_holds": true
+      }
+    ]
+  },
+  "security_coverage": {
+    "schema_version": "aem-guides-security-coverage-v1",
+    "dimensions": [
+      {
+        "dimension": "INPUT_SAFETY",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "The fix copies a referenced topic's title into a validated DITA attribute; no new parsing of untrusted external input.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "REFERENCE_TRAVERSAL",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "The feature reads the <title> of a reference the author already selected from the repository (an existing, validated asset); it introduces no untrusted path input and performs no traversal that must be blocked, so no path-traversal control is in scope.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "AUTHZ",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "Insertion runs under the author's existing editor session; populating an attribute does not change any authorization boundary.",
+        "ac_refs": []
+      }
+    ]
+  },
+  "localization_coverage": {
+    "schema_version": "aem-guides-localization-coverage-v1",
+    "dimensions": [
+      {
+        "dimension": "TRANSLATION_STATE",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "Auto-populating navtitle on insert does not read or change translation projects, XLIFF, or target-language copies.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "XLIFF_ROUNDTRIP",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "Auto-populating navtitle on insert does not read or change translation projects, XLIFF, or target-language copies.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "PROJECT_TYPES",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "Auto-populating navtitle on insert does not read or change translation projects, XLIFF, or target-language copies.",
+        "ac_refs": []
+      }
+    ]
+  },
+  "upgrade_migration_coverage": {
+    "schema_version": "aem-guides-upgrade-migration-coverage-v1",
+    "dimensions": [
+      {
+        "dimension": "PRE_STATE",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "An editor insertion fix runs no version, schema, or stored-data migration.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "MIGRATION_EXECUTION",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "An editor insertion fix runs no version, schema, or stored-data migration.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "POST_STATE_AND_MIXED",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "An editor insertion fix runs no version, schema, or stored-data migration; existing-map behaviour on open is covered as a regression check.",
+        "ac_refs": []
+      },
+      {
+        "dimension": "ROLLBACK_OR_IRREVERSIBILITY",
+        "disposition": "NOT_APPLICABLE",
+        "reason": "An editor insertion fix runs no version, schema, or stored-data migration.",
+        "ac_refs": []
+      }
+    ]
+  },
+  "dita_semantics": {
+    "active": false,
+    "primary_constructs": [
+      "navtitle",
+      "locktitle",
+      "topichead",
+      "mapref",
+      "keydef",
+      "glossref",
+      "keyref",
+      "navref"
+    ],
+    "neighbourhood_assessment": "Primary construct @navtitle is derived from the referenced topic <title> (AC-02); it is governed by @locktitle, which decides whether the navtitle overrides the referenced title in navigation and output (AC-11). topichead is the href-less variant where @navtitle is the sole navigation label (AC-07); mapref derives @navtitle from the referenced map <title> (AC-08). keydef (resource-only) and glossref are specializations where required-navtitle applies differently or not at all (AC-17, AC-18), and navref and reltable are non-navigation neighbours re-tested as regression (AC-19). Reuse consumers keyref/conref and xref/link-text read the navtitle as link text, including the @navtitle attribute versus <topicmeta><navtitle> element distinction (AC-14). No further governing construct is in scope."
+  },
+  "behavior_model": {
+    "trigger": [
+      "author inserts an existing DITA topic as a reference into a map in the Map Editor under a required-navtitle profile"
+    ],
+    "operations": [
+      "resolve the referenced topic title",
+      "apply required DITA attributes to the new topicref",
+      "serialize and save the map"
+    ],
+    "inputs": [
+      "ui_config.json ditaAttributes.required.navtitle",
+      "the referenced topic and its <title>",
+      "the insertion entry point (Insert dialog or drag-and-drop)"
+    ],
+    "outputs": [
+      "a <topicref> node carrying @navtitle populated from the referenced title"
+    ],
+    "affected_state": [
+      "the @navtitle attribute on the topicref node in the saved map source"
+    ],
+    "processors": [
+      "InsertTopicrefController.updateNavTitle",
+      "util/drag.ts drag-insertion path",
+      "app_view.updateDitaRequiredAttrs"
+    ],
+    "consumers": [
+      "map navigation and TOC",
+      "keyref/xref link-text resolution",
+      "reuse of the topic across multiple maps"
+    ],
+    "read_paths": [
+      "dita.getTitles fetches the referenced topic title",
+      "PAGE_REQUIRED_DITA_ATTRIBUTES read from ditaAttributes.required"
+    ],
+    "write_paths": [
+      "html.setAttribute writes @navtitle when required and DTD-valid"
+    ],
+    "configuration_branches": [
+      "ditaAttributes.required.navtitle true vs false/absent",
+      "Global Profile vs Folder Profile"
+    ],
+    "unknowns": [
+      "the exact break point in the config->model->attribute chain that leaves @navtitle unset in the reported build"
+    ],
+    "facts": [
+      {
+        "fact": "app_view.tsx calls updateDitaRequiredAttrs with ditaAttributes.required, mapped to PAGE_REQUIRED_DITA_ATTRIBUTES, so the reporter's required.navtitle config shape is the key the editor reads",
+        "evidence_ids": [
+          "EC-APPVIEW",
+          "EC-MODEL"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.8
+      },
+      {
+        "fact": "updateNavTitle sets @navtitle from the fetched title only when navtitle is required and the DTD permits it",
+        "evidence_ids": [
+          "EC-INSERT"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.8
+      },
+      {
+        "fact": "the drag-and-drop insertion path also reads the required-navtitle setting",
+        "evidence_ids": [
+          "EC-DRAG"
+        ],
+        "authority": "CURRENT_IMPLEMENTATION",
+        "confidence": 0.7
+      },
+      {
+        "fact": "documented behaviour requires @navtitle to be auto-populated from the referenced content title when navtitle is configured required",
+        "evidence_ids": [
+          "EC-DOC"
+        ],
+        "authority": "AEM_GUIDES_DOC",
+        "confidence": 0.7
+      },
+      {
+        "fact": "in the DITA model @navtitle provides the navigation title and @locktitle governs whether it overrides the referenced title",
+        "evidence_ids": [
+          "EC-DITASPEC"
+        ],
+        "authority": "DITA_SPEC",
+        "confidence": 0.8
+      }
+    ],
+    "confidence": 0.7
+  },
+  "coverage_hypotheses": [
+    {
+      "hypothesis_id": "H-01",
+      "dimension": "STATE_PARTITION",
+      "implied_dimension_axis": "VALUE_SET_CHANNEL",
+      "candidate": "AC-01 coverage dimension",
+      "reason": "acceptance dimension for AC-01",
+      "technical_basis": [
+        "AC-01 evidence: Jira GUIDES-54348 expected result; documented behaviour Include @navtitle attribute by default"
+      ],
+      "current_evidence": [
+        "EV-01"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-01",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-02",
+      "dimension": "STATE_PARTITION",
+      "implied_dimension_axis": "VALUE_SET_CHANNEL",
+      "candidate": "AC-02 coverage dimension",
+      "reason": "acceptance dimension for AC-02",
+      "technical_basis": [
+        "AC-02 evidence: Jira GUIDES-54348 example navtitle=\"Topic 1\"; xmleditor insert_topicref_controller updateNavTitle derives navtitle from "
+      ],
+      "current_evidence": [
+        "EV-02"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-02",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-03",
+      "dimension": "CONSUMER",
+      "implied_dimension_axis": "ENTRY_POINT",
+      "candidate": "AC-03 coverage dimension",
+      "reason": "acceptance dimension for AC-03",
+      "technical_basis": [
+        "AC-03 evidence: xmleditor insert_topicref_controller.ts and util/drag.ts both read the required-navtitle setting; GUIDES-54348 repro add"
+      ],
+      "current_evidence": [
+        "EV-03"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-03",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-04",
+      "dimension": "CONFIGURATION",
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate": "AC-04 coverage dimension",
+      "reason": "acceptance dimension for AC-04",
+      "technical_basis": [
+        "AC-04 evidence: xmleditor forceNavTitle is gated on the required-navtitle setting; GUIDES-54348 preconditions"
+      ],
+      "current_evidence": [
+        "EV-04"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-04",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-05",
+      "dimension": "CONFIGURATION",
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate": "AC-05 coverage dimension",
+      "reason": "acceptance dimension for AC-05",
+      "technical_basis": [
+        "AC-05 evidence: Jira GUIDES-54348 preconditions Global or Folder Profile; xmleditor app_view updateDitaRequiredAttrs reads ditaAttribute"
+      ],
+      "current_evidence": [
+        "EV-05"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-05",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-06",
+      "dimension": "CONTRACT_BOUNDARY",
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate": "AC-06 coverage dimension",
+      "reason": "acceptance dimension for AC-06",
+      "technical_basis": [
+        "AC-06 evidence: Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:114 isValidAttr('navtitle') DTD guard"
+      ],
+      "current_evidence": [
+        "EV-06"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-06",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-07",
+      "dimension": "TYPE_ABSTRACTION",
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate": "AC-07 coverage dimension",
+      "reason": "acceptance dimension for AC-07",
+      "technical_basis": [
+        "AC-07 evidence: OASIS DITA topichead/navtitle model; historical GUIDES-10509 navtitle for topichead"
+      ],
+      "current_evidence": [
+        "EV-07"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-07",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-08",
+      "dimension": "TYPE_ABSTRACTION",
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate": "AC-08 coverage dimension",
+      "reason": "acceptance dimension for AC-08",
+      "technical_basis": [
+        "AC-08 evidence: Jira GUIDES-54348; OASIS DITA 1.2 mapref https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/mapref.html; xmleditor "
+      ],
+      "current_evidence": [
+        "EV-08"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-08",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-09",
+      "dimension": "CONTRACT_BOUNDARY",
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate": "AC-09 coverage dimension",
+      "reason": "acceptance dimension for AC-09",
+      "technical_basis": [
+        "AC-09 evidence: xmleditor updateNavTitle title handling; GUIDES-54348 derivation from title"
+      ],
+      "current_evidence": [
+        "EV-09"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-09",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-10",
+      "dimension": "STATE_PARTITION",
+      "implied_dimension_axis": "TERMINAL_STATE",
+      "candidate": "AC-10 coverage dimension",
+      "reason": "acceptance dimension for AC-10",
+      "technical_basis": [
+        "AC-10 evidence: Jira GUIDES-54348 repro inspects Source mode after save; historical GUIDES-2413 navTitle save behaviour"
+      ],
+      "current_evidence": [
+        "EV-10"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-10",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-11",
+      "dimension": "DOWNSTREAM_REGRESSION",
+      "implied_dimension_axis": "DOWNSTREAM_REGRESSION",
+      "candidate": "AC-11 coverage dimension",
+      "reason": "acceptance dimension for AC-11",
+      "technical_basis": [
+        "AC-11 evidence: Jira GUIDES-54348; OASIS DITA 1.2 topicref navtitle/locktitle https://docs.oasis-open.org/dita/v1.2/cs01/spec/langref/to"
+      ],
+      "current_evidence": [
+        "EV-11"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-11",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-12",
+      "dimension": "STATE_PARTITION",
+      "implied_dimension_axis": "VALUE_SET_CHANNEL",
+      "candidate": "AC-12 coverage dimension",
+      "reason": "acceptance dimension for AC-12",
+      "technical_basis": [
+        "AC-12 evidence: xmleditor insertUpdatedNodes iterates paths and titles; GUIDES-54348 add-reference flow"
+      ],
+      "current_evidence": [
+        "EV-12"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-12",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-13",
+      "dimension": "CONFIGURATION",
+      "implied_dimension_axis": "CONFIG_BRANCH",
+      "candidate": "AC-13 coverage dimension",
+      "reason": "acceptance dimension for AC-13",
+      "technical_basis": [
+        "AC-13 evidence: xmleditor PAGE_REQUIRED_DITA_ATTRIBUTES model; historical GUIDES-45251 drag-drop not adding the type attribute"
+      ],
+      "current_evidence": [
+        "EV-13"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-13",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-14",
+      "dimension": "DOWNSTREAM_REGRESSION",
+      "implied_dimension_axis": "DOWNSTREAM_REGRESSION",
+      "candidate": "AC-14 coverage dimension",
+      "reason": "acceptance dimension for AC-14",
+      "technical_basis": [
+        "AC-14 evidence: Jira GUIDES-54348; OASIS DITA 1.2 topicmeta navtitle and keyref link-text resolution https://docs.oasis-open.org/dita/v1"
+      ],
+      "current_evidence": [
+        "EV-14"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-14",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-15",
+      "dimension": "CONSUMER",
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate": "AC-15 coverage dimension",
+      "reason": "acceptance dimension for AC-15",
+      "technical_basis": [
+        "AC-15 evidence: Jira GUIDES-54348; new_editor content_properties_panel navtitle field; historical GUIDES-45251 New Editor drag-drop attr"
+      ],
+      "current_evidence": [
+        "EV-15"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-15",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-16",
+      "dimension": "CONSUMER",
+      "implied_dimension_axis": "CODE_PATH_CONSUMER",
+      "candidate": "AC-16 coverage dimension",
+      "reason": "acceptance dimension for AC-16",
+      "technical_basis": [
+        "AC-16 evidence: Jira GUIDES-54348; new_editor Refresh navigation title attribute action and canRefreshNavTitle config"
+      ],
+      "current_evidence": [
+        "EV-16"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-16",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-17",
+      "dimension": "TYPE_ABSTRACTION",
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate": "AC-17 coverage dimension",
+      "reason": "acceptance dimension for AC-17",
+      "technical_basis": [
+        "AC-17 evidence: Jira GUIDES-54348; xmleditor src/util/drag.ts:88 createKeyDefData emits keydef with keys and href only; OASIS DITA keyde"
+      ],
+      "current_evidence": [
+        "EV-17"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-17",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-18",
+      "dimension": "TYPE_ABSTRACTION",
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate": "AC-18 coverage dimension",
+      "reason": "acceptance dimension for AC-18",
+      "technical_basis": [
+        "AC-18 evidence: Jira GUIDES-54348; xmleditor src/util/drag.ts:72 glossref creation for glossentry; OASIS DITA glossref model"
+      ],
+      "current_evidence": [
+        "EV-18"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-18",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-19",
+      "dimension": "TYPE_ABSTRACTION",
+      "implied_dimension_axis": "TOPIC_TYPE",
+      "candidate": "AC-19 coverage dimension",
+      "reason": "acceptance dimension for AC-19",
+      "technical_basis": [
+        "AC-19 evidence: Jira GUIDES-54348; xmleditor src/controllers/dialogs/insert_topicref_controller.ts:49 chapter handling; OASIS DITA bookm"
+      ],
+      "current_evidence": [
+        "EV-19"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-19",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-20",
+      "dimension": "CONTRACT_BOUNDARY",
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate": "AC-20 coverage dimension",
+      "reason": "acceptance dimension for AC-20",
+      "technical_basis": [
+        "AC-20 evidence: xmleditor updateNavTitle setAttribute writes navtitle without checking for an existing value; GUIDES-54348 auto-populati"
+      ],
+      "current_evidence": [
+        "EV-20"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-20",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    },
+    {
+      "hypothesis_id": "H-21",
+      "dimension": "CONTRACT_BOUNDARY",
+      "implied_dimension_axis": "NEGATIVE_BOUNDARY",
+      "candidate": "AC-21 coverage dimension",
+      "reason": "acceptance dimension for AC-21",
+      "technical_basis": [
+        "AC-21 evidence: Jira GUIDES-54348 derivation from title; OASIS DITA topicref scope and format model"
+      ],
+      "current_evidence": [
+        "EV-21"
+      ],
+      "activated_patterns": [],
+      "status": "CONFIRMED",
+      "requires_more_evidence": false,
+      "confidence": 0.7,
+      "equivalence_key": "AC-21",
+      "generator": "AC_ACCEPTANCE_CHAIN"
+    }
+  ],
+  "verifications": [
+    {
+      "hypothesis_id": "H-01",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-01"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-02",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-02"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-03",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-03"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-04",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-04"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-05",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-05"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-06",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-06"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-07",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-07"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-08",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-08"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-09",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-09"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-10",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-10"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-11",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-11"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-12",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-12"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-13",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-13"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-14",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-14"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-15",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-15"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-16",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-16"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-17",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-17"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-18",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-18"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-19",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-19"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-20",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-20"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    },
+    {
+      "hypothesis_id": "H-21",
+      "verdict": "CONFIRMED",
+      "subject": "PRODUCT_CONTRACT",
+      "supporting_authorities": [
+        "JIRA_EXPECTED_BEHAVIOR"
+      ],
+      "supporting_evidence": [
+        "EV-21"
+      ],
+      "disposition": "ACCEPTANCE_CRITERION",
+      "note": "proposed acceptance criterion grounded in the documented expected behaviour",
+      "open_question_ref": ""
+    }
+  ],
+  "evidence_catalog": {
+    "sources": [
+      {
+        "id": "EC-INSERT",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/controllers/dialogs/insert_topicref_controller.ts",
+        "source_hash": "sha256:8cbdd6117dfca360701b4e689c519b81d5a163828693cbfb5faf4686aab582c7",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "availability": "available"
+      },
+      {
+        "id": "EC-DRAG",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/util/drag.ts",
+        "source_hash": "sha256:09cf47e3e6879bcd84fc052a539dbf019d06873720613fc1e7812fd7a3cffed0",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "availability": "available"
+      },
+      {
+        "id": "EC-APPVIEW",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/views/app_view.tsx",
+        "source_hash": "sha256:adc049ebc415b1394a0cecb00140b6bfa1cbcafcbd5d6604ee0c772f712269ed",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "availability": "available"
+      },
+      {
+        "id": "EC-MODEL",
+        "source_type": "code",
+        "source_ref": "C:/xmleditor/xmleditor/src/common/model.ts",
+        "source_hash": "sha256:72216133a49fa969a31c69f8cdb4274b3b18c3f4f1eb226d83f83d79f6392b77",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "availability": "available"
+      },
+      {
+        "id": "EC-JIRA",
+        "source_type": "jira",
+        "source_ref": "GUIDES-54348",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "availability": "available"
+      },
+      {
+        "id": "EC-DOC",
+        "source_type": "documentation",
+        "source_ref": "AEM Guides - Include @navtitle attribute by default",
+        "authority": "AEM_GUIDES_DOC",
+        "availability": "available"
+      },
+      {
+        "id": "EC-DITASPEC",
+        "source_type": "dita_spec",
+        "source_ref": "OASIS DITA 1.2 topicref @navtitle/@locktitle",
+        "authority": "DITA_SPEC",
+        "availability": "available"
+      }
+    ]
+  },
+  "evidence_lifecycle": [
+    {
+      "evidence_id": "EV-01",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-01",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-01",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-02",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-02",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-02",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-03",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-03",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-03",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-04",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-04",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-04",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-05",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-05",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-05",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-06",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-06",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-06",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-07",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-07",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-07",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-08",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-08",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-08",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-09",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-09",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-09",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-10",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-10",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-10",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-11",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-11",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-11",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-12",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-12",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-12",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-13",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-13",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-13",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-14",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-14",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-14",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-15",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-15",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-15",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-16",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-16",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-16",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-17",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-17",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-17",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-18",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-18",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-18",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-19",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-19",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-19",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-20",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-20",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-20",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    },
+    {
+      "evidence_id": "EV-21",
+      "source": "linked jira",
+      "query": "ticket expected behaviour / documented contract for AC-21",
+      "pass": "initial",
+      "status": "USED",
+      "question_id": "",
+      "hypothesis_id": "H-21",
+      "subject": "PRODUCT_CONTRACT",
+      "authority": "JIRA_EXPECTED_BEHAVIOR"
+    }
+  ],
+  "behavior_graph": {
+    "schema_version": "aem-guides-behavior-graph-v1",
+    "nodes": [
+      {
+        "node_id": "BGN-01",
+        "kind": "ATTRIBUTE",
+        "label": "@navtitle on the inserted <topicref>",
+        "material": true,
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ]
+      },
+      {
+        "node_id": "BGN-02",
+        "kind": "PROCESSOR",
+        "label": "InsertTopicrefController.updateNavTitle / drag-insertion path",
+        "material": false,
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ]
+      },
+      {
+        "node_id": "BGN-03",
+        "kind": "CONFIGURATION",
+        "label": "ditaAttributes.required.navtitle",
+        "material": false,
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ]
+      },
+      {
+        "node_id": "BGN-04",
+        "kind": "ATTRIBUTE",
+        "label": "@locktitle (governs navtitle display override)",
+        "material": false,
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ]
+      },
+      {
+        "node_id": "BGN-05",
+        "kind": "CONTENT",
+        "label": "referenced topic <title> (navtitle source)",
+        "material": false,
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "BGE-01",
+        "source": "BGN-01",
+        "target": "BGN-03",
+        "relation_type": "CONFIGURED_BY",
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.0,
+        "verification_state": "INVESTIGATION_CANDIDATE",
+        "material": false,
+        "hypothesis_ref": "H-01"
+      },
+      {
+        "edge_id": "BGE-02",
+        "source": "BGN-01",
+        "target": "BGN-02",
+        "relation_type": "WRITTEN_BY",
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ],
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "authority": "CURRENT_IMPLEMENTATION",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.0,
+        "verification_state": "INVESTIGATION_CANDIDATE",
+        "material": false,
+        "hypothesis_ref": "H-02"
+      },
+      {
+        "edge_id": "BGE-03",
+        "source": "BGN-01",
+        "target": "BGN-04",
+        "relation_type": "GOVERNED_BY",
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ],
+        "subject": "DITA_SEMANTICS",
+        "authority": "DITA_SPEC",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.0,
+        "verification_state": "INVESTIGATION_CANDIDATE",
+        "material": false,
+        "hypothesis_ref": "H-03"
+      },
+      {
+        "edge_id": "BGE-04",
+        "source": "BGN-01",
+        "target": "BGN-05",
+        "relation_type": "DEFINED_BY",
+        "provenance": [
+          "EV-01",
+          "CF-01"
+        ],
+        "subject": "DITA_SEMANTICS",
+        "authority": "DITA_SPEC",
+        "currentness": "CURRENT",
+        "applicability": "APPLICABLE",
+        "confidence": 0.0,
+        "verification_state": "INVESTIGATION_CANDIDATE",
+        "material": false,
+        "hypothesis_ref": "H-04"
+      }
+    ]
+  },
+  "semantic_closure": {
+    "schema_version": "aem-guides-semantic-closure-v1",
+    "records": [
+      {
+        "closure_id": "SC-01",
+        "entity_ref": "BGN-01",
+        "dimension": "GOVERNING_SEMANTICS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "@navtitle is governed by @locktitle, which decides whether it overrides the referenced title in navigation and output",
+        "disposition_ref": "AC-11"
+      },
+      {
+        "closure_id": "SC-02",
+        "entity_ref": "BGN-01",
+        "dimension": "CONTROLLING_ATTRIBUTES",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "@locktitle is the controlling attribute for navtitle's display behaviour",
+        "disposition_ref": "AC-11"
+      },
+      {
+        "closure_id": "SC-03",
+        "entity_ref": "BGN-01",
+        "dimension": "GOVERNING_CONFIGURATION",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "ditaAttributes.required.navtitle governs whether navtitle is auto-populated",
+        "disposition_ref": "AC-05"
+      },
+      {
+        "closure_id": "SC-04",
+        "entity_ref": "BGN-01",
+        "dimension": "DIRECT_CONSUMERS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "map navigation/TOC and keyref/xref link-text resolution consume the navtitle",
+        "disposition_ref": "AC-14"
+      },
+      {
+        "closure_id": "SC-05",
+        "entity_ref": "BGN-01",
+        "dimension": "SIBLING_CONSUMERS",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "other required ditaAttributes are sibling consumers of the same population path",
+        "disposition_ref": "AC-13"
+      },
+      {
+        "closure_id": "SC-06",
+        "entity_ref": "BGN-01",
+        "dimension": "ALTERNATE_MECHANISMS",
+        "subject": "CURRENT_UI",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the Refresh navigation title action is an alternate mechanism that re-derives navtitle",
+        "disposition_ref": "AC-16"
+      },
+      {
+        "closure_id": "SC-07",
+        "entity_ref": "BGN-01",
+        "dimension": "PARENT_CONTEXT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "a topicref's @navtitle has no governing parent construct that changes its population",
+        "disposition_ref": "scope-no-governing-parent"
+      },
+      {
+        "closure_id": "SC-08",
+        "entity_ref": "BGN-01",
+        "dimension": "CHILD_CONTEXT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "@navtitle is a leaf attribute with no child constructs",
+        "disposition_ref": "scope-no-child-constructs"
+      },
+      {
+        "closure_id": "SC-09",
+        "entity_ref": "BGN-01",
+        "dimension": "HIERARCHY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "bookmap chapter/appendix and nested topicrefs each receive navtitle",
+        "disposition_ref": "AC-19"
+      },
+      {
+        "closure_id": "SC-10",
+        "entity_ref": "BGN-01",
+        "dimension": "SPECIALIZATIONS",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "topichead, mapref, keydef and glossref specializations apply navtitle differently or not at all",
+        "disposition_ref": "AC-17"
+      },
+      {
+        "closure_id": "SC-11",
+        "entity_ref": "BGN-01",
+        "dimension": "REFERENCED_CONTENT",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the navtitle value is derived from the referenced topic <title>",
+        "disposition_ref": "AC-02"
+      },
+      {
+        "closure_id": "SC-12",
+        "entity_ref": "BGN-01",
+        "dimension": "NESTED_REFERENCED_CONTENT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "no nested reference resolution is involved in reading the referenced title",
+        "disposition_ref": "scope-no-nested-title-resolution"
+      },
+      {
+        "closure_id": "SC-13",
+        "entity_ref": "BGN-01",
+        "dimension": "ALTERNATE_REPRESENTATION",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the @navtitle attribute form versus the <topicmeta><navtitle> element form is an open product decision (dimension covered by a proposed AC; the exact product decision is surfaced as an Open Question).",
+        "disposition_ref": "AC-14"
+      },
+      {
+        "closure_id": "SC-14",
+        "entity_ref": "BGN-01",
+        "dimension": "FALLBACK",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the empty/missing referenced-title fallback for navtitle",
+        "disposition_ref": "AC-09"
+      },
+      {
+        "closure_id": "SC-15",
+        "entity_ref": "BGN-01",
+        "dimension": "ABSENT_VALUE",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the exact navtitle value when the referenced topic has no title is an open decision (dimension covered by a proposed AC; the exact product decision is surfaced as an Open Question).",
+        "disposition_ref": "AC-09"
+      },
+      {
+        "closure_id": "SC-16",
+        "entity_ref": "BGN-01",
+        "dimension": "INVALID_VALUE",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "navtitle is free text, so there is no invalid-value class to validate",
+        "disposition_ref": "scope-freetext-no-invalid-class"
+      },
+      {
+        "closure_id": "SC-17",
+        "entity_ref": "BGN-01",
+        "dimension": "POSITIVE_STATE",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "navtitle present on the saved topicref when required",
+        "disposition_ref": "AC-01"
+      },
+      {
+        "closure_id": "SC-18",
+        "entity_ref": "BGN-01",
+        "dimension": "NEGATIVE_STATE",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "navtitle not added when not required, and an author value not overwritten",
+        "disposition_ref": "AC-04"
+      },
+      {
+        "closure_id": "SC-19",
+        "entity_ref": "BGN-01",
+        "dimension": "LIFECYCLE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "navtitle persists across save, reopen, and further edits",
+        "disposition_ref": "AC-10"
+      },
+      {
+        "closure_id": "SC-20",
+        "entity_ref": "BGN-01",
+        "dimension": "CROSS_SURFACE_SYNC",
+        "subject": "CURRENT_UI",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "New Editor parity and editor-preview agreement on navtitle",
+        "disposition_ref": "AC-15"
+      },
+      {
+        "closure_id": "SC-21",
+        "entity_ref": "BGN-01",
+        "dimension": "DOWNSTREAM_PROCESSOR",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "no downstream processor transforms navtitle at insertion time",
+        "disposition_ref": "scope-no-insert-time-processor"
+      },
+      {
+        "closure_id": "SC-22",
+        "entity_ref": "BGN-01",
+        "dimension": "GENERATED_OUTPUT",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "navtitle is consumed in generated navigation/output as the display title",
+        "disposition_ref": "AC-11"
+      },
+      {
+        "closure_id": "SC-23",
+        "entity_ref": "BGN-01",
+        "dimension": "PERSISTED_STATE",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the @navtitle attribute persisted on the topicref node in the map source",
+        "disposition_ref": "AC-10"
+      },
+      {
+        "closure_id": "SC-24",
+        "entity_ref": "BGN-01",
+        "dimension": "VERSION_APPLICABILITY",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "navtitle population is not version-dependent",
+        "disposition_ref": "scope-not-version-dependent"
+      },
+      {
+        "closure_id": "SC-25",
+        "entity_ref": "BGN-01",
+        "dimension": "DEPLOYMENT_APPLICABILITY",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "navtitle population is not deployment-dependent",
+        "disposition_ref": "scope-not-deployment-dependent"
+      },
+      {
+        "closure_id": "SC-26",
+        "entity_ref": "BGN-01",
+        "dimension": "ROLE_PROFILE_APPLICABILITY",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "the required-navtitle setting applies under both Global and Folder profiles",
+        "disposition_ref": "AC-05"
+      },
+      {
+        "closure_id": "SC-27",
+        "entity_ref": "BGN-01",
+        "dimension": "PUBLISHING_MODE",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "this is an editor insertion behaviour, not a publishing-mode concern",
+        "disposition_ref": "scope-editor-insertion-not-publishing"
+      },
+      {
+        "closure_id": "SC-28",
+        "entity_ref": "BGN-01",
+        "dimension": "BACKWARD_COMPATIBILITY",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "APPLICABLE",
+        "status": "COVERED",
+        "reason": "existing maps and author-set navtitles are not rewritten on open",
+        "disposition_ref": "AC-20"
+      },
+      {
+        "closure_id": "SC-29",
+        "entity_ref": "BGN-01",
+        "dimension": "LOCALE_APPLICABILITY",
+        "subject": "PRODUCT_CONTRACT",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "navtitle population is not locale-dependent",
+        "disposition_ref": "scope-not-locale-dependent"
+      },
+      {
+        "closure_id": "SC-30",
+        "entity_ref": "BGN-01",
+        "dimension": "CONTENT_IDENTITY",
+        "subject": "DITA_SEMANTICS",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "navtitle is a display attribute and does not participate in content identity",
+        "disposition_ref": "scope-display-attribute-not-identity"
+      },
+      {
+        "closure_id": "SC-31",
+        "entity_ref": "BGN-01",
+        "dimension": "NFR_RISK",
+        "subject": "ACTUAL_IMPLEMENTATION",
+        "applicability": "NOT_APPLICABLE",
+        "status": "INVESTIGATED_AND_REJECTED",
+        "reason": "no scale, performance, or other NFR risk is in scope for attribute population",
+        "disposition_ref": "scope-no-nfr-in-scope"
+      }
+    ]
+  },
+  "dispositions": [
+    {
+      "finding_id": "D-01",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-01: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-01"
+      ],
+      "ac_ref": "AC-01"
+    },
+    {
+      "finding_id": "D-02",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-02: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-02"
+      ],
+      "ac_ref": "AC-02"
+    },
+    {
+      "finding_id": "D-03",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-03: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-03"
+      ],
+      "ac_ref": "AC-03"
+    },
+    {
+      "finding_id": "D-04",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-04: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-04"
+      ],
+      "ac_ref": "AC-04"
+    },
+    {
+      "finding_id": "D-05",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-05: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-05"
+      ],
+      "ac_ref": "AC-05"
+    },
+    {
+      "finding_id": "D-06",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-06: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-06"
+      ],
+      "ac_ref": "AC-06"
+    },
+    {
+      "finding_id": "D-07",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-07: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-07"
+      ],
+      "ac_ref": "AC-07"
+    },
+    {
+      "finding_id": "D-08",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-08: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-08"
+      ],
+      "ac_ref": "AC-08"
+    },
+    {
+      "finding_id": "D-09",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-09: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-09"
+      ],
+      "ac_ref": "AC-09"
+    },
+    {
+      "finding_id": "D-10",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-10: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-10"
+      ],
+      "ac_ref": "AC-10"
+    },
+    {
+      "finding_id": "D-11",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-11: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-11"
+      ],
+      "ac_ref": "AC-11"
+    },
+    {
+      "finding_id": "D-12",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-12: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-12"
+      ],
+      "ac_ref": "AC-12"
+    },
+    {
+      "finding_id": "D-13",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-13: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-13"
+      ],
+      "ac_ref": "AC-13"
+    },
+    {
+      "finding_id": "D-14",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-14: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-14"
+      ],
+      "ac_ref": "AC-14"
+    },
+    {
+      "finding_id": "D-15",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-15: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-15"
+      ],
+      "ac_ref": "AC-15"
+    },
+    {
+      "finding_id": "D-16",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-16: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-16"
+      ],
+      "ac_ref": "AC-16"
+    },
+    {
+      "finding_id": "D-17",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-17: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-17"
+      ],
+      "ac_ref": "AC-17"
+    },
+    {
+      "finding_id": "D-18",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-18: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-18"
+      ],
+      "ac_ref": "AC-18"
+    },
+    {
+      "finding_id": "D-19",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-19: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-19"
+      ],
+      "ac_ref": "AC-19"
+    },
+    {
+      "finding_id": "D-20",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-20: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-20"
+      ],
+      "ac_ref": "AC-20"
+    },
+    {
+      "finding_id": "D-21",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "H-21: proposed acceptance criterion grounded in the documented expected behaviour",
+      "source_refs": [
+        "H-21"
+      ],
+      "ac_ref": "AC-21"
+    },
+    {
+      "finding_id": "D-SC-01",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-01 (GOVERNING_SEMANTICS): @navtitle is governed by @locktitle, which decides whether it overrides the referenced tit",
+      "source_refs": [
+        "SC-01"
+      ]
+    },
+    {
+      "finding_id": "D-SC-02",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-02 (CONTROLLING_ATTRIBUTES): @locktitle is the controlling attribute for navtitle's display behaviour",
+      "source_refs": [
+        "SC-02"
+      ]
+    },
+    {
+      "finding_id": "D-SC-03",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-03 (GOVERNING_CONFIGURATION): ditaAttributes.required.navtitle governs whether navtitle is auto-populated",
+      "source_refs": [
+        "SC-03"
+      ]
+    },
+    {
+      "finding_id": "D-SC-04",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-04 (DIRECT_CONSUMERS): map navigation/TOC and keyref/xref link-text resolution consume the navtitle",
+      "source_refs": [
+        "SC-04"
+      ]
+    },
+    {
+      "finding_id": "D-SC-05",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-05 (SIBLING_CONSUMERS): other required ditaAttributes are sibling consumers of the same population path",
+      "source_refs": [
+        "SC-05"
+      ]
+    },
+    {
+      "finding_id": "D-SC-06",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-06 (ALTERNATE_MECHANISMS): the Refresh navigation title action is an alternate mechanism that re-derives navtitle",
+      "source_refs": [
+        "SC-06"
+      ]
+    },
+    {
+      "finding_id": "D-SC-07",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-07 (PARENT_CONTEXT): a topicref's @navtitle has no governing parent construct that changes its population",
+      "source_refs": [
+        "SC-07"
+      ]
+    },
+    {
+      "finding_id": "D-SC-08",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-08 (CHILD_CONTEXT): @navtitle is a leaf attribute with no child constructs",
+      "source_refs": [
+        "SC-08"
+      ]
+    },
+    {
+      "finding_id": "D-SC-09",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-09 (HIERARCHY): bookmap chapter/appendix and nested topicrefs each receive navtitle",
+      "source_refs": [
+        "SC-09"
+      ]
+    },
+    {
+      "finding_id": "D-SC-10",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-10 (SPECIALIZATIONS): topichead, mapref, keydef and glossref specializations apply navtitle differently or not a",
+      "source_refs": [
+        "SC-10"
+      ]
+    },
+    {
+      "finding_id": "D-SC-11",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-11 (REFERENCED_CONTENT): the navtitle value is derived from the referenced topic <title>",
+      "source_refs": [
+        "SC-11"
+      ]
+    },
+    {
+      "finding_id": "D-SC-12",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-12 (NESTED_REFERENCED_CONTENT): no nested reference resolution is involved in reading the referenced title",
+      "source_refs": [
+        "SC-12"
+      ]
+    },
+    {
+      "finding_id": "D-SC-13",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-13 (ALTERNATE_REPRESENTATION): the @navtitle attribute form versus the <topicmeta><navtitle> element form is an open prod",
+      "source_refs": [
+        "SC-13"
+      ]
+    },
+    {
+      "finding_id": "D-SC-14",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-14 (FALLBACK): the empty/missing referenced-title fallback for navtitle",
+      "source_refs": [
+        "SC-14"
+      ]
+    },
+    {
+      "finding_id": "D-SC-15",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-15 (ABSENT_VALUE): the exact navtitle value when the referenced topic has no title is an open decision (dimen",
+      "source_refs": [
+        "SC-15"
+      ]
+    },
+    {
+      "finding_id": "D-SC-16",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-16 (INVALID_VALUE): navtitle is free text, so there is no invalid-value class to validate",
+      "source_refs": [
+        "SC-16"
+      ]
+    },
+    {
+      "finding_id": "D-SC-17",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-17 (POSITIVE_STATE): navtitle present on the saved topicref when required",
+      "source_refs": [
+        "SC-17"
+      ]
+    },
+    {
+      "finding_id": "D-SC-18",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-18 (NEGATIVE_STATE): navtitle not added when not required, and an author value not overwritten",
+      "source_refs": [
+        "SC-18"
+      ]
+    },
+    {
+      "finding_id": "D-SC-19",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-19 (LIFECYCLE): navtitle persists across save, reopen, and further edits",
+      "source_refs": [
+        "SC-19"
+      ]
+    },
+    {
+      "finding_id": "D-SC-20",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-20 (CROSS_SURFACE_SYNC): New Editor parity and editor-preview agreement on navtitle",
+      "source_refs": [
+        "SC-20"
+      ]
+    },
+    {
+      "finding_id": "D-SC-21",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-21 (DOWNSTREAM_PROCESSOR): no downstream processor transforms navtitle at insertion time",
+      "source_refs": [
+        "SC-21"
+      ]
+    },
+    {
+      "finding_id": "D-SC-22",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-22 (GENERATED_OUTPUT): navtitle is consumed in generated navigation/output as the display title",
+      "source_refs": [
+        "SC-22"
+      ]
+    },
+    {
+      "finding_id": "D-SC-23",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-23 (PERSISTED_STATE): the @navtitle attribute persisted on the topicref node in the map source",
+      "source_refs": [
+        "SC-23"
+      ]
+    },
+    {
+      "finding_id": "D-SC-24",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-24 (VERSION_APPLICABILITY): navtitle population is not version-dependent",
+      "source_refs": [
+        "SC-24"
+      ]
+    },
+    {
+      "finding_id": "D-SC-25",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-25 (DEPLOYMENT_APPLICABILITY): navtitle population is not deployment-dependent",
+      "source_refs": [
+        "SC-25"
+      ]
+    },
+    {
+      "finding_id": "D-SC-26",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-26 (ROLE_PROFILE_APPLICABILITY): the required-navtitle setting applies under both Global and Folder profiles",
+      "source_refs": [
+        "SC-26"
+      ]
+    },
+    {
+      "finding_id": "D-SC-27",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-27 (PUBLISHING_MODE): this is an editor insertion behaviour, not a publishing-mode concern",
+      "source_refs": [
+        "SC-27"
+      ]
+    },
+    {
+      "finding_id": "D-SC-28",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "SC-28 (BACKWARD_COMPATIBILITY): existing maps and author-set navtitles are not rewritten on open",
+      "source_refs": [
+        "SC-28"
+      ]
+    },
+    {
+      "finding_id": "D-SC-29",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-29 (LOCALE_APPLICABILITY): navtitle population is not locale-dependent",
+      "source_refs": [
+        "SC-29"
+      ]
+    },
+    {
+      "finding_id": "D-SC-30",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-30 (CONTENT_IDENTITY): navtitle is a display attribute and does not participate in content identity",
+      "source_refs": [
+        "SC-30"
+      ]
+    },
+    {
+      "finding_id": "D-SC-31",
+      "disposition": "INVESTIGATED_AND_REJECTED",
+      "statement": "SC-31 (NFR_RISK): no scale, performance, or other NFR risk is in scope for attribute population",
+      "source_refs": [
+        "SC-31"
+      ]
+    },
+    {
+      "finding_id": "D-CF-01",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "CF-01 documented expected behaviour drives the acceptance contract",
+      "source_refs": [
+        "CF-01"
+      ]
+    },
+    {
+      "finding_id": "D-CF-02",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "CF-02 reported defect state grounds the negative criterion",
+      "source_refs": [
+        "CF-02"
+      ]
+    },
+    {
+      "finding_id": "D-CF-03",
+      "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+      "statement": "CF-03 required-navtitle configuration scope",
+      "source_refs": [
+        "CF-03"
+      ]
+    },
+    {
+      "finding_id": "D-BGN-01",
+      "disposition": "SEMANTIC_REGRESSION",
+      "statement": "BGN-01 the @navtitle attribute node - its 31 closure dimensions are dispositioned",
+      "source_refs": [
+        "BGN-01"
+      ]
+    }
+  ],
+  "acceptance_promotions": {
+    "schema_version": "aem-guides-acceptance-promotions-v1",
+    "records": [
+      {
+        "promotion_id": "AP-01",
+        "candidate_ref": "H-01",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-01",
+        "disposition_ref": "D-01",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-02",
+        "candidate_ref": "H-02",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-02",
+        "disposition_ref": "D-02",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-03",
+        "candidate_ref": "H-03",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-03",
+        "disposition_ref": "D-03",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-04",
+        "candidate_ref": "H-04",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-04",
+        "disposition_ref": "D-04",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-05",
+        "candidate_ref": "H-05",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-05",
+        "disposition_ref": "D-05",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-06",
+        "candidate_ref": "H-06",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-06",
+        "disposition_ref": "D-06",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-07",
+        "candidate_ref": "H-07",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-07",
+        "disposition_ref": "D-07",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-08",
+        "candidate_ref": "H-08",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-08",
+        "disposition_ref": "D-08",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-09",
+        "candidate_ref": "H-09",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-09",
+        "disposition_ref": "D-09",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-10",
+        "candidate_ref": "H-10",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-10",
+        "disposition_ref": "D-10",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-11",
+        "candidate_ref": "H-11",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-11",
+        "disposition_ref": "D-11",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-12",
+        "candidate_ref": "H-12",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-12",
+        "disposition_ref": "D-12",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-13",
+        "candidate_ref": "H-13",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-13",
+        "disposition_ref": "D-13",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-14",
+        "candidate_ref": "H-14",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-14",
+        "disposition_ref": "D-14",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-15",
+        "candidate_ref": "H-15",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-15",
+        "disposition_ref": "D-15",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-16",
+        "candidate_ref": "H-16",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-16",
+        "disposition_ref": "D-16",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-17",
+        "candidate_ref": "H-17",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-17",
+        "disposition_ref": "D-17",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-18",
+        "candidate_ref": "H-18",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-18",
+        "disposition_ref": "D-18",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-19",
+        "candidate_ref": "H-19",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-19",
+        "disposition_ref": "D-19",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-20",
+        "candidate_ref": "H-20",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-20",
+        "disposition_ref": "D-20",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      },
+      {
+        "promotion_id": "AP-21",
+        "candidate_ref": "H-21",
+        "decision": "PROMOTED_PROPOSED",
+        "ac_ref": "AC-21",
+        "disposition_ref": "D-21",
+        "subject": "PRODUCT_CONTRACT",
+        "observable": true,
+        "testable": true,
+        "scope_established": true,
+        "regression_only": false,
+        "implementation_only": false,
+        "conflicts_accepted_uac": false,
+        "intended_behavior_authorities": [
+          "JIRA_EXPECTED_BEHAVIOR"
+        ],
+        "disposition": "PROPOSED_ACCEPTANCE_CONTRACT"
+      }
+    ]
+  },
+  "contract_facts": {
+    "schema_version": "aem-guides-contract-facts-v1",
+    "contract_state": "EVIDENCE_BACKED_PROPOSED_CONTRACT",
+    "source_refs": [
+      "Jira description GUIDES-54348"
+    ],
+    "facts": [
+      {
+        "fact_id": "CF-01",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "every newly added <topicref> receives @navtitle populated from the referenced topic's <title>",
+        "normalized": "auto-populate @navtitle from the referenced topic title when required",
+        "source_ref": "Jira description GUIDES-54348",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-01",
+        "protected_terms": [
+          "navtitle",
+          "topicref"
+        ]
+      },
+      {
+        "fact_id": "CF-02",
+        "category": "DIRECT_EXPECTED_BEHAVIOR",
+        "literal": "a newly inserted <topicref> in the Map Editor is saved without @navtitle",
+        "normalized": "navtitle missing on inserted topicref (the reported defect)",
+        "source_ref": "Jira description GUIDES-54348",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-04",
+        "protected_terms": [
+          "navtitle"
+        ]
+      },
+      {
+        "fact_id": "CF-03",
+        "category": "IN_SCOPE",
+        "literal": "ditaAttributes.required.navtitle to true",
+        "normalized": "required-navtitle configuration governs population",
+        "source_ref": "Jira description GUIDES-54348",
+        "subject": "PRODUCT_CONTRACT",
+        "authority": "JIRA_EXPECTED_BEHAVIOR",
+        "material": true,
+        "integrity": "NORMALIZED_WITHOUT_SEMANTIC_CHANGE",
+        "destination": "ACCEPTANCE_CRITERION",
+        "ac_ref": "AC-05",
+        "protected_terms": [
+          "navtitle"
+        ]
+      }
+    ]
+  },
+  "issue_domains": {
+    "schema_version": "aem-guides-issue-domains-v1",
+    "primary_domain": "AUTHORING",
+    "routes": [
+      {
+        "domain": "AUTHORING",
+        "status": "ACTIVE",
+        "reason": "Map Editor topicref insertion and required-attribute population is an authoring behaviour",
+        "evidence": [
+          "Jira description GUIDES-54348"
+        ]
+      }
+    ]
+  },
+  "missing_questions": []
+}
