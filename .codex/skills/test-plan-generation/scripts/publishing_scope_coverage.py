@@ -45,10 +45,33 @@ def _components(manifest):
     return [str(c).strip().lower() for c in comps] if isinstance(comps, list) else []
 
 
+# Sections that describe OTHER tickets (historical neighbours), not this ticket's
+# own scope. A neighbour's title mentioning "native pdf" must not misclassify the
+# ticket - the strong-signal scan runs only over the ticket's own sections.
+_NEIGHBOUR_SECTIONS = ("Known Jira Bugs", "Past Similar Tickets")
+
+
+def _own_scope_text(plan_text):
+    """Return the plan text with the historical-neighbours section removed, so a
+    neighbouring ticket's title cannot trigger the publishing classification."""
+    if not plan_text:
+        return ""
+    text = plan_text
+    for name in _NEIGHBOUR_SECTIONS:
+        # Drop from a header containing the neighbour-section name to the next header.
+        text = re.sub(
+            rf"\*\*[^*\n]*{re.escape(name)}[^*\n]*\*\*.*?(?=\n\*\*|\Z)",
+            "",
+            text,
+            flags=re.S,
+        )
+    return text
+
+
 def is_publishing_ticket(manifest, plan_text=""):
     if PUBLISHING_COMPONENT in _components(manifest):
         return True
-    hay = (plan_text or "").lower()
+    hay = _own_scope_text(plan_text).lower()
     # Require a preset/output-generation signal, not merely the word "publish".
     strong = ("output preset", "native pdf", "dita-ot", "dita ot", "output generation")
     return any(sig in hay for sig in strong)

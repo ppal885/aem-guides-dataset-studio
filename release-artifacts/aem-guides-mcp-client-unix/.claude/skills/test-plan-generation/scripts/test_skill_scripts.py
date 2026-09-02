@@ -110,6 +110,7 @@ publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_s
 root_cause_fix_driven_mod = _load("root_cause_fix_driven", "root_cause_fix_driven.py")
 reviewer_request_coverage_mod = _load("reviewer_request_coverage", "reviewer_request_coverage.py")
 reproducibility_gate_mod = _load("reproducibility_gate", "reproducibility_gate.py")
+probe_coverage_gate_mod = _load("probe_coverage_gate", "probe_coverage_gate.py")
 dimension_synthesizer_mod = _load("dimension_synthesizer", "dimension_synthesizer.py")
 miss_probe_library_mod = _load("miss_probe_library", "miss_probe_library.py")
 feature_map_mod = _load("feature_map", "feature_map.py")
@@ -2903,6 +2904,7 @@ def test_component_reference_routing() -> None:
             "scripts/root_cause_fix_driven.py",
             "scripts/reviewer_request_coverage.py",
             "scripts/reproducibility_gate.py",
+            "scripts/probe_coverage_gate.py",
             "scripts/dimension_synthesizer.py",
             "scripts/miss_probe_library.py",
             "data/miss_probes.json",
@@ -6805,6 +6807,27 @@ def test_publishing_scope_coverage() -> None:
     check("output-preset text signal activates the check",
           ps.validate(text_pub, "**Acceptance Criteria**\n- AC-01: native pdf output preset metadata\n") != [])
 
+    # UACGAP-02: a publishing token that appears ONLY inside the historical-neighbours
+    # section must NOT classify a non-publishing ticket as publishing.
+    neighbour_only = {"issue": {"components": ["Editor"]}}
+    neighbour_plan = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Basic) Given a map | When a topicref is inserted | Then an attribute is added | Evidence: Jira.\n\n"
+        "**Known Jira Bugs / Past Similar Tickets**\n"
+        '- GUIDES-10509 "Native pdf - navtitle for topichead is not honoured" - Similarity: adjacent.\n'
+    )
+    check("neighbour-only native-pdf mention does not classify as publishing",
+          not ps.is_publishing_ticket(neighbour_only, neighbour_plan))
+    check("neighbour-only native-pdf plan is not flagged",
+          ps.validate(neighbour_only, neighbour_plan) == [])
+    # But the same token in the ticket's OWN Acceptance Criteria still activates.
+    own_plan = (
+        "**Acceptance Criteria**\n- AC-01: native pdf output preset in scope | Evidence: Jira.\n\n"
+        "**Known Jira Bugs / Past Similar Tickets**\n- GUIDES-1 nothing.\n"
+    )
+    check("own-section native-pdf mention still classifies as publishing",
+          ps.is_publishing_ticket(neighbour_only, own_plan))
+
     print("test_publishing_scope_coverage: OK")
 
 
@@ -7769,6 +7792,58 @@ def test_reproducibility_gate() -> None:
     )
 
     print("test_reproducibility_gate: OK")
+
+
+def test_probe_coverage_gate() -> None:
+    gate = probe_coverage_gate_mod
+    nl = chr(10)
+
+    # A plan whose evidence trips MP-004 (output-generation entry points): the word
+    # "native pdf" + "output preset" activates it.
+    pub_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: native pdf output preset table rendering.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given a native pdf output preset | When published | Then it renders | Evidence: Jira.",
+    ])
+    manifest_no_dim = {"issue": {"summary": "native pdf output preset issue", "components": ["Publishing"]}}
+    check("output-generation evidence activates a probe", gate.is_present(pub_plan, manifest_no_dim))
+    probs = gate.validate(pub_plan, manifest_no_dim)
+    check("activated probe without a covering dimension fails", any("PROBE COVERAGE GATE:" in p for p in probs))
+
+    # Covering the ENTRY_POINT axis via a clarification dimension satisfies it.
+    manifest_covered = dict(manifest_no_dim, clarification={
+        "dimension_space": [
+            {"dimension_id": "D-01", "axis": "ENTRY_POINT", "material": True, "resolution": "COVERED_BY_AC", "ac_refs": ["AC-01"]}
+        ]
+    })
+    check("covering the axis via a clarification dimension passes", gate.validate(pub_plan, manifest_covered) == [])
+
+    # Explicit probe_dispositions rejection also satisfies it.
+    active = [p for p in gate.activated_probes(pub_plan, manifest_no_dim) if not p["shadow"]]
+    pid = active[0]["probe_id"] if active else "MP-004"
+    manifest_disp = dict(manifest_no_dim, probe_dispositions=[
+        {"probe_id": pid, "disposition": "NOT_APPLICABLE", "reason": "single-surface ticket; other entry points do not apply here."}
+    ])
+    check("explicit probe disposition satisfies the gate", gate.validate(pub_plan, manifest_disp) == [])
+
+    # No probe token in the evidence -> not activated, clean pass (backward-compatible).
+    quiet_plan = "**Acceptance Criteria**\n- AC-01 [Proposed]: (Basic) Given a thing | When acted | Then result | Evidence: Jira.\n"
+    quiet_manifest = {"issue": {"summary": "an unrelated backend null guard", "components": ["Miscellaneous"]}}
+    check("no matching probe is not activated", not gate.is_present(quiet_plan, quiet_manifest))
+    check("no-probe plan passes", gate.validate(quiet_plan, quiet_manifest) == [])
+
+    run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
+    check(
+        "run_gates loads the probe-coverage gate",
+        'probe_coverage_gate_mod = _load("probe_coverage_gate"' in run_gates_source,
+    )
+    check(
+        "run_gates invokes the probe-coverage validator without hiding its prefix",
+        "failures += probe_coverage_gate_mod.validate(body, manifest_data)" in run_gates_source,
+    )
+
+    print("test_probe_coverage_gate: OK")
 
 
 def test_root_cause_fix_driven() -> None:
@@ -9655,6 +9730,7 @@ def main() -> int:
     test_root_cause_fix_driven()
     test_reviewer_request_coverage()
     test_reproducibility_gate()
+    test_probe_coverage_gate()
     test_miss_probe_library()
     test_feature_map()
     test_offline_retrieval()
