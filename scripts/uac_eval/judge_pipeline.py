@@ -66,8 +66,15 @@ def main() -> int:
     ap.add_argument("--out", default=str(HERE / "judge_pipeline_report.md"))
     args = ap.parse_args()
 
+    from gold_quality import is_scorable  # noqa: E402
+
     rows = [json.loads(l) for l in Path(args.corpus).read_text(encoding="utf-8").splitlines() if l.strip()]
     rows = [r for r in rows if len((r.get("description") or "").strip()) > 120 and len((r.get("human_ac") or "").strip()) > 60]
+    _before = len(rows)
+    rows = [r for r in rows if is_scorable(r)]
+    _excluded = _before - len(rows)
+    if _excluded:
+        print(f"excluded {_excluded} rows with non-AC gold (pointer/resolution/conversational)")
     random.seed(args.seed)
     random.shuffle(rows)
     cut = int(len(rows) * (1 - args.holdout_frac))

@@ -105,8 +105,11 @@ def main() -> int:
                     help="baseline = description-only LLM; skill = LLM + skill guidance/priors")
     args = ap.parse_args()
 
+    from gold_quality import is_scorable  # noqa: E402
+
     rows = [json.loads(l) for l in Path(args.corpus).read_text(encoding="utf-8").splitlines() if l.strip()]
     rows = [r for r in rows if len((r.get("description") or "").strip()) > 120 and len((r.get("human_ac") or "").strip()) > 60]
+    rows = [r for r in rows if is_scorable(r)]
     # stratify by component
     by_comp = defaultdict(list)
     for r in rows:
