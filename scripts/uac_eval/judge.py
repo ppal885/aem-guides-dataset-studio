@@ -68,15 +68,35 @@ def _build_train_priors(train_rows: list[dict], out_path: Path, thresh: float = 
 
 
 JUDGE = (
-    "You are an impartial QA reviewer. Compare a CANDIDATE acceptance-criteria draft "
-    "against the human REFERENCE UAC for the same Jira ticket. Return ONLY JSON:\n"
+    "You are an impartial QA reviewer. Both texts below are ACCEPTANCE CRITERIA for "
+    "the same Jira ticket: a human REFERENCE and a CANDIDATE. Compare only the "
+    "acceptance criteria. Return ONLY JSON:\n"
     '{{"coverage_pct": <0-100, fraction of the reference''s acceptance points the '
-    'candidate addresses>, "hallucinations": <int, candidate points that contradict '
-    'or are unsupported by the ticket/reference>, "missing_key_points": [<short '
-    'strings of important reference points the candidate omits>], "holistic": <1-5 '
-    'overall usefulness vs the reference>}}\n\n'
-    "TICKET: {summary}\n\nREFERENCE UAC:\n{gold}\n\nCANDIDATE:\n{cand}\n"
+    'candidate addresses>, "hallucinations": <int, candidate acceptance criteria '
+    'that CONTRADICT the ticket or assert behaviour the ticket does not support; do '
+    'NOT count a criterion merely for being additional reasonable coverage the human '
+    'omitted, and do NOT count test scenarios, regression notes, or open questions>, '
+    '"missing_key_points": [<short strings of important reference points the '
+    'candidate omits>], "holistic": <1-5 overall usefulness of the candidate''s '
+    'acceptance criteria vs the reference>}}\n\n'
+    "TICKET: {summary}\n\nREFERENCE ACCEPTANCE CRITERIA:\n{gold}\n\n"
+    "CANDIDATE ACCEPTANCE CRITERIA:\n{cand}\n"
 )
+
+
+def _extract_ac(text: str) -> str:
+    """Return just the Acceptance Criteria section of a plan so the judge compares
+    AC-to-AC. Falls back to the whole text when no AC heading is present (e.g. a
+    baseline draft that is already only acceptance criteria)."""
+    if not text:
+        return ""
+    m = re.search(
+        r"(?:^|\n)\s*(?:#{1,4}\s*|\*\*)\s*"
+        r"(?:Proposed acceptance contract|Acceptance contract|Acceptance criteria)\b.*?"
+        r"(?=\n\s*(?:#{1,4}\s*|\*\*)\s*[A-Z][A-Za-z /]{2,40}\b|\Z)",
+        text, re.S | re.I,
+    )
+    return (m.group(0).strip() if m else text.strip())
 
 
 def _judge(client, model, row, cand) -> dict:
@@ -84,8 +104,8 @@ def _judge(client, model, row, cand) -> dict:
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": JUDGE.format(
-                summary=row.get("summary", ""), gold=(row.get("human_ac") or "")[:5000],
-                cand=(cand or "")[:5000])}],
+                summary=row.get("summary", ""), gold=_extract_ac(row.get("human_ac") or "")[:5000],
+                cand=_extract_ac(cand or "")[:5000])}],
             max_completion_tokens=800,
         )
         txt = resp.choices[0].message.content or "{}"
