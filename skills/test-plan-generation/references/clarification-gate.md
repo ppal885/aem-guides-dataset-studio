@@ -140,5 +140,17 @@ examples from the corpus:
 The two dominant, most-missed dimensions across every component are **state
 partitions** (both/with-and-without, profile, baseline, enumdef-bound vs not) and
 **all consumer UI surfaces** (do not stop at the one panel the ticket names).
-These priors are advisory keyword signal, not a hard gate: they widen discovery;
-they never license adding an AC the evidence does not support.
+
+**Bind every prior to evidence - this is not optional.** A prior means
+*investigate that dimension*, NOT *write an AC for it*. For each prior dimension:
+verify it against the ticket, the attachments, the code consumers, or RAG, then
+either (a) cover it in an AC that cites that evidence, (b) expose it as an Open
+Question when a product decision is needed, or (c) record it out of scope with a
+reason. **Never add an AC for a prior dimension just to "cover" it.** A held-out,
+LLM-judged evaluation showed that injecting these priors as blanket "cover these
+dimensions" guidance did NOT improve real coverage and *tripled hallucinations* -
+the model padded acceptance criteria the ticket does not support. An unsupported
+AC is a hallucination, and the judge (like a human reviewer and UAT) penalizes it
+harder than an honest miss. The priors widen discovery; evidence, not the prior,
+authorizes the AC. This is why `contract_facts` and `acceptance_promotions`
+require a cited source: an AC with no evidence anchor must not ship.
