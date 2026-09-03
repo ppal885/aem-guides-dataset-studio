@@ -36,8 +36,13 @@
 **Code Touched**
 
 - No code changes yet - development has not started.
-- Current implementation implicated: C:\starling\core\publish-listener\src\main\java\com\adobe\fmdita\rest\folderprofiles\NativePdfPresetService.java handles the Native PDF preset, and C:\starling\core\utils\src\main\java\com\adobe\fmdita\uuid\concrete\CORTopicMetadata.java and CORDitaMetadata.java model the topic and map metadata that the merged page must display.
-- Potential code impact: the Native PDF engine page-merge and metadata-resolution path that drops the topic metadata context when a page layout is merged; this path is not in the Starling clone and is named as inferred, not a confirmed diff.
+- Current implementation implicated, traced from UI to staging to metadata.xml to renderer, is listed below with complete absolute paths.
+- Page layout order and Merge with Previous or Next or None is configured in C:\xmleditor\xmleditor\src\config\ui\views\template_editor_ui.json line 45, and the template controller is C:\xmleditor\xmleditor\src\controllers\widgets\publish\template_details_controller.ts line 6; the metadata Field is authored into the template layout content.
+- Native PDF preset handling is in C:\starling\core\publish-listener\src\main\java\com\adobe\fmdita\rest\folderprofiles\NativePdfPresetService.java line 419 mergeNativePdfSpecificFields.
+- Template staging for the renderer copies the page layout template and its Field placeholders to disk in C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\ot\NodeJsExecutor.java at line 893 projectTemplatesDir and line 938 extractTemplate.
+- The metadata the Field reads is built per asset into metadata.xml in C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\ot\NodeJsExecutor.java at line 717 getMetadataDirectory and line 737 and line 768 createMetadataFile, which is the same metadata.xml pipeline as GUIDES-29816.
+- The external renderer is invoked in C:\starling\core\publish-workflow\src\main\java\com\adobe\fmdita\ot\NodeJsExecutor.java line 1035 executeNodeProcess, which runs the external Node PDF renderer with the staged template and metadata.
+- Boundary: the external Node PDF renderer resolves the metadata Field from the topic entry in metadata.xml and is not present in any inspected clone, so the exact Field-resolution-on-merge code is not inspectable, but its inputs the staged template and metadata.xml are verified above; the likely defect is that the merged page is not associated with the correct topic entry in metadata.xml, or that entry is absent.
 
 **Lines Changed**
 
@@ -66,6 +71,7 @@
 - Re-run Native PDF and confirm the static VER and CHANGE DESCRIPTION labels still render on the merged page, because the fix changes the merged-page metadata resolution and could disturb the labels that currently work.
 - Re-run the other output presets DITA-OT PDF, HTML5, and AEM Site and confirm their metadata rendering is unchanged, because a page-merge change in the publishing path could affect other presets.
 - Re-run Native PDF for a large map with many topics and confirm each merged metadata page keeps the correct per-topic values, because per-topic association across a merged layout is the highest-priority regression risk.
+- Re-test the metadata.xml assembly path (NodeJsExecutor.extractMetadata / MetadataManager.createMetadataFile) for Native PDF because this ticket shares the exact metadata.xml pipeline exercised by GUIDES-29816, so a change to per-asset metadata assembly can affect both the merged-layout Field values and the damPath and source-props behaviour.
 
 **Automation Coverage & Gaps**
 
@@ -82,3 +88,4 @@
 - OQ-02: Does the same context loss affect map-level metadata fields as well as topic-level metadata fields in the layout? QA impact: sets the scope of AC-08.
 - OQ-03: Is a standalone non-merged custom layout intended to have topic metadata context at all? QA impact: sets the baseline expectation for AC-06 so the non-merged case is not asserted incorrectly.
 - OQ-04: Is the topic metadata context dropped specifically when a page layout is merged, since the underlying cause is not yet confirmed? QA impact: determines whether the fix target is the page-merge path and which regression areas apply.
+- OQ-05: On the merged page, does the metadata.xml built by MetadataManager and NodeJsExecutor contain the topic entry the Field reads, and does the Node renderer associate the merged page with that topic entry? QA impact: separates a metadata.xml assembly gap shared with GUIDES-29816 from a renderer topic-association bug on merge, and decides whether the fix is backend or renderer.

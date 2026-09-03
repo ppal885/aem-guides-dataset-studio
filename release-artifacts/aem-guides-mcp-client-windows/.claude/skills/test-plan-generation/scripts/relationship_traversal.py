@@ -234,6 +234,29 @@ def is_present(manifest: Any) -> bool:
     return isinstance(manifest, Mapping) and "construct_relationships" in manifest
 
 
+_CODE_CONSUMER_BM_KEYS = (
+    "consumers",
+    "processors",
+    "producers",
+    "read_paths",
+    "write_paths",
+    "update_paths",
+    "recompute_paths",
+    "remove_paths",
+)
+
+
+def _behavior_names_code_consumers(behavior_model: Any) -> bool:
+    """True when the behavior model names real code consumers/paths - the signal
+    that a code-mechanism ticket must carry a construct/consumer traversal."""
+    if not isinstance(behavior_model, Mapping):
+        return False
+    return any(
+        isinstance(behavior_model.get(key), list) and behavior_model.get(key)
+        for key in _CODE_CONSUMER_BM_KEYS
+    )
+
+
 def _normalise_name(value: Any) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(value).casefold()))
 
@@ -687,6 +710,24 @@ def validate_construct_relationships(
                 "must be true with a non-empty note"
             )
 
+    # A construct/mechanism traversal must reach at least one CODE consumer (a
+    # file:line source), not only corpus (chunk_id) edges. A corpus-only or
+    # documentation-only traversal is exactly the shallow pass that misses the
+    # real code touch points across the clones.
+    if isinstance(edges, list) and edges:
+        has_code_consumer = any(
+            _source_kind(str(edge.get("source", ""))) == "code" for edge in valid_edges
+        )
+        no_code_reason = ""
+        if isinstance(discovery, dict):
+            no_code_reason = str(discovery.get("no_code_consumer_reason", "")).strip()
+        if not has_code_consumer and not no_code_reason:
+            problems.append(
+                "construct_relationships must enumerate at least one code consumer with "
+                "a file:line source (not only chunk_id corpus edges); or set "
+                "discovery.no_code_consumer_reason for a genuinely non-code construct"
+            )
+
     cross_dimensions = block.get("cross_dimensions")
     problems.extend(
         _validate_cross_dimensions(
@@ -750,6 +791,28 @@ def check_relationship_traversal(
             [],
         )
     if "construct_relationships" not in manifest:
+        # Fail-closed: when the behavior model names real code consumers (a
+        # code-mechanism ticket), the construct/consumer traversal is mandatory -
+        # it cannot be silently skipped. Only an explicit, concrete
+        # relationship_traversal_not_applicable reason may opt out.
+        if _behavior_names_code_consumers(behavior_model):
+            na = manifest.get("relationship_traversal_not_applicable")
+            na_reason = ""
+            if isinstance(na, Mapping):
+                na_reason = str(na.get("reason", "")).strip()
+            elif isinstance(na, str):
+                na_reason = na.strip()
+            if len(na_reason) < 8:
+                return (
+                    [
+                        "a code-mechanism ticket (behavior_model names code consumers, "
+                        "processors, or read/write paths) requires a construct_relationships "
+                        "traversal that enumerates the code consumers across the clones; "
+                        "declare construct_relationships, or set "
+                        "relationship_traversal_not_applicable with a concrete reason"
+                    ],
+                    [],
+                )
         note = relationship_review_note(manifest, behavior_model=behavior_model)
         return [], [note] if note else []
     return (
@@ -1004,6 +1067,27 @@ def run_self_tests() -> None:
         block, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}
     ) == []
 
+    corpus_only = copy.deepcopy(block)
+    for edge in corpus_only["edges"]:
+        edge["source"] = "chunk_id:relation-99"
+    assert any(
+        "at least one code consumer" in item
+        for item in validate_construct_relationships(
+            corpus_only, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}
+        )
+    ), "corpus-only traversal must be rejected for lacking a code consumer"
+
+    corpus_only_reason = copy.deepcopy(corpus_only)
+    corpus_only_reason["discovery"]["no_code_consumer_reason"] = (
+        "This construct is defined purely in product documentation with no code consumer."
+    )
+    assert not any(
+        "at least one code consumer" in item
+        for item in validate_construct_relationships(
+            corpus_only_reason, ac_ids={"AC-01"}, open_question_ids={"OQ-01"}
+        )
+    ), "a concrete no_code_consumer_reason must suppress the code-consumer requirement"
+
     missing_terms = copy.deepcopy(block)
     missing_terms["discovery"]["code_search_terms"] = []
     assert any(
@@ -1095,6 +1179,27 @@ def run_self_tests() -> None:
     }
     review_failures, review_notes = check_relationship_traversal(review_manifest)
     assert review_failures == [] and review_notes and review_notes[0].startswith("REVIEW:")
+
+    # Part B: a code-mechanism ticket (behavior_model names code consumers) with no
+    # construct_relationships is a hard failure, not just a REVIEW note.
+    code_bm = {"consumers": ["RendererX"], "processors": ["ResolverY"]}
+    cm_failures, _ = check_relationship_traversal({"issue": "x"}, behavior_model=code_bm)
+    assert any("requires a construct_relationships traversal" in f for f in cm_failures), (
+        "a code-mechanism ticket without a traversal must hard-fail"
+    )
+    # An explicit, concrete not-applicable reason opts out cleanly.
+    cm_ok, _ = check_relationship_traversal(
+        {
+            "issue": "x",
+            "relationship_traversal_not_applicable": {
+                "reason": "Pure internal null-guard with no product-visible consumer surface."
+            },
+        },
+        behavior_model=code_bm,
+    )
+    assert not any("requires a construct_relationships traversal" in f for f in cm_ok), (
+        "a concrete relationship_traversal_not_applicable reason must opt out"
+    )
 
     chunks = [
         {
