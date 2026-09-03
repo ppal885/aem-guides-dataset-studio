@@ -185,3 +185,4 @@ output/test-plans/*gate-receipt*.json
 output/test-plans/*gate-receipt*.md
 dita_examples/community/*/
 scripts/uac_eval/corpus.jsonl
+scripts/uac_eval/train_priors.json

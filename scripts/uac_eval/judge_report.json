@@ -1,0 +1,323 @@
+{
+  "per": [
+    {
+      "key": "GUIDES-48893",
+      "component": "Review",
+      "baseline": {
+        "coverage_pct": 60,
+        "hallucinations": 5,
+        "holistic": 3,
+        "missing": [
+          "Performance remains optimized specifically for a large number of projects",
+          "Performance remains optimized specifically with large numbers of review tasks",
+          "Explicit statement that optimized performance is maintained (not just initial render/filter timing)"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 0,
+        "hallucinations": 26,
+        "holistic": 1,
+        "missing": [
+          "Optimized performance is maintained for a large number of projects",
+          "Optimized performance is maintained with large numbers of review tasks"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-37733",
+      "component": "Publishing",
+      "baseline": {
+        "coverage_pct": 33,
+        "hallucinations": 3,
+        "holistic": 2,
+        "missing": [
+          "Test multiple ditaval files where whole folder hierarchy is excluded for topics",
+          "Baseline scenario where dc:title changes across multiple versions",
+          "Works with both DITA-OT on and off"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 67,
+        "hallucinations": 16,
+        "holistic": 2,
+        "missing": [
+          "Multiple ditaval files where whole folder hierarchy is excluded for topics",
+          "Must not break for baseline where dc:title changes across multiple versions",
+          "Explicitly verify behavior with DITA-OT ON vs DITA-OT OFF (both modes)"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-53807",
+      "component": "Publishing",
+      "baseline": {
+        "coverage_pct": 25,
+        "hallucinations": 2,
+        "holistic": 2,
+        "missing": [
+          "External URL in topicref href must not fail Native AEM Sites publishing",
+          "Use navtitle as TOC title when present; otherwise use external href as TOC title",
+          "Sanitize external URLs before using as TOC titles (special chars, fragments, query params, encoded chars, long URLs)",
+          "Graceful handling: individual TOC item failure logged at WARN without failing the whole job"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 18,
+        "hallucinations": 12,
+        "holistic": 2,
+        "missing": [
+          "Publishing must not fail when an external URL is configured in topicref @href",
+          "Use navtitle as TOC title when present; otherwise use external href as TOC title",
+          "Sanitize external URLs before using them as TOC titles (special chars, fragments, query params, encoded chars, long URLs)",
+          "If an individual TOC item fails to generate, handle gracefully and log at WARN without failing the overall job"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-8979",
+      "component": "Authoring",
+      "baseline": {
+        "coverage_pct": 20,
+        "hallucinations": 11,
+        "holistic": 2,
+        "missing": [
+          "Verify no application/xml hardcoding specifically in Download map",
+          "Verify no application/xml hardcoding specifically in Serialisation",
+          "Verify no application/xml hardcoding specifically in Review",
+          "Verify no application/xml hardcoding specifically in Publishing"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 0,
+        "hallucinations": 26,
+        "holistic": 1,
+        "missing": [
+          "Verify all code areas with application/xml hard-coded: Download map",
+          "Verify all code areas with application/xml hard-coded: Serialisation",
+          "Verify all code areas with application/xml hard-coded: Review",
+          "Verify all code areas with application/xml hard-coded: Publishing"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-46748",
+      "component": "Authoring",
+      "baseline": {
+        "coverage_pct": 38,
+        "hallucinations": 1,
+        "holistic": 2,
+        "missing": [
+          "Auto-normalization for morerows/extra-entry anomalies must produce valid DITA <entry> cells only (never <foreign> wrappers)",
+          "A single <table> in source must remain one table in UI and XML after open/save (no split)",
+          "User table edits (add row/column, merge, edit text) must persist correctly without spurious columns or <foreign>",
+          "Source mode and Author mode must show consistent column structure after open without edits"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 50,
+        "hallucinations": 12,
+        "holistic": 3,
+        "missing": [
+          "Auto-normalization of morerows/extra-entry anomalies must output valid <entry> only (never <foreign> wrappers)",
+          "Single <table> must remain a single table in UI and XML after open/save (no split)",
+          "User table edits (add row/column, merge, edit text) must persist without spurious columns or <foreign>",
+          "Source mode and Author mode must show consistent column structure after open without edits"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-40399",
+      "component": "Publishing",
+      "baseline": {
+        "coverage_pct": 60,
+        "hallucinations": 2,
+        "holistic": 3,
+        "missing": [
+          "Only impacts the childredirect and pager components",
+          "Both components should work as-is for existing templates",
+          "Issue exists in version 1.4.0 and fix planned in 1.5.1",
+          "Expected behavior applies in both cloud and non-cloud"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 60,
+        "hallucinations": 6,
+        "holistic": 3,
+        "missing": [
+          "Explicitly state only childredirect and pager components are impacted (scope limitation)",
+          "Explicitly confirm both components continue to work as-is for existing templates (not just 'no errors')",
+          "State issue exists in v1.4.0 and fix is planned in v1.5.1",
+          "Verify expected behavior specifically in both cloud and non-cloud environments (authorable template + authorable page in editor mode)"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-28102",
+      "component": "Publishing",
+      "baseline": {
+        "coverage_pct": 40,
+        "hallucinations": 1,
+        "holistic": 2,
+        "missing": [
+          "When publishing using topic title to create pages, chunk-<random> should not be used; first topic title should be used",
+          "When publishing using filename to create pages, chunk-<random> is out of scope for this ticket",
+          "Verify behavior using topichead, topicgroup and other wrapper tags",
+          "When chunking is enabled on a whole sub-map, it should use the title of the submap"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 40,
+        "hallucinations": 14,
+        "holistic": 2,
+        "missing": [
+          "When publishing using topic title to create pages, chunk-<random> should not be used; first topic title should be used",
+          "When publishing using filename to create pages, chunk-<random> is out of scope for this ticket",
+          "Verify behavior using topichead, topicgroup and other wrapper tags",
+          "When chunking is enabled on a whole sub-map, it should use the title of the submap"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-33731",
+      "component": "Schematron",
+      "baseline": {
+        "coverage_pct": 33,
+        "hallucinations": 3,
+        "holistic": 2,
+        "missing": [
+          "When multiple Schematron files are uploaded, files should be processed sequentially rather than in parallel",
+          "When Schematron files are uploaded through the validation settings dialog, invalid files should be displayed in a scrollable area below the valid files section",
+          "When Schematron files are uploaded via the right-side Schematron panel, invalid upload errors should be shown in the panel result area and no pop-up dialogs should interrupt workflow",
+          "When Autosave is configured, sequential call should be made after every interval when save is happening"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 33,
+        "hallucinations": 12,
+        "holistic": 2,
+        "missing": [
+          "Multiple Schematron uploads must be processed sequentially (not in parallel)",
+          "Validation settings dialog: invalid uploaded files displayed in a scrollable area below the valid files section",
+          "Right-side Schematron panel: invalid upload errors shown in-panel result area; no interrupting pop-up dialogs",
+          "Autosave: sequential call should be made after every interval when save is happening"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-29815",
+      "component": "Publishing",
+      "baseline": {
+        "coverage_pct": 55,
+        "hallucinations": 2,
+        "holistic": 3,
+        "missing": [
+          "metadata.xml includes guid and other sourceProps (explicitly called out in reference)",
+          "Support for Manual baseline: by Date resolves version closest to selected date",
+          "Support for Manual baseline: by Label resolves version tagged with that label (topic/map)",
+          "Support for Automatic baseline: Pick automatically resolves system-selected version"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 55,
+        "hallucinations": 9,
+        "holistic": 3,
+        "missing": [
+          "Non-baseline: metadata.xml must include guid and other sourceProps (not just damPath)",
+          "With baseline: field name/versionPath requirement (candidate uses versionHistoryPath instead of versionPath)",
+          "Manual baseline by Date: versionPath captures version closest to selected date",
+          "Manual baseline by Label: versionPath captures version tagged with that label (topic/map)"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-28443",
+      "component": "Asset Management",
+      "baseline": {
+        "coverage_pct": 35,
+        "hallucinations": 4,
+        "holistic": 2,
+        "missing": [
+          "Manage supports applying tags and document state to all or a selective list of assets",
+          "Common tags list is visible in the Manage dialog and updates per user action",
+          "Works for all asset types (DITA and non-DITA)",
+          "Works for both on-prem and cloud Guides"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 45,
+        "hallucinations": 9,
+        "holistic": 3,
+        "missing": [
+          "Manage applies tags and document state to all or selected assets",
+          "Common tags list is visible in Manage dialog and updates based on user actions",
+          "Custom tags and OOTB tags both updated via Manage",
+          "Works for all asset types (DITA and non-DITA) (not just graceful handling/exclusion)"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-37220",
+      "component": "Authoring",
+      "baseline": {
+        "coverage_pct": 57,
+        "hallucinations": 1,
+        "holistic": 3,
+        "missing": [
+          "Search results display fully without scroll",
+          "Maintain responsive behavior across screen sizes",
+          "Verify keyboard and accessibility navigation works for long lists",
+          "Optimize for large number of topics/elements (no lag or freeze)"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 71,
+        "hallucinations": 9,
+        "holistic": 3,
+        "missing": [
+          "Maintain responsive behavior across screen sizes (explicit breakpoints/orientation)",
+          "Keyboard + accessibility navigation for long lists (screen reader/ARIA focus order beyond keyboard scrolling)",
+          "Optimize for large number of topics/elements (no lag/freeze) beyond search typing",
+          "Maintain state on refresh"
+        ]
+      }
+    },
+    {
+      "key": "GUIDES-38412",
+      "component": "Schematron",
+      "baseline": {
+        "coverage_pct": 54,
+        "hallucinations": 2,
+        "holistic": 3,
+        "missing": [
+          "Find/Replace functionality (search, replace, replace all) must work correctly in Schematron (*.sch) files",
+          "Find/Replace functionality must continue to work correctly for DITA Map (*.ditamap) files",
+          "Find/Replace functionality must continue to work correctly in Author view (explicit functional verification)",
+          "Find/Replace bar appearance and functionality must be consistent across all supported browsers (Chrome, Firefox, Edge) including Edge"
+        ]
+      },
+      "skill": {
+        "coverage_pct": 46,
+        "hallucinations": 9,
+        "holistic": 3,
+        "missing": [
+          "Find/Replace continues to work correctly for DITA Topic (*.dita) files",
+          "Find/Replace continues to work correctly for DITA Map (*.ditamap) files",
+          "Find/Replace continues to work correctly in Author view",
+          "Find/Replace bar appearance and behavior consistent across file types (Schematron, DITA Topic, DITA Map)"
+        ]
+      }
+    }
+  ],
+  "agg": {
+    "baseline": {
+      "coverage": 42.5,
+      "halluc": 3.1,
+      "holistic": 2.4
+    },
+    "skill": {
+      "coverage": 40.4,
+      "halluc": 13.3,
+      "holistic": 2.3
+    }
+  }
+}

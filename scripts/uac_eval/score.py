@@ -59,13 +59,14 @@ PRIORS_PATH = (
 )
 
 
-def _skill_guidance(component: str) -> str:
+def _skill_guidance(component: str, priors_path=None) -> str:
     """The skill's authoring guidance: per-component dimension priors + the
     forcing rules the gates enforce (state partitions, all consumer surfaces,
-    regression parity) + the senior-QA style rules."""
+    regression parity) + the senior-QA style rules. ``priors_path`` may point at a
+    train-only priors file for a held-out evaluation."""
     priors = {}
     try:
-        priors = json.loads(PRIORS_PATH.read_text(encoding="utf-8")).get("components", {})
+        priors = json.loads(Path(priors_path or PRIORS_PATH).read_text(encoding="utf-8")).get("components", {})
     except Exception:
         pass
     comp = priors.get(component) or {}
