@@ -1790,6 +1790,8 @@ def test_run_gates() -> None:
         full_manifest = {
             **dual_source,
             "clones": [{"path": "C:/x", "provisional": True, "note": "SHA not captured"}],
+            "reviewer_comments": [],
+            "reviewer_comments_checked": True,
         }
         path.write_text(json.dumps(full_manifest), encoding="utf-8")
         end_to_end_failures, _ = run_gates.run(
@@ -7744,6 +7746,13 @@ def test_reviewer_request_coverage() -> None:
         "failures += reviewer_request_coverage_mod.validate(body, manifest_data)" in run_gates_source,
     )
 
+    # Part 1: the reviewer_comments input is mandatory so the gate cannot stay dormant.
+    req = gate.require_reviewer_comments_declared
+    check("absent reviewer_comments is a hard failure", any("reviewer_comments must be declared" in p for p in req({})))
+    check("empty reviewer_comments without checked flag fails", any("reviewer_comments_checked" in p for p in req({"reviewer_comments": []})))
+    check("empty reviewer_comments with checked flag passes", req({"reviewer_comments": [], "reviewer_comments_checked": True}) == [])
+    check("populated reviewer_comments passes the declaration check", req({"reviewer_comments": ["Please also check Map Preview."]}) == [])
+    check("non-list reviewer_comments fails", any("must be a list" in p for p in req({"reviewer_comments": "x"})))
     print("test_reviewer_request_coverage: OK")
 
 

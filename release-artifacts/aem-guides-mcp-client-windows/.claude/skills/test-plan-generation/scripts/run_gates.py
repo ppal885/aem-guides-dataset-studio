@@ -1938,6 +1938,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             # Preserve the stable REVIEWER-REQUEST GATE: prefix owned by this
             # signal-activated forcing gate.
             failures += reviewer_request_coverage_mod.validate(body, manifest_data)
+            failures += reviewer_request_coverage_mod.require_reviewer_comments_declared(manifest_data)
             # Preserve the stable REPRODUCIBILITY GATE: prefix owned by this
             # signal-activated forcing gate (fix-ACs require confirmed repro or a
             # gated reproduction strategy).

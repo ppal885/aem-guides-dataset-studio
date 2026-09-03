@@ -219,6 +219,42 @@ def validate(plan_body: str = "", manifest: dict[str, Any] | None = None) -> lis
     return problems
 
 
+def require_reviewer_comments_declared(manifest: dict[str, Any] | None = None) -> list[str]:
+    """Stop this gate from being dormant.
+
+    The coverage gate above only activates once a reviewer comment is present in the
+    manifest - but nothing forced the author to put the fetched Jira comments there,
+    so a real reviewer ask (e.g. "also check Map Preview / Download PDF / temp files")
+    silently fell through. This makes the input mandatory and affirmative: every
+    manifest must declare ``reviewer_comments`` (the fetched Jira reviewer/review
+    comments). An empty list is allowed only with ``reviewer_comments_checked: true``
+    to affirm the comments were inspected and none carry an imperative check request.
+    """
+    manifest_data = manifest if isinstance(manifest, dict) else {}
+    if BLOCK_NAME in manifest_data or isinstance(manifest_data.get("reviewer_requests"), list) and manifest_data.get("reviewer_requests"):
+        # A declared reviewer_requests block already proves the comments were mined.
+        pass
+    if COMMENTS_KEY not in manifest_data:
+        return [_problem(
+            "reviewer_comments must be declared: copy the fetched Jira reviewer/review "
+            "comments here so a reviewer-requested check cannot be silently missed; use "
+            "an empty list with reviewer_comments_checked: true when the issue has no "
+            "reviewer comment carrying an imperative check request"
+        )]
+    value = manifest_data.get(COMMENTS_KEY)
+    if not isinstance(value, list):
+        return [_problem("reviewer_comments must be a list of comment strings")]
+    if not value:
+        checked = manifest_data.get("reviewer_comments_checked")
+        truthy = checked is True or (isinstance(checked, str) and checked.strip().casefold() in {"true", "yes", "1"})
+        if not truthy:
+            return [_problem(
+                "reviewer_comments is empty; set reviewer_comments_checked: true to affirm "
+                "you inspected the Jira comments and none contain a reviewer check request"
+            )]
+    return []
+
+
 def summarize(plan_body: str = "", manifest: dict[str, Any] | None = None) -> str:
     manifest_data = manifest if isinstance(manifest, dict) else {}
     if not detect_signals(plan_body, manifest_data):
