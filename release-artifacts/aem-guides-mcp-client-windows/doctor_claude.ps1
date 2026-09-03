@@ -93,11 +93,11 @@ if (
     $skillText = Get-Content -LiteralPath $SkillFile -Raw
     $canonicalContractReady = @(
         "aem-guides-ac-v1",
-        "aem-guides-performance-assessment-v1",
+        "performance_assessment",
         "Performance Analysis",
         "Acceptance Criteria",
         "Regression Areas",
-        "Past Jiras",
+        "Jira Tickets Worth Checking",
         "Open Questions",
         "golden-benchmark.md"
     ) | ForEach-Object { $skillText.Contains($_) } | Where-Object { -not $_ } | Measure-Object | Select-Object -ExpandProperty Count

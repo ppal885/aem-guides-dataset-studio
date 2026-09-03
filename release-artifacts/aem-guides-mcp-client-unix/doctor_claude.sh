@@ -62,11 +62,11 @@ GOLDEN_BENCHMARK_REFERENCE="$SKILL_ROOT/references/golden-benchmark.md"
 COMPACT_RENDERER="$SKILL_ROOT/scripts/render_compact_view.py"
 if [[ -f "$SKILL_FILE" && -f "$AC_CONTRACT" && -f "$AC_EXTRACTOR" && -f "$PERFORMANCE_CONTRACT" && -f "$PERFORMANCE_REFERENCE" && -f "$GOLDEN_BENCHMARK_REFERENCE" && -f "$COMPACT_RENDERER" ]] \
     && grep -q 'aem-guides-ac-v1' "$SKILL_FILE" \
-    && grep -q 'aem-guides-performance-assessment-v1' "$SKILL_FILE" \
+    && grep -q 'performance_assessment' "$SKILL_FILE" \
     && grep -q 'Performance Analysis' "$SKILL_FILE" \
     && grep -q 'Acceptance Criteria' "$SKILL_FILE" \
     && grep -q 'Regression Areas' "$SKILL_FILE" \
-    && grep -q 'Past Jiras' "$SKILL_FILE" \
+    && grep -q 'Jira Tickets Worth Checking' "$SKILL_FILE" \
     && grep -q 'Open Questions' "$SKILL_FILE" \
     && grep -q 'golden-benchmark.md' "$SKILL_FILE"; then
   check "Canonical AC and compact UI contract" true "$CLIENT_DIR/$SKILL_ROOT"
