@@ -184,3 +184,4 @@ output/test-plans/*evidence-manifest.json
 output/test-plans/*gate-receipt*.json
 output/test-plans/*gate-receipt*.md
 dita_examples/community/*/
+scripts/uac_eval/corpus.jsonl

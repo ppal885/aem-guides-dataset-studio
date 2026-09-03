@@ -115,3 +115,30 @@ python scripts/clarification_gate.py --plan <plan.md> --manifest <manifest.json>
 ```
 
 All hard failures begin with `CLARIFICATION GATE:` and exit non-zero.
+
+## Component dimension priors (data-backed, advisory)
+
+When you enumerate the dimension space (Ask-First Workflow step 1), also consult
+`scripts/data/component_dimension_priors.json`. It records, per Jira component, the
+coverage dimensions that recur in real human UACs (measured over 310 human
+`UAC_Done` tickets), so you consider the ones a senior QA usually includes for
+that area instead of only the dimensions the one ticket names.
+
+For the ticket's component, treat each `usually_expected` dimension as a
+candidate you must actively decide on: cover it in an AC, expose it as an Open
+Question, or record why it is out of scope for this specific ticket. High-signal
+examples from the corpus:
+
+- Authoring -> all consumer UI surfaces (every panel/view/dropdown that shows the value), 63%.
+- Publishing -> the output-preset matrix, 62%.
+- Native PDF -> output presets 73%, negative/fallback 45%, state partitions 41%, CSS/rendition 36%.
+- Asset Management -> negative/fallback, state partitions, all surfaces, provenance channels.
+- Review / Editor -> all consumer UI surfaces (~50-65%), state partitions.
+- Translation -> localization impact 91%, state partitions 73%.
+- UUID Migration / Platform -> value-provenance channels and regression/parity.
+
+The two dominant, most-missed dimensions across every component are **state
+partitions** (both/with-and-without, profile, baseline, enumdef-bound vs not) and
+**all consumer UI surfaces** (do not stop at the one panel the ticket names).
+These priors are advisory keyword signal, not a hard gate: they widen discovery;
+they never license adding an AC the evidence does not support.

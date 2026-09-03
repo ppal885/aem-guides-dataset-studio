@@ -1,0 +1,250 @@
+{
+ "schema_version": "aem-guides-component-dimension-priors-v1",
+ "source": "scripts/uac_eval report over 310 human UAC_Done tickets (keyword signal, advisory only)",
+ "threshold_pct": 30.0,
+ "components": {
+  "Authoring": {
+   "tickets": 81,
+   "usually_expected": [
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 63.0
+    }
+   ]
+  },
+  "Publishing": {
+   "tickets": 81,
+   "usually_expected": [
+    {
+     "dimension": "output preset matrix (Native PDF / DITA-OT / HTML5 / AEM Site)",
+     "pct": 61.7
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 40.7
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 33.3
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 33.3
+    }
+   ]
+  },
+  "Asset Management": {
+   "tickets": 37,
+   "usually_expected": [
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 48.6
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 45.9
+    },
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 43.2
+    },
+    {
+     "dimension": "value provenance / source channels (CRX-DE, source file, temp files, renditions, API, migration)",
+     "pct": 37.8
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 35.1
+    }
+   ]
+  },
+  "Review": {
+   "tickets": 23,
+   "usually_expected": [
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 65.2
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 47.8
+    },
+    {
+     "dimension": "performance with large content",
+     "pct": 34.8
+    }
+   ]
+  },
+  "Native PDF": {
+   "tickets": 22,
+   "usually_expected": [
+    {
+     "dimension": "output preset matrix (Native PDF / DITA-OT / HTML5 / AEM Site)",
+     "pct": 72.7
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 45.5
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 40.9
+    },
+    {
+     "dimension": "CSS / styling / rendition of the element",
+     "pct": 36.4
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 31.8
+    }
+   ]
+  },
+  "Platform": {
+   "tickets": 15,
+   "usually_expected": [
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 53.3
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 53.3
+    },
+    {
+     "dimension": "value provenance / source channels (CRX-DE, source file, temp files, renditions, API, migration)",
+     "pct": 46.7
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 40.0
+    },
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 33.3
+    }
+   ]
+  },
+  "Translation": {
+   "tickets": 11,
+   "usually_expected": [
+    {
+     "dimension": "localization / translation impact",
+     "pct": 90.9
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 72.7
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 45.5
+    },
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 36.4
+    },
+    {
+     "dimension": "value provenance / source channels (CRX-DE, source file, temp files, renditions, API, migration)",
+     "pct": 36.4
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 36.4
+    }
+   ]
+  },
+  "Editor": {
+   "tickets": 10,
+   "usually_expected": [
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 50.0
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 50.0
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 30.0
+    }
+   ]
+  },
+  "Schematron": {
+   "tickets": 7,
+   "usually_expected": [
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 85.7
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 57.1
+    },
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 42.9
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 42.9
+    }
+   ]
+  },
+  "Baseline": {
+   "tickets": 6,
+   "usually_expected": [
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 83.3
+    },
+    {
+     "dimension": "negative / error / missing / fallback paths",
+     "pct": 33.3
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 33.3
+    }
+   ]
+  },
+  "UUID Migration": {
+   "tickets": 5,
+   "usually_expected": [
+    {
+     "dimension": "value provenance / source channels (CRX-DE, source file, temp files, renditions, API, migration)",
+     "pct": 100.0
+    },
+    {
+     "dimension": "regression / existing behaviour unchanged",
+     "pct": 80.0
+    },
+    {
+     "dimension": "state partitions (both/with-and-without, profile, baseline, enumdef)",
+     "pct": 60.0
+    },
+    {
+     "dimension": "all consumer UI surfaces (every panel/view/dropdown that shows this)",
+     "pct": 40.0
+    },
+    {
+     "dimension": "performance with large content",
+     "pct": 40.0
+    },
+    {
+     "dimension": "cross-tool oracle (compare to Oxygen etc.)",
+     "pct": 40.0
+    },
+    {
+     "dimension": "output preset matrix (Native PDF / DITA-OT / HTML5 / AEM Site)",
+     "pct": 40.0
+    },
+    {
+     "dimension": "localization / translation impact",
+     "pct": 40.0
+    }
+   ]
+  }
+ }
+}
