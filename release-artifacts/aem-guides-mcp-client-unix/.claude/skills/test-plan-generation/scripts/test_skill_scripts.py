@@ -44,11 +44,20 @@ def _find_repo_root() -> Path:
             )
         except OSError:
             continue
+    def _is_dir_safe(path):
+        # A candidate walk can cross OS-restricted directories (e.g. macOS
+        # /Users/<user>/Library/NGL): is_dir() raises PermissionError there
+        # instead of returning False, which must not crash root discovery.
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
+
     for candidate in dict.fromkeys(search_roots):
         if (
-            (candidate / ".codex" / "skills" / "test-plan-generation").is_dir()
-            and (candidate / ".claude" / "skills" / "test-plan-generation").is_dir()
-            and (candidate / "skills" / "test-plan-generation").is_dir()
+            _is_dir_safe(candidate / ".codex" / "skills" / "test-plan-generation")
+            and _is_dir_safe(candidate / ".claude" / "skills" / "test-plan-generation")
+            and _is_dir_safe(candidate / "skills" / "test-plan-generation")
         ):
             return candidate
     raise RuntimeError("Could not locate the repository root for skill parity checks")
@@ -8090,6 +8099,29 @@ def test_root_cause_fix_driven() -> None:
         check(
             f"negative fix-status claim stays inactive: {absent_claim}",
             not gate.is_present(absent_claim, {}),
+        )
+
+    # False-positive guard: publishing/layout vocabulary "merged" must NOT activate the
+    # gate (a Native PDF ticket says "merged page layout" / "merged with previous page").
+    for benign in (
+        "The metadata page layout is merged with the previous page in Page layout order.",
+        "Merge with Previous page loses the topic metadata values.",
+        "The merged page layout shows only the labels.",
+        "CALS table merged cells render correctly.",
+    ):
+        check(
+            f"benign layout 'merged' does not activate the fix gate: {benign[:34]}",
+            not gate.is_present(benign, {}),
+        )
+    # But a real fix-context "merged" claim must still activate.
+    for fixy in (
+        "The candidate fix was merged to develop.",
+        "PR merged into main.",
+        "The change was merged in build 42.",
+    ):
+        check(
+            f"fix-context 'merged' still activates the fix gate: {fixy[:34]}",
+            gate.is_present(fixy, {}),
         )
 
     missing_block = {"issue": {"description": "Root cause: the resolver drops eligible child text."}}
