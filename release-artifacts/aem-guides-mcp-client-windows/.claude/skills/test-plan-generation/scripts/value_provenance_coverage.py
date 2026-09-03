@@ -60,6 +60,19 @@ def is_value_ticket(plan_text):
 def validate(manifest, plan_text=""):
     if not is_value_ticket(plan_text):
         return []
+    # Honest disposition: the ACs may be phrased in value terms while the actual defect
+    # is NOT about how the value is set (e.g. a rendering/merge defect where the value is
+    # blank even for a normally authored value). Such a ticket may opt out with a concrete
+    # value_provenance_not_applicable reason, rather than being forced to assert an
+    # irrelevant write-channel provenance AC.
+    na = manifest.get("value_provenance_not_applicable") if isinstance(manifest, dict) else None
+    na_reason = ""
+    if isinstance(na, dict):
+        na_reason = str(na.get("reason", "")).strip()
+    elif isinstance(na, str):
+        na_reason = na.strip()
+    if len(na_reason) >= 12:
+        return []
     ac = _acceptance_block(plan_text).lower()
     if not any(term in ac for term in PROVENANCE_TERMS):
         return [

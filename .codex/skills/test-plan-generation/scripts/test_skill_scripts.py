@@ -9424,6 +9424,9 @@ def test_value_provenance_coverage() -> None:
         "- AC-02: the value is read from the asset jcr:content metadata node set via CRX DE.",
         "**Expected**", ""])
     check("value plan with repository provenance passes", vp.validate({}, good) == [])
+    na = {"value_provenance_not_applicable": {"reason": "Rendering-on-merge defect; the value is blank even for a normally authored value, so the write channel is not the variable under test."}}
+    check("concrete value_provenance_not_applicable reason opts out", vp.validate(na, bad) == [])
+    check("too-short not-applicable reason does not opt out", any("provenance" in p for p in vp.validate({"value_provenance_not_applicable": "n/a"}, bad)))
     print("test_value_provenance_coverage: OK")
 
 
