@@ -145,6 +145,7 @@ execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 state_partition_coverage_mod = _load("state_partition_coverage", "state_partition_coverage.py")
+native_pdf_coverage_mod = _load("native_pdf_coverage", "native_pdf_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 qe_completeness_coverage_mod = _load(
@@ -9453,6 +9454,25 @@ def test_state_partition_coverage() -> None:
     check("concrete state opt-out passes", sp.validate(na, single) == [])
     check("stub state opt-out does not pass", any("state-partition" in p for p in sp.validate({"state_partition_not_applicable": "n/a"}, single)))
     print("test_state_partition_coverage: OK")
+
+
+def test_native_pdf_coverage() -> None:
+    npc = native_pdf_coverage_mod
+    npc.run_self_tests()
+    nl = chr(10)
+    non = nl.join(["**Acceptance Criteria**", "- AC-01: the editor shows the label.", ""])
+    check("non-Native-PDF plan is not applicable", npc.validate({}, non) == [])
+    bare = nl.join(["**Acceptance Criteria**", "- AC-01: Native PDF output renders the table.", "**Expected**", ""])
+    probs = npc.validate({}, bare)
+    check("Native PDF plan missing the three dimensions is flagged", len(probs) == 3)
+    check("Native PDF plan flags the Download-PDF entry point", any("entry points" in p for p in probs))
+    covered = nl.join(["**Acceptance Criteria**",
+        "- AC-01: Native PDF output renders the table.",
+        "- AC-02: a single topic via Download PDF renders the same.",
+        "- AC-03: Map Preview shows the same.",
+        "- AC-04: the retained temporary files carry the correct merged HTML.", ""])
+    check("Native PDF plan covering all three passes", npc.validate({}, covered) == [])
+    print("test_native_pdf_coverage: OK")
 
 
 def test_shared_path_regression_coverage() -> None:
