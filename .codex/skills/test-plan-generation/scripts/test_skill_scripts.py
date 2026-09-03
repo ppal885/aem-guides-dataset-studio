@@ -144,6 +144,7 @@ human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.p
 execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
+state_partition_coverage_mod = _load("state_partition_coverage", "state_partition_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 qe_completeness_coverage_mod = _load(
@@ -9428,6 +9429,21 @@ def test_value_provenance_coverage() -> None:
     check("concrete value_provenance_not_applicable reason opts out", vp.validate(na, bad) == [])
     check("too-short not-applicable reason does not opt out", any("provenance" in p for p in vp.validate({"value_provenance_not_applicable": "n/a"}, bad)))
     print("test_value_provenance_coverage: OK")
+
+
+def test_state_partition_coverage() -> None:
+    sp = state_partition_coverage_mod
+    nl = chr(10)
+    non_state = nl.join(["**Acceptance Criteria**", "- AC-01: the panel shows the value.", ""])
+    check("non-state plan is not applicable", sp.validate({}, non_state) == [])
+    single = nl.join(["**Acceptance Criteria**", "- AC-01: the behaviour holds under a Global Profile.", "**Expected**", ""])
+    check("single-state plan is flagged", any("state-partition" in p for p in sp.validate({}, single)))
+    both = nl.join(["**Acceptance Criteria**", "- AC-01: the behaviour holds under both a Global Profile and a Folder Profile.", "**Expected**", ""])
+    check("partition term passes", sp.validate({}, both) == [])
+    na = {"state_partition_not_applicable": {"reason": "Only the Global profile can host this construct; a Folder profile cannot define it."}}
+    check("concrete state opt-out passes", sp.validate(na, single) == [])
+    check("stub state opt-out does not pass", any("state-partition" in p for p in sp.validate({"state_partition_not_applicable": "n/a"}, single)))
+    print("test_state_partition_coverage: OK")
 
 
 def test_shared_path_regression_coverage() -> None:

@@ -102,7 +102,7 @@ Easy-to-read internal records; the user sees the three-line format above:
 - AC-02 [Proposed]: (Basic) Given a configured attribute has a friendly name | When the attribute list loads | Then the list shows that friendly name | Evidence: Jira description and inspected configuration for the current issue.
 - AC-03 [Proposed]: (Negative) Given a configured attribute has no friendly name | When the attribute list loads | Then the list shows the approved fallback label | Evidence: Jira description and inspected configuration for the current issue.
 
-## Senior-QA Style (five rules, learned from a human UAC on GUIDES-23044)
+## Senior-QA Style (five rules, learned from a human UAC example)
 
 A senior human QA wrote that UAC as a 3-line Scope plus seven one-line ACs, and it read far clearer than a longer AI draft. Apply these five rules so a UAC reads like that:
 
@@ -114,7 +114,7 @@ A senior human QA wrote that UAC as a 3-line Scope plus seven one-line ACs, and 
 
 ### Concrete verification dimensions to consider for Native PDF / output-generation tickets
 
-These are real, testable dimensions a senior QA includes and an AI draft repeatedly misses (source: GUIDES-23044). Consider each and cover it or consciously scope it out:
+These are real, testable dimensions a senior QA includes and an AI draft repeatedly misses (source: human UAC examples). Consider each and cover it or consciously scope it out:
 
 - **Temporary-files artifact:** the referenced image or asset is present in the generated temporary files (author with "Retain temporary files" and open them). This is the concrete form of any "the engine picks up / downloads the asset" claim - never leave that mechanism vague.
 - **Assets UI update flow:** updating the asset in the AEM Assets UI is reflected when the PDF is generated again (a DAM update propagates to the output).

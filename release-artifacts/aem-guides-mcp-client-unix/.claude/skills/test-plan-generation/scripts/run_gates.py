@@ -136,6 +136,7 @@ human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.p
 execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
+state_partition_coverage_mod = _load("state_partition_coverage", "state_partition_coverage.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 qe_completeness_coverage_mod = _load(
@@ -1967,6 +1968,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 for problem in value_provenance_coverage_mod.validate(manifest_data, body)
             ]
             failures += [
+                f"[state-partition] {problem}"
+                for problem in state_partition_coverage_mod.validate(manifest_data, body)
+            ]
+            failures += [
                 f"[shared-path-regression] {problem}"
                 for problem in shared_path_regression_coverage_mod.validate(manifest_data, body)
             ]
@@ -2209,6 +2214,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_execution_outcome()
             self_tests.test_entry_point_equivalence()
             self_tests.test_value_provenance_coverage()
+            self_tests.test_state_partition_coverage()
             self_tests.test_shared_path_regression_coverage()
             self_tests.test_qe_completeness_coverage()
             if hasattr(self_tests, "test_skill_bundle_fingerprint"):
