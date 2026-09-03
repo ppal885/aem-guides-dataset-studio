@@ -53,6 +53,46 @@ PROMPT = (
     "Summary: {summary}\nComponent: {component}\n\nDescription:\n{description}\n"
 )
 
+PRIORS_PATH = (
+    REPO / ".codex" / "skills" / "test-plan-generation" / "scripts" / "data"
+    / "component_dimension_priors.json"
+)
+
+
+def _skill_guidance(component: str) -> str:
+    """The skill's authoring guidance: per-component dimension priors + the
+    forcing rules the gates enforce (state partitions, all consumer surfaces,
+    regression parity) + the senior-QA style rules."""
+    priors = {}
+    try:
+        priors = json.loads(PRIORS_PATH.read_text(encoding="utf-8")).get("components", {})
+    except Exception:
+        pass
+    comp = priors.get(component) or {}
+    expected = "; ".join(d["dimension"] for d in comp.get("usually_expected", [])[:6])
+    lines = [
+        "Apply senior-QA discipline:",
+        "- Test each behaviour under BOTH values of any state axis it touches: a Global "
+        "vs a Folder profile, a baseline vs the current version, an enumdef-bound vs an "
+        "unbound construct, a setting/feature-flag enabled vs disabled.",
+        "- Cover EVERY UI surface that shows this (every panel, view, dropdown, dialog, "
+        "preview) - do not stop at the one the ticket names.",
+        "- Add a regression check that existing behaviour stays unchanged.",
+        "- Cover negative/missing/fallback paths.",
+        "- Decide specifics (list the concrete values); do not ask questions.",
+        "- Keep each AC one short concrete checkable line.",
+    ]
+    if expected:
+        lines.append(f"- For {component} tickets, QA usually also covers: {expected}.")
+    return "\n".join(lines)
+
+
+SKILL_PROMPT = (
+    "You are a senior QA engineer for Adobe Experience Manager Guides. Write "
+    "acceptance criteria (a UAC) for this Jira ticket.\n\n{guidance}\n\n"
+    "Summary: {summary}\nComponent: {component}\n\nDescription:\n{description}\n"
+)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -60,6 +100,8 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=12)
     ap.add_argument("--out", default=str(HERE / "score_report.md"))
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--mode", choices=["baseline", "skill"], default="baseline",
+                    help="baseline = description-only LLM; skill = LLM + skill guidance/priors")
     args = ap.parse_args()
 
     rows = [json.loads(l) for l in Path(args.corpus).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -83,12 +125,20 @@ def main() -> int:
     recalls = []
     for r in sample:
         draft = ""
+        comp = _norm_component(r.get("component", []))
+        if args.mode == "skill":
+            content = SKILL_PROMPT.format(
+                guidance=_skill_guidance(comp), summary=r.get("summary", ""),
+                component=", ".join(r.get("component", []) or []),
+                description=(r.get("description") or "")[:6000])
+        else:
+            content = PROMPT.format(
+                summary=r.get("summary", ""), component=", ".join(r.get("component", []) or []),
+                description=(r.get("description") or "")[:6000])
         try:
             resp = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": PROMPT.format(
-                    summary=r.get("summary", ""), component=", ".join(r.get("component", []) or []),
-                    description=(r.get("description") or "")[:6000])}],
+                messages=[{"role": "user", "content": content}],
                 max_completion_tokens=1200,
             )
             draft = resp.choices[0].message.content or ""
@@ -108,8 +158,11 @@ def main() -> int:
                     "gold_dims": sorted(gold_d), "draft_dims": sorted(draft_d),
                     "missed": sorted(missed), "recall_pct": recall})
 
-    lines = ["# Blind-draft-vs-gold scoring (baseline LLM, no skill)", ""]
-    lines.append(f"Sample: {len(per)} tickets | model: {model}")
+    if args.out == str(HERE / "score_report.md"):
+        args.out = str(HERE / f"score_report_{args.mode}.md")
+    label = "baseline LLM, no skill" if args.mode == "baseline" else "LLM + skill guidance/priors"
+    lines = [f"# Draft-vs-gold scoring ({label})", ""]
+    lines.append(f"Mode: {args.mode} | Sample: {len(per)} tickets (seed {args.seed}) | model: {model}")
     if recalls:
         lines.append(f"Mean dimension recall (draft vs human gold): **{round(sum(recalls)/len(recalls),1)}%**")
     lines.append("")

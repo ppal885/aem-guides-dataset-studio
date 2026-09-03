@@ -1,0 +1,359 @@
+{
+  "per": [
+    {
+      "key": "GUIDES-48587",
+      "component": "Authoring",
+      "gold_dims": [
+        "cross_tool_oracle",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "performance",
+        "regression_parity"
+      ],
+      "missed": [
+        "cross_tool_oracle",
+        "state_partition"
+      ],
+      "recall_pct": 0.0
+    },
+    {
+      "key": "GUIDES-40399",
+      "component": "Publishing",
+      "gold_dims": [
+        "regression_parity",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "negative_error",
+        "output_preset",
+        "performance",
+        "regression_parity"
+      ],
+      "missed": [
+        "state_partition"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-42652",
+      "component": "Asset Management",
+      "gold_dims": [
+        "multi_surface"
+      ],
+      "draft_dims": [
+        "permissions_role",
+        "regression_parity"
+      ],
+      "missed": [
+        "multi_surface"
+      ],
+      "recall_pct": 0.0
+    },
+    {
+      "key": "GUIDES-35125",
+      "component": "Review",
+      "gold_dims": [
+        "multi_surface"
+      ],
+      "draft_dims": [],
+      "missed": [
+        "multi_surface"
+      ],
+      "recall_pct": 0.0
+    },
+    {
+      "key": "GUIDES-28688",
+      "component": "Native PDF",
+      "gold_dims": [],
+      "draft_dims": [
+        "attachment_or_bigcontent",
+        "output_preset",
+        "regression_parity"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    },
+    {
+      "key": "GUIDES-37837",
+      "component": "Platform",
+      "gold_dims": [
+        "negative_error",
+        "performance"
+      ],
+      "draft_dims": [
+        "performance"
+      ],
+      "missed": [
+        "negative_error"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-16709",
+      "component": "Translation",
+      "gold_dims": [
+        "localization",
+        "multi_surface",
+        "negative_error",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "localization",
+        "multi_surface",
+        "regression_parity"
+      ],
+      "missed": [
+        "negative_error",
+        "state_partition"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-33247",
+      "component": "Editor",
+      "gold_dims": [
+        "cross_tool_oracle",
+        "negative_error",
+        "regression_parity"
+      ],
+      "draft_dims": [
+        "cross_tool_oracle"
+      ],
+      "missed": [
+        "negative_error",
+        "regression_parity"
+      ],
+      "recall_pct": 33.0
+    },
+    {
+      "key": "GUIDES-14500",
+      "component": "Schematron",
+      "gold_dims": [
+        "negative_error",
+        "regression_parity"
+      ],
+      "draft_dims": [
+        "regression_parity"
+      ],
+      "missed": [
+        "negative_error"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-44773",
+      "component": "Baseline",
+      "gold_dims": [
+        "state_partition"
+      ],
+      "draft_dims": [
+        "negative_error",
+        "provenance_channels",
+        "state_partition"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    },
+    {
+      "key": "GUIDES-38783",
+      "component": "UUID Migration",
+      "gold_dims": [
+        "cross_tool_oracle",
+        "localization",
+        "multi_surface",
+        "output_preset",
+        "performance",
+        "provenance_channels",
+        "regression_parity",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "attachment_or_bigcontent",
+        "provenance_channels",
+        "regression_parity"
+      ],
+      "missed": [
+        "cross_tool_oracle",
+        "localization",
+        "multi_surface",
+        "output_preset",
+        "performance",
+        "state_partition"
+      ],
+      "recall_pct": 25.0
+    },
+    {
+      "key": "GUIDES-53230",
+      "component": "Learning",
+      "gold_dims": [
+        "multi_surface",
+        "negative_error",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "negative_error",
+        "regression_parity"
+      ],
+      "missed": [
+        "multi_surface",
+        "state_partition"
+      ],
+      "recall_pct": 33.0
+    },
+    {
+      "key": "GUIDES-28918",
+      "component": "AI",
+      "gold_dims": [
+        "multi_surface",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "regression_parity"
+      ],
+      "missed": [
+        "multi_surface",
+        "state_partition"
+      ],
+      "recall_pct": 0.0
+    },
+    {
+      "key": "GUIDES-27774",
+      "component": "Reports",
+      "gold_dims": [
+        "negative_error",
+        "regression_parity"
+      ],
+      "draft_dims": [
+        "cross_tool_oracle",
+        "negative_error"
+      ],
+      "missed": [
+        "regression_parity"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-43481",
+      "component": "Database",
+      "gold_dims": [
+        "negative_error"
+      ],
+      "draft_dims": [
+        "negative_error"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    },
+    {
+      "key": "GUIDES-19067",
+      "component": "(none)",
+      "gold_dims": [
+        "negative_error",
+        "permissions_role",
+        "regression_parity",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "permissions_role",
+        "state_partition"
+      ],
+      "missed": [
+        "negative_error",
+        "regression_parity"
+      ],
+      "recall_pct": 50.0
+    },
+    {
+      "key": "GUIDES-24537",
+      "component": "Miscellaneous",
+      "gold_dims": [
+        "localization"
+      ],
+      "draft_dims": [
+        "localization",
+        "negative_error",
+        "performance"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    },
+    {
+      "key": "GUIDES-37935",
+      "component": "Citation Management",
+      "gold_dims": [
+        "attachment_or_bigcontent",
+        "css_styles",
+        "multi_surface",
+        "negative_error",
+        "output_preset",
+        "regression_parity",
+        "state_partition"
+      ],
+      "draft_dims": [
+        "css_styles",
+        "multi_surface",
+        "negative_error",
+        "regression_parity",
+        "state_partition"
+      ],
+      "missed": [
+        "attachment_or_bigcontent",
+        "output_preset"
+      ],
+      "recall_pct": 71.0
+    },
+    {
+      "key": "GUIDES-33228",
+      "component": "Ditaval",
+      "gold_dims": [
+        "multi_surface",
+        "regression_parity"
+      ],
+      "draft_dims": [
+        "multi_surface",
+        "regression_parity",
+        "state_partition"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    },
+    {
+      "key": "GUIDES-31765",
+      "component": "External Data Sources",
+      "gold_dims": [
+        "negative_error"
+      ],
+      "draft_dims": [
+        "negative_error"
+      ],
+      "missed": [],
+      "recall_pct": 100.0
+    }
+  ],
+  "miss_hist": {
+    "state_partition": 6,
+    "cross_tool_oracle": 2,
+    "multi_surface": 5,
+    "negative_error": 5,
+    "regression_parity": 3,
+    "localization": 1,
+    "output_preset": 2,
+    "performance": 1,
+    "attachment_or_bigcontent": 1
+  },
+  "gold_hist": {
+    "state_partition": 9,
+    "cross_tool_oracle": 3,
+    "regression_parity": 8,
+    "multi_surface": 8,
+    "performance": 2,
+    "negative_error": 10,
+    "localization": 3,
+    "output_preset": 2,
+    "provenance_channels": 1,
+    "permissions_role": 1,
+    "attachment_or_bigcontent": 1,
+    "css_styles": 1
+  }
+}
