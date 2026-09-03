@@ -157,6 +157,12 @@ def _is_concrete_text(value: Any) -> bool:
     return len(normalized) >= 3 and normalized not in PLACEHOLDERS
 
 
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().casefold() in {"true", "yes", "1"}
+
+
 def _manifest_scalars(value: Any, path: tuple[str, ...] = ()) -> Iterable[tuple[tuple[str, ...], str]]:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -337,6 +343,54 @@ def validate(plan_body: str = "", manifest: dict[str, Any] | None = None) -> lis
             if missing:
                 problems.append(_problem(
                     f"fix_preserves[{index}] references ACs not present in the plan: {', '.join(missing)}"
+                ))
+
+    # The requirement oracle is built from the ticket/attachment/UI, independent of the
+    # diff: the fix is never the spec. Any place the fix is narrower than the requirement
+    # is a recorded scope-delta mapped to an AC or an Open Question, never silently dropped.
+    if not _is_concrete_text(block.get("requirement_oracle")):
+        problems.append(_problem(
+            "root_cause_fix.requirement_oracle must state, in requirement terms grounded in the "
+            "ticket/attachment/UI, what the issue asks - the fix diff is not the specification"
+        ))
+
+    scope_delta = block.get("scope_delta")
+    if scope_delta is None:
+        scope_delta = []
+    if not isinstance(scope_delta, list):
+        problems.append(_problem("root_cause_fix.scope_delta must be a list"))
+    elif not scope_delta:
+        if not (
+            _is_truthy(block.get("fix_fully_covers_requirement"))
+            and _is_concrete_text(block.get("fix_fully_covers_reason"))
+        ):
+            problems.append(_problem(
+                "an empty scope_delta requires fix_fully_covers_requirement true with a concrete "
+                "fix_fully_covers_reason; otherwise record where the fix is narrower than the requirement"
+            ))
+    else:
+        for index, item in enumerate(scope_delta):
+            if not isinstance(item, dict):
+                problems.append(_problem(f"scope_delta[{index}] must be an object"))
+                continue
+            if not _is_concrete_text(item.get("requirement")):
+                problems.append(_problem(
+                    f"scope_delta[{index}] must name the requirement the fix does not fully cover"
+                ))
+            mapped_ac = str(item.get("mapped_ac") or "").strip().upper()
+            oq_ref = str(item.get("open_question_ref") or "").strip().upper()
+            if not mapped_ac and not oq_ref:
+                problems.append(_problem(
+                    f"scope_delta[{index}] must map to an AC or an Open Question"
+                ))
+                continue
+            if mapped_ac and mapped_ac not in ac_records:
+                problems.append(_problem(
+                    f"scope_delta[{index}] references {mapped_ac}, but that AC is not present"
+                ))
+            if oq_ref and oq_ref not in oq_records:
+                problems.append(_problem(
+                    f"scope_delta[{index}] references {oq_ref}, but that Open Question is not present"
                 ))
 
     risks = block.get("fix_introduced_risks")

@@ -1808,6 +1808,10 @@ def test_run_gates() -> None:
         )
         fix_manifest = json.loads(json.dumps(full_manifest))
         fix_manifest["root_cause_fix"] = {
+            "requirement_oracle": "The ticket asks that the resolver accept exactly the intended input set while preserving valid prior state.",
+            "fix_fully_covers_requirement": True,
+            "fix_fully_covers_reason": "The inspected diff narrows eligibility to exactly the requirement's intended input set with no requirement left out.",
+            "scope_delta": [],
             "root_cause": "The resolver accepted an overly broad input set.",
             "fix_contract": "Narrow eligible input processing without changing valid prior state.",
             "fix_adds": ["Eligible inputs now produce the requested observable output."],
@@ -7989,6 +7993,14 @@ def test_root_cause_fix_driven() -> None:
     ])
     base_block = {
         "root_cause_fix": {
+            "requirement_oracle": "The ticket and attachment ask that all eligible child text appear in the label, as other resolvers already do.",
+            "scope_delta": [
+                {
+                    "requirement": "Additional display-bearing siblings beyond the fixed set may also be eligible.",
+                    "coverage": "PARTIAL",
+                    "open_question_ref": "OQ-01",
+                }
+            ],
             "root_cause": "The resolver flattened child text without preserving semantic boundaries.",
             "fix_contract": "Collect eligible child text while preserving excluded semantic children.",
             "fix_adds": ["Eligible non-primary child text contributes to the label."],
@@ -8124,6 +8136,38 @@ def test_root_cause_fix_driven() -> None:
     no_risks["root_cause_fix"]["fix_introduced_risks"] = []
     no_risks["root_cause_fix"]["no_new_risk_reason"] = "The fix narrows one local predicate and does not broaden any reader or writer."
     check("empty risk list with concrete no-new-risk reason passes", gate.validate(positive_plan, no_risks) == [])
+
+    # Requirement-oracle / scope-delta teeth: the fix diff is never the spec.
+    missing_oracle = json.loads(json.dumps(base_block))
+    del missing_oracle["root_cause_fix"]["requirement_oracle"]
+    problems = gate.validate(positive_plan, missing_oracle)
+    check("missing requirement_oracle fails", any("requirement_oracle" in p for p in problems))
+    check("requirement_oracle failures use stable prefix", all(p.startswith(gate.PREFIX) for p in problems))
+
+    unmapped_delta = json.loads(json.dumps(base_block))
+    unmapped_delta["root_cause_fix"]["scope_delta"] = [
+        {"requirement": "The broader selected-property list must be covered.", "coverage": "NONE"}
+    ]
+    problems = gate.validate(positive_plan, unmapped_delta)
+    check("scope_delta item without an AC/OQ mapping fails", any("must map to an AC or an Open Question" in p for p in problems))
+
+    dangling_delta = json.loads(json.dumps(base_block))
+    dangling_delta["root_cause_fix"]["scope_delta"] = [
+        {"requirement": "The broader selected-property list must be covered.", "open_question_ref": "OQ-99"}
+    ]
+    problems = gate.validate(positive_plan, dangling_delta)
+    check("scope_delta mapping to an absent OQ fails", any("OQ-99" in p for p in problems))
+
+    empty_delta_no_claim = json.loads(json.dumps(base_block))
+    empty_delta_no_claim["root_cause_fix"]["scope_delta"] = []
+    problems = gate.validate(positive_plan, empty_delta_no_claim)
+    check("empty scope_delta without fix_fully_covers claim fails", any("empty scope_delta requires" in p for p in problems))
+
+    full_cover = json.loads(json.dumps(base_block))
+    full_cover["root_cause_fix"]["scope_delta"] = []
+    full_cover["root_cause_fix"]["fix_fully_covers_requirement"] = True
+    full_cover["root_cause_fix"]["fix_fully_covers_reason"] = "The diff implements the entire requirement oracle with nothing left out."
+    check("empty scope_delta with a concrete full-coverage claim passes", gate.validate(positive_plan, full_cover) == [])
 
     run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
     check(
