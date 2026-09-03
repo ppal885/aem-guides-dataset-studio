@@ -657,6 +657,41 @@ def _contract_literals(path: str, literal: str) -> list[str]:
     return cleaned or [literal]
 
 
+# A pasted stack trace / log dump is diagnostic noise, not an acceptance-relevant
+# contract fact. Left intact it (a) mints junk "facts" out of individual frames and
+# (b) can overflow bounded downstream fields (MissingQuestion behavior/oracle), which
+# previously failed a whole run with HTTP 500. We keep the informative header lines
+# ("<Exception>: message", "Caused by: ...") and drop the frame lines.
+_STACK_FRAME_INLINE_RE = re.compile(r"\bat\s+[\w$.<>/]+\([^)]*\)")
+_STACK_MORE_RE = re.compile(r"\.\.\.\s*\d+\s+more\b", re.IGNORECASE)
+_STACK_SIGNATURE_RE = re.compile(
+    r"(\bat\s+[\w$.<>/]+\([^)]*\)|Caused by:|\b[\w.]+(?:Exception|Error)\b\s*:)",
+)
+
+
+def _reduce_stack_frames(text: str) -> str:
+    """Collapse a pasted stack trace to its header lines, leaving prose intact.
+
+    No-op unless a stack-trace signature is present, so ordinary contract text is
+    never altered.
+    """
+
+    if not text or not _STACK_SIGNATURE_RE.search(text):
+        return text
+    # Drop inline "at pkg.Class.method(File.java:NN)" frames and "... N more".
+    reduced = _STACK_FRAME_INLINE_RE.sub(" ", text)
+    reduced = _STACK_MORE_RE.sub(" ", reduced)
+    # Drop any residual frame-only lines and collapse whitespace runs.
+    kept_lines = [
+        line
+        for line in reduced.splitlines()
+        if line.strip() and not re.fullmatch(r"\s*at\s+[\w$.<>/]+.*", line)
+    ]
+    reduced = "\n".join(kept_lines) if kept_lines else reduced
+    reduced = re.sub(r"[ \t]{2,}", " ", reduced).strip()
+    return reduced or text
+
+
 def _is_contract_metadata(path: str, literal: str) -> bool:
     """Exclude transport/provenance identifiers before contract classification."""
 
@@ -1399,6 +1434,7 @@ class CanonicalTestPlanReasoningService:
             if record.authority_subject != AuthoritySubject.PRODUCT_CONTRACT:
                 continue
             for path, source_literal in _flatten_strings(record.content):
+                source_literal = _reduce_stack_frames(source_literal)
                 for literal in _contract_literals(path, source_literal):
                     if not literal.strip():
                         # A whitespace-only source value (e.g. an empty AC line or a

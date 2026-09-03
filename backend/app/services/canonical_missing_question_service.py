@@ -293,6 +293,12 @@ class CanonicalMissingQuestionService:
             preparation,
             closure_by_id,
         )
+        # Bound the free-text behavior so it fits both linked_behavior_or_state
+        # (<=1000) and the expected_oracle sentence it is embedded in. Upstream
+        # evidence can inject very long text (e.g. a full stack trace), which
+        # previously overflowed the schema and failed the whole run with a 500.
+        if len(behavior) > 900:
+            behavior = behavior[:897].rstrip() + "..."
         source_types = list(question.target_source_types)
         if family is not None:
             for source_type in family.preferred_evidence_sources:
@@ -320,22 +326,27 @@ class CanonicalMissingQuestionService:
                 "question_text": question.question,
                 "family_id": question.dimension,
                 "why_it_matters": why,
+                # Cap every list that feeds a bounded MissingQuestion field.
+                # A high-fan-out ticket can produce far more linked surfaces /
+                # patterns / facts than the schema allows (e.g. 841 change
+                # surfaces > the 100 limit), which previously raised a pydantic
+                # ValidationError and returned HTTP 500 for the whole run.
                 "linked_change_surface": (
-                    list(family.linked_change_surface_ids) if family else []
+                    list(family.linked_change_surface_ids)[:100] if family else []
                 ),
                 "linked_behavior_or_state": behavior,
                 "relationship_being_tested": relation,
-                "expected_evidence_type": source_types,
-                "target_source_types": source_types,
+                "expected_evidence_type": source_types[:50],
+                "target_source_types": source_types[:50],
                 "preferred_provider": _preferred_provider(source_types),
                 "materiality": materiality,
                 "blocking_status": question.blocking,
-                "active_domain": [row.domain for row in preparation.domains],
+                "active_domain": [row.domain for row in preparation.domains][:20],
                 "active_reasoner": "Python compatibility fallback",
                 "linked_pattern_ids": (
-                    list(family.linked_pattern_ids) if family else []
+                    list(family.linked_pattern_ids)[:100] if family else []
                 ),
-                "current_fact_refs": list(question.source_fact_ids),
+                "current_fact_refs": list(question.source_fact_ids)[:100],
                 "expected_oracle": (
                     f"Evidence identifies {relation.value} for {behavior}."
                 ),
