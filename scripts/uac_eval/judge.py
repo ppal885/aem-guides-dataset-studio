@@ -70,12 +70,28 @@ def _build_train_priors(train_rows: list[dict], out_path: Path, thresh: float = 
 JUDGE = (
     "You are an impartial QA reviewer. Both texts below are ACCEPTANCE CRITERIA for "
     "the same Jira ticket: a human REFERENCE and a CANDIDATE. Compare only the "
-    "acceptance criteria. Return ONLY JSON:\n"
+    "acceptance criteria.\n\n"
+    "CRITICAL - how to count hallucinations. A hallucination is ONLY a candidate "
+    "criterion that is factually WRONG for this ticket: it CONTRADICTS the ticket/"
+    "reference, or it asserts a specific invented fact that does not exist (a made-up "
+    "config key, API, field, value, default, or UI control). A criterion is NOT a "
+    "hallucination just because the human reference did not mention it. Additional "
+    "reasonable acceptance criteria - extra edge cases, extra states/config variants, "
+    "adjacent surfaces, broader-but-plausible coverage the human omitted - are GOOD "
+    "coverage; put their COUNT in extra_criteria and do NOT add them to hallucinations. "
+    "The human reference is often terse; a longer candidate is expected and must not be "
+    "penalised for breadth. Also never count test scenarios, regression notes, or open "
+    "questions as hallucinations.\n"
+    "Example: reference says 'the dialog opens on click'. Candidate also says 'input is "
+    "validated on submit' -> that is extra_criteria, NOT a hallucination. Candidate says "
+    "'the dialog auto-saves' when the ticket states it must not -> that IS a hallucination "
+    "(contradiction). Candidate cites a config key 'foo.bar.baz' that does not exist -> "
+    "hallucination (invented fact).\n\n"
+    "Return ONLY JSON:\n"
     '{{"coverage_pct": <0-100, fraction of the reference''s acceptance points the '
-    'candidate addresses>, "hallucinations": <int, candidate acceptance criteria '
-    'that CONTRADICT the ticket or assert behaviour the ticket does not support; do '
-    'NOT count a criterion merely for being additional reasonable coverage the human '
-    'omitted, and do NOT count test scenarios, regression notes, or open questions>, '
+    'candidate addresses>, "hallucinations": <int, ONLY contradicting-or-invented '
+    'candidate criteria as defined above>, "extra_criteria": <int, additional '
+    'reasonable candidate criteria not in the reference; these are not penalised>, '
     '"missing_key_points": [<short strings of important reference points the '
     'candidate omits>], "holistic": <1-5 overall usefulness of the candidate''s '
     'acceptance criteria vs the reference>}}\n\n'
