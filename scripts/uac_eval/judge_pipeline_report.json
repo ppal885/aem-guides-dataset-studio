@@ -1,0 +1,139 @@
+{
+  "per": [
+    {
+      "key": "GUIDES-48893",
+      "component": "Review",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 0,
+      "pipeline": {
+        "coverage_pct": null,
+        "note": "empty"
+      },
+      "baseline": {
+        "coverage_pct": 60,
+        "hallucinations": 3,
+        "holistic": 3
+      }
+    },
+    {
+      "key": "GUIDES-37733",
+      "component": "Publishing",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 0,
+      "pipeline": {
+        "coverage_pct": null,
+        "note": "empty"
+      },
+      "baseline": {
+        "coverage_pct": 33,
+        "hallucinations": 6,
+        "holistic": 2
+      }
+    },
+    {
+      "key": "GUIDES-53807",
+      "component": "Publishing",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 0,
+      "pipeline": {
+        "coverage_pct": null,
+        "note": "empty"
+      },
+      "baseline": {
+        "coverage_pct": 31,
+        "hallucinations": 1,
+        "holistic": 2
+      }
+    },
+    {
+      "key": "GUIDES-8979",
+      "component": "Authoring",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 0,
+      "pipeline": {
+        "coverage_pct": null,
+        "note": "empty"
+      },
+      "baseline": {
+        "coverage_pct": 20,
+        "hallucinations": 8,
+        "holistic": 2
+      }
+    },
+    {
+      "key": "GUIDES-46748",
+      "component": "Authoring",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 0,
+      "pipeline": {
+        "coverage_pct": null,
+        "note": "empty"
+      },
+      "baseline": {
+        "coverage_pct": 38,
+        "hallucinations": 2,
+        "holistic": 2
+      }
+    },
+    {
+      "key": "GUIDES-40399",
+      "component": "Publishing",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 25316,
+      "pipeline": {
+        "coverage_pct": 100,
+        "hallucinations": 18,
+        "holistic": 2
+      },
+      "baseline": {
+        "coverage_pct": 75,
+        "hallucinations": 2,
+        "holistic": 3
+      }
+    },
+    {
+      "key": "GUIDES-28102",
+      "component": "Publishing",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 20679,
+      "pipeline": {
+        "coverage_pct": 100,
+        "hallucinations": 9,
+        "holistic": 3
+      },
+      "baseline": {
+        "coverage_pct": 40,
+        "hallucinations": 2,
+        "holistic": 2
+      }
+    },
+    {
+      "key": "GUIDES-33731",
+      "component": "Schematron",
+      "pipeline_status": "blocked",
+      "pipeline_chars": 31858,
+      "pipeline": {
+        "coverage_pct": 83,
+        "hallucinations": 6,
+        "holistic": 4
+      },
+      "baseline": {
+        "coverage_pct": 33,
+        "hallucinations": 3,
+        "holistic": 2
+      }
+    }
+  ],
+  "agg": {
+    "baseline": {
+      "coverage": 41.2,
+      "halluc": 3.4,
+      "holistic": 2.2
+    },
+    "pipeline": {
+      "coverage": 94.3,
+      "halluc": 11.0,
+      "holistic": 3.0
+    }
+  }
+}
