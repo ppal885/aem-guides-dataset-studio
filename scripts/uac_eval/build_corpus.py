@@ -48,13 +48,39 @@ def main() -> int:
     i_ac = _first(header, "Custom field (Acceptance Criteria)")
     comp_cols = _cols(header, "Component/s")
     label_cols = _cols(header, "Labels")
+    comment_cols = _cols(header, "Comment")
+
+    import re as _re
+
+    def _uac_from_comments(row: list[str]) -> str:
+        """Fallback: recover a UAC posted as a comment. A Jira comment cell is
+        'date;author;body'; pick the longest body that reads like a UAC (mentions
+        acceptance/scope/criteria and has multiple bullet lines)."""
+        best = ""
+        for i in comment_cols:
+            if i >= len(row) or not row[i].strip():
+                continue
+            body = row[i].split(";", 2)[-1]
+            if not _re.search(r"accept|scope\s*:|criteria|\bAC\b", body, _re.I):
+                continue
+            if len(_re.findall(r"(^|\n)\s*(?:[*#\-•]|\d+[.)])\s+\S", body)) < 2:
+                continue
+            if len(body) > len(best):
+                best = body.strip()
+        return best
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     written = 0
     with out_path.open("w", encoding="utf-8") as out:
+        from_field = 0
+        from_comment = 0
         for row in rows:
             ac = row[i_ac].strip() if i_ac >= 0 and i_ac < len(row) else ""
+            source = "ac_field"
+            if not ac:
+                ac = _uac_from_comments(row)
+                source = "comment" if ac else ""
             if not ac:
                 continue
             rec = {
@@ -65,11 +91,14 @@ def main() -> int:
                 "labels": _join(row, label_cols),
                 "description": row[i_desc] if i_desc >= 0 else "",
                 "human_ac": ac,
+                "uac_source": source,
             }
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             written += 1
-    sys.stderr.write(f"corpus: {written}/{len(rows)} rows had a human UAC -> {out_path}\n")
-    print(json.dumps({"rows": len(rows), "with_uac": written, "out": str(out_path)}))
+            from_field += source == "ac_field"
+            from_comment += source == "comment"
+    sys.stderr.write(f"corpus: {written}/{len(rows)} had a human UAC ({from_field} ac_field, {from_comment} comment) -> {out_path}\n")
+    print(json.dumps({"rows": len(rows), "with_uac": written, "from_field": from_field, "from_comment": from_comment, "out": str(out_path)}))
     return 0
 
 

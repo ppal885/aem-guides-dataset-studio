@@ -1,45 +1,45 @@
 # UAC corpus analysis (human UAC_Done)
 
-Tickets with a human UAC: **310**
+Tickets with a human UAC: **315**
 
 ## Style
-- tickets: 310
+- tickets: 315
 - avg_bullets: 6.4
-- median_bullets: 5.0
-- avg_line_words: 14.3
-- pct_scope_block: 2.3
-- pct_asks_question: 17.1
-- pct_multi_surface: 15.2
+- median_bullets: 5
+- avg_line_words: 14.2
+- pct_scope_block: 2.5
+- pct_asks_question: 17.5
+- pct_multi_surface: 14.9
 
 ## Overall — % of human UACs that include each dimension
-- dim_state_partition: 40.3%
-- dim_multi_surface: 37.4%
-- dim_regression_parity: 34.5%
-- dim_negative_error: 33.9%
-- dim_output_preset: 25.2%
-- dim_provenance_channels: 18.7%
-- asks_question: 17.1%
-- multi_surface_named: 15.2%
-- dim_performance: 14.8%
-- dim_localization: 11.0%
-- dim_css_styles: 10.0%
-- dim_permissions_role: 7.7%
-- dim_cross_tool_oracle: 5.5%
+- dim_state_partition: 40.0%
+- dim_multi_surface: 36.8%
+- dim_regression_parity: 34.6%
+- dim_negative_error: 33.3%
+- dim_output_preset: 24.8%
+- dim_provenance_channels: 18.4%
+- asks_question: 17.5%
+- multi_surface_named: 14.9%
+- dim_performance: 14.6%
+- dim_localization: 11.7%
+- dim_css_styles: 9.8%
+- dim_permissions_role: 7.9%
+- dim_cross_tool_oracle: 5.4%
 - dim_attachment_or_bigcontent: 3.5%
-- has_scope_block: 2.3%
+- has_scope_block: 2.5%
 
 ## By component (>=5 tickets) — dimension inclusion %
-### Authoring (81)
-- dim_multi_surface: 63.0%
-- dim_state_partition: 28.4%
-- multi_surface_named: 27.2%
-- dim_regression_parity: 24.7%
-- dim_negative_error: 19.8%
-- dim_performance: 14.8%
-- dim_provenance_channels: 12.3%
-- dim_localization: 12.3%
-- dim_css_styles: 11.1%
-- asks_question: 11.1%
+### Authoring (84)
+- dim_multi_surface: 60.7%
+- dim_state_partition: 28.6%
+- multi_surface_named: 26.2%
+- dim_regression_parity: 25.0%
+- dim_negative_error: 19.0%
+- dim_performance: 14.3%
+- dim_localization: 13.1%
+- dim_provenance_channels: 11.9%
+- asks_question: 11.9%
+- dim_css_styles: 10.7%
 
 ### Publishing (81)
 - dim_output_preset: 61.7%
@@ -92,14 +92,14 @@ Tickets with a human UAC: **310**
 - asks_question: 26.7%
 - dim_cross_tool_oracle: 20.0%
 
-### Translation (11)
-- dim_localization: 90.9%
-- dim_state_partition: 72.7%
-- dim_negative_error: 45.5%
-- dim_multi_surface: 36.4%
-- dim_provenance_channels: 36.4%
-- dim_regression_parity: 36.4%
-- asks_question: 27.3%
+### Translation (12)
+- dim_localization: 91.7%
+- dim_state_partition: 66.7%
+- dim_negative_error: 41.7%
+- dim_multi_surface: 33.3%
+- dim_provenance_channels: 33.3%
+- dim_regression_parity: 33.3%
+- asks_question: 33.3%
 
 ### Editor (10)
 - dim_multi_surface: 50.0%
@@ -121,17 +121,17 @@ Tickets with a human UAC: **310**
 - dim_permissions_role: 28.6%
 - dim_attachment_or_bigcontent: 14.3%
 
-### Baseline (6)
-- dim_state_partition: 83.3%
-- dim_negative_error: 33.3%
-- dim_regression_parity: 33.3%
-- dim_multi_surface: 16.7%
-- dim_performance: 16.7%
-- dim_attachment_or_bigcontent: 16.7%
-- dim_cross_tool_oracle: 16.7%
-- dim_provenance_channels: 16.7%
-- dim_localization: 16.7%
-- asks_question: 16.7%
+### Baseline (7)
+- dim_state_partition: 71.4%
+- dim_regression_parity: 42.9%
+- dim_negative_error: 28.6%
+- dim_localization: 28.6%
+- dim_multi_surface: 14.3%
+- dim_performance: 14.3%
+- dim_attachment_or_bigcontent: 14.3%
+- dim_cross_tool_oracle: 14.3%
+- dim_provenance_channels: 14.3%
+- asks_question: 14.3%
 
 ### UUID Migration (5)
 - dim_provenance_channels: 100.0%
