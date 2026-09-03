@@ -114,6 +114,35 @@ def _bounded_constraint(value: Any, *, limit: int = 200) -> str:
     return normalized if 0 < len(normalized) <= limit else ""
 
 
+# Prose signals for a state-partition axis whose untested value is routinely
+# dropped: a named on/off product setting, a config property assigned true/false,
+# or a single- vs multi-language distinction. Detected from fact prose so a fresh
+# ticket with no matched pattern still enumerates the partition (both values).
+_PARTITION_CONFIG_PROPERTY_RE = re.compile(r"\b[\w.]+\s*=\s*(?:true|false)\b", re.IGNORECASE)
+_PARTITION_AXIS_TERMS = (
+    "automatically approve",
+    "auto approve",
+    "auto-approve",
+    "single language",
+    "single-language",
+    "monolingual",
+    "multi language",
+    "multi-language",
+    "multilingual",
+    "when enabled",
+    "when disabled",
+    "toggle is on",
+    "toggle is off",
+)
+
+
+def _partition_axis_signal(literal: str) -> bool:
+    text = (literal or "").casefold()
+    if any(term in text for term in _PARTITION_AXIS_TERMS):
+        return True
+    return bool(_PARTITION_CONFIG_PROPERTY_RE.search(literal or ""))
+
+
 def _strongest_materiality(
     contributions: list[InvestigationFamilySourceContribution],
 ) -> InvestigationMateriality:
@@ -763,6 +792,29 @@ class CanonicalQeInvestigationService:
                     linked_change_surface_ids=all_surface_ids,
                     materiality=issue_materiality,
                     blocking_status=(issue_materiality == InvestigationMateriality.P0),
+                    confidence=1.0,
+                )
+            )
+        partition_fact_ids = [
+            fact.fact_id
+            for fact in facts.facts
+            if _partition_axis_signal(fact.literal)
+        ]
+        if partition_fact_ids:
+            contributions[SemanticDimension.GOVERNING_CONFIGURATION].append(
+                InvestigationFamilySourceContribution(
+                    source=InvestigationFamilySourceKind.CURRENT_JIRA_EXPLICIT,
+                    source_ids=partition_fact_ids,
+                    why_required=(
+                        "The current Jira names a state-partition axis (an on/off "
+                        "product setting, a config property set true/false, or a "
+                        "single- vs multi-language distinction). Both values of the "
+                        "axis must be investigated because a reproduction or fix on "
+                        "one value does not establish the other."
+                    ),
+                    linked_change_surface_ids=all_surface_ids,
+                    materiality=issue_materiality,
+                    blocking_status=False,
                     confidence=1.0,
                 )
             )

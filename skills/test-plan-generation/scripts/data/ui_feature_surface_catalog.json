@@ -1,0 +1,33 @@
+{
+  "find-and-replace": {
+    "label": "Find and Replace",
+    "aliases": ["find & replace", "find and replace", "find/replace", "search and replace", "advanced find and replace"],
+    "surfaces": [
+      {
+        "id": "filters",
+        "label": "Filters (File Type, Document State, Last Modified)",
+        "terms": ["filter", "file type", "document state", "last modified", "topics and maps", "in-review", "reviewed"]
+      },
+      {
+        "id": "scope",
+        "label": "Path scope and Use source mode",
+        "terms": ["path scope", "source mode", "use source mode", "path selector", "scoped to"]
+      },
+      {
+        "id": "replace_actions",
+        "label": "Replace occurrence vs Replace all",
+        "terms": ["replace occurrence", "replace all", "replace-all", "single replace", "replace occurrences"]
+      },
+      {
+        "id": "replace_settings",
+        "label": "Replace settings (Replace unlocked files, Create new version, Version comments)",
+        "terms": ["replace unlocked", "create new version", "version comment", "create a new version", "locked file"]
+      },
+      {
+        "id": "enable_replace_all_toggle",
+        "label": "Enable Replace All workspace setting",
+        "terms": ["enable replace all", "workspace setting", "replace all setting", "replace all disabled", "replace all enabled"]
+      }
+    ]
+  }
+}

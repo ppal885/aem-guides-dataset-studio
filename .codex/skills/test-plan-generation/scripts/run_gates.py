@@ -138,6 +138,7 @@ entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equi
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 state_partition_coverage_mod = _load("state_partition_coverage", "state_partition_coverage.py")
 native_pdf_coverage_mod = _load("native_pdf_coverage", "native_pdf_coverage.py")
+coverage_forcing_mod = _load("coverage_forcing", "coverage_forcing.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 qe_completeness_coverage_mod = _load(
@@ -1978,6 +1979,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 for problem in native_pdf_coverage_mod.validate(manifest_data, body)
             ]
             failures += [
+                f"[coverage-forcing] {problem}"
+                for problem in coverage_forcing_mod.validate(manifest_data, body)
+            ]
+            failures += [
                 f"[shared-path-regression] {problem}"
                 for problem in shared_path_regression_coverage_mod.validate(manifest_data, body)
             ]
@@ -2222,6 +2227,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_value_provenance_coverage()
             self_tests.test_state_partition_coverage()
             self_tests.test_native_pdf_coverage()
+            coverage_forcing_mod.run_self_tests()
             self_tests.test_shared_path_regression_coverage()
             self_tests.test_qe_completeness_coverage()
             if hasattr(self_tests, "test_skill_bundle_fingerprint"):

@@ -28,6 +28,14 @@ STATE_SIGNALS = (
     "baseline", "enumdef", "bound by enum", "condition preset", "feature flag",
     "when enabled", "when disabled", "configuration enabled", "setting enabled",
     "toggle is on", "toggle is off",
+    # Language-count axis: a workflow/behaviour can differ between a single-language
+    # (monolingual) job and a multi-language one; a description that reproduces on one
+    # rarely proves the other. Both values must be tested when either is named.
+    "single language", "single-language", "monolingual",
+    "multi language", "multi-language", "multilingual",
+    # Config-toggle axis for a named on/off product setting (e.g. automatic
+    # translation approval): the on and off states are distinct partitions.
+    "automatically approve", "auto approve", "auto-approve", "approve translation",
 )
 
 # Presence of any of these shows more than one value of the axis is tested.
@@ -37,6 +45,9 @@ PARTITION_TERMS = (
     "global and folder profile", "each profile", "per profile", "both profiles",
     "baseline and current", "bound and unbound", "regardless of the profile",
     "for both", "as well as without", "both bound", "and not in enumdef",
+    "single and multi", "single- and multi", "monolingual and multilingual",
+    "both single", "both monolingual", "as well as multi", "as well as multilingual",
+    "approval on and off", "with and without approval", "approved and not approved",
 )
 
 
@@ -109,6 +120,31 @@ def run_self_tests() -> None:
     optout = {"state_partition_not_applicable": {"reason": "Only the Global profile can host this construct; a Folder profile cannot define it."}}
     assert validate(optout, single) == [], "concrete opt-out must pass"
     assert any("state-partition" in p for p in validate({"state_partition_not_applicable": "n/a"}, single)), "stub reason must not opt out"
+
+    # Language-count axis: naming a single-language job requires the multi-language
+    # value to be tested too (or vice versa).
+    lang_single = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: Accept Translation completes for a single-language translation job.",
+        "**Expected**", ""])
+    assert any("state-partition" in p for p in validate({}, lang_single)), "single-language axis must force the multi-language value"
+    lang_both = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: Accept Translation completes for both single and multi-language translation jobs.",
+        "**Expected**", ""])
+    assert validate({}, lang_both) == [], "single and multi language partition must pass"
+
+    # Config-toggle axis: automatic translation approval on vs off.
+    approve_single = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: translation completes when Automatically Approve Translations is on.",
+        "**Expected**", ""])
+    assert any("state-partition" in p for p in validate({}, approve_single)), "auto-approve axis must force both states"
+    approve_both = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: translation completes with Automatically Approve Translations on and off.",
+        "**Expected**", ""])
+    assert validate({}, approve_both) == [], "auto-approve on and off must pass"
     print("state_partition_coverage self-tests: PASS")
 
 

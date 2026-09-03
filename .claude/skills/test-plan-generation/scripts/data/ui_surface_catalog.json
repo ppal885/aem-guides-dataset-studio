@@ -6,5 +6,10 @@
     "condition presets",
     "DITAVAL attribute dropdown",
     "Preview"
+  ],
+  "subjectdef-navtitle": [
+    "Subject Scheme panel",
+    "Conditions panel",
+    "Right Panel attribute dropdown"
   ]
 }
