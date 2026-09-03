@@ -109,11 +109,14 @@ TEXT_SIGNAL_PATTERNS = (
             # "merged" only counts in a fix/PR/branch/release context, never the bare
             # word: publishing and layout tickets legitimately say "merged page layout",
             # "merged with previous page", or "merged cells", which are not fix status.
+            # Require a real VCS/merge-workflow term near "merged"; do NOT treat the
+            # generic words fix/change/patch as merge context - they collide with plain
+            # prose like "the fix must restore metadata on the merged page".
             r"\bmerged\b(?=[^.\n]{0,40}\b(?:pr|pull\s+request|mr|merge\s+request|"
             r"branch|develop|master|main|trunk|release|build|hotfix|commit|"
-            r"changeset|change|fix|patch)\b)"
+            r"changeset)\b)"
             r"|\b(?:pr|pull\s+request|mr|merge\s+request|branch|commit|changeset|"
-            r"change|fix|patch|hotfix)\b[^.\n]{0,40}?\bmerged\b"
+            r"hotfix)\b[^.\n]{0,40}?\bmerged\b"
             r"|\bcherry[-\s]?picked\b"
             r"|\bhotfix(?:ed)?\b"
             r"|\bfix\s+(?:implemented|landed|available)\b"

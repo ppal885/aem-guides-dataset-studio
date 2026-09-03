@@ -60,7 +60,11 @@ def _find_repo_root() -> Path:
             and _is_dir_safe(candidate / "skills" / "test-plan-generation")
         ):
             return candidate
-    raise RuntimeError("Could not locate the repository root for skill parity checks")
+    # No full repo layout (a teammate/standalone skill install, e.g. only
+    # ~/.claude/skills/test-plan-generation): there are no sibling copies to
+    # compare, so return None and let parity/fingerprint checks skip rather than
+    # hard-failing run_gates on every teammate machine.
+    return None
 
 
 validate_mod = _load("validate_test_plan", "validate_test_plan.py")
@@ -2877,6 +2881,9 @@ def test_component_reference_routing() -> None:
         check(f"Platform component pack retains marker {marker}", marker in platform_reference)
 
     repo_root = _find_repo_root()
+    if repo_root is None:
+        print("test_component_reference_routing: SKIP parity (standalone/teammate install, no full repo)")
+        return
     canonical_root = repo_root / ".codex" / "skills" / "test-plan-generation"
     copy_roots = (
         ("repository Claude", repo_root / ".claude" / "skills" / "test-plan-generation"),
@@ -5133,6 +5140,9 @@ def test_operational_contract() -> None:
 def test_skill_bundle_fingerprint() -> None:
     fp = skill_fingerprint_mod
     repo_root = _find_repo_root()
+    if repo_root is None:
+        print("test_skill_bundle_fingerprint: SKIP (standalone/teammate install, no full repo)")
+        return
     canonical_root = repo_root / ".codex" / "skills" / "test-plan-generation"
     sync_destinations = (
         ("repository Claude", repo_root / ".claude" / "skills" / "test-plan-generation"),
@@ -8079,7 +8089,7 @@ def test_root_cause_fix_driven() -> None:
         ("commit", {"development_links": ["https://git.example.invalid/team/repo/commit/abcdef1234567890"]}),
         ("branch", {"implementation_branch": ["feature/fix-child-selection"]}),
         ("diff", {"evidence": ["diff --git a/Resolver.java b/Resolver.java"]}),
-        ("merged claim", {"evidence": ["The candidate fix was merged."]}),
+        ("merged claim", {"evidence": ["The candidate fix was merged to develop."]}),
         ("cherry-picked claim", {"evidence": ["The candidate was cherry-picked to the release branch."]}),
         ("hotfix claim", {"evidence": ["A hotfix is available for validation."]}),
         ("fixed-in-build claim", {"evidence": ["Fixed in build 42."]}),
@@ -8108,6 +8118,8 @@ def test_root_cause_fix_driven() -> None:
         "Merge with Previous page loses the topic metadata values.",
         "The merged page layout shows only the labels.",
         "CALS table merged cells render correctly.",
+        "The fix must restore the topic metadata on the merged page.",
+        "A change to the layout must show values on the merged page.",
     ):
         check(
             f"benign layout 'merged' does not activate the fix gate: {benign[:34]}",
