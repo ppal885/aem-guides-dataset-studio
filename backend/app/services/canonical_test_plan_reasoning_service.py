@@ -1400,6 +1400,12 @@ class CanonicalTestPlanReasoningService:
                 continue
             for path, source_literal in _flatten_strings(record.content):
                 for literal in _contract_literals(path, source_literal):
+                    if not literal.strip():
+                        # A whitespace-only source value (e.g. an empty AC line or a
+                        # non-breaking-space metadata value) must never become a fact:
+                        # an authoritative fact with empty literal fails ContractIntegrityGate
+                        # and hard-blocks the whole plan (no output). Skip it here.
+                        continue
                     if _is_contract_metadata(path, literal):
                         continue
                     if len(literal) > 2000:

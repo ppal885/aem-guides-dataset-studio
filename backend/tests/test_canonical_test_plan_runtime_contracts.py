@@ -648,6 +648,27 @@ def test_contract_integrity_failure_stops_before_semantic_expansion() -> None:
     assert result.gate_decisions[0].status.value == "FAILED"
 
 
+def test_whitespace_contract_value_does_not_block_the_plan() -> None:
+    # Regression: a PRODUCT_CONTRACT value that is whitespace-only (e.g. a
+    # non-breaking space from Jira rich text, or an empty AC line) must NOT become
+    # an empty authoritative fact. Such a fact fails ContractIntegrityGate
+    # ("Authoritative source wording is empty") and hard-blocks the whole plan -
+    # the bug that blocked 5/8 held-out UAC_Done tickets in the eval.
+    record = _record(
+        source_type=EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        content={"acceptance_criteria": [" ", "   ", "The dialog opens on click."]},
+    )
+    bundle = build_bundle([record], tenant_id=TENANT)
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    assert facts.facts, "expected at least the real contract fact"
+    assert all(
+        f.literal.strip() for f in facts.facts
+    ), "no contract fact may have an empty literal"
+    gate = CANONICAL_REASONING_SERVICE.contract_integrity_gate(facts)
+    assert gate.status.value == "PASSED", gate.failures
+
+
 def test_fj15_runtime_passes_resolved_scope_to_hypothesis_verifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
