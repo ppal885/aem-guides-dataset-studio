@@ -101,3 +101,25 @@ Easy-to-read internal records; the user sees the three-line format above:
 - AC-01 [Proposed]: (Integration) Given the active configuration contains a new valid conditional attribute | When the authoring screen loads | Then the new attribute appears in the list | Evidence: Jira description and inspected configuration for the current issue.
 - AC-02 [Proposed]: (Basic) Given a configured attribute has a friendly name | When the attribute list loads | Then the list shows that friendly name | Evidence: Jira description and inspected configuration for the current issue.
 - AC-03 [Proposed]: (Negative) Given a configured attribute has no friendly name | When the attribute list loads | Then the list shows the approved fallback label | Evidence: Jira description and inspected configuration for the current issue.
+
+## Senior-QA Style (five rules, learned from a human UAC on GUIDES-23044)
+
+A senior human QA wrote that UAC as a 3-line Scope plus seven one-line ACs, and it read far clearer than a longer AI draft. Apply these five rules so a UAC reads like that:
+
+1. **Lead with a short Scope block (2-4 bullets) that draws the boundary** - the output/surface in scope, the source constructs in scope, and what is explicitly the only thing supported - before any AC. Example: "Scope: Native PDF; Map/Bookmap topicmeta/bookmeta; only the image element is supported." The reader then knows what is in and out before reading the ACs.
+2. **One concrete, checkable thing per AC.** No compound clauses, no "whether X or Y", no second independent result. If it needs an "and" between two testable outcomes, split it.
+3. **Decide specifics; do not ask them.** Where a draft would raise an Open Question ("which image formats?"), a senior QA writes the decided answer ("gif, jpg, bmp, png, svg, tiff"). Reserve Open Questions for a genuine product decision QE cannot assert - not for a value you can resolve from evidence or a sensible enumerated default.
+4. **Name the real artifact or pipeline the tester checks, not an abstract mechanism.** "The image is present in the generated temporary files" beats "the engine downloads the image" (vague). "No tag loss in the merged HTML" beats "content is preserved". Ground each AC in the concrete thing a tester can open and verify.
+5. **Shorter is the target, not a side effect.** Prefer seven tight one-liners over thirteen padded ones. Do not enumerate every construct variant as its own AC when the Scope already bounds them; push variants into Test Scenarios.
+
+### Concrete verification dimensions to consider for Native PDF / output-generation tickets
+
+These are real, testable dimensions a senior QA includes and an AI draft repeatedly misses (source: GUIDES-23044). Consider each and cover it or consciously scope it out:
+
+- **Temporary-files artifact:** the referenced image or asset is present in the generated temporary files (author with "Retain temporary files" and open them). This is the concrete form of any "the engine picks up / downloads the asset" claim - never leave that mechanism vague.
+- **Assets UI update flow:** updating the asset in the AEM Assets UI is reflected when the PDF is generated again (a DAM update propagates to the output).
+- **No tag loss in the merged HTML** produced by the publish pipeline.
+- **Renditions:** image renditions are applied according to renditionmapping.xml.
+- **CSS styles** are honored for the element (size, placement).
+- **Custom DTD / specialization** support (for example a specialized topicmeta) still resolves.
+- **Supported type matrix:** enumerate the decided supported set (for example image types gif/jpg/bmp/png/svg/tiff) rather than asking which are supported.
