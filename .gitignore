@@ -190,3 +190,10 @@ scripts/uac_eval/train_priors.json
 # deploy build stamp
 BUILD_COMMIT
 backend/BUILD_COMMIT
+
+# VM runtime storage artifacts (chunks/indexes/enrichment/export/feedback) - mutated at
+# runtime; tracking them causes deploy drift (G9). Working-tree copies are kept.
+backend/storage/*.json
+
+# stale one-off client-package build artifacts under tmp/
+tmp/aem-guides-mcp-client-*/
