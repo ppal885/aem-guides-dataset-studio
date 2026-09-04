@@ -1043,6 +1043,7 @@ _EVIDENCE_CODELINE_RE = re.compile(
     r"\b[A-Z][A-Za-z0-9]+\.[a-z][A-Za-z0-9_]*\(|"     # Class.method(
     r"\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\(|"           # camelCase(
     r"=\s*PropertiesUtil|\bimport\s|\.java\b|[A-Za-z]:\\\\|/src/|https?://|"
+    r"\b\w+(?:\.\w+)+\s*=\s*(?:true|false)\b|"         # dotted config property = true/false
     r"\b\w+\.\w+\.\w+\.\w+\b"                          # 4-part dotted config PID
 )
 
