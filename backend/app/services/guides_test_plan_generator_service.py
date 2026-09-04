@@ -14,6 +14,52 @@ import re
 from typing import Any
 
 
+_BUILD_COMMIT_CACHE: str | None = None
+
+
+def _build_commit() -> str:
+    """Best-effort identifier of the running build, for one-call deploy verification.
+
+    Order: BUILD_COMMIT env -> a BUILD_COMMIT file written at deploy time -> git ->
+    'unknown'. Cached after first read.
+    """
+
+    global _BUILD_COMMIT_CACHE
+    if _BUILD_COMMIT_CACHE is not None:
+        return _BUILD_COMMIT_CACHE
+    value = (os.getenv("BUILD_COMMIT") or "").strip()
+    if not value:
+        from pathlib import Path
+
+        here = Path(__file__).resolve()
+        for candidate in (
+            here.parents[2] / "BUILD_COMMIT",       # repo root
+            here.parents[1] / "BUILD_COMMIT",       # backend/
+            Path("/app/BUILD_COMMIT"),              # container
+        ):
+            try:
+                if candidate.is_file():
+                    value = candidate.read_text(encoding="utf-8").strip()
+                    if value:
+                        break
+            except OSError:
+                continue
+    if not value:
+        try:
+            import subprocess
+
+            value = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(Path(__file__).resolve().parents[2]),
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            ).decode().strip()
+        except Exception:
+            value = ""
+    _BUILD_COMMIT_CACHE = value or "unknown"
+    return _BUILD_COMMIT_CACHE
+
+
 _JIRA_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 _PUBLISHING_LABEL_TERMS = {
     "publishing",
@@ -209,10 +255,15 @@ def build_guides_test_plan_packet(
         request=request,
         packet=packet,
     )
-    return LEGACY_COMPATIBILITY_PROJECTOR.project_result(
+    result = LEGACY_COMPATIBILITY_PROJECTOR.project_result(
         envelope,
         legacy_packet=packet,
     )
+    # Deploy/version signal: stamp the running build so a deploy can be verified in one
+    # API call instead of a behavioural probe. Read once, cached.
+    if isinstance(result, dict):
+        result["build_commit"] = _build_commit()
+    return result
 
 
 def _collect_guides_test_plan_evidence_packet(

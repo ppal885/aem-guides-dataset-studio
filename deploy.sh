@@ -54,6 +54,14 @@ if [ ! -f ".env.docker" ]; then
 fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
+# Stamp the build commit so a deploy can be verified in one API call (result.build_commit).
+if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+  SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  echo "$SHA" > BUILD_COMMIT
+  echo "$SHA" > backend/BUILD_COMMIT   # COPY'd into the backend image so the app can read it
+  ok "Stamped BUILD_COMMIT=$SHA"
+fi
+
 BUILD_ARGS=""
 if $PULL; then
   info "Pulling latest base images..."

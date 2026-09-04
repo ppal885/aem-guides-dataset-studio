@@ -1036,7 +1036,12 @@ def _target_sources(subject: AuthoritySubject) -> list[EvidenceSourceType]:
 # Left as facts they flow through as coverage candidates and render as an evidence dump.
 _EVIDENCE_IMAGE_RE = re.compile(r"\.(?:png|jpe?g|gif|bmp|svg)\b|\|thumbnail", re.I)
 _EVIDENCE_DOCLEAD_RE = re.compile(
-    r"^(?:documented purpose|learn about|configure )|\| Adobe Experience Manager", re.I
+    r"^(?:documented purpose|learn about|configure |source page\b|how to use this in rag|"
+    r"detected dita constructs|learned feature behaviou?r|publishing/output contexts)|"
+    r"\| Adobe Experience Manager|"
+    r"release of adobe experience manager|"  # release-note doc titles
+    r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\s+release\b",
+    re.I,
 )
 _EVIDENCE_BARE_NUM_RE = re.compile(r"^[\d.\s]+$|^\d{4}\.\d")
 _EVIDENCE_CODELINE_RE = re.compile(
