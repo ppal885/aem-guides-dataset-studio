@@ -1,177 +1,212 @@
 {
-  "schema_version": "aem-guides-miss-probes-v1",
-  "note": "Curated, human-approved discovery probes. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). Never add a probe that encodes a single concrete symbol, path, or Jira key.",
-  "probes": [
-    {
-      "probe_id": "MP-001",
-      "pattern_class": "DISCOVERY_PATTERN",
-      "signal_pattern": {
-        "evidence_kind": "CODE",
-        "match": [
-          "metadata",
-          "jcr:content",
-          "repository node",
-          "property value"
-        ],
-        "component_scope": ""
-      },
-      "implied_dimension": {
-        "axis": "VALUE_SET_CHANNEL",
-        "candidate_template": "value provenance beyond the authoring UI - repository node (CRX/DE), source map/topic file, API/import, and migration - and assert the product uses the correct source value"
-      },
-      "provenance": {
-        "source": "HUMAN",
-        "delta_ids": [
-          "HFD-VALUE-PROVENANCE-01"
-        ],
-        "promotion_state": "APPROVED",
-        "independent_case_count": 1
-      },
-      "abstraction_note": "Any ticket where a value is written to an output must enumerate every channel the value can be set from, not only the authoring UI. The property NAME source and the property VALUE source can differ; the value is frequently read from the repository node. This generalizes beyond the originating metadata ticket to all value-write tickets.",
-      "normative_invariant": true,
-      "counterexamples_checked": true,
-      "equivalence_key": "value-provenance",
-      "status": "ACTIVE"
-    },
-    {
-      "probe_id": "MP-002",
-      "pattern_class": "DISCOVERY_PATTERN",
-      "signal_pattern": {
-        "evidence_kind": "CODE",
-        "match": [
-          "asset upload",
-          "overwrite",
-          "upload conflict",
-          "dam upload",
-          "file upload",
-          "asset version"
-        ],
-        "component_scope": ""
-      },
-      "implied_dimension": {
-        "axis": "CODE_PATH_CONSUMER",
-        "candidate_template": "native platform features that share the touched asset upload, overwrite, or conflict flow - duplicate detection, versioning and timeline, DAM update-asset workflows, and processing profiles or metadata - enumerated as shared-path regression or their own acceptance criteria, not only the reported symptom"
-      },
-      "provenance": {
-        "source": "HUMAN",
-        "delta_ids": [
-          "HFD-SHARED-PLATFORM-FEATURES-01"
-        ],
-        "promotion_state": "APPROVED",
-        "independent_case_count": 1
-      },
-      "abstraction_note": "When a change touches a shared platform flow (asset upload/overwrite/conflict), the OTHER native product features that ride the same flow are shared-path consumers and must be enumerated, not just the reported symptom. Generalizes the CRX/DE value-provenance miss and the duplicate-detection miss into one shared-consumer rule.",
-      "normative_invariant": true,
-      "counterexamples_checked": true,
-      "equivalence_key": "shared-platform-feature-consumers",
-      "status": "ACTIVE"
-    },
-    {
-      "probe_id": "MP-003",
-      "pattern_class": "DISCOVERY_PATTERN",
-      "signal_pattern": {
-        "evidence_kind": "CONTRACT",
-        "match": [
-          "steps to reproduce",
-          "drag and drop",
-          "drag-and-drop",
-          "right click",
-          "context menu",
-          "toolbar button",
-          "keyboard shortcut"
-        ],
-        "component_scope": ""
-      },
-      "implied_dimension": {
-        "axis": "ENTRY_POINT",
-        "candidate_template": "when the ticket names a specific UI mechanism to trigger an action (drag-and-drop, a button, right-click or context menu, a keyboard shortcut, or an API), enumerate the OTHER entry points for that same action and assert consistent behaviour across them"
-      },
-      "provenance": {
-        "source": "HUMAN",
-        "delta_ids": [
-          "HFD-STATED-MECHANISM-ENTRYPOINTS-01"
-        ],
-        "promotion_state": "APPROVED",
-        "independent_case_count": 1
-      },
-      "abstraction_note": "A mechanism named in Steps to Reproduce (e.g. drag-and-drop upload) is only one of several entry points for the action; the UAC must enumerate the sibling entry points, not only the one the reporter used. This is a stated-evidence enumeration miss, distinct from adjacent-feature discovery.",
-      "normative_invariant": true,
-      "counterexamples_checked": true,
-      "equivalence_key": "stated-mechanism-entry-points",
-      "status": "ACTIVE"
-    },
-    {
-      "probe_id": "MP-004",
-      "pattern_class": "DISCOVERY_PATTERN",
-      "signal_pattern": {
-        "evidence_kind": "CONTRACT",
-        "match": [
-          "native pdf",
-          "generate pdf",
-          "pdf output",
-          "output preset",
-          "generate output",
-          "download as pdf",
-          "publish output",
-          "output generation"
-        ],
-        "component_scope": "Publishing"
-      },
-      "implied_dimension": {
-        "axis": "ENTRY_POINT",
-        "candidate_template": "when a ticket concerns an output-generation feature (Native PDF or any output), enumerate ALL generation entry points for that output - map/output-preset publishing, single-topic generation, editor Download-as action, generate-for-review, and baseline/versioned publishing - and assert consistent behaviour across every entry point, not only the default preset-publish path"
-      },
-      "provenance": {
-        "source": "HUMAN",
-        "delta_ids": [
-          "HFD-OUTPUT-GENERATION-ENTRYPOINTS-01"
-        ],
-        "promotion_state": "APPROVED",
-        "independent_case_count": 1
-      },
-      "abstraction_note": "Distinct from MP-003: MP-003 fires when the ticket NAMES a UI mechanism; MP-004 fires when the ticket names an OUTPUT-GENERATION feature that names NO entry point (e.g. 'Native PDF'). Such a feature always has several generation entry points sharing one engine, so the default preset-publish reading silently drops single-topic PDF, Download as PDF, review PDF, and baseline publishing.",
-      "normative_invariant": true,
-      "counterexamples_checked": true,
-      "equivalence_key": "output-generation-entry-point-enumeration",
-      "status": "ACTIVE"
-    },
-    {
-      "probe_id": "MP-005",
-      "pattern_class": "DISCOVERY_PATTERN",
-      "signal_pattern": {
-        "evidence_kind": "CONTRACT",
-        "match": [
-          "automatically added",
-          "auto-populate",
-          "auto populate",
-          "derived from",
-          "default attribute",
-          "required attribute",
-          "populate the attribute",
-          "refresh navigation title",
-          "auto-fill",
-          "attribute is not added",
-          "attribute not added"
-        ],
-        "component_scope": ""
-      },
-      "implied_dimension": {
-        "axis": "VALUE_SET_CHANNEL",
-        "candidate_template": "when a feature auto-derives or auto-populates an attribute or value onto a construct (for example a navigation/label/type attribute added on reference insertion), enumerate the full derivation surface, not only the one path the reporter used: (1) every insertion or trigger entry point (dialog, drag-and-drop, source typing, API) plus any explicit refresh or recompute action; (2) the construct's specializations, applying the derivation only where it is semantically valid and skipping resource-only or non-navigation variants; (3) reuse consumers of the derived value (keyref or conref, reuse across multiple parents, and cross-reference or link-text resolution); (4) editor parity across every editor that implements the population; (5) overwrite versus preserve of an existing author-set value; (6) the storage form (attribute versus element) and which form consumers read; (7) the fallback when the derivation source is empty, missing, external, or non-native"
-      },
-      "provenance": {
-        "source": "HUMAN",
-        "delta_ids": [
-          "HFD-ATTRIBUTE-VALUE-DERIVATION-ENUMERATION-01"
-        ],
-        "promotion_state": "APPROVED",
-        "independent_case_count": 1
-      },
-      "abstraction_note": "Generic enumeration for attribute-value derivation / auto-population features. Such a feature is never a single code path: the derived value flows through several insertion entry points, several specializations of the target construct, reuse consumers that read it, more than one editor, an explicit refresh action, and an overwrite policy, and it may live as an attribute or an element. Collapsing it to the one reporter-used path silently drops the rest. Complements MP-003 (stated UI mechanism) and MP-004 (output-generation entry points).",
-      "normative_invariant": true,
-      "counterexamples_checked": true,
-      "equivalence_key": "attribute-value-derivation-enumeration",
-      "status": "ACTIVE"
-    }
-  ]
+ "schema_version": "aem-guides-miss-probes-v1",
+ "note": "Curated, human-approved discovery probes. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). Never add a probe that encodes a single concrete symbol, path, or Jira key.",
+ "probes": [
+  {
+   "probe_id": "MP-001",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CODE",
+    "match": [
+     "metadata",
+     "jcr:content",
+     "repository node",
+     "property value"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "VALUE_SET_CHANNEL",
+    "candidate_template": "value provenance beyond the authoring UI - repository node (CRX/DE), source map/topic file, API/import, and migration - and assert the product uses the correct source value"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-VALUE-PROVENANCE-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "Any ticket where a value is written to an output must enumerate every channel the value can be set from, not only the authoring UI. The property NAME source and the property VALUE source can differ; the value is frequently read from the repository node. This generalizes beyond the originating metadata ticket to all value-write tickets.",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "value-provenance",
+   "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-002",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CODE",
+    "match": [
+     "asset upload",
+     "overwrite",
+     "upload conflict",
+     "dam upload",
+     "file upload",
+     "asset version"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "CODE_PATH_CONSUMER",
+    "candidate_template": "native platform features that share the touched asset upload, overwrite, or conflict flow - duplicate detection, versioning and timeline, DAM update-asset workflows, and processing profiles or metadata - enumerated as shared-path regression or their own acceptance criteria, not only the reported symptom"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-SHARED-PLATFORM-FEATURES-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "When a change touches a shared platform flow (asset upload/overwrite/conflict), the OTHER native product features that ride the same flow are shared-path consumers and must be enumerated, not just the reported symptom. Generalizes the CRX/DE value-provenance miss and the duplicate-detection miss into one shared-consumer rule.",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "shared-platform-feature-consumers",
+   "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-003",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CONTRACT",
+    "match": [
+     "steps to reproduce",
+     "drag and drop",
+     "drag-and-drop",
+     "right click",
+     "context menu",
+     "toolbar button",
+     "keyboard shortcut"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "ENTRY_POINT",
+    "candidate_template": "when the ticket names a specific UI mechanism to trigger an action (drag-and-drop, a button, right-click or context menu, a keyboard shortcut, or an API), enumerate the OTHER entry points for that same action and assert consistent behaviour across them"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-STATED-MECHANISM-ENTRYPOINTS-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "A mechanism named in Steps to Reproduce (e.g. drag-and-drop upload) is only one of several entry points for the action; the UAC must enumerate the sibling entry points, not only the one the reporter used. This is a stated-evidence enumeration miss, distinct from adjacent-feature discovery.",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "stated-mechanism-entry-points",
+   "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-004",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CONTRACT",
+    "match": [
+     "native pdf",
+     "generate pdf",
+     "pdf output",
+     "output preset",
+     "generate output",
+     "download as pdf",
+     "publish output",
+     "output generation"
+    ],
+    "component_scope": "Publishing"
+   },
+   "implied_dimension": {
+    "axis": "ENTRY_POINT",
+    "candidate_template": "when a ticket concerns an output-generation feature (Native PDF or any output), enumerate ALL generation entry points for that output - map/output-preset publishing, single-topic generation, editor Download-as action, generate-for-review, and baseline/versioned publishing - and assert consistent behaviour across every entry point, not only the default preset-publish path"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-OUTPUT-GENERATION-ENTRYPOINTS-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "Distinct from MP-003: MP-003 fires when the ticket NAMES a UI mechanism; MP-004 fires when the ticket names an OUTPUT-GENERATION feature that names NO entry point (e.g. 'Native PDF'). Such a feature always has several generation entry points sharing one engine, so the default preset-publish reading silently drops single-topic PDF, Download as PDF, review PDF, and baseline publishing.",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "output-generation-entry-point-enumeration",
+   "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-005",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CONTRACT",
+    "match": [
+     "automatically added",
+     "auto-populate",
+     "auto populate",
+     "derived from",
+     "default attribute",
+     "required attribute",
+     "populate the attribute",
+     "refresh navigation title",
+     "auto-fill",
+     "attribute is not added",
+     "attribute not added"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "VALUE_SET_CHANNEL",
+    "candidate_template": "when a feature auto-derives or auto-populates an attribute or value onto a construct (for example a navigation/label/type attribute added on reference insertion), enumerate the full derivation surface, not only the one path the reporter used: (1) every insertion or trigger entry point (dialog, drag-and-drop, source typing, API) plus any explicit refresh or recompute action; (2) the construct's specializations, applying the derivation only where it is semantically valid and skipping resource-only or non-navigation variants; (3) reuse consumers of the derived value (keyref or conref, reuse across multiple parents, and cross-reference or link-text resolution); (4) editor parity across every editor that implements the population; (5) overwrite versus preserve of an existing author-set value; (6) the storage form (attribute versus element) and which form consumers read; (7) the fallback when the derivation source is empty, missing, external, or non-native"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-ATTRIBUTE-VALUE-DERIVATION-ENUMERATION-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "Generic enumeration for attribute-value derivation / auto-population features. Such a feature is never a single code path: the derived value flows through several insertion entry points, several specializations of the target construct, reuse consumers that read it, more than one editor, an explicit refresh action, and an overwrite policy, and it may live as an attribute or an element. Collapsing it to the one reporter-used path silently drops the rest. Complements MP-003 (stated UI mechanism) and MP-004 (output-generation entry points).",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "attribute-value-derivation-enumeration",
+   "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-006",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CODE",
+    "match": [
+     "language variable",
+     "locale",
+     "xml:lang",
+     "translation",
+     "cross-reference title",
+     "regional locale",
+     "language code",
+     "lngvar"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "CONFIG_BRANCH",
+    "candidate_template": "locale granularity branch - a five-character regional locale (language plus region) versus the generic two-character language - assert the output uses the regional value when a regional entry exists and falls back to the generic value only when it does not"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-LOCALE-REGION-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 2
+   },
+   "abstraction_note": "Any feature that resolves a localized value (labels, cross-reference strings, generated text) must be tested at both locale granularities: a regional locale must use its regional value when defined, not silently fall back to the generic language. Generalizes across all localized-value features and output engines.",
+   "normative_invariant": false,
+   "counterexamples_checked": true,
+   "equivalence_key": "locale-region-granularity",
+   "status": "ACTIVE"
+  }
+ ]
 }
