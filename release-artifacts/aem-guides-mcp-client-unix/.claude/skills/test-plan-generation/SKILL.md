@@ -368,6 +368,39 @@ FluffyJaws broadens *discovery* of relevant behaviour, but it is a synthesis eng
 - Do not treat Figma as proof of backend/API behaviour, permissions, versioning, or persistence unless Jira/PR/RAG also supports it.
 - If Figma MCP or design access is missing for a design-dependent ticket, write `Draft blocker: Figma design evidence not inspected`.
 
+### Phase 6.5 — Discovery-First Dimension Sweep (MANDATORY before authoring)
+
+Do this BEFORE writing a single acceptance criterion. Most misses are discovery gaps, not
+writing gaps: an AC set drafted from the ticket text plus a couple of greps silently drops
+a dimension a reviewer then has to add. Run the full sweep first, disposition every
+dimension, and only then author.
+
+Run every applicable probe and trace, then record the result in the manifest
+`dimension_inventory` block (each dimension COVERED_BY_AC / OPEN_QUESTION / OUT_OF_SCOPE /
+NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missing):
+
+- Miss-probe library: load `data/miss_probes.json` and, for every ACTIVE probe whose
+  signal matches this ticket's evidence, treat its implied dimension as a required
+  investigation candidate (entry points, consumers/siblings, value provenance, locale
+  granularity, and any newer learned probe). These encode real past misses — never skip a
+  matched probe.
+- Consumers / siblings / entry points: trace the touched construct to ALL code consumers,
+  sibling code paths, and every entry point that reaches the same path (UI action, API,
+  service, scheduler), with file:line — do not stop at two greps. Translate each to plain
+  observable behaviour in the ACs; never put the code identifiers in an AC.
+- State / config partitions: enumerate both values of every state axis (profile, baseline,
+  enum-bound/unbound, feature flag on/off, single- vs multi-language, setting on/off).
+- Output scope: which output presets/types are affected, and DITA-OT processing on vs off.
+- Error / negative / boundary paths, performance/scale (when any workload signal exists),
+  security, localization (regional vs generic locale), and upgrade/migration.
+- Reviewer comments: every imperative check a reviewer raised must be dispositioned.
+- Evidence: run RAG at least 3× on the feature's real behaviour and the indexed Jira
+  history for the component; record both. Thin/absent history is a recorded gap, not silence.
+
+Only when every dimension above is dispositioned may you proceed to Phase 7. If the sweep
+surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
+— do not author around it.
+
 ### Phase 7 — Design Test Scenarios
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
