@@ -14,8 +14,9 @@ skill. Evidence: the partition backend change was the only thing that could move
 and the runtime is deliberately locked against bolt-on gates (see
 `canonical-runtime-coverage-stages.md`).
 Fix (the real lever): fold the coverage dimensions into the runtime's acceptance-candidate
-generation so the pipeline PRODUCES the ACs (not just flags gaps). Scoped separately in
-`canonical-runtime-coverage-stages.md` §3.5. Everything else is incremental.
+generation so the pipeline PRODUCES the ACs (not just flags gaps). SCOPED in
+`g1-runtime-coverage-generation.md` (within-stage change to the closure explorer +
+ACCEPTANCE_CONTRACT_RESOLVER; locked-runtime-safe, no new stage). Everything else is incremental.
 
 ## G2 — Authors first, enumerates later (BEHAVIORAL)
 On every ticket this session a reviewer had to add a missed dimension after the draft
