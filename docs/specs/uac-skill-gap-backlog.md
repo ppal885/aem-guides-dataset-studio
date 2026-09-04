@@ -81,6 +81,19 @@ optional polish: screenshot OCR, and auth for gated external video hosts.
 - Fail-closed skill gates: performance, ui-surface, state/config/language partition,
   investigation-as-AC, no-code-identifiers, paste-safe/plain-language.
 
+## Ops follow-ups (surfaced during the 2026-09-04 VM redeploy)
+- G8 — VM deploy is nginx/systemd, not Docker, but `deploy.sh` is Docker-only
+  (`docker compose -p ...` failed on the VM). The real deploy is: `git pull` then
+  `systemctl restart <backend-service>` (bare checkout, so `_build_commit()` reads git
+  directly - no stamping needed). Add a short "VM restart (non-Docker)" path to the
+  vm-deployment skill so the next redeploy skips the Docker detour. Verify with
+  `python scripts/verify_deploy.py --expect <sha>` (checks build_commit + evidence-fragment count).
+- G9 — Tracked runtime data drift on the VM. `git pull` aborted because
+  `backend/storage/aem_guides_enriched_behavior_chunks.json` is TRACKED yet mutated on the
+  VM (and also changed upstream), forcing a stash each deploy and risking data loss.
+  Decide whether VM-generated storage/enrichment artifacts should be gitignored (treated as
+  runtime data) rather than tracked, so deploys are clean fast-forwards.
+
 ## Recommended order of work
 1. G1 (runtime generation) — the ceiling-raiser; scoped in the companion spec.
 2. G2 (enumerate-first gate) — highest behavioral leverage, stops the review-patch cycle.
