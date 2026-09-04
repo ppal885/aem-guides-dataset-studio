@@ -1030,6 +1030,40 @@ def _target_sources(subject: AuthoritySubject) -> list[EvidenceSourceType]:
     }[subject]
 
 
+# A contract fact must read as observable behaviour, not a raw evidence span. These
+# shapes are evidence the miner pulled from the description/RAG/attachments (a screenshot
+# ref, a doc-chunk lead-in, a bare number/version, a code line, a config-PID dump, a URL).
+# Left as facts they flow through as coverage candidates and render as an evidence dump.
+_EVIDENCE_IMAGE_RE = re.compile(r"\.(?:png|jpe?g|gif|bmp|svg)\b|\|thumbnail", re.I)
+_EVIDENCE_DOCLEAD_RE = re.compile(
+    r"^(?:documented purpose|learn about|configure )|\| Adobe Experience Manager", re.I
+)
+_EVIDENCE_BARE_NUM_RE = re.compile(r"^[\d.\s]+$|^\d{4}\.\d")
+_EVIDENCE_CODELINE_RE = re.compile(
+    r"\b[A-Z][A-Za-z0-9]+\.[a-z][A-Za-z0-9_]*\(|"     # Class.method(
+    r"\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\(|"           # camelCase(
+    r"=\s*PropertiesUtil|\bimport\s|\.java\b|[A-Za-z]:\\\\|/src/|https?://|"
+    r"\b\w+\.\w+\.\w+\.\w+\b"                          # 4-part dotted config PID
+)
+
+
+def _is_behavioural_literal(literal: str) -> bool:
+    """True when a literal reads as observable behaviour rather than raw evidence."""
+
+    s = (literal or "").strip()
+    if len(s) < 6:
+        return False
+    if _EVIDENCE_IMAGE_RE.search(s):
+        return False
+    if _EVIDENCE_DOCLEAD_RE.search(s):
+        return False
+    if _EVIDENCE_BARE_NUM_RE.match(s):
+        return False
+    if _EVIDENCE_CODELINE_RE.search(s):
+        return False
+    return True
+
+
 def _plain_candidate(value: str) -> str:
     """Humanize ontology prefixes while preserving the entity wording."""
 
@@ -1443,6 +1477,18 @@ class CanonicalTestPlanReasoningService:
                         # and hard-blocks the whole plan (no output). Skip it here.
                         continue
                     if _is_contract_metadata(path, literal):
+                        continue
+                    _accepted_source = record.source_type in {
+                        EvidenceSourceType.ACCEPTED_UAC,
+                        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+                        EvidenceSourceType.PRODUCT_DECISION,
+                    }
+                    if not _accepted_source and not _is_behavioural_literal(literal):
+                        # An evidence-noise span from a lower-authority record (a
+                        # screenshot ref, doc-chunk lead-in, bare number, code line,
+                        # config-PID) must not become a contract fact; it renders as an
+                        # evidence dump in the coverage sections. Accepted UAC / product
+                        # decisions are never filtered.
                         continue
                     if len(literal) > 2000:
                         literal = literal[:2000]
