@@ -391,6 +391,14 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
 - State / config partitions: enumerate both values of every state axis (profile, baseline,
   enum-bound/unbound, feature flag on/off, single- vs multi-language, setting on/off).
 - Output scope: which output presets/types are affected, and DITA-OT processing on vs off.
+- Output-engine parity benchmark (Native PDF vs Direct DITA-OT): for any Native-PDF or
+  output-rendering ticket, GENERATE the affected construct with BOTH Native PDF and Direct
+  DITA-OT and diff the two outputs on numbering, placement, ordering, and label text. A
+  divergence is a defect unless an explicit product requirement documents it. This is the
+  one class the sweep cannot infer from ticket text, code grep, or spec - it only appears
+  by producing and comparing both outputs, so it must be run, not reasoned about. Use the
+  dita-ot output-generation capability for the benchmark; probe MP-007 surfaces this
+  dimension (advisory until promoted). Record the diff result in the dimension inventory.
 - Error / negative / boundary paths, performance/scale (when any workload signal exists),
   security, localization (regional vs generic locale), and upgrade/migration.
 - Reviewer comments: every imperative check a reviewer raised must be dispositioned.

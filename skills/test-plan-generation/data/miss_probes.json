@@ -207,6 +207,45 @@
    "counterexamples_checked": true,
    "equivalence_key": "locale-region-granularity",
    "status": "ACTIVE"
+  },
+  {
+   "probe_id": "MP-007",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CODE",
+    "match": [
+     "native pdf",
+     "dita-ot",
+     "output",
+     "cross-reference",
+     "xref",
+     "toc",
+     "table of contents",
+     "footnote",
+     "callout",
+     "numbering",
+     "rendering",
+     "label"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "OUTPUT_PRESET",
+    "candidate_template": "output-engine parity - for a rendering or output change, generate the same construct with Native PDF and with Direct DITA-OT and compare them; assert they agree on numbering, placement, ordering, and label text. A divergence is a defect unless an explicit product requirement documents it."
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-OUTPUT-PARITY-01"
+    ],
+    "promotion_state": "VALIDATING",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "Cross-engine output-parity nuances (e.g. Native PDF using a TOC-local callout numbering sequence while DITA-OT preserves the shared number) produce no signal in ticket text, code grep, or spec - they only appear when both outputs are generated and diffed. This probe surfaces the parity dimension so it is not missed pre-UAC when no reviewer comment exists. VALIDATING until a second independent divergence case promotes it.",
+   "normative_invariant": false,
+   "counterexamples_checked": true,
+   "equivalence_key": "native-pdf-vs-dita-ot-parity",
+   "status": "VALIDATING"
   }
  ]
 }
