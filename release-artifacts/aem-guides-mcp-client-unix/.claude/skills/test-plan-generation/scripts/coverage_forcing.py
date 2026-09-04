@@ -225,6 +225,30 @@ def _validate_investigation(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+# An added/unit/automation/regression test passing or covering something is Automation
+# Coverage EVIDENCE, never an acceptance criterion (non-negotiable). Flag the shape in AC
+# lines. Scans only AC bullets, so a separate "Automation Coverage" verdict line is fine.
+_TEST_AS_AC_RES = (
+    re.compile(r"\b(?:added|unit|automation|new|regression|integration)\b[\w\s,'-]{0,30}\btests?\b", re.I),
+    re.compile(r"\btests?\b[\w\s,'-]{0,30}\b(?:pass(?:es|ing)?|is green|are green|covers?|added)\b", re.I),
+    re.compile(r"\b[\w/.-]+\.test\.(?:ts|js|py|java)\b|\btest\.(?:ts|js|py)\b", re.I),
+    re.compile(r"\bautomation\s+(?:pr|test|suite)\b", re.I),
+)
+
+
+def _validate_no_test_as_ac(manifest, plan_text: str) -> list[str]:
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        if any(rx.search(line) for rx in _TEST_AS_AC_RES):
+            problems.append(
+                "An Acceptance Criterion asserts that a test/automation passes or covers "
+                f"something: {line[:80]!r}. A test is Automation Coverage evidence, never an "
+                "AC (non-negotiable). State the observable product behaviour as the AC and "
+                "record the test in an Automation Coverage line."
+            )
+    return problems
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -274,6 +298,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_performance(manifest, plan_text)
     problems += _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
     problems += _validate_investigation(manifest, plan_text)
+    problems += _validate_no_test_as_ac(manifest, plan_text)
     problems += _validate_plain_language(plan_text)
     return problems
 
@@ -339,6 +364,24 @@ def run_self_tests() -> None:
         "- AC-09: Confirm whether the 2026.08 fix is present in this build.",
         ""])
     assert any("investigation task" in p for p in validate({}, inv)), "investigation AC must fail"
+
+    # --- no test/automation as an AC (the GUIDES-49386 / GUIDES-23883 failure) ---
+    test_ac = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-09: the added translation test covers the created-in-en / moved-to-en_us case across map and topic.",
+        ""])
+    assert any("Automation Coverage evidence" in p for p in validate({}, test_ac)), "added-test-as-AC must fail"
+    testfile_ac = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-08: The added topic.test.ts case passes.",
+        ""])
+    assert any("Automation Coverage evidence" in p for p in validate({}, testfile_ac)), "test-file-as-AC must fail"
+    # a plain product-behaviour AC that merely contains the word 'test' must NOT trip it
+    ok_test = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: the user can use the Test Connection button and see a success message.",
+        ""])
+    assert not any("Automation Coverage evidence" in p for p in validate({}, ok_test)), "product 'Test Connection' must pass"
 
     # --- no code identifiers in ACs (the GUIDES-52444 failure) ---
     codey = nl.join([
