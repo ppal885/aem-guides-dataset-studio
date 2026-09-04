@@ -1,6 +1,11 @@
 # Spec: Runtime render/synthesis quality — coverage bullets are raw evidence
 
-Status: Proposed (scoping)
+Status: Part 1 (evidence-fragment filter) SHIPPED + measured (commit 625d13dcd);
+Part 2 (statement normalization) and Part 3 (gated LLM synthesis) remain.
+Part 1 result on 10 dimension-relevant tickets (fixed judge, WITHOUT vs WITH):
+coverage 92.0 -> 93.9, holistic 3.80 -> 4.10, hallucinations 0.00 -> 0.00,
+evidence-fragment bullets many -> 0. Landed at extract_contract_facts (invariant-safe;
+filtering at classify_coverage crashed the completeness invariant).
 Owner: (assign)
 Basis: code trace of the shipped runtime renderer + the observed evidence-dump in the
 `## Configuration / state coverage` section of the GUIDES-14665 plan. This is the real
