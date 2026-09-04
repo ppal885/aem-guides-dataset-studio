@@ -63,11 +63,15 @@ Fix: make the RAG/history endpoint dependably reachable in the session (ops), an
 hard "history attempted (source, query, result)" record so a thin section is visible, not
 silent.
 
-## G7 — Multimodal evidence is ad-hoc (EVIDENCE)
+## G7 — Multimodal evidence is ad-hoc (EVIDENCE) — DONE
 Video analysis worked on 52444 only via improvised cv2 frame extraction; the external
 63MB video on 50368 could not be fetched; the "sample PDF" was the wrong content.
-Fix: a systematic attachment-ingestion step — video to sampled frames, PDF to relevant
-pages, screenshot OCR — invoked whenever a ticket has attachments.
+Fixed: `scripts/jira_attachment_ingest.py` ingests a ticket's attachments in one call -
+video to evenly spaced frames (OpenCV), PDF to per-page text + keyword-hit pages (pypdf),
+images downloaded as-is, plus a manifest.json - so the author reads real content, never a
+filename. Degrades gracefully without OpenCV/pypdf; can also fetch an external --url.
+Verified end-to-end on GUIDES-52444 (1 video -> frames, 8 screenshots). Remaining
+optional polish: screenshot OCR, and auth for gated external video hosts.
 
 ## What is already solid (do not regress)
 - Grounded single-ticket UAC authoring once pointed correctly.
