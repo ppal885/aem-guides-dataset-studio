@@ -116,20 +116,35 @@ def _extract_ac(text: str) -> str:
 
 
 def _judge(client, model, row, cand) -> dict:
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": JUDGE.format(
-                summary=row.get("summary", ""), gold=_extract_ac(row.get("human_ac") or "")[:5000],
-                cand=_extract_ac(cand or "")[:5000])}],
-            max_completion_tokens=800,
-        )
-        txt = resp.choices[0].message.content or "{}"
-        m = re.search(r"\{.*\}", txt, re.S)
-        return json.loads(m.group(0)) if m else {}
-    except Exception as exc:
-        sys.stderr.write(f"judge fail {row.get('key')}: {exc}\n")
-        return {}
+    """Score one candidate. Retries transient scoring-API failures/empty content so a
+    flaky call does not silently become a null (which corrupts the aggregate). Returns
+    {} only after all attempts fail; callers should treat {} as unscored, not zero."""
+    import time
+    content = JUDGE.format(
+        summary=row.get("summary", ""),
+        gold=_extract_ac(row.get("human_ac") or "")[:5000],
+        cand=_extract_ac(cand or "")[:5000],
+    )
+    last = ""
+    for attempt in range(4):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+                max_completion_tokens=2000,
+            )
+            txt = resp.choices[0].message.content or ""
+            m = re.search(r"\{.*\}", txt, re.S)
+            if m:
+                parsed = json.loads(m.group(0))
+                if isinstance(parsed.get("coverage_pct"), (int, float)):
+                    return parsed
+            last = f"unparseable/empty content (finish={resp.choices[0].finish_reason})"
+        except Exception as exc:  # transient API/rate-limit/timeout
+            last = str(exc)
+        time.sleep(2 * (attempt + 1))
+    sys.stderr.write(f"judge fail {row.get('key')} after retries: {last}\n")
+    return {}
 
 
 def _generate(client, model, row, mode, priors_path):
