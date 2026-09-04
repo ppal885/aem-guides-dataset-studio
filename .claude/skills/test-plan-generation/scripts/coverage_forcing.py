@@ -229,11 +229,52 @@ def _validate_investigation(manifest, plan_text: str) -> list[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 4. No code identifiers in acceptance criteria (plain-English rule)
+# ---------------------------------------------------------------------------
+# An AC must read as plain QE English: no method/class/function/file identifiers.
+# High-confidence code shapes only, so ordinary prose and legitimate product
+# config keys (snake_case / dotted like postprocess.temporary.langcopies) are not
+# flagged. Trace the code in the background; state the observable behaviour in the AC.
+_CODE_CLASS_METHOD_RE = re.compile(r"\b[A-Z][A-Za-z0-9]+\.[a-z][A-Za-z0-9_]+")   # PublishWorkflowStep.handlePartialPublish
+_CODE_CAMEL_RE = re.compile(r"\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b")              # handlePartialPublish, filterListTopics
+_CODE_PASCAL_RE = re.compile(r"\b(?:[A-Z][a-z0-9]+){3,}\b")                       # PublishWorkflowStep (3+ humps)
+_CODE_FILE_RE = re.compile(r"\b[\w/]+\.(?:java|py|js|ts|tsx|jsx|xsl|xslt)\b", re.I)
+_CODE_FILELINE_RE = re.compile(r"\b[\w./-]+:\d+\b")
+# camelCase/Pascal tokens that are real product/brand terms, not code identifiers.
+_CODE_ALLOWLIST = {
+    "aemaacs", "javascript", "typescript", "github", "gitlab", "powershell",
+    "nodejs", "jira", "devops", "ios", "macos", "openapi", "mathml", "svg",
+}
+
+
+def _validate_plain_language(plan_text: str) -> list[str]:
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        hits: list[str] = []
+        for rx in (_CODE_CLASS_METHOD_RE, _CODE_CAMEL_RE, _CODE_PASCAL_RE,
+                   _CODE_FILE_RE, _CODE_FILELINE_RE):
+            for m in rx.findall(line):
+                tok = m if isinstance(m, str) else m[0]
+                if tok.casefold() in _CODE_ALLOWLIST:
+                    continue
+                hits.append(tok)
+        if hits:
+            problems.append(
+                "An Acceptance Criterion contains code identifiers "
+                f"({', '.join(sorted(set(hits))[:4])}); ACs must be plain QE-readable "
+                "English. Trace the code in the background, then state the observable "
+                f"behaviour instead: {line[:70]!r}"
+            )
+    return problems
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
     problems += _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
     problems += _validate_investigation(manifest, plan_text)
+    problems += _validate_plain_language(plan_text)
     return problems
 
 
@@ -298,6 +339,23 @@ def run_self_tests() -> None:
         "- AC-09: Confirm whether the 2026.08 fix is present in this build.",
         ""])
     assert any("investigation task" in p for p in validate({}, inv)), "investigation AC must fail"
+
+    # --- no code identifiers in ACs (the GUIDES-52444 failure) ---
+    codey = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-03: The fix is applied in both PublishWorkflowStep.handlePartialPublish and "
+        "PublishWorkflowGenerationAEMSiteRenditionStep.handlePartialPublish so filterListTopics does not drop the topic.",
+        ""])
+    assert any("code identifiers" in p for p in validate({}, codey)), "method names in AC must fail"
+    # Plain-English AC with legitimate product/config terms must PASS.
+    clean_ac = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: Incremental publish of a selected topic with a no-baseline AEM Site preset completes and produces output.",
+        "- AC-02: The result is the same whether Enable DITA-OT Processing is on or off.",
+        "- AC-03: Verified on AEMaaCS and on-premise 6.5.1 LTS.",
+        "- AC-04: The config property postprocess.temporary.langcopies set to false does not change the outcome.",
+        ""])
+    assert _validate_plain_language(clean_ac) == [], f"plain-English AC must pass: {_validate_plain_language(clean_ac)}"
 
     print("coverage_forcing self-tests: PASS")
 
