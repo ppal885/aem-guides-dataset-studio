@@ -88,11 +88,13 @@ optional polish: screenshot OCR, and auth for gated external video hosts.
   directly - no stamping needed). Add a short "VM restart (non-Docker)" path to the
   vm-deployment skill so the next redeploy skips the Docker detour. Verify with
   `python scripts/verify_deploy.py --expect <sha>` (checks build_commit + evidence-fragment count).
-- G9 — Tracked runtime data drift on the VM. `git pull` aborted because
-  `backend/storage/aem_guides_enriched_behavior_chunks.json` is TRACKED yet mutated on the
-  VM (and also changed upstream), forcing a stash each deploy and risking data loss.
-  Decide whether VM-generated storage/enrichment artifacts should be gitignored (treated as
-  runtime data) rather than tracked, so deploys are clean fast-forwards.
+- G9 — Tracked runtime data drift on the VM. DONE (commit 83cee1af6). The 11 top-level
+  `backend/storage/*.json` runtime artifacts (RAG/behavior/doc chunks, enrichment, index
+  registries, allure export, feedback prompt_overrides) were untracked (`git rm --cached`,
+  working copies kept) and `backend/storage/*.json` added to .gitignore (depth-1 only, so
+  deeper bundle manifests stay tracked). Safe because RAG is VM-hosted and consumed via MCP,
+  not these local files. One-time VM migration (backup -> checkout -> pull -> restore)
+  documented so the VM keeps its runtime data; deploys are now clean fast-forwards.
 
 ## Recommended order of work
 1. G1 (runtime generation) — the ceiling-raiser; scoped in the companion spec.
