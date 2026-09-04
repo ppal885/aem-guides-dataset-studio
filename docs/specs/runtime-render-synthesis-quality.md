@@ -1,11 +1,18 @@
 # Spec: Runtime render/synthesis quality — coverage bullets are raw evidence
 
-Status: Part 1 (evidence-fragment filter) SHIPPED + measured (commit 625d13dcd);
-Part 2 (statement normalization) and Part 3 (gated LLM synthesis) remain.
+Status: Part 1 (evidence-fragment filter) SHIPPED + measured (commit 625d13dcd).
+Part 2 (rule-based statement normalization) BUILT, measured, REVERTED. Part 3 (gated
+LLM synthesis) remains.
 Part 1 result on 10 dimension-relevant tickets (fixed judge, WITHOUT vs WITH):
 coverage 92.0 -> 93.9, holistic 3.80 -> 4.10, hallucinations 0.00 -> 0.00,
 evidence-fragment bullets many -> 0. Landed at extract_contract_facts (invariant-safe;
 filtering at classify_coverage crashed the completeness invariant).
+Part 2 result (Part1 vs Part1+Part2, same slice): coverage 93.9 -> 93.9 (flat),
+holistic 4.10 -> 4.00 (1 down), hallucinations 0.00 -> 0.00. Rule-based framing produced
+awkward output on evidence-y prose ("Verify behaviour for: November 2023 release ...")
+and did not move the number, so it was reverted. Confirms the spec's own caveat: rule-
+based framing is not enough; meaningful synthesis needs Part 3 (a bounded LLM step),
+which must be justified separately since it changes the LLM-free-runtime property.
 Owner: (assign)
 Basis: code trace of the shipped runtime renderer + the observed evidence-dump in the
 `## Configuration / state coverage` section of the GUIDES-14665 plan. This is the real
