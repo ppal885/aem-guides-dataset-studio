@@ -1,6 +1,18 @@
 # Spec: Render/synthesis Part 3 — gated LLM statement synthesis (presentation layer)
 
-Status: Proposed (scoping)
+Status: BUILT (behind RENDER_SYNTHESIS_LLM flag), measured, REVERTED.
+Result (10 dimension-relevant tickets, fixed judge, Part1 flag-OFF vs Part1+Part3 flag-ON,
+provider = backend LLM_PROVIDER, here azure_openai): coverage 93.9 -> 92.4 (down 1.5;
+GUIDES-37804 -15), holistic 4.10 -> 4.20 (+0.1, one ticket = noise), hallucinations
+0.00 -> 0.00. The anti-invention guard (3.3) held - zero hallucination increase - but
+the LLM rewrite CONDENSES bullets and drops coverage the judge counts, and the holistic
+gain is within noise. It fails the §4 bar (holistic must rise meaningfully AND coverage
+must not drop), so it was reverted (module + wiring removed; the deterministic Part 1 win
+stands). Implementation notes retained below for anyone who wants to iterate on a
+coverage-preserving prompt. Provider note: synthesis uses the backend's configured
+LLM_PROVIDER via llm_service.generate_json - NOT Claude Desktop/CLI, and distinct from the
+Azure eval judge. Needed chunking (long RAG-chunk bullets overflow one call's JSON) and a
+skip for bullets > ~220 chars.
 Owner: (assign)
 Parent: `runtime-render-synthesis-quality.md` (Part 1 shipped; Part 2 rule-based framing
 reverted as net-neutral). Part 3 is the only remaining lever on render quality.
