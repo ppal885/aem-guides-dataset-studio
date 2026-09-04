@@ -2319,6 +2319,20 @@ class CanonicalTestPlanReasoningService:
                     SemanticDimension.PERSISTED_STATE,
                 }
             )
+        # G1 seed-closure: a config-toggle or state-partition axis in the evidence makes
+        # the governing-configuration dimension material even when the ticket is not
+        # publishing/UI/implementation-sourced. Without this, a config/state partition
+        # (e.g. a single- vs multi-language variant, an on/off product setting, a config
+        # property set true/false) is marked NOT_APPLICABLE and silently dropped before
+        # candidate generation. Conservative signals, mirrored from the skill's
+        # state_partition/coverage_forcing gates.
+        if re.search(
+            r"\b(automatically approve|auto[- ]approve|single[- ]language|multi[- ]language|"
+            r"monolingual|multilingual|folder profile|global profile|baseline|feature flag|"
+            r"when enabled|when disabled|toggle)\b",
+            combined,
+        ) or re.search(r"\b[\w.]+\s*=\s*(?:true|false)\b", combined):
+            applicable.add(SemanticDimension.GOVERNING_CONFIGURATION)
         return applicable
 
     def generate_missing_questions(
