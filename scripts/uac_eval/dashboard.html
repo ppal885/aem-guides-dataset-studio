@@ -1,0 +1,2115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-CLP9y1ElrCwWiqoltxsf8iKvKo5NZ08yIG9+K5kZNiQ='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+  >
+  <meta name="referrer" content="no-referrer">
+  <title>UAC Eval Observability</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --space-1: 0.5rem;
+      --space-2: 1rem;
+      --space-3: 1.5rem;
+      --space-4: 2rem;
+      --space-5: 2.5rem;
+      --space-6: 3rem;
+      --radius-sm: 0.625rem;
+      --radius-md: 1rem;
+      --radius-lg: 1.5rem;
+      --canvas: #f5f7fb;
+      --canvas-accent: rgba(124, 58, 237, 0.10);
+      --surface: #ffffff;
+      --surface-raised: #ffffff;
+      --surface-soft: #f8fafc;
+      --ink: #162033;
+      --muted: #64748b;
+      --subtle: #94a3b8;
+      --line: #dbe3ee;
+      --line-strong: #cbd5e1;
+      --coverage: #2563eb;
+      --precision: #16a34a;
+      --combined: #7c3aed;
+      --halluc: #dc2626;
+      --healthy: #15803d;
+      --healthy-bg: #dcfce7;
+      --watch: #a16207;
+      --watch-bg: #fef3c7;
+      --risk: #b91c1c;
+      --risk-bg: #fee2e2;
+      --neutral-bg: #eef2f7;
+      --chart-grid: rgba(100, 116, 139, 0.16);
+      --chart-tooltip: #111827;
+      --chart-tooltip-text: #f8fafc;
+      --shadow: 0 0.75rem 2rem rgba(30, 41, 59, 0.08);
+      --shadow-soft: 0 0.25rem 1rem rgba(30, 41, 59, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --canvas: #0b1120;
+        --canvas-accent: rgba(167, 139, 250, 0.12);
+        --surface: #111827;
+        --surface-raised: #172033;
+        --surface-soft: #0f172a;
+        --ink: #eef2ff;
+        --muted: #a6b2c5;
+        --subtle: #7f8ca2;
+        --line: #29364b;
+        --line-strong: #3b4a62;
+        --coverage: #60a5fa;
+        --precision: #4ade80;
+        --combined: #a78bfa;
+        --halluc: #f87171;
+        --healthy: #86efac;
+        --healthy-bg: rgba(22, 163, 74, 0.20);
+        --watch: #fde68a;
+        --watch-bg: rgba(202, 138, 4, 0.22);
+        --risk: #fca5a5;
+        --risk-bg: rgba(220, 38, 38, 0.20);
+        --neutral-bg: #243047;
+        --chart-grid: rgba(148, 163, 184, 0.16);
+        --chart-tooltip: #f8fafc;
+        --chart-tooltip-text: #111827;
+        --shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.28);
+        --shadow-soft: 0 0.35rem 1rem rgba(0, 0, 0, 0.22);
+      }
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --canvas: #f5f7fb;
+      --canvas-accent: rgba(124, 58, 237, 0.10);
+      --surface: #ffffff;
+      --surface-raised: #ffffff;
+      --surface-soft: #f8fafc;
+      --ink: #162033;
+      --muted: #64748b;
+      --subtle: #94a3b8;
+      --line: #dbe3ee;
+      --line-strong: #cbd5e1;
+      --coverage: #2563eb;
+      --precision: #16a34a;
+      --combined: #7c3aed;
+      --halluc: #dc2626;
+      --healthy: #15803d;
+      --healthy-bg: #dcfce7;
+      --watch: #a16207;
+      --watch-bg: #fef3c7;
+      --risk: #b91c1c;
+      --risk-bg: #fee2e2;
+      --neutral-bg: #eef2f7;
+      --chart-grid: rgba(100, 116, 139, 0.16);
+      --chart-tooltip: #111827;
+      --chart-tooltip-text: #f8fafc;
+      --shadow: 0 0.75rem 2rem rgba(30, 41, 59, 0.08);
+      --shadow-soft: 0 0.25rem 1rem rgba(30, 41, 59, 0.06);
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #0b1120;
+      --canvas-accent: rgba(167, 139, 250, 0.12);
+      --surface: #111827;
+      --surface-raised: #172033;
+      --surface-soft: #0f172a;
+      --ink: #eef2ff;
+      --muted: #a6b2c5;
+      --subtle: #7f8ca2;
+      --line: #29364b;
+      --line-strong: #3b4a62;
+      --coverage: #60a5fa;
+      --precision: #4ade80;
+      --combined: #a78bfa;
+      --halluc: #f87171;
+      --healthy: #86efac;
+      --healthy-bg: rgba(22, 163, 74, 0.20);
+      --watch: #fde68a;
+      --watch-bg: rgba(202, 138, 4, 0.22);
+      --risk: #fca5a5;
+      --risk-bg: rgba(220, 38, 38, 0.20);
+      --neutral-bg: #243047;
+      --chart-grid: rgba(148, 163, 184, 0.16);
+      --chart-tooltip: #f8fafc;
+      --chart-tooltip-text: #111827;
+      --shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.28);
+      --shadow-soft: 0 0.35rem 1rem rgba(0, 0, 0, 0.22);
+    }
+
+    * { box-sizing: border-box; }
+
+    [hidden] { display: none !important; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 92% 0%, var(--canvas-accent), transparent 34rem),
+        var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1rem;
+      line-height: 1.5;
+      transition: background-color 160ms ease, color 160ms ease;
+    }
+
+    .page-shell {
+      width: min(1440px, calc(100% - 2 * var(--space-4)));
+      margin: 0 auto;
+      padding: var(--space-5) 0 var(--space-6);
+    }
+
+    .skip-link {
+      position: fixed;
+      top: var(--space-1);
+      left: var(--space-1);
+      z-index: 20;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      background: var(--ink);
+      color: var(--surface);
+      transform: translateY(-150%);
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--coverage) 55%, transparent);
+      outline-offset: 3px;
+    }
+
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+
+    .eyebrow {
+      margin: 0 0 var(--space-1);
+      color: var(--coverage);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, p { margin-top: 0; }
+
+    h1 {
+      max-width: 48rem;
+      margin-bottom: var(--space-1);
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .lede {
+      max-width: 46rem;
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.55;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      min-height: 2.75rem;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) 0.875rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--surface);
+      box-shadow: var(--shadow-soft);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+
+    .theme-toggle:hover { border-color: var(--combined); }
+
+    .theme-icon {
+      display: grid;
+      width: 1.5rem;
+      height: 1.5rem;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--neutral-bg);
+      font-size: 0.875rem;
+    }
+
+    .run-badge {
+      margin: var(--space-3) 0 0;
+      color: var(--muted);
+      font-size: 0.8125rem;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      margin: 0 0 var(--space-2);
+      color: var(--muted);
+      font-size: 0.8125rem;
+    }
+
+    .status-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--healthy);
+    }
+
+    .status-line.error { color: var(--risk); }
+    .status-line.error .status-dot { background: var(--risk); }
+
+    .data-state {
+      display: grid;
+      min-height: 22rem;
+      place-items: center;
+      padding: var(--space-5);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .data-state-copy { max-width: 34rem; }
+
+    .data-state-mark {
+      display: grid;
+      width: 3.5rem;
+      height: 3.5rem;
+      margin: 0 auto var(--space-2);
+      place-items: center;
+      border-radius: 50%;
+      background: var(--neutral-bg);
+      color: var(--combined);
+      font-size: 1.35rem;
+      font-weight: 800;
+    }
+
+    .data-state[data-kind="loading"] .data-state-mark {
+      border: 3px solid var(--line);
+      border-top-color: var(--combined);
+      animation: spin 900ms linear infinite;
+      color: transparent;
+    }
+
+    .data-state[data-kind="error"] .data-state-mark {
+      background: var(--risk-bg);
+      color: var(--risk);
+    }
+
+    .data-state h2 {
+      margin-bottom: var(--space-1);
+      font-size: 1.25rem;
+    }
+
+    .data-state p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    .health-band {
+      display: grid;
+      grid-template-columns: minmax(17rem, 0.9fr) minmax(0, 1.65fr);
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
+      padding: var(--space-3);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .health-primary {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      padding: var(--space-3);
+      border: 1px solid color-mix(in srgb, var(--combined) 28%, var(--line));
+      border-radius: var(--radius-md);
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--combined) 12%, transparent), transparent 65%),
+        var(--surface-soft);
+    }
+
+    .health-primary::before {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0.35rem;
+      background: var(--combined);
+      content: "";
+    }
+
+    .health-kicker,
+    .health-metric-label,
+    .secondary-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.065em;
+      text-transform: uppercase;
+    }
+
+    .health-score-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+      margin-top: var(--space-1);
+    }
+
+    .health-score {
+      color: var(--combined);
+      font-size: clamp(3.5rem, 7vw, 5.25rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 820;
+      letter-spacing: -0.07em;
+      line-height: 0.95;
+    }
+
+    .health-pill,
+    .delta-chip {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .health-pill {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+    }
+
+    .health-pill[data-tone="healthy"] {
+      background: var(--healthy-bg);
+      color: var(--healthy);
+    }
+
+    .health-pill[data-tone="watch"] {
+      background: var(--watch-bg);
+      color: var(--watch);
+    }
+
+    .health-pill[data-tone="risk"] {
+      background: var(--risk-bg);
+      color: var(--risk);
+    }
+
+    .health-pill[data-tone="neutral"] {
+      background: var(--neutral-bg);
+      color: var(--muted);
+    }
+
+    .health-delta { margin-top: var(--space-2); }
+
+    .delta-chip {
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid transparent;
+      font-size: 0.75rem;
+    }
+
+    .delta-chip[data-tone="positive"] {
+      border-color: color-mix(in srgb, var(--healthy) 22%, transparent);
+      background: var(--healthy-bg);
+      color: var(--healthy);
+    }
+
+    .delta-chip[data-tone="negative"] {
+      border-color: color-mix(in srgb, var(--risk) 22%, transparent);
+      background: var(--risk-bg);
+      color: var(--risk);
+    }
+
+    .delta-chip[data-tone="neutral"] {
+      border-color: var(--line);
+      background: var(--neutral-bg);
+      color: var(--muted);
+    }
+
+    .delta-context {
+      margin-left: var(--space-1);
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .health-support {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+
+    .health-metric,
+    .secondary-card,
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .health-metric {
+      position: relative;
+      min-width: 0;
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+    }
+
+    .health-metric::before {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 0.25rem;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      background: var(--series-color, var(--muted));
+      content: "";
+    }
+
+    .health-metric[data-series="coverage"] { --series-color: var(--coverage); }
+    .health-metric[data-series="precision"] { --series-color: var(--precision); }
+    .health-metric[data-series="halluc"] { --series-color: var(--halluc); }
+
+    .health-metric-value {
+      display: block;
+      margin: var(--space-2) 0 var(--space-1);
+      color: var(--ink);
+      font-size: clamp(1.8rem, 3vw, 2.5rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .secondary-cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+    }
+
+    .secondary-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+    }
+
+    .secondary-copy {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.8125rem;
+    }
+
+    .secondary-value {
+      color: var(--ink);
+      font-size: 1.75rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .what-changed {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: var(--space-3);
+      border-color: color-mix(in srgb, var(--combined) 30%, var(--line));
+      background:
+        linear-gradient(115deg, color-mix(in srgb, var(--combined) 8%, transparent), transparent 48%),
+        var(--surface);
+    }
+
+    .what-changed::before {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0.3rem;
+      background: var(--combined);
+      content: "";
+    }
+
+    .what-changed .panel-head { margin-bottom: var(--space-1); }
+
+    .insight-count {
+      flex: 0 0 auto;
+      padding: 0.25rem 0.625rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .change-list {
+      display: grid;
+      gap: 0.75rem;
+      margin: var(--space-2) 0 0;
+      padding-left: 1.4rem;
+    }
+
+    .change-list li {
+      padding-left: 0.25rem;
+      color: var(--combined);
+    }
+
+    .change-list li::marker { font-weight: 900; }
+
+    .change-line {
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+      color: var(--ink);
+      font-size: 0.9375rem;
+      font-weight: 650;
+      line-height: 1.5;
+      text-decoration-color: color-mix(in srgb, var(--combined) 45%, transparent);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.2em;
+    }
+
+    a.change-line { cursor: pointer; }
+
+    a.change-line:hover {
+      color: var(--combined);
+      text-decoration-color: currentColor;
+    }
+
+    a.change-line:focus-visible {
+      border-radius: 0.25rem;
+      outline: 0.18rem solid color-mix(in srgb, var(--combined) 45%, transparent);
+      outline-offset: 0.2rem;
+    }
+
+    .change-line + .change-line { margin-top: var(--space-1); }
+    .change-line[data-tone="positive"] { color: var(--healthy); }
+    .change-line[data-tone="warning"] { color: var(--risk); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(19rem, 1fr);
+      gap: var(--space-3);
+    }
+
+    .panel {
+      min-width: 0;
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+    }
+
+    .panel-wide { grid-column: 1 / -1; }
+
+    .panel-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+
+    .panel h2 {
+      margin-bottom: 0.25rem;
+      color: var(--ink);
+      font-size: 1.125rem;
+      letter-spacing: -0.01em;
+    }
+
+    .panel-copy,
+    .chart-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+
+    .chart-wrap {
+      position: relative;
+      min-height: 22rem;
+    }
+
+    .chart-wrap.compact { min-height: 22rem; }
+
+    canvas { max-height: 23rem; }
+
+    .table-wrap {
+      max-width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    table {
+      width: 100%;
+      min-width: 64rem;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    caption {
+      padding: var(--space-1) var(--space-2);
+      color: var(--muted);
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 0;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-soft);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th button {
+      width: 100%;
+      padding: 0.75rem var(--space-2);
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.035em;
+      text-align: inherit;
+      text-transform: uppercase;
+    }
+
+    th button:hover,
+    th button:focus-visible {
+      background: var(--neutral-bg);
+      outline: 2px solid transparent;
+    }
+
+    td {
+      padding: 0.75rem var(--space-2);
+      border-bottom: 1px solid var(--line);
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .ticket-summary-row { cursor: pointer; }
+
+    .ticket-summary-row[data-health="healthy"] td {
+      background: color-mix(in srgb, var(--healthy-bg) 58%, var(--surface));
+    }
+
+    .ticket-summary-row[data-health="watch"] td {
+      background: color-mix(in srgb, var(--watch-bg) 58%, var(--surface));
+    }
+
+    .ticket-summary-row[data-health="risk"] td {
+      background: color-mix(in srgb, var(--risk-bg) 58%, var(--surface));
+    }
+
+    .ticket-summary-row[data-health="neutral"] td { background: var(--surface); }
+
+    .ticket-summary-row:hover td,
+    .ticket-summary-row.is-expanded td {
+      background: color-mix(in srgb, var(--surface-soft) 78%, var(--combined) 7%);
+    }
+
+    .ticket-summary-row[data-health="healthy"]:hover td,
+    .ticket-summary-row[data-health="healthy"].is-expanded td {
+      background: color-mix(in srgb, var(--healthy-bg) 76%, var(--surface));
+    }
+
+    .ticket-summary-row[data-health="watch"]:hover td,
+    .ticket-summary-row[data-health="watch"].is-expanded td {
+      background: color-mix(in srgb, var(--watch-bg) 76%, var(--surface));
+    }
+
+    .ticket-summary-row[data-health="risk"]:hover td,
+    .ticket-summary-row[data-health="risk"].is-expanded td {
+      background: color-mix(in srgb, var(--risk-bg) 76%, var(--surface));
+    }
+
+    .ticket-summary-row.row-alert td:first-child {
+      box-shadow: inset 4px 0 0 var(--risk);
+    }
+
+    .ticket-summary-row:last-of-type td,
+    .ticket-detail-row:last-child td { border-bottom: 0; }
+
+    .numeric { text-align: right; }
+
+    .key-cell {
+      color: var(--coverage);
+      font-weight: 750;
+    }
+
+    .ticket-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      min-height: 2rem;
+      padding: 0.125rem 0.25rem;
+      border: 0;
+      border-radius: 0.375rem;
+      background: transparent;
+      color: var(--coverage);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+      text-align: left;
+    }
+
+    .ticket-toggle:hover { text-decoration: underline; }
+
+    .ticket-toggle:focus-visible {
+      outline: 0.2rem solid color-mix(in srgb, var(--combined) 72%, transparent);
+      outline-offset: 0.125rem;
+      text-decoration: none;
+    }
+
+    .ticket-chevron {
+      display: inline-block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      transition: transform 160ms ease;
+    }
+
+    .ticket-toggle[aria-expanded="true"] .ticket-chevron { transform: rotate(90deg); }
+
+    .ticket-detail-row > td {
+      padding: 0;
+      border-bottom: 1px solid var(--line-strong);
+      background: var(--surface-soft);
+      white-space: normal;
+    }
+
+    .ticket-detail-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(15rem, 0.6fr);
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-left: 4px solid var(--combined);
+      box-shadow: inset 0 0.25rem 0.75rem rgba(30, 41, 59, 0.04);
+    }
+
+    .ticket-detail-main { min-width: 0; }
+
+    .ticket-detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+
+    .ticket-detail-head h3 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 1rem;
+    }
+
+    .ticket-detail-head .health-pill { flex: 0 0 auto; }
+
+    .ticket-detail-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(8rem, 1fr));
+      gap: var(--space-2);
+      margin: 0;
+    }
+
+    .ticket-detail-metric {
+      min-width: 0;
+      padding: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+
+    .ticket-detail-metric dt {
+      margin-bottom: 0.25rem;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.035em;
+      text-transform: uppercase;
+    }
+
+    .ticket-detail-metric dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+      color: var(--ink);
+      font-size: 0.92rem;
+      font-weight: 750;
+    }
+
+    .balance-card {
+      align-self: start;
+      padding: var(--space-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+
+    .balance-card h4 {
+      margin: 0 0 var(--space-2);
+      color: var(--ink);
+      font-size: 0.86rem;
+    }
+
+    .balance-row + .balance-row { margin-top: var(--space-2); }
+
+    .balance-label {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-1);
+      margin-bottom: 0.375rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .balance-track {
+      height: 0.625rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--neutral-bg);
+    }
+
+    .balance-fill {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+    }
+
+    .balance-fill.coverage { background: var(--coverage); }
+    .balance-fill.precision { background: var(--precision); }
+
+    .attention-marker {
+      display: inline-block;
+      margin-left: var(--space-1);
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: var(--risk);
+      color: var(--surface);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      vertical-align: 1px;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 0.25rem var(--space-1);
+      border-radius: 999px;
+      background: var(--neutral-bg);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .legend {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+
+    .legend::before {
+      width: 11px;
+      height: 11px;
+      border: 1px solid color-mix(in srgb, var(--risk) 30%, transparent);
+      border-radius: 3px;
+      background: var(--risk-bg);
+      content: "";
+    }
+
+    .empty-state {
+      display: none;
+      place-items: center;
+      min-height: 16rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .empty-state.visible { display: grid; }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 899px) {
+      .masthead { align-items: flex-start; flex-direction: column; }
+      .theme-toggle { align-self: flex-end; }
+      .health-band { grid-template-columns: 1fr; }
+      .health-support { grid-template-columns: 1fr; }
+      .secondary-cards { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .panel-wide { grid-column: auto; }
+      .ticket-detail-panel { grid-template-columns: 1fr; }
+      .ticket-detail-metrics { grid-template-columns: repeat(3, minmax(8rem, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .page-shell {
+        width: calc(100% - 2 * var(--space-2));
+        padding-top: var(--space-3);
+      }
+
+      .health-band { padding: var(--space-2); }
+      .health-primary { padding: var(--space-2); }
+      .panel { padding: var(--space-2); }
+      .panel-head { align-items: start; flex-direction: column; }
+      .chart-wrap,
+      .chart-wrap.compact { min-height: 19rem; }
+      .ticket-detail-panel { padding: var(--space-2); }
+      .ticket-detail-metrics { grid-template-columns: repeat(2, minmax(8rem, 1fr)); }
+    }
+
+    @media (max-width: 400px) {
+      .health-score { font-size: 3.4rem; }
+      .health-score-row { align-items: flex-start; flex-direction: column; }
+      .secondary-card { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#ticketTable">Skip to ticket results</a>
+  <main class="page-shell" id="mainContent">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Eval observability</p>
+        <h1>UAC quality, run by run</h1>
+        <p class="lede">Coverage shows what we found. Precision shows how tightly we expressed it. Combined keeps both honest.</p>
+      </div>
+      <button id="themeToggle" class="theme-toggle" type="button">
+        <span id="themeIcon" class="theme-icon" aria-hidden="true">◐</span>
+        <span id="themeLabel">Use dark mode</span>
+      </button>
+    </header>
+
+    <section id="dataState" class="data-state" data-kind="loading" role="status" aria-live="polite">
+      <div class="data-state-copy">
+        <span id="dataStateMark" class="data-state-mark" aria-hidden="true">…</span>
+        <h2 id="dataStateTitle">Loading evaluation data</h2>
+        <p id="dataStateMessage">Reading the saved dashboard runs.</p>
+      </div>
+    </section>
+
+    <div id="dashboardContent" hidden>
+      <p id="pageStatus" class="status-line" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="pageStatusText">Waiting for data…</span>
+      </p>
+
+      <section class="health-band" aria-label="Latest pipeline run health">
+        <article class="health-primary">
+          <span class="health-kicker">Latest Combined (F1)</span>
+          <div class="health-score-row">
+            <strong id="combinedCard" class="health-score">n/a</strong>
+            <span id="healthPill" class="health-pill" data-tone="neutral">Not reported</span>
+          </div>
+          <div class="health-delta">
+            <span id="combinedDelta" class="delta-chip" data-tone="neutral">— n/a</span>
+            <span class="delta-context">vs previous run</span>
+          </div>
+          <p id="runBadge" class="run-badge">Latest run metadata is loading.</p>
+        </article>
+
+        <div class="health-support">
+          <article class="health-metric" data-series="coverage">
+            <span class="health-metric-label">Coverage</span>
+            <strong id="coverageCard" class="health-metric-value">n/a</strong>
+            <span id="coverageDelta" class="delta-chip" data-tone="neutral">— n/a</span>
+          </article>
+          <article class="health-metric" data-series="precision">
+            <span class="health-metric-label">Precision</span>
+            <strong id="precisionCard" class="health-metric-value">n/a</strong>
+            <span id="precisionDelta" class="delta-chip" data-tone="neutral">— n/a</span>
+          </article>
+          <article class="health-metric" data-series="halluc">
+            <span class="health-metric-label">Hallucinations</span>
+            <strong id="hallucCard" class="health-metric-value">n/a</strong>
+            <span id="hallucDelta" class="delta-chip" data-tone="neutral">— n/a</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="secondary-cards" aria-label="Latest run supporting metrics">
+        <article class="secondary-card">
+          <div>
+            <span class="secondary-label">Holistic</span>
+            <p class="secondary-copy">Mean reviewer score</p>
+          </div>
+          <strong id="holisticCard" class="secondary-value">n/a</strong>
+        </article>
+        <article class="secondary-card">
+          <div>
+            <span class="secondary-label">No AC section</span>
+            <p class="secondary-copy">Plans excluded from precision</p>
+          </div>
+          <strong id="noAcCard" class="secondary-value">n/a</strong>
+        </article>
+      </section>
+
+      <section class="panel what-changed" aria-labelledby="whatChangedTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="whatChangedTitle">What changed</h2>
+            <p id="whatChangedContext" class="panel-copy">Comparing the latest two reported runs.</p>
+          </div>
+          <span id="insightCount" class="insight-count">Waiting for data</span>
+        </div>
+        <ul id="whatChangedList" class="change-list"></ul>
+      </section>
+
+      <section class="grid">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Quality trend</h2>
+            <p class="panel-copy">Pipeline aggregates exactly as reported by each saved run. Gaps mean that an older run did not report that metric.</p>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="trendChart" role="img" aria-label="Combined, coverage, precision, and hallucination trends over evaluation runs" aria-describedby="trendSummary"></canvas>
+          <p id="trendSummary" class="visually-hidden">Trend data is loading.</p>
+          <p id="trendEmpty" class="empty-state">No run metrics are available.</p>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Precision distribution</h2>
+            <p class="panel-copy">Latest pipeline run. Missing precision values are excluded and reported separately.</p>
+          </div>
+        </div>
+        <div class="chart-wrap compact">
+          <canvas id="precisionChart" role="img" aria-label="Histogram of latest per-ticket precision percentages" aria-describedby="precisionSummary"></canvas>
+          <p id="precisionSummary" class="visually-hidden">Precision distribution is loading.</p>
+          <p id="precisionEmpty" class="empty-state">No per-ticket precision values were reported.</p>
+        </div>
+        <p id="precisionNote" class="chart-note">Waiting for data…</p>
+      </article>
+
+        <article class="panel panel-wide" id="ticketTable">
+        <div class="panel-head">
+          <div>
+            <h2>Latest run · per ticket</h2>
+            <p class="panel-copy">Initially sorted by combined score, weakest first. Select any heading to re-sort.</p>
+          </div>
+          <span class="legend">Needs attention</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption id="tableCaption">No latest run loaded.</caption>
+            <thead>
+              <tr>
+                <th scope="col"><button type="button" data-sort="key">Ticket <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col"><button type="button" data-sort="component">Component <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="coverage_pct">Coverage <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="precision_pct">Precision <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="combined_pct">Combined <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="ac_count">AC count <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="over_decomposition">Over-decomp <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col" class="numeric"><button type="button" data-sort="redundancy_pairs">Redundant pairs <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th scope="col"><button type="button" data-sort="pipeline_status">Pipeline status <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              </tr>
+            </thead>
+            <tbody id="ticketRows"></tbody>
+          </table>
+        </div>
+        </article>
+      </section>
+    </div>
+  </main>
+
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"
+    integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  ></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const THEME_STORAGE_KEY = "uac-eval-theme";
+      const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+      const reducedMotionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      function readStoredTheme() {
+        try {
+          const value = window.localStorage.getItem(THEME_STORAGE_KEY);
+          return value === "light" || value === "dark" ? value : null;
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      const storedTheme = readStoredTheme();
+      if (storedTheme) {
+        document.documentElement.dataset.theme = storedTheme;
+      }
+
+      const state = {
+        runs: [],
+        latestRows: [],
+        expandedRows: new Set(),
+        sortKey: "combined_pct",
+        sortDirection: 1,
+        trendChart: null,
+        precisionChart: null,
+        chartUnavailable: false
+      };
+
+      const metricColumns = new Set([
+        "coverage_pct",
+        "precision_pct",
+        "combined_pct",
+        "ac_count",
+        "over_decomposition",
+        "redundancy_pairs"
+      ]);
+
+      const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+      const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+      const byId = (id) => document.getElementById(id);
+
+      function pipelineMetrics(row) {
+        return isObject(row.pipeline) ? row.pipeline : row;
+      }
+
+      function rowValue(row, key) {
+        if (metricColumns.has(key)) {
+          return pipelineMetrics(row)[key];
+        }
+        return row[key];
+      }
+
+      function displayValue(value, suffix = "") {
+        return isNumber(value) ? `${value}${suffix}` : "n/a";
+      }
+
+      function displayDelta(value) {
+        if (!isNumber(value)) return "n/a";
+        const rounded = Number(value.toFixed(10));
+        return `${rounded > 0 ? "+" : ""}${rounded}`;
+      }
+
+      function oneDecimal(value) {
+        return isNumber(value) ? value.toFixed(1) : "n/a";
+      }
+
+      function displayText(value) {
+        if (typeof value === "string" && value.trim()) {
+          return value;
+        }
+        return isNumber(value) ? String(value) : "n/a";
+      }
+
+      function displayBoolean(value) {
+        if (value === true) return "Yes";
+        if (value === false) return "No";
+        return "n/a";
+      }
+
+      function combinedTone(value) {
+        if (!isNumber(value)) return "neutral";
+        if (value >= 80) return "healthy";
+        if (value >= 60) return "watch";
+        return "risk";
+      }
+
+      function combinedToneLabel(tone) {
+        if (tone === "healthy") return "Healthy";
+        if (tone === "watch") return "Watch";
+        if (tone === "risk") return "At risk";
+        return "Not reported";
+      }
+
+      function shortRunId(value) {
+        return typeof value === "string" ? value.replace(/\.json$/i, "") : "unknown run";
+      }
+
+      function displayTimestamp(value) {
+        if (typeof value !== "string") {
+          return "unknown time";
+        }
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+      }
+
+      function setStatus(message, isError = false) {
+        const element = byId("pageStatus");
+        byId("pageStatusText").textContent = message;
+        element.classList.toggle("error", isError);
+      }
+
+      function showDataState(kind, title, message) {
+        const element = byId("dataState");
+        element.dataset.kind = kind;
+        byId("dataStateTitle").textContent = title;
+        byId("dataStateMessage").textContent = message;
+        byId("dataStateMark").textContent = kind === "error" ? "!" : kind === "empty" ? "0" : "…";
+        element.hidden = false;
+        byId("dashboardContent").hidden = true;
+      }
+
+      function showDashboard() {
+        byId("dataState").hidden = true;
+        byId("dashboardContent").hidden = false;
+      }
+
+      function setHealthPill(value) {
+        const pill = byId("healthPill");
+        const tone = combinedTone(value);
+        pill.dataset.tone = tone;
+        pill.textContent = combinedToneLabel(tone);
+      }
+
+      function setDeltaChip(id, current, previous, lowerIsBetter = false) {
+        const element = byId(id);
+        if (!isNumber(current) || !isNumber(previous)) {
+          element.dataset.tone = "neutral";
+          element.textContent = "— n/a";
+          element.title = "Previous-run comparison is unavailable";
+          return;
+        }
+
+        const delta = Number((current - previous).toFixed(10));
+        const arrow = delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
+        const improved = lowerIsBetter ? delta < 0 : delta > 0;
+        const worsened = lowerIsBetter ? delta > 0 : delta < 0;
+        element.dataset.tone = improved ? "positive" : worsened ? "negative" : "neutral";
+        element.textContent = `${arrow} ${displayDelta(delta)}`;
+        element.title = lowerIsBetter
+          ? "Change from previous run; lower is better"
+          : "Change from previous run; higher is better";
+      }
+
+      function renderHealth(run, previousRun) {
+        const agg = isObject(run.agg_pipeline) ? run.agg_pipeline : {};
+        const previous = isObject(previousRun?.agg_pipeline) ? previousRun.agg_pipeline : {};
+        byId("coverageCard").textContent = displayValue(agg.coverage, "%");
+        byId("precisionCard").textContent = displayValue(agg.det_precision, "%");
+        byId("combinedCard").textContent = displayValue(agg.combined, "%");
+        byId("hallucCard").textContent = displayValue(agg.halluc);
+        byId("holisticCard").textContent = displayValue(agg.holistic);
+        byId("noAcCard").textContent = displayValue(agg.no_ac_section);
+        byId("noAcCard").title = isNumber(agg.no_ac_section)
+          ? "Aggregate reported by the run"
+          : "This run did not report this aggregate";
+        setHealthPill(agg.combined);
+        setDeltaChip("combinedDelta", agg.combined, previous.combined);
+        setDeltaChip("coverageDelta", agg.coverage, previous.coverage);
+        setDeltaChip("precisionDelta", agg.det_precision, previous.det_precision);
+        setDeltaChip("hallucDelta", agg.halluc, previous.halluc, true);
+
+        const metadata = [
+          `${displayText(run.run_id)} · ${displayTimestamp(run.ts)}`,
+          `n: ${displayText(run.n)}`,
+          `model: ${displayText(run.model)}`,
+          `seed: ${displayText(run.seed)}`,
+          `vm: ${displayText(run.vm)}`
+        ];
+        byId("runBadge").textContent = metadata.join("  |  ");
+      }
+
+      function indexedMetricRows(key, descending = false) {
+        const direction = descending ? -1 : 1;
+        return state.latestRows
+          .map((row, sourceIndex) => ({row, sourceIndex, value: pipelineMetrics(row)[key]}))
+          .filter((item) => isNumber(item.value))
+          .sort((left, right) => {
+            const metricOrder = (left.value - right.value) * direction;
+            if (metricOrder !== 0) return metricOrder;
+            const keyOrder = displayText(left.row.key).localeCompare(displayText(right.row.key), undefined, {numeric: true});
+            return keyOrder || left.sourceIndex - right.sourceIndex;
+          });
+      }
+
+      function insightLine(text, item, tone = "neutral") {
+        return {
+          text,
+          targetIndex: Number.isInteger(item?.sourceIndex) ? item.sourceIndex : null,
+          tone: tone === "positive" || tone === "warning" ? tone : "neutral"
+        };
+      }
+
+      function buildInsightGroups(run, previousRun) {
+        const agg = isObject(run.agg_pipeline) ? run.agg_pipeline : {};
+        const previous = isObject(previousRun?.agg_pipeline) ? previousRun.agg_pipeline : {};
+        const worstCombined = indexedMetricRows("combined_pct");
+        const worstCoverage = indexedMetricRows("coverage_pct");
+        const groups = [];
+        const summarySentences = [];
+        let summaryTarget = worstCombined[0];
+        let summaryTone = "neutral";
+
+        if (isNumber(agg.combined) && isNumber(previous.combined)) {
+          const delta = Number((agg.combined - previous.combined).toFixed(10));
+          const text = delta === 0
+            ? `Combined F1 was unchanged vs previous run (${oneDecimal(previous.combined)} -> ${oneDecimal(agg.combined)}).`
+            : `Combined F1 ${delta > 0 ? "up" : "down"} ${oneDecimal(Math.abs(delta))} pts vs previous run (${oneDecimal(previous.combined)} -> ${oneDecimal(agg.combined)}).`;
+          summarySentences.push(text);
+          summaryTone = delta > 0 ? "positive" : delta < 0 ? "warning" : "neutral";
+        } else if (!previousRun) {
+          summarySentences.push("Combined F1 change is unavailable because there is no previous run.");
+        } else {
+          summarySentences.push("Combined F1 change is unavailable because one of the latest two runs did not report it.");
+        }
+
+        if (
+          isNumber(agg.det_precision) &&
+          isNumber(previous.det_precision) &&
+          isNumber(agg.coverage) &&
+          isNumber(previous.coverage)
+        ) {
+          const precisionDelta = Number((agg.det_precision - previous.det_precision).toFixed(10));
+          const coverageDelta = Number((agg.coverage - previous.coverage).toFixed(10));
+          if (coverageDelta < -2) {
+            summarySentences.push(`Coverage fell ${oneDecimal(Math.abs(coverageDelta))} pts - check for over-filtering.`);
+            summaryTarget = worstCoverage[0] || summaryTarget;
+            summaryTone = "warning";
+          } else if (precisionDelta > 0 && Math.abs(coverageDelta) <= 2) {
+            summarySentences.push("Precision improved without losing coverage.");
+          }
+        }
+
+        groups.push([insightLine(summarySentences.join(" "), summaryTarget, summaryTone)]);
+
+        const overDecomposed = indexedMetricRows("over_decomposition", true)
+          .filter((item) => item.value > 0);
+        const noContract = state.latestRows
+          .map((row, sourceIndex) => ({row, sourceIndex}))
+          .filter((item) => pipelineMetrics(item.row).ac_section_found === false)
+          .sort((left, right) => {
+            const keyOrder = displayText(left.row.key).localeCompare(displayText(right.row.key), undefined, {numeric: true});
+            return keyOrder || left.sourceIndex - right.sourceIndex;
+          });
+        if (overDecomposed.length) {
+          const tickets = overDecomposed
+            .map((item) => displayText(item.row.key))
+            .join(", ");
+          groups.push([insightLine(
+            `${overDecomposed.length} ticket${overDecomposed.length === 1 ? "" : "s"} still over-decomposed: ${tickets}.`,
+            overDecomposed[0],
+            "warning"
+          )]);
+        }
+
+        if (noContract.length) {
+          const tickets = noContract.map((item) => displayText(item.row.key)).join(", ");
+          groups.push([insightLine(
+            `${noContract.length} plan${noContract.length === 1 ? "" : "s"} produced no acceptance contract: ${tickets}.`,
+            noContract[0],
+            "warning"
+          )]);
+        }
+
+        if (worstCombined.length) {
+          const tickets = worstCombined
+            .slice(0, 3)
+            .map((item) => `${displayText(item.row.key)} (${oneDecimal(item.value)}%)`)
+            .join(", ");
+          groups.push([insightLine(`Lowest combined this run: ${tickets}.`, worstCombined[0])]);
+        } else {
+          groups.push([insightLine("No per-ticket combined scores were reported for the latest run.", null)]);
+        }
+
+        return groups.slice(0, 4);
+      }
+
+      function scrollToTicket(event) {
+        const targetId = event.currentTarget.dataset.targetId;
+        if (!targetId || !/^ticket-row-\d+$/.test(targetId)) return;
+        const row = byId(targetId);
+        if (!row) return;
+        event.preventDefault();
+        const behavior = reducedMotionMedia.matches ? "auto" : "smooth";
+        const tableWrap = row.closest(".table-wrap");
+        if (tableWrap) tableWrap.scrollTo({left: 0, behavior});
+        row.scrollIntoView({block: "center", inline: "nearest", behavior});
+        const focusTarget = row.querySelector(".ticket-toggle") || row;
+        focusTarget.focus({preventScroll: true});
+      }
+
+      function renderInsights(run, previousRun) {
+        const groups = buildInsightGroups(run, previousRun);
+        const list = byId("whatChangedList");
+        list.replaceChildren();
+
+        groups.forEach((lines) => {
+          const item = document.createElement("li");
+          lines.forEach((line) => {
+            const element = Number.isInteger(line.targetIndex)
+              ? document.createElement("a")
+              : document.createElement("span");
+            element.className = "change-line";
+            element.dataset.tone = line.tone;
+            element.textContent = line.text;
+            if (element instanceof HTMLAnchorElement) {
+              const targetId = `ticket-row-${line.targetIndex}`;
+              element.href = `#${targetId}`;
+              element.dataset.targetId = targetId;
+              element.addEventListener("click", scrollToTicket);
+            }
+            item.appendChild(element);
+          });
+          list.appendChild(item);
+        });
+
+        const latestLabel = shortRunId(run.run_id);
+        const previousLabel = previousRun ? shortRunId(previousRun.run_id) : "no previous run";
+        byId("whatChangedContext").textContent = `${latestLabel} compared with ${previousLabel}. Select an insight to jump to a relevant ticket.`;
+        byId("insightCount").textContent = `${groups.length} insight${groups.length === 1 ? "" : "s"}`;
+      }
+
+      function reportedSeries(runs, key) {
+        return runs.map((run) => {
+          const agg = isObject(run.agg_pipeline) ? run.agg_pipeline : {};
+          return isNumber(agg[key]) ? agg[key] : null;
+        });
+      }
+
+      function chartAvailable() {
+        if (typeof window.Chart === "function") {
+          return true;
+        }
+        state.chartUnavailable = true;
+        return false;
+      }
+
+      function cssColor(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      }
+
+      function chartPalette() {
+        return {
+          ink: cssColor("--ink"),
+          muted: cssColor("--muted"),
+          grid: cssColor("--chart-grid"),
+          coverage: cssColor("--coverage"),
+          precision: cssColor("--precision"),
+          combined: cssColor("--combined"),
+          halluc: cssColor("--halluc"),
+          tooltip: cssColor("--chart-tooltip"),
+          tooltipText: cssColor("--chart-tooltip-text")
+        };
+      }
+
+      function renderTrend(runs) {
+        if (state.trendChart) {
+          state.trendChart.destroy();
+          state.trendChart = null;
+        }
+        const hasMetric = runs.some((run) => {
+          const agg = isObject(run.agg_pipeline) ? run.agg_pipeline : {};
+          return ["combined", "coverage", "det_precision", "halluc"].some((key) => isNumber(agg[key]));
+        });
+        byId("trendEmpty").classList.toggle("visible", !hasMetric);
+        byId("trendChart").hidden = !hasMetric;
+        const latest = runs[runs.length - 1];
+        const latestAgg = isObject(latest?.agg_pipeline) ? latest.agg_pipeline : {};
+        byId("trendSummary").textContent = hasMetric
+          ? `${runs.length} runs. Latest ${displayText(latest?.run_id)}: combined ${displayValue(latestAgg.combined, "%")}, coverage ${displayValue(latestAgg.coverage, "%")}, precision ${displayValue(latestAgg.det_precision, "%")}, hallucinations ${displayValue(latestAgg.halluc)}.`
+          : "No run metrics are available.";
+        if (!hasMetric) {
+          return;
+        }
+        if (!chartAvailable()) {
+          byId("trendChart").hidden = true;
+          byId("trendEmpty").textContent = "Trend chart unavailable because Chart.js could not be loaded.";
+          byId("trendEmpty").classList.add("visible");
+          return;
+        }
+
+        const colors = chartPalette();
+        const lineDefaults = {
+          borderWidth: 2.5,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          pointBorderWidth: 0,
+          tension: 0.28,
+          spanGaps: false
+        };
+        state.trendChart = new window.Chart(byId("trendChart"), {
+          type: "line",
+          data: {
+            labels: runs.map((run) => shortRunId(run.run_id)),
+            datasets: [
+              {...lineDefaults, label: "Combined", data: reportedSeries(runs, "combined"), borderColor: colors.combined, backgroundColor: colors.combined, pointBackgroundColor: colors.combined},
+              {...lineDefaults, label: "Coverage", data: reportedSeries(runs, "coverage"), borderColor: colors.coverage, backgroundColor: colors.coverage, pointBackgroundColor: colors.coverage},
+              {...lineDefaults, label: "Precision", data: reportedSeries(runs, "det_precision"), borderColor: colors.precision, backgroundColor: colors.precision, pointBackgroundColor: colors.precision},
+              {...lineDefaults, label: "Hallucinations", data: reportedSeries(runs, "halluc"), borderColor: colors.halluc, backgroundColor: colors.halluc, pointBackgroundColor: colors.halluc, borderDash: [6, 5], yAxisID: "yHalluc"}
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {mode: "index", intersect: false},
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {color: colors.muted, usePointStyle: true, boxWidth: 8, padding: 18}
+              },
+              tooltip: {
+                backgroundColor: colors.tooltip,
+                titleColor: colors.tooltipText,
+                bodyColor: colors.tooltipText,
+                padding: 12,
+                callbacks: {
+                  title(items) {
+                    if (!items.length) return "";
+                    return displayText(runs[items[0].dataIndex]?.run_id);
+                  },
+                  afterTitle(items) {
+                    if (!items.length) return "";
+                    return displayTimestamp(runs[items[0].dataIndex]?.ts);
+                  },
+                  label(context) {
+                    const suffix = context.dataset.yAxisID === "yHalluc" ? "" : "%";
+                    return `${context.dataset.label}: ${displayValue(context.parsed.y, suffix)}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: {display: false},
+                ticks: {color: colors.muted, maxRotation: 50, minRotation: 25}
+              },
+              y: {
+                beginAtZero: true,
+                max: 100,
+                grid: {color: colors.grid},
+                ticks: {color: colors.muted},
+                title: {display: true, color: colors.muted, text: "Score (%)"}
+              },
+              yHalluc: {
+                beginAtZero: true,
+                position: "right",
+                grid: {drawOnChartArea: false},
+                ticks: {color: colors.muted},
+                title: {display: true, color: colors.muted, text: "Mean hallucinations"}
+              }
+            }
+          }
+        });
+      }
+
+      function precisionBins(rows) {
+        const reported = rows
+          .map((row) => pipelineMetrics(row).precision_pct)
+          .filter((value) => isNumber(value) && value >= 0 && value <= 100);
+        return {
+          counts: [
+            reported.filter((value) => value === 0).length,
+            reported.filter((value) => value > 0 && value < 60).length,
+            reported.filter((value) => value >= 60 && value < 90).length,
+            reported.filter((value) => value >= 90 && value <= 100).length
+          ],
+          reported: reported.length,
+          unavailable: rows.length - reported.length
+        };
+      }
+
+      function renderPrecisionDistribution(rows) {
+        if (state.precisionChart) {
+          state.precisionChart.destroy();
+          state.precisionChart = null;
+        }
+        const bins = precisionBins(rows);
+        byId("precisionNote").textContent = `${bins.reported} reported · ${bins.unavailable} n/a`;
+        byId("precisionSummary").textContent = bins.reported
+          ? `Latest run precision distribution: ${bins.counts[0]} tickets at 0 percent, ${bins.counts[1]} from 1 to 59 percent, ${bins.counts[2]} from 60 to 89 percent, and ${bins.counts[3]} from 90 to 100 percent. ${bins.unavailable} tickets did not report precision.`
+          : "No per-ticket precision values were reported.";
+        const empty = bins.reported === 0;
+        byId("precisionEmpty").classList.toggle("visible", empty);
+        byId("precisionChart").hidden = empty;
+        if (empty) {
+          return;
+        }
+        if (!chartAvailable()) {
+          byId("precisionChart").hidden = true;
+          byId("precisionEmpty").textContent = "Precision chart unavailable because Chart.js could not be loaded.";
+          byId("precisionEmpty").classList.add("visible");
+          return;
+        }
+
+        const colors = chartPalette();
+        state.precisionChart = new window.Chart(byId("precisionChart"), {
+          type: "bar",
+          data: {
+            labels: ["0", "1–59", "60–89", "90–100"],
+            datasets: [{
+              label: "Tickets",
+              data: bins.counts,
+              backgroundColor: [colors.halluc, colors.halluc, colors.coverage, colors.precision],
+              borderRadius: 7,
+              borderSkipped: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {display: false},
+              tooltip: {
+                backgroundColor: colors.tooltip,
+                titleColor: colors.tooltipText,
+                bodyColor: colors.tooltipText,
+                padding: 12,
+                callbacks: {
+                  label(context) {
+                    return `Tickets: ${displayValue(context.parsed.y)}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {color: colors.grid},
+                ticks: {color: colors.muted, precision: 0},
+                title: {display: true, color: colors.muted, text: "Ticket count"}
+              },
+              x: {
+                grid: {display: false},
+                ticks: {color: colors.muted},
+                title: {display: true, color: colors.muted, text: "Precision (%)"}
+              }
+            }
+          }
+        });
+      }
+
+      function compareRows(left, right) {
+        const leftValue = rowValue(left, state.sortKey);
+        const rightValue = rowValue(right, state.sortKey);
+        const leftMissing = !(isNumber(leftValue) || (typeof leftValue === "string" && leftValue.trim()));
+        const rightMissing = !(isNumber(rightValue) || (typeof rightValue === "string" && rightValue.trim()));
+        if (leftMissing && rightMissing) return 0;
+        if (leftMissing) return 1;
+        if (rightMissing) return -1;
+        if (isNumber(leftValue) && isNumber(rightValue)) {
+          return (leftValue - rightValue) * state.sortDirection;
+        }
+        return String(leftValue).localeCompare(String(rightValue), undefined, {numeric: true}) * state.sortDirection;
+      }
+
+      function updateSortIndicators() {
+        document.querySelectorAll("th").forEach((heading) => heading.removeAttribute("aria-sort"));
+        document.querySelectorAll("button[data-sort]").forEach((button) => {
+          const indicator = button.querySelector(".sort-indicator");
+          const active = button.dataset.sort === state.sortKey;
+          indicator.textContent = active ? (state.sortDirection === 1 ? "▲" : "▼") : "";
+          if (active) {
+            button.closest("th").setAttribute("aria-sort", state.sortDirection === 1 ? "ascending" : "descending");
+          }
+        });
+      }
+
+      function appendCell(rowElement, value, options = {}) {
+        const cell = document.createElement("td");
+        if (options.numeric) cell.classList.add("numeric");
+        if (options.key) cell.classList.add("key-cell");
+        if (options.status) {
+          const pill = document.createElement("span");
+          pill.className = "status-pill";
+          pill.textContent = displayText(value);
+          cell.appendChild(pill);
+        } else {
+          cell.textContent = options.percent ? displayValue(value, "%") : displayText(value);
+        }
+        rowElement.appendChild(cell);
+        return cell;
+      }
+
+      function alertReasons(row) {
+        const metrics = pipelineMetrics(row);
+        const reasons = [];
+        if (isNumber(metrics.precision_pct) && metrics.precision_pct < 50) reasons.push("precision below 50");
+        if (isNumber(metrics.over_decomposition) && metrics.over_decomposition > 0) reasons.push("over-decomposition above 0");
+        if (metrics.ac_section_found === false) reasons.push("acceptance-contract section not found");
+        return reasons;
+      }
+
+      function appendDetailMetric(list, label, value, options = {}) {
+        const group = document.createElement("div");
+        group.className = "ticket-detail-metric";
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const description = document.createElement("dd");
+        if (options.boolean) {
+          description.textContent = displayBoolean(value);
+        } else if (options.percent) {
+          description.textContent = displayValue(value, "%");
+        } else {
+          description.textContent = displayText(value);
+        }
+        group.append(term, description);
+        list.appendChild(group);
+      }
+
+      function createBalanceRow(label, value, series) {
+        const row = document.createElement("div");
+        row.className = "balance-row";
+
+        const labelLine = document.createElement("div");
+        labelLine.className = "balance-label";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const amount = document.createElement("span");
+        amount.textContent = displayValue(value, "%");
+        labelLine.append(name, amount);
+
+        const track = document.createElement("div");
+        track.className = "balance-track";
+        track.setAttribute("role", "img");
+        track.setAttribute("aria-label", `${label}: ${displayValue(value, "%")}`);
+        const fill = document.createElement("span");
+        fill.className = `balance-fill ${series}`;
+        fill.setAttribute("aria-hidden", "true");
+        fill.style.width = isNumber(value) ? `${Math.min(100, Math.max(0, value))}%` : "0%";
+        track.appendChild(fill);
+        row.append(labelLine, track);
+        return row;
+      }
+
+      function createTicketDetail(row, index) {
+        const metrics = pipelineMetrics(row);
+        const tone = combinedTone(metrics.combined_pct);
+        const panel = document.createElement("section");
+        panel.id = `ticket-detail-panel-${index}`;
+        panel.className = "ticket-detail-panel";
+        panel.setAttribute("role", "region");
+        panel.setAttribute("aria-labelledby", `ticket-toggle-${index}`);
+
+        const main = document.createElement("div");
+        main.className = "ticket-detail-main";
+        const head = document.createElement("div");
+        head.className = "ticket-detail-head";
+        const heading = document.createElement("h3");
+        heading.textContent = `Details for ${displayText(row.key)}`;
+        const health = document.createElement("span");
+        health.className = "health-pill";
+        health.dataset.tone = tone;
+        health.textContent = isNumber(metrics.combined_pct)
+          ? `Combined ${displayValue(metrics.combined_pct, "%")} · ${combinedToneLabel(tone)}`
+          : "Combined not reported";
+        head.append(heading, health);
+
+        const details = document.createElement("dl");
+        details.className = "ticket-detail-metrics";
+        appendDetailMetric(details, "Coverage", metrics.coverage_pct, {percent: true});
+        appendDetailMetric(details, "Precision", metrics.precision_pct, {percent: true});
+        appendDetailMetric(details, "Combined", metrics.combined_pct, {percent: true});
+        appendDetailMetric(details, "AC count", metrics.ac_count);
+        appendDetailMetric(details, "Over-decomposition", metrics.over_decomposition);
+        appendDetailMetric(details, "Redundancy pairs", metrics.redundancy_pairs);
+        appendDetailMetric(details, "Verbose AC count", metrics.verbose_ac_count);
+        appendDetailMetric(details, "AC section found", metrics.ac_section_found, {boolean: true});
+        appendDetailMetric(details, "Judge precision", metrics.judge_precision);
+        appendDetailMetric(details, "Judge redundant", metrics.judge_redundant);
+        appendDetailMetric(details, "Pipeline status", row.pipeline_status);
+        appendDetailMetric(details, "Pipeline characters", row.pipeline_chars);
+        main.append(head, details);
+
+        const balance = document.createElement("div");
+        balance.className = "balance-card";
+        const balanceHeading = document.createElement("h4");
+        balanceHeading.textContent = "Coverage vs precision";
+        balance.append(
+          balanceHeading,
+          createBalanceRow("Coverage", metrics.coverage_pct, "coverage"),
+          createBalanceRow("Precision", metrics.precision_pct, "precision")
+        );
+        panel.append(main, balance);
+        return panel;
+      }
+
+      function setTicketExpanded(index, expanded) {
+        if (!Number.isInteger(index)) return;
+        const button = byId(`ticket-toggle-${index}`);
+        const summary = byId(`ticket-row-${index}`);
+        const detail = byId(`ticket-detail-row-${index}`);
+        const action = byId(`ticket-toggle-action-${index}`);
+        if (!button || !summary || !detail || !action) return;
+
+        if (expanded) {
+          state.expandedRows.add(index);
+        } else {
+          state.expandedRows.delete(index);
+        }
+        button.setAttribute("aria-expanded", String(expanded));
+        detail.hidden = !expanded;
+        summary.classList.toggle("is-expanded", expanded);
+        action.textContent = expanded ? "Hide details for " : "Show details for ";
+      }
+
+      function toggleTicketExpanded(index) {
+        setTicketExpanded(index, !state.expandedRows.has(index));
+      }
+
+      function renderTable() {
+        const body = byId("ticketRows");
+        body.replaceChildren();
+        const rows = state.latestRows
+          .map((row, index) => ({row, index}))
+          .sort((left, right) => compareRows(left.row, right.row) || left.index - right.index)
+
+        rows.forEach(({row, index}) => {
+          const metrics = pipelineMetrics(row);
+          const expanded = state.expandedRows.has(index);
+          const rowElement = document.createElement("tr");
+          rowElement.id = `ticket-row-${index}`;
+          rowElement.className = "ticket-summary-row";
+          rowElement.dataset.sourceIndex = String(index);
+          rowElement.dataset.health = combinedTone(metrics.combined_pct);
+          rowElement.tabIndex = -1;
+          rowElement.classList.toggle("is-expanded", expanded);
+          const reasons = alertReasons(row);
+          if (reasons.length) {
+            rowElement.classList.add("row-alert");
+            rowElement.title = `Needs attention: ${reasons.join(", ")}. Select to show or hide details.`;
+          } else {
+            rowElement.title = "Select to show or hide details.";
+          }
+
+          const keyCell = document.createElement("td");
+          keyCell.className = "key-cell";
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.id = `ticket-toggle-${index}`;
+          toggle.className = "ticket-toggle";
+          toggle.setAttribute("aria-expanded", String(expanded));
+          toggle.setAttribute("aria-controls", `ticket-detail-panel-${index}`);
+          const toggleAction = document.createElement("span");
+          toggleAction.id = `ticket-toggle-action-${index}`;
+          toggleAction.className = "visually-hidden";
+          toggleAction.textContent = expanded ? "Hide details for " : "Show details for ";
+          const keyText = document.createElement("span");
+          keyText.textContent = displayText(row.key);
+          const chevron = document.createElement("span");
+          chevron.className = "ticket-chevron";
+          chevron.setAttribute("aria-hidden", "true");
+          chevron.textContent = "▶";
+          toggle.append(toggleAction, keyText, chevron);
+          keyCell.appendChild(toggle);
+          if (reasons.length) {
+            const marker = document.createElement("span");
+            marker.className = "attention-marker";
+            marker.textContent = "Review";
+            marker.title = reasons.join(", ");
+            keyCell.appendChild(marker);
+            const accessibleReason = document.createElement("span");
+            accessibleReason.className = "visually-hidden";
+            accessibleReason.textContent = ` Needs attention: ${reasons.join(", ")}.`;
+            keyCell.appendChild(accessibleReason);
+          }
+          rowElement.appendChild(keyCell);
+          appendCell(rowElement, row.component);
+          appendCell(rowElement, metrics.coverage_pct, {numeric: true, percent: true});
+          appendCell(rowElement, metrics.precision_pct, {numeric: true, percent: true});
+          appendCell(rowElement, metrics.combined_pct, {numeric: true, percent: true});
+          appendCell(rowElement, metrics.ac_count, {numeric: true});
+          appendCell(rowElement, metrics.over_decomposition, {numeric: true});
+          appendCell(rowElement, metrics.redundancy_pairs, {numeric: true});
+          appendCell(rowElement, row.pipeline_status, {status: true});
+          body.appendChild(rowElement);
+
+          const detailRow = document.createElement("tr");
+          detailRow.id = `ticket-detail-row-${index}`;
+          detailRow.className = "ticket-detail-row";
+          detailRow.hidden = !expanded;
+          const detailCell = document.createElement("td");
+          detailCell.colSpan = 9;
+          detailCell.appendChild(createTicketDetail(row, index));
+          detailRow.appendChild(detailCell);
+          body.appendChild(detailRow);
+        });
+
+        byId("tableCaption").textContent = rows.length
+          ? `${rows.length} ticket${rows.length === 1 ? "" : "s"}; n/a means the run did not report that field.`
+          : "This run contains no per-ticket records.";
+        updateSortIndicators();
+      }
+
+      function bindSorting() {
+        document.querySelectorAll("button[data-sort]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const key = button.dataset.sort;
+            if (!key) return;
+            if (state.sortKey === key) {
+              state.sortDirection *= -1;
+            } else {
+              state.sortKey = key;
+              state.sortDirection = 1;
+            }
+            renderTable();
+          });
+        });
+      }
+
+      function bindTicketExpansion() {
+        byId("ticketRows").addEventListener("click", (event) => {
+          if (!(event.target instanceof Element)) return;
+          const directToggle = event.target.closest(".ticket-toggle");
+          if (!directToggle && event.target.closest("button, a, input, select, textarea")) return;
+          const summary = event.target.closest(".ticket-summary-row");
+          if (!summary || !byId("ticketRows").contains(summary)) return;
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) return;
+          const index = Number(summary.dataset.sourceIndex);
+          if (Number.isInteger(index)) toggleTicketExpanded(index);
+        });
+      }
+
+      function resolvedTheme() {
+        const explicit = document.documentElement.dataset.theme;
+        if (explicit === "light" || explicit === "dark") return explicit;
+        return themeMedia.matches ? "dark" : "light";
+      }
+
+      function updateThemeControl() {
+        const dark = resolvedTheme() === "dark";
+        byId("themeIcon").textContent = dark ? "☀" : "☾";
+        byId("themeLabel").textContent = dark ? "Use light mode" : "Use dark mode";
+        byId("themeToggle").title = dark ? "Switch to light mode" : "Switch to dark mode";
+      }
+
+      function redrawCharts() {
+        if (!state.runs.length || byId("dashboardContent").hidden) return;
+        renderTrend(state.runs);
+        renderPrecisionDistribution(state.latestRows);
+      }
+
+      function bindTheme() {
+        updateThemeControl();
+        byId("themeToggle").addEventListener("click", () => {
+          const next = resolvedTheme() === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = next;
+          try {
+            window.localStorage.setItem(THEME_STORAGE_KEY, next);
+          } catch (_error) {
+            // Theme still applies for this page when storage is unavailable.
+          }
+          updateThemeControl();
+          redrawCharts();
+        });
+
+        if (typeof themeMedia.addEventListener === "function") {
+          themeMedia.addEventListener("change", () => {
+            if (!document.documentElement.dataset.theme) {
+              updateThemeControl();
+              redrawCharts();
+            }
+          });
+        }
+      }
+
+      function render(runs) {
+        if (!runs.length) {
+          state.runs = [];
+          state.latestRows = [];
+          showDataState(
+            "empty",
+            "No evaluation runs yet",
+            "Generate dashboard_data.json after an evaluation run, then refresh this page."
+          );
+          return;
+        }
+
+        state.runs = runs;
+        const latest = runs[runs.length - 1];
+        const previous = runs.length > 1 ? runs[runs.length - 2] : null;
+        state.latestRows = Array.isArray(latest.per) ? latest.per.filter(isObject) : [];
+        state.expandedRows.clear();
+        showDashboard();
+        renderHealth(latest, previous);
+        renderTrend(runs);
+        renderPrecisionDistribution(state.latestRows);
+        renderTable();
+        renderInsights(latest, previous);
+        if (state.chartUnavailable) {
+          setStatus(`Loaded ${runs.length} evaluation run${runs.length === 1 ? "" : "s"}, but Chart.js is unavailable. Cards and table remain usable.`, true);
+        } else {
+          setStatus(`Loaded ${runs.length} evaluation run${runs.length === 1 ? "" : "s"}. Metrics are displayed without recomputation.`);
+        }
+      }
+
+      bindTheme();
+      bindSorting();
+      bindTicketExpansion();
+      fetch("dashboard_data.json", {credentials: "same-origin", cache: "no-store"})
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`dashboard_data.json returned HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((payload) => {
+          if (!isObject(payload) || !Array.isArray(payload.runs)) {
+            throw new Error("dashboard_data.json must contain a runs array");
+          }
+          render(payload.runs.filter(isObject));
+        })
+        .catch((_error) => {
+          showDataState(
+            "error",
+            "Dashboard data could not be loaded",
+            "Check that dashboard_data.json is beside this page and that this folder is being served over HTTP."
+          );
+        });
+    })();
+  </script>
+</body>
+</html>
