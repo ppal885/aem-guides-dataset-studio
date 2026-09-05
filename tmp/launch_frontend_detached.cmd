@@ -1,7 +1,5 @@
 @echo off
 setlocal
-set "ROOT=C:\Users\prashantp\Videos\aem-guides-dataset-studio"
-set "PY=%ROOT%\venv\Scripts\python.exe"
-set "LOG=%ROOT%\tmp\frontend-start.log"
-if exist "%LOG%" del "%LOG%"
-start "" /b cmd /c ""%PY%" "%ROOT%\tmp\frontend_proxy.py" > "%LOG%" 2>&1"
+echo This legacy command now delegates to the dashboard-only UAC launcher.
+call "%~dp0..\RUN_LOCAL_DEV.cmd" %*
+exit /b %errorlevel%

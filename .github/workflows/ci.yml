@@ -29,28 +29,128 @@ jobs:
         run: |
           python -m pytest tests/test_auth_and_tenant_security.py tests/test_enterprise_hardening.py -q
 
-  frontend:
+  dashboard:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          python-version: "3.11"
 
-      - name: Install frontend dependencies
-        run: npm ci
+      - name: Run dashboard aggregator self-tests
+        run: python scripts/uac_eval/aggregate_runs.py --self-test
 
-      - name: Typecheck frontend
-        run: npx tsc -p tsconfig.json --noEmit
+      - name: Aggregate dashboard data and smoke-test static serving
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+          import threading
+          from functools import partial
+          from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+          from pathlib import Path
+          from urllib.request import urlopen
 
-      - name: Lint frontend
-        run: npm run lint
+          source = Path("scripts/uac_eval").resolve()
+          with tempfile.TemporaryDirectory(prefix="uac-dashboard-ci-") as temporary:
+              workspace = Path(temporary)
+              build_dir = workspace / "build"
+              dashboard_dir = workspace / "site"
+              build_dir.mkdir()
+              dashboard_dir.mkdir()
+              shutil.copy2(source / "aggregate_runs.py", build_dir / "aggregate_runs.py")
+              for run_path in sorted(source.glob("judge_pipeline*.json")):
+                  if run_path.is_file():
+                      shutil.copy2(run_path, build_dir / run_path.name)
 
-      - name: Build frontend
-        run: npm run build
+              subprocess.run(
+                  [sys.executable, str(build_dir / "aggregate_runs.py")],
+                  cwd=build_dir,
+                  check=True,
+              )
+              data_path = build_dir / "dashboard_data.json"
+              payload = json.loads(data_path.read_text(encoding="utf-8"))
+              generated_runs = payload.get("runs")
+              if not isinstance(generated_runs, list):
+                  raise SystemExit("generated dashboard_data.json must contain a runs list")
+              generated_ids = {
+                  row.get("run_id") for row in generated_runs if isinstance(row, dict)
+              }
+              if None in generated_ids or len(generated_ids) != len(generated_runs):
+                  raise SystemExit("generated dashboard data has missing or duplicate run IDs")
+
+              snapshot_path = source / "dashboard_data.json"
+              if snapshot_path.is_file():
+                  snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+                  snapshot_runs = snapshot.get("runs")
+                  if not isinstance(snapshot_runs, list):
+                      raise SystemExit("checked-in dashboard snapshot must contain a runs list")
+                  snapshot_ids = {
+                      row.get("run_id") for row in snapshot_runs if isinstance(row, dict)
+                  }
+                  if None in snapshot_ids or len(snapshot_ids) != len(snapshot_runs):
+                      raise SystemExit("checked-in dashboard data has missing or duplicate run IDs")
+                  if generated_ids < snapshot_ids:
+                      print(
+                          "::warning::Eligible run inputs are a strict subset of the "
+                          "checked-in dashboard history; retaining the checked-in snapshot "
+                          f"({len(snapshot_ids)} runs instead of {len(generated_ids)})."
+                      )
+                      shutil.copy2(snapshot_path, data_path)
+                      payload = snapshot
+                  elif missing_ids := snapshot_ids - generated_ids:
+                      raise SystemExit(
+                          "isolated aggregation would drop checked-in history while changing "
+                          f"the run set; missing IDs: {sorted(missing_ids)}"
+                      )
+
+              shutil.copy2(source / "dashboard.html", dashboard_dir / "index.html")
+              shutil.copy2(data_path, dashboard_dir / "dashboard_data.json")
+              if {path.name for path in dashboard_dir.iterdir()} != {
+                  "index.html",
+                  "dashboard_data.json",
+              }:
+                  raise SystemExit("dashboard site contains unexpected files")
+
+              runs = payload.get("runs")
+              if not isinstance(runs, list):
+                  raise SystemExit("dashboard_data.json must contain a runs list")
+              if not runs:
+                  raise SystemExit("dashboard_data.json must contain at least one evaluation run")
+
+              for run in runs:
+                  if not isinstance(run, dict):
+                      raise SystemExit("each dashboard run must be an object")
+                  required = {"run_id", "ts", "agg_pipeline", "agg_baseline", "per"}
+                  missing = required.difference(run)
+                  if missing:
+                      raise SystemExit(f"dashboard run is missing fields: {sorted(missing)}")
+                  if not isinstance(run["per"], list):
+                      raise SystemExit("dashboard per-ticket data must be a list")
+
+              handler = partial(SimpleHTTPRequestHandler, directory=str(dashboard_dir))
+              server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+              thread = threading.Thread(target=server.serve_forever, daemon=True)
+              thread.start()
+              try:
+                  base_url = f"http://127.0.0.1:{server.server_port}"
+                  with urlopen(f"{base_url}/", timeout=5) as response:
+                      html = response.read().decode("utf-8")
+                      if response.status != 200 or "dashboard_data.json" not in html:
+                          raise SystemExit("dashboard root static serving smoke test failed")
+                  with urlopen(f"{base_url}/dashboard_data.json", timeout=5) as response:
+                      served_payload = json.loads(response.read().decode("utf-8"))
+                      if served_payload != payload:
+                          raise SystemExit("served dashboard data differs from the generated JSON")
+              finally:
+                  server.shutdown()
+                  server.server_close()
+                  thread.join(timeout=5)
+          PY
+
+      - name: Confirm dashboard build did not modify the checkout
+        run: git diff --exit-code -- scripts/uac_eval

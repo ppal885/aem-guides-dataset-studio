@@ -1,176 +1,57 @@
-# VM Quick Reference Card
+# VM quick reference
 
-## 🚀 Quick Start
-
-```bash
-# 1. Copy files to VM
-scp -r ./aem-guides-dataset-studio ubuntu@<VM_IP>:/home/ubuntu/
-
-# 2. SSH into VM
-ssh ubuntu@<VM_IP>
-
-# 3. Run setup
-cd /home/ubuntu/aem-guides-dataset-studio
-chmod +x ubuntu-vm-setup.sh
-sudo bash ubuntu-vm-setup.sh
-
-# 4. Verify
-bash vm-verify-setup.sh
-```
-
-## 📍 Access URLs
-
-Replace `<VM_IP>` with your VM's IP (`hostname -I`)
-
-- Frontend: `http://<VM_IP>/`
-- Backend: `http://<VM_IP>:8000`
-- API Docs: `http://<VM_IP>:8000/docs`
-- Health: `http://<VM_IP>:8000/health`
-
-## 🔧 Common Commands
+## Update and deploy
 
 ```bash
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Start services
-docker compose up -d
-
-# Stop services
-docker compose down
-
-# Restart services
-docker compose restart
-
-# View logs
-docker compose logs -f
-
-# Check status
-docker compose ps
-
-# View backend logs only
-docker compose logs -f backend
-
-# View frontend logs only
-docker compose logs -f frontend
+cd ~/aem-guides-dataset-studio
+git status --short
+git pull --ff-only origin main
+sudo python3 setup_vm.py
 ```
 
-## 🔍 Troubleshooting
+Refresh only the dashboard and Nginx configuration:
 
 ```bash
-# Check if services are running
-docker compose ps
-
-# Check backend health
-curl http://localhost:8000/health
-
-# Check database
-docker compose exec postgres pg_isready -U postgres
-
-# View all logs
-docker compose logs --tail=100
-
-# Restart everything
-docker compose down && docker compose up -d
+sudo python3 setup_vm.py --dashboard-only
 ```
 
-## 📦 Update Application
+## URLs
+
+- Dashboard: `http://<VM-IP>:4502/`
+- Health: `http://<VM-IP>:4502/health`
+- API: `http://<VM-IP>:4502/api/`
+- MCP: `http://<VM-IP>:4502/mcp`
+
+`/eval-dashboard/` redirects to `/`. There is no React/Vite application or frontend container.
+
+## Service commands
 
 ```bash
-cd /home/ubuntu/aem-guides-dataset-studio
-git pull
-docker compose down
-docker compose build --no-cache
-docker compose up -d
+sudo systemctl status aem-backend.service --no-pager -l
+sudo systemctl restart aem-backend.service
+journalctl -u aem-backend.service -n 100 --no-pager
+journalctl -u aem-backend.service -f
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
-## 💾 Backup
+## Checks
 
 ```bash
-# Backup database
-docker compose exec postgres pg_dump -U postgres dataset_studio > backup-$(date +%Y%m%d).sql
-
-# Backup datasets
-tar -czf datasets-$(date +%Y%m%d).tar.gz /home/ubuntu/datasets
+curl -fsS http://127.0.0.1:8001/health
+curl -fsS http://127.0.0.1:4502/health
+curl -fsSI http://127.0.0.1:4502/
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4502/mcp/health
 ```
 
-## 🔐 Security
+For `/mcp/health`, accept `200`, or unauthenticated `401/403` as proof that the protected boundary is reachable. Reject every other status, including `404/502`. See [VM_DEV_RUNBOOK.md](VM_DEV_RUNBOOK.md) for the secret-safe authenticated check.
+
+If port `4502` returns `502`, diagnose the backend on port `8001` first. Do not delete Docker volumes, corpora, or backend storage as a recovery shortcut.
+
+## UAC generation
+
+Use the installed `test-plan-generation` skill, the `guides_test_plan_generator` MCP tool, the REST pipeline, or:
 
 ```bash
-# Check firewall
-sudo ufw status
-
-# Open ports
-sudo ufw allow 80/tcp
-sudo ufw allow 8000/tcp
+python3 scripts/run_test_plan_pipeline.py GUIDES-12345 --http --base-url http://127.0.0.1:8001
 ```
-
-## 📊 Monitoring
-
-```bash
-# Resource usage
-docker stats
-
-# Disk space
-df -h
-du -sh /home/ubuntu/datasets
-
-# Container logs
-docker compose logs --tail=50
-```
-
-## 🆘 Emergency Commands
-
-```bash
-# Stop everything
-docker compose down
-
-# Remove all containers and volumes (⚠️ deletes data)
-docker compose down -v
-
-# Clean Docker system
-docker system prune -a
-
-# Check what's using ports
-sudo lsof -i :8000
-sudo lsof -i :80
-```
-
-## 📝 File Locations
-
-- Project: `/home/ubuntu/aem-guides-dataset-studio`
-- Datasets: `/home/ubuntu/datasets`
-- Logs: `docker compose logs`
-- Config: `/home/ubuntu/aem-guides-dataset-studio/.env`
-
-## 🔄 Auto-Start Setup
-
-```bash
-# Create systemd service
-sudo nano /etc/systemd/system/dataset-studio.service
-
-# Add:
-[Unit]
-Description=AEM Guides Dataset Studio
-Requires=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/home/ubuntu/aem-guides-dataset-studio
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-User=ubuntu
-
-[Install]
-WantedBy=multi-user.target
-
-# Enable
-sudo systemctl daemon-reload
-sudo systemctl enable dataset-studio
-sudo systemctl start dataset-studio
-```
-
----
-
-**Keep this handy for quick reference! 📌**

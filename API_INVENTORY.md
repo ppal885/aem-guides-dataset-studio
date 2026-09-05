@@ -1,6 +1,6 @@
 # API inventory — AEM Guides Dataset Studio
 
-Generated from static analysis of the repository (FastAPI backend + Vite/React frontend). **Framework:** [FastAPI](https://fastapi.tiangolo.com/) on Starlette; app entry `backend/app/main.py`. **Global API prefix:** `/api/v1` (see `app.include_router(v1_router, prefix="/api/v1")` in `backend/app/main.py`).
+Generated from static analysis of the repository. The FastAPI inventory remains current; references to the former Vite/React client are retained only as a historical snapshot from before the dashboard-only deployment. **Framework:** [FastAPI](https://fastapi.tiangolo.com/) on Starlette; app entry `backend/app/main.py`. **Global API prefix:** `/api/v1` (see `app.include_router(v1_router, prefix="/api/v1")` in `backend/app/main.py`).
 
 ---
 
@@ -176,9 +176,9 @@ These modules define `APIRouter` and handlers but **`api_router.include_router(.
 
 ---
 
-## Frontend HTTP usage vs backend
+## Retired frontend HTTP-usage snapshot
 
-Mapped from `frontend/src/**/*.tsx` and `frontend/src/**/*.ts` (fetch to `/api/v1/...`).
+Historical mapping from the removed `frontend/src/**/*.tsx` and `frontend/src/**/*.ts` client (fetches to `/api/v1/...`). It is not an active UI dependency; the deployed UI is now the read-only evaluation dashboard.
 
 | Frontend path | Backend |
 |---------------|---------|
@@ -192,7 +192,7 @@ Mapped from `frontend/src/**/*.tsx` and `frontend/src/**/*.ts` (fetch to `/api/v
 | `/api/v1/bulk/jobs` | **Mounted** — `bulk.py` |
 | `/api/v1/presets` | **Mounted** — `presets.py` |
 
-**No frontend references found** (in `frontend/src`) to: `/api/v1/storage/*` (also **not mounted** in `router.py`), `/api/v1/admin/*`, most `/api/v1/ai/*` (except those above), `/api/v1/bulk/jobs/from-template`, `/api/v1/bulk/jobs/from-csv`, `/api/v1/aem-recipes/*`, `/api/v1/specialized/*`, `/api/v1/scale-testing/*`, `/api/v1/rag-status` (top-level alias), `/api/v1/ai/datasets/search`, bundle download, feedback APIs, `run-eval`, `generate-stream`, etc. Those backends exist but appear **unused by the current frontend** (may be used by tests, scripts, or external clients).
+**No references were found in the retired frontend snapshot** to: `/api/v1/storage/*` (also **not mounted** in `router.py`), `/api/v1/admin/*`, most `/api/v1/ai/*` (except those above), `/api/v1/bulk/jobs/from-template`, `/api/v1/bulk/jobs/from-csv`, `/api/v1/aem-recipes/*`, `/api/v1/specialized/*`, `/api/v1/scale-testing/*`, `/api/v1/rag-status` (top-level alias), `/api/v1/ai/datasets/search`, bundle download, feedback APIs, `run-eval`, `generate-stream`, etc. These backend APIs may still be used by tests, scripts, MCP, CLI, or external clients.
 
 ---
 

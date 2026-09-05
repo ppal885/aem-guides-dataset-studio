@@ -1,6 +1,3 @@
-import re
-from pathlib import Path
-
 import pytest
 
 from app.services import doc_retriever_service, tavily_search_service
@@ -11,6 +8,7 @@ from app.services.chat_tools import (
     execute_lookup_dita_attribute,
     execute_lookup_dita_spec,
     execute_review_dita_xml,
+    get_tool_catalog,
     get_tool_definitions,
 )
 from app.services.dita_attribute_catalog import get_attribute_spec, list_attribute_names
@@ -571,27 +569,38 @@ def test_normalize_tool_result_summarizes_content_model_lookup():
     assert normalized["sources"][0]["label"] == "taskbody"
 
 
-def test_llm_chat_tool_definitions_are_subset_of_frontend_registry():
-    """LLM-facing catalog tools must all be registered in the frontend KNOWN_FIRST_PARTY_TOOLS set."""
-    llm_names = {str(tool["name"]).strip() for tool in get_tool_definitions()}
-    # Verify all expected tools are present
+def test_llm_chat_tool_definitions_form_valid_backend_catalog_contract():
+    """The backend owns and validates the LLM and command-palette tool contract."""
+    definitions = get_tool_definitions()
+    llm_names = [str(tool.get("name") or "").strip() for tool in definitions]
+
+    assert all(llm_names), "Every tool definition must have a non-empty name"
+    assert len(llm_names) == len(set(llm_names)), "Tool definition names must be unique"
+
     expected_core = {"generate_dita", "generate_xml_flowchart", "create_job", "find_recipes",
                      "review_dita_xml", "fix_dita_xml", "lookup_dita_spec", "lookup_aem_guides"}
-    assert expected_core.issubset(llm_names), f"Missing core tools: {expected_core - llm_names}"
-    tool_utils_path = (
-        Path(__file__).resolve().parents[2]
-        / "frontend"
-        / "src"
-        / "components"
-        / "Chat"
-        / "toolResultUtils.ts"
-    )
-    text = tool_utils_path.read_text(encoding="utf-8")
-    match = re.search(r"KNOWN_FIRST_PARTY_TOOLS\s*=\s*new Set\(\[(.*?)\]\);", text, re.S)
-    assert match, "KNOWN_FIRST_PARTY_TOOLS set not found in frontend toolResultUtils.ts"
-    frontend_names = set(re.findall(r"'([^']+)'", match.group(1)))
+    assert expected_core.issubset(set(llm_names)), f"Missing core tools: {expected_core - set(llm_names)}"
 
-    assert llm_names.issubset(frontend_names)
+    definitions_by_name = dict(zip(llm_names, definitions, strict=True))
+    for name, tool in definitions_by_name.items():
+        assert str(tool.get("description") or "").strip(), f"{name} must have a description"
+        schema = tool.get("input_schema")
+        assert isinstance(schema, dict), f"{name} input_schema must be an object"
+        assert schema.get("type") == "object", f"{name} input_schema must describe an object"
+        properties = schema.get("properties")
+        required = schema.get("required")
+        assert isinstance(properties, dict), f"{name} input_schema.properties must be an object"
+        assert isinstance(required, list), f"{name} input_schema.required must be a list"
+        assert set(required).issubset(properties), f"{name} required fields must exist in properties"
+
+    catalog = get_tool_catalog()
+    catalog_names = [str(tool.get("name") or "").strip() for tool in catalog]
+    assert all(catalog_names), "Every palette tool must have a non-empty name"
+    assert len(catalog_names) == len(set(catalog_names)), "Palette tool names must be unique"
+    assert set(catalog_names).issubset(llm_names), "Palette tools must come from backend definitions"
+    for tool in catalog:
+        name = str(tool["name"])
+        assert tool["args_schema"] == definitions_by_name[name]["input_schema"]
 
 
 def test_normalize_tool_result_summarizes_multi_attribute_lookup():

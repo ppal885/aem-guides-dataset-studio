@@ -1,156 +1,51 @@
-# VM Setup - Next Steps (SSH Key से Login हो गया)
+# VM setup — next steps
 
-## ✅ Current Status
-- ✓ SSH key setup complete
-- ✓ VM में login हो गया
-- ⏭️ अब project setup करना है
+SSH login ho gaya hai to ab dashboard-only UAC runtime deploy karein. React/Vite frontend ki zaroorat nahi hai.
 
-## 🚀 Step-by-Step Setup
-
-### Step 1: Project Files Copy करें
-
-**Windows PowerShell से (नया terminal खोलें):**
-
-```powershell
-# Project directory में जाएं
-cd C:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio
-
-# Files copy करें
-scp -r . ubuntu@10.42.41.134:/home/ubuntu/aem-guides-dataset-studio
-```
-
-**या PowerShell script use करें:**
-```powershell
-.\copy-to-vm.ps1
-```
-
-**या Git से (अगर repo है):**
-```bash
-# VM पर (जहाँ आप login हैं)
-cd /home/ubuntu
-git clone <your-repo-url> aem-guides-dataset-studio
-```
-
-### Step 2: VM पर Setup Run करें
-
-**VM terminal में (जहाँ आप login हैं):**
+## 1. Repository update
 
 ```bash
-# Project directory में जाएं
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Check करें files आ गए हैं
-ls -la
-
-# Setup script को executable बनाएं
-chmod +x ubuntu-vm-setup.sh
-
-# Setup run करें (sudo जरूरी है)
-sudo bash ubuntu-vm-setup.sh
+cd ~/aem-guides-dataset-studio
+git status --short
+git pull --ff-only origin main
 ```
 
-### Step 3: Wait करें
+Unexpected local changes dikhein to pull/cleanup force mat karein; pehle unka backup ya merge decide karein.
 
-Setup script automatically करेगा:
-- ✅ System update
-- ✅ Docker install
-- ✅ Dependencies install
-- ✅ Environment configure
-- ✅ Services start
-
-**Time:** 10-15 minutes
-
-### Step 4: Verify करें
+## 2. Environment configure
 
 ```bash
-# Verification script run करें
-bash vm-verify-setup.sh
-
-# या manually check करें
-docker compose ps
-curl http://localhost:8000/health
+test -f .env.docker || cp .env.docker.example .env.docker
+chmod 600 .env.docker
 ```
 
-## 📋 Quick Commands (VM पर)
+Real Jira/LLM/auth values approved secret process se add karein. Secrets ko Git ya shell scripts mein mat daalein.
+
+## 3. Setup run
 
 ```bash
-# Current directory check
-pwd
-
-# Files check करें
-ls -la
-
-# Project directory में जाएं
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Setup run करें
-chmod +x ubuntu-vm-setup.sh
-sudo bash ubuntu-vm-setup.sh
+sudo python3 setup_vm.py
 ```
 
-## 🔍 Check करें Files आ गए हैं
+## 4. Verify
 
 ```bash
-# VM पर
-ls -la /home/ubuntu/aem-guides-dataset-studio
-
-# ये files दिखनी चाहिए:
-# - docker-compose.yml
-# - ubuntu-vm-setup.sh
-# - backend/
-# - frontend/
-# - etc.
+sudo systemctl status aem-backend.service --no-pager -l
+sudo nginx -t
+curl -fsS http://127.0.0.1:8001/health
+curl -fsS http://127.0.0.1:4502/health
+curl -fsSI http://127.0.0.1:4502/
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4502/mcp/health
 ```
 
-## 🆘 अगर Files नहीं आए
+`/mcp/health` ke liye `200` pass hai. Token ke bina `401` ya `403` bhi pass hai, kyunki protected MCP boundary reachable hai. `404`, `502`, ya koi aur status failure hai. Secret-safe authenticated check ke liye [VM_DEV_RUNBOOK.md](VM_DEV_RUNBOOK.md) dekhein.
 
-**Windows PowerShell से फिर से copy करें:**
-```powershell
-cd C:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio
-scp -r . ubuntu@10.42.41.134:/home/ubuntu/aem-guides-dataset-studio
-```
+Team browser URL: `http://<VM-IP>:4502/`
 
-**या Git clone करें:**
-```bash
-# VM पर
-cd /home/ubuntu
-git clone <repo-url> aem-guides-dataset-studio
-```
-
-## ✅ Setup Complete के बाद
-
-Access करें:
-- **Frontend**: http://10.42.41.134/
-- **Backend**: http://10.42.41.134:8000
-- **API Docs**: http://10.42.41.134:8000/docs
-
-## 📝 Complete Flow
+Yahi read-only evaluation dashboard hai. UAC generate karne ke liye `test-plan-generation` skill, `guides_test_plan_generator` MCP tool, REST pipeline, ya CLI use karein:
 
 ```bash
-# VM पर (जहाँ आप login हैं)
-
-# 1. Check current location
-pwd
-
-# 2. Project directory check करें
-ls -la /home/ubuntu/aem-guides-dataset-studio
-
-# 3. अगर files नहीं हैं, Windows से copy करें
-# (नया PowerShell window खोलें)
-
-# 4. Project directory में जाएं
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# 5. Setup run करें
-chmod +x ubuntu-vm-setup.sh
-sudo bash ubuntu-vm-setup.sh
-
-# 6. Wait करें (10-15 minutes)
-
-# 7. Verify करें
-bash vm-verify-setup.sh
+python3 scripts/run_test_plan_pipeline.py GUIDES-12345 --http --base-url http://127.0.0.1:8001
 ```
 
----
-
-**अभी Windows से files copy करें, फिर VM पर setup run करें! 🚀**
+Nginx `502` de to pehle port `8001` health aur `journalctl -u aem-backend.service` check karein.

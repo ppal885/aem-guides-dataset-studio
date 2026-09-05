@@ -1,526 +1,92 @@
-# Complete Setup Checklist for Ubuntu VM
+# Complete dashboard-only VM setup checklist
 
-## Overview
+Use this checklist for a fresh Linux VM deployment of the AEM Guides UAC generator. The React/Vite application and frontend container are retired.
 
-After installing Docker, here's everything else you need to setup to get the application running.
+## Before deployment
 
----
+- [ ] Clone or update `aem-guides-dataset-studio`.
+- [ ] Confirm `git status --short` contains no unexpected local changes.
+- [ ] Install Python 3.11+, Nginx, and systemd support.
+- [ ] Copy `.env.docker.example` to the ignored `.env.docker` file if it does not exist.
+- [ ] Inject Jira, LLM, authentication, and repository settings through the approved secret process.
+- [ ] Set production authentication explicitly; do not enable development bypass.
 
-## Setup Steps Checklist
-
-### ✅ Step 1: Copy Project Files to VM
-
-**From Windows (PowerShell):**
-```powershell
-# Navigate to project directory
-cd C:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio
-
-# Copy entire project to VM
-scp -r . ubuntu@<VM_IP>:/home/ubuntu/aem-guides-dataset-studio
-```
-
-**Or use provided script:**
-```powershell
-.\copy-to-vm.ps1
-```
-
-**Verify files copied:**
-```bash
-# On VM
-ls -la /home/ubuntu/aem-guides-dataset-studio
-# Should see: docker-compose.yml, backend/, frontend/, etc.
-```
-
----
-
-### ✅ Step 2: Create Environment Configuration (.env file)
-
-**On VM:**
-```bash
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Create .env file (if .env.example exists)
-cp .env.example .env
-
-# Or create manually
-nano .env
-```
-
-**Required Environment Variables:**
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://postgres:postgres@postgres:5432/dataset_studio
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres  # ⚠️ Change for production!
-POSTGRES_DB=dataset_studio
-POSTGRES_PORT=5432
-
-# Backend Configuration
-BACKEND_PORT=8001
-LOG_LEVEL=INFO
-ENVIRONMENT=production
-STRUCTURED_LOGGING=false
-
-# Frontend Configuration
-FRONTEND_PORT=80
-
-# CORS Configuration
-CORS_ORIGINS=*
-
-# Redis Configuration
-REDIS_URL=redis://redis:6379/0
-REDIS_PORT=6379
-
-# Storage Path (Linux)
-STORAGE_PATH=/home/ubuntu/datasets
-
-# Cleanup Configuration
-CLEANUP_ENABLED=true
-CLEANUP_DAYS_OLD=7
-CLEANUP_SCHEDULE=0 2 * * *
-```
-
-**Important:** Change `POSTGRES_PASSWORD` for security!
-
----
-
-### ✅ Step 3: Create Storage Directory
-
-**On VM:**
-```bash
-# Create storage directory
-mkdir -p /home/ubuntu/datasets
-
-# Set permissions
-chown -R ubuntu:ubuntu /home/ubuntu/datasets
-chmod 755 /home/ubuntu/datasets
-
-# Verify
-ls -ld /home/ubuntu/datasets
-```
-
-**Purpose:** This is where generated datasets will be stored.
-
----
-
-### ✅ Step 4: Configure Firewall
-
-**On VM:**
-```bash
-# Allow SSH (if not already allowed)
-sudo ufw allow 22/tcp comment 'SSH'
-
-# Allow Frontend
-sudo ufw allow 80/tcp comment 'Frontend HTTP'
-
-# Allow Backend API
-sudo ufw allow 8001/tcp comment 'Backend API'
-
-# Optional: Allow PostgreSQL (if accessing externally)
-sudo ufw allow 5432/tcp comment 'PostgreSQL'
-
-# Enable firewall (if not already enabled)
-sudo ufw enable
-
-# Check status
-sudo ufw status
-```
-
-**Expected Output:**
-```
-Status: active
-
-To                         Action      From
---                         ------      ----
-22/tcp                     ALLOW       Anywhere
-80/tcp                     ALLOW       Anywhere
-8001/tcp                   ALLOW       Anywhere
-```
-
----
-
-### ✅ Step 5: Build Docker Images
-
-**On VM:**
-```bash
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Build all images (takes 5-10 minutes)
-docker compose build
-
-# Or build without cache (if issues)
-docker compose build --no-cache
-```
-
-**What happens:**
-- Backend image builds (Python dependencies, Node.js, etc.)
-- Frontend image builds (React app, Nginx config)
-- Base images downloaded (postgres, redis)
-
-**Time:** 5-15 minutes depending on internet speed
-
----
-
-### ✅ Step 6: Start Services
-
-**On VM:**
-```bash
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Start all services in background
-docker compose up -d
-
-# Check status
-docker compose ps
-```
-
-**Expected Output:**
-```
-NAME                        STATUS              PORTS
-dataset-studio-backend      Up                  0.0.0.0:8001->8000/tcp
-dataset-studio-frontend     Up                  0.0.0.0:80->80/tcp
-dataset-studio-db           Up (healthy)        0.0.0.0:5432->5432/tcp
-dataset-studio-redis        Up (healthy)        0.0.0.0:6379->6379/tcp
-```
-
----
-
-### ✅ Step 7: Run Database Migrations
-
-**On VM:**
-```bash
-# Migrations run automatically on backend startup
-# But you can also run manually:
-
-docker compose exec backend alembic upgrade head
-
-# Or check if migrations ran
-docker compose logs backend | grep -i migration
-```
-
-**What happens:**
-- Creates `jobs` table
-- Creates `saved_recipes` table
-- Adds progress tracking columns (if migration exists)
-
-**Verify:**
-```bash
-# Check database tables
-docker compose exec postgres psql -U postgres -d dataset_studio -c "\dt"
-```
-
----
-
-### ✅ Step 8: Verify Services
-
-**On VM:**
-```bash
-# 1. Check all containers are running
-docker compose ps
-# All should show "Up" status
-
-# 2. Check backend health
-curl http://localhost:8001/health
-# Should return: {"status":"healthy",...}
-
-# 3. Check frontend
-curl http://localhost/
-# Should return HTML content
-
-# 4. Check database connection
-docker compose exec backend python -c "from app.db.session import engine; engine.connect(); print('DB connected')"
-# Should print: DB connected
-
-# 5. View logs (if issues)
-docker compose logs backend
-docker compose logs frontend
-```
-
----
-
-### ✅ Step 9: Get VM IP Address
-
-**On VM:**
-```bash
-# Get IP address
-hostname -I
-# Or
-ip addr show | grep "inet " | grep -v 127.0.0.1
-```
-
-**Note IP address** - You'll need this to access from other machines.
-
----
-
-### ✅ Step 10: Test Access from Browser
-
-**From your local machine or team members:**
-
-1. **Frontend**: `http://<VM_IP>/`
-   - Should show the Dataset Generator UI
-
-2. **Backend API**: `http://<VM_IP>:8001`
-   - Should show API response
-
-3. **API Docs**: `http://<VM_IP>:8001/docs`
-   - Should show Swagger UI
-
-4. **Health Check**: `http://<VM_IP>:8001/health`
-   - Should return: `{"status":"healthy",...}`
-
----
-
-## Optional: Additional Setup
-
-### Option A: PostgreSQL on VM (Recommended for Production)
-
-**If you want database on VM instead of Docker:**
+## Install
 
 ```bash
-# 1. Install PostgreSQL
-sudo apt-get install -y postgresql-15 postgresql-contrib-15
-
-# 2. Create database and user
-sudo -u postgres psql
-CREATE DATABASE dataset_studio;
-CREATE USER dataset_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE dataset_studio TO dataset_user;
-\q
-
-# 3. Configure PostgreSQL to accept connections
-sudo nano /etc/postgresql/15/main/postgresql.conf
-# Find: listen_addresses = 'localhost'
-# Change to: listen_addresses = '*'
-
-sudo nano /etc/postgresql/15/main/pg_hba.conf
-# Add: host    dataset_studio    dataset_user    0.0.0.0/0    md5
-
-# 4. Restart PostgreSQL
-sudo systemctl restart postgresql
-
-# 5. Update .env file
-nano /home/ubuntu/aem-guides-dataset-studio/.env
-# Change: DATABASE_URL=postgresql://dataset_user:your_secure_password@localhost:5432/dataset_studio
-
-# 6. Remove PostgreSQL from docker-compose.yml (optional)
-# Comment out postgres service
-
-# 7. Restart backend
-docker compose restart backend
+cd ~/aem-guides-dataset-studio
+git pull --ff-only origin main
+test -f .env.docker || cp .env.docker.example .env.docker
+chmod 600 .env.docker
+sudo python3 setup_vm.py
 ```
 
----
+The setup must deploy only these web files under `/var/www/aem-studio`:
 
-### Option B: Auto-Start on VM Reboot
+- `index.html`
+- `dashboard_data.json`
 
-**Services already auto-start** because Docker Compose uses `restart: unless-stopped`.
+It must not leave old JavaScript bundles or other retired UI assets in the webroot.
 
-**To verify:**
-```bash
-# Reboot VM
-sudo reboot
-
-# After reboot, check services
-docker compose ps
-# All should be running
-```
-
-**Optional: Create systemd service** (if needed):
-```bash
-# See vm-backend.service file for example
-```
-
----
-
-### Option C: SSL/HTTPS Setup (Optional)
-
-**For production, set up HTTPS:**
-
-1. **Install Certbot:**
-```bash
-sudo apt-get install -y certbot python3-certbot-nginx
-```
-
-2. **Get SSL certificate:**
-```bash
-sudo certbot --nginx -d your-domain.com
-```
-
-3. **Update Nginx config** in frontend Dockerfile or use reverse proxy
-
----
-
-## Quick Setup Script (All-in-One)
-
-**If you want to do everything automatically:**
+## Service checks
 
 ```bash
-# On VM
-cd /home/ubuntu/aem-guides-dataset-studio
-
-# Make setup script executable
-chmod +x ubuntu-vm-setup.sh
-
-# Run setup (does everything)
-sudo bash ubuntu-vm-setup.sh
+sudo nginx -t
+sudo systemctl is-enabled aem-backend.service
+sudo systemctl is-active aem-backend.service
+curl -fsS http://127.0.0.1:8001/health
 ```
 
-**This script does:**
-- ✅ Installs Docker (if not installed)
-- ✅ Creates .env file
-- ✅ Creates storage directory
-- ✅ Configures firewall
-- ✅ Builds Docker images
-- ✅ Starts all services
-- ✅ Verifies everything works
-
----
-
-## Verification Checklist
-
-After setup, verify everything:
-
-- [ ] Docker is installed: `docker --version`
-- [ ] Docker Compose works: `docker compose version`
-- [ ] All containers running: `docker compose ps`
-- [ ] Backend health check: `curl http://localhost:8001/health`
-- [ ] Frontend accessible: `curl http://localhost/`
-- [ ] Database connected: Check backend logs
-- [ ] Storage directory exists: `ls -ld /home/ubuntu/datasets`
-- [ ] Firewall configured: `sudo ufw status`
-- [ ] Can access from browser: `http://<VM_IP>/`
-- [ ] Can create test dataset: Try creating a small dataset
-- [ ] Can download dataset: Verify download works
-
----
-
-## Common Issues & Solutions
-
-### Issue 1: Port Already in Use
+## Public-route checks on port 4502
 
 ```bash
-# Check what's using the port
-sudo lsof -i :8001
-sudo lsof -i :80
-
-# Stop conflicting service or change port in .env
+curl -fsSI http://127.0.0.1:4502/
+curl -fsS http://127.0.0.1:4502/health
+curl -fsSI http://127.0.0.1:4502/eval-dashboard/
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4502/mcp/health
 ```
 
-### Issue 2: Permission Denied
+For `/mcp/health`, HTTP `200` passes. With production development-bypass disabled, an unauthenticated `401` or `403` also confirms that Nginx reached the protected MCP boundary. Any other status, including `404` or `502`, fails the route check.
+
+Optionally verify an authenticated `200` without echoing the bearer token or placing it in the curl command line:
 
 ```bash
-# Add user to docker group
-sudo usermod -aG docker ubuntu
-
-# Log out and back in, or:
-newgrp docker
+read -rsp 'MCP bearer token: ' MCP_BEARER_TOKEN; printf '\n'
+curl -fsS --config - http://127.0.0.1:4502/mcp/health <<< "header = \"Authorization: Bearer ${MCP_BEARER_TOKEN}\""
+unset MCP_BEARER_TOKEN
 ```
 
-### Issue 3: Database Connection Failed
+Do not run the token check with shell tracing enabled, and do not save its expanded input in logs.
+
+- [ ] `/` returns the dashboard.
+- [ ] `/eval-dashboard` and `/eval-dashboard/` redirect permanently to `/`.
+- [ ] `/dashboard_data.json` returns JSON with no-cache headers.
+- [ ] `/api/`, `/mcp`, `/mcp/`, and `/health` reach the backend; an unauthenticated `401/403` is valid MCP reachability.
+- [ ] `/builder`, `/chat`, `/settings`, and `/dataset-explorer` return `404`.
+
+## UAC smoke checks
 
 ```bash
-# Check PostgreSQL is running
-docker compose ps postgres
-
-# Check logs
-docker compose logs postgres
-
-# Test connection
-docker compose exec postgres pg_isready -U postgres
+python3 scripts/uac_eval/aggregate_runs.py --self-test
+python3 scripts/uac_eval/aggregate_runs.py
+python3 scripts/run_test_plan_pipeline.py GUIDES-12345
+python3 scripts/run_test_plan_pipeline.py GUIDES-12345 --http --base-url http://127.0.0.1:8001
 ```
 
-### Issue 4: Can't Access from Browser
+- [ ] Skill-based generation works.
+- [ ] `guides_test_plan_generator` works through MCP.
+- [ ] In-process and HTTP CLI outputs remain equivalent after normalization.
+- [ ] Dashboard values match `dashboard_data.json` exactly.
+
+Use an accessible, non-sensitive Jira key for the smoke run. Do not post generated content during deployment verification.
+
+## Operations
 
 ```bash
-# 1. Check VM IP
-hostname -I
-
-# 2. Check firewall
-sudo ufw status
-
-# 3. Check services
-docker compose ps
-
-# 4. Test locally first
-curl http://localhost:8001/health
+journalctl -u aem-backend.service -n 100 --no-pager
+journalctl -u aem-backend.service -f
+sudo systemctl restart aem-backend.service
+sudo python3 setup_vm.py --dashboard-only
 ```
 
-### Issue 5: Storage Permission Denied
-
-```bash
-# Fix permissions
-sudo chown -R ubuntu:ubuntu /home/ubuntu/datasets
-sudo chmod 755 /home/ubuntu/datasets
-```
-
----
-
-## Post-Setup: First Test
-
-**After everything is setup:**
-
-1. **Open Frontend**: `http://<VM_IP>/`
-2. **Create Test Dataset**:
-   - Select "Task Topics" recipe
-   - Set topic count to 10
-   - Click "Create Dataset"
-3. **Monitor Progress**: Check Job History page
-4. **Download Dataset**: Once completed, download and verify
-
----
-
-## Summary: What You Need to Setup
-
-### Required:
-1. ✅ **Copy project files** to VM
-2. ✅ **Create .env file** (environment configuration)
-3. ✅ **Create storage directory** (`/home/ubuntu/datasets`)
-4. ✅ **Configure firewall** (ports 22, 80, 8001)
-5. ✅ **Build Docker images** (`docker compose build`)
-6. ✅ **Start services** (`docker compose up -d`)
-7. ✅ **Verify services** (health checks, logs)
-
-### Optional (Recommended):
-8. ⚠️ **Change PostgreSQL password** (security)
-9. ⚠️ **Move database to VM** (production best practice)
-10. ⚠️ **Set up SSL/HTTPS** (production)
-
-### Automated:
-- **Use `ubuntu-vm-setup.sh`** - Does steps 1-7 automatically!
-
----
-
-## Quick Reference Commands
-
-```bash
-# Start services
-cd /home/ubuntu/aem-guides-dataset-studio
-docker compose up -d
-
-# Stop services
-docker compose down
-
-# View logs
-docker compose logs -f backend
-docker compose logs -f frontend
-
-# Restart services
-docker compose restart
-
-# Check status
-docker compose ps
-
-# Rebuild after code changes
-docker compose build --no-cache
-docker compose up -d
-
-# Access backend shell
-docker compose exec backend bash
-
-# Access database
-docker compose exec postgres psql -U postgres -d dataset_studio
-```
-
----
-
-**Last Updated**: 2026-01-28
+If port `4502` returns `502`, verify the backend on `127.0.0.1:8001` and inspect the journal before changing Nginx.

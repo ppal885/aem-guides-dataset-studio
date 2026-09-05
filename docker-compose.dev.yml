@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Development overrides for docker-compose.yml
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
@@ -13,18 +11,4 @@ services:
       ENVIRONMENT: development
       LOG_LEVEL: DEBUG
       STRUCTURED_LOGGING: false
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    volumes:
-      # Mount source code for hot-reload
-      - ./frontend:/app
-      - /app/node_modules
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://localhost:8001
-      - VITE_PROXY_TARGET=http://backend:8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload

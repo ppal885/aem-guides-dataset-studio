@@ -1,8 +1,10 @@
 # Editor integration: screenshot-generated DITA
 
-This repo’s **main** web app (`frontend/`) does not embed Oxygen-style XML editing elsewhere; the integration point is the **DITA workspace** page plus the existing **chat authoring** pipeline.
+> Historical note: this document describes the retired React/Vite client. The `frontend/` implementation and its browser routes are no longer part of the active dashboard-only deployment. Backend authoring services remain available to API, MCP, CLI, and skill consumers.
 
-## User flow
+The former web app used the **DITA workspace** page plus the **chat authoring** pipeline as its integration point.
+
+## Historical user flow
 
 1. **AI Chat** (`/chat`): attach screenshot, optional reference `.dita`, prompt, send (existing `ChatInput` + `sendMessage` authoring route).
 2. **Result card** (`AttachmentAuthoringResultPanel` in `ChatMessage.tsx`): XML preview, validation list, download, open artifact URL (unchanged).
@@ -23,11 +25,11 @@ If validation failed, there are structural/validator **errors**, or any **warnin
 - The workspace uses a native `<textarea>`: browser **Ctrl+Z / Ctrl+Y** applies to the buffer.
 - Pending import is **consumed on first mount** of `/authoring` so a full page reload does not re-apply the same import from `sessionStorage`.
 
-## Tests
+## Historical frontend tests
 
 - `frontend/src/lib/ditaWorkspaceBridge.test.ts` — sessionStorage queue semantics (Vitest + jsdom).
-- Backend: existing `tests/test_chat_dita_authoring_integration.py` and `tests/test_chat_attachment_authoring.py` still pass.
+- The backend integration tests remain relevant: `tests/test_chat_dita_authoring_integration.py` and `tests/test_chat_attachment_authoring.py`.
 
-## Extending to an external editor
+## Retired external-editor hook
 
-`window` event `dita-studio:workspace-pending` fires when a topic is enqueued; another bundle could subscribe and call a host API. The canonical contract is `PendingWorkspaceTopic` in `frontend/src/lib/ditaWorkspaceBridge.ts`.
+The removed client emitted a `dita-studio:workspace-pending` window event when a topic was enqueued. Its `PendingWorkspaceTopic` frontend contract is historical and must not be treated as an active integration surface.
