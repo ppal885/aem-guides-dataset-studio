@@ -9,8 +9,10 @@ Usage::
     python scripts/uac_eval/ingest_customer_csv.py --csv export.csv --customer NAME --dry-run
     python scripts/uac_eval/ingest_customer_csv.py --csv export.csv --customer NAME --apply
 
-Run --apply with the backend's Python/environment on the intended index host. The
-script does not claim that a local index is the VM. Existing issue keys are skipped,
+Run --apply on the VM with the backend's Python/environment, after shared-index
+consolidation. Writes require a live backend/gateway identity and a matching HTTP
+Chroma target/tenant/database/collection UUID. Embedded imports are refused: an
+interactive shell does not inherit systemd's STORAGE_PATH. Existing issue keys are skipped,
 including keys indexed by another importer. The explicit metadata-reconciliation
 option can add CSV-backed customer/component membership to existing keys without
 replacing their documents, vectors, acceptance text or source authority. Embedded
@@ -30,6 +32,8 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+
+from vm_index_parity import ParityError, live_backend_identity, require_same_index
 
 REPO = Path(__file__).resolve().parents[2]
 MAX_CSV_BYTES = 256 * 1024 * 1024
@@ -338,9 +342,13 @@ def append_records(records: list[dict], adapter, *, reconcile_existing: bool = F
 class JiraQaAdapter:
     """Lazy existing-infrastructure adapter, constructed only for explicit --apply."""
     def __init__(self) -> None:
+        # Read the actual running service first. A saved diagnostic, matching
+        # counts alone, or this shell's environment is not a write authorization.
+        self.backend_identity = live_backend_identity(os.environ.get("AEM_STUDIO_TOKEN", ""), require_remote=True)
         sys.path.insert(0, str(REPO / "backend"))
         from dotenv import load_dotenv
         load_dotenv(REPO / "backend" / ".env", override=False)
+        require_remote_configuration(os.environ)
         from app.services import vector_store_service as vectors
         from app.services.embedding_service import embed_texts
         from app.services.jira_component_metadata_service import canonical_component_names, component_filter_metadata
@@ -359,7 +367,19 @@ class JiraQaAdapter:
             self.client.get_collection(vectors.CHROMA_COLLECTION_JIRA_QA)
             if vectors.CHROMA_COLLECTION_JIRA_QA in names else None
         )
-        self.storage_mode = "REMOTE_CHROMA" if os.getenv("CHROMA_HOST", "").strip() else "LOCAL_CHROMA"
+        # Never create a missing collection or initialize embeddings to make an
+        # unexpected target look usable. UUID AND target must match the live VM.
+        require_same_index(self.backend_identity, vectors.get_index_identity(), require_remote=True)
+        if self.collection is None:
+            raise ParityError("EXPECTED_JIRA_COLLECTION_MISSING")
+        self.storage_mode = "REMOTE_CHROMA"
+
+    def verify_write_target(self) -> None:
+        current = live_backend_identity(os.environ.get("AEM_STUDIO_TOKEN", ""), require_remote=True)
+        # Our successful inserts change counts legitimately; pin target and UUIDs
+        # against the pre-import identity, then compare fresh current counts.
+        require_same_index(self.backend_identity, current, require_remote=True, compare_counts=False)
+        require_same_index(current, self.vectors.get_index_identity(), require_remote=True)
 
     def has_key(self, key: str) -> bool:
         if self.collection is None:
@@ -395,27 +415,98 @@ class JiraQaAdapter:
         return sorted(rows, key=lambda row: row["id"])
 
     def update_metadata(self, ids: list[str], metadatas: list[dict]) -> None:
+        self.verify_write_target()
         if not self.vectors.update_document_metadatas(self.vectors.CHROMA_COLLECTION_JIRA_QA, ids, metadatas):
             raise RuntimeError("Metadata or evidence-event update failed; frozen snapshot retained for safe retry")
 
     def insert(self, chunk: dict) -> None:
-        embedded = self.embed([chunk["document"]])
-        if embedded is None:
-            raise RuntimeError("Embeddings unavailable; no substitute or fabricated vectors were written")
-        embeddings = embedded.tolist() if hasattr(embedded, "tolist") else list(embedded)
-        if len(embeddings) != 1 or not embeddings[0] or any(not math.isfinite(float(x)) for x in embeddings[0]):
-            raise RuntimeError("Invalid embedding response")
+        self.verify_write_target()
+        embedding, receipt = embed_with_stored_canaries(self.collection, self.embed, chunk["document"])
+        # Sample compatibility, not a claim about all historic vectors or the
+        # backend query model. Rechecked in the same embedding batch on EVERY
+        # insert, including when the existing embedding service changes fallback.
+        self.embedding_check = receipt
         # Recheck after potentially slow embedding; stable IDs also make retries
         # idempotent. Use maintenance access to exclude unrelated index writers.
         if self.has_key(chunk["metadata"]["jira_key"]):
             raise RuntimeError("Issue was indexed concurrently; retry safely to skip it")
+        self.verify_write_target()
         ok = self.vectors.add_documents(
             self.vectors.CHROMA_COLLECTION_JIRA_QA, [chunk["chunk_id"]],
-            [chunk["document"]], [chunk["metadata"]], embeddings,
+            [chunk["document"]], [chunk["metadata"]], [embedding],
         )
         if not ok:
             raise RuntimeError("Index or evidence-event write failed; partial indexing is possible, rerun safely")
         self.collection = self.client.get_collection(self.vectors.CHROMA_COLLECTION_JIRA_QA)
+
+
+def _finite_vector(value) -> list[float]:
+    if value is None:
+        raise ParityError("EMBEDDING_CANARY_UNAVAILABLE")
+    try:
+        values = value.tolist() if hasattr(value, "tolist") else list(value)
+        if not values or len(values) > 16384 or any(type(item) not in (float, int) for item in values):
+            raise ValueError
+        vector = [float(item) for item in values]
+        if not all(math.isfinite(item) for item in vector) or not any(vector):
+            raise ValueError
+        return vector
+    except (ValueError, TypeError, OverflowError):
+        raise ParityError("EMBEDDING_CANARY_INVALID") from None
+
+
+def _vector_batch(value, size):
+    if value is None:
+        raise ParityError("EMBEDDING_BATCH_UNAVAILABLE_OR_INCOMPLETE")
+    rows = value.tolist() if hasattr(value, "tolist") else value
+    if not isinstance(rows, (list, tuple)) or len(rows) != size:
+        raise ParityError("EMBEDDING_BATCH_UNAVAILABLE_OR_INCOMPLETE")
+    return [_finite_vector(row) for row in rows]
+
+
+def embed_with_stored_canaries(collection, embed, document):
+    """Fail closed if the selected encoder disagrees with existing stored vectors.
+
+    Uses three distinct existing texts, no generated fixture vectors. Text never
+    enters logs. This is a conservative sampled compatibility check, NOT proof
+    that the entire legacy collection is homogeneous. No threshold override.
+    """
+    result = collection.get(limit=3, include=["documents", "embeddings"])
+    if not isinstance(result, dict):
+        raise ParityError("EMBEDDING_CANARY_UNAVAILABLE")
+    identifiers, documents, stored = (result.get(field) for field in ("ids", "documents", "embeddings"))
+    if (not isinstance(identifiers, list) or len(identifiers) != 3
+            or any(not isinstance(item, str) or not item for item in identifiers)
+            or len(set(identifiers)) != 3 or not isinstance(documents, list) or len(documents) != 3
+            or any(not isinstance(item, str) or not item.strip() or len(item) > 1_000_000 for item in documents)
+            or len(set(documents)) != 3):
+        raise ParityError("THREE_DISTINCT_STORED_EMBEDDING_CANARIES_REQUIRED")
+    vectors = _vector_batch(stored, 3)
+    dimensions = {len(row) for row in vectors}
+    if len(dimensions) != 1:
+        raise ParityError("STORED_EMBEDDING_DIMENSIONS_CONFLICT")
+    encoded = _vector_batch(embed([document, *documents]), 4)
+    if any(len(row) != len(vectors[0]) for row in encoded):
+        raise ParityError("EMBEDDING_DIMENSION_MISMATCH")
+    for expected, actual in zip(vectors, encoded[1:]):
+        if any(not math.isclose(left, right, rel_tol=1e-4, abs_tol=1e-6) for left, right in zip(expected, actual)):
+            raise ParityError("EMBEDDING_STORED_CANARY_MISMATCH_NO_VECTOR_WRITE")
+    return encoded[0], {"status": "SAMPLED_STORED_VECTORS_MATCH", "samples": 3,
+                        "dimension": len(vectors[0]), "whole_corpus_model_identity_verified": False}
+
+
+def require_remote_configuration(environment) -> None:
+    """Fail before _get_client can mkdir/create an unintended embedded database."""
+    host = environment.get("CHROMA_HOST", "").strip()
+    if not host:
+        raise ParityError("EXPLICIT_CHROMA_HOST_REQUIRED_NO_EMBEDDED_IMPORT")
+    # This is a VM maintenance importer, not an arbitrary network client. Match
+    # the private loopback server used by the backend; no credentials over LAN.
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise ParityError("IMPORT_REQUIRES_VM_LOOPBACK_CHROMA_HOST")
+    port = environment.get("CHROMA_PORT", "8000").strip()
+    if not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise ParityError("INVALID_CHROMA_PORT")
 
 
 def write_records(path: Path, records: list[dict]) -> None:
@@ -432,6 +523,45 @@ def write_records(path: Path, records: list[dict]) -> None:
 
 
 def run_self_tests() -> None:
+    from vm_index_parity import run_self_tests as parity_self_tests
+    parity_self_tests()
+    require_remote_configuration({"CHROMA_HOST": "127.0.0.1", "CHROMA_PORT": "8000"})
+    for environment in ({}, {"STORAGE_PATH": "/app/storage"}, {"CHROMA_HOST": "https://user:secret@host"},
+                        {"CHROMA_HOST": "remote.example"}, {"CHROMA_HOST": "localhost", "CHROMA_PORT": "0"}):
+        try: require_remote_configuration(environment)
+        except ParityError: pass
+        else: raise AssertionError("Unsafe or implicit importer target passed")
+    # A pre-upgrade runtime or embedded backend must fail before backend imports,
+    # client construction, collection creation, or embedding initialization.
+    original_live = live_backend_identity
+    def blocked_live(*args, **kwargs):
+        raise ParityError("RUNTIME_IDENTITY_UNAVAILABLE")
+    try:
+        globals()["live_backend_identity"] = blocked_live
+        try: JiraQaAdapter()
+        except ParityError: pass
+        else: raise AssertionError("Importer ignored live runtime identity failure")
+    finally:
+        globals()["live_backend_identity"] = original_live
+    class CanaryCollection:
+        def get(self, **kwargs):
+            assert kwargs == {"limit": 3, "include": ["documents", "embeddings"]}
+            return {"ids": ["one", "two", "three"], "documents": ["First", "Second", "Third"],
+                    "embeddings": [[1.0, 0.2], [0.1, 1.0], [0.3, 0.4]]}
+    def compatible_embed(texts):
+        assert texts == ["New", "First", "Second", "Third"]
+        return [[0.2, 0.9], [1.0, 0.2], [0.1, 1.0], [0.3, 0.4]]
+    value, receipt = embed_with_stored_canaries(CanaryCollection(), compatible_embed, "New")
+    assert value == [0.2, 0.9] and receipt["whole_corpus_model_identity_verified"] is False
+    for result in (None, 5, {"bad": "shape"}, [[1.0, 0.0]] * 4, [[1.0]] * 4, [[float("nan"), 0.2]] * 4, [[1.0, 0.2]] * 3):
+        try: embed_with_stored_canaries(CanaryCollection(), lambda texts: result, "New")
+        except ParityError: pass
+        else: raise AssertionError("Incompatible, fallback, or malformed embedding passed")
+    class EmptyCanaries:
+        def get(self, **kwargs): return {"ids": [], "documents": [], "embeddings": []}
+    try: embed_with_stored_canaries(EmptyCanaries(), compatible_embed, "New")
+    except ParityError: pass
+    else: raise AssertionError("Missing canaries passed")
     headers = ["Summary", "Issue key", "Issue Type", "Status", "Priority", "Resolution",
                "Description", "Custom field (Acceptance Criteria)", "Labels", "Labels", "Component/s", "Component/s"]
     rows = [
@@ -536,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exclude-key", action="append", default=[], help="Exclude held-out issue entirely before indexing/export")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
-    mode.add_argument("--apply", action="store_true", help="Write to configured jira_qa; use exclusive maintenance access")
+    mode.add_argument("--apply", action="store_true", help="VM only: require matching live backend/shared Chroma identities; use exclusive maintenance access")
     parser.add_argument("--output", type=Path, help="Explicit normalized JSONL audit export (not eval corpus); disabled in --dry-run")
     parser.add_argument("--reconcile-existing-metadata", action="store_true",
                         help="Explicitly merge CSV membership metadata into existing keys; preserves documents, vectors and authorities")
@@ -550,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--csv and --customer are required")
     if args.reconcile_existing_metadata and not args.snapshot_dir:
         parser.error("--reconcile-existing-metadata requires --snapshot-dir")
+    if args.apply and sys.platform != "linux":
+        parser.error("--apply must run on the Linux VM; this importer cannot write to a workstation index")
     try:
         records, summary = parse_export(args.csv, args.customer, set(args.exclude_key))
         if args.output and not args.dry_run:
@@ -559,10 +691,14 @@ def main(argv: list[str] | None = None) -> int:
             summary.update(append_records(records, adapter, reconcile_existing=args.reconcile_existing_metadata,
                                           snapshot_dir=args.snapshot_dir))
             summary.update({"index_status": "APPLIED", "storage_mode": adapter.storage_mode, "collection": "jira_qa"})
+            summary["embedding_check"] = getattr(adapter, "embedding_check", {"status": "NO_NEW_VECTORS"})
         else:
             summary.update({"index_status": "NOT_CHECKED_DRY_RUN" if args.dry_run else "INDEX_NOT_REQUESTED", "indexed": None, "already_indexed": None})
         print(json.dumps(summary, ensure_ascii=True, sort_keys=True, indent=2))
         return 0
+    except ParityError as exc:
+        print("STOP: " + str(exc) + "; index target not verified. Do not bypass this guard.", file=sys.stderr)
+        return 2
     except (OSError, ValueError, csv.Error, RuntimeError, ImportError) as exc:
         # No source text, credentials or backend exception payload in CLI errors.
         print(f"ERROR: customer CSV operation failed ({type(exc).__name__}); no approval was created. Check input/schema and configured index/embedding availability.", file=sys.stderr)

@@ -687,6 +687,7 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
         CHROMA_COLLECTION_DITA_SPEC,
         CHROMA_COLLECTION_JIRA_QA,
         get_collection_count,
+        get_index_identity,
         is_chroma_available,
     )
     from app.services.embedding_service import is_embedding_available
@@ -748,6 +749,7 @@ def _check_rag_status(arguments: dict[str, Any]) -> dict[str, Any]:
         "tenant_id": str(arguments.get("tenant_id") or "kone"),
         "chroma_available": chroma_ok,
         "embedding_available": is_embedding_available(),
+        "index_identity": get_index_identity(),
         "collections": {
             CHROMA_COLLECTION_AEM_GUIDES: get_collection_count(
                 CHROMA_COLLECTION_AEM_GUIDES

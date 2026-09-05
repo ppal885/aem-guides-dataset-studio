@@ -139,6 +139,32 @@ def test_rag_status_reports_invalid_jira_project_without_failing(monkeypatch):
     assert cursor["health"]["configuration_error"] == "invalid Jira project"
 
 
+def test_rag_status_includes_read_only_cached_index_identity(monkeypatch):
+    from app.api.routes import remote_mcp
+
+    identity = {
+        "schema_version": "chroma-index-identity-v1",
+        "status": "PARTIAL", "mode": "UNKNOWN", "target_fingerprint": None,
+        "tenant": None, "database": None, "client_version": None,
+        "collections": {"jira_qa": {"id": None, "count": None, "status": "UNAVAILABLE"}},
+    }
+    monkeypatch.setattr(
+        "app.services.jira_sync_cursor_service.resolve_sync_project_key",
+        lambda: (_ for _ in ()).throw(ValueError("invalid Jira project")),
+    )
+    monkeypatch.setattr("app.services.vector_store_service.is_chroma_available", lambda: False)
+    monkeypatch.setattr("app.services.embedding_service.is_embedding_available", lambda: False)
+    monkeypatch.setattr("app.services.vector_store_service.get_index_identity", lambda: identity)
+
+    result = remote_mcp._check_rag_status({})
+    assert result["index_identity"] == identity
+    # Preserve the existing status contract; diagnostics do not switch stores or
+    # reinterpret legacy zero counts as successful identity verification.
+    assert result["status"] == "ok"
+    assert result["collections"]["jira_qa"] == 0
+    assert result["index_identity"]["collections"]["jira_qa"]["count"] is None
+
+
 def test_graph_query_enforces_tenant_and_aggregates_for_regular_user(monkeypatch):
     from app.api.routes import remote_mcp
 
