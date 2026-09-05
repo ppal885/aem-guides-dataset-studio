@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load(module_name: str, filename: str):
@@ -141,6 +143,7 @@ repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_ma
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
+feedback_capture_mod = _load("feedback_capture", "feedback_capture.py")
 execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
 entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equivalence.py")
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
@@ -2917,6 +2920,7 @@ def test_component_reference_routing() -> None:
             "references/root-cause-fix-driven.md",
             "references/security-coverage.md",
             "references/execution-outcome-loop.md",
+            "references/shared-human-uac-learning.md",
             "scripts/ac_presentation.py",
             "scripts/ac_contract.py",
             "scripts/clarification_gate.py",
@@ -2925,6 +2929,7 @@ def test_component_reference_routing() -> None:
             "scripts/localization_regression_coverage.py",
             "scripts/upgrade_migration_coverage.py",
             "scripts/execution_outcome.py",
+            "scripts/feedback_capture.py",
             "scripts/publishing_scope_coverage.py",
             "scripts/render_compact_view.py",
             "scripts/root_cause_fix_driven.py",
@@ -5327,6 +5332,184 @@ def test_gate_receipt_and_adapter() -> None:
             check("skip-self-test style non-postable receipt is rejected", "postable" in str(exc))
         else:
             check("skip-self-test style non-postable receipt is rejected", False)
+
+
+def test_remote_approved_pattern_resolver() -> None:
+    adapter = _load(
+        "canonical_runtime_adapter_for_remote_resolver_test",
+        "canonical_runtime_adapter.py",
+    )
+
+    class Mode:
+        DISABLED = "DISABLED"
+        SHADOW = "SHADOW"
+        ENABLED = "ENABLED"
+
+    class Envelope:
+        def __init__(self, **values):
+            self.__dict__.update(values)
+
+    class Baseline:
+        def __init__(self, marker="LOCAL_TRAIN", shared_learning=None):
+            self.marker = marker
+            self.shared_learning = shared_learning
+
+        def model_copy(self, *, update):
+            return Baseline(self.marker, update.get("shared_learning"))
+
+    class BaselineResolver:
+        def resolve(self, request):
+            return Baseline()
+
+    remote_envelope = Envelope(
+        mode=Mode.ENABLED,
+        status="SUCCESS",
+        publication_id="a" * 64,
+        pattern_count=2,
+        matched_patterns=[
+            SimpleNamespace(pattern=SimpleNamespace(pattern_id="SHARED_" + "A" * 32))
+        ],
+        suppressed_patterns=[SimpleNamespace(pattern_id="SHARED_" + "B" * 32)],
+        shadow_pattern_ids=[],
+        shadow_suppressed_pattern_ids=[],
+        authoring_guidance=[SimpleNamespace(lesson_id="lesson-language")],
+        shadow_authoring_guidance_ids=[],
+        excluded_pattern_counts={"CURRENT_CASE": 1},
+        warnings=[],
+        error_code=None,
+    )
+
+    class ResponseModel:
+        @classmethod
+        def model_validate(cls, value):
+            check("remote resolver received JSON object", isinstance(value, dict))
+            return SimpleNamespace(
+                marker="REMOTE_BASELINE_MUST_NOT_REPLACE_LOCAL",
+                shared_learning=remote_envelope,
+            )
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _limit):
+            return b'{"remote": true}'
+
+    class Opener:
+        def __init__(self):
+            self.calls = []
+
+        def open(self, request, timeout):
+            self.calls.append((request, timeout))
+            return Response()
+
+    class Request:
+        def model_dump(self, *, mode):
+            check("remote resolver serializes canonical request as JSON", mode == "json")
+            return {"domain": "Publishing", "current_jira_key": "PROJECT-123"}
+
+    opener = Opener()
+    resolver = adapter.RemoteApprovedPatternResolver(
+        baseline_resolver=BaselineResolver(),
+        response_model=ResponseModel,
+        envelope_model=Envelope,
+        mode_enum=Mode,
+        tenant_id="kone",
+        base_url="http://127.0.0.1:4502",
+        token="personal-test-token",
+        opener=opener,
+    )
+    previous_mode = os.environ.get("SHARED_UAC_LEARNING_MODE")
+    try:
+        os.environ["SHARED_UAC_LEARNING_MODE"] = "SHADOW"
+        result = resolver.resolve_for_runtime(
+            Request(),
+            SimpleNamespace(
+                tenant_id="kone",
+                cutoff_at=None,
+                excluded_source_case_ids={"PROJECT-123"},
+                benchmark_isolation=False,
+                mode=Mode.SHADOW,
+            ),
+        )
+        check("local TRAIN baseline survives remote lookup", result.marker == "LOCAL_TRAIN")
+        check("local shadow ceiling strips remote influence", result.shared_learning.mode == Mode.SHADOW)
+        check("shadow ceiling removes shared matches", result.shared_learning.matched_patterns == [])
+        check("shadow ceiling removes authoring guidance", result.shared_learning.authoring_guidance == [])
+        check(
+            "shadow ceiling preserves trace-only shared pattern IDs",
+            result.shared_learning.shadow_pattern_ids == ["SHARED_" + "A" * 32],
+        )
+        check(
+            "shadow ceiling preserves trace-only guidance IDs",
+            result.shared_learning.shadow_authoring_guidance_ids == ["lesson-language"],
+        )
+        check("remote shared resolver called once", len(opener.calls) == 1)
+        request_url = opener.calls[0][0].full_url
+        check("remote resolver passes tenant context", "tenant_id=kone" in request_url)
+        check(
+            "remote resolver passes current-case exclusion",
+            "excluded_source_case_ids=PROJECT-123" in request_url,
+        )
+
+        os.environ["SHARED_UAC_LEARNING_MODE"] = "ENABLED"
+        enabled = resolver.resolve_for_runtime(
+            Request(),
+            SimpleNamespace(
+                tenant_id="kone",
+                cutoff_at=None,
+                excluded_source_case_ids={"PROJECT-123"},
+                benchmark_isolation=False,
+                mode=Mode.ENABLED,
+            ),
+        )
+        check("explicit enabled mode retains server-authorized envelope", enabled.shared_learning is remote_envelope)
+        check("enabled shared resolver made a second call", len(opener.calls) == 2)
+
+        legacy = resolver.resolve(Request())
+        check("contextless resolver keeps local baseline", legacy.marker == "LOCAL_TRAIN")
+        check("contextless resolver disables shared lookup", legacy.shared_learning.status == "DISABLED")
+        check("contextless resolver makes no remote call", len(opener.calls) == 2)
+
+        os.environ["SHARED_UAC_LEARNING_MODE"] = "DISABLED"
+        disabled = resolver.resolve_for_runtime(
+            Request(), SimpleNamespace(benchmark_isolation=False, mode=Mode.SHADOW)
+        )
+        check("local client disable skips remote lookup", len(opener.calls) == 2)
+        check("disabled shared envelope is explicit", disabled.shared_learning.status == "DISABLED")
+
+        os.environ["SHARED_UAC_LEARNING_MODE"] = "SHADOW"
+        benchmark = resolver.resolve_for_runtime(
+            Request(), SimpleNamespace(benchmark_isolation=True, mode=Mode.SHADOW)
+        )
+        check("benchmark isolation skips remote shared learning", len(opener.calls) == 2)
+        check("benchmark shared envelope is disabled", benchmark.shared_learning.status == "DISABLED")
+
+        missing_token = adapter.RemoteApprovedPatternResolver(
+            baseline_resolver=BaselineResolver(),
+            response_model=ResponseModel,
+            envelope_model=Envelope,
+            mode_enum=Mode,
+            tenant_id="kone",
+            base_url="http://127.0.0.1:4502",
+            token="dev-bypass",
+            opener=opener,
+        ).resolve_for_runtime(
+            Request(), SimpleNamespace(benchmark_isolation=False, mode=Mode.SHADOW)
+        )
+        check("shared lookup needs personal token", missing_token.shared_learning.status == "UNAVAILABLE")
+        check("missing personal token preserves local baseline", missing_token.marker == "LOCAL_TRAIN")
+        check("credential failure does not call remote", len(opener.calls) == 2)
+    finally:
+        if previous_mode is None:
+            os.environ.pop("SHARED_UAC_LEARNING_MODE", None)
+        else:
+            os.environ["SHARED_UAC_LEARNING_MODE"] = previous_mode
+
+    print("test_remote_approved_pattern_resolver: OK")
 
 
 def _ui_scope_fixture():
@@ -9369,6 +9552,39 @@ def test_execution_outcome() -> None:
     print("test_execution_outcome: OK")
 
 
+def test_feedback_capture() -> None:
+    feedback_capture_mod.run_self_tests()
+    check(
+        "queued feedback keeps a redacted correction only",
+        feedback_capture_mod.queue_safe_capture({
+            "jira_key": "PROJECT-123",
+            "idempotency_key": "capture-self-test",
+            "raw_feedback": "token=secret-value should not survive",
+            "proposed_correction": "Use the corrected observable result.",
+            "draft": {"draft_markdown": "the full plan must never enter the queue"},
+            "ai_classification": {"guess": "not supervisory truth"},
+        })
+        == {
+            "contract_version": "shared-uac-feedback-v1",
+            "tenant_id": "kone",
+            "jira_key": "PROJECT-123",
+            "idempotency_key": "capture-self-test",
+            "raw_feedback": "token=[REDACTED] should not survive",
+            "source_kind": "UNCONFIRMED",
+            "proposed_correction": "Use the corrected observable result.",
+            "delta_type": "UNCLASSIFIED",
+            "ai_classification": {},
+            "draft_id": "",
+            "plan_fingerprint": "",
+            "evidence_bundle_id": "",
+            "run_id": "",
+            "ac_id": "",
+            "client_context": {"client": "unknown", "session_id": "", "message_id": ""},
+        },
+    )
+    print("test_feedback_capture: OK")
+
+
 def test_entry_point_equivalence() -> None:
     ep = entry_point_equivalence_mod
 
@@ -10212,6 +10428,7 @@ def main() -> int:
     test_acceptance_synthesizer()
     test_uac_linter()
     test_human_feedback_delta()
+    test_feedback_capture()
     test_execution_outcome()
     test_entry_point_equivalence()
     test_value_provenance_coverage()
@@ -10228,6 +10445,7 @@ def main() -> int:
     test_operational_contract()
     test_skill_bundle_fingerprint()
     test_gate_receipt_and_adapter()
+    test_remote_approved_pattern_resolver()
     test_contract_facts_and_integrity()
     test_issue_domain_routing_and_publishing_scope()
     test_behavior_graph_relation_ontology()

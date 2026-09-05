@@ -9,6 +9,7 @@ VM `/mcp` gateway plus local-machine AEM upload.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from mcp import types
@@ -33,7 +35,7 @@ UPLOAD_NODE_MODULE = CLIENT_ROOT / "node_modules" / "@adobe" / "aem-upload"
 def _load_env_file(path: Path) -> None:
     if not path.exists():
         return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -111,7 +113,9 @@ def _load_upload_config() -> dict[str, str]:
 
 
 async def _post(path: str, body: dict[str, Any]) -> Any:
-    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+    feedback_call = path == "/mcp" and body.get("params", {}).get("name") in FEEDBACK_TOOL_NAMES
+    timeout = min(TIMEOUT_SECONDS, 30) if feedback_call else TIMEOUT_SECONDS
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
         response = await client.post(f"{BACKEND_URL}{path}", headers=_headers(), json=body)
         response.raise_for_status()
         return response.json()
@@ -136,6 +140,8 @@ async def _remote_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
         error = response["error"]
         raise RuntimeError(str(error.get("message") if isinstance(error, dict) else error))
     result = response.get("result") or {}
+    if name in FEEDBACK_TOOL_NAMES and isinstance(result, dict) and result.get("isError"):
+        raise RuntimeError("Shared feedback operation was rejected by the service.")
     content = result.get("content") if isinstance(result, dict) else None
     if isinstance(content, list) and content:
         text = str(content[0].get("text") or "") if isinstance(content[0], dict) else str(content[0])
@@ -307,9 +313,197 @@ def _run_local_aem_upload(args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+FEEDBACK_SOURCE_KINDS = ["HUMAN_CORRECTION", "AI_PROPOSAL", "UNCONFIRMED"]
+FEEDBACK_DELTA_TYPES = [
+    "UNCLASSIFIED", "COVERAGE_ADDED", "COVERAGE_REMOVED", "SCOPE_NARROWED",
+    "SCOPE_EXPANDED", "DISPOSITION_CHANGED", "OPEN_QUESTION_ADDED",
+    "OPEN_QUESTION_REMOVED", "LANGUAGE_SIMPLIFIED", "AC_MERGED", "AC_SPLIT",
+    "ORACLE_CHANGED", "PRIORITY_CHANGED", "IMPLEMENTATION_DETAIL_REMOVED",
+]
+FEEDBACK_DECISIONS = ["APPROVE", "REJECT", "REVOKE", "SUPERSEDE"]
+FEEDBACK_TOOL_NAMES = frozenset({
+    "capture_uac_feedback", "list_uac_feedback", "get_uac_feedback_status", "review_uac_feedback",
+})
+
+
+def _require_personal_feedback_identity() -> None:
+    token = AUTH_TOKEN.strip()
+    invalid = {"", "dev-bypass", "changeme", "change-me", "placeholder", "token", "personal-token"}
+    if (token.lower() in invalid or token.lower().startswith(("replace", "your_", "your-", "<"))
+            or "placeholder" in token.lower() or any(char in token for char in "\r\n")):
+        raise ValueError("Shared feedback requires a configured personal token, not development or placeholder credentials.")
+    parsed = urlsplit(BACKEND_URL)
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username
+            or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/"}):
+        raise ValueError("Shared feedback requires an absolute credential-free HTTP(S) service origin.")
+    try:
+        loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+    except ValueError:
+        loopback = parsed.hostname.lower() == "localhost"
+    if (parsed.scheme == "http" and not loopback
+            and os.environ.get("AEM_STUDIO_ALLOW_INSECURE_HTTP", "").strip().lower() != "true"):
+        raise ValueError("Use HTTPS or explicitly set AEM_STUDIO_ALLOW_INSECURE_HTTP=true for this plaintext service.")
+
+
+def _feedback_tools() -> list[types.Tool]:
+    client_context = {
+        "type": "object",
+        "properties": {
+            "client": {
+                "type": "string",
+                "enum": ["claude_desktop", "codex", "api", "unknown"],
+                "default": "unknown",
+            },
+            "session_id": {"type": "string", "maxLength": 160, "default": ""},
+            "message_id": {"type": "string", "maxLength": 160, "default": ""},
+        },
+        "additionalProperties": False,
+        "default": {},
+    }
+    draft = {
+        "type": "object",
+        "description": (
+            "Optional exact generated draft for atomic registration. Do not put an entire "
+            "chat transcript here; criteria must be exact substrings of draft_markdown."
+        ),
+        "properties": {
+            "draft_markdown": {"type": "string", "minLength": 1, "maxLength": 100000},
+            "criteria": {
+                "type": "object",
+                "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 12000},
+                "default": {},
+            },
+            "evidence_bundle_id": {"type": "string", "maxLength": 180, "default": ""},
+            "run_id": {"type": "string", "maxLength": 160, "default": ""},
+            "client_context": client_context,
+        },
+        "required": ["draft_markdown"],
+        "additionalProperties": False,
+    }
+    return [
+        types.Tool(
+            name="capture_uac_feedback",
+            description=(
+                "Any authenticated tenant teammate may persist a selected Human UAC correction as pending feedback. "
+                "This never approves or indexes the correction. Use HUMAN_CORRECTION only "
+                "when a Human directly supplied it; never upload the whole conversation."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "contract_version": {
+                        "type": "string", "enum": ["shared-uac-feedback-v1"],
+                        "default": "shared-uac-feedback-v1",
+                    },
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "jira_key": {"type": "string", "minLength": 3, "maxLength": 64},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "raw_feedback": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "source_kind": {
+                        "type": "string", "enum": FEEDBACK_SOURCE_KINDS,
+                        "default": "UNCONFIRMED",
+                    },
+                    "proposed_correction": {"type": "string", "maxLength": 12000, "default": ""},
+                    "delta_type": {
+                        "type": "string", "enum": FEEDBACK_DELTA_TYPES,
+                        "default": "UNCLASSIFIED",
+                    },
+                    "ai_classification": {
+                        "type": "object",
+                        "description": "Advisory model metadata only; never Human authority.",
+                        "additionalProperties": True,
+                        "default": {},
+                    },
+                    "draft_id": {"type": "string", "maxLength": 36, "default": ""},
+                    "plan_fingerprint": {
+                        "type": "string", "pattern": "^$|^[a-f0-9]{64}$", "default": "",
+                    },
+                    "evidence_bundle_id": {"type": "string", "maxLength": 180, "default": ""},
+                    "run_id": {"type": "string", "maxLength": 160, "default": ""},
+                    "ac_id": {"type": "string", "maxLength": 120, "default": ""},
+                    "draft": draft,
+                    "client_context": client_context,
+                },
+                "required": ["jira_key", "idempotency_key", "raw_feedback"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="list_uac_feedback",
+            description=(
+                "List shared UAC feedback visible to the authenticated tenant teammate. Pending and "
+                "candidate records are not reusable learning."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "jira_key": {"type": "string", "maxLength": 64, "default": ""},
+                    "plan_fingerprint": {
+                        "type": "string", "pattern": "^$|^[a-f0-9]{64}$", "default": "",
+                    },
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_uac_feedback_status",
+            description=(
+                "Read the server-authoritative binding, review, publication, and index "
+                "status for one feedback record, including reuse_eligible and publication_review_status. "
+                "An earlier APPROVED state alone does not establish current reuse eligibility."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 36},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                },
+                "required": ["feedback_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="review_uac_feedback",
+            description=(
+                "Submit one deliberate review using the current revision. Only the ticket's "
+                "current live Jira QE Assignee, using a personal named Human identity, may review. "
+                "Admin status, roles, draft ownership, ordinary Assignee and prose names grant no review right. "
+                "The server verifies Jira identity and QE assignment; unavailable verification denies review. "
+                "Review operations are never queued or automatically retried."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 36},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "expected_revision": {"type": "integer", "minimum": 1},
+                    "decision": {"type": "string", "enum": FEEDBACK_DECISIONS},
+                    "note": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    "lesson": {
+                        "type": "object",
+                        "description": "Server-validated lesson definition; required for approval/supersession.",
+                        "additionalProperties": True,
+                    },
+                    "origin_confirmed": {"type": "boolean", "default": False},
+                    "applicability_confirmed": {"type": "boolean", "default": False},
+                    "counterexamples_checked": {"type": "boolean", "default": False},
+                },
+                "required": [
+                    "feedback_id", "idempotency_key", "expected_revision", "decision", "note"
+                ],
+                "additionalProperties": False,
+            },
+        ),
+    ]
+
+
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
+        *_feedback_tools(),
         _text_tool(
             "ask_dita_expert",
             (
@@ -409,14 +603,22 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         result = await _dispatch(name, arguments or {})
         return [types.TextContent(type="text", text=_fmt(result))]
     except httpx.HTTPStatusError as exc:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [types.TextContent(type="text", text="ERROR: Shared feedback request failed; verify service access and request status before retrying. No approval retry was attempted.")]
         body = exc.response.text[:2000] if exc.response is not None else ""
         status = exc.response.status_code if exc.response is not None else "unknown"
         return [types.TextContent(type="text", text=f"HTTP {status}: {body}")]
     except Exception as exc:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [types.TextContent(type="text", text="ERROR: Shared feedback operation failed; verify the personal token, HTTPS or explicit HTTP opt-in, tenant and request schema. No approval retry was attempted.")]
         return [types.TextContent(type="text", text=f"ERROR: {exc}")]
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:
+    if name in FEEDBACK_TOOL_NAMES:
+        _require_personal_feedback_identity()
+        return await _remote_mcp_tool(name, args)
+
     if name in {"search_jira_history", "query_test_evidence_graph", "check_rag_status"}:
         return await _remote_mcp_tool(name, args)
 

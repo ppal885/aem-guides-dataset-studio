@@ -1,0 +1,71 @@
+{
+  "head": "cf5bc7e5e25599ead63b3303afe406f2e33aa90d",
+  "status_sha256": "03008b5f3dc06b8130c371614f6d3b0fd3142466bea5fd6c80ada14e6f6e6034",
+  "status_lines": 26921,
+  "tracked_dirty_files": [
+    {
+      "path": ".claude/skills/test-plan-generation/SKILL.md",
+      "sha256": "cdff91cff12b6f39bda8ae7049cb3e71585d299d3730e2b2f1b5b360d40ffb50"
+    },
+    {
+      "path": ".claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "sha256": "09c0e0303e738c1d4a3967058be47a59c339805625b0b9b3484f63db8f2cf5f9"
+    },
+    {
+      "path": ".claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "sha256": "17c5cef2e2f484b5b47268d2bead1733096a6024730abd7e584a2ae02e5baebb"
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/SKILL.md",
+      "sha256": "cdff91cff12b6f39bda8ae7049cb3e71585d299d3730e2b2f1b5b360d40ffb50"
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "sha256": "09c0e0303e738c1d4a3967058be47a59c339805625b0b9b3484f63db8f2cf5f9"
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "sha256": "17c5cef2e2f484b5b47268d2bead1733096a6024730abd7e584a2ae02e5baebb"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/SKILL.md",
+      "sha256": "cdff91cff12b6f39bda8ae7049cb3e71585d299d3730e2b2f1b5b360d40ffb50"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "sha256": "09c0e0303e738c1d4a3967058be47a59c339805625b0b9b3484f63db8f2cf5f9"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "sha256": "17c5cef2e2f484b5b47268d2bead1733096a6024730abd7e584a2ae02e5baebb"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/SKILL.md",
+      "sha256": "cdff91cff12b6f39bda8ae7049cb3e71585d299d3730e2b2f1b5b360d40ffb50"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "sha256": "09c0e0303e738c1d4a3967058be47a59c339805625b0b9b3484f63db8f2cf5f9"
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "sha256": "17c5cef2e2f484b5b47268d2bead1733096a6024730abd7e584a2ae02e5baebb"
+    },
+    {
+      "path": "scripts/uac_eval/precision.py",
+      "sha256": "7f815e65e671f7aa0747e5a7aa0ba823290db193a2692429af340896415df916"
+    },
+    {
+      "path": "skills/test-plan-generation/SKILL.md",
+      "sha256": "cdff91cff12b6f39bda8ae7049cb3e71585d299d3730e2b2f1b5b360d40ffb50"
+    },
+    {
+      "path": "skills/test-plan-generation/scripts/coverage_forcing.py",
+      "sha256": "09c0e0303e738c1d4a3967058be47a59c339805625b0b9b3484f63db8f2cf5f9"
+    },
+    {
+      "path": "skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "sha256": "17c5cef2e2f484b5b47268d2bead1733096a6024730abd7e584a2ae02e5baebb"
+    }
+  ]
+}

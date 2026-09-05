@@ -13,6 +13,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db.test_plan_feedback_models import TestPlanQualityFeedback
 from app.services.evidence_graph_contract import normalize_text, sanitize_excerpt
@@ -27,7 +28,7 @@ REVIEW_DECISIONS = frozenset({"QE_APPROVED", "QE_CHANGES_REQUESTED", "REJECTED"}
 EXECUTION_OUTCOMES = frozenset({"PASS", "FAIL", "BLOCKED", "SKIPPED"})
 JIRA_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
-EVIDENCE_SNAPSHOT_RE = re.compile(r"^evidence:[A-Z][A-Z0-9]+-\d+:[a-f0-9]{64}$")
+EVIDENCE_SNAPSHOT_RE = re.compile(r"^(?:bundle:[a-f0-9]{64}|evidence:[A-Z][A-Z0-9]+-\d+:[a-f0-9]{64})$")
 
 PAYLOAD_ALLOWLIST = {
     "review_decision": frozenset(
@@ -217,6 +218,8 @@ def record_test_plan_feedback(
     normalized_snapshot = normalize_text(evidence_snapshot_id)
     if not EVIDENCE_SNAPSHOT_RE.fullmatch(normalized_snapshot):
         raise ValueError("evidence_snapshot_id must reference an immutable pipeline evidence snapshot.")
+    if normalized_snapshot.startswith("evidence:") and normalized_snapshot.split(":")[1] != normalized_jira:
+        raise ValueError("evidence_snapshot_id must belong to the feedback Jira issue.")
     normalized_ac_id = normalize_text(ac_id).upper()
     if normalized_ac_id and not re.fullmatch(r"UAC-\d{2,3}", normalized_ac_id):
         raise ValueError("ac_id must use the deterministic UAC-01 format.")
@@ -300,8 +303,20 @@ def record_test_plan_feedback(
         redaction_count=redaction_count,
         idempotency_key=event_idempotency,
     )
-    session.add(row)
-    session.flush()
+    try:
+        connection = session.connection()
+        if connection.dialect.name == "sqlite" and not connection.connection.driver_connection.in_transaction:
+            connection.exec_driver_sql("BEGIN")
+        with session.begin_nested():
+            session.add(row)
+            session.flush()
+    except IntegrityError:
+        existing = session.query(TestPlanQualityFeedback).filter_by(
+            idempotency_key=event_idempotency
+        ).one_or_none()
+        if existing is None:
+            raise
+        return {**_serialize(existing), "created": False}
     return {**_serialize(row), "created": True}
 
 

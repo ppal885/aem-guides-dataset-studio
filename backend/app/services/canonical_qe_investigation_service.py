@@ -41,13 +41,17 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ReasoningPatternActivation,
     ScopeResolution,
     SemanticDimension,
+    _safe_handoff_text,
 )
 from app.core.schemas_qe_pattern_mcp import (
     QePatternProviderStatus,
     ResolveQePatternsRequest,
     ResolveQePatternsResponse,
+    SharedLearningContext,
+    SharedLearningEnvelope,
+    SharedLearningMode,
 )
-from app.services.qe_pattern_mcp_service import QePatternResolver
+from app.services.qe_pattern_mcp_service import QePatternResolver, configured_shared_learning_mode
 
 
 PATTERN_PROVIDER_UNAVAILABLE = "PATTERN_PROVIDER_UNAVAILABLE"
@@ -296,16 +300,20 @@ class CanonicalQeInvestigationService:
         domains: list[DomainActivation],
         surfaces: list[ChangeSurface],
         signals: list[AbstractSignal],
+        generation_request: GenerationRequest | None = None,
     ) -> PatternLookupResult:
         """Contain every malformed-provider boundary before canonical reasoning."""
 
         try:
-            return self._lookup_patterns(
+            shared_results: list[tuple[DomainActivation, Any]] = []
+            result = self._lookup_patterns(
                 facts=facts,
                 scope=scope,
                 domains=domains,
                 surfaces=surfaces,
                 signals=signals,
+                generation_request=generation_request,
+                shared_results=shared_results,
             )
         except (ValidationError, ValueError, TypeError, AttributeError):
             return PatternLookupResult(
@@ -317,6 +325,111 @@ class CanonicalQeInvestigationService:
                 status=PatternLookupRuntimeStatus.PROVIDER_ERROR,
                 warning_codes=[PATTERN_PROVIDER_ERROR],
             )
+        try:
+            return self._merge_shared_results(result, shared_results,
+                facts=facts, scope=scope, surfaces=surfaces, signals=signals)
+        except Exception:
+            # An independently malformed shared handoff must not erase a
+            # successfully validated TRAIN/explicit-provider baseline.
+            return result.model_copy(update={"warning_codes": [
+                *result.warning_codes, "SHARED_LEARNING_INVALID_RESPONSE"]})
+
+    def _merge_shared_results(self, baseline, shared_results, *, facts, scope, surfaces, signals):
+        """Validate the shared lane independently so its failures retain baseline."""
+        calls = list(baseline.calls)
+        warnings = list(baseline.warning_codes)
+        matched = {row.pattern_id: row for row in baseline.matched_human_patterns}
+        applicability = {row.pattern_id: row for row in baseline.applicability_records}
+        guidance = {}
+        validated_shared = []
+        for domain, payload in shared_results:
+            try:
+                envelope = SharedLearningEnvelope.model_validate(payload)
+            except (ValueError, TypeError, ValidationError):
+                warnings.append("SHARED_LEARNING_INVALID_RESPONSE")
+                calls.append(PatternLookupCallRecord(domain=domain.domain,
+                    provider_name="SHARED_UAC_LEARNING", provider_status="INVALID_LIBRARY",
+                    pattern_library_version="NOT_LOADED",
+                    warning_codes=["SHARED_LEARNING_INVALID_RESPONSE"]))
+                continue
+            validated_shared.append((domain, envelope))
+        publication_ids = {envelope.publication_id for _, envelope in validated_shared
+            if envelope.publication_id}
+        if len(publication_ids) > 1:
+            # A concurrent review/revocation between domain reads must never
+            # splice revisions from two publications into one investigation.
+            warning = "SHARED_LEARNING_PUBLICATION_CHANGED_DURING_LOOKUP"
+            calls.extend(PatternLookupCallRecord(domain=domain.domain,
+                provider_name="SHARED_UAC_LEARNING", provider_status="INVALID_LIBRARY",
+                pattern_library_version=envelope.publication_id or "NOT_LOADED",
+                pattern_library_sha256=envelope.publication_id,
+                shared_learning_mode=envelope.mode.value, warning_codes=[warning])
+                for domain, envelope in validated_shared)
+            return baseline.model_copy(update={"calls": calls,
+                "warning_codes": [*warnings, warning]})
+        for domain, envelope in validated_shared:
+            shared_warning_codes = sorted({
+                *([envelope.error_code] if envelope.error_code else []),
+                *(value for value in envelope.warnings
+                    if re.fullmatch(r"SHARED_LEARNING_[A-Z0-9_]{1,100}", value)),
+            })
+            call = PatternLookupCallRecord(domain=domain.domain,
+                provider_name="SHARED_UAC_LEARNING", provider_status=envelope.status,
+                pattern_library_version=envelope.publication_id or "NOT_LOADED",
+                pattern_library_sha256=envelope.publication_id,
+                shared_learning_mode=envelope.mode.value,
+                matched_pattern_ids=[row.pattern.pattern_id for row in envelope.matched_patterns],
+                suppressed_pattern_ids=[row.pattern_id for row in envelope.suppressed_patterns],
+                shadow_pattern_ids=envelope.shadow_pattern_ids,
+                shadow_authoring_guidance_ids=envelope.shadow_authoring_guidance_ids,
+                retrieved_authoring_guidance_ids=[row.lesson_id for row in envelope.authoring_guidance],
+                excluded_pattern_counts=envelope.excluded_pattern_counts,
+                warning_codes=shared_warning_codes)
+            calls.append(call)
+            warnings.extend(shared_warning_codes)
+            if envelope.mode != SharedLearningMode.ENABLED or envelope.status not in {"SUCCESS", "EMPTY"}:
+                continue
+            # Reuse exactly the existing normalized Pattern handoff. The shared
+            # source has its own snapshot hash, never a rebound baseline hash.
+            shared_response = ResolveQePatternsResponse(
+                provider_name="SHARED_UAC_LEARNING",
+                provider_status="SUCCESS" if envelope.matched_patterns else "EMPTY",
+                pattern_library_version=envelope.publication_id or "EMPTY",
+                pattern_library_sha256=envelope.publication_id,
+                pattern_count=envelope.pattern_count,
+                validated_production_pattern_count=envelope.pattern_count,
+                matched_patterns=envelope.matched_patterns,
+                suppressed_patterns=envelope.suppressed_patterns)
+
+            class PublishedSharedResolver:
+                def resolve(self, _request):
+                    return shared_response
+
+            normalized = CanonicalQeInvestigationService(PublishedSharedResolver()).lookup_patterns(
+                facts=facts, scope=scope, domains=[domain], surfaces=surfaces, signals=signals)
+            if normalized.status not in {PatternLookupRuntimeStatus.AVAILABLE_MATCH,
+                    PatternLookupRuntimeStatus.AVAILABLE_NO_MATCH}:
+                call.provider_status = "INVALID_LIBRARY"
+                call.matched_pattern_ids = []
+                call.retrieved_authoring_guidance_ids = []
+                warnings.append("SHARED_LEARNING_INVALID_RESPONSE")
+                continue
+            for row in normalized.matched_human_patterns:
+                prior = matched.get(row.pattern_id)
+                if prior is None or row.applicability > prior.applicability:
+                    matched[row.pattern_id] = row
+            applicability.update({row.pattern_id: row for row in normalized.applicability_records})
+            for row in envelope.authoring_guidance:
+                safe_text = _safe_handoff_text(row.guidance, max_length=2000)
+                if safe_text:
+                    guidance[(row.lesson_id, row.lesson_version)] = row.model_copy(update={"guidance": safe_text})
+        payload = baseline.model_dump(mode="python")
+        payload.update(calls=calls, warning_codes=warnings,
+            matched_human_patterns=list(matched.values()), applicability_records=list(applicability.values()),
+            authoring_guidance=[guidance[key] for key in sorted(guidance)][:50])
+        if matched:
+            payload["status"] = PatternLookupRuntimeStatus.AVAILABLE_MATCH
+        return PatternLookupResult.model_validate(payload)
 
     def _lookup_patterns(
         self,
@@ -326,6 +439,8 @@ class CanonicalQeInvestigationService:
         domains: list[DomainActivation],
         surfaces: list[ChangeSurface],
         signals: list[AbstractSignal],
+        generation_request: GenerationRequest | None = None,
+        shared_results: list[tuple[DomainActivation, Any]] | None = None,
     ) -> PatternLookupResult:
         """Call the shared resolver once per domain and fail Pattern influence closed."""
 
@@ -372,6 +487,10 @@ class CanonicalQeInvestigationService:
                     abstract_signals=signal_tokens,
                     publishing_mode=publishing_mode,
                     configuration_state=configuration_state,
+                    current_jira_key=generation_request.jira_key if generation_request else "",
+                    subject_terms=sorted({_bounded_constraint(row.entity, limit=500) for row in surfaces if _bounded_constraint(row.entity, limit=500)})[:30],
+                    deployment_model=scope.deployment_modes[0] if len(scope.deployment_modes) == 1 else None,
+                    product_version=scope.product_versions[0] if len(scope.product_versions) == 1 else None,
                     scope_constraints={
                         "explicit_out_of_scope": constraints.explicit_out_of_scope,
                         "excluded_relationships": constraints.excluded_relationships,
@@ -381,12 +500,27 @@ class CanonicalQeInvestigationService:
                     },
                     include_analysis_candidates=False,
                 )
-                raw_response = self._resolver.resolve(request)
+                contextual = getattr(self._resolver, "resolve_for_runtime", None)
+                if generation_request is not None and callable(contextual):
+                    context = SharedLearningContext(
+                        tenant_id=generation_request.tenant_id,
+                        principal_id=generation_request.principal.principal_id,
+                        authenticated=generation_request.runtime_context.get("shared_learning_authenticated") is True,
+                        mode=configured_shared_learning_mode(),
+                        benchmark_isolation=bool(generation_request.benchmark_split))
+                    raw_response = contextual(request, context)
+                else:
+                    raw_response = self._resolver.resolve(request)
                 response_payload = (
                     raw_response.model_dump(mode="python")
                     if isinstance(raw_response, ResolveQePatternsResponse)
                     else raw_response
                 )
+                if isinstance(response_payload, dict):
+                    response_payload = dict(response_payload)
+                    shared_payload = response_payload.pop("shared_learning", None)
+                    if shared_payload is not None and shared_results is not None:
+                        shared_results.append((DomainActivation(domain=domain, confidence=1.0), shared_payload))
                 response = ResolveQePatternsResponse.model_validate(response_payload)
             except (ValidationError, ValueError, TypeError, AttributeError):
                 failure_status = PatternLookupRuntimeStatus.INVALID_RESPONSE
@@ -543,6 +677,8 @@ class CanonicalQeInvestigationService:
                 view = MatchedHumanPatternView(
                     pattern_id=pattern.pattern_id,
                     pattern_version=pattern.pattern_version,
+                    lesson_id=pattern.lesson_id,
+                    lesson_kind=pattern.lesson_kind,
                     abstract_trigger=[
                         *pattern.abstract_change_surface,
                         *pattern.abstract_signals,
@@ -893,6 +1029,7 @@ class CanonicalQeInvestigationService:
             abstract_signals=signals,
             pattern_lookup=pattern_lookup,
             matched_human_patterns=pattern_lookup.matched_human_patterns,
+            authoring_guidance=pattern_lookup.authoring_guidance,
             mandatory_families=families,
             already_investigated_dimensions=[],
             constraints=constraints,

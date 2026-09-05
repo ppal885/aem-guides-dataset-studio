@@ -9,14 +9,15 @@ cloning the Dataset Studio repository locally.
 from __future__ import annotations
 
 import json
+import asyncio
 import re
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field, ValidationError
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.auth import CurrentUser, UserIdentity
 from app.core.structured_logging import get_structured_logger
@@ -50,8 +51,68 @@ def _tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str
     return {"name": name, "description": description, "inputSchema": input_schema}
 
 
+_LEARNING_TOOL_NAMES = frozenset({
+    "capture_uac_feedback", "list_uac_feedback", "review_uac_feedback", "get_uac_feedback_status",
+})
+
+
+class LearningListArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(default="kone", min_length=1, max_length=120)
+    jira_key: str = Field(default="", max_length=64)
+    plan_fingerprint: str = Field(default="", pattern=r"^$|^[a-f0-9]{64}$")
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class LearningStatusArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(default="kone", min_length=1, max_length=120)
+    feedback_id: str = Field(min_length=1, max_length=36)
+
+
+def _learning_tools() -> list[dict[str, Any]]:
+    from app.core.schemas_shared_uac_learning import UacFeedbackCapture, UacLessonReview
+    review_schema = UacLessonReview.model_json_schema()
+    review_schema["properties"]["feedback_id"] = {"type": "string", "minLength": 1, "maxLength": 36}
+    review_schema.setdefault("required", []).append("feedback_id")
+    return [
+        _tool("capture_uac_feedback", "Any authenticated tenant teammate may save a selected Human UAC correction as pending shared memory. Include an immutable draft or retain PENDING_BINDING. Never uploads a whole conversation or approves learning.", UacFeedbackCapture.model_json_schema()),
+        _tool("list_uac_feedback", "List tenant-scoped feedback and exact review revisions; pending feedback is not reusable learning.", LearningListArguments.model_json_schema()),
+        _tool("review_uac_feedback", "Approve, reject, supersede or revoke an exact lesson version only as the ticket's current live Jira QE Assignee, using a personal named Human identity. Roles/admin, ordinary Assignee and prose names grant no review authority. Unavailable verification denies review; never queue or automatically retry it. Reusable-learning approval is distinct from Jira UAC approval.", review_schema),
+        _tool("get_uac_feedback_status", "Return actual capture, review, reuse_eligible, publication_review_status and index delivery state for one feedback receipt. An earlier APPROVED state alone does not establish current reuse eligibility.", LearningStatusArguments.model_json_schema()),
+    ]
+
+
+def _call_learning_tool(name: str, arguments: dict[str, Any], user: UserIdentity | None):
+    if user is None or user.auth_method != "token":
+        raise HTTPException(401, "Authenticated user context is required.")
+    from app.core.schemas_shared_uac_learning import UacFeedbackCapture, UacLessonReview
+    from app.db.session import SessionLocal
+    from app.services import shared_uac_learning_service as learning
+    with SessionLocal() as session:
+        if name == "list_uac_feedback":
+            body = LearningListArguments.model_validate(arguments)
+            return learning.list_learning(session, user=user, **body.model_dump())
+        if name == "get_uac_feedback_status":
+            body = LearningStatusArguments.model_validate(arguments)
+            return learning.get_feedback_status(session, user=user, **body.model_dump())
+        try:
+            if name == "capture_uac_feedback":
+                result = learning.capture_feedback(session, user=user, body=UacFeedbackCapture.model_validate(arguments))
+            else:
+                data = dict(arguments)
+                identity = LearningStatusArguments.model_validate({"tenant_id": data.get("tenant_id", "kone"), "feedback_id": data.pop("feedback_id", "")})
+                result = learning.review_lesson(session, user=user, feedback_id=identity.feedback_id, body=UacLessonReview.model_validate(data))
+            session.commit()
+            return result
+        except Exception:
+            session.rollback()
+            raise
+
+
 def _tools() -> list[dict[str, Any]]:
     return [
+        *_learning_tools(),
         _tool(
             "ask_dita_expert",
             "Answer DITA, DITA-OT, and AEM Guides behavior questions using VM-hosted RAG evidence.",
@@ -214,6 +275,13 @@ def _tools() -> list[dict[str, Any]]:
                 **_schema(
                     {
                         "domain": {"type": "string", "minLength": 1},
+                        "tenant_id": {"type": "string", "default": "kone"},
+                        "current_jira_key": {"type": "string", "default": ""},
+                        "subject_terms": {"type": "array", "items": {"type": "string"}, "default": []},
+                        "deployment_model": {"type": "string", "default": ""},
+                        "product_version": {"type": "string", "default": ""},
+                        "cutoff_at": {"type": "string", "format": "date-time"},
+                        "excluded_source_case_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 1000},
                         "change_surfaces": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -350,8 +418,14 @@ async def remote_mcp_json_rpc(
             return _rpc_tool_result(payload.id, result)
         return _rpc_error(payload.id, -32601, f"Method not found: {payload.method}")
     except ValidationError as exc:
+        if str(payload.params.get("name") or "").strip() in _LEARNING_TOOL_NAMES:
+            return _rpc_error(payload.id, -32602, "Invalid feedback request; check the tool schema. No input values are logged.")
         return _rpc_error(payload.id, -32602, f"Invalid input: {exc}")
     except Exception as exc:
+        if str(payload.params.get("name") or "").strip() in _LEARNING_TOOL_NAMES:
+            code = exc.status_code if isinstance(exc, HTTPException) else (409 if type(exc).__name__ == "LearningConflict" else 400 if isinstance(exc, ValueError) else 503)
+            return _rpc_tool_result(payload.id, {"status": "ERROR", "http_status": code,
+                "message": "Feedback operation did not complete. Check authentication, tenant, source binding and expected revision; retry only retryable failures."}, is_error=True)
         return _rpc_tool_result(
             payload.id, f"{type(exc).__name__}: {exc}", is_error=True
         )
@@ -370,10 +444,13 @@ async def _call_tool(
         "upload_dataset_to_aem": _upload_dataset_to_aem,
         "check_rag_status": _check_rag_status,
         "search_jira_history": _search_jira_history,
-        "resolve_qe_patterns": _resolve_qe_patterns,
         "audit_jira_corpus": _audit_jira_corpus,
         "audit_knowledge_corpora": _audit_knowledge_corpora,
     }
+    if name in _LEARNING_TOOL_NAMES:
+        return await asyncio.to_thread(_call_learning_tool, name, arguments, user)
+    if name == "resolve_qe_patterns":
+        return await asyncio.to_thread(_resolve_qe_patterns, arguments, user=user)
     if name == "query_test_evidence_graph":
         if user is None:
             raise ValueError(
@@ -769,25 +846,41 @@ def _search_jira_history(arguments: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _resolve_qe_patterns(arguments: dict[str, Any]) -> dict[str, Any]:
+def _resolve_qe_patterns(arguments: dict[str, Any], user: UserIdentity | None = None) -> dict[str, Any]:
     from app.core.schemas_qe_pattern_mcp import (
         QePatternProviderStatus,
         ResolveQePatternsRequest,
+        SharedLearningContext,
     )
     from app.services.qe_pattern_mcp_service import (
         pattern_error_response,
         resolve_qe_patterns,
+        configured_shared_learning_mode,
     )
 
+    data = dict(arguments)
+    tenant_id = data.pop("tenant_id", "kone")
+    cutoff_at = data.pop("cutoff_at", None)
+    excluded = data.pop("excluded_source_case_ids", [])
     try:
-        request = ResolveQePatternsRequest.model_validate(arguments)
+        request = ResolveQePatternsRequest.model_validate(data)
     except ValidationError:
         return pattern_error_response(
             status=QePatternProviderStatus.INVALID_REQUEST,
             error_code="QE_PATTERN_REQUEST_VALIDATION_FAILED",
             warning="Pattern request rejected; no pattern influenced reasoning.",
         ).model_dump(mode="json")
-    return resolve_qe_patterns(request).model_dump(mode="json")
+    if user is None:
+        # In-process legacy callers get only the existing provider, not shared memory.
+        return resolve_qe_patterns(request).model_dump(mode="json")
+    from app.services.tenant_service import ensure_user_can_access_tenant
+    tenant = ensure_user_can_access_tenant(user, tenant_id)
+    context = SharedLearningContext(
+        tenant_id=tenant, principal_id=user.id, authenticated=user.auth_method == "token",
+        mode=configured_shared_learning_mode(), cutoff_at=cutoff_at,
+        excluded_source_case_ids=excluded, benchmark_isolation=bool(cutoff_at or excluded),
+    )
+    return resolve_qe_patterns(request, context=context).model_dump(mode="json")
 
 
 def _audit_jira_corpus(arguments: dict[str, Any]) -> dict[str, Any]:

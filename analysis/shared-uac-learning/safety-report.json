@@ -1,0 +1,77 @@
+{
+  "original_head": "cf5bc7e5e25599ead63b3303afe406f2e33aa90d",
+  "original_head_unchanged": true,
+  "original_dirty_file_checks": [
+    {
+      "path": ".claude/skills/test-plan-generation/SKILL.md",
+      "unchanged": true
+    },
+    {
+      "path": ".claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "unchanged": true
+    },
+    {
+      "path": ".claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "unchanged": true
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/SKILL.md",
+      "unchanged": true
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "unchanged": true
+    },
+    {
+      "path": ".codex/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/SKILL.md",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/SKILL.md",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/scripts/coverage_forcing.py",
+      "unchanged": true
+    },
+    {
+      "path": "release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/uac_eval/precision.py",
+      "unchanged": true
+    },
+    {
+      "path": "skills/test-plan-generation/SKILL.md",
+      "unchanged": true
+    },
+    {
+      "path": "skills/test-plan-generation/scripts/coverage_forcing.py",
+      "unchanged": true
+    },
+    {
+      "path": "skills/test-plan-generation/scripts/test_skill_scripts.py",
+      "unchanged": true
+    }
+  ],
+  "protected_tracked_changes": [],
+  "staged_files": [],
+  "implementation_branch": "codex/shared-uac-feedback-learning",
+  "implementation_base": "51036655052ad8392c77c83774610325a3555db9",
+  "vm_changed": false,
+  "global_installs_changed": false,
+  "passed": true
+}

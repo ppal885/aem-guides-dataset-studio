@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, UserIdentity
+from app.core.schemas_shared_uac_learning import UacFeedbackCapture
+from app.core.shared_uac_learning_http import SharedCaptureValidationRoute
 from app.core.schemas_test_plan_pipeline import (
     TestPlanPipelineRequest,
     TestPlanPipelineResult,
@@ -17,7 +19,7 @@ from app.core.schemas_test_plan_pipeline import (
 from app.db.session import get_db
 from app.services import test_plan_artifact_service as artifacts
 
-router = APIRouter(prefix="/test-plans", tags=["test-plans"])
+router = APIRouter(prefix="/test-plans", tags=["test-plans"], route_class=SharedCaptureValidationRoute)
 
 
 class SaveTestPlanRequest(BaseModel):
@@ -35,7 +37,7 @@ class TestPlanFeedbackRequest(BaseModel):
     correlation_id: str = Field(default="", max_length=160)
     plan_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     evidence_snapshot_id: str = Field(
-        pattern=r"^evidence:[A-Z][A-Z0-9]+-\d+:[a-f0-9]{64}$"
+        pattern=r"^(?:bundle:[a-f0-9]{64}|evidence:[A-Z][A-Z0-9]+-\d+:[a-f0-9]{64})$"
     )
     event_type: Literal[
         "review_decision",
@@ -134,7 +136,7 @@ def get_test_plan(jira_key: str, user: UserIdentity = CurrentUser):
 @router.post("/{jira_key}/feedback")
 def record_test_plan_feedback(
     jira_key: str,
-    body: TestPlanFeedbackRequest,
+    body: TestPlanFeedbackRequest | UacFeedbackCapture,
     user: UserIdentity = CurrentUser,
     session: Session = Depends(get_db),
 ):
@@ -143,6 +145,12 @@ def record_test_plan_feedback(
     from app.services.test_plan_feedback_service import (
         record_test_plan_feedback as record,
     )
+
+    if isinstance(body, UacFeedbackCapture):
+        from app.api.v1.routes.test_plan_learning import capture_feedback
+        if jira_key.strip().upper() != body.jira_key.strip().upper():
+            raise HTTPException(status_code=409, detail="Feedback Jira key does not match the request path.")
+        return capture_feedback(body=body, user=user, session=session)
 
     try:
         tenant_id = ensure_user_can_access_tenant(user, body.tenant_id)

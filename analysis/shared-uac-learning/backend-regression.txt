@@ -1,0 +1,102 @@
+........................................................................ [ 23%]
+.............................................F.......................... [ 47%]
+........................................................................ [ 71%]
+........................................................................ [ 95%]
+..............                                                           [100%]
+================================== FAILURES ===================================
+___________ test_tenant_identity_cannot_change_semantic_activation ____________
+
+    def test_tenant_identity_cannot_change_semantic_activation() -> None:
+        packet = {
+            "jira_key": "FWD-TENANT-INVARIANT",
+            "issue": {
+                "issue_key": "FWD-TENANT-INVARIANT",
+                "summary": "Update the preset before teams publish.",
+                "description": "Documents are selected in a separate configuration field.",
+                "primary_component": "Publishing",
+                "components": ["Publishing"],
+                "pre_uac_evidence": {"components": ["Native_PDF"]},
+            },
+        }
+    
+        semantic_results: list[tuple[object, object, object, object]] = []
+        for tenant_id in ("tenant-0", "tenant-1"):
+            request = CANONICAL_TEST_PLAN_RUNTIME.build_request(
+                jira_key="FWD-TENANT-INVARIANT",
+                tenant_id=tenant_id,
+                entry_point=RuntimeEntryPoint.PYTHON_API,
+                generation_profile=GenerationProfile.BACKEND_COMPATIBILITY,
+            )
+            result = CANONICAL_TEST_PLAN_RUNTIME.generate_backend_compatibility(
+                request=request,
+                packet=packet,
+            )
+            quality = result.output_payload["missing_question_quality"]
+            scope = dict(result.output_payload["scope"])
+            scope.pop("source_fact_ids", None)
+            semantic_results.append(
+                (
+                    scope,
+                    result.output_payload["behavior_model"][
+                        "generated_artifact_delivery"
+                    ],
+                    [
+                        (row["family_id"], row["activation_decision"])
+                        for row in quality["family_satisfaction"]
+                    ],
+                    sorted(
+                        (row["dimension"] or "", row["question"])
+                        for row in quality["accepted_questions"]
+                    ),
+                )
+            )
+    
+        assert semantic_results[0] == semantic_results[1]
+>       assert semantic_results[0][0]["primary_product_area"] == "Publishing"
+E       AssertionError: assert 'Native_PDF' == 'Publishing'
+E         
+E         - Publishing
+E         + Native_PDF
+
+tests\test_canonical_test_plan_runtime_contracts.py:1493: AssertionError
+============================== warnings summary ===============================
+app\api\v1\routes\bulk.py:14
+  C:\aem-uac-learning\backend\app\api\v1\routes\bulk.py:14: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class FlexibleJobRequest(BaseModel):
+
+app\main.py:392
+  C:\aem-uac-learning\backend\app\main.py:392: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\Users\prashantp\Videos\aem-guides-dataset-studio\backend\.venv\Lib\site-packages\fastapi\applications.py:4599
+..\..\Users\prashantp\Videos\aem-guides-dataset-studio\backend\.venv\Lib\site-packages\fastapi\applications.py:4599
+  C:\Users\prashantp\Videos\aem-guides-dataset-studio\backend\.venv\Lib\site-packages\fastapi\applications.py:4599: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:850
+  C:\aem-uac-learning\backend\app\main.py:850: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+app\core\schemas_test_plan_pipeline.py:14
+  C:\aem-uac-learning\backend\app\core\schemas_test_plan_pipeline.py:14: PytestCollectionWarning: cannot collect test class 'TestPlanPipelineRequest' because it has a __init__ constructor (from: tests/test_test_plan_pipeline_service.py)
+    class TestPlanPipelineRequest(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_canonical_test_plan_runtime_contracts.py::test_tenant_identity_cannot_change_semantic_activation
+1 failed, 301 passed, 6 warnings in 10.27s

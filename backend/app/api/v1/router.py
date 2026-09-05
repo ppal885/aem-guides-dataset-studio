@@ -27,6 +27,7 @@ from app.api.v1.routes import (
     storage,
     tenants,
     test_plans,
+    test_plan_learning,
     uac_copilot,
 )
 from app.api.v1.routes import mcp_bridge
@@ -115,3 +116,4 @@ api_router.include_router(recorder.evidence_router, prefix="/evidence", tags=["e
 api_router.include_router(evidence_mcp.router)
 api_router.include_router(mcp_bridge.router)
 api_router.include_router(test_plans.router)
+api_router.include_router(test_plan_learning.router)
