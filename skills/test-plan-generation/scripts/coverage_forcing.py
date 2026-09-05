@@ -247,7 +247,13 @@ def _oq_lines(plan_text: str) -> list[str]:
     return lines
 
 
-_AC_REF_RE = re.compile(r"\bAC[-\s]?\d+\b", re.I)
+# Only an OQ that cites an AC as its ANSWER/authority ("per AC-7", "see AC-7", "as
+# decided in AC-7") contradicts a decided AC. An OQ that references an AC as the thing it
+# BOUNDS/completes ("so AC-3 is testable") is a legitimate scope question, not a contradiction.
+_AC_ANSWER_REF_RE = re.compile(
+    r"\b(?:per|see|as (?:per|decided|stated|in)|answered by|already (?:in|decided in|covered by))\s+AC[-\s]?\d+\b",
+    re.I,
+)
 _RESTATED_INSTANCE_RE = re.compile(
     r"\bthe (?:exact|specific|reported|above) (?:reported )?(?:case|scenario|example|bug)\b"
     r".{0,40}\b(?:pass(?:es)?|is fixed|works|resolves)\b",
@@ -261,8 +267,9 @@ def _validate_ac_oq_contradiction(manifest, plan_text: str) -> list[str]:
     # AC or make it an OQ, not both (e.g. GUIDES-50368 OQ-1 "per AC-7" vs AC-7).
     problems: list[str] = []
     for line in _oq_lines(plan_text):
-        if _AC_REF_RE.search(line):
-            ref = _AC_REF_RE.search(line).group(0)
+        m = _AC_ANSWER_REF_RE.search(line)
+        if m:
+            ref = m.group(0)
             problems.append(
                 f"An Open Question references {ref} ({line[:70]!r}). If that AC already "
                 "decides the behaviour, the Open Question is redundant/contradictory - keep "
