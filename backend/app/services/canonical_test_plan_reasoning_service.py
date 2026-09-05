@@ -1102,7 +1102,15 @@ def _is_structural_noise_literal(literal: str) -> bool:
         # Prose. Only reject if it is a short concatenated anchor (<=2 tokens) that is
         # still an ID, never a genuine multi-word sentence.
         return bool(_STRUCTURAL_ID_RE.search(s)) and len(s.split()) <= 2
-    return bool(_STRUCTURAL_ID_RE.search(s) or _BARE_TAG_RE.match(s))
+    if _STRUCTURAL_ID_RE.search(s) or _BARE_TAG_RE.match(s):
+        return True
+    # A lone single token with no whitespace - a bare dimension/axis label such as
+    # "negative", "iframe", "ordering", "scope", "state" - is never an acceptance
+    # sentence. Restricted to a single all-letter token (3-24 chars) so it cannot touch
+    # multi-word prose, numbers, versions, or code-shaped values handled elsewhere.
+    if re.fullmatch(r"[A-Za-z]{3,24}", s):
+        return True
+    return False
 
 
 def _plain_candidate(value: str) -> str:
