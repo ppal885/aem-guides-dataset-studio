@@ -87,14 +87,28 @@ JUDGE = (
     "'the dialog auto-saves' when the ticket states it must not -> that IS a hallucination "
     "(contradiction). Candidate cites a config key 'foo.bar.baz' that does not exist -> "
     "hallucination (invented fact).\n\n"
+    "SEPARATELY, judge the candidate's PRECISION - how well-factored its acceptance "
+    "criteria are, independent of coverage. Two distinct defects, both of which a "
+    "senior QE would flag on review:\n"
+    "  - redundant_criteria: COUNT the candidate ACs that restate or are an "
+    "INSTANCE-OF another candidate AC (same behaviour said twice, or a general AC plus "
+    "a narrower special case of that same AC that add no independent check). Merging "
+    "them would lose nothing. This is NOT about the reference - compare candidate ACs "
+    "to each other.\n"
+    "  - over_decomposed: true if a single coherent behaviour has been split across "
+    "several ACs that a senior QE would collapse into one (death by a thousand ACs); "
+    "otherwise false.\n\n"
     "Return ONLY JSON:\n"
     '{{"coverage_pct": <0-100, fraction of the reference''s acceptance points the '
     'candidate addresses>, "hallucinations": <int, ONLY contradicting-or-invented '
     'candidate criteria as defined above>, "extra_criteria": <int, additional '
     'reasonable candidate criteria not in the reference; these are not penalised>, '
+    '"redundant_criteria": <int, candidate ACs that restate/are instance-of another '
+    'candidate AC>, "over_decomposed": <true|false>, '
     '"missing_key_points": [<short strings of important reference points the '
     'candidate omits>], "holistic": <1-5 overall usefulness of the candidate''s '
-    'acceptance criteria vs the reference>}}\n\n'
+    'acceptance criteria vs the reference>, "precision": <1-5, 5 = tight and '
+    'well-factored with no redundancy or over-decomposition, 1 = bloated/repetitive>}}\n\n'
     "TICKET: {summary}\n\nREFERENCE ACCEPTANCE CRITERIA:\n{gold}\n\n"
     "CANDIDATE ACCEPTANCE CRITERIA:\n{cand}\n"
 )

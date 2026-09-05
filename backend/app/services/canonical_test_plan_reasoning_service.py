@@ -1070,6 +1070,41 @@ def _is_behavioural_literal(literal: str) -> bool:
     return True
 
 
+# A traceability anchor / evidence ID: a jira/UAC anchor prefix, an embedded UAC anchor,
+# or a bare hex hash. These are record identifiers, never acceptance sentences.
+_STRUCTURAL_ID_RE = re.compile(
+    r"^(?:jira:)"          # jira anchor prefix (e.g. jira:GUIDES-33605:uac:<hash>)
+    r"|:uac[:\-]"          # embedded UAC anchor (e.g. JIRA:GUIDES-1:UAC:UAC-14:<hash>)
+    r"|^[0-9a-f]{16,}$",   # bare hex hash
+    re.I,
+)
+# A bare snake_case dimension/axis tag with no whitespace (e.g. toolbar_customization,
+# uuid_variant, locked_state). A real acceptance criterion contains prose, not a lone tag.
+_BARE_TAG_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$")
+
+
+def _is_structural_noise_literal(literal: str) -> bool:
+    """True when a literal is a traceability ID or a bare dimension tag rather than an
+    acceptance sentence.
+
+    Applied to EVERY source (including accepted UAC / product decisions), because an
+    anchor ID or a snake_case tag is structurally never a valid acceptance criterion no
+    matter where it came from. Without this guard these tokens became contract facts,
+    then acceptance candidates, then got promoted and rendered as acceptance-contract
+    bullets (observed on GUIDES-33605: 95 bullets = 17 real ACs + 78 IDs/tags). Narrow by
+    design: a real AC contains spaces and prose and will not match. See
+    docs/specs/g1-runtime-consolidation.md."""
+
+    s = (literal or "").strip()
+    if not s:
+        return False
+    if " " in s or "\t" in s:
+        # Prose. Only reject if it is a short concatenated anchor (<=2 tokens) that is
+        # still an ID, never a genuine multi-word sentence.
+        return bool(_STRUCTURAL_ID_RE.search(s)) and len(s.split()) <= 2
+    return bool(_STRUCTURAL_ID_RE.search(s) or _BARE_TAG_RE.match(s))
+
+
 def _plain_candidate(value: str) -> str:
     """Humanize ontology prefixes while preserving the entity wording."""
 
@@ -1483,6 +1518,14 @@ class CanonicalTestPlanReasoningService:
                         # and hard-blocks the whole plan (no output). Skip it here.
                         continue
                     if _is_contract_metadata(path, literal):
+                        continue
+                    if _is_structural_noise_literal(literal):
+                        # A traceability anchor ID or a bare dimension tag is never an
+                        # acceptance sentence. Filter it from EVERY source (including
+                        # accepted UAC) so it cannot become a fact -> candidate ->
+                        # promoted acceptance-contract bullet. Filtering at extraction
+                        # keeps the completeness invariant intact (facts are counted from
+                        # extraction output, so no orphan disposition downstream).
                         continue
                     _accepted_source = record.source_type in {
                         EvidenceSourceType.ACCEPTED_UAC,

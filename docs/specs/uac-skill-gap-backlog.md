@@ -53,6 +53,15 @@ executor questions.
   extra_criteria).
 - Judge produced transient nulls (21/30 in one run) — FIXED (retry + higher token cap +
   accept-only-numeric).
+- Eval rewarded recall only, incentivising over-production of ACs (the exact drift
+  reviewers penalise: over-decomposition, redundant/instance-of ACs, verbose ACs) -
+  FIXED. Added `scripts/uac_eval/precision.py` (deterministic AC-block metrics: AC count,
+  over-decomposition beyond the skill's 12-AC cap, lexical near-duplicate pairs at
+  Jaccard >= 0.6, verbose-AC count -> `precision_pct`) plus `combined_pct` = harmonic
+  mean (F1) of coverage and precision. Judge prompt (`judge.py`) now also returns
+  `redundant_criteria`, `over_decomposed`, and a `precision` 1-5. `judge_pipeline.py`
+  reports coverage / precision / combined per ticket and in the summary table, so a plan
+  can no longer win by dumping ACs. Self-tests pass; thresholds mirror the skill gate.
 Remaining: build a dimension-enriched eval slice so rare-dimension fixes can be measured;
 periodically re-run the gold-quality classifier as the corpus grows.
 

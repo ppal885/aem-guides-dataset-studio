@@ -31,6 +31,7 @@ sys.path.insert(0, str(HERE))
 from analyze import _norm_component  # noqa: E402
 import score as sc  # noqa: E402
 from judge import _judge  # noqa: E402
+import precision as prec  # noqa: E402
 
 
 def _pipeline_plan(vm: str, token: str, jira_key: str) -> tuple[str, str]:
@@ -98,11 +99,38 @@ def main() -> int:
                 rec[mode] = {"coverage_pct": None, "note": "empty"}
                 continue
             j = _judge(client, model, row, cand)
+            pm = prec.analyze_ac(cand)
+            det_precision = pm["precision_pct"]  # None when no AC section exists
             if j:
-                agg[mode]["coverage"].append(float(j.get("coverage_pct", 0)))
+                cov = float(j.get("coverage_pct", 0))
+                agg[mode]["coverage"].append(cov)
                 agg[mode]["halluc"].append(float(j.get("hallucinations", 0)))
                 agg[mode]["holistic"].append(float(j.get("holistic", 0)))
-            rec[mode] = {"coverage_pct": j.get("coverage_pct"), "hallucinations": j.get("hallucinations"), "holistic": j.get("holistic")}
+                # Precision/combined only when the plan actually produced a contract;
+                # a no-contract plan is a separate failure, not an over-decomposed one.
+                if det_precision is not None:
+                    agg[mode]["det_precision"].append(float(det_precision))
+                    agg[mode]["combined"].append(prec.combined_pct(cov, det_precision))
+                else:
+                    agg[mode]["no_ac_section"].append(1.0)
+                if j.get("precision") is not None:
+                    agg[mode]["judge_precision"].append(float(j.get("precision")))
+                agg[mode]["redundant"].append(float(j.get("redundant_criteria", 0) or 0))
+            rec[mode] = {
+                "coverage_pct": j.get("coverage_pct"),
+                "hallucinations": j.get("hallucinations"),
+                "holistic": j.get("holistic"),
+                "precision_pct": det_precision,
+                "combined_pct": prec.combined_pct(j.get("coverage_pct"), det_precision),
+                "ac_count": pm["ac_count"],
+                "over_decomposition": pm["over_decomposition"],
+                "redundancy_pairs": pm["redundancy_pairs"],
+                "verbose_ac_count": pm["verbose_ac_count"],
+                "ac_section_found": pm.get("ac_section_found", True),
+                "judge_precision": j.get("precision"),
+                "judge_redundant": j.get("redundant_criteria"),
+                "judge_over_decomposed": j.get("over_decomposed"),
+            }
         per.append(rec)
 
     def _m(mode, k):
@@ -111,17 +139,33 @@ def main() -> int:
 
     lines = ["# Real-pipeline (evidence-grounded) vs baseline, LLM-judged, held-out", "",
              f"Test tickets: {len(test)} | seed {args.seed} | judge model: {model} | pipeline: canonical runtime on {args.vm}",
+             "",
+             "Coverage is recall vs the human gold. Precision is a deterministic penalty for "
+             "over-decomposition / redundant / verbose ACs (see precision.py). Combined is their "
+             "harmonic mean (F1) so a plan cannot win on coverage by dumping ACs.",
              "", "| metric | baseline | real pipeline |", "|---|---|---|",
-             f"| mean coverage vs gold | {_m('baseline','coverage')}% | {_m('pipeline','coverage')}% |",
+             f"| mean coverage vs gold (recall) | {_m('baseline','coverage')}% | {_m('pipeline','coverage')}% |",
+             f"| mean precision (deterministic) | {_m('baseline','det_precision')}% | {_m('pipeline','det_precision')}% |",
+             f"| mean combined (F1) | {_m('baseline','combined')}% | {_m('pipeline','combined')}% |",
+             f"| plans with NO acceptance-contract section (excluded from precision) | {len(agg['baseline']['no_ac_section'])} | {len(agg['pipeline']['no_ac_section'])} |",
              f"| mean hallucinations | {_m('baseline','halluc')} | {_m('pipeline','halluc')} |",
+             f"| mean redundant ACs (judge) | {_m('baseline','redundant')} | {_m('pipeline','redundant')} |",
+             f"| mean precision (judge 1-5) | {_m('baseline','judge_precision')} | {_m('pipeline','judge_precision')} |",
              f"| mean holistic (1-5) | {_m('baseline','holistic')} | {_m('pipeline','holistic')} |", "",
-             "## Per ticket", ]
+             "## Per ticket (coverage% / precision% / combined%)", ]
     for p in per:
         b, pl = p.get("baseline", {}), p.get("pipeline", {})
-        lines.append(f"- {p['key']} ({p['component']}) [pipeline {p.get('pipeline_status')}, {p.get('pipeline_chars')} chars]: baseline {b.get('coverage_pct')}%/{b.get('holistic')} -> pipeline {pl.get('coverage_pct')}%/{pl.get('holistic')}")
+        pl_prec = "no-contract" if pl.get("ac_section_found") is False else pl.get("precision_pct")
+        lines.append(
+            f"- {p['key']} ({p['component']}) [pipeline {p.get('pipeline_status')}, {p.get('pipeline_chars')} chars]: "
+            f"baseline {b.get('coverage_pct')}/{b.get('precision_pct')}/{b.get('combined_pct')} -> "
+            f"pipeline {pl.get('coverage_pct')}/{pl_prec}/{pl.get('combined_pct')} "
+            f"[ac={pl.get('ac_count')}, over_decomp={pl.get('over_decomposition')}, "
+            f"dup_pairs={pl.get('redundancy_pairs')}, judge_redundant={pl.get('judge_redundant')}]")
     Path(args.out).write_text("\n".join(lines), encoding="utf-8")
-    Path(args.out).with_suffix(".json").write_text(json.dumps({"per": per, "agg": {m: {k: _m(m, k) for k in ("coverage", "halluc", "holistic")} for m in agg}}, indent=2), encoding="utf-8")
-    print(json.dumps({"test": len(test), "baseline_cov": _m("baseline", "coverage"), "pipeline_cov": _m("pipeline", "coverage"), "pipeline_halluc": _m("pipeline", "halluc"), "out": args.out}))
+    _keys = ("coverage", "det_precision", "combined", "halluc", "redundant", "judge_precision", "holistic")
+    Path(args.out).with_suffix(".json").write_text(json.dumps({"per": per, "agg": {m: {k: _m(m, k) for k in _keys} for m in agg}}, indent=2), encoding="utf-8")
+    print(json.dumps({"test": len(test), "baseline_combined": _m("baseline", "combined"), "pipeline_cov": _m("pipeline", "coverage"), "pipeline_precision": _m("pipeline", "det_precision"), "pipeline_combined": _m("pipeline", "combined"), "out": args.out}))
     return 0
 
 
