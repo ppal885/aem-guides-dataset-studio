@@ -293,6 +293,45 @@ def _validate_restated_instance_ac(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+_XML_TAG_RE = re.compile(r"<[a-zA-Z][\w:-]*(?:\s|>|/)")
+
+
+def _validate_no_markup_in_ac(manifest, plan_text: str) -> list[str]:
+    # ACs are plain QE English: no code fences and no raw XML/DITA markup. Describe the
+    # condition in words ("a key definition with a blank keys attribute"), not <keydef keys="">.
+    block = _acceptance_block(plan_text)
+    problems: list[str] = []
+    if "```" in block:
+        problems.append(
+            "The Acceptance Criteria contain a code block (```). ACs must be plain English "
+            "- describe the condition in words, not embedded markup or code."
+        )
+    m = _XML_TAG_RE.search(block)
+    if m:
+        problems.append(
+            f"The Acceptance Criteria contain raw markup/XML ({block[m.start():m.start()+24]!r}). "
+            "Describe it in plain English (e.g. 'a key definition with a blank keys attribute'), "
+            "not literal tags."
+        )
+    return problems
+
+
+def _validate_ac_over_decomposition(manifest, plan_text: str) -> list[str]:
+    # One behaviour split into a separate AC per micro-variation (blank vs missing, per
+    # surface, per edit transition, per structure) produces a bloated, unreadable UAC. A
+    # high AC count is a strong over-decomposition signal; generalize into fewer ACs.
+    nums = set(re.findall(r"\bAC[-\s]?(\d+)\b", _acceptance_block(plan_text), re.I))
+    if len(nums) > 12:
+        return [
+            f"{len(nums)} acceptance criteria - this is over-decomposed. Generalize "
+            "micro-variations (blank vs missing, per surface, per edit transition, per "
+            "structure) into fewer behavioural ACs; prefer the fewest ACs that cover the "
+            "behaviour, with examples inside an AC rather than a new AC per case. Move "
+            "path-divergence or surface-relevance uncertainties to Open Questions."
+        ]
+    return []
+
+
 def _validate_no_test_as_ac(manifest, plan_text: str) -> list[str]:
     problems: list[str] = []
     for line in _ac_lines(plan_text):
@@ -358,6 +397,8 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_no_test_as_ac(manifest, plan_text)
     problems += _validate_ac_oq_contradiction(manifest, plan_text)
     problems += _validate_restated_instance_ac(manifest, plan_text)
+    problems += _validate_no_markup_in_ac(manifest, plan_text)
+    problems += _validate_ac_over_decomposition(manifest, plan_text)
     problems += _validate_plain_language(plan_text)
     return problems
 
@@ -459,6 +500,17 @@ def run_self_tests() -> None:
         "**Open Questions**", "- OQ-1: when the map language and preset language differ, which one wins?",
         ""])
     assert not any("redundant/contradictory" in p for p in validate({}, ok_oq)), "genuine OQ must pass"
+
+    # --- no raw markup / code block in ACs (GUIDES-45935) ---
+    markup = nl.join(["**Acceptance Criteria**", "- AC-01: When a keydef is written as <keydef keys=\"\" href=\"topic.dita\"/> the label is wrong.", ""])
+    assert any("raw markup" in p for p in validate({}, markup)), "raw XML in AC must fail"
+    fence = nl.join(["**Acceptance Criteria**", "- AC-01: the blank key must error.", "```", "<keydef keys=\"\"/>", "```", ""])
+    assert any("code block" in p for p in validate({}, fence)), "code fence in AC must fail"
+    # --- over-decomposition (GUIDES-45935 had 16 ACs) ---
+    many = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i:02d}: the entry behaves correctly in case {i}." for i in range(1, 14)] + [""])
+    assert any("over-decomposed" in p for p in validate({}, many)), ">12 ACs must be flagged"
+    few = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i}: the entry behaves correctly." for i in range(1, 7)] + [""])
+    assert not any("over-decomposed" in p for p in validate({}, few)), "6 ACs must pass"
 
     # --- no code identifiers in ACs (the GUIDES-52444 failure) ---
     codey = nl.join([
