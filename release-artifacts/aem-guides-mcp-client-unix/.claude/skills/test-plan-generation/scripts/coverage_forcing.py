@@ -236,6 +236,56 @@ _TEST_AS_AC_RES = (
 )
 
 
+def _oq_lines(plan_text: str) -> list[str]:
+    m = re.search(r"\*\*Open Questions\*\*(.*?)(?:\n\*\*|\Z)", plan_text or "", re.S)
+    block = m.group(1) if m else ""
+    lines = []
+    for raw in block.splitlines():
+        s = raw.strip()
+        if s.startswith(("-", "*")) or re.match(r"^OQ[-\s]?\d", s, re.I):
+            lines.append(s)
+    return lines
+
+
+_AC_REF_RE = re.compile(r"\bAC[-\s]?\d+\b", re.I)
+_RESTATED_INSTANCE_RE = re.compile(
+    r"\bthe (?:exact|specific|reported|above) (?:reported )?(?:case|scenario|example|bug)\b"
+    r".{0,40}\b(?:pass(?:es)?|is fixed|works|resolves)\b",
+    re.I,
+)
+
+
+def _validate_ac_oq_contradiction(manifest, plan_text: str) -> list[str]:
+    # An Open Question that cites an AC is confirming something an AC already decides -
+    # a decided AC and an open question about the same thing contradict. Decide it in the
+    # AC or make it an OQ, not both (e.g. GUIDES-50368 OQ-1 "per AC-7" vs AC-7).
+    problems: list[str] = []
+    for line in _oq_lines(plan_text):
+        if _AC_REF_RE.search(line):
+            ref = _AC_REF_RE.search(line).group(0)
+            problems.append(
+                f"An Open Question references {ref} ({line[:70]!r}). If that AC already "
+                "decides the behaviour, the Open Question is redundant/contradictory - keep "
+                "it decided in the AC and remove the OQ, or make it a genuine OQ and drop "
+                "the AC's assertion."
+            )
+    return problems
+
+
+def _validate_restated_instance_ac(manifest, plan_text: str) -> list[str]:
+    # An AC phrased as "the exact reported case passes" usually just restates the specific
+    # instance of a general behavioural AC - fold the example into the general AC instead.
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        if _RESTATED_INSTANCE_RE.search(line):
+            problems.append(
+                f"An Acceptance Criterion restates the specific reported instance "
+                f"({line[:70]!r}). Fold the concrete example into the general behavioural AC "
+                "rather than keeping a separate 'the reported case passes' AC."
+            )
+    return problems
+
+
 def _validate_no_test_as_ac(manifest, plan_text: str) -> list[str]:
     problems: list[str] = []
     for line in _ac_lines(plan_text):
@@ -299,6 +349,8 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
     problems += _validate_investigation(manifest, plan_text)
     problems += _validate_no_test_as_ac(manifest, plan_text)
+    problems += _validate_ac_oq_contradiction(manifest, plan_text)
+    problems += _validate_restated_instance_ac(manifest, plan_text)
     problems += _validate_plain_language(plan_text)
     return problems
 
@@ -382,6 +434,24 @@ def run_self_tests() -> None:
         "- AC-01: the user can use the Test Connection button and see a success message.",
         ""])
     assert not any("Automation Coverage evidence" in p for p in validate({}, ok_test)), "product 'Test Connection' must pass"
+
+    # --- AC/OQ contradiction (GUIDES-50368 OQ-1 "per AC-7") ---
+    contra = nl.join([
+        "**Acceptance Criteria**", "- AC-07: the output falls back to the generic value when no regional entry exists.",
+        "**Open Questions**", "- OQ-1: confirm the approved behaviour when a regional entry is absent (fall back to generic, per AC-7).",
+        ""])
+    assert any("redundant/contradictory" in p for p in validate({}, contra)), "OQ referencing an AC must fail"
+    # --- restated-instance AC (GUIDES-50368 AC-2) ---
+    restated = nl.join([
+        "**Acceptance Criteria**", "- AC-02: The exact reported case passes: a map set to pt_br shows the regional text.",
+        ""])
+    assert any("restates the specific reported instance" in p for p in validate({}, restated)), "restated-instance AC must fail"
+    # a genuine OQ with no AC reference must pass
+    ok_oq = nl.join([
+        "**Acceptance Criteria**", "- AC-01: the dialog opens on click.",
+        "**Open Questions**", "- OQ-1: when the map language and preset language differ, which one wins?",
+        ""])
+    assert not any("redundant/contradictory" in p for p in validate({}, ok_oq)), "genuine OQ must pass"
 
     # --- no code identifiers in ACs (the GUIDES-52444 failure) ---
     codey = nl.join([
