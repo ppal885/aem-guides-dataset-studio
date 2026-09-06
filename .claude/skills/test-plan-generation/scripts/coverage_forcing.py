@@ -153,6 +153,18 @@ PERF_SIGNAL_TERMS = (
     "large map", "large file", "large dataset", "big map",
     "performance", "scalab", "slow", "latency", "throughput",
     "too long", "does not respond", "unresponsive", "gateway",
+    # duration / concurrency / bulk-load signals (a long-running or concurrent job is a
+    # performance factor even when nothing 503s - missed on a false-failure output ticket
+    # where generation ran minutes and overlapping jobs collided).
+    "minutes later", "still running", "already running", "in progress",
+    "overlap", "concurrent", "concurrenc", "simultaneous", "parallel",
+    "bulk publish", "bulk generation", "queue", "backlog", "long-running",
+    "long running",
+)
+# A cited duration such as "5-10 minutes", "300 s", "11 minutes".
+_PERF_DURATION_RE = re.compile(
+    r"\b\d+\s*(?:-\s*\d+\s*)?(?:sec|secs|second|seconds|s|min|mins|minute|minutes|hour|hours)\b",
+    re.IGNORECASE,
 )
 # A quantified-workload hint strengthens the signal but is not required.
 _PERF_SCALE_RE = re.compile(
@@ -165,7 +177,9 @@ def _has_perf_signal(plan_text: str) -> bool:
     low = (plan_text or "").lower()
     if any(term in low for term in PERF_SIGNAL_TERMS):
         return True
-    return bool(_PERF_SCALE_RE.search(plan_text or ""))
+    if _PERF_SCALE_RE.search(plan_text or ""):
+        return True
+    return bool(_PERF_DURATION_RE.search(plan_text or ""))
 
 
 def _has_performance_disposition(manifest, plan_text: str) -> bool:
@@ -182,6 +196,13 @@ def _has_performance_disposition(manifest, plan_text: str) -> bool:
     if isinstance(manifest, dict):
         pa = manifest.get("performance_assessment")
         if isinstance(pa, dict) and str(pa.get("decision", "")).strip() in ("required", "conditional"):
+            return True
+    # (c) a performance-conditional Open Question (the correct disposition when a workload
+    # is cited but no approved SLA exists - conditional, not a faked numeric AC).
+    for line in plan_text.splitlines() if plan_text else []:
+        if re.search(r"\bOQ[-\s]?\d", line, re.I) and re.search(
+            r"\b(?:performance|sla|workload|throughput|latency|duration|scale|"
+            r"concurrent|baseline|response\s+time)\b", line, re.I):
             return True
     return False
 
@@ -1183,6 +1204,22 @@ def run_self_tests() -> None:
         "named surfaces must pass"
     )
     assert _validate_vague_surface_reference({}, plain) == [], "no surface reference -> pass"
+
+    # --- performance: duration/concurrency signal + conditional-OQ disposition ---
+    dur_missing = nl.join([
+        "**Understanding**", "Output is produced 5-10 minutes later while an overlapping job is still running.",
+        "**Acceptance Criteria**", "- AC-01: the completed run shows success.", ""])
+    assert any("performance is not dispositioned" in p for p in validate({}, dur_missing)), (
+        "a duration/concurrency signal must force a performance disposition"
+    )
+    dur_oq = dur_missing + nl.join([
+        "**Open Questions**",
+        "- OQ-05: no approved SLA exists for generation duration under concurrent/bulk load; "
+        "QA impact: whether a performance AC is needed and the required workload/baseline.",
+        ""])
+    assert not any("performance is not dispositioned" in p for p in validate({}, dur_oq)), (
+        "a performance-conditional Open Question satisfies the disposition"
+    )
 
     print("coverage_forcing self-tests: PASS")
 
