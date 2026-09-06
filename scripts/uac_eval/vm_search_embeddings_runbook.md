@@ -21,6 +21,8 @@ The script uses the VM's existing numeric loopback endpoints:
    Each request uses `top_k=3`, without customer/component filters. It checks the
    real `jira-history-search-v2` response, requested query fingerprint, index count,
    returned references/documents and the existing numerical retrieval fields.
+   It also validates bounded `rejected_candidates` receipts from the existing
+   same-mechanism qualifier; a rejection count alone is not sufficient evidence.
 4. Recheck direct collection identities/counts and MCP routing after searches.
 
 This is a **Jira-history text-search smoke test**. It does not test product/DITA
@@ -61,6 +63,12 @@ sampled stored-vector queries; its MCP identity check covers three core collecti
   may still degrade to an empty result. Empty results are inconclusive, never proof
   of a missing ticket or a compatible model. No matching Human oracle is supplied,
   so relevance/recall and correctness of the returned UACs are not judged.
+- A retrieved candidate can legitimately fail the subsequent same-mechanism
+  qualifier. Those receipts are reported as `CANDIDATES_REJECTED_BY_POLICY`, not
+  accepted history matches and not an encoder failure. This distinction leaves
+  production relevance/authority thresholds unchanged. Only hashed references and
+  allowlisted qualification fields survive; raw reasons, source text and symbols
+  are not printed. Missing/malformed receipts still fail closed.
 - Reports retain validated booleans, counters, UUIDs, fingerprints, dimensions and
   scores. Documents, titles, raw keys, metadata, vectors, auth and raw error text
   are not printed. No newly observed information becomes Human-approved learning.
@@ -98,6 +106,7 @@ stdlib and does not need the Chroma/embedding venv to run.
 | Status | Exit | Meaning |
 | --- | --- | --- |
 | `PASS_QUERY_SMOKE_ONLY` | 0 | All six text requests returned validated results, availability was reported, and core routing identities/counts remained stable. |
+| `PASS_FILTERED_QUERY_SMOKE_ONLY` | 0 | Every request returned accepted results or validated candidates rejected by the same-mechanism policy. At least one request had no accepted match. Routing/counts were stable and availability reported true. This proves scoped retrieval only, not qualified history success. |
 | `PARTIAL_QUERY_SMOKE` | 2 | At least one query was empty/unavailable or availability was not reported true. Inspect each probe/route; do not assume a missing issue or model failure. |
 | `BLOCKED` | 1 | Transport/auth/schema, vector-sample, routing-drift or another diagnostic failure. The report gives a fixed reason, phase and endpoint without raw error contents. |
 
@@ -106,6 +115,36 @@ Every outcome keeps `model_parity_proven`, `fresh_embedding_verified`,
 `team_client_authentication_verified`, `import_authorized`, and
 `resume_writers_authorized` false. A green smoke test alone is **not** a release
 gate or an embedding-canary pass. No threshold/waiver flag bypasses failures.
+
+`qualified_history_search_smoke_passed` is true only for the all-accepted status.
+The canned queries deliberately contain no known-answer Jira IDs. They are not
+guaranteed to share an exact mechanism with a verified historical contract, so
+requiring an accepted match for all three is not a valid runtime-liveness test.
+
+## Backend-candidate retry after a completed rollback
+
+`switch_vm_backend_candidate.py` accepts the two scoped retrieval passes above;
+it does not promote rejected candidates, disable matching, or claim full RAG
+repair. Empty/unavailable retrieval without validated candidates, bad schemas,
+routing drift and an explicitly failed live encoder still cause rollback. Both
+`search-report.json` and `embedding-report.json` are saved before this decision.
+An inaccessible authenticated embedding diagnostic remains `NOT_VERIFIED`, not
+proof of local encoding or model parity. No credentials are substituted.
+
+A completed backend-only rollback starts a new backend invocation, making the
+original preflight PID stale. An explicit `--retry-after-rollback <cutover-dir>`
+validates the selected completed `LIVE_SEARCH_SMOKE_FAILED` rollback, its original
+snapshot, preserved file hashes, unchanged Chroma identity and merged units, an
+absent candidate override, and the currently running original backend command.
+It records a **new current-identity baseline** in the new attempt; the original
+preflight and previous reports are never rewritten. This does not claim that no
+other restart happened between rollback and retry. The operator is authorizing
+this fresh baseline, with all existing config/dependency/model guards retained.
+Partial/ambiguous rollbacks or config/process drift do not qualify. The separate
+`--recover-not-restarted` option is not used after a completed rollback.
+
+Neither retry option resumes writers, imports data, restarts Chroma, or authorizes
+team traffic. Preserve previous attempt directories for audit and recovery.
 
 Share only the printed report. Before approving new vector writes, separately
 establish compatibility of the exact write encoder with stored text/vector

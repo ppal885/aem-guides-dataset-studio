@@ -57,6 +57,103 @@ def candidate_spec(base, routing, writers):
     return settings, argv, ('[Service]\nExecStart=\nExecStart=' + ' '.join(argv) + '\n').encode()
 
 
+def rolled_back_baseline(r, previous, base, receipt, before, ids, payload, process_check):
+    """Explicit retry takes a NEW baseline; the original preflight is never edited.
+
+    A successful rollback necessarily starts a new backend invocation. Only the
+    operator-selected completed rollback plus unchanged unit/config/Chroma state
+    permits rebinding that one identity. This does not prove uninterrupted uptime
+    between rollback and retry; the current old-runtime process is checked again.
+    """
+    require = r.require
+    previous = Path(previous)
+    require(previous.parent == CANDIDATE and re.fullmatch(r'cutover-[a-z0-9_]{8}', previous.name),
+            'RETRY_PATH_NOT_ALLOWLISTED')
+    r.safe_path(previous)
+    require(not TARGET.exists() and not TARGET.is_symlink(), 'RETRY_OVERRIDE_STILL_PRESENT')
+    captured = {}
+
+    def read(name):
+        path = r.safe_path(previous / name)
+        raw = r.bounded(path)
+        captured[str(path)] = r.digest(raw)
+        return json.loads(raw)
+
+    state, report, snapshot = read('state.json'), read('report.json'), read('private-before.json')
+    require(state == {'state': 'ROLLED_BACK_BACKEND_ONLY', 'target': str(TARGET)}
+            and report.get('status') == 'STOP' and report.get('phase') == 'CUTOVER'
+            and report.get('reason') == 'LIVE_SEARCH_SMOKE_FAILED'
+            and report.get('last_completed_state') == 'ROLLED_BACK_BACKEND_ONLY'
+            and report.get('cutover_dir') == str(previous), 'RETRY_ROLLBACK_NOT_PROVEN')
+    require(snapshot['identities'] == receipt['services'], 'RETRY_BASELINE_IDENTITY_MISMATCH')
+    require(ids[CHROMA] == receipt['services'][CHROMA]
+            and ids[BACKEND]['invocation'] != receipt['services'][BACKEND]['invocation'],
+            'RETRY_SERVICE_IDENTITY_MISMATCH')
+    for service in r.SERVICES:
+        wanted = unit_shape(base['services'][service], r.exec_start)
+        require(unit_shape(snapshot['units'][service], r.exec_start) == wanted
+                and unit_shape(before[service], r.exec_start) == wanted, 'RETRY_UNIT_DRIFT')
+    require(all(snapshot['files'].get(name) == hashed and name in snapshot['files']
+                for name, hashed in base['inspected_file_hashes'].items()), 'RETRY_BASELINE_FILE_MISMATCH')
+    for name, hashed in snapshot['files'].items():
+        path = r.safe_path(Path(name), exists=hashed is not None)
+        require((r.file_hash(path) if path.exists() else None) == hashed, 'RETRY_CONFIG_DRIFT')
+        captured[name] = hashed
+    witness = r.safe_path(previous / 'override.conf')
+    require(r.bounded(witness) == payload and witness.stat().st_nlink == 1, 'RETRY_PAYLOAD_DRIFT')
+    captured[str(witness)] = r.digest(payload)
+    process_check(ids[BACKEND])
+    return {'retry_of': str(previous), 'services': ids, 'files': captured,
+            'scope': 'NEW_CURRENT_IDENTITY_BASELINE_AFTER_VALIDATED_ROLLBACK'}
+
+
+def checked_search_outcome(result):
+    """Semantic qualification is not an infrastructure liveness requirement."""
+    def check(condition):
+        if not condition:
+            raise ValueError('LIVE_SEARCH_SMOKE_FAILED')
+
+    check(isinstance(result, dict))
+    status = result.get('status')
+    allowed = {'PASS_QUERY_SMOKE_ONLY', 'PASS_FILTERED_QUERY_SMOKE_ONLY'}
+    check(isinstance(status, str) and status in allowed
+          and result.get('routing_identity_and_counts_stable') is True)
+    queries = result.get('queries')
+    check(isinstance(queries, list) and len(queries) == 3
+          and all(isinstance(q, dict) and isinstance(q.get('probe_id'), str) for q in queries))
+    check({q['probe_id'] for q in queries} == {'table_editing', 'map_title', 'publishing'})
+    filtered = False
+    for query in queries:
+        routes = query.get('routes')
+        check(isinstance(routes, dict) and set(routes) == {'backend_8001', 'gateway_4502'})
+        for route in routes.values():
+            check(isinstance(route, dict) and route.get('searched_jira_qa_reported') is True)
+            count, rejected = route.get('result_count'), route.get('rejected_candidate_count')
+            rows, rejects = route.get('results'), route.get('rejected_candidates')
+            check(type(count) is int and 0 <= count <= 3 and isinstance(rows, list) and len(rows) == count)
+            check(type(rejected) is int and 0 <= rejected <= 9
+                  and isinstance(rejects, list) and len(rejects) == rejected)
+            references = []
+            for row in [*rows, *rejects]:
+                check(isinstance(row, dict) and isinstance(row.get('reference_sha256'), str)
+                      and re.fullmatch(r'[0-9a-f]{64}', row['reference_sha256']))
+                references.append(row['reference_sha256'])
+            check(len(references) == len(set(references)))
+            for row in rejects:
+                match = row.get('historical_match')
+                check(isinstance(match, dict) and match.get('qualified') is False
+                      and match.get('strength') == 'unproven')
+            if route.get('status') == 'CANDIDATES_REJECTED_BY_POLICY':
+                check(count == 0 and rejected > 0 and route.get('qualified_history_match_returned') is False)
+                filtered = True
+            else:
+                check(route.get('status') == 'RETURNED_RESULTS' and count > 0
+                      and route.get('qualified_history_match_returned') is True)
+    check(filtered == (status == 'PASS_FILTERED_QUERY_SMOKE_ONLY')
+          and result.get('qualified_history_search_smoke_passed') is (not filtered))
+    return 'CANDIDATES_RETRIEVED_SOME_FILTERED' if filtered else 'QUALIFIED_MATCHES_RETURNED'
+
+
 def recover_not_restarted(r, base, receipt, payload, argv, identity, dependencies):
     """Recover only an owned, pre-restart failed installation. No stop/start."""
     require = r.require
@@ -180,8 +277,11 @@ def embedding_status(port):
 
 def main(argv=None):
     arguments = sys.argv[1:] if argv is None else argv
-    if arguments not in ([], ['--recover-not-restarted']):
-        raise SystemExit('Usage: switch_vm_backend_candidate.py [--recover-not-restarted]')
+    retry_path = None
+    if len(arguments) == 2 and arguments[0] == '--retry-after-rollback':
+        retry_path = arguments[1]
+    elif arguments not in ([], ['--recover-not-restarted']):
+        raise SystemExit('Usage: switch_vm_backend_candidate.py [--recover-not-restarted | --retry-after-rollback <cutover-dir>]')
     if sys.platform != 'linux' or os.geteuid() != 0:
         raise SystemExit('STOP: ROOT_ON_REVIEWED_VM_REQUIRED')
     os.umask(0o077)
@@ -194,6 +294,7 @@ def main(argv=None):
     outcome = {'status': 'STOP_BEFORE_CHANGE'}
     phase = 'PREPARATION'
     dependency_order_changes = {}
+    retry = None
 
     def identity(service):
         info = r.systemd_info(service)
@@ -229,7 +330,7 @@ def main(argv=None):
             rows = r.validate_journal(ROUTING_RUN, journal)
             require(rows == base['routing_files'], 'ROUTING_JOURNAL_CHANGED')
             settings, argv, payload = candidate_spec(base, r.ROUTING, r.WRITERS)
-            if arguments:
+            if arguments == ['--recover-not-restarted']:
                 require(all(r.file_hash(Path(row['target'])) == row['after'] for row in rows), 'ROUTING_CONFIG_DRIFT')
                 for service in r.SERVICES:
                     old = {k: v for k, v in base['extra'][service].items() if k != 'InvocationID'}
@@ -240,13 +341,31 @@ def main(argv=None):
             r.verify_effective_units(ROUTING_RUN, journal['preflight'])
             before = {s: r.systemd_info(s) for s in r.SERVICES}
             ids = {s: identity(s) for s in r.SERVICES}
-            require(ids == receipt['services'], 'SERVICE_CHANGED_SINCE_PREFLIGHT')
+            if retry_path:
+                def old_process_checked(backend_id):
+                    process = Path('/proc') / backend_id['pid']
+                    binary = (process / 'exe').resolve()
+                    command = r.bounded(process / 'cmdline').split(b'\0')
+                    expected_command = r.tuple_backend_command(REPO)[1]
+                    interpreters = [str(REPO / 'backend/venv/bin' / name).encode()
+                                    for name in ('python', 'python3', 'python3.11')]
+                    require(binary == Path('/usr/bin/python3.11').resolve()
+                            and command[-1:] == [b''] and command[0] in interpreters
+                            and command[1:-1] == [a.encode() for a in expected_command],
+                            'RETRY_RUNNING_BACKEND_NOT_ORIGINAL')
+                    require(identity(BACKEND) == backend_id, 'RETRY_PROCESS_CHANGED')
+                retry = rolled_back_baseline(r, retry_path, base, receipt, before, ids, payload,
+                                             old_process_checked)
+            else:
+                require(ids == receipt['services'], 'SERVICE_CHANGED_SINCE_PREFLIGHT')
             require(all(unit_shape(before[s], r.exec_start) == unit_shape(base['services'][s], r.exec_start)
                         for s in r.SERVICES), 'UNIT_CHANGED_SINCE_PREFLIGHT')
             deps = {s: dependency_shape({k: v for k, v in base['extra'][s].items() if k != 'InvocationID'}) for s in r.SERVICES}
             require(all(dependencies(s) == deps[s] for s in r.SERVICES), 'STOP_DEPENDENCIES_CHANGED')
             watched = dict(base['inspected_file_hashes'])
             watched.update({row['target']: row['after'] for row in rows})
+            if retry:
+                watched.update(retry['files'])
             for info in before.values():
                 files = [info['FragmentPath'], *shlex.split(info['DropInPaths'])]
                 envfiles = info.get('EnvironmentFiles', '')
@@ -277,6 +396,8 @@ def main(argv=None):
             work = Path(tempfile.mkdtemp(prefix='cutover-', dir=CANDIDATE))
             r.atomic_write(work / 'override.conf', payload, absent=True)
             r.atomic_write(work / 'private-before.json', r.encoded({'units': before, 'identities': ids, 'files': watched}), absent=True)
+            if retry:
+                r.atomic_write(work / 'retry-baseline.json', r.encoded(retry), absent=True)
             save('PREPARED_NOT_INSTALLED')
             print('CUTOVER_DIR=' + str(work), flush=True)
             expected = journal['expected_collections']
@@ -335,8 +456,13 @@ def main(argv=None):
                 verify_units()
                 result = search.run_diagnostic()
                 r.atomic_write(work / 'search-report.json', r.encoded(result), absent=True)
-                require(result['status'] == 'PASS_QUERY_SMOKE_ONLY', 'LIVE_SEARCH_SMOKE_FAILED')
                 embedding = {str(port): embedding_status(port) for port in (8001, 4502)}
+                r.atomic_write(work / 'embedding-report.json', r.encoded(embedding), absent=True)
+                # Save both independent diagnostics before deciding to roll back.
+                try:
+                    search_outcome = checked_search_outcome(result)
+                except (ValueError, TypeError, AttributeError):
+                    require(False, 'LIVE_SEARCH_SMOKE_FAILED')
                 require(all(item['status'] != 'FAILED' for item in embedding.values()), 'LIVE_ENCODING_FAILED')
                 require(identity(BACKEND) == new, 'BACKEND_CHANGED_DURING_VERIFY')
                 verify_units()
@@ -346,11 +472,17 @@ def main(argv=None):
                 status = ('PASS_BACKEND_LOCAL_EMBEDDING_AND_JIRA_SEARCH'
                           if all(item['status'] == 'PASS' for item in embedding.values())
                           else 'PASS_BACKEND_SWITCH_AND_SEARCH_SMOKE_ONLY')
+                if result['status'] == 'PASS_FILTERED_QUERY_SMOKE_ONLY':
+                    status = ('PASS_BACKEND_LOCAL_EMBEDDING_AND_FILTERED_RETRIEVAL'
+                              if all(item['status'] == 'PASS' for item in embedding.values())
+                              else 'PASS_BACKEND_SWITCH_AND_FILTERED_RETRIEVAL_ONLY')
                 save(status)
                 return {'status': status, 'live_embedding': embedding,
                         'backend': new, 'chroma': ids[CHROMA], 'chroma_restarted': False,
                         'writer_pauses_preserved': True, 'routing_counts_and_ids': 'MATCH',
-                        'jira_history_backend_and_gateway': 'PASS', 'full_rag_repair_proven': False,
+                        'jira_history_backend_and_gateway': search_outcome,
+                        'qualified_matches_for_every_probe': result['status'] == 'PASS_QUERY_SMOKE_ONLY',
+                        'full_rag_repair_proven': False,
                         'resume_writers_authorized': False, 'index_write_requests': False}
 
             def rollback():
@@ -395,6 +527,8 @@ def main(argv=None):
                    'resume_writers_authorized': False, 'index_write_requests': False}
     if dependency_order_changes:
         outcome['dependency_order_only_changes'] = dependency_order_changes
+    if retry:
+        outcome['retry_of'] = retry['retry_of']
     if work:
         outcome['cutover_dir'] = str(work)
         try:

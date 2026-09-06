@@ -42,6 +42,12 @@ MAX_BYTES = 2 * 1024 * 1024
 SOCKET_TIMEOUT = 45
 RUN_BUDGET_SECONDS = 360
 TOP_K = 3
+# The existing history service retrieves at most top_k * 3 candidates, then
+# applies same-mechanism qualification. Rejected discovery is not a failed query.
+MAX_HISTORY_CANDIDATES = TOP_K * 3
+REJECTION_EVIDENCE_TYPES = frozenset({
+    "area_or_semantic_overlap_only", "cross_surface_scroll_overlap_only",
+})
 PROBES = (
     ("table_editing", "Table editing: inserting and deleting table rows and columns changes the table structure."),
     ("map_title", "Map references display the topic title incorrectly after a referenced topic title is changed."),
@@ -213,8 +219,9 @@ def search_summary(packet, probe_id, expected_count):
     require(type(count) is int and 0 <= count <= TOP_K
             and isinstance(results, list) and len(results) == count, "SEARCH_RESULTS_INVALID")
     rejected = data.get("rejected_candidate_count")
-    require(type(rejected) is int and rejected >= 0, "SEARCH_REJECTION_COUNT_INVALID")
-    require(data["searched_jira_qa"] or count == 0, "SEARCH_STATE_CONTRADICTS_RESULTS")
+    require(type(rejected) is int and 0 <= rejected <= MAX_HISTORY_CANDIDATES
+            and count + rejected <= MAX_HISTORY_CANDIDATES, "SEARCH_REJECTION_COUNT_INVALID")
+    require(data["searched_jira_qa"] or count == rejected == 0, "SEARCH_STATE_CONTRADICTS_RESULTS")
     rows, keys = [], set()
     for result in results:
         require(isinstance(result, dict), "SEARCH_RESULT_INVALID")
@@ -234,12 +241,40 @@ def search_summary(packet, probe_id, expected_count):
             scores[field] = value
         rows.append({"reference_sha256": fingerprint(key), "document_sha256": fingerprint(text),
                      "document_chars": len(text), "scores": scores})
+    rejected_items = data.get("rejected_candidates", [] if rejected == 0 else None)
+    require(isinstance(rejected_items, list) and len(rejected_items) == rejected,
+            "SEARCH_REJECTION_DETAILS_INVALID")
+    rejected_rows = []
+    for item in rejected_items:
+        require(isinstance(item, dict), "SEARCH_REJECTION_DETAILS_INVALID")
+        key = item.get("jira_key")
+        require(isinstance(key, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,31}-[0-9]{1,16}", key),
+                "SEARCH_REJECTION_REFERENCE_INVALID")
+        require(key not in keys, "DUPLICATE_OR_CONFLICTING_SEARCH_REJECTION")
+        keys.add(key)
+        match = item.get("historical_match")
+        require(isinstance(match, dict) and match.get("schema_version") == "jira-history-match-v2"
+                and match.get("qualified") is False and match.get("strength") == "unproven",
+                "SEARCH_REJECTION_MATCH_INVALID")
+        score, types = match.get("mechanism_score"), match.get("evidence_types")
+        require(routing._finite_number(score) and 0 <= score <= 1,
+                "SEARCH_REJECTION_SCORE_INVALID")
+        require(isinstance(types, list) and 1 <= len(types) <= len(REJECTION_EVIDENCE_TYPES)
+                and all(isinstance(value, str) and value in REJECTION_EVIDENCE_TYPES for value in types)
+                and len(set(types)) == len(types), "SEARCH_REJECTION_TYPES_INVALID")
+        # Do not serialize reasons, summaries, source text or technical identifiers.
+        rejected_rows.append({"reference_sha256": fingerprint(key), "historical_match": {
+            "qualified": False, "strength": "unproven", "mechanism_score": score,
+            "evidence_types": list(types)}})
     status = "RETURNED_RESULTS" if count else "INCONCLUSIVE_EMPTY_RESULTS"
+    if count == 0 and rejected_rows:
+        status = "CANDIDATES_REJECTED_BY_POLICY"
     if not data["searched_jira_qa"]:
         status = "RETRIEVAL_UNAVAILABLE"
     return {"status": status, "query_sha256": fingerprint(query), "indexed_chunks": expected_count,
             "searched_jira_qa_reported": data["searched_jira_qa"], "result_count": count,
-            "rejected_candidate_count": rejected, "results": rows,
+            "rejected_candidate_count": rejected, "results": rows, "rejected_candidates": rejected_rows,
+            "qualified_history_match_returned": count > 0,
             "fresh_embedding_verified": False, "semantic_relevance_human_verified": False}
 
 
@@ -263,6 +298,7 @@ def run_diagnostic(*, token="", reader=read_json):
             "stored_document_reencoding": "NOT_PERFORMED",
             "model_parity_proven": False, "fresh_embedding_verified": False},
         "full_live_payload_equality_verified": False, "ranking_parity_proven": False,
+        "qualified_history_search_smoke_passed": False,
         "team_client_authentication_verified": False, "import_authorized": False,
         "resume_writers_authorized": False,
     }
@@ -324,9 +360,17 @@ def run_diagnostic(*, token="", reader=read_json):
         report["routing_identity_and_counts_stable"] = True
         all_hits = all(route["status"] == "RETURNED_RESULTS"
                        for query in report["queries"] for route in query["routes"].values())
+        all_query_evidence = all(route["status"] in {"RETURNED_RESULTS", "CANDIDATES_REJECTED_BY_POLICY"}
+                                 for query in report["queries"] for route in query["routes"].values())
         all_available = all(row["embedding_available_reported"] for snapshot in (before, after)
                             for row in snapshot.values())
-        report["status"] = "PASS_QUERY_SMOKE_ONLY" if all_hits and all_available else "PARTIAL_QUERY_SMOKE"
+        report["qualified_history_search_smoke_passed"] = all_hits and all_available
+        if all_hits and all_available:
+            report["status"] = "PASS_QUERY_SMOKE_ONLY"
+        elif all_query_evidence and all_available:
+            report["status"] = "PASS_FILTERED_QUERY_SMOKE_ONLY"
+        else:
+            report["status"] = "PARTIAL_QUERY_SMOKE"
         report["phase"] = "COMPLETE"
         report.pop("endpoint", None)
     except ProbeError as exc:
@@ -349,7 +393,8 @@ def main(argv=None):
         return 1
     result = run_diagnostic(token=os.environ.get("AEM_STUDIO_TOKEN", ""))
     print(json.dumps(result, indent=2, allow_nan=False))
-    return {"PASS_QUERY_SMOKE_ONLY": 0, "PARTIAL_QUERY_SMOKE": 2}.get(result["status"], 1)
+    return {"PASS_QUERY_SMOKE_ONLY": 0, "PASS_FILTERED_QUERY_SMOKE_ONLY": 0,
+            "PARTIAL_QUERY_SMOKE": 2}.get(result["status"], 1)
 
 
 if __name__ == "__main__":

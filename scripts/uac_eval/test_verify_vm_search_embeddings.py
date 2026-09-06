@@ -66,6 +66,21 @@ def search_packet(data, probe_id="table_editing"):
     return packet(data, "vm-search-" + probe_id)
 
 
+def rejected_search_data(probe_id="table_editing", rejected=2, hits=0, count=3):
+    data = search_data(probe_id, count=count, hits=hits)
+    data["rejected_candidate_count"] = rejected
+    data["rejected_candidates"] = [
+        {"jira_key": f"GUIDES-{number + 100}", "summary": PRIVATE, "reason": PRIVATE,
+         "document": PRIVATE, "historical_match": {
+             "schema_version": "jira-history-match-v2", "qualified": False,
+             "strength": "unproven", "mechanism_score": 0.35,
+             "evidence_types": ["area_or_semantic_overlap_only"],
+             "shared_exact_signals": [PRIVATE], "shared_specific_terms": [PRIVATE],
+             "reason": PRIVATE, "unknown_details": TOKEN}}
+        for number in range(rejected)]
+    return data
+
+
 def vector_data(count=3):
     return {"ids": [PRIVATE + str(number) for number in range(count)],
             "embeddings": [[0.5, -0.25, 0.75] for _ in range(count)],
@@ -388,6 +403,108 @@ class SearchTests(ProbeTests):
         self.assertEqual(self.summary(search_data(hits=0, searched=False))["status"], "RETRIEVAL_UNAVAILABLE")
         self.assert_failure("SEARCH_STATE_CONTRADICTS_RESULTS", self.summary, search_data(searched=False))
 
+    def test_verified_policy_rejections_are_distinct_and_allowlist_redacted(self):
+        data = rejected_search_data()
+        original = deepcopy(data)
+        result = self.summary(data)
+        self.assertEqual(data, original)
+        self.assertEqual(result["status"], "CANDIDATES_REJECTED_BY_POLICY")
+        self.assertEqual(result["result_count"], 0)
+        self.assertEqual(result["rejected_candidate_count"], 2)
+        self.assertIs(result["qualified_history_match_returned"], False)
+        self.assertIs(result["fresh_embedding_verified"], False)
+        self.assertIs(result["semantic_relevance_human_verified"], False)
+        self.assertEqual(result["rejected_candidates"][0], {
+            "reference_sha256": subject.fingerprint("GUIDES-100"), "historical_match": {
+                "qualified": False, "strength": "unproven", "mechanism_score": 0.35,
+                "evidence_types": ["area_or_semantic_overlap_only"]}})
+        self.assert_redacted(result)
+        self.assertNotIn("reason", json.dumps(result))
+        self.assertNotIn("shared_exact_signals", json.dumps(result))
+        self.assertNotIn("shared_specific_terms", json.dumps(result))
+        result["rejected_candidates"][0]["historical_match"]["evidence_types"].clear()
+        self.assertEqual(data, original)
+
+    def test_cross_surface_rejection_and_hits_with_rejections_remain_honest(self):
+        data = rejected_search_data(rejected=1)
+        data["rejected_candidates"][0]["historical_match"].update(
+            mechanism_score=0.2, evidence_types=["cross_surface_scroll_overlap_only"])
+        self.assertEqual(self.summary(data)["status"], "CANDIDATES_REJECTED_BY_POLICY")
+        result = self.summary(rejected_search_data(hits=1))
+        self.assertEqual(result["status"], "RETURNED_RESULTS")
+        self.assertIs(result["qualified_history_match_returned"], True)
+        self.assertEqual(len(result["rejected_candidates"]), 2)
+
+    def test_rejection_count_alone_missing_or_mismatched_list_cannot_prove_retrieval(self):
+        for value in (None, [], {}, "untrusted", [None]):
+            with self.subTest(value_type=type(value).__name__):
+                data = rejected_search_data()
+                data["rejected_candidates"] = value
+                self.assert_failure("SEARCH_REJECTION_DETAILS_INVALID", self.summary, data)
+        data = rejected_search_data()
+        data.pop("rejected_candidates")
+        self.assert_failure("SEARCH_REJECTION_DETAILS_INVALID", self.summary, data)
+        data = rejected_search_data(rejected=1)
+        data["rejected_candidates"] = [None]
+        self.assert_failure("SEARCH_REJECTION_DETAILS_INVALID", self.summary, data)
+        data = rejected_search_data()
+        data["rejected_candidate_count"] = 0
+        self.assert_failure("SEARCH_REJECTION_DETAILS_INVALID", self.summary, data)
+
+    def test_rejection_count_is_bounded_and_cannot_contradict_search_state(self):
+        self.assert_failure("SEARCH_REJECTION_COUNT_INVALID", self.summary,
+                            rejected_search_data(rejected=10))
+        self.assert_failure("SEARCH_REJECTION_COUNT_INVALID", self.summary,
+                            rejected_search_data(rejected=9, hits=1))
+        data = rejected_search_data()
+        data["searched_jira_qa"] = False
+        self.assert_failure("SEARCH_STATE_CONTRADICTS_RESULTS", self.summary, data)
+
+    def test_rejection_ids_must_be_valid_unique_and_not_also_results(self):
+        for value in (None, "lower-1", "../GUIDES-1", PRIVATE):
+            with self.subTest(reference=value):
+                data = rejected_search_data()
+                data["rejected_candidates"][0]["jira_key"] = value
+                self.assert_failure("SEARCH_REJECTION_REFERENCE_INVALID", self.summary, data)
+        data = rejected_search_data()
+        data["rejected_candidates"][1]["jira_key"] = data["rejected_candidates"][0]["jira_key"]
+        self.assert_failure("DUPLICATE_OR_CONFLICTING_SEARCH_REJECTION", self.summary, data)
+        data = rejected_search_data(hits=1)
+        data["rejected_candidates"][0]["jira_key"] = data["results"][0]["jira_key"]
+        self.assert_failure("DUPLICATE_OR_CONFLICTING_SEARCH_REJECTION", self.summary, data)
+
+    def test_rejection_requires_exact_match_schema_false_verdict_and_unproven_strength(self):
+        data = rejected_search_data()
+        data["rejected_candidates"][0].pop("historical_match")
+        self.assert_failure("SEARCH_REJECTION_MATCH_INVALID", self.summary, data)
+        for field, values in (("schema_version", (None, "v1", PRIVATE)),
+                              ("qualified", (None, True, 0, "false")),
+                              ("strength", (None, "exact", "structural", PRIVATE))):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    data = rejected_search_data()
+                    data["rejected_candidates"][0]["historical_match"][field] = value
+                    self.assert_failure("SEARCH_REJECTION_MATCH_INVALID", self.summary, data)
+
+    def test_rejection_score_and_types_are_validated_not_copied_blindly(self):
+        for value in (None, True, False, "0.35", -0.1, 1.1):
+            with self.subTest(score=value):
+                data = rejected_search_data()
+                data["rejected_candidates"][0]["historical_match"]["mechanism_score"] = value
+                self.assert_failure("SEARCH_REJECTION_SCORE_INVALID", self.summary, data)
+        for value in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(score=value):
+                data = rejected_search_data()
+                data["rejected_candidates"][0]["historical_match"]["mechanism_score"] = value
+                self.assert_failure("INVALID_JSON_RESPONSE", self.summary, data)
+        for value in (None, [], "area_or_semantic_overlap_only", [PRIVATE], [None], [True],
+                      ["area_or_semantic_overlap_only"] * 2,
+                      ["area_or_semantic_overlap_only"] * 3):
+            with self.subTest(types=value):
+                data = rejected_search_data()
+                data["rejected_candidates"][0]["historical_match"]["evidence_types"] = value
+                self.assert_failure("SEARCH_REJECTION_TYPES_INVALID", self.summary, data)
+
     def test_schema_current_query_fingerprint_and_unfiltered_request_must_match(self):
         for field, value, code in (("schema_version", "v1", "SEARCH_SCHEMA_NOT_SUPPORTED"),
                                    ("query_fingerprint", "0" * 64, "QUERY_FINGERPRINT_MISMATCH"),
@@ -536,6 +653,70 @@ class DiagnosticTests(ProbeTests):
                 self.assertEqual(report["queries"][0]["routes"]["gateway_4502"]["status"], expected_status)
                 self.assert_proof_boundaries(report)
 
+    def test_two_nine_nine_policy_rejections_pass_only_filtered_smoke(self):
+        reader = FakeReader()
+        counts = dict(zip(dict(subject.PROBES), (2, 9, 9)))
+        reader.change = lambda port, kind, selector, value: (
+            rejected_search_data(selector, rejected=counts[selector]) if kind == "history" else value)
+        report = self.run_reader(reader)
+        self.assertEqual(report["status"], "PASS_FILTERED_QUERY_SMOKE_ONLY")
+        self.assertEqual(report["phase"], "COMPLETE")
+        self.assertIs(report["qualified_history_search_smoke_passed"], False)
+        self.assertEqual(reader.status_calls, {8001: 2, 4502: 2})
+        for query in report["queries"]:
+            self.assertEqual(query["returned_reference_overlap_count"], 0)
+            for row in query["routes"].values():
+                self.assertEqual(row["status"], "CANDIDATES_REJECTED_BY_POLICY")
+                self.assertEqual(row["rejected_candidate_count"], counts[query["probe_id"]])
+                self.assertEqual(row["result_count"], 0)
+                self.assertIs(row["qualified_history_match_returned"], False)
+        self.assert_proof_boundaries(report)
+
+    def test_mixed_hits_and_rejections_pass_filtered_only_but_empty_stays_partial(self):
+        for empty, expected_status in ((False, "PASS_FILTERED_QUERY_SMOKE_ONLY"),
+                                       (True, "PARTIAL_QUERY_SMOKE")):
+            with self.subTest(empty=empty):
+                reader = FakeReader()
+                def change(port, kind, selector, value):
+                    if kind == "history" and selector == "table_editing":
+                        return rejected_search_data(selector)
+                    if kind == "history" and port == 4502 and empty:
+                        return search_data(selector, hits=0)
+                    return value
+                reader.change = change
+                report = self.run_reader(reader)
+                self.assertEqual(report["status"], expected_status)
+                self.assertIs(report["qualified_history_search_smoke_passed"], False)
+                self.assert_proof_boundaries(report)
+
+    def test_missing_rejection_proof_blocks_instead_of_passing_on_reported_count(self):
+        reader = FakeReader()
+        def change(port, kind, selector, value):
+            if kind == "history":
+                value = rejected_search_data(selector)
+                value.pop("rejected_candidates")
+            return value
+        reader.change = change
+        report = self.run_reader(reader)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["reason"], "SEARCH_REJECTION_DETAILS_INVALID")
+        self.assertIs(report["qualified_history_search_smoke_passed"], False)
+        self.assert_proof_boundaries(report)
+
+    def test_policy_rejections_do_not_bypass_embedding_availability(self):
+        reader = FakeReader()
+        def change(port, kind, selector, value):
+            if kind == "history":
+                return rejected_search_data(selector)
+            if kind == "status":
+                value["embedding_available"] = False
+            return value
+        reader.change = change
+        report = self.run_reader(reader)
+        self.assertEqual(report["status"], "PARTIAL_QUERY_SMOKE")
+        self.assertIs(report["qualified_history_search_smoke_passed"], False)
+        self.assert_proof_boundaries(report)
+
     def test_embedding_unavailable_with_hits_remains_partial(self):
         reader = FakeReader()
         def change(port, kind, selector, value):
@@ -624,7 +805,8 @@ class CliTests(ProbeTests):
         self.assertIn("RUN_ON_VM_LINUX_LOOPBACK_REQUIRED", error.getvalue())
 
     def test_cli_status_exit_codes_and_allowlisted_report_printing(self):
-        for status, code in (("PASS_QUERY_SMOKE_ONLY", 0), ("PARTIAL_QUERY_SMOKE", 2), ("BLOCKED", 1)):
+        for status, code in (("PASS_QUERY_SMOKE_ONLY", 0), ("PASS_FILTERED_QUERY_SMOKE_ONLY", 0),
+                             ("PARTIAL_QUERY_SMOKE", 2), ("BLOCKED", 1)):
             with self.subTest(status=status):
                 output = io.StringIO()
                 with patch.object(subject.sys, "platform", "linux"), \
