@@ -25,6 +25,99 @@ TARGET = Path('/etc/systemd/system/aem-backend.service.d/95-uac-python311.conf')
 BACKEND, CHROMA = 'aem-backend.service', 'chroma.service'
 MODEL = REPO / 'backend/models/all-MiniLM-L6-v2'
 MODEL_HASH = '056b49a923ab30123c99a4e06daf0bd4875f894fa75f53c3d68f84df1411e61a'
+DEPENDENCY_LISTS = ('Requires', 'BindsTo', 'PartOf', 'PropagatesStopTo', 'ConsistsOf')
+
+
+def dependency_shape(values):
+    """Unit dependencies are sets, not an ordered startup command line."""
+    expected = {*DEPENDENCY_LISTS, 'RefuseManualStop'}
+    if (not isinstance(values, dict) or set(values) != expected
+            or any(not isinstance(v, str) for v in values.values())
+            or values['RefuseManualStop'] not in ('yes', 'no')):
+        raise ValueError('INVALID_DEPENDENCY_PROPERTIES')
+    return {k: frozenset(v.split()) if k in DEPENDENCY_LISTS else v
+            for k, v in values.items()}
+
+
+def candidate_spec(base, routing, writers):
+    settings = base['proposed_environment']
+    expected = {
+        'USE_AZURE_EMBEDDING': 'false', 'DITA_EMBEDDING_MODEL_PATH': str(MODEL),
+        'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
+        'CUDA_VISIBLE_DEVICES': '', 'OMP_NUM_THREADS': '2', 'MKL_NUM_THREADS': '2',
+        'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt',
+        'REQUESTS_CA_BUNDLE': '/etc/ssl/certs/ca-certificates.crt'}
+    if settings != expected:
+        raise ValueError('UNREVIEWED_CANDIDATE_SETTINGS')
+    settings = {**settings, **routing, **{k: 'false' for k in writers}}
+    argv = ['/usr/bin/env', *[k + '=' + v for k, v in settings.items()],
+            str(CANDIDATE / 'venv/bin/python'), '-I', '-B', '-m', 'uvicorn',
+            '--app-dir', str(REPO / 'backend'), 'app.main:app',
+            '--host', '0.0.0.0', '--port', '8001', '--workers', '1']
+    return settings, argv, ('[Service]\nExecStart=\nExecStart=' + ' '.join(argv) + '\n').encode()
+
+
+def recover_not_restarted(r, base, receipt, payload, argv, identity, dependencies):
+    """Recover only an owned, pre-restart failed installation. No stop/start."""
+    require = r.require
+    r.safe_path(TARGET)
+    require(TARGET.is_file() and not TARGET.is_symlink(), 'RECOVERY_TARGET_INVALID')
+    matches = []
+    for folder in CANDIDATE.iterdir():
+        if re.fullmatch(r'cutover-[a-z0-9_]{8}', folder.name) and not folder.is_symlink() and folder.is_dir():
+            witness = folder / 'override.conf'
+            if witness.is_file() and not witness.is_symlink() and TARGET.samefile(witness):
+                matches.append(folder)
+    require(len(matches) == 1, 'RECOVERY_OWNERSHIP_AMBIGUOUS')
+    work = r.safe_path(matches[0])
+    read = lambda name: json.loads(r.bounded(r.safe_path(work / name)))
+    state, report, snapshot = read('state.json'), read('report.json'), read('private-before.json')
+    require(state == {'state': 'OVERRIDE_INSTALLED', 'target': str(TARGET)}
+            and report.get('status') == 'STOP' and report.get('phase') == 'CUTOVER'
+            and report.get('reason') == 'STOP_DEPENDENCIES_CHANGED', 'RECOVERY_STATE_NOT_ELIGIBLE')
+    require(snapshot['identities'] == receipt['services'], 'RECOVERY_BASELINE_IDENTITY_CHANGED')
+    deps = {s: dependency_shape({k: v for k, v in base['extra'][s].items() if k != 'InvocationID'})
+            for s in r.SERVICES}
+    before = {s: unit_shape(base['services'][s], r.exec_start) for s in r.SERVICES}
+    require(all(unit_shape(snapshot['units'][s], r.exec_start) == before[s] for s in r.SERVICES),
+            'RECOVERY_BASELINE_UNIT_CHANGED')
+    require(all(k in snapshot['files'] and snapshot['files'][k] == v
+                for k, v in base['inspected_file_hashes'].items()),
+            'RECOVERY_BASELINE_FILES_CHANGED')
+
+    def validate(installed):
+        require(all(identity(s) == receipt['services'][s] for s in r.SERVICES), 'RECOVERY_PROCESS_CHANGED')
+        require(all(dependencies(s) == deps[s] for s in r.SERVICES), 'STOP_DEPENDENCIES_CHANGED')
+        for name, hashed in snapshot['files'].items():
+            path = r.safe_path(Path(name), exists=hashed is not None)
+            require((r.file_hash(path) if path.exists() else None) == hashed, 'RECOVERY_CONFIG_CHANGED')
+        for service in r.SERVICES:
+            wanted = dict(before[service])
+            if installed and service == BACKEND:
+                wanted['ExecStart'] = ('/usr/bin/env', argv)
+                wanted['DropInPaths'] = sorted([*wanted['DropInPaths'], str(TARGET)])
+            require(unit_shape(r.systemd_info(service), r.exec_start) == wanted, 'RECOVERY_UNIT_CHANGED')
+        if installed:
+            info = TARGET.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 2
+                    and stat.S_IMODE(info.st_mode) == 0o600 and not TARGET.is_symlink()
+                    and TARGET.samefile(work / 'override.conf')
+                    and r.bounded(TARGET) == payload, 'RECOVERY_OVERRIDE_CHANGED')
+
+    validate(True)
+    r.atomic_write(work / 'state.json', r.encoded({'state': 'RECOVERING_NOT_RESTARTED', 'target': str(TARGET)}))
+    validate(True)
+    TARGET.unlink()  # Only the exact owned hard link, never a directory or glob.
+    descriptor = os.open(TARGET.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    r.command(['systemctl', 'daemon-reload'])
+    validate(False)
+    r.atomic_write(work / 'state.json', r.encoded({'state': 'RECOVERED_WITHOUT_RESTART', 'target': str(TARGET)}))
+    print('RECOVERED_OWN_OVERRIDE; BOTH_SERVICE_IDENTITIES_UNCHANGED', flush=True)
+    return work
 
 
 def load(name):
@@ -85,7 +178,10 @@ def embedding_status(port):
         connection.close()
 
 
-def main():
+def main(argv=None):
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments not in ([], ['--recover-not-restarted']):
+        raise SystemExit('Usage: switch_vm_backend_candidate.py [--recover-not-restarted]')
     if sys.platform != 'linux' or os.geteuid() != 0:
         raise SystemExit('STOP: ROOT_ON_REVIEWED_VM_REQUIRED')
     os.umask(0o077)
@@ -97,6 +193,7 @@ def main():
     work = None
     outcome = {'status': 'STOP_BEFORE_CHANGE'}
     phase = 'PREPARATION'
+    dependency_order_changes = {}
 
     def identity(service):
         info = r.systemd_info(service)
@@ -108,11 +205,14 @@ def main():
     def save(state):
         r.atomic_write(work / 'state.json', r.encoded({'state': state, 'target': str(TARGET)}))
 
-    def dependencies(service):
+    def dependency_properties(service):
         fields = ('Requires', 'BindsTo', 'PartOf', 'PropagatesStopTo', 'ConsistsOf', 'RefuseManualStop')
         data = r.command(['systemctl', 'show', service, '--no-pager',
                           *['--property=' + k for k in fields]]).stdout.decode()
         return dict(line.split('=', 1) for line in data.splitlines() if '=' in line)
+
+    def dependencies(service):
+        return dependency_shape(dependency_properties(service))
 
     try:
         with r.maintenance_lock():
@@ -128,13 +228,22 @@ def main():
                     and journal['background_writers_paused'] is True, 'WRITERS_NOT_PAUSED')
             rows = r.validate_journal(ROUTING_RUN, journal)
             require(rows == base['routing_files'], 'ROUTING_JOURNAL_CHANGED')
+            settings, argv, payload = candidate_spec(base, r.ROUTING, r.WRITERS)
+            if arguments:
+                require(all(r.file_hash(Path(row['target'])) == row['after'] for row in rows), 'ROUTING_CONFIG_DRIFT')
+                for service in r.SERVICES:
+                    old = {k: v for k, v in base['extra'][service].items() if k != 'InvocationID'}
+                    current = dependency_properties(service)
+                    require(dependency_shape(old) == dependency_shape(current), 'STOP_DEPENDENCIES_CHANGED')
+                    dependency_order_changes[service] = [k for k in DEPENDENCY_LISTS if old[k] != current[k]]
+                recover_not_restarted(r, base, receipt, payload, argv, identity, dependencies)
             r.verify_effective_units(ROUTING_RUN, journal['preflight'])
             before = {s: r.systemd_info(s) for s in r.SERVICES}
             ids = {s: identity(s) for s in r.SERVICES}
             require(ids == receipt['services'], 'SERVICE_CHANGED_SINCE_PREFLIGHT')
             require(all(unit_shape(before[s], r.exec_start) == unit_shape(base['services'][s], r.exec_start)
                         for s in r.SERVICES), 'UNIT_CHANGED_SINCE_PREFLIGHT')
-            deps = {s: {k: v for k, v in base['extra'][s].items() if k != 'InvocationID'} for s in r.SERVICES}
+            deps = {s: dependency_shape({k: v for k, v in base['extra'][s].items() if k != 'InvocationID'}) for s in r.SERVICES}
             require(all(dependencies(s) == deps[s] for s in r.SERVICES), 'STOP_DEPENDENCIES_CHANGED')
             watched = dict(base['inspected_file_hashes'])
             watched.update({row['target']: row['after'] for row in rows})
@@ -163,21 +272,8 @@ def main():
             stable_files()
             r.safe_path(TARGET, exists=False)
             require(not TARGET.exists(), 'CANDIDATE_OVERRIDE_ALREADY_EXISTS')
-            settings = base['proposed_environment']
-            require(settings == {
-                'USE_AZURE_EMBEDDING': 'false', 'DITA_EMBEDDING_MODEL_PATH': str(MODEL),
-                'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
-                'CUDA_VISIBLE_DEVICES': '', 'OMP_NUM_THREADS': '2', 'MKL_NUM_THREADS': '2',
-                'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt',
-                'REQUESTS_CA_BUNDLE': '/etc/ssl/certs/ca-certificates.crt'}, 'UNREVIEWED_CANDIDATE_SETTINGS')
             # env applies these after systemd EnvironmentFiles, before the unchanged
             # application dotenv loaders checked by the saved preflight.
-            settings = {**settings, **r.ROUTING, **{k: 'false' for k in r.WRITERS}}
-            argv = ['/usr/bin/env', *[k + '=' + v for k, v in settings.items()],
-                    str(CANDIDATE / 'venv/bin/python'), '-I', '-B', '-m', 'uvicorn',
-                    '--app-dir', str(REPO / 'backend'), 'app.main:app',
-                    '--host', '0.0.0.0', '--port', '8001', '--workers', '1']
-            payload = ('[Service]\nExecStart=\nExecStart=' + ' '.join(argv) + '\n').encode()
             work = Path(tempfile.mkdtemp(prefix='cutover-', dir=CANDIDATE))
             r.atomic_write(work / 'override.conf', payload, absent=True)
             r.atomic_write(work / 'private-before.json', r.encoded({'units': before, 'identities': ids, 'files': watched}), absent=True)
@@ -297,6 +393,8 @@ def main():
         reason = str(error) if isinstance(error, (r.RepairError, c.RoutingCheckError)) else type(error).__name__
         outcome = {'status': 'STOP', 'phase': phase, 'reason': reason,
                    'resume_writers_authorized': False, 'index_write_requests': False}
+    if dependency_order_changes:
+        outcome['dependency_order_only_changes'] = dependency_order_changes
     if work:
         outcome['cutover_dir'] = str(work)
         try:
