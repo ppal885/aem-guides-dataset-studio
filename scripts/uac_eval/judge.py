@@ -109,7 +109,14 @@ JUDGE = (
     'candidate omits>], "holistic": <1-5 overall usefulness of the candidate''s '
     'acceptance criteria vs the reference>, "precision": <1-5, 5 = tight and '
     'well-factored with no redundancy or over-decomposition, 1 = bloated/repetitive>}}\n\n'
-    "TICKET: {summary}\n\nREFERENCE ACCEPTANCE CRITERIA:\n{gold}\n\n"
+    "IMPORTANT - grounding. A specific config key, repository path, JCR/CRX property, "
+    "API, template path, or value is NOT a hallucination when it appears in, or is "
+    "consistent with, the TICKET EVIDENCE or the REFERENCE below - that is a grounded "
+    "detail, not an invented one. Only count it as invented when it contradicts the "
+    "evidence or is a plausible-looking value with no basis in the ticket at all. Do not "
+    "treat mere specificity as invention.\n\n"
+    "TICKET: {summary}\n\nTICKET EVIDENCE (description):\n{description}\n\n"
+    "REFERENCE ACCEPTANCE CRITERIA:\n{gold}\n\n"
     "CANDIDATE ACCEPTANCE CRITERIA:\n{cand}\n"
 )
 
@@ -136,6 +143,7 @@ def _judge(client, model, row, cand) -> dict:
     import time
     content = JUDGE.format(
         summary=row.get("summary", ""),
+        description=(row.get("description") or "")[:4000],
         gold=_extract_ac(row.get("human_ac") or "")[:5000],
         cand=_extract_ac(cand or "")[:5000],
     )
