@@ -153,6 +153,18 @@ PERF_SIGNAL_TERMS = (
     "large map", "large file", "large dataset", "big map",
     "performance", "scalab", "slow", "latency", "throughput",
     "too long", "does not respond", "unresponsive", "gateway",
+    # duration / concurrency / bulk-load signals (a long-running or concurrent job is a
+    # performance factor even when nothing 503s - missed on a false-failure output ticket
+    # where generation ran minutes and overlapping jobs collided).
+    "minutes later", "still running", "already running", "in progress",
+    "overlap", "concurrent", "concurrenc", "simultaneous", "parallel",
+    "bulk publish", "bulk generation", "queue", "backlog", "long-running",
+    "long running",
+)
+# A cited duration such as "5-10 minutes", "300 s", "11 minutes".
+_PERF_DURATION_RE = re.compile(
+    r"\b\d+\s*(?:-\s*\d+\s*)?(?:sec|secs|second|seconds|s|min|mins|minute|minutes|hour|hours)\b",
+    re.IGNORECASE,
 )
 # A quantified-workload hint strengthens the signal but is not required.
 _PERF_SCALE_RE = re.compile(
@@ -165,7 +177,9 @@ def _has_perf_signal(plan_text: str) -> bool:
     low = (plan_text or "").lower()
     if any(term in low for term in PERF_SIGNAL_TERMS):
         return True
-    return bool(_PERF_SCALE_RE.search(plan_text or ""))
+    if _PERF_SCALE_RE.search(plan_text or ""):
+        return True
+    return bool(_PERF_DURATION_RE.search(plan_text or ""))
 
 
 def _has_performance_disposition(manifest, plan_text: str) -> bool:
@@ -182,6 +196,13 @@ def _has_performance_disposition(manifest, plan_text: str) -> bool:
     if isinstance(manifest, dict):
         pa = manifest.get("performance_assessment")
         if isinstance(pa, dict) and str(pa.get("decision", "")).strip() in ("required", "conditional"):
+            return True
+    # (c) a performance-conditional Open Question (the correct disposition when a workload
+    # is cited but no approved SLA exists - conditional, not a faked numeric AC).
+    for line in plan_text.splitlines() if plan_text else []:
+        if re.search(r"\bOQ[-\s]?\d", line, re.I) and re.search(
+            r"\b(?:performance|sla|workload|throughput|latency|duration|scale|"
+            r"concurrent|baseline|response\s+time)\b", line, re.I):
             return True
     return False
 
@@ -838,6 +859,61 @@ def _validate_vague_surface_reference(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# 7. Content-transformation (paste / import / convert) variant enumeration
+# ---------------------------------------------------------------------------
+
+# A content-transformation ticket: pasting, importing, converting, or clipboard/drag-drop.
+_TRANSFORM_SIGNAL_RE = re.compile(
+    r"\b(?:past(?:e|ing|ed|es)\w*|copy\s*past\w*|import\w*|convert\w*|conversion|"
+    r"clipboard|drag\s+and\s+drop)\b",
+    re.IGNORECASE,
+)
+# A table ticket.
+_TABLE_SIGNAL_RE = re.compile(
+    r"\b(?:table|thead|tgroup|cals|colspec|header\s+cell|header\s+row)\b", re.IGNORECASE,
+)
+# The predictable variant axes for a table paste/import/convert ticket. Each axis is
+# "addressed" when any of its keywords appears anywhere in the plan (an AC, an Open
+# Question, or scope) - so the author must at least disposition it, even to bound scope.
+_TABLE_VARIANT_AXES = {
+    "source apps (Word / Excel / Google Doc / HTML)":
+        re.compile(r"\b(?:word|excel|google\s*doc|html|powerpoint|office\s+doc|clipboard)\b", re.I),
+    "nested tables":
+        re.compile(r"\bnested\b", re.I),
+    "merged / spanned cells":
+        re.compile(r"\b(?:merged|span(?:ned|s)?|colspan|morerows|namest|nameend)\b", re.I),
+    "multiple / repeat header rows":
+        re.compile(r"\b(?:multiple\s+header|repeat\s+header|header\s+rows|multiple\s+heading)\b", re.I),
+    "simple table vs normal table":
+        re.compile(r"\b(?:simple\s*table|simpletable|normal\s+table)\b", re.I),
+    "topic types (concept / reference / task)":
+        re.compile(r"\b(?:concept|reference|task|glossary|topic\s+type|bookmap)\b", re.I),
+    "editor scope (new / old editor)":
+        re.compile(r"\b(?:new\s+editor|old\s+editor|legacy\s+editor|both\s+editors)\b", re.I),
+}
+
+
+def _validate_transformation_variant_coverage(manifest, plan_text: str) -> list[str]:
+    """For a table paste/import/convert ticket, force the predictable variant space to be
+    enumerated: source apps, nested tables, merged cells, multiple/repeat header rows,
+    simple-vs-normal table, topic types, and editor scope. Each axis must be addressed in
+    an AC, an Open Question, or scope (even to bound it out); a missing axis fails closed.
+    This is the non-negotiable dimension sweep for this recurring ticket class - missed on
+    a Word-table-paste data-loss ticket where the human UAC enumerated all of these."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not (_TRANSFORM_SIGNAL_RE.search(evidence) and _TABLE_SIGNAL_RE.search(evidence)):
+        return []
+    missing = [name for name, rx in _TABLE_VARIANT_AXES.items() if not rx.search(plan_text or "")]
+    if not missing:
+        return []
+    return [
+        "This is a table paste/import/convert ticket; the predictable variant space must be "
+        "enumerated (each as an Acceptance Criterion, an Open Question, or an explicit scope "
+        "bound). Missing axes: " + "; ".join(missing) + "."
+    ]
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -857,6 +933,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_status_anti_overcorrection(manifest, plan_text)
     problems += _validate_concurrency_isolation(manifest, plan_text)
     problems += _validate_vague_surface_reference(manifest, plan_text)
+    problems += _validate_transformation_variant_coverage(manifest, plan_text)
     return problems
 
 
@@ -1183,6 +1260,46 @@ def run_self_tests() -> None:
         "named surfaces must pass"
     )
     assert _validate_vague_surface_reference({}, plain) == [], "no surface reference -> pass"
+
+    # --- performance: duration/concurrency signal + conditional-OQ disposition ---
+    dur_missing = nl.join([
+        "**Understanding**", "Output is produced 5-10 minutes later while an overlapping job is still running.",
+        "**Acceptance Criteria**", "- AC-01: the completed run shows success.", ""])
+    assert any("performance is not dispositioned" in p for p in validate({}, dur_missing)), (
+        "a duration/concurrency signal must force a performance disposition"
+    )
+    dur_oq = dur_missing + nl.join([
+        "**Open Questions**",
+        "- OQ-05: no approved SLA exists for generation duration under concurrent/bulk load; "
+        "QA impact: whether a performance AC is needed and the required workload/baseline.",
+        ""])
+    assert not any("performance is not dispositioned" in p for p in validate({}, dur_oq)), (
+        "a performance-conditional Open Question satisfies the disposition"
+    )
+
+    # --- table paste/import variant enumeration ---
+    paste_thin = nl.join([
+        "**Understanding**", "Pasting a Word table into the New Editor loses the header row content.",
+        "**Acceptance Criteria**",
+        "- AC-01: pasting a Word table keeps the header cell text with merged cells handled.",
+        ""])
+    tv = _validate_transformation_variant_coverage({}, paste_thin)
+    assert tv and "nested tables" in tv[0] and "topic types" in tv[0], (
+        "a thin table-paste plan must fail listing the missing variant axes"
+    )
+    paste_full = nl.join([
+        "**Understanding**", "Pasting a Word table into the New Editor loses the header row content.",
+        "**Acceptance Criteria**",
+        "- AC-01: pasting from Word, Excel, Google Doc, or HTML keeps header cell text.",
+        "- AC-02: merged and spanned cells, nested tables, and multiple/repeat header rows keep their text.",
+        "- AC-03: simple table and normal table both paste without loss.",
+        "**Open Questions**",
+        "- OQ-01: confirm behaviour across topic types concept, reference, task, and in both new editor and old editor. QA impact: scope.",
+        ""])
+    assert _validate_transformation_variant_coverage({}, paste_full) == [], (
+        f"a plan enumerating all variant axes must pass: {_validate_transformation_variant_coverage({}, paste_full)}"
+    )
+    assert _validate_transformation_variant_coverage({}, plain) == [], "no paste/table signal -> no forcing"
 
     print("coverage_forcing self-tests: PASS")
 
