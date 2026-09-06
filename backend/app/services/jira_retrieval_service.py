@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.structured_logging import get_structured_logger
 from app.services.customer_tokens import clean_customer_tokens
-from app.services.embedding_service import embed_query, is_embedding_available
+from app.services.embedding_service import embed_query, is_embedding_available, embedding_cache_namespace
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
 from app.services.jira_component_metadata_service import component_filter_field, normalize_component_token
 from app.services.vector_store_service import CHROMA_COLLECTION_JIRA_QA, is_chroma_available, query_collection
@@ -1160,14 +1160,17 @@ def _resolve_embedding(query_text: str, query_embedding: list[float] | None) -> 
     qt = (query_text or "")[:12000]
     if not qt.strip():
         return None
-    cached = cache_get_embedding_vector(qt)
+    namespace = embedding_cache_namespace()
+    cached = cache_get_embedding_vector(qt, namespace=namespace)
     if cached is not None:
         return cached
     qv = embed_query(qt)
     if qv is None:
         return None
+    if namespace != embedding_cache_namespace():
+        return None
     emb = qv.tolist() if hasattr(qv, "tolist") else list(qv)
-    cache_set_embedding_vector(qt, emb)
+    cache_set_embedding_vector(qt, emb, namespace=namespace)
     return emb
 
 
