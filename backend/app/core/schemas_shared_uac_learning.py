@@ -1,9 +1,10 @@
 """Strict, provider-neutral contracts for shared Human UAC feedback."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 
 class LearningDTO(BaseModel):
@@ -47,6 +48,27 @@ DeltaType = Literal[
 ]
 
 
+class UacReviewedJiraUac(LearningDTO):
+    """Pin the Jira field reviewed by a Human; the server retrieves its bytes."""
+
+    field_id: str = Field(pattern=r"^customfield_[1-9][0-9]{0,9}$")
+    expected_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_issue_updated: str = Field(default="", max_length=80)
+    original_reviewed_ac: str = Field(default="", max_length=12_000)
+
+    @field_validator("expected_issue_updated")
+    @classmethod
+    def timezone_required(cls, value):
+        if value:
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError("expected_issue_updated must be an ISO timestamp.") from None
+            if parsed.tzinfo is None:
+                raise ValueError("expected_issue_updated requires a timezone.")
+        return value
+
+
 class UacFeedbackCapture(LearningDTO):
     contract_version: Literal["shared-uac-feedback-v1"] = "shared-uac-feedback-v1"
     tenant_id: str = Field(default="kone", max_length=120)
@@ -63,13 +85,30 @@ class UacFeedbackCapture(LearningDTO):
     run_id: str = Field(default="", max_length=160)
     ac_id: str = Field(default="", max_length=120)
     draft: UacDraftContent | None = None
+    reviewed_jira_uac: UacReviewedJiraUac | None = None
     client_context: UacClientContext = Field(default_factory=UacClientContext)
+
+    @model_validator(mode="after")
+    def one_source(self):
+        if self.reviewed_jira_uac:
+            if self.draft or self.draft_id or self.plan_fingerprint or self.evidence_bundle_id or self.run_id:
+                raise ValueError("A Jira review snapshot cannot be combined with generation draft references.")
+            if self.ac_id and not self.reviewed_jira_uac.original_reviewed_ac.strip():
+                raise ValueError("ac_id requires an exact original_reviewed_ac excerpt.")
+        return self
 
 
 class UacFeedbackBind(LearningDTO):
     tenant_id: str = Field(default="kone", max_length=120)
-    draft_id: str = Field(min_length=1, max_length=36)
+    draft_id: str = Field(default="", max_length=36)
     idempotency_key: str = Field(min_length=1, max_length=240)
+    reviewed_jira_uac: UacReviewedJiraUac | None = None
+
+    @model_validator(mode="after")
+    def one_source(self):
+        if bool(self.draft_id.strip()) == bool(self.reviewed_jira_uac):
+            raise ValueError("Supply one existing draft_id or reviewed_jira_uac snapshot reference.")
+        return self
 
 
 class UacLessonScope(LearningDTO):

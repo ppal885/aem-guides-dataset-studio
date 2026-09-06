@@ -31,7 +31,7 @@ from app.db.shared_uac_learning_models import (
     UacFeedbackBinding, UacFeedbackDelta, UacLearningDraft, UacLearningOutbox,
     UacLessonRevision, utcnow,
 )
-from app.services.evidence_graph_contract import sanitize_excerpt
+from app.services.evidence_graph_contract import contains_sensitive_text, sanitize_excerpt
 from app.services.tenant_service import ensure_user_can_access_tenant
 
 CONTRACT_VERSION = "shared-uac-feedback-v1"
@@ -250,6 +250,45 @@ def _draft_receipt(row, created):
             "created": created, "persisted": True}
 
 
+def _feedback_request_payload(body):
+    payload = body.model_dump(mode="json")
+    # Preserve idempotency hashes recorded before Jira snapshot pins existed.
+    if payload.get("reviewed_jira_uac") is None:
+        payload.pop("reviewed_jira_uac", None)
+    return payload
+
+
+def _register_reviewed_jira_draft(session, *, user, tenant, jira, reference, ac_id, token):
+    from app.services.shared_uac_jira_review_snapshot import JiraReviewMismatch, read_reviewed_jira_uac
+
+    excerpt = reference.original_reviewed_ac
+    if (contains_sensitive_text(excerpt) or _SUBMITTED_SECRET_RE.search(excerpt)
+            or _URL_CREDENTIAL_RE.search(excerpt)):
+        raise ValueError("The selected original_reviewed_ac contains sensitive content; select a safe exact excerpt.")
+    try:
+        snapshot = read_reviewed_jira_uac(user=user, tenant_id=tenant, jira_key=jira,
+                                        reference=reference, ac_id=ac_id)
+    except JiraReviewMismatch as exc:
+        raise LearningConflict(str(exc)) from None
+    if snapshot is None:
+        return None
+    markdown = snapshot["draft_markdown"]
+    safe_markdown = _text(markdown, 100_000)
+    provenance = {**snapshot["provenance"], "content_hash": _sha(safe_markdown)}
+    criteria = {ac_id: excerpt} if ac_id else {}
+    row, _created = _insert(session, UacLearningDraft,
+        _identity(tenant, user, "jira-review-draft", token,
+                  {"jira_key": jira, "reference": reference.model_dump(), "ac_id": ac_id}),
+        jira_key=jira, plan_fingerprint=reference.expected_sha256, evidence_bundle_id="", run_id="",
+        content={"draft_markdown": safe_markdown, "source_hash": reference.expected_sha256,
+                 "content_hash": _sha(safe_markdown), "criteria": criteria,
+                 "criteria_fingerprints": {key: _sha(value) for key, value in criteria.items()},
+                 "original_reviewed_ac": excerpt, "jira_review_snapshot": provenance,
+                 "principal_type": getattr(user, "principal_type", "unknown"),
+                 "evidence_authority_verified": False})
+    return row
+
+
 def register_draft(session, *, user, body: UacDraftRegistration) -> dict:
     tenant = ensure_user_can_access_tenant(user, body.tenant_id)
     jira = _key(body.jira_key)
@@ -326,7 +365,7 @@ def capture_feedback(session, *, user, body: UacFeedbackCapture) -> dict:
     evidence = _bundle(body.evidence_bundle_id, jira)
     if not body.raw_feedback.strip():
         raise ValueError("raw_feedback must not be blank.")
-    identity = _identity(tenant, user, "capture", body.idempotency_key, body.model_dump(mode="json"))
+    identity = _identity(tenant, user, "capture", body.idempotency_key, _feedback_request_payload(body))
     existing = _existing(session, UacFeedbackDelta, identity)
     if existing is not None:
         return {**get_feedback_status(session, user=user, tenant_id=tenant, feedback_id=existing.id), "created": False}
@@ -338,11 +377,17 @@ def capture_feedback(session, *, user, body: UacFeedbackCapture) -> dict:
         if draft_id and draft_id != registered["draft_id"]:
             raise LearningConflict("Supply either an existing draft reference or inline draft content.")
         draft_id = registered["draft_id"]
-    draft = _resolve_draft(session, tenant, jira, draft_id, body.plan_fingerprint, evidence, body.run_id)
+    if body.reviewed_jira_uac:
+        draft = _register_reviewed_jira_draft(session, user=user, tenant=tenant, jira=jira,
+            reference=body.reviewed_jira_uac, ac_id=body.ac_id, token="capture:" + _sha(body.idempotency_key))
+        draft_id = draft.id if draft else ""
+    else:
+        draft = _resolve_draft(session, tenant, jira, draft_id, body.plan_fingerprint, evidence, body.run_id)
     if draft and body.ac_id and body.ac_id not in draft.content.get("criteria", {}):
         raise LearningConflict("ac_id does not exist in the registered draft.")
     delta, created = _insert(session, UacFeedbackDelta, identity, jira_key=jira,
-        plan_fingerprint=body.plan_fingerprint or (draft.plan_fingerprint if draft else ""),
+        plan_fingerprint=body.plan_fingerprint or (draft.plan_fingerprint if draft else
+            body.reviewed_jira_uac.expected_sha256 if body.reviewed_jira_uac else ""),
         raw_feedback=_text(body.raw_feedback, 12_000), proposed_correction=_text(body.proposed_correction, 12_000),
         delta_type=body.delta_type, content={"source": "UNCONFIRMED_SUBMISSION",
             "source_kind": body.source_kind, "source_policy_at_capture": _source_policy(jira),
@@ -350,6 +395,8 @@ def capture_feedback(session, *, user, body: UacFeedbackCapture) -> dict:
             "ai_classification": _safe_json(body.ai_classification),
             "client_context": _context(body.client_context), "ac_id": body.ac_id,
             "requested_draft_id": draft_id, "evidence_bundle_id": evidence, "run_id": body.run_id,
+            **({"reviewed_jira_uac_reference": body.reviewed_jira_uac.model_dump(),
+                "binding_reason": "" if draft else "REVIEWED_JIRA_UAC_UNAVAILABLE"} if body.reviewed_jira_uac else {}),
             "principal_type": getattr(user, "principal_type", "unknown"),
             "automatic_authority_promotion": False})
     if created:
@@ -368,21 +415,40 @@ def bind_feedback(session, *, user, feedback_id: str, body: UacFeedbackBind) -> 
     tenant = ensure_user_can_access_tenant(user, body.tenant_id)
     delta = _delta(session, tenant, feedback_id)
     authorization = _reviewer(user, tenant_id=tenant, jira_key=delta.jira_key)
-    identity = _identity(tenant, user, "bind:" + feedback_id, body.idempotency_key, body.model_dump())
+    payload = _feedback_request_payload(body)
+    identity = _identity(tenant, user, "bind:" + feedback_id, body.idempotency_key, payload)
     existing = _existing(session, UacFeedbackBinding, identity)
     if existing:
         return get_feedback_status(session, user=user, tenant_id=tenant, feedback_id=feedback_id)
     if _binding(session, tenant, feedback_id):
         raise LearningConflict("Feedback is already bound; capture a new correction to change its source.")
-    draft = _resolve_draft(session, tenant, delta.jira_key, body.draft_id, delta.plan_fingerprint,
-                           delta.content.get("evidence_bundle_id", ""), delta.content.get("run_id", ""))
+    pinned = delta.content.get("reviewed_jira_uac_reference")
+    if pinned and not body.reviewed_jira_uac:
+        raise LearningConflict("This correction requires its pinned reviewed_jira_uac source for binding.")
+    if body.reviewed_jira_uac:
+        reference = body.reviewed_jira_uac
+        if pinned and pinned != reference.model_dump():
+            raise LearningConflict("The reviewed Jira source reference cannot be changed when binding feedback.")
+        if ((delta.plan_fingerprint and delta.plan_fingerprint != reference.expected_sha256)
+                or delta.content.get("evidence_bundle_id") or delta.content.get("run_id")
+                or delta.content.get("requested_draft_id")):
+            raise LearningConflict("The Jira review snapshot does not match the correction's original source reference.")
+        draft = _register_reviewed_jira_draft(session, user=user, tenant=tenant, jira=delta.jira_key,
+            reference=reference, ac_id=delta.content.get("ac_id", ""),
+            token="bind:" + feedback_id + ":" + _sha(body.idempotency_key))
+        if draft is None:
+            return {**get_feedback_status(session, user=user, tenant_id=tenant, feedback_id=feedback_id),
+                    "binding_reason": "REVIEWED_JIRA_UAC_UNAVAILABLE"}
+    else:
+        draft = _resolve_draft(session, tenant, delta.jira_key, body.draft_id, delta.plan_fingerprint,
+                               delta.content.get("evidence_bundle_id", ""), delta.content.get("run_id", ""))
     if draft is None:
         raise HTTPException(404, "Matching registered draft not found.")
     if delta.content.get("ac_id") and delta.content["ac_id"] not in draft.content.get("criteria", {}):
         raise LearningConflict("ac_id does not exist in the registered draft.")
     _insert(session, UacFeedbackBinding, identity, delta_id=delta.id, draft_id=draft.id)
     previous = _latest(session, tenant, feedback_id)
-    _append_revision(session, _identity(tenant, user, "bind-lesson:" + feedback_id, body.idempotency_key, body.model_dump()),
+    _append_revision(session, _identity(tenant, user, "bind-lesson:" + feedback_id, body.idempotency_key, payload),
         lesson_id=feedback_id, version=previous.version + 1, state="CANDIDATE",
         payload={**previous.payload, "draft_id": draft.id, "binding_authorization": authorization})
     return get_feedback_status(session, user=user, tenant_id=tenant, feedback_id=feedback_id)
@@ -550,6 +616,8 @@ def get_feedback_status(session, *, user, tenant_id: str, feedback_id: str) -> d
     outbox = session.query(UacLearningOutbox).filter_by(tenant_id=tenant, revision_id=revision.id).one_or_none()
     eligibility = "AI_ONLY" if delta.content.get("source_kind") == "AI_PROPOSAL" else _source_policy(delta.jira_key)["status"]
     reuse_eligible = _eligible_reviewed_revision(session, tenant, revision)
+    snapshot = draft.content.get("jira_review_snapshot") if draft else None
+    reference = delta.content.get("reviewed_jira_uac_reference")
     return {"contract_version": CONTRACT_VERSION, "feedback_id": delta.id, "lesson_id": delta.id,
         "tenant_id": tenant, "jira_key": delta.jira_key, "persisted": True,
         "binding_status": "BOUND" if binding else "PENDING_BINDING",
@@ -565,6 +633,11 @@ def get_feedback_status(session, *, user, tenant_id: str, feedback_id: str) -> d
         "publication_review_status": ("QE_APPROVED" if reuse_eligible else
             "RE_REVIEW_REQUIRED" if revision.state == "APPROVED" else "PENDING_REVIEW"),
         "source_hash": delta.content.get("submitted_text_hash"), "correction_hash": delta.content.get("correction_hash"),
+        **({"reviewed_jira_uac": snapshot,
+            "reviewed_jira_uac_reference": reference,
+            "original_reviewed_ac": draft.content.get("original_reviewed_ac", "") if draft else reference.get("original_reviewed_ac", ""),
+            "binding_reason": "" if binding else delta.content.get("binding_reason", "REVIEWED_JIRA_UAC_UNAVAILABLE")}
+           if snapshot or reference else {}),
         "lesson": revision.payload, "automatic_authority_promotion": False}
 
 

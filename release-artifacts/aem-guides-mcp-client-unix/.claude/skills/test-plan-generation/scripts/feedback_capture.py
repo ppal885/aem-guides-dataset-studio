@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -68,6 +69,7 @@ SOURCE_KINDS = frozenset({"HUMAN_CORRECTION", "AI_PROPOSAL", "UNCONFIRMED"})
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _HEX_64 = re.compile(r"^[a-f0-9]{64}$")
+_JIRA_FIELD = re.compile(r"^customfield_[1-9][0-9]{0,9}$")
 _BEARER = re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]+")
 _NAMED_SECRET = re.compile(
     r"(?i)\b(api[\s_-]?key|access[\s_-]?token|auth[\s_-]?token|token|password|passwd|secret)"
@@ -300,6 +302,14 @@ def normalize_capture(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
     if len(normalized["ai_classification"]) > 20:
         raise ValueError("ai_classification exceeds 20 entries")
+    if payload.get("reviewed_jira_uac") is not None:
+        if any(normalized[key] for key in (
+            "draft_id", "plan_fingerprint", "evidence_bundle_id", "run_id"
+        )) or payload.get("draft") is not None:
+            raise ValueError("reviewed_jira_uac cannot be combined with generation/draft identifiers")
+        normalized["reviewed_jira_uac"] = normalize_reviewed_jira_uac(payload["reviewed_jira_uac"])
+        if normalized["ac_id"] and not normalized["reviewed_jira_uac"]["original_reviewed_ac"].strip():
+            raise ValueError("ac_id requires the exact original_reviewed_ac excerpt")
     draft = payload.get("draft")
     if draft is not None:
         if not isinstance(draft, Mapping):
@@ -335,6 +345,79 @@ def normalize_capture(payload: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def normalize_reviewed_jira_uac(value: object) -> dict[str, str]:
+    """Keep an exact source pin; never normalize Jira content to make a hash match."""
+    allowed = {"field_id", "expected_sha256", "expected_issue_updated", "original_reviewed_ac"}
+    if not isinstance(value, Mapping) or set(value) - allowed:
+        raise ValueError("reviewed_jira_uac must contain only the documented source-pin fields")
+    field = value.get("field_id", "")
+    digest = value.get("expected_sha256", "")
+    if not isinstance(field, str) or not _JIRA_FIELD.fullmatch(field):
+        raise ValueError("reviewed_jira_uac.field_id must be a Jira custom field identifier")
+    if not isinstance(digest, str) or not _HEX_64.fullmatch(digest):
+        raise ValueError("reviewed_jira_uac.expected_sha256 must be 64 lowercase hex characters")
+    updated = value.get("expected_issue_updated", "")
+    if not isinstance(updated, str) or len(updated) > 80:
+        raise ValueError("expected_issue_updated must be a bounded timezone-aware timestamp")
+    if updated:
+        try:
+            parsed = dt.datetime.fromisoformat(updated.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("expected_issue_updated must be a timezone-aware timestamp") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("expected_issue_updated must include its timezone")
+    quote = value.get("original_reviewed_ac", "")
+    if not isinstance(quote, str) or len(quote) > 12_000:
+        raise ValueError("original_reviewed_ac must be a string of at most 12000 characters")
+    if redact_text(quote) != quote:
+        raise ValueError("original_reviewed_ac contains credential-like text; omit the excerpt and ac_id")
+    return {"field_id": field, "expected_sha256": digest,
+            "expected_issue_updated": updated, "original_reviewed_ac": quote}
+
+
+def prepare_jira_review(
+    issue: Mapping[str, Any], capture: Mapping[str, Any], *, field_id: str
+) -> dict[str, Any]:
+    """Prepare a fresh-chat capture from exact raw Jira MCP data, without sending it.
+
+    The server independently re-fetches the field. This local pin is not a draft,
+    server receipt, Human approval, or proof of the original generator's lineage.
+    """
+    if not isinstance(issue, Mapping) or not isinstance(capture, Mapping):
+        raise ValueError("Jira issue and selected feedback must be JSON objects")
+    fields, names = issue.get("fields"), issue.get("names")
+    if not isinstance(fields, Mapping) or not isinstance(field_id, str) or not _JIRA_FIELD.fullmatch(field_id):
+        raise ValueError("use raw Jira MCP fields and the actual Acceptance Criteria custom field ID")
+    if not isinstance(names, Mapping) or names.get(field_id) not in {"Acceptance Criteria", "Acceptance Criterion", "UAC"}:
+        raise ValueError("Jira field metadata must identify the Acceptance Criteria field")
+    raw_uac = fields.get(field_id)
+    if not isinstance(raw_uac, str) or not raw_uac.strip() or len(raw_uac) > 100_000:
+        raise ValueError("raw Jira UAC must be a nonempty string, not rendered/summarized content or ADF")
+    jira_key = _clean_identifier(issue.get("key"), "jira_key", required=True, limit=64)
+    if capture.get("jira_key") and capture["jira_key"] != jira_key:
+        raise ValueError("selected feedback and Jira snapshot name different issues")
+    if any(capture.get(key) for key in (
+        "draft", "draft_id", "plan_fingerprint", "evidence_bundle_id", "run_id", "reviewed_jira_uac"
+    )):
+        raise ValueError("prepare-jira-review requires feedback without another source binding")
+    quote = capture.get("original_reviewed_ac", "")
+    if not isinstance(quote, str) or (quote and (not quote.strip() or raw_uac.count(quote) != 1)):
+        raise ValueError("original_reviewed_ac must be an exact unique excerpt of the raw Jira UAC")
+    selected = {key: value for key, value in capture.items() if key != "original_reviewed_ac"}
+    selected.update({
+        "jira_key": jira_key,
+        "idempotency_key": capture.get("idempotency_key") or "jira-review:" + uuid.uuid4().hex,
+        "reviewed_jira_uac": {
+            "field_id": field_id,
+            "expected_sha256": hashlib.sha256(raw_uac.encode("utf-8")).hexdigest(),
+            "expected_issue_updated": fields.get("updated") or "",
+            "original_reviewed_ac": quote,
+        },
+    })
+    # Source kind is never inferred from the existence of a Jira snapshot.
+    return queue_safe_capture(selected)
+
+
 def queue_safe_capture(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Reduce a capture to the only content allowed in the local retry queue."""
 
@@ -343,7 +426,7 @@ def queue_safe_capture(payload: Mapping[str, Any]) -> dict[str, Any]:
     proposed_correction = redact_text(normalized["proposed_correction"])
     if not raw_feedback.strip():
         raise ValueError("redacted correction is empty")
-    return {
+    safe = {
         "contract_version": CAPTURE_CONTRACT,
         "tenant_id": normalized["tenant_id"],
         "jira_key": normalized["jira_key"],
@@ -368,6 +451,9 @@ def queue_safe_capture(payload: Mapping[str, Any]) -> dict[str, Any]:
             "message_id": "",
         },
     }
+    if "reviewed_jira_uac" in normalized:
+        safe["reviewed_jira_uac"] = normalized["reviewed_jira_uac"]
+    return safe
 
 
 def _default_queue_path() -> Path:
@@ -702,22 +788,32 @@ class FeedbackClient:
             query={"tenant_id": tenant_id},
         )
 
+    def readiness(self, *, tenant_id: str = "kone") -> Any:
+        """Read configuration readiness only; never drain queues or index storage."""
+        tenant_id = _clean_identifier(tenant_id, "tenant_id", required=True, limit=120)
+        return self._request("GET", f"{API_PREFIX}/readiness", query={"tenant_id": tenant_id})
+
     def bind(
         self,
         feedback_id: str,
         *,
         tenant_id: str,
-        draft_id: str,
+        draft_id: str = "",
         idempotency_key: str,
+        reviewed_jira_uac: Mapping[str, Any] | None = None,
     ) -> Any:
         feedback_id = _clean_identifier(feedback_id, "feedback_id", required=True, limit=80)
         body = {
             "tenant_id": _clean_identifier(tenant_id, "tenant_id", required=True, limit=120),
-            "draft_id": _clean_identifier(draft_id, "draft_id", required=True, limit=36),
+            "draft_id": _clean_identifier(draft_id, "draft_id", required=False, limit=36),
             "idempotency_key": _clean_text(
                 idempotency_key, "idempotency_key", required=True, limit=240
             ),
         }
+        if bool(draft_id) == (reviewed_jira_uac is not None):
+            raise ValueError("bind requires exactly one draft_id or reviewed_jira_uac source")
+        if reviewed_jira_uac is not None:
+            body["reviewed_jira_uac"] = normalize_reviewed_jira_uac(reviewed_jira_uac)
         return self._request(
             "POST",
             f"{API_PREFIX}/feedback/{urllib.parse.quote(feedback_id, safe='')}/bind",
@@ -840,12 +936,14 @@ class FeedbackClient:
 
 def _read_json(path: str) -> dict[str, Any]:
     if path == "-":
-        raw = __import__("sys").stdin.read()
+        raw = __import__("sys").stdin.read(500_001)
     else:
         file = Path(path)
         if file.stat().st_size > 500_000:
             raise ValueError("input JSON exceeds 500 KB")
         raw = file.read_text(encoding="utf-8")
+    if len(raw.encode("utf-8")) > 500_000:
+        raise ValueError("input JSON exceeds 500 KB")
     value = json.loads(raw)
     if not isinstance(value, dict):
         raise ValueError("input JSON must be an object")
@@ -860,6 +958,7 @@ class _SelfTestHandler(http.server.BaseHTTPRequestHandler):
     calls: list[dict[str, Any]] = []
     fail_capture = False
     invalid_capture = False
+    stale_capture = False
 
     def log_message(self, fmt, *args):  # noqa: ANN001
         return
@@ -874,7 +973,9 @@ class _SelfTestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         self.__class__.calls.append({"method": "GET", "path": self.path})
-        if "/feedback/" in self.path:
+        if "/readiness" in self.path:
+            self._json(200, {"actual_learning_proven": False, "capabilities": {"reviewed_jira_uac": True}})
+        elif "/feedback/" in self.path:
             self._json(200, {"feedback_id": "feedback-1", "learning_status": "CANDIDATE"})
         else:
             self._json(200, {"items": []})
@@ -889,6 +990,8 @@ class _SelfTestHandler(http.server.BaseHTTPRequestHandler):
             self._json(503, {"detail": "unavailable"})
         elif self.path.endswith("/feedback") and self.__class__.invalid_capture:
             self._json(200, {"feedback_id": "feedback-1", "persisted": False})
+        elif self.path.endswith("/feedback") and self.__class__.stale_capture:
+            self._json(409, {"detail": "Reviewed Jira source changed"})
         elif self.path.endswith("/review"):
             self._json(200, {"feedback_id": "feedback-1", "learning_status": "APPROVED"})
         elif self.path.endswith("/bind"):
@@ -907,6 +1010,7 @@ def run_self_tests() -> None:
     _SelfTestHandler.calls = []
     _SelfTestHandler.fail_capture = False
     _SelfTestHandler.invalid_capture = False
+    _SelfTestHandler.stale_capture = False
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SelfTestHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -1036,11 +1140,92 @@ def run_self_tests() -> None:
             else:
                 raise AssertionError("invalid captures must fail before network/queue")
             assert not queue.exists()
+            _jira_review_self_tests(client, queue)
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
     print("feedback_capture self-tests: PASS")
+
+
+def _jira_review_self_tests(client: FeedbackClient, queue: Path) -> None:
+    """Fresh-chat pins and outage behavior, using only the loopback fake server."""
+    raw = "AC-01: Preserve café names.\r\nAC-02: Keep the original value.\r\n"
+    field = "customfield_123"
+    issue = {"key": "TEST-2", "fields": {field: raw, "updated": "2026-01-02T10:00:00+00:00"},
+             "names": {field: "Acceptance Criteria"}}
+    correction = {"tenant_id": "team", "raw_feedback": "Retest the second upload too.",
+                  "client_context": {"client": "claude_desktop"}}
+    prepared = prepare_jira_review(issue, correction, field_id=field)
+    pin = prepared["reviewed_jira_uac"]
+    assert pin["expected_sha256"] == hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    assert pin["expected_sha256"] != hashlib.sha256(raw.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+    assert prepared["source_kind"] == "UNCONFIRMED", "Jira provenance is not Human approval"
+    assert "draft" not in prepared and not prepared["run_id"]
+    assert raw not in json.dumps(prepared, ensure_ascii=False), "do not queue the complete Jira field"
+    assert queue_safe_capture(prepared) == prepared
+    excerpt = "AC-02: Keep the original value."
+    per_ac = prepare_jira_review(issue, {**correction, "source_kind": "HUMAN_CORRECTION",
+                                "ac_id": "AC-02", "original_reviewed_ac": excerpt}, field_id=field)
+    assert per_ac["reviewed_jira_uac"]["original_reviewed_ac"] == excerpt
+    assert per_ac["idempotency_key"] != prepared["idempotency_key"]
+    for name in ("Acceptance Criterion", "UAC"):
+        assert prepare_jira_review({**issue, "names": {field: name}}, correction, field_id=field)
+
+    def rejects(callback):
+        try:
+            callback()
+        except ValueError:
+            return
+        raise AssertionError("invalid Jira source pin accepted")
+
+    for bad_issue in (
+        {**issue, "fields": {field: {"type": "doc", "content": []}}},
+        {**issue, "fields": {field: ""}}, {**issue, "fields": {field: "x" * 100_001}},
+        {**issue, "names": {}}, {**issue, "names": {field: "Description"}},
+        {**issue, "fields": {field: raw, "updated": "2026-01-02T10:00:00"}},
+    ):
+        rejects(lambda: prepare_jira_review(bad_issue, correction, field_id=field))
+    for extra in ({"jira_key": "TEST-3"}, {"draft_id": "draft-1"}, {"ac_id": "AC-02"},
+                  {"original_reviewed_ac": "A paraphrase"}, {"original_reviewed_ac": " "},
+                  {"original_reviewed_ac": "AC-0"}):
+        rejects(lambda: prepare_jira_review(issue, {**correction, **extra}, field_id=field))
+    for extra in ({"source_url": "https://untrusted.invalid"}, {"expected_sha256": "bad"},
+                  {"field_id": "description"}, {"expected_issue_updated": "no"},
+                  {"original_reviewed_ac": "api_key=do-not-store-this"}):
+        rejects(lambda: normalize_reviewed_jira_uac({**pin, **extra}))
+    for key in ("draft_id", "plan_fingerprint", "evidence_bundle_id", "run_id"):
+        value = "a" * 64 if key == "plan_fingerprint" else "generation-reference"
+        rejects(lambda: normalize_capture({**prepared, key: value}))
+
+    # Queue only the exact minimized pin and selected correction, never full Jira data.
+    _SelfTestHandler.fail_capture = True
+    receipt = client.capture(per_ac)
+    assert receipt["delivery_status"] == "QUEUED_LOCAL" and not receipt["persisted"]
+    queued_bytes = queue.read_bytes()
+    queued_payload = json.loads(queued_bytes)["payload"]
+    assert queued_payload == per_ac and "names" not in queued_payload
+    before = len(_SelfTestHandler.calls)
+    assert client.readiness(tenant_id="team")["actual_learning_proven"] is False
+    assert len(_SelfTestHandler.calls) == before + 1
+    assert _SelfTestHandler.calls[-1]["method"] == "GET" and queue.read_bytes() == queued_bytes
+
+    # A stale source is a permanent conflict, not a reason to fetch a new snapshot.
+    _SelfTestHandler.fail_capture = False
+    _SelfTestHandler.stale_capture = True
+    conflict = client.flush_queue()
+    assert conflict["sent_count"] == 0 and conflict["remaining_count"] == 1
+    assert conflict["blocked"] == {"error_code": "HTTP_409", "retryable": False}
+    assert json.loads(queue.read_bytes())["payload"] == per_ac
+    _SelfTestHandler.stale_capture = False
+    assert client.flush_queue()["sent_count"] == 1 and not queue.exists()
+    replay = _SelfTestHandler.calls[-1]["body"]
+    assert replay == per_ac
+    before = len(_SelfTestHandler.calls)
+    client.bind("feedback-1", tenant_id="team", idempotency_key="pin-bind-1", reviewed_jira_uac=pin)
+    assert len(_SelfTestHandler.calls) == before + 1
+    assert _SelfTestHandler.calls[-1]["body"]["reviewed_jira_uac"] == pin
+    assert not queue.exists(), "binding decisions must never be queued"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1054,6 +1239,14 @@ def main(argv: list[str] | None = None) -> int:
     capture = sub.add_parser("capture", help="capture a Human correction from a JSON file or stdin")
     capture.add_argument("--input", required=True, help="capture DTO JSON path, or - for stdin")
     capture.add_argument("--no-queue", action="store_true")
+
+    prepare = sub.add_parser("prepare-jira-review", help="prepare a source-pinned capture from raw Jira MCP JSON; no network")
+    prepare.add_argument("--jira-input", required=True, help="raw Jira object with key, fields and names")
+    prepare.add_argument("--input", required=True, help="selected feedback JSON; optional original_reviewed_ac exact excerpt")
+    prepare.add_argument("--field-id", required=True)
+
+    ready = sub.add_parser("readiness", help="read shared-learning configuration; never writes or flushes")
+    ready.add_argument("--tenant-id", default="kone")
 
     draft = sub.add_parser("register-draft", help="register an authored draft before feedback")
     draft.add_argument("--input", required=True, help="draft registration JSON path, or - for stdin")
@@ -1071,7 +1264,9 @@ def main(argv: list[str] | None = None) -> int:
     bind = sub.add_parser("bind", help="bind pending feedback after a draft is registered")
     bind.add_argument("--feedback-id", required=True)
     bind.add_argument("--tenant-id", default="kone")
-    bind.add_argument("--draft-id", required=True)
+    binding = bind.add_mutually_exclusive_group(required=True)
+    binding.add_argument("--draft-id", default="")
+    binding.add_argument("--reviewed-jira-uac", help="JSON file containing the exact source-pin object")
     bind.add_argument("--idempotency-key", required=True)
 
     review = sub.add_parser("review", help="submit a named Human review once; never queued")
@@ -1088,6 +1283,17 @@ def main(argv: list[str] | None = None) -> int:
     if not args.command:
         parser.error("a command or --self-test is required")
     try:
+        if args.command == "prepare-jira-review":
+            result = prepare_jira_review(_read_json(args.jira_input), _read_json(args.input), field_id=args.field_id)
+            _print_json(result)
+            return 0
+        if args.command == "readiness" and not all((
+            args.base_url or os.environ.get("AEM_STUDIO_URL"), os.environ.get("AEM_STUDIO_TOKEN")
+        )):
+            _print_json({"configuration_only": True, "status": "CLIENT_NOT_CONFIGURED",
+                         "server_contacted": False, "actual_learning_proven": False,
+                         "message": "Configure personal credentials securely; do not paste tokens into chat."})
+            return 2
         client = FeedbackClient(
             args.base_url, timeout=args.timeout, queue_path=args.queue_path
         )
@@ -1104,12 +1310,15 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "status":
             result = client.status(args.feedback_id, tenant_id=args.tenant_id)
+        elif args.command == "readiness":
+            result = client.readiness(tenant_id=args.tenant_id)
         elif args.command == "bind":
             result = client.bind(
                 args.feedback_id,
                 tenant_id=args.tenant_id,
                 draft_id=args.draft_id,
                 idempotency_key=args.idempotency_key,
+                reviewed_jira_uac=_read_json(args.reviewed_jira_uac) if args.reviewed_jira_uac else None,
             )
         elif args.command == "review":
             result = client.review(args.feedback_id, _read_json(args.input))

@@ -41,6 +41,7 @@ All HTTP paths below use the existing `/api/v1` prefix and authenticated tenant 
 
 | Operation | Endpoint |
 |---|---|
+| Read-only readiness configuration | `GET /test-plan-learning/readiness?tenant_id=...` |
 | Register immutable draft | `POST /test-plan-learning/drafts` |
 | Capture selected correction | `POST /test-plan-learning/feedback` |
 | Legacy/shared capture compatibility | Existing `POST /test-plans/{jira_key}/feedback` |
@@ -57,6 +58,7 @@ With personal credentials already set in the environment:
 
 ```bash
 python .codex/skills/test-plan-generation/scripts/feedback_capture.py --help
+python .codex/skills/test-plan-generation/scripts/feedback_capture.py readiness --tenant-id team_tenant
 python .codex/skills/test-plan-generation/scripts/feedback_capture.py capture --input selected-feedback.json
 python .codex/skills/test-plan-generation/scripts/feedback_capture.py list --tenant-id team_tenant
 python .codex/skills/test-plan-generation/scripts/feedback_capture.py flush-queue
@@ -65,6 +67,90 @@ python .codex/skills/test-plan-generation/scripts/feedback_capture.py flush-queu
 Run `--help` for status, draft registration, binding and review arguments. Resolving an existing pending binding requires the ticket's current live QE Assignee and tenant access. Review is never queued or automatically replayed. Network delivery failure keeps a redacted capture retry record; auth/validation conflicts require correction, not blind retries. A saved receipt is not proof that a later run used the lesson.
 
 At the next configured skill invocation, make one bounded capture-queue flush and report saved/remaining/blocked counts. Do not convert an ambiguously failed MCP capture into a differently normalized helper request with the same idempotency key: reconcile it through list/status or replay the exact original MCP arguments. Never report a tool error as a saved or queued receipt.
+
+### A teammate reviews an existing Jira UAC in a fresh session
+
+The reviewer does not need the original Claude/Codex conversation. Read the live
+Jira issue through Jira MCP, including the raw Acceptance Criteria field and its
+field-name metadata. Use the helper's `prepare-jira-review` command with
+`--jira-input`, `--input`, and `--field-id` to prepare the selected correction and an
+exact source pin. Preparation is local and sends nothing. It must not be reported
+as a VM receipt. Use `--help` for the input contract; do not derive the pin from
+rendered HTML, an AI summary, or reconstructed criteria.
+
+The prepared `reviewed_jira_uac` reference contains the actual custom field ID,
+SHA-256 of its exact raw text, optional observed issue-update timestamp, and an
+optional exact `original_reviewed_ac` excerpt. If `ac_id` is supplied, that excerpt
+is required. Do not combine this reference with a generated draft, fingerprint,
+bundle, or run ID. The helper does not infer `HUMAN_CORRECTION` merely because Jira
+contains an acceptance field; the selected correction must actually come from
+the Human reviewer.
+
+Before submitting, check readiness for `capabilities.reviewed_jira_uac=true` on
+the deployed backend. During capture, the server independently retrieves the
+tenant's pinned Jira field and verifies its hash, timestamp when supplied, and
+unique excerpt. Changed content is a conflict, not permission to capture a newer
+version silently. Empty content cannot bind; unavailable Jira cannot establish a
+source and may leave an exact retry queued locally. Reconcile the receipt rather
+than claiming the review was saved.
+
+The immutable snapshot records `generation_lineage_verified=false`. It proves
+which Jira field was reviewed, not which model generated it or that its contents
+are approved product truth. A later bind can use the same pinned
+`reviewed_jira_uac` reference instead of a registered `draft_id`; resolving a
+pending binding still requires the current live QE Assignee. Neither a snapshot
+nor a Jira comment approves a reusable lesson. Explicit review and the later
+publication/influence checks remain required.
+
+## Readiness is not proof of learning
+
+`GET /api/v1/test-plan-learning/readiness?tenant_id=...` is a bounded, authenticated,
+tenant-scoped configuration check. It makes no database, Jira, embedding, index or
+generation request, does not start a worker, and does not create or migrate storage.
+Responses use `Cache-Control: no-store`. The contract is
+`schema_version=shared-uac-learning-readiness-v1`.
+
+The readiness response deliberately separates these states:
+
+| Field | What it proves — and what it does not |
+|---|---|
+| `capabilities.capture` | This backend exposes the capture contract. Persistence is still `NOT_PROBED`. |
+| `capabilities.reviewed_jira_uac` | The reviewed-Jira-UAC source-binding contract is supported by this backend version. It does not mean a particular source has been captured or verified. |
+| `identity.personal_identity` | The authenticated server identity is a named Human identity. No identity or role supplied by the client can change it. |
+| `identity.jira_identity_mapping_present` | An operator-provisioned Jira identity mapping exists. The live ticket's QE Assignee has **not** been verified by this check. |
+| `worker.status=CONFIGURED_PAUSED` | The current process's worker setting disables startup scheduling. It does not inspect an already-created scheduler or prove its runtime state. |
+| `worker.status=CONFIGURED_ENABLED_RUNTIME_UNVERIFIED` | Scheduling is configured on. This does not prove that a worker started, ran, or indexed anything. `running` remains `null`. |
+| `learning.configured_mode=SHADOW` | The shared-learning lane records potential matches without changing the UAC output. |
+| `learning.configured_mode=ENABLED` | Influence is configured, not demonstrated. A matching eligible lesson and a traceable investigation are still required. |
+| `learning.publication/index=NOT_PROBED` | No SQL publication or index was consulted. Unknown does not mean empty or healthy. |
+
+Development bypass and test tokens cannot use this endpoint. A real shared/service
+token with tenant access may inspect configuration, but receives
+`personal_identity=false` and gains no approval permission. Neither an admin role
+nor an existing Jira identity mapping proves current QE-Assignee authority.
+Invalid mode configuration reports `DISABLED`, matching the canonical resolver's
+fail-closed behavior. No credentials, identity values, Jira URLs, correction text,
+or database configuration are returned.
+
+To answer **“was this correction saved, approved, indexed, and actually used?”**,
+inspect its existing `/feedback/{feedback_id}?tenant_id=...` status and a later run
+trace. These are separate claims:
+
+- `persisted=true` proves a VM receipt; a local queue does not.
+- `reuse_eligible=true` with `publication_review_status=QE_APPROVED` proves eligibility
+  under current stored review/lineage policy; an old `APPROVED` label alone does not.
+- `index_status=PENDING`, `FAILED`, or `INDEXED` describes that revision's outbox
+  projection, not whether a future generation used it. The canonical resolver
+  reads the current **SQL publication**, so pending vector projection alone does
+  not make an otherwise eligible SQL lesson unavailable.
+- Actual influence requires the later run's publication ID, lesson ID, relevant
+  investigation question and disposition. Readiness always reports
+  `actual_learning_proven=false`; even `ENABLED` plus `INDEXED` cannot establish use.
+
+There is no automatic Jira-comment watcher. Reading or posting a Jira UAC review
+does not itself create reusable memory. The skill must capture the selected Human
+correction, receive a VM receipt, and obtain the explicit live-QE-Assignee review.
+Configuration checks never perform those actions on the teammate's behalf.
 
 ## SQL, indexing and failure behavior
 
@@ -80,7 +166,7 @@ Every retrieval rechecks the current SQL publication; there is no stale local-fe
 2. Take a consistent database backup using the site's SQLite backup API or PostgreSQL `pg_dump` procedure. Test restoration into a disposable database first. Do not copy a live SQLite main file alone when WAL is active.
 3. Ensure metadata-only `benchmark/v2/manifests/split_manifest.json` is available. It is an existing ignored artifact, not an expected-answer file. In backend-only containers, mount it and set `SHARED_UAC_BENCHMARK_SPLIT_MANIFEST`. Missing/malformed policy permits capture but quarantines approval/publication.
 4. Apply the additive `shared_uac_learning_v1` migration to a restored test database and verify existing feedback counts are unchanged. Then use the established Alembic procedure for the VM database. Do not downgrade: downgrade would remove the new learning records. SQLite development startup also creates these tables; coordinate migration state before running Alembic against an already auto-created schema.
-5. Set production dev bypass off; issue personal identities with protected Jira identity mappings. Confirm `SHARED_UAC_QE_FIELD_ID` resolves to the live `QE Assignee` field. Set `SHARED_UAC_LEARNING_MODE=SHADOW`, `SHARED_UAC_LEARNING_WORKER_ENABLED=true`. Reload the existing backend service. No Nginx dashboard change is needed.
+5. Set production dev bypass off; issue personal identities with protected Jira identity mappings. Confirm `SHARED_UAC_QE_FIELD_ID` resolves to the live `QE Assignee` field. Start with `SHARED_UAC_LEARNING_MODE=SHADOW`. Preserve existing maintenance writer pauses, including `SHARED_UAC_LEARNING_WORKER_ENABLED=false`; this rollout does not authorize resuming them. Enable the learning worker only after the operator explicitly ends the relevant maintenance pause and approves indexing. Reload only through the established backend deployment procedure. No Nginx dashboard change is needed.
 6. Verify `/mcp/health`, tools list, capture receipt, current-QE-Assignee review, SQL publication and bounded index job. Verify non-QE admins/teammates cannot bind/review and that missing Jira identity or unavailable Jira fails closed. Use a real approved training incident; do not upload synthetic tests or protected benchmark answers.
 7. Repeat capture in Claude and retrieval in Codex, then reverse. Check publication/lesson IDs and shadow matches. Record the actual VM evidence separately from local test output.
 8. Enable `SHARED_UAC_LEARNING_MODE=ENABLED` only after cross-client proof and blinded regression approval. Clients can remain shadow/disabled. Immediate rollback: set `DISABLED`; keep SQL audit records intact. Revoke individual lessons when needed.

@@ -323,6 +323,7 @@ FEEDBACK_DELTA_TYPES = [
 FEEDBACK_DECISIONS = ["APPROVE", "REJECT", "REVOKE", "SUPERSEDE"]
 FEEDBACK_TOOL_NAMES = frozenset({
     "capture_uac_feedback", "list_uac_feedback", "get_uac_feedback_status", "review_uac_feedback",
+    "bind_uac_feedback", "get_uac_feedback_readiness",
 })
 
 
@@ -343,6 +344,31 @@ def _require_personal_feedback_identity() -> None:
     if (parsed.scheme == "http" and not loopback
             and os.environ.get("AEM_STUDIO_ALLOW_INSECURE_HTTP", "").strip().lower() != "true"):
         raise ValueError("Use HTTPS or explicitly set AEM_STUDIO_ALLOW_INSECURE_HTTP=true for this plaintext service.")
+
+
+def _reviewed_jira_uac_schema() -> dict:
+    return {
+        "type": "object",
+        "description": (
+            "Exact raw Jira UAC source pin; the server independently retrieves it. "
+            "Not a generated draft, approval or proof of generator lineage. "
+            "Do not combine with draft/run/bundle references."
+        ),
+        "properties": {
+            "field_id": {"type": "string", "pattern": "^customfield_[1-9][0-9]{0,9}$"},
+            "expected_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "expected_issue_updated": {
+                "type": "string", "maxLength": 80, "default": "",
+                "description": "Optional exact observed timezone-aware Jira issue timestamp.",
+            },
+            "original_reviewed_ac": {
+                "type": "string", "maxLength": 12000, "default": "",
+                "description": "Exact unique original criterion excerpt; required when ac_id is supplied.",
+            },
+        },
+        "required": ["field_id", "expected_sha256"],
+        "additionalProperties": False,
+    }
 
 
 def _feedback_tools() -> list[types.Tool]:
@@ -422,6 +448,7 @@ def _feedback_tools() -> list[types.Tool]:
                     "run_id": {"type": "string", "maxLength": 160, "default": ""},
                     "ac_id": {"type": "string", "maxLength": 120, "default": ""},
                     "draft": draft,
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
                     "client_context": client_context,
                 },
                 "required": ["jira_key", "idempotency_key", "raw_feedback"],
@@ -461,6 +488,46 @@ def _feedback_tools() -> list[types.Tool]:
                     "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
                 },
                 "required": ["feedback_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_uac_feedback_readiness",
+            description=(
+                "Read authenticated tenant configuration and supported feedback contracts only. "
+                "No database/index/Jira probe, worker start, capture or approval; "
+                "a configured identity/mode is not proof that learning works or was used."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 120},
+                },
+                "required": ["tenant_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="bind_uac_feedback",
+            description=(
+                "Explicitly bind pending feedback to one existing draft or exact reviewed Jira UAC pin. "
+                "Only the ticket's current live QE Assignee may bind. This does not approve learning. "
+                "Never queued or automatically retried; keep the original source pin unchanged."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "draft_id": {"type": "string", "minLength": 1, "maxLength": 36},
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
+                },
+                "required": ["feedback_id", "idempotency_key"],
+                "oneOf": [
+                    {"required": ["draft_id"], "not": {"required": ["reviewed_jira_uac"]}},
+                    {"required": ["reviewed_jira_uac"], "not": {"required": ["draft_id"]}},
+                ],
                 "additionalProperties": False,
             },
         ),

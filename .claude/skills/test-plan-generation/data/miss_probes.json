@@ -1,6 +1,6 @@
 {
  "schema_version": "aem-guides-miss-probes-v1",
- "note": "Curated, human-approved discovery probes. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). Never add a probe that encodes a single concrete symbol, path, or Jira key.",
+ "note": "Curated Human-approved probes and separately identified LEARNED, VALIDATING historical discovery candidates. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). LEARNED records remain advisory SHADOW, never acceptance authority. Opaque case references resolve through the external mining ledger and never participate in matching. Never add a probe that encodes a single concrete symbol, path, or Jira key.",
  "probes": [
   {
    "probe_id": "MP-001",
@@ -246,6 +246,179 @@
    "counterexamples_checked": true,
    "equivalence_key": "native-pdf-vs-dita-ot-parity",
    "status": "VALIDATING"
+  },
+  {
+   "probe_id": "MP-008",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "HISTORY",
+    "match": [
+     "cjk",
+     "korean",
+     "east asian",
+     "localized text",
+     "multilingual input",
+     "input method"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "LOCALIZATION",
+    "candidate_template": "investigate localized character input and rendering, plus localized resource paths and attachment interaction, on the touched flow; establish expected behaviour from current evidence"
+   },
+   "provenance": {
+    "source": "LEARNED",
+    "delta_ids": [],
+    "promotion_state": "VALIDATING",
+    "independent_case_count": 4,
+    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+    "supporting_cases": [
+     {
+      "case_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
+      "incident_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=377",
+      "evidence_kind": "THEME_PRECEDENT"
+     },
+     {
+      "case_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
+      "incident_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=432",
+      "evidence_kind": "THEME_PRECEDENT"
+     },
+     {
+      "case_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
+      "incident_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=441",
+      "evidence_kind": "THEME_PRECEDENT"
+     },
+     {
+      "case_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
+      "incident_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=444",
+      "evidence_kind": "THEME_PRECEDENT"
+     }
+    ]
+   },
+   "abstraction_note": "Historical theme-only incidents identify distinct localized input, snippet text, resource-path selection, and attachment interaction risks. They do not establish a shared root cause or accepted product behaviour; current applicability and expectations require investigation.",
+   "normative_invariant": false,
+   "counterexamples_checked": false,
+   "equivalence_key": "localized-input-rendering-resource-handling",
+   "status": "SHADOW",
+   "confidence": 0.2
+  },
+  {
+   "probe_id": "MP-009",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "HISTORY",
+    "match": [
+     "table header",
+     "header row",
+     "table editing",
+     "table structure",
+     "insert rows",
+     "add rows",
+     "delete columns",
+     "deleting columns",
+     "multiple columns",
+     "rows and columns"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "STATE_PARTITION",
+    "candidate_template": "investigate table header changes and multiple-row or column insertion and deletion on the touched editing flow; confirm applicable structural states and expected outcomes from current evidence"
+   },
+   "provenance": {
+    "source": "LEARNED",
+    "delta_ids": [],
+    "promotion_state": "VALIDATING",
+    "independent_case_count": 3,
+    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+    "supporting_cases": [
+     {
+      "case_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
+      "incident_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=131",
+      "evidence_kind": "THEME_PRECEDENT"
+     },
+     {
+      "case_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
+      "incident_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=287",
+      "evidence_kind": "VALIDATED_AC"
+     },
+     {
+      "case_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
+      "incident_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=288",
+      "evidence_kind": "THEME_PRECEDENT"
+     }
+    ]
+   },
+   "abstraction_note": "Separate historical reports cover header-row changes, multiple-column deletion, and multiple-row or column insertion. A generic text-alignment report is not counted as structural-table evidence. These reports suggest investigation, not automatic acceptance scope.",
+   "normative_invariant": false,
+   "counterexamples_checked": false,
+   "equivalence_key": "table-structural-editing-partitions",
+   "status": "SHADOW",
+   "confidence": 0.25
+  },
+  {
+   "probe_id": "MP-010",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "HISTORY",
+    "match": [
+     "map reference",
+     "map-reference",
+     "map references",
+     "topic reference",
+     "topicref",
+     "mapref",
+     "xref"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "REFERENCE_ARTIFACT",
+    "candidate_template": "investigate map-reference display and insertion behaviour; distinguish displayed reference text, inserted order, and error indicators using the current contract"
+   },
+   "provenance": {
+    "source": "LEARNED",
+    "delta_ids": [],
+    "promotion_state": "VALIDATING",
+    "independent_case_count": 3,
+    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+    "supporting_cases": [
+     {
+      "case_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
+      "incident_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=307",
+      "evidence_kind": "VALIDATED_AC"
+     },
+     {
+      "case_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
+      "incident_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=297",
+      "evidence_kind": "VALIDATED_AC"
+     },
+     {
+      "case_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
+      "incident_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
+      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=296",
+      "evidence_kind": "VALIDATED_AC"
+     }
+    ]
+   },
+   "abstraction_note": "Distinct reports support reference display, inserted topic order, and insertion error indicators. A duplicate display report is not counted independently. This is a reference-handling cluster, not evidence of multiple independently confirmed title-display misses or a universal title-versus-filename rule.",
+   "normative_invariant": false,
+   "counterexamples_checked": false,
+   "equivalence_key": "map-reference-display-insertion-handling",
+   "status": "SHADOW",
+   "confidence": 0.3
   }
  ]
 }

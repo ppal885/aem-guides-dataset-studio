@@ -63,6 +63,21 @@ disposition as a non-blocking `REVIEW miss-probe:` note. Absent block = clean pa
 
 ## Adding a probe
 
-Only from a HUMAN, APPROVED, counterexample-checked delta whose lesson generalizes. Never
+An ACTIVE probe requires a HUMAN, APPROVED, counterexample-checked delta whose lesson generalizes. Never
 encode a single concrete symbol, path, customer, or Jira key — that fails both the
 generalization rule and the anti-hardcoding audit.
+
+Deterministic corpus mining has a separate advisory path: `source=LEARNED`,
+`promotion_state=VALIDATING`, effective `status=SHADOW`, finite `confidence<=0.3`.
+Bind each supporting case to the CSV SHA-256 plus logical record number. Use
+opaque case and incident identifiers with an external audit ledger back to the
+original source keys. They are provenance, never routing predicates. At least two
+distinct incident references are required; duplicate variants must share an
+incident identifier. A count of distinct mined reports is not Human confirmation
+of independence or a confirmed AI miss.
+
+An AC-less row supplies theme/precedent signals only. Preserve its empty AC field;
+never infer an expected result from resolution or summary. AC-bearing rows retain
+their historical source text without approving current scope. Mined probes cannot
+become ACTIVE even if their stored status or normative flag overclaims approval.
+Human review and counterexample checks remain a separate promotion step.

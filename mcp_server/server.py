@@ -53,6 +53,8 @@ FEEDBACK_TOOL_NAMES = frozenset({
     "list_uac_feedback",
     "get_uac_feedback_status",
     "review_uac_feedback",
+    "bind_uac_feedback",
+    "get_uac_feedback_readiness",
 })
 _SAFE_FEEDBACK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 SHARED_SSE_TRANSPORT = False
@@ -140,6 +142,31 @@ def _feedback_id(value: object) -> str:
     return identifier
 
 
+def _reviewed_jira_uac_schema() -> dict:
+    return {
+        "type": "object",
+        "description": (
+            "Exact raw Jira UAC source pin; the server independently retrieves it. "
+            "Not a generated draft, approval or proof of generator lineage. "
+            "Do not combine with draft/run/bundle references."
+        ),
+        "properties": {
+            "field_id": {"type": "string", "pattern": "^customfield_[1-9][0-9]{0,9}$"},
+            "expected_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "expected_issue_updated": {
+                "type": "string", "maxLength": 80, "default": "",
+                "description": "Optional exact observed timezone-aware Jira issue timestamp.",
+            },
+            "original_reviewed_ac": {
+                "type": "string", "maxLength": 12000, "default": "",
+                "description": "Exact unique original criterion excerpt; required when ac_id is supplied.",
+            },
+        },
+        "required": ["field_id", "expected_sha256"],
+        "additionalProperties": False,
+    }
+
+
 def _feedback_tools() -> list[types.Tool]:
     client_context = {
         "type": "object",
@@ -217,6 +244,7 @@ def _feedback_tools() -> list[types.Tool]:
                     "run_id": {"type": "string", "maxLength": 160, "default": ""},
                     "ac_id": {"type": "string", "maxLength": 120, "default": ""},
                     "draft": draft,
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
                     "client_context": client_context,
                 },
                 "required": ["jira_key", "idempotency_key", "raw_feedback"],
@@ -256,6 +284,46 @@ def _feedback_tools() -> list[types.Tool]:
                     "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
                 },
                 "required": ["feedback_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_uac_feedback_readiness",
+            description=(
+                "Read authenticated tenant configuration and supported feedback contracts only. "
+                "No database/index/Jira probe, worker start, capture or approval; "
+                "a configured identity/mode is not proof that learning works or was used."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 120},
+                },
+                "required": ["tenant_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="bind_uac_feedback",
+            description=(
+                "Explicitly bind pending feedback to one existing draft or exact reviewed Jira UAC pin. "
+                "Only the ticket's current live QE Assignee may bind. This does not approve learning. "
+                "Never queued or automatically retried; keep the original source pin unchanged."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "draft_id": {"type": "string", "minLength": 1, "maxLength": 36},
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
+                },
+                "required": ["feedback_id", "idempotency_key"],
+                "oneOf": [
+                    {"required": ["draft_id"], "not": {"required": ["reviewed_jira_uac"]}},
+                    {"required": ["reviewed_jira_uac"], "not": {"required": ["draft_id"]}},
+                ],
                 "additionalProperties": False,
             },
         ),
@@ -677,6 +745,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             )
         ]
     except httpx.ConnectError:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [types.TextContent(type="text", text="Shared feedback service unavailable. No feedback persistence or review result was confirmed; no review was retried.")]
         return [
             types.TextContent(
                 type="text",
@@ -831,6 +901,8 @@ async def _dispatch(name: str, args: dict) -> Any:
         }
         if "draft" in args:
             body["draft"] = args["draft"]
+        if "reviewed_jira_uac" in args:
+            body["reviewed_jira_uac"] = args["reviewed_jira_uac"]
         return await _post("/api/v1/test-plan-learning/feedback", body)
 
     if name == "list_uac_feedback":
@@ -852,6 +924,24 @@ async def _dispatch(name: str, args: dict) -> Any:
             f"/api/v1/test-plan-learning/feedback/{identifier}",
             {"tenant_id": args.get("tenant_id", "kone")},
         )
+
+    if name == "get_uac_feedback_readiness":
+        _require_personal_feedback_identity()
+        return await _get("/api/v1/test-plan-learning/readiness", {"tenant_id": args["tenant_id"]})
+
+    if name == "bind_uac_feedback":
+        _require_personal_feedback_identity()
+        identifier = _feedback_id(args.get("feedback_id"))
+        draft_id = args.get("draft_id", "")
+        pin = args.get("reviewed_jira_uac")
+        if bool(draft_id) == (pin is not None):
+            raise ValueError("Binding requires exactly one draft_id or reviewed_jira_uac source.")
+        body = {"tenant_id": args.get("tenant_id", "kone"), "idempotency_key": args["idempotency_key"]}
+        if pin is not None:
+            body["reviewed_jira_uac"] = pin
+        else:
+            body["draft_id"] = draft_id
+        return await _post(f"/api/v1/test-plan-learning/feedback/{identifier}/bind", body)
 
     if name == "review_uac_feedback":
         _require_personal_feedback_identity()

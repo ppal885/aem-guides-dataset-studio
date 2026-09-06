@@ -1,6 +1,6 @@
 ---
 name: test-plan-generation
-description: "Generate evidence-backed, plain-English AEM Guides QA test plans and UACs from Jira, Dynamics/support incidents, customer escalations, PRs, branches, commits, pasted diffs, logs, screenshots, Figma designs, or user-cloned repos. Use for pre-development UAC planning, implementation review, and post-fix validation; inspect available product clones such as Starling/backend, xmleditor, and new editor for current or changed implementation, plus guides-ui-tests and dxml-it-tests for automation evidence; use Jira/GitHub/Figma MCPs and `ask_dita_expert` when available; apply lifecycle-stage-specific evidence requirements so missing PRs and line counts are not blockers before development starts; and output concise bullet-only plans without tables or raw evidence dumps."
+description: "Generate evidence-backed, plain-English AEM Guides QA test plans and UACs from Jira, Dynamics/support incidents, customer escalations, PRs, branches, commits, pasted diffs, logs, screenshots, Figma designs, or user-cloned repos. Also use when a reviewer reads a Jira UAC and supplies Human feedback in a fresh Claude/Codex chat: capture the selected correction with exact reviewed-source binding and separate QE approval for shared learning. Use for pre-development UAC planning, implementation review, and post-fix validation; inspect available product and automation clones; apply lifecycle-stage-specific evidence requirements so missing PRs are not blockers before development; and output concise plain-English plans."
 ---
 
 # Test Plan Generation
@@ -8,6 +8,36 @@ description: "Generate evidence-backed, plain-English AEM Guides QA test plans a
 ## Goal
 
 Produce a concrete AEM Guides QA test plan that reads like a senior manual QA engineer wrote it: practical, evidence-backed, plain-English, and bullet-only. Acceptance criteria must be easy to understand on the first read, including for non-native English speakers. Adapt evidence requirements to the lifecycle stage. Use RAG to learn product behaviour, but do not let RAG replace issue facts, UAC, current implementation evidence, or an available fix diff. Treat Jira UAC, pasted acceptance criteria, or a normalized support-incident acceptance contract as the primary scope and sign-off contract.
+
+## Route reviewer feedback before plan generation
+
+When the user reviews a UAC already on Jira and gives a correction (missed coverage,
+unnecessary scope, wrong expectation, or difficult wording), read
+`references/shared-human-uac-learning.md` and use its fresh-chat capture path. The
+original generation session or draft ID is not required. This is a feedback task, not
+a request to generate another UAC: do not run plan-generation gates, require product
+clones, or retrieve unrelated RAG before saving the selected Human correction.
+
+- Announce that only the selected correction will be saved for QE review; respect an
+  explicit request not to save/share it. Never upload the whole conversation.
+- Fetch the live issue through configured Jira MCP, including the raw UAC field,
+  actual field-name metadata, and issue update time. Bind the exact field bytes using
+  `feedback_capture.py prepare-jira-review`, then capture. Do not hash a paraphrase,
+  rendered HTML, or the newly corrected AC as the original. If the reviewer refers to
+  an older version, do not silently substitute the current Jira field.
+- If that raw source is unavailable, capture without a fabricated draft/run/hash and
+  report `PENDING_BINDING`. A changed-source conflict requires reconfirming the reviewed
+  version; do not retry with a newly guessed pin. Editing/posting the Jira UAC remains
+  a separate request and follows the existing posting gates.
+- Check shared-learning readiness with the installed helper/MCP when configured. A
+  readiness response describes configuration, not a saved record, reviewer authority,
+  successful index, or proof of learning. Missing tools/credentials are reported, never
+  concealed by a local success claim. Status-only requests must not flush the queue.
+- Report the actual receipt: queued locally, saved pending binding, saved pending QE
+  review, approved publication, and indexing are different states. Capture never grants
+  approval, even when the person giving feedback is the ticket's QE Assignee. Reusable
+  lesson approval requires that person's explicit decision and live server identity check.
+- Apply the full generation workflow only if the user also asks for a revised plan.
 
 ## Operating Mode
 
@@ -450,10 +480,10 @@ surfaces a blocking unknown, resolve it from evidence or raise it as an Open Que
 
 ### After delivery — Capture explicit Human corrections
 
-- At the start of each configured skill invocation, make one bounded `feedback_capture.py flush-queue` attempt before capturing new feedback. Replay capture records only, preserve the exact queued request and identity/service binding, and report how many moved from `QUEUED_LOCAL` to `SAVED_REMOTE`. If the queue is blocked or belongs to a different service/credential, leave it intact and report that state. Never retry a review, approval, rejection, revocation, or supersession.
+- At the start of a configured generation/capture invocation, make one bounded `feedback_capture.py flush-queue` attempt before capturing new feedback; status/readiness-only requests never flush. Replay capture records only, preserve the exact queued request and identity/service binding, and report how many moved from `QUEUED_LOCAL` to `SAVED_REMOTE`. If the queue is blocked or belongs to a different service/credential, leave it intact and report that state. Never retry binding, review, approval, rejection, revocation, or supersession, and never replace a stale reviewed-source pin silently.
 - When shared feedback capture is configured and the Human directly corrects the UAC in the current conversation, use `scripts/feedback_capture.py capture` as the primary capture path whenever the helper is available. It minimizes/redacts the request before the first send and can queue that exact capture DTO after a retryable failure. Send the selected correction with `source_kind=HUMAN_CORRECTION`, a unique idempotency key, and the available `draft_id`, `plan_fingerprint`, `evidence_bundle_id`, `run_id`, and `ac_id`. Use MCP `capture_uac_feedback` only as a non-queueing alternate. If an MCP response is lost, reconcile with list/status or replay the exact same MCP arguments; never switch the same idempotency key to a differently normalized helper payload. Use `AI_PROPOSAL` for machine-authored suggestions and `UNCONFIRMED` when origin is not established; neither may be promoted as Human truth. Do not infer a correction from silence, a question, model critique, or third-party AI output.
 - Send only the correction and minimum trace identifiers. Never send the entire Claude/Codex transcript, hidden reasoning, credentials, unrelated attachments, or a locally generated approval decision.
-- Report the returned transport and lifecycle states exactly. `QUEUED_LOCAL` means not saved; `SAVED_REMOTE` does not mean approved; only an explicit server `index_status=INDEXED` may be called indexed. A `PENDING_BINDING` record requires an authenticated draft binding before review.
+- Report the returned transport and lifecycle states exactly. `QUEUED_LOCAL` means not saved; `SAVED_REMOTE` does not mean approved; only an explicit server `index_status=INDEXED` may be called indexed. A `PENDING_BINDING` record requires an authenticated source binding before review. For a new chat reviewing Jira, follow the exact Jira snapshot path above instead of requiring the original generation draft.
 - Do not approve automatically. Any authenticated tenant teammate may capture, but only the ticket's current live QE Assignee, authenticated as a named Human, may bind/review. The server verifies the personal Jira identity and the live `QE Assignee` field; roles, admin status, draft ownership, ordinary Assignee and names in prose grant no authority. That QE must inspect provenance, applicability, counterexamples and the current revision before deliberately calling `review_uac_feedback`. Supporting corrections from another case need their own prior QE approval. Missing identity/field or Jira unavailability leaves review unauthorized; report the unchanged record state and continue normal generation. Binding/review decisions are never queued or automatically retried.
 - Future generation may consume only approved, server-published shared learning returned by the authenticated canonical resolver. Default shared mode is `SHADOW`; it cannot change the plan. In `ENABLED`, discovery lessons remain investigation guidance and language lessons remain `RETRIEVED_NOT_APPLIED` authoring guidance until deliberately applied. If the VM is unavailable, retain the existing approved TRAIN baseline and record shared learning as `UNAVAILABLE`; never read pending feedback or a stale local shared snapshot.
 

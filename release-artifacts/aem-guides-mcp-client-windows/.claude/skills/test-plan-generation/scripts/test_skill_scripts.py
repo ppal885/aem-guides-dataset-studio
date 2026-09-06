@@ -1223,6 +1223,14 @@ def test_run_gates() -> None:
                 {"scope": "cross_customer", "query": "failure shape", "component": "Schematron"},
             ],
             "indexed_history_run": True,
+            "history_attempts": [
+                {
+                    "source": "search_jira_history",
+                    "query": "failure shape",
+                    "result": "ok",
+                    "count": 1,
+                }
+            ],
             "evidence_graph": {
                 "requested": True,
                 "tool": "query_test_evidence_graph",
@@ -10361,6 +10369,100 @@ def test_clarification_gate() -> None:
     print("test_clarification_gate: OK")
 
 
+def test_customer_discovery() -> None:
+    import copy
+    import customer_discovery as profiles
+    import dimension_synthesizer as ds
+    import miss_probe_library as probes
+
+    probes.run_self_tests()
+    packet = {"schema_version": profiles.SCHEMA_VERSION, "profiles": [{
+        "profile_id": "CP-TEST", "customer": "Acme", "labels": ["Acme"],
+        "source": "LEARNED", "promotion_state": "VALIDATING", "confidence": 0.2,
+        "source_ref": "hashed CSV fixture", "source_hash": "sha256:" + "a" * 64,
+        "semantic_match": {"components": ["Authoring"], "any_terms": ["input method"]},
+        "dimensions": [
+            {"id": name, "axis": axis, "candidate": "Investigate " + name,
+             "case_refs": ["case-one", "case-two"]}
+            for name, axis in (("input", "LOCALIZATION"), ("structure", "STATE_PARTITION"),
+                               ("reference", "REFERENCE_ARTIFACT"))
+        ]}]}
+    base = {"issue": {"labels": ["Acme"], "components": ["Authoring"]},
+            "customer_discovery_profiles": packet,
+            "behavior_model": {"facts": [{"fact": "Selection state changes", "evidence_ids": ["E1"]}]}}
+    check("customer profile packet valid", profiles.validate_packet(packet) == [])
+    before = copy.deepcopy(base)
+    candidates = profiles.candidates_for(base, [("E1", "Selection state changes")])
+    check("customer label surfaces three advisory dimensions", len(candidates) == 3)
+    check("customer profiles do not mutate author input", base == before)
+    check("no profile can authorize criteria", all(c["status"] == "INVESTIGATION_CANDIDATE"
+          and c["promotion_state"] == "VALIDATING" and c["non_authoritative"]
+          and not c["auto_author_ac"] and not c["auto_promote"] for c in candidates))
+    check("profile version and provenance survive", all(c["profile_version"] and c["source_case_refs"] for c in candidates))
+    unrelated = copy.deepcopy(base)
+    unrelated["issue"]["labels"] = ["Another"]
+    check("unmatched customer contributes nothing", profiles.candidates_for(unrelated, [("E1", "Selection")]) == [])
+    check("component plus semantic input matches", len(profiles.candidates_for(unrelated, [("E1", "input method")])) == 3)
+    unrelated["issue"]["components"] = ["Publishing"]
+    check("semantic input without component does not match", profiles.candidates_for(unrelated, [("E1", "input method")]) == [])
+    unrelated["issue"]["labels"] = ["Acme-like"]
+    check("partial customer name not matched", profiles.candidates_for(unrelated, [("E1", "Acme")]) == [])
+    for bad in (None, [], {}, {"schema_version": profiles.SCHEMA_VERSION, "profiles": [None]}):
+        check("malformed profile is advisory gap", profiles.discover({"customer_discovery_profiles": bad}, []) ["candidates"] == [])
+    for field, value in (("axis", []), ("case_refs", ["one"]), ("candidate", 12)):
+        malformed = copy.deepcopy(packet)
+        malformed["profiles"][0]["dimensions"][0][field] = value
+        check("malformed dimension safely rejected", profiles.discover({"customer_discovery_profiles": malformed}, []) ["candidates"] == [])
+    for field, value in (("source", "MODEL"), ("promotion_state", "APPROVED"), ("confidence", 0.8), ("labels", [12])):
+        malformed = copy.deepcopy(packet)
+        malformed["profiles"][0][field] = value
+        check("profile cannot assert approval", profiles.discover({"customer_discovery_profiles": malformed}, []) ["candidates"] == [])
+    oversized = copy.deepcopy(packet)
+    oversized["profiles"][0]["source_ref"] = "x" * (profiles.MAX_BYTES + 1)
+    check("explicit profile packet has size bound", bool(profiles.validate_packet(oversized)))
+    collision = copy.deepcopy(packet)
+    collision["profiles"][0]["profile_id"] = "CP:TEST"
+    check("profile ids cannot collide with key separators", bool(profiles.validate_packet(collision)))
+    collision = copy.deepcopy(packet)
+    collision["profiles"][0]["dimensions"][0]["id"] = "input:other"
+    check("dimension ids cannot collide with key separators", bool(profiles.validate_packet(collision)))
+    check("explicit null has honest gap", bool(profiles.discover({"customer_discovery_profiles": None}, [])["gaps"][0]))
+    original_loader = ds._load_offline_retrieval
+    ds._load_offline_retrieval = lambda: None
+    try:
+        generated = ds.synthesize(base)
+        profile_candidates = [c for c in generated["candidates"] if c["generator"] == "CUSTOMER_PROFILE"]
+        check("sweep wires profiles into hypotheses", len(profile_candidates) == 3)
+        check("sweep profiles have stable IDs and valid families", all(c["hypothesis_id"].startswith("DS-")
+              and c["dimension"] in profiles.coverage_hypotheses.COVERAGE_DIMENSIONS for c in profile_candidates))
+        check("unrepresented profiles create discovery note", sum("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(base)) == 3)
+        broad = copy.deepcopy(base)
+        broad["coverage_hypotheses"] = [{"dimension": "STATE_PARTITION"}]
+        check("broad axis does not conceal profile candidates", sum("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(broad)) == 3)
+        broad["coverage_hypotheses"] = profile_candidates
+        check("exact represented profile candidates stop repeating", all("generator=CUSTOMER_PROFILE" not in n for n in ds.review_notes(broad)))
+        changed = copy.deepcopy(broad)
+        changed["customer_discovery_profiles"]["profiles"][0]["dimensions"][0]["candidate"] += " and current retained content"
+        check("old dispositions cannot conceal a changed profile version", any("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(changed)))
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = _load("customer_profile_gate_integration", "run_gates.py")
+            gate.dimension_synthesizer_mod._load_offline_retrieval = lambda: None
+            plan_path = Path(tmp) / "plan.md"
+            manifest_path = Path(tmp) / "manifest.json"
+            plan_path.write_text("# Test Plan\n", encoding="utf-8")
+            no_profile = copy.deepcopy(base)
+            no_profile["customer_discovery_profiles"]["profiles"] = []
+            manifest_path.write_text(json.dumps(no_profile), encoding="utf-8")
+            before_failures, _ = gate.run(str(plan_path), str(plan_path), str(manifest_path), None, True)
+            manifest_path.write_text(json.dumps(base), encoding="utf-8")
+            after_failures, notes = gate.run(str(plan_path), str(plan_path), str(manifest_path), None, True)
+            check("customer advice creates no new hard gate failures", before_failures == after_failures)
+            check("actual gate emits customer REVIEW DISCOVERY", sum(n.startswith("REVIEW DISCOVERY:") and "generator=CUSTOMER_PROFILE" in n for n in notes) == 3)
+    finally:
+        ds._load_offline_retrieval = original_loader
+    print("test_customer_discovery: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -10417,6 +10519,7 @@ def main() -> int:
     test_evidence_anchor_recognition()
     test_jira_safe_text()
     test_miss_probe_library()
+    test_customer_discovery()
     test_feature_map()
     test_offline_retrieval()
     test_dimension_synthesizer()

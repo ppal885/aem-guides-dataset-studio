@@ -53,6 +53,7 @@ def _tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str
 
 _LEARNING_TOOL_NAMES = frozenset({
     "capture_uac_feedback", "list_uac_feedback", "review_uac_feedback", "get_uac_feedback_status",
+    "bind_uac_feedback", "get_uac_feedback_readiness",
 })
 
 
@@ -70,23 +71,37 @@ class LearningStatusArguments(BaseModel):
     feedback_id: str = Field(min_length=1, max_length=36)
 
 
+class LearningReadinessArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(default="kone", min_length=1, max_length=120)
+
+
 def _learning_tools() -> list[dict[str, Any]]:
-    from app.core.schemas_shared_uac_learning import UacFeedbackCapture, UacLessonReview
+    from app.core.schemas_shared_uac_learning import UacFeedbackBind, UacFeedbackCapture, UacLessonReview
     review_schema = UacLessonReview.model_json_schema()
     review_schema["properties"]["feedback_id"] = {"type": "string", "minLength": 1, "maxLength": 36}
     review_schema.setdefault("required", []).append("feedback_id")
+    bind_schema = UacFeedbackBind.model_json_schema()
+    bind_schema["properties"]["feedback_id"] = {"type": "string", "minLength": 1, "maxLength": 36}
+    bind_schema.setdefault("required", []).append("feedback_id")
     return [
-        _tool("capture_uac_feedback", "Any authenticated tenant teammate may save a selected Human UAC correction as pending shared memory. Include an immutable draft or retain PENDING_BINDING. Never uploads a whole conversation or approves learning.", UacFeedbackCapture.model_json_schema()),
+        _tool("capture_uac_feedback", "Save selected Human UAC feedback, including a reviewer in a new Claude/Codex chat after reading Jira. Use reviewed_jira_uac to pin the exact raw Acceptance Criteria field SHA; the server re-fetches it and rejects stale content. Or include an existing draft; without either retain PENDING_BINDING. Never uploads a whole chat or approves learning.", UacFeedbackCapture.model_json_schema()),
         _tool("list_uac_feedback", "List tenant-scoped feedback and exact review revisions; pending feedback is not reusable learning.", LearningListArguments.model_json_schema()),
         _tool("review_uac_feedback", "Approve, reject, supersede or revoke an exact lesson version only as the ticket's current live Jira QE Assignee, using a personal named Human identity. Roles/admin, ordinary Assignee and prose names grant no review authority. Unavailable verification denies review; never queue or automatically retry it. Reusable-learning approval is distinct from Jira UAC approval.", review_schema),
         _tool("get_uac_feedback_status", "Return actual capture, review, reuse_eligible, publication_review_status and index delivery state for one feedback receipt. An earlier APPROVED state alone does not establish current reuse eligibility.", LearningStatusArguments.model_json_schema()),
+        _tool("bind_uac_feedback", "Deliberately bind a pending correction to an existing draft or exact reviewed Jira UAC snapshot. Only the current live QE Assignee may bind. No approval, no automatic retry and no Jira edit.", bind_schema),
+        _tool("get_uac_feedback_readiness", "Read authenticated tenant configuration/capabilities, personal identity mapping, worker pause and learning mode. Does not probe storage, write, index, flush, approve or prove actual learning; use feedback status for a saved receipt.", LearningReadinessArguments.model_json_schema()),
     ]
 
 
 def _call_learning_tool(name: str, arguments: dict[str, Any], user: UserIdentity | None):
     if user is None or user.auth_method != "token":
         raise HTTPException(401, "Authenticated user context is required.")
-    from app.core.schemas_shared_uac_learning import UacFeedbackCapture, UacLessonReview
+    if name == "get_uac_feedback_readiness":
+        from app.services.shared_uac_learning_readiness import get_shared_uac_learning_readiness
+        body = LearningReadinessArguments.model_validate(arguments)
+        return get_shared_uac_learning_readiness(user=user, **body.model_dump())
+    from app.core.schemas_shared_uac_learning import UacFeedbackBind, UacFeedbackCapture, UacLessonReview
     from app.db.session import SessionLocal
     from app.services import shared_uac_learning_service as learning
     with SessionLocal() as session:
@@ -99,6 +114,10 @@ def _call_learning_tool(name: str, arguments: dict[str, Any], user: UserIdentity
         try:
             if name == "capture_uac_feedback":
                 result = learning.capture_feedback(session, user=user, body=UacFeedbackCapture.model_validate(arguments))
+            elif name == "bind_uac_feedback":
+                data = dict(arguments)
+                identity = LearningStatusArguments.model_validate({"tenant_id": data.get("tenant_id", "kone"), "feedback_id": data.pop("feedback_id", "")})
+                result = learning.bind_feedback(session, user=user, feedback_id=identity.feedback_id, body=UacFeedbackBind.model_validate(data))
             else:
                 data = dict(arguments)
                 identity = LearningStatusArguments.model_validate({"tenant_id": data.get("tenant_id", "kone"), "feedback_id": data.pop("feedback_id", "")})

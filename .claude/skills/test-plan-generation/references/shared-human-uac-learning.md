@@ -35,10 +35,11 @@ not an automatic fine-tuning path.
 
 ## Capture flow
 
-0. At the start of each configured skill invocation, make one bounded
+0. At the start of a configured generation/capture skill invocation, make one bounded
    `feedback_capture.py flush-queue` attempt.  Replay capture records only and report
    the returned sent/remaining/blocked counts.  A context mismatch leaves the queue
-   intact.  Never use this step to retry any review decision.
+   intact. Do not flush on a status/readiness-only request. Never use this step to
+   retry any review decision or silently replace a stale Jira source pin.
 1. Preserve the generated plan identity: `draft_id` when available, the 64-character
    `plan_fingerprint`, `evidence_bundle_id`, `run_id`, and optional `ac_id`.
 2. When the Human supplies a correction, prefer `feedback_capture.py capture` whenever
@@ -60,10 +61,67 @@ not an automatic fine-tuning path.
    idempotency prevents duplicate ledger entries.  The queue never contains the draft,
    token, AI classification, session/message identifiers, or approval request.  Human
    source text and any proposed rewrite remain separate redacted fields.
-5. If the record is `PENDING_BINDING`, register/locate the corresponding draft. The
+5. If the record is `PENDING_BINDING`, register/locate the corresponding draft or
+   verify the exact reviewed Jira UAC using the fresh-chat path below. The
    current QE Assignee may deliberately bind it through the authenticated API or
-   `feedback_capture.py bind`. Do not silently bind it during status or review. The
-   four standard MCP tools intentionally do not expose a fifth implicit binding action.
+   `feedback_capture.py bind` / `bind_uac_feedback`. Do not silently bind it during
+   status, capture retry, or review. Binding is explicit and does not approve a lesson.
+
+## Fresh Claude/Codex chat after reviewing Jira
+
+The reviewer can say: "I reviewed this Jira UAC. It misses the existing-file case.
+Save this feedback for QE review." They do not need the old chat or a generated run ID.
+Use this path for genuine selected Human feedback, not to mine all Jira comments or
+silently manufacture feedback from model critique.
+
+1. Read the live issue with configured Jira MCP. Identify the actual custom field
+   from Jira `names` metadata (`Acceptance Criteria`, `Acceptance Criterion`, or `UAC`)
+   and keep its raw string plus `fields.updated`. An installation can pin the exact
+   field with `JIRA_ACCEPTANCE_CRITERIA_FIELD_ID`; do not guess another field. Preserve
+   UTF-8 content, whitespace and line endings. Rendered text/HTML or structured ADF is
+   not a substitute. Read only the selected source; do not attach issue history/chat.
+2. Prepare a private selected-feedback JSON containing `tenant_id`, `raw_feedback`,
+   `source_kind=HUMAN_CORRECTION` only for actual Human text, and
+   `client_context.client`. Keep an optional proposed rewrite separate. When selecting
+   a particular `ac_id`, include `original_reviewed_ac` as a unique exact excerpt of
+   that original criterion. A missed scenario can be attached to the whole UAC without
+   inventing an AC ID. Secret-bearing excerpts must be omitted together with `ac_id`.
+3. Run the helper against the raw Jira response. Preserve its prepared payload and
+   idempotency key for capture/retries; preparing again creates a new logical capture.
+
+   ```text
+   python scripts/feedback_capture.py readiness --tenant-id <configured-tenant>
+   python scripts/feedback_capture.py prepare-jira-review --jira-input raw-jira.json --input selected-feedback.json --field-id <actual-custom-field-id>
+   python scripts/feedback_capture.py capture --input prepared-feedback.json
+   ```
+
+   The preparation command prints JSON; save that exact output privately as
+   `prepared-feedback.json` before capture. It performs no network request. It emits
+   `reviewed_jira_uac={field_id, expected_sha256, expected_issue_updated,
+   original_reviewed_ac}` with SHA-256 of the exact raw field. Do not send a full draft,
+   `draft_id`, `plan_fingerprint`, `evidence_bundle_id`, or `run_id` along with this pin.
+   MCP `capture_uac_feedback` accepts the same source-pin object when the helper is
+   unavailable. Compute the hash mechanically; never invent it.
+4. The VM independently fetches the tenant-pinned Jira field, checks its name, raw
+   hash, optional update timestamp and excerpt, and registers an immutable
+   `JIRA_REVIEW_SNAPSHOT`. This proves which Jira UAC was reviewed, **not** its original
+   generator/run lineage and **not** that AI-written UAC text is Human-approved truth.
+   Only the selected Human correction is a learning candidate.
+5. A stale hash/version returns a conflict. Stop that retry and ask the reviewer which
+   version they reviewed; never silently capture the new current UAC. An unavailable
+   Jira read is retryable; an empty field stays pending. If raw MCP data is unavailable,
+   save the selected correction without source IDs as `PENDING_BINDING`, instead of
+   inventing a pin. Only the live QE Assignee may later bind it deliberately.
+6. Show a short receipt: "Feedback <id> saved on VM. Pending QE review; not yet shared
+   learning." Or "Queued locally—not saved on VM." Include a binding issue if returned.
+   Do not say "learned" merely because capture succeeded. If the server lacks the new
+   capability, report that deployment gap; do not pretend the new binding path ran.
+
+For an existing pending item, `bind_uac_feedback` accepts exactly one `draft_id` or
+`reviewed_jira_uac` source plus `feedback_id`, `tenant_id`, and an idempotency key.
+The CLI equivalent is `bind --feedback-id <id> --tenant-id <tenant>
+--reviewed-jira-uac pin-only.json --idempotency-key <unique-key>`.
+Never queue or automatically replay binding or review decisions.
 
 Example CLI capture payload (write this to a private file or pass it on stdin; do not
 put credentials in it):
@@ -165,9 +223,13 @@ The desktop clients expose exactly these governed tools:
 - `capture_uac_feedback`: persist a Human correction as pending/candidate feedback.
 - `list_uac_feedback`: list records visible to the authenticated actor.
 - `get_uac_feedback_status`: return binding, review, publication, and index state.
+- `get_uac_feedback_readiness`: configuration-only diagnostics; does not inspect SQL,
+  Jira, Chroma, the outbox or publication state, and never grants review authority.
+- `bind_uac_feedback`: explicitly bind an existing pending correction to its verified
+  source; restricted to the current live QE Assignee and never an approval operation.
 - `review_uac_feedback`: approve/reject/revoke/supersede with optimistic revision and attestations.
 
-All four are thin forwards to the shared VM using the same personal Bearer credential.
+All six are thin forwards to the shared VM using the same personal Bearer credential.
 The server, not the desktop client, enforces tenant scope and current live QE Assignee
 authorization. Roles and ownership do not confer review authority. MCP capture does not use the helper's local retry
 queue; use the helper-first capture flow above when offline retry is required.

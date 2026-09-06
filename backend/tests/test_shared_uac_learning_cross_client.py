@@ -1,4 +1,5 @@
 """Authenticated HTTP/MCP cross-client proof against isolated SQL, never the VM."""
+import hashlib
 import json
 
 import pytest
@@ -102,12 +103,40 @@ def query_body():
 
 
 @pytest.mark.parametrize("sender,reader,client_type", [("claude", "codex", "claude_desktop"), ("codex", "claude", "codex")])
-def test_correction_named_approval_publication_other_client_retrieval_and_revocation(shared_client, monkeypatch, sender, reader, client_type):
+@pytest.mark.parametrize("source", ["generation_draft", "jira_review_snapshot"])
+def test_correction_named_approval_publication_other_client_retrieval_and_revocation(shared_client, monkeypatch, sender, reader, client_type, source):
     client, factory = shared_client
-    receipt = rpc(client, "capture_uac_feedback", capture_body(client_type), sender)
+    body = capture_body(client_type)
+    if source == "jira_review_snapshot":
+        original = body.pop("draft")
+        markdown = original["draft_markdown"]
+        body["source_kind"] = "HUMAN_CORRECTION"
+        body["client_context"]["session_id"] = "new-review-chat-without-generation-context"
+        body["reviewed_jira_uac"] = {"field_id": "customfield_13400",
+            "expected_sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
+            "expected_issue_updated": "2026-09-06T00:00:00+00:00",
+            "original_reviewed_ac": original["criteria"]["AC-01"]}
+        qe_reader = qe_authorization._QeAuthorizationJiraClient.get_issue_with_names
+
+        def issue_reader(jira, key, fields=None):
+            if fields == "customfield_13400,updated":
+                return {"key": key, "names": {"customfield_13400": "Acceptance Criteria"},
+                    "fields": {"customfield_13400": markdown, "updated": "2026-09-06T00:00:00+00:00"}}
+            return qe_reader(jira, key, fields)
+
+        monkeypatch.delenv("JIRA_ACCEPTANCE_CRITERIA_FIELD_ID", raising=False)
+        monkeypatch.setattr(qe_authorization._QeAuthorizationJiraClient, "get_issue_with_names", issue_reader)
+    receipt = rpc(client, "capture_uac_feedback", body, sender)
     assert receipt["persisted"] and receipt["binding_status"] == "BOUND"
     assert receipt["learning_status"] == "CANDIDATE"
     assert receipt["raw_feedback"] == capture_body(client_type)["raw_feedback"]
+    if source == "jira_review_snapshot":
+        assert receipt["reviewed_jira_uac"]["source_hash"] == body["reviewed_jira_uac"]["expected_sha256"]
+        assert receipt["reviewed_jira_uac"]["generation_lineage_verified"] is False
+        from app.db.shared_uac_learning_models import UacLearningDraft
+        with factory() as session:
+            snapshot = session.query(UacLearningDraft).filter_by(id=receipt["draft_id"]).one()
+            assert snapshot.evidence_bundle_id == snapshot.run_id == ""
     publication = client.get("/api/v1/test-plan-learning/publication?tenant_id=team_a", headers=headers(reader)).json()
     assert publication["lessons"] == []
     approved = rpc(client, "review_uac_feedback", review_body(receipt["feedback_id"]), "qe")
