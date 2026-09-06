@@ -914,6 +914,113 @@ def _validate_transformation_variant_coverage(manifest, plan_text: str) -> list[
     ]
 
 
+# ---------------------------------------------------------------------------
+# 8. Link / URL ticket -> protocol-scheme variant enumeration
+# ---------------------------------------------------------------------------
+
+# A link / URL / weblink / cross-reference ticket where the URL scheme matters.
+_LINK_SIGNAL_RE = re.compile(
+    r"\b(?:web\s*link|weblink|hyperlink|url|href|cross[-\s]?reference|xref|scope\s*=\s*[\"']?external)\b",
+    re.IGNORECASE,
+)
+# Evidence that the plan addressed the protocol/scheme variant axis.
+_LINK_SCHEME_RE = re.compile(
+    r"\b(?:https?\b|ftps?\b|mailto|tel:|protocol|scheme|http/s|ftp/s|"
+    r"link\s+type|url\s+type)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_link_scheme_coverage(manifest, plan_text: str) -> list[str]:
+    """For a weblink / URL / cross-reference ticket, force the URL protocol-scheme variant
+    axis to be dispositioned (http, https, ftp, ftps, mailto, tel, ...). The observable
+    behaviour can differ by scheme, so a plan that only names one path shape without
+    addressing schemes is incomplete - missed on a weblink scope ticket where the human
+    UAC required all web-link protocols. Satisfy it in an AC or an Open Question."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not _LINK_SIGNAL_RE.search(evidence):
+        return []
+    if _LINK_SCHEME_RE.search(plan_text or ""):
+        return []
+    return [
+        "This is a link/URL/cross-reference ticket, but the plan does not disposition the "
+        "URL protocol-scheme variants (http, https, ftp, ftps, mailto, tel, and similar). "
+        "Add an Acceptance Criterion or Open Question that names the supported schemes; the "
+        "observable behaviour can differ by scheme."
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 9. Corpus-learned axes: negative/boundary (52% of human UACs) and topic types (16%)
+# ---------------------------------------------------------------------------
+
+# Mining 313 human UACs (scripts/uac_eval/mine_uac_dimensions.py) showed the two most
+# common ungated axes: a negative/error/boundary criterion (51.8%) and topic-type
+# enumeration (16.3%). These gates force them, data-driven rather than one-ticket-reactive.
+
+# The ticket describes a defect / wrong behaviour (so a negative criterion is expected).
+_DEFECT_SIGNAL_RE = re.compile(
+    r"\b(?:bug|defect|incorrect(?:ly)?|wrong(?:ly)?|fails?|failed|failure|lost|losing|"
+    r"broken|not\s+working|unexpected|empty|missing|data\s*loss|error|crash|regress)\b",
+    re.IGNORECASE,
+)
+# A negative / error / boundary disposition in an AC, scenario, or Open Question.
+_NEGATIVE_MARKER_RE = re.compile(
+    r"\b(?:must\s+not|should\s+not|does\s+not|do\s+not|invalid|empty|missing|error|"
+    r"fallback|boundary|negative|fails?\s+gracefully|broken|not\s+lost|without\s+loss|"
+    r"no\s+(?:data\s+)?loss|reject|unsupported|malformed)\b",
+    re.IGNORECASE,
+)
+# An authoring/content/element ticket where behaviour can vary by topic type. Scoped to
+# actual DITA content constructs and edit/insert actions - deliberately NOT bare
+# "author"/"metadata"/"content"/"render", which fire on unrelated publishing/status tickets.
+_AUTHORING_CONTENT_RE = re.compile(
+    r"\b(?:insert|paste|\btable\b|xref|conref|keyref|shortdesc|prolog|reltable|topicref|"
+    r"indexterm|footnote|simpletable|tgroup|thead|colspec)\b",
+    re.IGNORECASE,
+)
+_TOPIC_TYPE_RE = re.compile(
+    r"\b(?:concept|reference|task|glossary|bookmap|topic\s+type|all\s+topic\s+types)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_negative_boundary_present(manifest, plan_text: str) -> list[str]:
+    """A defect/wrong-behaviour ticket must carry at least one negative/error/boundary
+    criterion (must-not, invalid, empty, error, no-data-loss, fallback). 52% of human UACs
+    include one; a bug UAC with only positive criteria is under-covered. Satisfy in an AC,
+    a scenario, or an Open Question."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not _DEFECT_SIGNAL_RE.search(evidence):
+        return []
+    if not re.search(r"\bAC[-\s]?\d", _acceptance_block(plan_text), re.I):
+        return []  # no ACs to judge yet
+    if _NEGATIVE_MARKER_RE.search(plan_text or ""):
+        return []
+    return [
+        "This is a defect / wrong-behaviour ticket but the plan has no negative, error, or "
+        "boundary criterion (for example must-not, invalid input, empty/missing, no data "
+        "loss, error/fallback). Add at least one negative Acceptance Criterion, scenario, or "
+        "Open Question - 52% of human UACs include one."
+    ]
+
+
+def _validate_topic_type_coverage(manifest, plan_text: str) -> list[str]:
+    """An authoring/content/element ticket must disposition topic-type variance (concept,
+    reference, task) - the behaviour can differ by topic type. 16% of human UACs enumerate
+    them. Satisfy in an AC or an Open Question."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not _AUTHORING_CONTENT_RE.search(evidence):
+        return []
+    if _TOPIC_TYPE_RE.search(plan_text or ""):
+        return []
+    return [
+        "This is an authoring/content/element ticket but the plan does not disposition topic "
+        "types (concept, reference, task). Add an Acceptance Criterion or Open Question that "
+        "confirms the behaviour across topic types, or bounds the scope explicitly."
+    ]
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -934,6 +1041,9 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_concurrency_isolation(manifest, plan_text)
     problems += _validate_vague_surface_reference(manifest, plan_text)
     problems += _validate_transformation_variant_coverage(manifest, plan_text)
+    problems += _validate_link_scheme_coverage(manifest, plan_text)
+    problems += _validate_negative_boundary_present(manifest, plan_text)
+    problems += _validate_topic_type_coverage(manifest, plan_text)
     return problems
 
 
@@ -1300,6 +1410,51 @@ def run_self_tests() -> None:
         f"a plan enumerating all variant axes must pass: {_validate_transformation_variant_coverage({}, paste_full)}"
     )
     assert _validate_transformation_variant_coverage({}, plain) == [], "no paste/table signal -> no forcing"
+
+    # --- link/URL protocol-scheme enumeration ---
+    link_thin = nl.join([
+        "**Understanding**", "Authoring a weblink should always add scope external.",
+        "**Acceptance Criteria**",
+        "- AC-01: a weblink is inserted with scope external and the href unchanged.",
+        ""])
+    assert any("protocol-scheme" in p for p in _validate_link_scheme_coverage({}, link_thin)), (
+        "a weblink ticket without a scheme axis must fail"
+    )
+    link_full = link_thin + nl.join([
+        "- AC-02: http, https, ftp, and ftps links are all inserted as scope external unchanged.",
+        ""])
+    assert _validate_link_scheme_coverage({}, link_full) == [], "naming schemes satisfies the gate"
+    assert _validate_link_scheme_coverage({}, plain) == [], "no link signal -> no forcing"
+
+    # --- negative/boundary present (corpus: 52%) ---
+    defect_positive_only = nl.join([
+        "**Understanding**", "The header content is lost when pasted (data loss bug).",
+        "**Acceptance Criteria**", "- AC-01: the header content is kept on paste.", ""])
+    assert any("negative" in p for p in _validate_negative_boundary_present({}, defect_positive_only)), (
+        "a defect ticket with only positive ACs must fail"
+    )
+    defect_with_negative = defect_positive_only + nl.join([
+        "- AC-02: an invalid or empty header cell must not silently drop content.", ""])
+    assert _validate_negative_boundary_present({}, defect_with_negative) == [], (
+        "a negative AC satisfies the gate"
+    )
+    assert _validate_negative_boundary_present({}, plain) == [], "no defect signal -> no forcing"
+
+    # --- topic-type coverage (corpus: 16%) ---
+    authoring_no_types = nl.join([
+        "**Understanding**", "Pasting a table into a DITA topic loses content.",
+        "**Acceptance Criteria**", "- AC-01: the table content is kept on paste.", ""])
+    assert any("topic types" in p for p in _validate_topic_type_coverage({}, authoring_no_types)), (
+        "an authoring/content ticket without topic types must fail"
+    )
+    authoring_with_types = authoring_no_types + nl.join([
+        "**Open Questions**",
+        "- OQ-01: confirm behaviour across topic types concept, reference, and task. QA impact: scope.",
+        ""])
+    assert _validate_topic_type_coverage({}, authoring_with_types) == [], (
+        "a topic-type Open Question satisfies the gate"
+    )
+    assert _validate_topic_type_coverage({}, plain) == [], "no authoring/content signal -> no forcing"
 
     print("coverage_forcing self-tests: PASS")
 
