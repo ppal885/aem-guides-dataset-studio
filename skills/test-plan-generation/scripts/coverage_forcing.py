@@ -914,6 +914,42 @@ def _validate_transformation_variant_coverage(manifest, plan_text: str) -> list[
     ]
 
 
+# ---------------------------------------------------------------------------
+# 8. Link / URL ticket -> protocol-scheme variant enumeration
+# ---------------------------------------------------------------------------
+
+# A link / URL / weblink / cross-reference ticket where the URL scheme matters.
+_LINK_SIGNAL_RE = re.compile(
+    r"\b(?:web\s*link|weblink|hyperlink|url|href|cross[-\s]?reference|xref|scope\s*=\s*[\"']?external)\b",
+    re.IGNORECASE,
+)
+# Evidence that the plan addressed the protocol/scheme variant axis.
+_LINK_SCHEME_RE = re.compile(
+    r"\b(?:https?\b|ftps?\b|mailto|tel:|protocol|scheme|http/s|ftp/s|"
+    r"link\s+type|url\s+type)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_link_scheme_coverage(manifest, plan_text: str) -> list[str]:
+    """For a weblink / URL / cross-reference ticket, force the URL protocol-scheme variant
+    axis to be dispositioned (http, https, ftp, ftps, mailto, tel, ...). The observable
+    behaviour can differ by scheme, so a plan that only names one path shape without
+    addressing schemes is incomplete - missed on a weblink scope ticket where the human
+    UAC required all web-link protocols. Satisfy it in an AC or an Open Question."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not _LINK_SIGNAL_RE.search(evidence):
+        return []
+    if _LINK_SCHEME_RE.search(plan_text or ""):
+        return []
+    return [
+        "This is a link/URL/cross-reference ticket, but the plan does not disposition the "
+        "URL protocol-scheme variants (http, https, ftp, ftps, mailto, tel, and similar). "
+        "Add an Acceptance Criterion or Open Question that names the supported schemes; the "
+        "observable behaviour can differ by scheme."
+    ]
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -934,6 +970,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_concurrency_isolation(manifest, plan_text)
     problems += _validate_vague_surface_reference(manifest, plan_text)
     problems += _validate_transformation_variant_coverage(manifest, plan_text)
+    problems += _validate_link_scheme_coverage(manifest, plan_text)
     return problems
 
 
@@ -1300,6 +1337,21 @@ def run_self_tests() -> None:
         f"a plan enumerating all variant axes must pass: {_validate_transformation_variant_coverage({}, paste_full)}"
     )
     assert _validate_transformation_variant_coverage({}, plain) == [], "no paste/table signal -> no forcing"
+
+    # --- link/URL protocol-scheme enumeration ---
+    link_thin = nl.join([
+        "**Understanding**", "Authoring a weblink should always add scope external.",
+        "**Acceptance Criteria**",
+        "- AC-01: a weblink is inserted with scope external and the href unchanged.",
+        ""])
+    assert any("protocol-scheme" in p for p in _validate_link_scheme_coverage({}, link_thin)), (
+        "a weblink ticket without a scheme axis must fail"
+    )
+    link_full = link_thin + nl.join([
+        "- AC-02: http, https, ftp, and ftps links are all inserted as scope external unchanged.",
+        ""])
+    assert _validate_link_scheme_coverage({}, link_full) == [], "naming schemes satisfies the gate"
+    assert _validate_link_scheme_coverage({}, plain) == [], "no link signal -> no forcing"
 
     print("coverage_forcing self-tests: PASS")
 
