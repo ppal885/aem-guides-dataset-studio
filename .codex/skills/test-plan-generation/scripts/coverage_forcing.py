@@ -16,7 +16,7 @@ dimension, it REQUIRES that dimension to be dispositioned - covered in an AC,
 raised as an Open Question, or explicitly opted out with a concrete reason -
 before the plan can pass. It does not author anything; it forces a decision.
 
-Three independent, conservatively-activated checks:
+Representative conservatively-activated checks include:
 
   1. PERFORMANCE - a scale / timeout / resource signal in the plan requires a
      performance disposition (a Performance AC, a performance_assessment block
@@ -27,9 +27,13 @@ Three independent, conservatively-activated checks:
   3. INVESTIGATION-AS-AC - an Acceptance Criterion phrased as an investigation
      task ("confirm whether ...", "check if ... shipped") is not a sign-off
      criterion; it must move to Open Questions.
+  4. AC REDUNDANCY - near-duplicate ACs must be merged into one product outcome.
+  5. CONTRACT PRESENCE - a behavioral plan must contain at least one AC.
+  6. HISTORY ATTEMPT - declared history work must record its search outcome.
 
-Every check has a global opt-out escape so a genuinely-inapplicable signal never
-hard-blocks a correct plan. Generic only. Standard library only.
+Signal-specific opt-outs remain available where documented. A non-behavioral plan
+skips contract presence only when behaviour_matters is explicitly false. Generic
+only. Standard library only.
 """
 from __future__ import annotations
 
@@ -39,24 +43,91 @@ from pathlib import Path
 
 CATALOG_PATH = Path(__file__).with_name("data") / "ui_feature_surface_catalog.json"
 
+# Keep these mechanical thresholds aligned with scripts/uac_eval/precision.py.
+OVER_DECOMPOSITION_MAX = 12
+REDUNDANCY_JACCARD = 0.6
+
+_AC_LABEL_RE = re.compile(r"\bAC[-\s]?(\d+)\b", re.IGNORECASE)
+_BULLET_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*\S)\s*$")
+_AC_REDUNDANCY_STOP_WORDS = frozenset(
+    "the a an and or of to in on for is are be that this it with as by from at "
+    "should must will shall verify ensure when then given user should_be able "
+    "not no if into their its each any all both which while".split()
+)
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def _acceptance_block(plan_text: str) -> str:
+def _extract_ac_block(plan_text: str) -> tuple[str, bool]:
+    """Return only the acceptance-contract section and whether it was found.
+
+    This intentionally mirrors scripts/uac_eval/precision.py. Missing sections do
+    not fall back to the whole plan because unrelated bullets and AC references are
+    not acceptance criteria.
+    """
     if not plan_text:
-        return ""
-    m = re.search(r"\*\*Acceptance Criteria\*\*(.*?)(?:\n\*\*|\Z)", plan_text, re.S)
-    return m.group(1) if m else plan_text
+        return "", False
+    match = re.search(
+        r"(?:^|\n)\s*(?:#{1,4}\s*|\*\*)\s*"
+        r"(?:Proposed acceptance contract|Acceptance contract|Acceptance criteria)\b.*?"
+        r"(?=\n\s*(?:#{1,4}\s*|\*\*)\s*[A-Z][A-Za-z /]{2,40}\b|\Z)",
+        plan_text,
+        re.S | re.I,
+    )
+    if match:
+        return match.group(0).strip(), True
+    return "", False
+
+
+def _ac_items(block: str) -> list[str]:
+    """Return one single-line item per AC, preferring explicit AC labels."""
+    labelled: list[str] = []
+    for raw in block.splitlines():
+        line = raw.strip()
+        if line and _AC_LABEL_RE.search(line):
+            labelled.append(line)
+    if labelled:
+        return labelled
+
+    items: list[str] = []
+    for raw in block.splitlines():
+        match = _BULLET_RE.match(raw)
+        if match:
+            items.append(match.group(1).strip())
+    return items
+
+
+def _content_words(text: str) -> set[str]:
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_.]+", text.lower())
+    return {
+        token
+        for token in tokens
+        if token not in _AC_REDUNDANCY_STOP_WORDS and len(token) > 2
+    }
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def _plain_ac_text(text: str) -> str:
+    """Make an offending AC safe to show in a plain-text gate reason."""
+    cleaned = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", text.strip())
+    cleaned = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", cleaned)
+    cleaned = cleaned.translate(str.maketrans("", "", "`*_~[]<>"))
+    return " ".join(cleaned.split())
+
+
+def _acceptance_block(plan_text: str) -> str:
+    block, found = _extract_ac_block(plan_text)
+    return block if found else ""
 
 
 def _ac_lines(plan_text: str) -> list[str]:
-    lines = []
-    for raw in _acceptance_block(plan_text).splitlines():
-        s = raw.strip()
-        if s.startswith(("-", "*")) or re.match(r"^AC[-\s]?\d", s, re.I):
-            lines.append(s)
-    return lines
+    return _ac_items(_acceptance_block(plan_text))
 
 
 def _opt_out_reason(manifest, key: str) -> str:
@@ -264,7 +335,7 @@ _RESTATED_INSTANCE_RE = re.compile(
 def _validate_ac_oq_contradiction(manifest, plan_text: str) -> list[str]:
     # An Open Question that cites an AC is confirming something an AC already decides -
     # a decided AC and an open question about the same thing contradict. Decide it in the
-    # AC or make it an OQ, not both (e.g. GUIDES-50368 OQ-1 "per AC-7" vs AC-7).
+    # AC or make it an OQ, not both (for example OQ-1 "per AC-7" vs AC-7).
     problems: list[str] = []
     for line in _oq_lines(plan_text):
         m = _AC_ANSWER_REF_RE.search(line)
@@ -321,7 +392,7 @@ def _validate_ac_over_decomposition(manifest, plan_text: str) -> list[str]:
     # surface, per edit transition, per structure) produces a bloated, unreadable UAC. A
     # high AC count is a strong over-decomposition signal; generalize into fewer ACs.
     nums = set(re.findall(r"\bAC[-\s]?(\d+)\b", _acceptance_block(plan_text), re.I))
-    if len(nums) > 12:
+    if len(nums) > OVER_DECOMPOSITION_MAX:
         return [
             f"{len(nums)} acceptance criteria - this is over-decomposed. Generalize "
             "micro-variations (blank vs missing, per surface, per edit transition, per "
@@ -342,6 +413,158 @@ def _validate_no_test_as_ac(manifest, plan_text: str) -> list[str]:
                 "AC (non-negotiable). State the observable product behaviour as the AC and "
                 "record the test in an Automation Coverage line."
             )
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# 4. Mechanical acceptance-contract and history checks
+# ---------------------------------------------------------------------------
+
+def _ac_item_name(item: str, index: int) -> str:
+    match = _AC_LABEL_RE.search(item)
+    if match:
+        return f"AC-{int(match.group(1)):02d}"
+    return f"acceptance item {index}"
+
+
+def _validate_ac_redundancy(combined: str) -> list[str]:
+    """Fail when two acceptance items are lexical near-duplicates."""
+    block, found = _extract_ac_block(combined)
+    if not found:
+        return []
+    items = _ac_items(block)
+    word_sets = [_content_words(item) for item in items]
+    problems: list[str] = []
+    for left_index, left in enumerate(items):
+        for right_index in range(left_index + 1, len(items)):
+            similarity = _jaccard(word_sets[left_index], word_sets[right_index])
+            if similarity < REDUNDANCY_JACCARD:
+                continue
+            right = items[right_index]
+            left_name = _ac_item_name(left, left_index + 1)
+            right_name = _ac_item_name(right, right_index + 1)
+            problems.append(
+                f"{left_name} and {right_name} are near-duplicate acceptance criteria "
+                f"(content-word overlap {similarity:.2f}; limit {REDUNDANCY_JACCARD:.2f}). "
+                f"Merge them into one product outcome. {left_name} text: "
+                f"{_plain_ac_text(left)}. {right_name} text: {_plain_ac_text(right)}."
+            )
+    return problems
+
+
+def _validate_acceptance_contract_present(combined: str, manifest) -> list[str]:
+    """Require a non-empty acceptance contract for behavioral plans."""
+    if isinstance(manifest, dict) and manifest.get("behaviour_matters") is False:
+        return []
+    block, found = _extract_ac_block(combined)
+    if not found:
+        return [
+            "This behavioral plan has no Acceptance contract or Acceptance criteria "
+            "section. Add the product acceptance contract, or explicitly set "
+            "behaviour_matters to false for a genuinely non-behavioral change."
+        ]
+    if not _ac_items(block):
+        return [
+            "The Acceptance contract or Acceptance criteria section contains no "
+            "acceptance items. Add at least one observable product outcome."
+        ]
+    return []
+
+
+_HISTORY_INTENT_KEYS = frozenset(
+    {
+        "evidence_lifecycle",
+        "history_attempts",
+        "indexed_history_run",
+        "jira_history_queries",
+        "jira_history_tool",
+        "jira_history_unavailable_reason",
+        "known_bugs",
+        "known_bugs_intent",
+        "known_bugs_search_intent",
+        "known_jira_bugs",
+        "known_jira_bugs_intent",
+        "past_similar_tickets",
+        "jira_history_intent",
+    }
+)
+_KNOWN_BUG_COLLECTION_KEYS = (
+    "known_bugs",
+    "known_jira_bugs",
+    "past_similar_tickets",
+)
+_HISTORY_RESULTS = frozenset({"ok", "unavailable", "empty"})
+
+
+def _declares_history_intent(manifest) -> bool:
+    return isinstance(manifest, dict) and any(
+        key in manifest for key in _HISTORY_INTENT_KEYS
+    )
+
+
+def _declares_thin_history(manifest: dict) -> bool:
+    queries = manifest.get("jira_history_queries")
+    if isinstance(queries, list) and not queries:
+        return True
+    for key in _KNOWN_BUG_COLLECTION_KEYS:
+        if key not in manifest:
+            continue
+        value = manifest.get(key)
+        if value is None or value == "" or value == [] or value == {}:
+            return True
+    return False
+
+
+def _validate_history_attempt_recorded(manifest) -> list[str]:
+    """Require deterministic attempt records whenever history is in scope."""
+    if not _declares_history_intent(manifest):
+        return []
+
+    attempts = manifest.get("history_attempts")
+    if not isinstance(attempts, list) or not attempts:
+        return [
+            "History or Known Jira Bugs evidence is in scope, but history_attempts "
+            "does not record any search. Add at least one attempt with source, query, "
+            "result, and count; record unavailable or empty instead of leaving a silent gap."
+        ]
+
+    problems: list[str] = []
+    valid_outcomes: list[str] = []
+    for index, attempt in enumerate(attempts, start=1):
+        prefix = f"history_attempts item {index}"
+        if not isinstance(attempt, dict):
+            problems.append(f"{prefix} must be an object.")
+            continue
+        source = attempt.get("source")
+        query = attempt.get("query")
+        result = attempt.get("result")
+        count = attempt.get("count")
+        if not isinstance(source, str) or not source.strip():
+            problems.append(f"{prefix} must have a non-empty source.")
+        if not isinstance(query, str) or not query.strip():
+            problems.append(f"{prefix} must have a non-empty query.")
+        if result not in _HISTORY_RESULTS:
+            allowed = ", ".join(sorted(_HISTORY_RESULTS))
+            problems.append(f"{prefix} result must be one of: {allowed}.")
+        else:
+            valid_outcomes.append(result)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            problems.append(f"{prefix} count must be a non-negative integer.")
+        elif result == "ok" and count == 0:
+            problems.append(f"{prefix} must use result empty when count is zero.")
+        elif result in {"empty", "unavailable"} and count != 0:
+            problems.append(f"{prefix} count must be zero when result is {result}.")
+
+    if (
+        _declares_thin_history(manifest)
+        and valid_outcomes
+        and not {"empty", "unavailable"}.intersection(valid_outcomes)
+    ):
+        problems.append(
+            "The manifest records an empty history query or Known Jira Bugs result, "
+            "but no history attempt is marked empty or unavailable. Record the visible "
+            "reason for the thin result."
+        )
     return problems
 
 
@@ -389,6 +612,124 @@ def _validate_plain_language(plan_text: str) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# 5. Current-status recency and error-surface UI dispositioning
+# ---------------------------------------------------------------------------
+
+# A recent comment/evidence saying the reported behaviour now works or is partly
+# resolved. reproducibility_gate covers the CANNOT-reproduce case; this covers the
+# opposite miss - drafting fix-ACs over behaviour a latest comment says already works
+# (e.g. a recent comment reporting the operation now works on stage/prod while a fix-AC
+# still asserts that operation must succeed).
+_WORKS_NOW_RE = re.compile(
+    r"\b(?:working\s+fine|works\s+fine|now\s+works|no\s+longer\s+reproduc|"
+    r"already\s+(?:works|fixed)|is\s+working\s+(?:fine|now)|"
+    r"resolved\s+(?:on|in)\s+(?:stage|prod|production|develop)|partially\s+resolved|"
+    r"currently\s+works|fixed\s+in\s+(?:develop|the\s+latest))\b",
+    re.IGNORECASE,
+)
+_STATUS_ACK_RE = re.compile(
+    r"\b(?:no\s+longer\s+reproduc|now\s+works|works\s+now|already\s+works|"
+    r"currently\s+works|partially\s+resolved|working\s+fine|resolved\s+on|"
+    r"remaining\s+(?:issue|scope)|still\s+(?:fails|returns|503|errors))\b",
+    re.IGNORECASE,
+)
+# A server-error surface the user actually sees.
+_ERROR_SURFACE_RE = re.compile(
+    r"\b(?:503|502|500|5xx|service\s+unavailable|gateway\s+timeout|"
+    r"internal\s+server\s+error|File\s+is\s+not\s+valid)\b",
+    re.IGNORECASE,
+)
+_ERROR_UI_CONTEXT_RE = re.compile(
+    r"\b(?:editor|panel|dialog|screen|message|shows?|display(?:s|ed)?|surfaces?d?|"
+    r"user|UI|notification|toast)\b",
+    re.IGNORECASE,
+)
+_ERROR_UI_DISPOSITION_RE = re.compile(
+    r"\b(?:unavailable|error\s+message|message\s+(?:shown|displayed|is)|"
+    r"on\s+(?:failure|error|503|5xx)|behaviou?r\s+on\b|surface[sd]?\b|retry|"
+    r"what\s+(?:the\s+)?(?:editor|ui|user)\s+(?:sees|should|does)|notify|"
+    r"notification|warning|blocked\s+from|allowed\s+to\s+save)\b",
+    re.IGNORECASE,
+)
+
+
+def _manifest_issue_text(manifest) -> str:
+    """Flatten the manifest's issue summary/description/comments so a comment-borne
+    signal (e.g. 'validatexml is working fine on stage and prod') is visible to gates."""
+    if not isinstance(manifest, dict):
+        return ""
+    parts: list[str] = []
+    issue = manifest.get("issue")
+    if isinstance(issue, dict):
+        for key in ("summary", "description"):
+            parts.append(str(issue.get(key, "")))
+        comments = issue.get("comments")
+        if comments is None:
+            comments = issue.get("comment")
+        if isinstance(comments, dict):
+            comments = comments.get("comments")
+        if isinstance(comments, list):
+            for entry in comments:
+                parts.append(str(entry.get("body", "") if isinstance(entry, dict) else entry))
+        elif isinstance(comments, str):
+            parts.append(comments)
+    for key in ("current_status_signals", "comments_text"):
+        value = manifest.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, list):
+            parts.append(" ".join(str(x) for x in value))
+    return "\n".join(parts)
+
+
+def _validate_current_status_recency(manifest, plan_text: str) -> list[str]:
+    """Fail when evidence says the behaviour now works / is partly resolved but the plan
+    neither reflects that current status nor raises it as an Open Question and still ships
+    acceptance criteria. Forces the author to read the latest comments before drafting."""
+    evidence = _manifest_issue_text(manifest)
+    if not _WORKS_NOW_RE.search(evidence):
+        return []
+    reflected = bool(
+        _WORKS_NOW_RE.search(plan_text)
+        or _STATUS_ACK_RE.search(plan_text)
+        or re.search(r"\bOQ[-\s]?\d+\b", plan_text)
+    )
+    has_acs = bool(re.search(r"\bAC[-\s]?\d+\b", _acceptance_block(plan_text), re.I))
+    if has_acs and not reflected:
+        return [
+            "A recent comment/evidence says the reported behaviour now works or is "
+            "partially resolved (works-now signal), but the plan neither reflects the "
+            "current status nor raises it as an Open Question and still asserts acceptance "
+            "criteria. Run the reproducibility / working-as-designed assessment: confirm "
+            "what still reproduces, scope the plan to the remaining issue, and do not draft "
+            "fix-ACs for behaviour a comment says already works."
+        ]
+    return []
+
+
+def _validate_error_surface_open_question(manifest, plan_text: str) -> list[str]:
+    """Fail when evidence shows a user-facing server error (503 / service unavailable /
+    'File is not valid') but no AC or Open Question dispositions what the UI should do on
+    that error (message, whether the action is blocked/allowed/retried, panel state)."""
+    hay = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not (_ERROR_SURFACE_RE.search(hay) and _ERROR_UI_CONTEXT_RE.search(hay)):
+        return []
+    disposition_lines = [
+        line for line in (plan_text or "").splitlines()
+        if re.search(r"\b(?:OQ|AC)[-\s]?\d+\b", line)
+    ]
+    if any(_ERROR_UI_DISPOSITION_RE.search(line) for line in disposition_lines):
+        return []
+    return [
+        "The evidence shows a user-facing server error surface (for example 503 / service "
+        "unavailable / 'File is not valid'), but no Acceptance Criterion or Open Question "
+        "dispositions what the UI should do on that error: the exact message shown to the "
+        "user, whether the action is blocked, allowed, or retried, and the panel/error "
+        "state. Add it as an Open Question (or an AC once the behaviour is decided)."
+    ]
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -400,6 +741,11 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_no_markup_in_ac(manifest, plan_text)
     problems += _validate_ac_over_decomposition(manifest, plan_text)
     problems += _validate_plain_language(plan_text)
+    problems += _validate_ac_redundancy(plan_text)
+    problems += _validate_acceptance_contract_present(plan_text, manifest)
+    problems += _validate_history_attempt_recorded(manifest)
+    problems += _validate_current_status_recency(manifest, plan_text)
+    problems += _validate_error_surface_open_question(manifest, plan_text)
     return problems
 
 
@@ -465,7 +811,7 @@ def run_self_tests() -> None:
         ""])
     assert any("investigation task" in p for p in validate({}, inv)), "investigation AC must fail"
 
-    # --- no test/automation as an AC (the GUIDES-49386 / GUIDES-23883 failure) ---
+    # --- no test/automation as an AC ---
     test_ac = nl.join([
         "**Acceptance Criteria**",
         "- AC-09: the added translation test covers the created-in-en / moved-to-en_us case across map and topic.",
@@ -483,13 +829,13 @@ def run_self_tests() -> None:
         ""])
     assert not any("Automation Coverage evidence" in p for p in validate({}, ok_test)), "product 'Test Connection' must pass"
 
-    # --- AC/OQ contradiction (GUIDES-50368 OQ-1 "per AC-7") ---
+    # --- AC/OQ contradiction ---
     contra = nl.join([
         "**Acceptance Criteria**", "- AC-07: the output falls back to the generic value when no regional entry exists.",
         "**Open Questions**", "- OQ-1: confirm the approved behaviour when a regional entry is absent (fall back to generic, per AC-7).",
         ""])
     assert any("redundant/contradictory" in p for p in validate({}, contra)), "OQ referencing an AC must fail"
-    # --- restated-instance AC (GUIDES-50368 AC-2) ---
+    # --- restated-instance AC ---
     restated = nl.join([
         "**Acceptance Criteria**", "- AC-02: The exact reported case passes: a map set to pt_br shows the regional text.",
         ""])
@@ -501,18 +847,18 @@ def run_self_tests() -> None:
         ""])
     assert not any("redundant/contradictory" in p for p in validate({}, ok_oq)), "genuine OQ must pass"
 
-    # --- no raw markup / code block in ACs (GUIDES-45935) ---
+    # --- no raw markup / code block in ACs ---
     markup = nl.join(["**Acceptance Criteria**", "- AC-01: When a keydef is written as <keydef keys=\"\" href=\"topic.dita\"/> the label is wrong.", ""])
     assert any("raw markup" in p for p in validate({}, markup)), "raw XML in AC must fail"
     fence = nl.join(["**Acceptance Criteria**", "- AC-01: the blank key must error.", "```", "<keydef keys=\"\"/>", "```", ""])
     assert any("code block" in p for p in validate({}, fence)), "code fence in AC must fail"
-    # --- over-decomposition (GUIDES-45935 had 16 ACs) ---
+    # --- over-decomposition ---
     many = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i:02d}: the entry behaves correctly in case {i}." for i in range(1, 14)] + [""])
     assert any("over-decomposed" in p for p in validate({}, many)), ">12 ACs must be flagged"
     few = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i}: the entry behaves correctly." for i in range(1, 7)] + [""])
     assert not any("over-decomposed" in p for p in validate({}, few)), "6 ACs must pass"
 
-    # --- no code identifiers in ACs (the GUIDES-52444 failure) ---
+    # --- no code identifiers in ACs ---
     codey = nl.join([
         "**Acceptance Criteria**",
         "- AC-03: The fix is applied in both PublishWorkflowStep.handlePartialPublish and "
@@ -528,6 +874,151 @@ def run_self_tests() -> None:
         "- AC-04: The config property postprocess.temporary.langcopies set to false does not change the outcome.",
         ""])
     assert _validate_plain_language(clean_ac) == [], f"plain-English AC must pass: {_validate_plain_language(clean_ac)}"
+
+    # --- scoped lexical AC redundancy ---
+    distinct_acs = nl.join([
+        "## Acceptance contract",
+        "- AC-01: Translation succeeds for content moved to a regional folder.",
+        "- AC-02: The move preserves the source asset identity.",
+        "## Semantic coverage",
+        "- AC-01 is mapped to the translation workflow.",
+        ""])
+    assert _validate_ac_redundancy(distinct_acs) == [], "distinct ACs must pass"
+    duplicate_acs = nl.join([
+        "## Acceptance criteria",
+        "- AC-01: The cross reference label excludes the footnote callout text.",
+        "- AC-02: The cross reference label must exclude footnote callout text.",
+        ""])
+    duplicate_problems = _validate_ac_redundancy(duplicate_acs)
+    assert len(duplicate_problems) == 1, "near-duplicate ACs must fail"
+    assert "AC-01 text:" in duplicate_problems[0] and "AC-02 text:" in duplicate_problems[0], (
+        "redundancy failure must identify both ACs and their text"
+    )
+    assert _validate_ac_redundancy("## Semantic coverage\n- AC-01 is mentioned here.\n") == [], (
+        "redundancy scan must not fall back to the whole plan"
+    )
+
+    # --- acceptance contract presence ---
+    no_contract = "## Issue understanding\n- A visible behavior is broken.\n"
+    assert _validate_acceptance_contract_present(no_contract, {"behaviour_matters": True}), (
+        "behavioral plan without a contract must fail"
+    )
+    assert _validate_acceptance_contract_present(no_contract, {"behaviour_matters": False}) == [], (
+        "explicit non-behavioral opt-out must pass"
+    )
+    assert _validate_acceptance_contract_present("## Acceptance contract\n", {}) != [], (
+        "empty acceptance contract must fail"
+    )
+    assert _validate_acceptance_contract_present(distinct_acs, {}) == [], (
+        "populated acceptance contract must pass"
+    )
+
+    # --- history-attempt recording ---
+    assert _validate_history_attempt_recorded({}) == [], "manifest without history intent must pass"
+    assert _validate_history_attempt_recorded({"evidence_lifecycle": []}) != [], (
+        "history intent without an attempt must fail"
+    )
+    recorded_history = {
+        "evidence_lifecycle": [],
+        "history_attempts": [
+            {
+                "source": "search_jira_history",
+                "query": "same failure mechanism",
+                "result": "ok",
+                "count": 2,
+            }
+        ],
+    }
+    assert _validate_history_attempt_recorded(recorded_history) == [], (
+        "complete history attempt must pass"
+    )
+    unavailable_history = {
+        "jira_history_queries": [],
+        "history_attempts": [
+            {
+                "source": "search_jira_history",
+                "query": "same failure mechanism",
+                "result": "unavailable",
+                "count": 0,
+            }
+        ],
+    }
+    assert _validate_history_attempt_recorded(unavailable_history) == [], (
+        "an unavailable attempt must make a thin history result explicit"
+    )
+    thin_but_ok = {
+        "known_jira_bugs": [],
+        "history_attempts": [
+            {
+                "source": "search_jira_history",
+                "query": "same failure mechanism",
+                "result": "ok",
+                "count": 1,
+            }
+        ],
+    }
+    assert any("empty or unavailable" in p for p in _validate_history_attempt_recorded(thin_but_ok)), (
+        "empty Known Jira Bugs result needs an empty or unavailable attempt"
+    )
+    malformed_history = {
+        "history_attempts": [
+            {"source": "", "query": "", "result": "ok", "count": True}
+        ]
+    }
+    malformed_problems = _validate_history_attempt_recorded(malformed_history)
+    assert len(malformed_problems) >= 3, "malformed history attempt must fail closed"
+
+    # --- current-status recency (works-now signal in a comment) ---
+    works_now_manifest = {
+        "issue": {
+            "summary": "save-validation timeout",
+            "comments": [{"body": "validatexml is working fine on stage and prod now."}],
+        }
+    }
+    fix_ac_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: saving the high-fan-in topic completes and commits successfully.",
+        ""])
+    assert any("works-now signal" in p for p in _validate_current_status_recency(works_now_manifest, fix_ac_plan)), (
+        "fix-ACs over behaviour a comment says now works must fail"
+    )
+    reflected_plan = nl.join([
+        "**Understanding**", "Per the latest comment the save path now works; only the "
+        "references panel still returns 503 (remaining scope).",
+        "**Acceptance Criteria**",
+        "- AC-01: the references panel loads for the high-fan-in topic.",
+        "**Open Questions**",
+        "- OQ-01: is save-validation still in scope? QA impact: sets scope.",
+        ""])
+    assert _validate_current_status_recency(works_now_manifest, reflected_plan) == [], (
+        "a plan that reflects current status / raises an OQ must pass"
+    )
+    assert _validate_current_status_recency({}, fix_ac_plan) == [], "no works-now signal -> no forcing"
+
+    # --- error-surface UI open question ---
+    err_plan_missing = nl.join([
+        "**Understanding**", "The editor shows 'File is not valid' and the references panel "
+        "returns a 503.",
+        "**Acceptance Criteria**",
+        "- AC-01: the references panel loads for the high-fan-in topic.",
+        ""])
+    assert any("what the UI should do on that error" in p for p in _validate_error_surface_open_question({}, err_plan_missing)), (
+        "a user-facing 503/File-is-not-valid surface with no error-UI disposition must fail"
+    )
+    err_plan_covered = err_plan_missing + nl.join([
+        "**Open Questions**",
+        "- OQ-01: on a 503 what message should the editor show and is save blocked or "
+        "allowed with a warning? QA impact: the observable oracle for the error behaviour.",
+        ""])
+    assert _validate_error_surface_open_question({}, err_plan_covered) == [], (
+        "an error-UI Open Question satisfies the gate"
+    )
+    backend_only_503 = nl.join([
+        "**Understanding**", "Find returns HTTP 503 on large maps.",
+        "**Acceptance Criteria**", "- AC-01: results are returned.", ""])
+    assert _validate_error_surface_open_question({}, backend_only_503) == [], (
+        "a 503 with no user-facing UI context must not force the error-UI question"
+    )
 
     print("coverage_forcing self-tests: PASS")
 

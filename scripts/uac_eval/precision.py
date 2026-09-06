@@ -11,9 +11,9 @@ recall alone.
 Two layers, kept separate on purpose:
 
   1. deterministic (this file) - mechanical, judge-free metrics of an AC block:
-     AC count, over-decomposition flag (mirrors the skill's >12 gate),
-     lexical-redundancy pairs (near-duplicate ACs), and verbose-AC count. These are
-     cheap, reproducible, and not subject to LLM variance.
+     AC count, collapse excess (ACs that fit an existing near-duplicate cluster),
+     lexical-redundancy pairs, verbose-AC count, and a gentle high-volume sanity
+     penalty. These are cheap, reproducible, and not subject to LLM variance.
 
   2. judge-side (judge.py) - the reviewer-style semantic precision the regex cannot
      see (an AC that is an INSTANCE-OF another, wrong altitude). Reported alongside.
@@ -36,10 +36,16 @@ _STOP = frozenset(
     "not no if into their its each any all both which while".split()
 )
 
-# Tuneable thresholds (kept close to the skill's own gates so eval and gate agree).
-OVER_DECOMPOSITION_MAX = 12   # matches _validate_ac_over_decomposition in coverage_forcing.py
-REDUNDANCY_JACCARD = 0.6      # two ACs sharing >=60% of content words are near-duplicates
-VERBOSE_WORDS = 45            # a single AC longer than this reads as a paragraph, not a criterion
+# Tuneable thresholds. The lexical threshold must stay aligned with the skill's
+# coverage_forcing._validate_ac_redundancy gate.
+REDUNDANCY_JACCARD = 0.6   # two ACs sharing >=60% of content words are near-duplicates
+SANITY_AC_CEILING = 25     # breadth is allowed; only extreme dumps get a gentle count penalty
+VERBOSE_WORDS = 45         # a single AC longer than this reads as a paragraph, not a criterion
+
+COLLAPSE_EXCESS_PENALTY = 4
+REDUNDANCY_PAIR_PENALTY = 6
+VERBOSE_AC_PENALTY = 3
+SANITY_EXCESS_PENALTY = 1
 
 
 def _extract_ac_block(text: str) -> tuple[str, bool]:
@@ -102,6 +108,42 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
+def _redundancy_shape(word_sets: list[set[str]]) -> tuple[int, int]:
+    """Return (semantic cluster count, near-duplicate pair count).
+
+    Each Jaccard match is an undirected edge. Connected components form semantic
+    clusters so transitive near-duplicates are counted as one collapsible behavior.
+    Pair reporting remains the exact all-pairs count used by the previous scorer.
+    """
+    count = len(word_sets)
+    if count == 0:
+        return 0, 0
+
+    parents = list(range(count))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+
+    redundancy_pairs = 0
+    for left in range(count):
+        for right in range(left + 1, count):
+            if _jaccard(word_sets[left], word_sets[right]) >= REDUNDANCY_JACCARD:
+                redundancy_pairs += 1
+                union(left, right)
+
+    clusters = len({find(index) for index in range(count)})
+    return clusters, redundancy_pairs
+
+
 def analyze_ac(text: str) -> dict:
     """Deterministic precision metrics for a plan's acceptance-criteria block.
 
@@ -113,7 +155,9 @@ def analyze_ac(text: str) -> dict:
         return {
             "ac_count": 0,
             "unique_ac_labels": 0,
+            "semantic_clusters": 0,
             "over_decomposition": 0,
+            "sanity_excess": 0,
             "redundancy_pairs": 0,
             "verbose_ac_count": 0,
             "avg_ac_words": 0.0,
@@ -122,34 +166,40 @@ def analyze_ac(text: str) -> dict:
         }
     items = _ac_items(block)
     n = len(items)
-    # unique AC-## labels drive the over-decomposition count (matches the skill gate)
+    # Keep label cardinality as a diagnostic, but decomposition is about acceptance
+    # items and their semantic clusters, not label formatting or a flat count cap.
     labels = {m.lower() for line in items for m in _AC_LABEL_RE.findall(line)}
     unique_ac = len(labels) if labels else n
 
     word_sets = [_content_words(it) for it in items]
-    redundancy_pairs = 0
-    for i in range(len(items)):
-        for k in range(i + 1, len(items)):
-            if _jaccard(word_sets[i], word_sets[k]) >= REDUNDANCY_JACCARD:
-                redundancy_pairs += 1
+    semantic_clusters, redundancy_pairs = _redundancy_shape(word_sets)
 
     word_counts = [len(re.findall(r"\w+", it)) for it in items]
     verbose = sum(1 for w in word_counts if w > VERBOSE_WORDS)
     avg_words = round(sum(word_counts) / n, 1) if n else 0.0
 
-    over_decomp = max(0, unique_ac - OVER_DECOMPOSITION_MAX)
+    over_decomp = max(0, n - semantic_clusters)
+    sanity_excess = max(0, n - SANITY_AC_CEILING)
 
     # Precision score: start at 100, deduct for each drift class, floor at 0.
-    #   over-decomposition: 4 pts per AC beyond the cap (a 16-AC plan loses 16)
+    #   collapse excess: 4 pts per AC that can collapse into an existing cluster
     #   redundancy: 6 pts per near-duplicate pair (reviewers flag these hard)
     #   verbosity: 3 pts per over-long AC
-    penalty = 4 * over_decomp + 6 * redundancy_pairs + 3 * verbose
+    #   sanity excess: 1 pt per AC above 25, independent of semantic redundancy
+    penalty = (
+        COLLAPSE_EXCESS_PENALTY * over_decomp
+        + REDUNDANCY_PAIR_PENALTY * redundancy_pairs
+        + VERBOSE_AC_PENALTY * verbose
+        + SANITY_EXCESS_PENALTY * sanity_excess
+    )
     precision_pct = max(0, 100 - penalty)
 
     return {
         "ac_count": n,
         "unique_ac_labels": unique_ac,
+        "semantic_clusters": semantic_clusters,
         "over_decomposition": over_decomp,
+        "sanity_excess": sanity_excess,
         "redundancy_pairs": redundancy_pairs,
         "verbose_ac_count": verbose,
         "avg_ac_words": avg_words,
@@ -168,6 +218,12 @@ def combined_pct(coverage_pct: float | None, precision_pct: float | None) -> flo
     return round(2 * c * p / (c + p), 1)
 
 
+def _require(condition: bool, details: object) -> None:
+    """Keep self-test checks active even when Python runs with optimization."""
+    if not condition:
+        raise AssertionError(details)
+
+
 def run_self_tests() -> None:
     tight = (
         "## Acceptance criteria\n"
@@ -176,11 +232,11 @@ def run_self_tests() -> None:
         "- AC-3: A blank keydef key surfaces an error indication, not a fallback label.\n"
     )
     t = analyze_ac(tight)
-    assert t["ac_count"] == 3, t
-    assert t["over_decomposition"] == 0 and t["redundancy_pairs"] == 0, t
-    assert t["precision_pct"] == 100, t
+    _require(t["ac_count"] == 3, t)
+    _require(t["over_decomposition"] == 0 and t["redundancy_pairs"] == 0, t)
+    _require(t["precision_pct"] == 100, t)
 
-    # 16 distinctly-worded ACs -> over-decomposition penalty, no false redundancy.
+    # 20 distinctly-worded ACs -> legitimate breadth, no collapse penalty.
     distinct = [
         "conref resolution keeps the source topic title",
         "keyref target displays its own navtitle",
@@ -198,15 +254,83 @@ def run_self_tests() -> None:
         "footnote body appears once per printed page",
         "shortdesc becomes the search-result abstract",
         "related-links block sits after the topic body",
+        "warehouse metadata retains the original creator timestamp",
+        "review comments remain pinned to the selected range after reopen",
+        "subject scheme validation rejects an invalid controlled value",
+        "image renditions preserve alternative text in HTML output",
     ]
     many = "## Acceptance criteria\n" + "".join(
         f"- AC-{i}: The output verifies that {d}.\n" for i, d in enumerate(distinct, 1)
     )
     m = analyze_ac(many)
-    assert m["unique_ac_labels"] == 16, m
-    assert m["over_decomposition"] == 4, m           # 16 - 12
-    assert m["redundancy_pairs"] == 0, m
-    assert m["precision_pct"] == 100 - 16, m         # 4 pts * 4
+    _require(m["ac_count"] == 20 and m["unique_ac_labels"] == 20, m)
+    _require(m["semantic_clusters"] == 20, m)
+    _require(m["over_decomposition"] == 0, m)
+    _require(m["redundancy_pairs"] == 0, m)
+    _require(m["sanity_excess"] == 0, m)
+    _require(m["precision_pct"] == 100, m)
+
+    # 20 ACs describing only eight behaviors -> 12 collapsible ACs. Four
+    # clusters contain three copies and four contain two copies (16 matching pairs).
+    clustered_behaviors = [
+        "duplicate detection rejects the repeated upload asset",
+        "timeline version history records the replaced binary asset",
+        "processing profile metadata applies after the upload completes",
+        "translation status remains unchanged after source synchronization",
+        "review comments stay attached after the topic refresh",
+        "conditional filtering excludes the configured audience value",
+        "cross reference labels resolve from the target title",
+        "published navigation preserves the configured topic order",
+    ]
+    cluster_sizes = [3, 3, 3, 3, 2, 2, 2, 2]
+    clustered_items: list[str] = []
+    ac_number = 1
+    for behavior, size in zip(clustered_behaviors, cluster_sizes):
+        for _ in range(size):
+            clustered_items.append(f"- AC-{ac_number}: {behavior}.\n")
+            ac_number += 1
+    clustered = analyze_ac("## Acceptance criteria\n" + "".join(clustered_items))
+    _require(clustered["ac_count"] == 20, clustered)
+    _require(clustered["semantic_clusters"] == 8, clustered)
+    _require(clustered["over_decomposition"] == 12, clustered)
+    _require(clustered["redundancy_pairs"] == 16, clustered)
+    _require(clustered["precision_pct"] == 0, clustered)
+
+    # Similarity grouping is transitive: A~B and B~C form one behavior cluster
+    # even when A and C do not directly meet the threshold.
+    transitive_sets = [
+        {"alpha", "bravo", "charlie", "delta"},
+        {"alpha", "bravo", "charlie", "delta", "echo", "foxtrot"},
+        {"charlie", "delta", "echo", "foxtrot"},
+    ]
+    _require(_redundancy_shape(transitive_sets) == (1, 2), "transitive clustering failed")
+    threshold_sets = [
+        {"alpha", "bravo", "charlie"},
+        {"alpha", "bravo", "charlie", "delta", "echo"},
+    ]
+    _require(_redundancy_shape(threshold_sets) == (1, 1), "Jaccard 0.6 must be inclusive")
+
+    # Extreme but non-redundant breadth gets only the separate gentle ceiling penalty.
+    at_ceiling = "## Acceptance criteria\n" + "".join(
+        f"- AC-{i}: token{i} action{i} output{i} state{i}.\n" for i in range(1, 26)
+    )
+    ceiling = analyze_ac(at_ceiling)
+    _require(ceiling["semantic_clusters"] == 25 and ceiling["over_decomposition"] == 0, ceiling)
+    _require(ceiling["sanity_excess"] == 0 and ceiling["precision_pct"] == 100, ceiling)
+
+    very_broad = "## Acceptance criteria\n" + "".join(
+        f"- AC-{i}: token{i} action{i} output{i} state{i}.\n" for i in range(1, 27)
+    )
+    vb = analyze_ac(very_broad)
+    _require(vb["semantic_clusters"] == 26 and vb["over_decomposition"] == 0, vb)
+    _require(vb["sanity_excess"] == 1 and vb["precision_pct"] == 99, vb)
+
+    pathological = "## Acceptance criteria\n" + "".join(
+        f"- AC-{i}: path{i} trigger{i} result{i} state{i}.\n" for i in range(1, 41)
+    )
+    ph = analyze_ac(pathological)
+    _require(ph["semantic_clusters"] == 40 and ph["over_decomposition"] == 0, ph)
+    _require(ph["sanity_excess"] == 15 and ph["precision_pct"] == 85, ph)
 
     # Two near-duplicate ACs -> a redundancy pair.
     dup = (
@@ -215,8 +339,9 @@ def run_self_tests() -> None:
         "- AC-2: The cross reference label must exclude footnote callout text.\n"
     )
     d = analyze_ac(dup)
-    assert d["redundancy_pairs"] == 1, d
-    assert d["precision_pct"] == 94, d
+    _require(d["semantic_clusters"] == 1 and d["over_decomposition"] == 1, d)
+    _require(d["redundancy_pairs"] == 1, d)
+    _require(d["precision_pct"] == 90, d)
 
     # No acceptance-criteria section -> excluded, NOT counted as 178 bullets.
     no_ac = (
@@ -225,8 +350,8 @@ def run_self_tests() -> None:
         "## Semantic coverage\n- some coverage bullet\n- another coverage bullet\n"
     )
     na = analyze_ac(no_ac)
-    assert na["ac_section_found"] is False, na
-    assert na["precision_pct"] is None and na["ac_count"] == 0, na
+    _require(na["ac_section_found"] is False, na)
+    _require(na["precision_pct"] is None and na["ac_count"] == 0, na)
 
     # A real acceptance-contract section terminates at the next heading.
     scoped = (
@@ -237,11 +362,11 @@ def run_self_tests() -> None:
         "## Semantic coverage\n- ignored\n- ignored2\n- ignored3\n"
     )
     s = analyze_ac(scoped)
-    assert s["ac_section_found"] is True and s["ac_count"] == 2, s
+    _require(s["ac_section_found"] is True and s["ac_count"] == 2, s)
 
-    assert combined_pct(90, 60) == 72.0
-    assert combined_pct(100, 0) == 0.0
-    assert combined_pct(None, 50) is None
+    _require(combined_pct(90, 60) == 72.0, "combined score mismatch")
+    _require(combined_pct(100, 0) == 0.0, "zero precision must produce zero combined")
+    _require(combined_pct(None, 50) is None, "missing coverage must stay unscored")
     print("precision self-tests: PASS")
 
 
