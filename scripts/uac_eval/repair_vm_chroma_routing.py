@@ -107,7 +107,8 @@ def command(args, *, timeout=30, allow=(0,)):
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=timeout, check=False,
                             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
-    require(result.returncode in allow, "COMMAND_FAILED_" + Path(args[0]).name.upper().replace("-", "_"))
+    if allow is not None:
+        require(result.returncode in allow, "COMMAND_FAILED_" + Path(args[0]).name.upper().replace("-", "_"))
     require(len(result.stdout) <= 8 * 1024 * 1024 and len(result.stderr) <= 8 * 1024 * 1024,
             "COMMAND_OUTPUT_TOO_LARGE")
     return result
@@ -186,10 +187,97 @@ def require_stopped():
                 and info.get("MainPID") == "0", "BOTH_SERVICES_MUST_BE_STOPPED")
 
 
+def proc_visibility_check():
+    """Fail closed on hidden FD/map inspection errors that lsof -t can omit.
+
+    This is a bounded visibility precheck, not a replacement ownership scanner.
+    It reads proc metadata only, never a process's environment or file contents.
+    Disappearing FDs/processes are normal; other errors and PID reuse stop us.
+    """
+    deadline = time.monotonic() + 30
+    summary = {"scope": "VISIBLE_PROC_PROCESSES", "processes_checked": 0, "fds_checked": 0,
+               "exited_processes": 0, "vanished_fds": 0}
+    try:
+        mounts = [line.split() for line in bounded(Path("/proc/mounts")).decode().splitlines()]
+        options = [row[3].split(",") for row in mounts if len(row) >= 4 and row[1] == "/proc"]
+        require(len(options) == 1 and not any(option.startswith("hidepid=") and option != "hidepid=0"
+                                             for option in options[0]), "PROC_VISIBILITY_RESTRICTED")
+        processes = [path for path in Path("/proc").iterdir() if re.fullmatch(r"[1-9][0-9]*", path.name)]
+        require(len(processes) <= 65536, "PROC_VISIBILITY_LIMIT_EXCEEDED")
+        for process in processes:
+            require(time.monotonic() < deadline, "PROC_VISIBILITY_TIMEOUT")
+            try:
+                started = process_start_time(process)
+                bounded(process / "maps", 8 * 1024 * 1024)
+                for fd in (process / "fd").iterdir():
+                    require(time.monotonic() < deadline, "PROC_VISIBILITY_TIMEOUT")
+                    require(summary["fds_checked"] + summary["vanished_fds"] < 262144,
+                            "PROC_VISIBILITY_LIMIT_EXCEEDED")
+                    try:
+                        fd.stat()
+                        summary["fds_checked"] += 1
+                    except FileNotFoundError:
+                        summary["vanished_fds"] += 1
+                require(process_start_time(process) == started, "PROC_IDENTITY_CHANGED_DURING_CHECK")
+                summary["processes_checked"] += 1
+            except FileNotFoundError:
+                require(not process.exists(), "PROC_INSPECTION_INCONCLUSIVE")
+                summary["exited_processes"] += 1
+        require(summary["processes_checked"] > 0, "PROC_VISIBILITY_EMPTY")
+    except PermissionError:
+        raise RepairError("PROC_INSPECTION_PERMISSION_DENIED") from None
+    except OSError:
+        raise RepairError("PROC_INSPECTION_FAILED") from None
+    return summary
+
+
+def lsof_scan(path, diagnostic=None):
+    """Interpret +D search results, not its exit code alone. Warnings stay fatal.
+
+    +D can return 1 WITH owners when any other tree entry is unopened (lsof FAQ
+    3.21.3). -t implies -w, so +w MUST follow it to restore warnings. Never use
+    -Q or accept an incomplete/warning-bearing scan. No raw paths/output logged.
+    """
+    diagnostic = diagnostic if diagnostic is not None else {}
+    diagnostic.update(returncode=None, pids=[], warnings_enabled=True)
+    diagnostic["proc_visibility"] = proc_visibility_check()
+    try:
+        result = command(["lsof", "-nP", "-t", "+w", "+D", str(path)], timeout=120, allow=None)
+    except subprocess.TimeoutExpired:
+        diagnostic["failure"] = "LSOF_TIMEOUT"
+        raise RepairError("LSOF_TIMEOUT") from None
+    except OSError:
+        diagnostic["failure"] = "LSOF_EXECUTION_FAILED"
+        raise RepairError("LSOF_EXECUTION_FAILED") from None
+    lines = result.stdout.splitlines()
+    valid = all(re.fullmatch(rb"[1-9][0-9]{0,9}", line) for line in lines)
+    diagnostic.update(returncode=result.returncode, stdout_bytes=len(result.stdout),
+                      stderr_bytes=len(result.stderr), pid_output_valid=valid,
+                      stderr_sha256=digest(result.stderr))
+    if valid:
+        diagnostic["pids"] = sorted({int(line) for line in lines})
+    # Classification aids debugging only. Even an unrecognized warning blocks.
+    messages = result.stderr.lower()
+    diagnostic["stderr_categories"] = [label for marker, label in (
+        (b"permission denied", "PERMISSION_DENIED"), (b"can't stat", "STAT_FAILED"),
+        (b"cannot stat", "STAT_FAILED"), (b"no such file", "MISSING_PATH"),
+        (b"warning", "WARNING"), (b"usage:", "USAGE_ERROR"),
+    ) if marker in messages]
+    require(result.returncode in (0, 1), "LSOF_UNEXPECTED_EXIT")
+    require(not result.stderr.strip(), "LSOF_WARNING_OR_ERROR")
+    require(valid, "LSOF_INVALID_PID_OUTPUT")
+    require(result.returncode != 0 or lines, "LSOF_EMPTY_SUCCESS_INCONCLUSIVE")
+    return diagnostic
+
+
 def no_open_files(path):
-    result = command(["lsof", "-nP", "-t", "+D", str(path)], timeout=120, allow=(0, 1))
-    require(result.returncode == 1 and not result.stdout.strip() and not result.stderr.strip(),
-            "STORE_OPEN_OR_LSOF_INCONCLUSIVE")
+    diagnostic = {}
+    try:
+        result = lsof_scan(path, diagnostic)
+        require(result["returncode"] == 1 and not result["pids"], "STORE_OPEN_OR_LSOF_INCONCLUSIVE")
+    except RepairError:
+        print("COLD_STORE_LSOF=" + encoded(diagnostic).decode().strip(), flush=True)
+        raise
 
 
 def tree_snapshot(path):
@@ -455,14 +543,40 @@ def wait_running(service, seconds=90):
     raise RepairError("SERVICE_START_TIMEOUT")
 
 
-def verify_owner(run):
+def process_start_time(process):
+    # /proc/PID/stat field 2 (comm) may itself contain spaces and parentheses.
+    tail = bounded(process / "stat").rpartition(b") ")[2].split()
+    require(len(tail) >= 20 and tail[19].isdigit(), "CHROMA_PROCESS_STAT_INVALID")
+    return int(tail[19])
+
+
+def regular_file_identity(path):
+    info = path.stat()
+    require(stat.S_ISREG(info.st_mode), "CHROMA_SQLITE_NOT_REGULAR")
+    return info.st_dev, info.st_ino
+
+
+def verify_owner_details(run, diagnostic):
+    diagnostic["step"] = "SERVICE_IDENTITY"
     pid = wait_running("chroma.service", seconds=5)
     process = Path("/proc") / str(pid)
-    require("/chroma.service" in bounded(process / "cgroup").decode(), "CHROMA_CGROUP_MISMATCH")
+    diagnostic["expected_pid"] = pid
+    started = process_start_time(process)
+    require(any(line.rsplit(":", 1)[-1].endswith("/chroma.service")
+                for line in bounded(process / "cgroup").decode().splitlines()), "CHROMA_CGROUP_MISMATCH")
     cmdline = bounded(process / "cmdline").split(b"\0")
     require(str(run / "chroma_db").encode() in cmdline and b"127.0.0.1" in cmdline, "CHROMA_PROCESS_TARGET_MISMATCH")
-    result = command(["lsof", "-nP", "-t", "+D", str(run / "chroma_db")], timeout=120)
-    require(set(result.stdout.decode().split()) == {str(pid)} and not result.stderr.strip(), "CHROMA_NOT_SOLE_STORE_OWNER")
+    diagnostic["step"] = "GLOBAL_STORE_OWNERS"
+    diagnostic["lsof"] = {}
+    result = lsof_scan(run / "chroma_db", diagnostic["lsof"])
+    require(result["pids"] == [pid], "CHROMA_NOT_SOLE_STORE_OWNER")
+    diagnostic["step"] = "PROCESS_SQLITE_IDENTITY"
+    sqlite = run / "chroma_db/chroma.sqlite3"
+    expected_identity = regular_file_identity(sqlite)
+    diagnostic["process_view_sqlite_matches"] = (
+        regular_file_identity(process / "root" / str(sqlite).lstrip("/")) == expected_identity)
+    require(diagnostic["process_view_sqlite_matches"], "CHROMA_PROCESS_VIEW_SQLITE_MISMATCH")
+    diagnostic["step"] = "LOOPBACK_LISTENER"
     listeners = []
     for filename in ("tcp", "tcp6"):
         for line in bounded(Path("/proc/net") / filename).decode().splitlines()[1:]:
@@ -470,15 +584,41 @@ def verify_owner(run):
             if fields[3] == "0A" and fields[1].endswith(":1F40"):
                 listeners.append((fields[1], fields[9]))
     require(len(listeners) == 1 and listeners[0][0] == "0100007F:1F40", "CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
+    diagnostic["step"] = "PROCESS_FILE_DESCRIPTORS"
     links = []
+    sqlite_fd_found = False
     for fd in (process / "fd").iterdir():
         try:
             links.append(os.readlink(fd))
+            info = fd.stat()
+            if stat.S_ISREG(info.st_mode) and (info.st_dev, info.st_ino) == expected_identity:
+                sqlite_fd_found = True
         except FileNotFoundError:
             pass
     require("socket:[" + listeners[0][1] + "]" in links, "CHROMA_PORT_OWNED_BY_OTHER_PROCESS")
-    require(str(run / "chroma_db/chroma.sqlite3") in links, "CHROMA_COPY_FD_NOT_PROVEN")
-    return {"single_owner_pid": pid, "loopback_listener_owned": True, "copy_sqlite_fd_proven": True}
+    require(sqlite_fd_found, "CHROMA_COPY_FD_NOT_PROVEN")
+    diagnostic["step"] = "REVALIDATE_IDENTITY"
+    require(wait_running("chroma.service", seconds=5) == pid and process_start_time(process) == started,
+            "CHROMA_PROCESS_CHANGED_DURING_CHECK")
+    require(regular_file_identity(sqlite) == expected_identity, "CHROMA_SQLITE_CHANGED_DURING_CHECK")
+    diagnostic.update(single_owner_pid=pid, loopback_listener_owned=True, copy_sqlite_fd_proven=True,
+                      process_identity_stable=True, step="COMPLETE")
+
+
+def verify_owner(run):
+    diagnostic = {"schema": "vm-chroma-ownership-v1", "status": "CHECKING"}
+    try:
+        verify_owner_details(run, diagnostic)
+        diagnostic["status"] = "PASS"
+        return diagnostic
+    except (Exception, KeyboardInterrupt) as error:
+        diagnostic.update(status="FAILED", failure=str(error) if isinstance(error, RepairError) else type(error).__name__)
+        print("OWNERSHIP_CHECK=" + encoded(diagnostic).decode().strip(), flush=True)
+        raise
+    finally:
+        # Independent redacted report survives rollback, unlike private in-memory
+        # journal updates. Never includes config backups, command lines or stderr.
+        atomic_write(run / "ownership-check.json", encoded(diagnostic))
 
 
 def apply(pre, token=""):
@@ -547,8 +687,10 @@ def apply(pre, token=""):
                 time.sleep(1)
         journal["direct_inventory"] = checks.inspect_inventory(8000, expected)
         journal["nginx_inventory"] = checks.inspect_inventory(4502, expected)
+        journal_save(run, journal)
         journal["ownership"] = verify_owner(run)
         journal["vector_smoke"] = checks.smoke_vector_queries(expected)
+        journal_save(run, journal)
         print("Starting backend with background writers paused; verifying MCP identity...", flush=True)
         verify_effective_units(run, pre)
         command(["systemctl", "start", "aem-backend.service"], timeout=120)

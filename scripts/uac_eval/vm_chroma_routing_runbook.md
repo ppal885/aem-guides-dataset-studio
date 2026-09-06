@@ -114,6 +114,60 @@ The script prints `ROUTING_RUN_DIR` immediately. Keep it. Its private config
 backups contain secrets; do not attach or commit the directory or `journal.json`.
 Share only the redacted console summary.
 
+## Ownership-check failure and safe retry
+
+Older revisions can stop with `COMMAND_FAILED_LSOF` even after the correct
+Chroma process opened the fresh copy. `lsof +D` searches every directory entry;
+an unopened entry can produce exit 1 while other open files are listed. Exit 1
+alone does not prove a command execution failure. Also, `-t` suppresses warnings
+unless followed by `+w`. These are documented in the [lsof FAQ, section 3.21.3](https://github.com/lsof-org/lsof/blob/master/00FAQ)
+and [manual](https://github.com/lsof-org/lsof/blob/4.95.0/Lsof.8).
+
+The old error wrapper did not retain return code/stdout/stderr. Consequently that
+message alone cannot establish the specific VM cause; do not attribute it to
+mount namespaces or corrupt data without further evidence.
+
+PID-only `lsof` can also omit file-level `NOFD` diagnostics from an unreadable
+process. The updated check first verifies access to the visible processes' maps
+and FD metadata through `/proc`, with process/FD count caps and a deadline checked
+between operations. This is not a hard timeout on a blocked kernel stat call. Restricted
+`hidepid` mounts, permission failures, inconclusive inspection and PID reuse
+stop the operation. Normal process/FD exits are counted, not mistaken for an
+access failure. This requires root in the VM's host process namespace; it cannot
+prove absence of processes hidden outside that namespace or on another host.
+
+It then accepts 0 or 1 only after checking warning-enabled, strictly numeric
+PID output. Any stderr diagnostic, malformed output, unexpected exit, missing
+owner or extra owner still stops the operation. It independently requires the
+service's SQLite FD and filesystem view to match the copy's device/inode,
+verifies its loopback socket, and rechecks PID/start time and file identity.
+This is a point-in-time ownership check, not protection against later external
+writers; exclusive maintenance is still required. It does not ignore warnings
+or add `-Q`.
+
+On failure, `OWNERSHIP_CHECK=...` reports the failing step, PID observations,
+return code, stderr byte count/hash and allowlisted warning categories. The
+same redacted report is written to `ROUTING_RUN_DIR/ownership-check.json` before
+rollback. Successful inventory observations are also persisted before the owner
+check. Raw stderr, process command lines and environment/config contents are
+never included. This report is safe to share; the private journal/backups are not.
+
+After a rolled-back attempt:
+
+1. Preserve its entire run directory and both cold archives. Do not reuse the
+   failed copy as the new source, merge/import, or start either service manually.
+2. Pull the reviewed fix without overwriting local edits. Run the tests below.
+   On Linux, as root, the ownership suite includes a real `lsof` test on temporary ordinary
+   files only; it does not open a Chroma store or start any service. On Windows
+   this native test is explicitly skipped, not counted as VM proof.
+3. Confirm both services are stopped and rerun the read-only preflight. Share
+   the test/preflight results before another apply. A new apply creates a new
+   copy from the verified cold original, with all existing guards intact.
+
+No raw subprocess evidence can be recovered retroactively from an old
+`COMMAND_FAILED_LSOF` report. The stopped services also mean a post-rollback
+`lsof` check cannot reproduce the earlier live owner list.
+
 ## Success means routing parity, not a merged or fully revalidated corpus
 
 `PASS_ROUTING_ONLY_WRITERS_PAUSED` requires:
@@ -180,6 +234,7 @@ fresh copy/journal and requires no config rollback.
 
 ```bash
 python -I -B scripts/uac_eval/test_repair_vm_chroma_routing.py
+python -I -B scripts/uac_eval/test_vm_chroma_ownership.py
 python -I -B scripts/uac_eval/test_vm_chroma_routing_checks.py
 python -I -B scripts/uac_eval/test_export_runtime_copies.py
 python -I -B scripts/uac_eval/test_inspect_export_vectors.py

@@ -91,7 +91,8 @@ class UnitTests(unittest.TestCase):
         with self.assertRaises(subject.RepairError):
             subject.check_conflicting_scope('CHROMA_DATABASE="default_database"', docker=True)
 
-    def test_no_open_files_fails_closed_on_lsof_error(self):
+    @patch.object(subject, "proc_visibility_check", return_value={"processes_checked": 1})
+    def test_no_open_files_fails_closed_on_lsof_error(self, _visibility):
         for code, out, err in ((0, b"123", b""), (1, b"", b"warning"), (0, b"", b"")):
             with patch.object(subject, "command", return_value=SimpleNamespace(returncode=code, stdout=out, stderr=err)):
                 with self.assertRaises(subject.RepairError):
@@ -258,6 +259,30 @@ class FakeMachine:
 
 
 class TransactionTests(unittest.TestCase):
+    def test_ownership_failure_keeps_diagnostics_and_inventory_after_rollback(self):
+        real_owner = subject.verify_owner
+        with tempfile.TemporaryDirectory() as name:
+            machine = FakeMachine(Path(name))
+            def failed_check(_run, diagnostic):
+                diagnostic.update(step="GLOBAL_STORE_OWNERS", lsof={"returncode": 1, "pids": [], "stderr_bytes": 0})
+                raise subject.RepairError("CHROMA_NOT_SOLE_STORE_OWNER")
+            with machine.patches(), patch.object(subject, "verify_owner", real_owner), \
+                    patch.object(subject, "verify_owner_details", side_effect=failed_check):
+                with self.assertRaisesRegex(subject.RepairError, "NOT_SOLE_STORE_OWNER"):
+                    subject.apply(machine.pre)
+                run, = machine.state.iterdir()
+                saved = json.loads((run / "journal.json").read_text())
+                self.assertEqual(saved["state"], "ROLLED_BACK_SERVICES_STOPPED")
+                self.assertEqual(saved["direct_inventory"], {"match": True})
+                self.assertEqual(saved["nginx_inventory"], {"match": True})
+                diagnostic = json.loads((run / "ownership-check.json").read_text())
+                self.assertEqual(diagnostic["failure"], "CHROMA_NOT_SOLE_STORE_OWNER")
+                self.assertEqual(diagnostic["lsof"]["returncode"], 1)
+                self.assertNotIn(["systemctl", "start", "aem-backend.service"], machine.calls)
+                self.assertTrue(all(s == "inactive" for s in machine.services.values()))
+                self.assertEqual((machine.repo / "backend/.env").read_bytes(), machine.original_env)
+                machine.assert_originals(self)
+
     def test_overridden_unit_rolls_back_before_starting_any_service(self):
         with tempfile.TemporaryDirectory() as name:
             machine = FakeMachine(Path(name))
