@@ -1113,6 +1113,51 @@ def _is_structural_noise_literal(literal: str) -> bool:
     return False
 
 
+# Vague filler that states no observable outcome. Mirrors the skill uac_linter's
+# VAGUE_BEHAVIOR class so shipped runtime plans are held to the same bar.
+_VAGUE_AC_RE = re.compile(
+    r"\b(?:works?\s+correctly|should\s+work|behaves?\s+as\s+expected|"
+    r"works?\s+as\s+expected|functions?\s+correctly)\b",
+    re.I,
+)
+_LINT_MAX_AC_WORDS = 45  # aligns with precision.py VERBOSE_WORDS
+
+
+def _lint_acceptance_criteria(statements: list[str]) -> list[str]:
+    """Deterministic, advisory quality checks on the promoted acceptance criteria.
+
+    Ports the plan-text-only subset of the skill's uac_linter into the runtime, which
+    otherwise never lints the plans it ships (the linter only runs when authoring THROUGH
+    the skill). ADVISORY only: findings are surfaced in the plan; a fact-grounded AC is
+    never rewritten or dropped here (that would need judgement the LLM-free runtime avoids).
+    Checks: DUPLICATE_AC (same normalized outcome twice), VAGUE_BEHAVIOR (short filler with
+    no observable outcome), EXCESSIVE_LENGTH (paragraph-length criterion)."""
+    problems: list[str] = []
+    seen: dict[str, str] = {}
+    for statement in statements:
+        text = statement.strip()
+        if not text:
+            continue
+        words = len(re.findall(r"\w+", text))
+        key = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        if key and key in seen:
+            problems.append(
+                f"DUPLICATE_AC: \"{text[:70]}\" repeats an earlier acceptance criterion"
+            )
+        elif key:
+            seen[key] = text
+        if words < 8 and _VAGUE_AC_RE.search(text):
+            problems.append(
+                f"VAGUE_BEHAVIOR: \"{text[:70]}\" states no observable product outcome"
+            )
+        if words > _LINT_MAX_AC_WORDS:
+            problems.append(
+                f"EXCESSIVE_LENGTH: an acceptance criterion runs {words} words — split "
+                f"or tighten it (\"{text[:50]}...\")"
+            )
+    return problems
+
+
 def _plain_candidate(value: str) -> str:
     """Humanize ontology prefixes while preserving the entity wording."""
 
@@ -4112,6 +4157,22 @@ class CanonicalTestPlanReasoningService:
                 section_items["finalization"].append(
                     (f"Unresolved product decision: {question}", "")
                 )
+
+        # Runtime UAC lint pass: apply the skill uac_linter's plan-text checks to the
+        # promoted acceptance criteria so shipped runtime plans meet the same quality bar
+        # (the skill linter only runs when authoring through the skill, not on VM output).
+        # Advisory: findings surface in the coverage-gate section; no AC is mutated.
+        promoted_statements: list[str] = []
+        seen_promoted: set[str] = set()
+        for statement, _record in section_items["acceptance_contract"]:
+            normalized = statement.strip()
+            if normalized and normalized not in seen_promoted:
+                seen_promoted.add(normalized)
+                promoted_statements.append(normalized)
+        for lint_problem in _lint_acceptance_criteria(promoted_statements):
+            section_items["coverage_gate_result"].append(
+                (f"AcceptanceContractLint: {lint_problem}", "acceptance_contract_lint")
+            )
 
         order = list(titles)
         sections: list[PlanSection] = []
