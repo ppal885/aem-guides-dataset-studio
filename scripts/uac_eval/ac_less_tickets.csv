@@ -1,0 +1,510 @@
+key,summary,component,status
+GUIDES-55521,Guides | Provide option to skip untagged content in Ditaval rules,Learning,Closed
+GUIDES-55520,[Guides] Allow for completion criteria to be set in AEM Guides versus ,Learning,In Progress
+GUIDES-55519,[Guides] Error in HotSpot component,Learning,Open
+GUIDES-55515,Guides | AVIF Image Missing,Learning,Review
+GUIDES-55514,[Guides] href attribute of anchor tags getting Stripped during publish,Learning,Review
+GUIDES-55513,[Guides] Intermittent Deletion of Additional Topics When Removing a To,Learning,Open
+GUIDES-55512,[Guides] Authoring | Final Quiz Intro – Additional Instructional Text ,Learning,In Progress
+GUIDES-52444,Incremental publish fails without baseline – “Path removed as not part,Publishing,Open
+GUIDES-52346,[GUIDES]  % Accuracy calculation has slight difference for course.,Learning,Closed
+GUIDES-52345,[GUIDES] Marks scored in the Quiz has 0.01 difference,Learning,Closed
+GUIDES-51134,[SLA3] Markdown headings render only as H1 in New AEM Sites output (al,Publishing,In UAC
+GUIDES-49354,AEM Guides concurrent translation requests lead to Oak merge conflicts,Translation,Closed
+GUIDES-49088,Set ENABLE_RELATED_LINKS_FOR_NATIVE_PDF default as true,Native_PDF/Publishing,Closed
+GUIDES-47402,"Guides 2026.5.0 / XML Editor 2: custom editor_toolbar single-topic ""Ex",Editor,Closed
+GUIDES-46828,Safeguard publishditamap workflow ‑ block replication when critical si,Publishing,Open
+GUIDES-46524,[BLOCKER] new editor build causing UI issues,Editor,Closed
+GUIDES-44651,[Regression] AEM Guides 2026.3.0 – Editor UI no longer shows XML/DITA ,Authoring,Closed
+GUIDES-43499,{Break} Search within .ditamap shows results outside map scope (cm-p13,Authoring,Closed
+GUIDES-43317,[SLA3] HTML 5 Transform preset - images mentioned inside .ditaval are ,Publishing,Closed
+GUIDES-43314,[SLA3] New Assets View “Copy” deletes source assets when AEM Guides is,Asset Management,Open
+GUIDES-39385,Filters Panel in Guides “Topic List” Report — Timeout/Severe Slowness ,Reports,Closed
+GUIDES-39172,[SLA3] AEM Guides – Search Index Returning Outdated / Incorrect Result,Authoring,Open
+GUIDES-35597,Adding related links with text value causes duplicate links in publish,Publishing,Closed
+GUIDES-35564,Open in task dashboard should be Open task details,Review,Closed
+GUIDES-35438,Error when deleting two or more columns from a table,Authoring,Closed
+GUIDES-35436,The scroll on the edit screen moves and the screen goes up,Authoring,Closed
+GUIDES-35048,[SLA3] Valid internal links falsely reported as broken in Asset proper,Asset Management/Reports,Closed
+GUIDES-34932,[SLA3] Double Slash in Output Preset Path Breaks PDF Upload to IBM Doc,Publishing,Closed
+GUIDES-34008,[SLA3] Duplicate Tabs & “NaN” Tag-Limit Warning when Unlocking Topics ,Authoring,Closed
+GUIDES-33739,[SLA3] Source Assets Deleted After Copy & Reprocess in AEM Assets when,Asset Management,Closed
+GUIDES-33722,Salesforce : 504 Gateway Timeout in createDraftFromOnlineKnowledgeArti,Publishing,Open
+GUIDES-33721,Salesforce LIMIT_EXCEEDED: Composite API Request Exceeds 25 Operation ,Publishing,In Progress
+GUIDES-33692,[SLA3] AEM Guides Translation UI – “Send for Translation” label trunca,Translation,Closed
+GUIDES-32520,AEM Guides – Backspace key scrolls editor to top of document (cm-p1076,Authoring,Closed
+GUIDES-32402,[BREAK] Folder titles not displayed in Guides navigation tree,Asset Management,Closed
+GUIDES-31506,Guides home page loads blank for some users | caused by TitleService f,Homepage,Closed
+GUIDES-31102,"""PDFProject"" Appears as the Document Title in Native PDFs when a dynam",Publishing,Closed
+GUIDES-30147,"Deleting table  with merged cell column ,  introduce ghost columns",Authoring,Closed
+GUIDES-30023,Section Tag Replaced by Paragraph Tag on Copy-Paste in AEMaaCS,Authoring,Closed
+GUIDES-29614,Acrolinx Integration | blocking calls due to - CKEditor State Update I,Authoring,Closed
+GUIDES-29462,Native PDF date missing after upgrading to Guides 5.0 on AEM On-Premis,Native_PDF,Closed
+GUIDES-29334,[SLA3] Inline equation in AEM Guides (Tags Off view) merges subsequent,Authoring,Closed
+GUIDES-29194,[SLA3] Issue with Inserted Table Row Missing Borders and Adding Extra ,Authoring,Closed
+GUIDES-28838,"[SLA3] Text ""Type"" Lost on Paste in AEM Guides Editor",Authoring,Closed
+GUIDES-28832,Native PDF - Cover Pages Missing Trademark Symbol in Titles,Native_PDF,Closed
+GUIDES-28270,[PDF Engine v2] Native PDF generating only one page for some content -,Native_PDF,Closed
+GUIDES-28179,Custom mark revision button not working after 2502 upgrade,Authoring,Closed
+GUIDES-28024,AEM Site publishing is getting failed with Dita-ot 4,Publishing,Closed
+GUIDES-27754,[EPV] Ditaval files are opening in editable mode even when read only i,Authoring,Closed
+GUIDES-27751,Not able to release cursor while expanding the editor,Authoring,Closed
+GUIDES-27505,IBM - Bug: Enter inside a <li> tag moves text,Editor,Closed
+GUIDES-27299,Publishing to Salesforce | link to PDFs or assets are not resolved in ,Publishing,Open
+GUIDES-27119,Extension framework custom button show/hide logic not working,Authoring,Closed
+GUIDES-27045,Toolbar Customizations from UI_config json not reflecting,Authoring,Closed
+GUIDES-26796,Bulk Activation | zip files are not included in the package,Publishing,Closed
+GUIDES-26363,Strange Arrow Key Behavior in AEM Guides,Authoring,Closed
+GUIDES-26109,Column Layout Misalignment in Tables with Relative Widths,Authoring,Closed
+GUIDES-25790,Drag And Drop Errors in AEM Guides,Authoring,Closed
+GUIDES-25769,[Break] Unable to Drag and Drop Images from one place to another withi,Authoring,Closed
+GUIDES-25572,Old AEM Sites | pagename/URL for nodes generated by topichead/topicgro,Publishing,Open
+GUIDES-25222,Dita template replicating properties to content when published causing,Authoring,Closed
+GUIDES-25104,Multiple files not selected after searching Repository files,Authoring,Closed
+GUIDES-25034,AEM Guides Re-Do option doesn't work after using Un-do option,Authoring,Closed
+GUIDES-24983,Not able to copy paste image from MS PowerPoint,Authoring,Closed
+GUIDES-24963,Salesforce Publishing | Indefine in-progress for broken links,Publishing,Closed
+GUIDES-24868,[IBM Bug] Class path not resolving in DITA-OT profile,Platform,Closed
+GUIDES-24372,Issue with Copy/Paste of Rows in AEM Guides Tables,Authoring,Closed
+GUIDES-24371,AEM Editor Text Replacement Issue,Authoring,Closed
+GUIDES-24299,Issue with generate.copy.outer on AEM Dev,Publishing,Closed
+GUIDES-24152,{Break} AEM Guides 4.6 non-UUID - Move and translation functionality i,Translation,Closed
+GUIDES-23964,{Break} Dynamic Baseline | Edit dialog does not show the saved criteri,Baseline,Closed
+GUIDES-23664,Salesforce Publishing | JSON_PARSER_ERROR on publishing topic with nbs,Publishing,Closed
+GUIDES-23526,Conditional Attribute grouping lost and  option not available via Fold,Authoring,Closed
+GUIDES-23412,"Not able to see the ""Align"" attributes options dropdown when selecting",Editor,Open
+GUIDES-23214,Review notification states incorrect topic count in case only some top,Review,Closed
+GUIDES-23059,{Break} link property value on xref component on generated page is man,Publishing,Closed
+GUIDES-22985,Salesforce Publishing shows indefinite screen if topic has errors,Publishing,Closed
+GUIDES-22860,Rename element disappeared in 4.6 for simple table,Authoring,Closed
+GUIDES-22764,{Break } Loss of List Element contents  when reordering in editor,Authoring,Closed
+GUIDES-22414,{Break} Cannot update XMLEditor Config from folder profiles,unknown,Closed
+GUIDES-22212,With unified shell enabled - folder profile edit leads to blank UI,unknown,Closed
+GUIDES-22200,{Break } : Translation Version Conflict for first  time translations (,Translation,Closed
+GUIDES-21933,{Break} Assets UI | css style issue with force delete dialog,unknown,Closed
+GUIDES-21840,{Break} TOC doesn't display chapter title instead displays topic title,Native_PDF,Closed
+GUIDES-21772,{Break} Native PDF Generation Fails with @chunk Attribute in AEM SP21 ,Publishing,Closed
+GUIDES-21201,{Break} Creating ditamap fails when xmleditor.uniquefilenames is enabl,Authoring,Closed
+GUIDES-21164,AEM Guides - Cursor Placement Issue in Long Topics,Authoring,Closed
+GUIDES-20144,[Cloud] Dynamic Titles with conkeyref Not Resolving in AEM Guides Repo,Reports,Closed
+GUIDES-20107,(GUIDES) Error when attempting to move large folder,unknown,Closed
+GUIDES-20083,Upgrade JxBrowser for macOS Sequoia,Oxygen,Closed
+GUIDES-20082,{Break} Open in Framemaker || The 'Open in Framemaker' option does not,Miscellaneous,Closed
+GUIDES-20065,Comments/label not saved when closing the file (config to ask for new ,Authoring,Closed
+GUIDES-20006,Incorrect behavior | (if docstate is in endstate) - Save as new versio,Authoring,Closed
+GUIDES-19987,iLX - Guides deletes space when switching to Source view,Authoring,Closed
+GUIDES-19736,Lexmark | AEM Sites | Filtering a topicref under topicgroup removes co,Publishing,Closed
+GUIDES-19733,Cloud | Translation using baseline fails to load the list of files,Translation,Closed
+GUIDES-19719,Expose event of post process completion on asset creation on cloud | I,Authoring/Publishing,Closed
+GUIDES-19699,"{Break| Review UI | Importance attribute on ""cmd"" element showing ""imp",Review,Closed
+GUIDES-19698,{Break } Native PDF : H7 heading treated as H1 heading,Publishing,Closed
+GUIDES-19558,Baseline save times out on cloud after 1 minute,Baseline,Closed
+GUIDES-19555,AEM Guides - Make New Reltable Easier to Use,Authoring,Closed
+GUIDES-19460,[Break] Unable to Drag and Drop topic in between two topics from Autho,Authoring,Closed
+GUIDES-19421,{Break} Document state transition updating on page refresh - AEM Guide,Authoring,Closed
+GUIDES-19420,Salesforce | uploading attachment fails frequently with error STRING_T,Publishing,Closed
+GUIDES-19385,com.adobe.fmdita.api.Activator starts before org.apache.sling.api.reso,unknown,Closed
+GUIDES-19365,[Break]Keyref to Cross References is not working correctly with Placeh,Native_PDF,Closed
+GUIDES-19353,UUID/Cloud-oXygen connector | Ability to resolve filename or path for ,Oxygen,Closed
+GUIDES-19352,Bulk Publish Dashboard shows blank if selected have in-progress transl,Publishing,Closed
+GUIDES-19343,Table tag required for pasted table,Authoring,Closed
+GUIDES-19327,{Break} Friendly element names breaks association of attribute value t,Authoring,Closed
+GUIDES-19308,Spacing Issue in AEM guides editor mode,Authoring,Closed
+GUIDES-19307,(iLX) AEM Guides label picker displays labels in random order,Baseline,Closed
+GUIDES-19304,Publishing to Salesforce | link to PDF asset is not resolved in Salesf,Publishing,Closed
+GUIDES-19286,The reference identified by Dynamic Baseline are termed INDIRECT,Baseline,Closed
+GUIDES-19267,AEM Guides Web Editor - Closed Image tab is opened again by reloading ,Authoring,Closed
+GUIDES-19148,{Break} Baseline skipping indirect reference when content state has re,Baseline,Closed
+GUIDES-19099,Download Map with Baseline is erroneous in some scenarios | throws Ill,unknown,Closed
+GUIDES-19066,Multi Shortcuts,Authoring,Closed
+GUIDES-19001,Publishing fails if a multivalued metadata is passed to DITA-OT | on W,Publishing,Closed
+GUIDES-18980,"Copies created by ""Create Structure Only"" option during translation do",Translation,Closed
+GUIDES-18884,download map with large videos throws OOM error and errors out on UI,Authoring,Closed
+GUIDES-18880,(Guides) Post-generation workflow runs 11 times,unknown,Closed
+GUIDES-18826,Unable to open topic preview from map-dashboard when unified shell is ,unknown,Closed
+GUIDES-18800,PDF Generation failing with OOTB workflow | 2406,Publishing,Closed
+GUIDES-18775,Link text for a key-based cross reference not properly supported,unknown,Closed
+GUIDES-18742,Bug Report - MathML Symbol Content Error in AEM Guides,Authoring,Closed
+GUIDES-18610,"{Break} AEM Guides: Source view ""Find"" does not work",Authoring,Closed
+GUIDES-18602,[Content Loss] When dragging a topicref over a topicref in map author/,Authoring,Closed
+GUIDES-18562,Figure snippet adds Title automatically,Authoring,Closed
+GUIDES-18500,Comment and reply box should be multi-line and be expandable,Review,Closed
+GUIDES-18488,Fix resource leak due to Unclosed resource resolvers,unknown,Closed
+GUIDES-18452,Topic Regeneration is failing because the OOTB Regenerate Topic (aka I,unknown,Closed
+GUIDES-18417,Translation dashboard shows In-progress status when translation job is,Authoring,Closed
+GUIDES-18414,Large size of error logs being generated for Guides,unknown,Closed
+GUIDES-18373,API to trigger post processing of assets | Cloud and non-cloud,unknown,Closed
+GUIDES-18353,{Break} fmditaMaprefs shows relative path instead of absolute paths (n,unknown,Closed
+GUIDES-18308,(Guides) Incorrect UUID generation on submaps -- content ingestion,unknown,Closed
+GUIDES-18174,[Break] Condition Preset does not fetch Updated Attributes after upgra,Publishing,Closed
+GUIDES-18114,Mouse cursor position is not getting retained and screen getting scrol,Authoring,Closed
+GUIDES-18088,"{Break} Both Checkout and Checkin Icons Displayed with ""autocheckout"" ",Authoring,Closed
+GUIDES-18087,{Break } Cross reference to key not resolved in Native PDF,Publishing,Closed
+GUIDES-18086,{Break} Translated Asset reference not updating,Translation,Closed
+GUIDES-18062,[BREAK] Copy paste of Image from author view not working in 2406,Authoring,Closed
+GUIDES-18036,Review | Ability to access comments for closed review tasks,Review,Closed
+GUIDES-18035,Create Review Task | projects list - Dropdown should be a typeahead,Review,Closed
+GUIDES-17932,Salesforce | Duplicate value error occurs during article republishing ,Publishing,Closed
+GUIDES-17900,{break} Native PDF | Template styling is impacted by June upgrade,Publishing,Closed
+GUIDES-17891,Translation dashboard shows incorect reference type for topic dependen,Translation,Closed
+GUIDES-17878,Add support to customize attribute section using Extension framework,Authoring,Closed
+GUIDES-17846,BREAK | Guides extension code not working after AEM Maintenance Update,Authoring,Closed
+GUIDES-17828,Dialog changes not reflecting using Guides Extension Framework,Authoring,Closed
+GUIDES-17827,Conref not getting resolved when publishing in Guides web-editor previ,Native_PDF,Closed
+GUIDES-17824,Open in FM - Need to pass server details to FM,Miscellaneous,Closed
+GUIDES-17797,Unable to validate salesforce connection with lighting URL,Publishing,Closed
+GUIDES-17794,Not able to use the preview feature for conref,Authoring,Closed
+GUIDES-17793,Bulk Activation : Refered PDF not getting activating from Bulk Publish,Publishing,Closed
+GUIDES-17638,Bulk publish for localized maps not working,Publishing,Closed
+GUIDES-17590,Slow switching to Layout view,Authoring,Closed
+GUIDES-17580,Dita version incorrectly showing the username in the asset UI,unknown,Closed
+GUIDES-17528,Change error messaging type for duplicate Image IDs in Topics,Authoring,Closed
+GUIDES-17331,Corrected the Handling of Alternate Text in AEM Guides to cater to DIT,unknown,Closed
+GUIDES-17329,"Issue with fetching users list while creating review task, if users co",Review,Closed
+GUIDES-17324,UUID | wrong paths in metadata.xml for UUID version,Publishing,Closed
+GUIDES-17309,Default Visibility of Review Projects enhacement,Review,Closed
+GUIDES-17302,Integration of Custom DITA-OT Plugins for Guides Functionality,Native_PDF,Closed
+GUIDES-17296,XLIFF Transaltion not working for non-admin user,Translation,Closed
+GUIDES-17283,[Break] Native PDF:  Metadata properties not propogating,Publishing,Closed
+GUIDES-17171,{BREAK} Copy paste of topics(>15 KB) fails with error,Authoring,Closed
+GUIDES-17118,AEM Tools Navigation Unresponsive related to Guides Nullpointerexcepti,unknown,Closed
+GUIDES-17107,Delete operation failing for folder,unknown,Closed
+GUIDES-17095,Native PDF | Condition filtering not working as compared to DITA-OT,Publishing,Closed
+GUIDES-17089,Overlayed path for korean language file not getting picked up correctl,unknown,Closed
+GUIDES-17088,{Break} Document State Change - Not working in Properties Panel,Authoring,Closed
+GUIDES-17028,Native PDF : TOC doesn't honor the <sub> or <sup>  tags,Publishing,Closed
+GUIDES-17011,Unresolved ui_config.json conflict in AEM Stage environment,Authoring,Closed
+GUIDES-17008,Heap Size issue - Creation of Dita/Ditamap,Authoring,Closed
+GUIDES-16968,Node execution fails on ARM64 architecture,Publishing,Closed
+GUIDES-16967,Dynamic Titles with conkeyref Not Resolving in AEM Guides Report Topic,Reports,Closed
+GUIDES-16966,Intermittent PDF Rendering Failures in AEM,Authoring,Closed
+GUIDES-16964,Unable to create XLIFF projects with Human translation,Translation,Closed
+GUIDES-16961,Title with conref not resolved in Web-editor's baseline dashboard and ,Baseline/Reports/Translation,Closed
+GUIDES-16935,{Break} Webeditor - repository panel search | New advanced filter does,Authoring,Closed
+GUIDES-16931,{Break} linked images from topic files are not listed up in Baseline,Authoring,Closed
+GUIDES-16915,Performance Issue with Large CSS Files in Native PDF Editor,Publishing,Closed
+GUIDES-16904,"AEM Guides Native PDF Generation Issue with ""PDF/X-4"" Conformance",Publishing,Closed
+GUIDES-16896,{Break} Reusable Contents panel does not list elements - if User prefe,Authoring,Closed
+GUIDES-16891,InDesign to DITA conversion | hardcoded configuration path,unknown,Closed
+GUIDES-16879,AEM Guides Translation Issue - Dynamic Titles Not Resolving in Manage ,Translation,Closed
+GUIDES-16837,Search Result takes time to show result,Authoring,Closed
+GUIDES-16836,Processing a dita topic taking a time after creating a new dita topic ,unknown,Closed
+GUIDES-16757,Native PDF | Ability to pass topic metadata (prolog) to published outp,Publishing,Closed
+GUIDES-16742,Nested DITA topics incorrectly displayed in Native PDF TOC,Native_PDF/Publishing,Closed
+GUIDES-16728,Native PDF <draft-comment> tags visible in TOC,Authoring,Closed
+GUIDES-16700,Crossmap linking | Publishing context settings do not show all parent ,Publishing,Closed
+GUIDES-16691,sub-element inside the table title element not rendering in AEM Guides,Authoring,Closed
+GUIDES-16667,Native PDF Publishing | Ability to pass topic's asset metadata to PDF ,Publishing,Closed
+GUIDES-16666,Issue with AEM Site Generation and Incremental Publish API,Publishing,Closed
+GUIDES-16530,Translation Projects - UTF Conversion Issues,Translation,Closed
+GUIDES-16517,Broken link post process script execution stops with file not found ex,unknown,Closed
+GUIDES-16495,Special characters written using escape characters are removed from To,Authoring,Closed
+GUIDES-16483,Issue with Oxygen editor and AEM connector after PDF support instructi,Oxygen,Closed
+GUIDES-16482,AEM Dita Guide Save Function Ignored After Auto Indent,Authoring,Closed
+GUIDES-16320,Ditavalref not working with Native PDF in AEM Guides,Authoring,Closed
+GUIDES-16319,Review topics do not come in the right order,Review,Closed
+GUIDES-15996,AEM as a Cloud Service - Vimeo Video Fullscreen Support Issue in AEM G,Authoring,Closed
+GUIDES-15970,AEM Sites output | pagename/URL for nodes generated by topichead/topic,Publishing,Closed
+GUIDES-15896,Site generation fails with Delete orphan Site option checked on cloud,Publishing,Closed
+GUIDES-15890,Historical Attributes being pulled into Condition Presets,Publishing,Closed
+GUIDES-15859,Issues while pasting long preformatted text sequences in pre or codebl,Authoring,Closed
+GUIDES-15858,Duplicate GUIDs causing content deletion | when templates are installe,Authoring,Closed
+GUIDES-15847,"Tooltip Issue in AEM Guides XML Editor - ""Source"" Field Not Updating",Authoring,Closed
+GUIDES-15813,Edit Functionality Not Working in Map Collections on AEM Cloud,Publishing,Closed
+GUIDES-15787,[ Demant Enterprise A/S] AEM Guides Processing Role Attribute Not Resp,Authoring,Closed
+GUIDES-15747,Ability  to Customize Toolbar Button to Directly Access Desired Xref S,Authoring,Closed
+GUIDES-15713,{Break} - JSON output | Metadata from map/topics not propagating to th,Publishing,Closed
+GUIDES-15709,Native PDF publishing | Handle content output for RTL languages,Native_PDF/Publishing,Closed
+GUIDES-15708,Issue with AEM Guides Editor Deleting Extra Text,Authoring,Closed
+GUIDES-15662,Native PDF publishing fails when preset is renamed,Native_PDF/Publishing,Closed
+GUIDES-15656,Thumbnail for videos set from DM is not honoured in published output,Publishing,Closed
+GUIDES-15604,Unclosed Resource Resolvers relating to Increasing Session Count and P,unknown,Closed
+GUIDES-15598,Share UUID Link Feature Not Working for Images in AEM,Authoring,Closed
+GUIDES-15543,[Clone] Favorites collection in web-editor not loading,Authoring,Closed
+GUIDES-15541,"Copy Paste Issue adding ""&nbsb"" in the author view and this leads to P",Publishing,Closed
+GUIDES-15529,Inaccurate TopicList count in AEM Guides UI due to unpatched propertie,Reports,Closed
+GUIDES-15502,sourcePath property incorrect on published AEM site output in aemaacs,Publishing,Closed
+GUIDES-15399,Issue with Language Variables Selection and Language Customization in ,Native_PDF/Publishing,Closed
+GUIDES-15398,Translation Project's fail to add new language jobs in AEM 6.5 SP18 wi,Baseline/Translation,Closed
+GUIDES-15369,Unable to copy and paste long tables from the Word doc or HTML into th,Authoring,Closed
+GUIDES-15366,Unable to  Open Review and see comments in Guides if review nodes dele,Review,Closed
+GUIDES-15353,Copy Function Fails for Empty Folders in AEMaaCS (ServiceNow DXP),Authoring,Closed
+GUIDES-15351,Need APIs or events to capture adding an attribute to element or inser,Authoring,Closed
+GUIDES-15347,"False Broken references report : If external references contains ""%20""",Reports,Closed
+GUIDES-15344,Break : Native PDF having template with large stylesheet/layout fails,Native_PDF/Publishing,Closed
+GUIDES-15310,"non-working feature flag ""fmdita.useapproval"" should be removed",unknown,Closed
+GUIDES-15238,[Experience Enhancements] Overlapping text in reltable and fig tags,Authoring,Closed
+GUIDES-15237,[Experience Enhancement] Issues with attributes panel,Authoring,Closed
+GUIDES-15236,Locked topics will now give read only access to author and source view,Authoring,Closed
+GUIDES-15228,Ability to group conditions in the condition panel inside editor,Authoring,Closed
+GUIDES-15227,[Experience Enhancements] DITAMAP conrefs to othermeta required attrib,Authoring,Closed
+GUIDES-15226,[Experience Enhancements] DITAMAP Conrefs adds id,Authoring,Closed
+GUIDES-15224,[Experience Enhancement] Delete jumps between block elements,Authoring,Closed
+GUIDES-15222,Publishing should support conref with absolute path,Publishing,Closed
+GUIDES-15215,Experience issue | Baseline creation in the web editor defaults to 00:,Baseline/Publishing,Closed
+GUIDES-15209,[EPV] Not able to select the Conref in case of update from the attribu,Authoring,Closed
+GUIDES-15204,Additional use-cases and issues observed in guides extension framework,Authoring,Closed
+GUIDES-15200,Dita Translation - translated title changes to English after the secon,Translation,Closed
+GUIDES-15197,[Experience Enhancements] DITAMAP to DITAMAP conrefs (Topicmeta to a t,Authoring,Closed
+GUIDES-15188,[Experience Enhancements] Selecting image in table cell selects comple,Authoring,Closed
+GUIDES-15161,unable to add <data> tag inside <ol> tag,Authoring,Closed
+GUIDES-15160,Guides indexes | Require optimization for large repositories,unknown,Closed
+GUIDES-15159,{Break} Native PDF | Not able to use map metadata properties for PDF f,Native_PDF/Publishing,Closed
+GUIDES-15154,AEM Sites publishing fails for files having xref to file whose name st,Publishing,Closed
+GUIDES-15085,Resolving keys doesn’t work with latest AEM Guides version for Native ,Native_PDF/Publishing,Closed
+GUIDES-15062,Content references in AEM Guides aren't correctly resolved for Native ,Miscellaneous,Closed
+GUIDES-15045,AEM Spellcheck | not able to choose suggestion in guides editor,Authoring,Closed
+GUIDES-15039,AEMaaCS | Unified shell is enabled | Version Label Management dialog s,Authoring,Closed
+GUIDES-14968,"Global navigation button not working, dashboard not loading",Authoring,Closed
+GUIDES-14965,Allow for Print Color Profile to be on the Map Output Generation Optio,Publishing,Closed
+GUIDES-14943,Custom attributes within condition presets are not working for native ,Miscellaneous,Closed
+GUIDES-14904,UTF-8 SVG's output blurry and pixelated in Native PDF publishing on 4.,Native_PDF,Closed
+GUIDES-14852,Apply output preset changes from folder profile fails on cloud for par,unknown,Closed
+GUIDES-14846,{Break} Not able to add a custom template in from outputs tab in guide,Publishing,Closed
+GUIDES-14840,Preview screen for snippets is freezed,Review,Closed
+GUIDES-14837,Unable to upload pptx from web-editor UI,Authoring,Closed
+GUIDES-14820,Web-editor | topic editor - find and replace | key-press (return): foc,Authoring,Closed
+GUIDES-14804,{Break} AEM Site preset | Template path should not be empty,Publishing,Closed
+GUIDES-14793,URL Shortening not working | fmdita rewriter conflicts with ResourceRe,Publishing,Closed
+GUIDES-14790,AEM  Site Regeration failing,Publishing,Closed
+GUIDES-14787,Baseline creation via Java API does not work with 4.x,unknown,Closed
+GUIDES-14782,Not able to add wintitle element,Authoring,Closed
+GUIDES-14767,Marketing and Techdocs content to co-exist | need way to by-pass post ,unknown,Closed
+GUIDES-14752,Unable to apply mark ups to space fields in review,Review,Closed
+GUIDES-14748,Web Editor doesn't show the corrent default keyword if keyword defined,Authoring,Closed
+GUIDES-14743,The /bin/fmdita/import is stuck in pending request state forever,unknown,Closed
+GUIDES-14741,Native PDF | ICC file path with internal DAM is not working,Miscellaneous,Closed
+GUIDES-14731,AEM guides Spellcheck feature only works on us-en language,Authoring,Closed
+GUIDES-14680,Review Panel Shows  is slow while loading,Review,Closed
+GUIDES-14665,Unable to complete translation because Accept Translation stops in the,Translation,Closed
+GUIDES-14626,Web-editor: The download map  doesn't give a pop-up once it is ready t,Authoring,Closed
+GUIDES-14622,Web-editor: Download map fails to download map with baseline,Authoring/Baseline,Closed
+GUIDES-14607,[BREAK ] Right click context menu : Accept or Reject track changes not,Review,Closed
+GUIDES-14574,"Webeditor-MapView | bulk property editing | property ""Document State"" ",Authoring,Closed
+GUIDES-14553,Translation | Improve the scalability of large content translation on ,Translation,Closed
+GUIDES-14538,Track Changes in Dita Editor fails if starting with Korean letters,Authoring,Closed
+GUIDES-14537,Review Screen Toggle to close not woring in 4.3.1,Review,Closed
+GUIDES-14519,Editor unistalled post re-installation of Guides package,Authoring/Miscellaneous,Closed
+GUIDES-14517,"Issues with 4.3.1 installer overriding ""apps/cq/core/content/projects/",Miscellaneous,Closed
+GUIDES-14492,Native PDF node  exception post upgrade 4.3.1,Native_PDF/Publishing,Closed
+GUIDES-14487,Native PDF | Error/Warnings in the publishing logs even when publishin,Native_PDF/Publishing,Closed
+GUIDES-14482,Authoring | Getting Invalid DTD Error in AEM Guides,Authoring,Closed
+GUIDES-14451,Baseline | editing existing baseline and choosing specific version thr,Baseline,Closed
+GUIDES-14445,{break} Native PDF | PDF Generation failing with error in getting depe,Native_PDF/Publishing,Closed
+GUIDES-14442,"The processing-role=""resource-only"" search=""no"", and chunk=""to-content",Publishing,Closed
+GUIDES-14432,Errors in Build Transform coming from DITA Codebase,unknown,Closed
+GUIDES-14425,DITA Author view should allow partial selection,Authoring,Closed
+GUIDES-14372,Title in Web Editor Tab Is Truncated after a Dot (.) in the Title,Authoring,Closed
+GUIDES-14320,Authoring | Change error messaging for duplicate map names in Assets U,Authoring,Closed
+GUIDES-14318,Translation | Accept/Reject button appears for auto-approved human tra,Translation,Closed
+GUIDES-14291,Drag drop assets | version creation logic throws error,Authoring,Closed
+GUIDES-14286,Internationalization (i18n) Problems with AEM Guides Components,Translation,Closed
+GUIDES-14268,Dynamic Baseline | Change dynamic baseline to use Title instead of nam,Baseline,Closed
+GUIDES-14260,"Webeditor | AEM Preset - not able to select template outside ""/content",Publishing,Closed
+GUIDES-14251,Experience Enhancement || Pressing Return in table cell inside text do,Authoring,Closed
+GUIDES-14213,Re-usable content skipping element ids,Authoring,Closed
+GUIDES-14194,No setting control to hide Language Variables panel (under Output tab),Miscellaneous,Closed
+GUIDES-14178,Webeditor | Reports | no way to show custom metadata fields,Reports,Closed
+GUIDES-14156,Side by side review panels of the previous and the current versions in,Review,Closed
+GUIDES-14155,Non-breakable spaces &nbs should be supported in author mode | 4.3 | E,Authoring,Closed
+GUIDES-14094,Webeditor - Layout view | specialized schema | adding new reference (e,Authoring,Closed
+GUIDES-14093,oxygen connector - ditamap manager | key names not shown for keyref re,Oxygen,Closed
+GUIDES-14090,Publish to content fragment | not working for files listed in search r,Publishing,Closed
+GUIDES-13993,AEM Sites | Overlaying sites components is not possible - path of dele,Publishing,Closed
+GUIDES-13954,Review | review workflow email template customization doesn't work wit,Review,Closed
+GUIDES-13642,Spacing after conref disapppear,Authoring,Closed
+GUIDES-13622,[Native PDF] | PDF reactor tagged view is not working as expected,Miscellaneous,Closed
+GUIDES-13621,Native PDF | Choosing background color on template layout requires pag,Miscellaneous,Closed
+GUIDES-13620,"When Generating a PDF, the File Name is Truncated After a Period",Native_PDF/Publishing,Closed
+GUIDES-13607,{HOTFIX on 4.2.1} Translation integration - AEM-Phrase | Auto approve ,Translation,Closed
+GUIDES-13571,Application error is coming when saving file,Authoring,Closed
+GUIDES-13543,Anchor link to DlEntry or DT element doesn't display text,Authoring,Closed
+GUIDES-13541,Translation integration - AEM-Phrase | Auto approve not working someti,Translation,Closed
+GUIDES-13540,Broken content reference when copying and pasting DITA files which inc,unknown,Closed
+GUIDES-13539,A self reference link appears as Broken Links in Reports,Miscellaneous,Closed
+GUIDES-13538,Oxygen | Oxygen v25.1 does not work on Mac OS with M1 chip,Oxygen,Closed
+GUIDES-13535,"Restore ""Close"" button behaviour on Guides' Review page",Review,Closed
+GUIDES-13531,AEM Site publishing | with scope peer links | issue committing to data,Publishing,Closed
+GUIDES-13530,AEM Site publishing | with scope peer links | issue committing to data,Publishing,Closed
+GUIDES-13509,MongoWrite Exception in AEM Cloud environments due to large sized node,unknown,Closed
+GUIDES-13495,Favorites collection in web-editor not loading,Authoring,Closed
+GUIDES-13492,Native PDF | Incorrect Icon and tooltip for 'Edit content' region in T,Miscellaneous,Closed
+GUIDES-13489,Broken characters in creation of Snippets - Korean Language,Review,Closed
+GUIDES-13486,Baseline Filter files not working with FileName,unknown,Closed
+GUIDES-13466,Baseline Export Fail,Baseline/Translation,Closed
+GUIDES-13455,"Title of a topic contains a slash /, the tab in the editor only shows ",Authoring,Closed
+GUIDES-13454,Preview Image in Guides Editor doesn not disappear,Authoring,Closed
+GUIDES-13453,Review on Topic shows incorrect comments,Review,Closed
+GUIDES-13447,Citation | Handling Unique ID with Spaces,Authoring,Closed
+GUIDES-13444,Baselines shows title for previous version dita file,Baseline,Closed
+GUIDES-13439,Unable to use AEM Guide Bulk Publication Dashboard to activate site,Baseline/Publishing,Closed
+GUIDES-13436,Guides Review Screen Attachment in Korean is not Clickable,Review,Closed
+GUIDES-13306,Edit topic goes to aem/start.html instead of returning to folder view,Authoring,Closed
+GUIDES-13304,[Break] Topic with conref title not resolved in repository or map view,Authoring,Closed
+GUIDES-13265,Baselines shows incorrect number of files,Baseline,Closed
+GUIDES-13248,In Progress Projects link returns to the wrong page,Translation,Closed
+GUIDES-13227,Authoring experience | Large files do not load in webeditor - freezes ,Authoring,Closed
+GUIDES-13157,Native PDF | Order of topic in PDF is not fixed,Miscellaneous,Closed
+GUIDES-13133,{Break in 2307} Webeditor Preview mode | Duplicate prefix text,Authoring,Closed
+GUIDES-13132,DeliveryTarget attribute is not propagated during publishing,Publishing,Closed
+GUIDES-13021,Missing files in translation dashboard when using baseline,Baseline/Translation,Closed
+GUIDES-13012,Map title is cut off: Review and collaboration screen,Review,Closed
+GUIDES-13004,Native PDF | Including multiple xrefs extends the text beyond the colu,Native_PDF/Publishing,Closed
+GUIDES-12993,Baseline Export Fail,Baseline/Translation,Closed
+GUIDES-12950,[EPV] Insert keyword pop up not coming when keys def defined in root m,Authoring,Closed
+GUIDES-12922,Native PDF | Ability to print the title of continued topics in the nex,Native_PDF,Open
+GUIDES-12867,Assets Preview | Tall graphic - version history preview - cannot close,Authoring,Closed
+GUIDES-12829,Native PDF publishing | accessibility | image in header footer do not ,Miscellaneous,Closed
+GUIDES-12712,Unable to set afternoon hours on Date at creation of Baselines,Authoring/Baseline,Closed
+GUIDES-12711,Unable to change the timezone of VERSION CREATED ON of Baselines,Authoring/Baseline,Closed
+GUIDES-12709,"Zip files are not recognized in Webeditor, and you cannot drag and dro",Authoring,Closed
+GUIDES-12644,NativePDF Output issue in Guides 4.2.1.270( topic and title have the s,Native_PDF/Publishing,Closed
+GUIDES-12633,oXygen | options on ditamap to open it in web UI - takes to old map ed,Oxygen,Closed
+GUIDES-12624,"Version history panel in Assets UI | shows incorrect timestamp for ""Cu",Authoring,Closed
+GUIDES-12616,AEM Guides choicetable row not displayed or selectable,Authoring,Closed
+GUIDES-12614,Broken content reference when copying and pasting DITA files when topi,Translation,Closed
+GUIDES-12580,Webeditor | topic created using custom schema shows error on webeditor,Authoring,Closed
+GUIDES-12576,Webeditor | topic created using custom schema shows error on webeditor,Authoring,Closed
+GUIDES-12567,"Layout view | Bookmap, making selected chapter a sub-elemt using ""Move",Authoring,Closed
+GUIDES-12564,[NativePDF]: Renaming Native PDF presets fails publishing,Native_PDF/Publishing,Closed
+GUIDES-12563,[NativePDF]  Duplicating PDF template duplicates to default template l,Native_PDF/Publishing,Closed
+GUIDES-12559,[Native PDF] No default style tag available for <p> element,Native_PDF/Publishing,Closed
+GUIDES-12558,"Web Editor | Issue with ""Don't Save"" option not unlocking the topic fi",Authoring,Closed
+GUIDES-12557,Web Editor | Unable to checkout a file despite choosing NO option for ,Authoring,Closed
+GUIDES-12556,Web Editor | Incorrect display of cancel check out and unlock option i,Authoring,Closed
+GUIDES-12555,Webeditor | Inconsistent tooltips for lock & unlock icon web editor UI,Authoring,Closed
+GUIDES-12542,AEM Sites output | <lines> element with \r and subelements to be handl,Publishing,Closed
+GUIDES-12534,[Natve PDF] Duplicating page layout doesn't work  [ No extension added,Miscellaneous,Closed
+GUIDES-12532,Content lost || Content is lost when an unwrapped xref is under a sub ,Authoring,Closed
+GUIDES-12498,[Regression]Webeditor - Layout view | Inline/Display attributes do not,Authoring,Closed
+GUIDES-12477,"[BREAK} Unable to select ""PDF"" assets type in the existing ""topicref"" ",Authoring,Closed
+GUIDES-12474,"GUID with Language code having ""-"" leads to ""-"" replaced with HYPHEN |",unknown,Closed
+GUIDES-12457,Copy/Pasted files on cloud experience delayed processing,Authoring,Closed
+GUIDES-12403,oxygen connector | Login input fields freezes when switching between w,Authoring,Closed
+GUIDES-12401,[EPV] White Screen pops Up when we re launch the Oxygen when we login ,Oxygen,Closed
+GUIDES-12396,"[BREAK] In the Web Editor Repository view, if we use “Search/Filter” t",Authoring,Closed
+GUIDES-12346,oXygen connector | DITAMap Manager | opening a map does not resolve GU,Authoring,Closed
+GUIDES-12326,Webeditor | codeblock | not able to paste JSON code,Authoring,Closed
+GUIDES-12296,Native PDF | setting language metadata to comply to WCAG 2.0,Publishing,Closed
+GUIDES-12213,Performance issues with Post Processing | due to parent map indexing,unknown,Closed
+GUIDES-12207,Upload not working in cloud if we have ! in the file name ||o2 connect,Authoring,Closed
+GUIDES-12188,[Invalid Dita error ] Creating a dita file from a template with a file,Authoring,Closed
+GUIDES-12174,(Content loss ) Navtitle removed from content when switching  from lay,Authoring,Closed
+GUIDES-12166,Native PDF | Outputclass added to the parent topicref is getting added,Native_PDF/Publishing,Closed
+GUIDES-12150,Creating map from map template | ditaval topic template references are,Authoring,Closed
+GUIDES-12144,AEM Sites output | localization of element labels is not working in AE,Publishing,Closed
+GUIDES-12142,Global Find and Replace | search results are disabled after one of tho,Authoring,Closed
+GUIDES-12117,Incremental Publishing Dosen't work if ditamap have multiple ditavalre,Publishing,Closed
+GUIDES-12116,Custom metadata is not available in the final output,Publishing,Closed
+GUIDES-12113,AEMaaCS | Publishing to AEM Sites | Publishing fails when reading temp,Publishing,Closed
+GUIDES-12106,"A number Key ""8""  on Side keyboard not working in Guides editor",Authoring,Closed
+GUIDES-12099,AEM Sites | keydef with processing-role=resource-only creates Pages - ,Publishing,Closed
+GUIDES-12090,Non AEM Site output | asset createdBy should be the publisher name,Publishing,Closed
+GUIDES-12076,fmdita rewriter conflicting with customer's rewriter config and hence ,Publishing,Closed
+GUIDES-12075,Map Publishing is very slow with editable template,Publishing,Closed
+GUIDES-12005,Native PDF | custom attributes are not propagated to temporary HTML or,Native_PDF/Publishing,Closed
+GUIDES-12000,AEM Sites output | PublishWorkflow steps gets stuck or errors out due ,Publishing,Closed
+GUIDES-11978,AEM Sites | map with topichead in navtitle (having non supported chara,Publishing,Closed
+GUIDES-11970,UIConfig mismatch b/w System and Global Profile,Authoring,Closed
+GUIDES-11969,Native pdf -Support of  topichead / topicmeta / navtitle  in frontmatt,Native_PDF/Publishing,Closed
+GUIDES-11959,[Break] Broken content reference when copying and pasting DITA files,Authoring,Closed
+GUIDES-11948,"Restore old ""Close"" click behaviour in editor",Authoring,Closed
+GUIDES-11936,[4.2.1] Native PDF | Publishing content have output class with () lead,Native_PDF/Publishing,Closed
+GUIDES-11933,[4.2.1] JSON output | Map metadata having value in spaces and double q,Publishing,Closed
+GUIDES-11917,Baseline - dynamic | List of labels are not pulled from direct referen,unknown,Closed
+GUIDES-11903,Folder profile presets | ditaval field is missing,Publishing,Closed
+GUIDES-11889,Native PDF | Renaming a Preset throws null pointer exception while gen,Native_PDF/Publishing,Closed
+GUIDES-11867,The search box in Dita maps do not have a close button,Authoring,Closed
+GUIDES-11860,Save in Webeditor | Long files | DirtyChecker throws exception with lo,Authoring,Closed
+GUIDES-11842,Application error : When user is clicking on ditamap,Authoring,Closed
+GUIDES-11835,"GUID with Language code having ""-"" leads to ""-"" replaced with HYPHEN |",unknown,Closed
+GUIDES-11834,[4.2.1] AEM 4.2 Upgrade - Translations Out of Sync,Translation,Closed
+GUIDES-11789,Native PDF | Java OutOfMemoryError on publishing large content,Native_PDF/Publishing,Closed
+GUIDES-11786,Non-break space added in XML Editor during “edit”,Authoring,Closed
+GUIDES-11784,Unversioned changes indicator missing on  large File,Authoring/Translation,Closed
+GUIDES-11775,"oXygen - UUID | Cancel checkout retains the working copy when ""Auto Ch",Oxygen,Closed
+GUIDES-11718,Cannot upload images with spaces to the DAM with AEM Guides installed,unknown,Closed
+GUIDES-11708,[4.2.1] Reports tab in web editor UI doesn't display the topic list of,Baseline,Closed
+GUIDES-11706,{KONE]- DITA topics creation required delete permission on  correspond,Authoring,Closed
+GUIDES-11670,Dita Icon and Dita Name is not aligned properly in create review page,Review,Closed
+GUIDES-11633,[4.2.1] Upload files Asset button functionality break in 4.2,unknown,Closed
+GUIDES-11631,New translation UI should have soft refresh button,Translation,Closed
+GUIDES-11630,Experience issues on translation workflow,Translation,Closed
+GUIDES-11628,New Review UI | multiple conditions on an element - works differently ,Review,Closed
+GUIDES-11610,Inadvertent Content Deletion in dita files,Authoring,Closed
+GUIDES-11596,Native PDF | Publishing content have output class with () leads to pub,Native_PDF/Publishing,Closed
+GUIDES-11564,JSON output | fmUuid in jcr:content and in JSON are different,Publishing,Closed
+GUIDES-11555,AEM Sites | Generate separate pdf for each topic does not work,Native_PDF/Publishing,Closed
+GUIDES-11551,Webeditor | rootmap setting should not persist if not explicitly set b,Authoring,Closed
+GUIDES-11530,[4.2.1] Webeditor | AEM Preset - not able to select output path and te,Publishing,Closed
+GUIDES-11528,Asset UI | List view | overlayed available columns should be mergeable,Authoring,Closed
+GUIDES-11526,[4.2.1] Native PDF engine | upgrade from 4.x to 4.2 - updated node res,Native_PDF/Publishing,Closed
+GUIDES-11524,JSON Output | map and topic with same filename - JSON for map is remov,Publishing,Closed
+GUIDES-11439,[UUID / Cloud] | AEM Output Preset in Webeditor | Missing Publishing c,Publishing,Closed
+GUIDES-11438,JSON output | Map metadata having value in spaces and double quotes le,Publishing,Closed
+GUIDES-11352,AEM Site Search issue ( Doesn't work beyond 2-3 level node),Publishing,Closed
+GUIDES-11322,Native PDF | Xref is printing the contents of href topic title instead,Native_PDF/Publishing,Closed
+GUIDES-11305,Source View Will Somtimes Insert </conbody> in Incorrect Locations,Authoring,Closed
+GUIDES-11224,Support Schematron rules w/ matches(),Authoring,Closed
+GUIDES-11218,Copying Ditamap Asset (from Asset UI ) cause erroneous baselines in co,Baseline,Closed
+GUIDES-11212,Specialized title element in template - using that template to create ,Authoring,Closed
+GUIDES-11211,Loading content with custom schema freezes the browser(webeditor),Authoring,Closed
+GUIDES-11177,Native PDF Publishing | Map with Markdown references,Publishing,Closed
+GUIDES-11131,[DitaOT] Conrefs content are not showing up in generated PDF,Native_PDF/Publishing,Closed
+GUIDES-11065,Publishing topics (regenerate/article based) with possibility to publi,Publishing,Closed
+GUIDES-11063,Some content attributes are not being highlighted in author or preview,Authoring,Closed
+GUIDES-11026,Webeditor  | approval workflow does not work when docstate is changed ,Authoring,Closed
+GUIDES-11024,Change in Webeditor html ( Issues with <dl> and <dlentry>),Authoring,Closed
+GUIDES-10996,"Inconsistent Close behaviour when ""Auto Save"" is checked",Authoring,Closed
+GUIDES-10950,Native PDF generation fails with a Null Pointer exception,Native_PDF/Publishing,Closed
+GUIDES-10949,AEM Guides: Editor shows incorrect title when slash is present,Authoring,Closed
+GUIDES-10940,Webeditor | Inserting a varname tag causes the Key References Window t,Authoring,Closed
+GUIDES-10936,AEM Guides Condition Preset is not getting created,unknown,Closed
+GUIDES-10895,Some attributes are not treated as conditional,Authoring,Closed
+GUIDES-10882,Nested parameter lists cause the preview in the XML editor to fail,Authoring,Closed
+GUIDES-10876,Native PDF | Including multiple xrefs extends the text beyond the colu,Native_PDF/Publishing,Closed
+GUIDES-10868,Top menu not appearing when navigating through XML editor,Authoring,Closed
+GUIDES-10767,Drag Glossary Topic From Repository into a glossaryMap,Authoring,Closed
+GUIDES-10755,Preview Window for XML Editor Cuts Off,Authoring,Closed
+GUIDES-10754,Native PDF | Add support for CMYK color space conversion,Miscellaneous,Closed
+GUIDES-10751,Native PDF | Unable to save the PDF template settings,Native_PDF/Publishing,Closed
+GUIDES-10750,Native PDF | Extra space gets added inside the <div> elements on toggl,Native_PDF/Publishing,Closed
+GUIDES-10735,AEM-Taskbody content disappears when switching from Author to Source v,Authoring,Closed
+GUIDES-10702,"Sub-Zero and Wolf | DITAmap Metadata Properties ""Title"" should not be ",unknown,Closed
+GUIDES-10686,Feature request - to improve draft comments,Publishing,Closed
+GUIDES-10662,Files checked out in AEM is not listed out in oxygen checked out panel,Oxygen,Open
+GUIDES-10653,Native PDF - Image Tag adds display-inline attribute to all the images,Native_PDF/Publishing,Closed
+GUIDES-10649,All maps but the first are not editable in the Map Collection Edit pag,unknown,Closed
+GUIDES-10624,MathML validation errors when saving topic,Authoring,Closed
+GUIDES-10610,Native PDF | footnote in table header leads to bold and centre aligned,Native_PDF/Publishing,Closed
+GUIDES-10560,Native PDF Engine | hide draft comments by default,Publishing,Closed
+GUIDES-10555,Native PDF | Table header rotation issues,Native_PDF/Publishing,Closed
+GUIDES-10549,Native PDF - <note></note> element is not generating extra span title ,Native_PDF/Publishing,Closed
+GUIDES-10539,Using keyboard shortcuts <Ctrl><←> (left arrow) or <Ctrl><→> (right ar,Authoring,Closed
+GUIDES-10509,Native pdf - navtitle for topichead is not honoured,Native_PDF/Publishing,Closed
+GUIDES-10508,Editor labels from the labels.json file appear in random order,unknown,Closed
+GUIDES-10463,Version History should show even if dc:format is not present for an as,unknown,Closed
+GUIDES-10305,First PDF not versioned when created,Publishing,Closed
+GUIDES-10279,Fix Session Leak at com.day.cq.search.impl.builder.QueryBuilderImpl.cr,unknown,Closed
+GUIDES-10214,Add to translation project creates new projects instead of new jobs in,Baseline/Translation,Closed
+GUIDES-10091,Undo option in XML Editor takes user to the Top of the page,Authoring,Closed
+GUIDES-10053,Node properties are removed after copy/paste operation of asset,Authoring,Closed
+GUIDES-9982,"Reviewer,Publisher User | Editing options available - they should be h",Access Control,In UAC
+GUIDES-9938,Translated contents are not synced from temporary translation project ,Translation,Closed
+GUIDES-9564,AEM Publish instance | configuration and content delivery,Publishing,Closed
+GUIDES-9496,Issues with Review Task Update Functionality,Review,Closed
+GUIDES-9481,conref in ph - browse dialog is incorrect,Authoring,Closed
+GUIDES-9273,Map product categories to salesforce article publishing,Authoring,Closed
+GUIDES-8791,Ability to Wrap and element inside possible parent elements,Authoring,Closed
+GUIDES-8790,Local links to other elements are not resolved in web-editor,Authoring,Closed
+GUIDES-8779,Users not able to overlay the component /libs/fmdita/components/versio,Authoring,Closed
+GUIDES-8051,[Enhancement] Missing confirmation message when updating a review task,Review,Closed
+GUIDES-8031,DoX: Advanced Topic Editor Has Issues When Adding Multiple Topics To a,Authoring,Closed
+GUIDES-7688,Translation | Adding an updated topic on an active translation project,Translation,Closed
+GUIDES-7651,Sanitize nodename configuration impacts the PDF output generation as w,Publishing,Closed
+GUIDES-7483,AEM Sites output | properties of TOC node under landing page needs to ,Publishing,Closed
+GUIDES-7342,Not able to edit content fragment in column view with Guides installed,unknown,Closed
+GUIDES-5489,Xref link added to table cell is not contained in its cell in author m,Authoring,Closed
+GUIDES-5481,Topic id to be same as GUID,Authoring,Closed
+GUIDES-5074,[Map Collection] Bulk activation dashboard - deactivation part,Publishing,Open
+GUIDES-4992,Assets UI | Open DITA Topic/Map in new tab for editing freezes selecti,unknown,Closed

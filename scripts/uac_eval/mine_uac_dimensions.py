@@ -76,9 +76,11 @@ AXES: dict[str, re.Pattern] = {
         r"backward)\b", re.I),
 }
 
-# Axes already forced by a coverage_forcing gate (so the report can flag UNGATED recurring
-# axes as the next learning targets). Keep this list in sync with coverage_forcing.py.
+# Axes already forced by a fail-closed skill gate (across ALL gate scripts, not just
+# coverage_forcing) so the report flags only GENUINELY ungated axes as learning targets.
+# Keep in sync with the skill's gates.
 GATED_AXES = {
+    # coverage_forcing.py
     "source_apps (Word/Excel/Google/HTML)",
     "link_schemes (http/ftp/mailto)",
     "table_structure (nested/merged/header/simple)",
@@ -86,6 +88,16 @@ GATED_AXES = {
     "publishing_status (failed/queued/reconcile)",
     "concurrency_overlap",
     "performance_scale",
+    "negative_error_boundary",           # _validate_negative_boundary_present
+    "topic_types (concept/reference/task)",  # _validate_topic_type_coverage
+    # dedicated gate scripts
+    "state_config_partition",            # state_partition_coverage.py
+    "translation_project_types",         # localization_regression_coverage.py
+    "locale_translation_regional",       # localization_regression_coverage.py
+    "upgrade_migration",                 # upgrade_migration_coverage.py
+    "permissions_role",                  # security_coverage.py (AUTHZ)
+    # structurally required by the 11-section plan (validate_test_plan Regression Areas)
+    "regression_unchanged",
 }
 
 
