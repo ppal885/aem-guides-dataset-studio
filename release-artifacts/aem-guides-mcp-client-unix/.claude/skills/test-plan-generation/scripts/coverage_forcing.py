@@ -730,6 +730,114 @@ def _validate_error_surface_open_question(manifest, plan_text: str) -> list[str]
     ]
 
 
+# ---------------------------------------------------------------------------
+# 6. Status-mislabel anti-over-correction and concurrency isolation
+# ---------------------------------------------------------------------------
+
+# A status-reporting defect: a run's shown status is wrong (a success shown as a
+# failure, a false/red/stale failure, "failed but the files were produced").
+_STATUS_MISLABEL_RE = re.compile(
+    r"(?:incorrectly|false(?:ly)?|wrong(?:ly)?|erroneous|mis(?:label|report)|appears?|"
+    r"shown\s+as|flag(?:s|ged)?|red)\b[^.\n]{0,60}\bfail",
+    re.IGNORECASE,
+)
+_STATUS_FALSEPOS_RE = re.compile(
+    r"\bfail\w*\b[^.\n]{0,80}\b(?:but|even\s+though|while|although)\b[^.\n]{0,80}"
+    r"(?:succe|produced|complete|generated|correct)",
+    re.IGNORECASE,
+)
+# The anti-over-correction guard: fixing a false failure must not start masking real ones.
+_ANTI_OVERCORRECT_RE = re.compile(
+    r"\b(?:genuine|real|actual|true)\b[^.\n]{0,40}\bfail|"
+    r"\bfail\w*\b[^.\n]{0,40}\b(?:remain|still|stay)\b|"
+    r"cancell?ed\b[^.\n]{0,30}\b(?:remain|stay|still)|"
+    r"warning\b[^.\n]{0,30}(?:retain|remain|kept|keep)",
+    re.IGNORECASE,
+)
+# Concurrency / overlap signal.
+_CONCURRENCY_RE = re.compile(
+    r"\b(?:overlap|concurren|already\s+running|still\s+running|"
+    r"previous\s+(?:job|run|execution)|in\s+progress|simultaneou|parallel\s+job|"
+    r"same\s+map\s+and\s+preset)\b",
+    re.IGNORECASE,
+)
+# Isolation disposition: a rejected/aborted request keeps its own status, and unrelated
+# work is unaffected.
+_ISOLATION_RE = re.compile(
+    r"\b(?:isolat|does\s+not\s+(?:affect|change)|unaffected|not\s+(?:appear|be\s+shown)\s+"
+    r"success|other\s+(?:maps?|presets?|jobs?|runs?)|rejected\s+request|independent(?:ly)?|"
+    r"own\s+(?:status|result|state))\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_status_anti_overcorrection(manifest, plan_text: str) -> list[str]:
+    """When the ticket is about a wrong/false run status (a success shown as Failed), the
+    plan must also assert that GENUINE failures still show Failed - otherwise the fix can
+    over-correct and mask real failures. Missed on a false-failure output-status ticket."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not (_STATUS_MISLABEL_RE.search(evidence) or _STATUS_FALSEPOS_RE.search(evidence)):
+        return []
+    if any(_ANTI_OVERCORRECT_RE.search(line) for line in _ac_lines(plan_text)):
+        return []
+    return [
+        "This is a wrong/false run-status ticket (a successful or in-progress run is shown "
+        "as Failed), but no acceptance criterion guards against over-correcting: add an AC "
+        "that genuine failures still show Failed (and cancelled runs stay Cancelled, "
+        "successful-with-warnings keep their warning) so the fix does not start masking real "
+        "failures."
+    ]
+
+
+def _validate_concurrency_isolation(manifest, plan_text: str) -> list[str]:
+    """When the defect involves overlapping/concurrent runs, the plan must disposition
+    isolation: a rejected/aborted overlapping request keeps its own correct status (it is
+    not shown as the sibling run's success), and unrelated maps/presets/jobs are
+    unaffected. Missed on a concurrent-output-generation ticket."""
+    evidence = (plan_text or "") + "\n" + _manifest_issue_text(manifest)
+    if not _CONCURRENCY_RE.search(evidence):
+        return []
+    lines = [
+        line for line in (plan_text or "").splitlines()
+        if re.search(r"\b(?:AC|OQ)[-\s]?\d+\b", line)
+    ]
+    if any(_ISOLATION_RE.search(line) for line in lines):
+        return []
+    return [
+        "This defect involves overlapping/concurrent runs, but no acceptance criterion or "
+        "Open Question dispositions isolation: assert that a rejected or aborted overlapping "
+        "request keeps its own correct status (it is not shown as the other run's success), "
+        "and that unrelated maps, presets, or jobs keep their own status, links, and logs."
+    ]
+
+
+# A vague collective surface reference ("both dashboards", "the dashboards", "both
+# panels") instead of the exact screen names. plain-language-ac-writing requires the exact
+# screen name; this makes it fail-closed so a plural collective cannot stand in for the
+# named surfaces (missed by writing "both dashboards" where the ticket named the Map
+# Dashboard Outputs tab and the Bulk Publish dashboard).
+_VAGUE_SURFACE_RE = re.compile(
+    r"\b(?:both|all|either|the)\s+(?:dashboards|panels|screens|views|tabs|surfaces|dialogs)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_vague_surface_reference(manifest, plan_text: str) -> list[str]:
+    """Fail an acceptance criterion that refers to a vague collective UI surface (e.g.
+    'both dashboards', 'the panels') instead of naming each exact screen. Singular named
+    surfaces such as 'the Map Dashboard Outputs tab' or 'the Bulk Publish dashboard' pass."""
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        match = _VAGUE_SURFACE_RE.search(line)
+        if match:
+            problems.append(
+                f"An acceptance criterion names a vague collective surface "
+                f"({match.group(0)!r}): name each exact screen instead (for example the Map "
+                f"Dashboard Outputs tab and the Bulk Publish dashboard). Line: {line[:70]!r}."
+            )
+    return problems
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -746,6 +854,9 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_history_attempt_recorded(manifest)
     problems += _validate_current_status_recency(manifest, plan_text)
     problems += _validate_error_surface_open_question(manifest, plan_text)
+    problems += _validate_status_anti_overcorrection(manifest, plan_text)
+    problems += _validate_concurrency_isolation(manifest, plan_text)
+    problems += _validate_vague_surface_reference(manifest, plan_text)
     return problems
 
 
@@ -1019,6 +1130,59 @@ def run_self_tests() -> None:
     assert _validate_error_surface_open_question({}, backend_only_503) == [], (
         "a 503 with no user-facing UI context must not force the error-UI question"
     )
+
+    # --- status anti-over-correction ---
+    mislabel_plan = nl.join([
+        "**Understanding**", "The dashboard incorrectly shows a successful generation as Failed.",
+        "**Acceptance Criteria**",
+        "- AC-01: a run that produced its files shows success, not Failed.",
+        ""])
+    assert any("masking real" in p for p in _validate_status_anti_overcorrection({}, mislabel_plan)), (
+        "a false-failure ticket needs an anti-over-correction AC"
+    )
+    mislabel_covered = mislabel_plan + nl.join([
+        "- AC-09: genuine generation failures still show Failed and cancelled runs stay Cancelled.",
+        ""])
+    assert _validate_status_anti_overcorrection({}, mislabel_covered) == [], (
+        "an anti-over-correction AC satisfies the gate"
+    )
+    assert _validate_status_anti_overcorrection({}, plain) == [], "no status-mislabel signal -> no forcing"
+
+    # --- concurrency isolation ---
+    overlap_plan = nl.join([
+        "**Understanding**", "Fails when a second request runs while a previous job is still running.",
+        "**Acceptance Criteria**",
+        "- AC-01: the completed run shows success.",
+        ""])
+    assert any("isolation" in p for p in _validate_concurrency_isolation({}, overlap_plan)), (
+        "a concurrency/overlap ticket needs an isolation AC/OQ"
+    )
+    overlap_covered = overlap_plan + nl.join([
+        "- AC-04: a rejected overlapping request keeps its own status and does not appear "
+        "successful; other maps and presets are unaffected.",
+        ""])
+    assert _validate_concurrency_isolation({}, overlap_covered) == [], (
+        "an isolation AC satisfies the gate"
+    )
+    assert _validate_concurrency_isolation({}, plain) == [], "no concurrency signal -> no forcing"
+
+    # --- vague collective surface reference ---
+    vague_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after a run completes, both dashboards show success.",
+        ""])
+    assert any("vague collective surface" in p for p in _validate_vague_surface_reference({}, vague_plan)), (
+        "'both dashboards' must fail"
+    )
+    named_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after a run completes, the Map Dashboard Outputs tab and the Bulk Publish "
+        "dashboard show success.",
+        ""])
+    assert _validate_vague_surface_reference({}, named_plan) == [], (
+        "named surfaces must pass"
+    )
+    assert _validate_vague_surface_reference({}, plain) == [], "no surface reference -> pass"
 
     print("coverage_forcing self-tests: PASS")
 
