@@ -278,6 +278,69 @@ def _collection_exists(client, collection_name: str) -> bool:
         return False
 
 
+def _query_failure_diagnostic(stage, collection_name, query_vector_dimension, error) -> dict:
+    """Failure-only, allowlisted context; never retain exception/provider text.
+
+    message_signal is a bounded text hint, not a verified root cause. Vector
+    length alone does not prove encoder compatibility or successful submission.
+    """
+    stages = {
+        "GET_COLLECTION", "COUNT", "QUERY_CALL", "RESULT_IDS",
+        "RESULT_DOCUMENTS", "RESULT_METADATAS", "RESULT_DISTANCES",
+    }
+    collections = {
+        "aem_guides", "dita_spec", "jira_qa", "dita_ot_github",
+        "learned_qa", "docker_docs",
+    }
+    error_types = {
+        "ValueError", "TypeError", "KeyError", "IndexError", "AttributeError",
+        "RuntimeError", "TimeoutError", "ConnectionError", "OSError",
+        "InvalidArgumentError", "InvalidDimensionException", "InvalidDimensionError",
+        "NotFoundError", "AuthorizationError", "AuthenticationError", "PermissionError",
+        "HTTPStatusError", "HTTPError", "ReadTimeout", "ConnectTimeout", "ConnectError",
+        "RequestError", "InternalError", "ChromaError",
+    }
+    details = {
+        "schema_version": "chroma-query-diagnostic-v1",
+        "stage": stage if type(stage) is str and stage in stages else "UNKNOWN",
+        "collection": (
+            collection_name if type(collection_name) is str and collection_name in collections else "OTHER"
+        ),
+        "query_vector_dimension": (
+            query_vector_dimension
+            if type(query_vector_dimension) is int and query_vector_dimension >= 0 else None
+        ),
+        "error_type": "OTHER",
+        "message_signal": "UNKNOWN",
+    }
+    try:
+        name = type(error).__name__
+        if type(name) is str and name in error_types:
+            details["error_type"] = name
+        # Inspect a small prefix only; never include it (or a hash of it) in logs.
+        message = str(error)[:4096].lower()
+        if "truth value of an array" in message and "ambiguous" in message:
+            details["message_signal"] = "AMBIGUOUS_TRUTH_VALUE"
+        elif "dimension" in message and any(
+            token in message for token in ("does not match", "expected", "expecting")
+        ):
+            details["message_signal"] = "DIMENSION_MISMATCH"
+        elif "timed out" in message or "timeout" in message:
+            details["message_signal"] = "TIMEOUT"
+        elif "connection refused" in message or "connection reset" in message:
+            details["message_signal"] = "CONNECTION_FAILURE"
+        elif "unauthorized" in message or "forbidden" in message:
+            details["message_signal"] = "AUTH_FAILURE"
+        elif "rate limit" in message or "too many requests" in message:
+            details["message_signal"] = "RATE_LIMITED"
+        elif "invalid argument" in message:
+            details["message_signal"] = "INVALID_ARGUMENT"
+    except Exception:
+        # Even an exception with a broken __str__ must preserve the [] fallback.
+        pass
+    return details
+
+
 def query_collection(
     collection_name: str,
     query_embedding: list[float],
@@ -301,23 +364,31 @@ def query_collection(
     emb = list(emb) if emb else []
     if not emb:
         return []
+    stage = "GET_COLLECTION"
     try:
         coll = client.get_collection(name=collection_name)
+        stage = "COUNT"
         count = coll.count()
         if count == 0:
             return []
+        # Includes client validation/argument processing, not just server I/O.
+        stage = "QUERY_CALL"
         result = coll.query(
             query_embeddings=[emb],
             n_results=min(k, count),
             where=where,
             include=["documents", "metadatas", "distances"],
         )
+        stage = "RESULT_IDS"
         if not result or not result["ids"] or not result["ids"][0]:
             return []
         rows = []
         for i, doc_id in enumerate(result["ids"][0]):
+            stage = "RESULT_DOCUMENTS"
             doc = (result["documents"][0][i] or "") if result["documents"] else ""
+            stage = "RESULT_METADATAS"
             meta = (result["metadatas"][0][i] or {}) if result["metadatas"] else {}
+            stage = "RESULT_DISTANCES"
             dist = (result["distances"][0][i] or 0.0) if result.get("distances") else 0.0
             rows.append({
                 "id": doc_id,
@@ -325,11 +396,16 @@ def query_collection(
                 "metadata": meta,
                 "distance": dist,
             })
+            stage = "RESULT_IDS"
         return rows
     except Exception as e:
+        details = _query_failure_diagnostic(stage, collection_name, len(emb), e)
+        # Plain handlers discard extra_fields. Keep the same safe receipt in the
+        # message too, without enabling global JSON logging or raw tracebacks.
         logger.warning_structured(
-            "ChromaDB query failed",
-            extra_fields={"collection": collection_name, "error": str(e)},
+            "ChromaDB query failed [CHROMA_QUERY_DIAGNOSTIC_V1] "
+            + json.dumps(details, sort_keys=True, separators=(",", ":")),
+            extra_fields=details,
         )
         return []
 

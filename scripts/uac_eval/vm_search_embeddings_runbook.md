@@ -131,3 +131,62 @@ Audited at `c1b06887c76a26d593e6dd027594a12c0b8b8f35`:
 The report reflects the live response contract, not proof of the deployed code
 commit or the running model artifact hash. Future API changes must be reviewed;
 do not loosen schema checks solely to obtain a green status.
+
+## Failure-only backend diagnostic (separate deployment approval required)
+
+If the smoke report is empty and the journal contains only `ChromaDB query failed`,
+the existing warning does not identify the failing operation. The default plain
+formatter omits `extra_fields`; a whole-line JSON parse failure alone does not
+establish whether a particular deployed formatter embeds JSON in its message.
+
+`vector_store_service.query_collection` now includes a small safe receipt in the
+warning message as well as structured fields. This change does **not** fix search,
+change retrieval thresholds, alter result parsing, or enable global JSON logging.
+The message starts with:
+
+```text
+ChromaDB query failed [CHROMA_QUERY_DIAGNOSTIC_V1]
+```
+
+A compact JSON object follows the marker. It contains only:
+
+- `schema_version`: `chroma-query-diagnostic-v1`.
+- `stage`: last attempted collection lookup, count, query call, or result-field
+  operation (`GET_COLLECTION`, `COUNT`, `QUERY_CALL`, `RESULT_IDS`,
+  `RESULT_DOCUMENTS`, `RESULT_METADATAS`, `RESULT_DISTANCES`).
+- `collection`: a fixed known collection name, otherwise `OTHER`.
+- `query_vector_dimension`: the actual outer length of the normalized query list.
+- `error_type`: an allowlisted exception class name, otherwise `OTHER`.
+- `message_signal`: a fixed heuristic category from at most the first 4096
+  characters of the exception text, otherwise `UNKNOWN`.
+
+The exception text itself, its hash, traceback, query/filter, returned documents,
+metadata, IDs, vector values, credentials, and URLs are **not** included in this
+receipt. A broken exception `__str__` leaves the signal unknown. Unknown values
+must not be interpreted as success or used to guess a repair.
+
+`QUERY_CALL` includes argument evaluation and client-side validation, not only
+remote server I/O. The dimension does not identify the embedding model. A signal
+is a diagnostic hint, not proof of a root cause. This receipt covers the existing
+query exception handler only; unavailable-client, absent-collection and empty
+result paths still return as before without this warning. Pre-query operations
+outside that handler are not newly caught.
+
+Local fake-client tests (no server/model/index initialization):
+
+```bash
+python3 -I -B backend/tests/test_vector_store_query_diagnostics.py
+```
+
+Deployment and backend restart are **not** part of adding/testing this patch.
+After separate approval, verify that all routing-maintenance writer pauses are
+still applied before a controlled restart, then repeat the existing search smoke
+test and collect only these marked diagnostic lines for its time window. Do not
+resume imports or team traffic based on a logging patch.
+
+The routing repair's `CONTRACT_FILES` deliberately includes the entire vector
+store source. This diagnostic change will therefore fail that repair's old
+`BASELINE` source check (`RUNTIME_CONTRACT_CHANGED_NEEDS_REVIEW`). Do **not** weaken
+the guard, change its baseline, or rerun routing `--apply` to deploy this patch.
+The completed routing repair and its preserved backups remain separate from this
+diagnostic. Its rollback restores service configuration, not backend source code.
