@@ -3911,6 +3911,7 @@ class CanonicalTestPlanReasoningService:
                 if facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
                 else "Proposed acceptance contract"
             ),
+            "finalization": "Finalization",
             "product_decisions": "Product decisions required",
             "semantic_coverage": "Semantic coverage",
             "structural_hierarchy_coverage": "Structural / hierarchy coverage",
@@ -4067,6 +4068,51 @@ class CanonicalTestPlanReasoningService:
             if gate.failures:
                 detail += f" — {'; '.join(gate.failures)}"
             section_items["coverage_gate_result"].append((detail, gate.gate.value))
+
+        # Zero-AC finalization gate: a plan must never leave the acceptance contract
+        # silently empty. When nothing was promoted, state the finalization outcome and
+        # WHY in a human-visible section instead of just omitting the contract heading
+        # (the reason otherwise hides in "Coverage gate result"). Every item carries an
+        # empty record id, so this does not affect the completeness-invariant projection
+        # checks below.
+        if not section_items["acceptance_contract"]:
+            material_contract = (
+                facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
+                or any(
+                    row.fact_type == ContractFactType.DIRECT_EXPECTED_BEHAVIOR
+                    for row in facts.facts
+                )
+            )
+            block_reasons: list[str] = []
+            for decision in promotions:
+                if decision.status != PromotionStatus.PROMOTED:
+                    for reason in decision.reasons:
+                        if reason and reason not in block_reasons:
+                            block_reasons.append(reason)
+            unresolved = [q.question for q in questions if q.blocking]
+            if not material_contract:
+                state = (
+                    "NO_ACCEPTANCE_CONTRACT_REQUIRED: no material customer/product "
+                    "contract was extracted from the evidence."
+                )
+            elif block_reasons or unresolved:
+                state = (
+                    "NEEDS_REVIEW: a material contract exists but no acceptance criteria "
+                    "were promoted — resolve the items below, then re-run."
+                )
+            else:
+                state = (
+                    "NEEDS_REVIEW: a material contract exists but no acceptance criteria "
+                    "were promoted."
+                )
+            section_items["finalization"].append((state, ""))
+            for reason in block_reasons[:6]:
+                section_items["finalization"].append((f"Blocked: {reason}", ""))
+            for question in unresolved[:6]:
+                section_items["finalization"].append(
+                    (f"Unresolved product decision: {question}", "")
+                )
+
         order = list(titles)
         sections: list[PlanSection] = []
         for key in order:
