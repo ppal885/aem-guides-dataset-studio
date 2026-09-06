@@ -23,6 +23,24 @@ def safe_fixture_path(path, **_kwargs):
 
 
 class UnitTests(unittest.TestCase):
+    def test_platform_listener_failure_stops_preflight_before_copy_or_config_checks(self):
+        with patch.object(subject.sys, "platform", "linux"), \
+                patch.object(subject.os, "geteuid", return_value=0, create=True), \
+                patch.object(subject, "safe_path", side_effect=safe_fixture_path), \
+                patch.object(Path, "samefile", return_value=False), \
+                patch.object(subject, "require_stopped"), patch.object(subject, "no_open_files"), \
+                patch.object(subject, "free_port"), \
+                patch.object(subject, "read_listener_inventory", side_effect=subject.RepairError("IPV6_ABSENCE_NOT_PROVEN")) as inventory, \
+                patch.object(subject, "command") as command, \
+                patch.object(subject, "validated_archives") as archives, \
+                patch.object(subject, "tree_snapshot") as snapshot:
+            with self.assertRaisesRegex(subject.RepairError, "IPV6_ABSENCE_NOT_PROVEN"):
+                subject.preflight(Path("/repo"), Path("/backup"))
+            inventory.assert_called_once()
+            command.assert_not_called()
+            archives.assert_not_called()
+            snapshot.assert_not_called()
+
     def test_exec_start_requires_actual_executable_not_substring_wrapper(self):
         value = "{ path=/venv/bin/uvicorn ; argv[]=/venv/bin/uvicorn app.main:app --port 8001 ; ignore_errors=no ; start_time=[n/a] ; pid=0 ; status=0/0 }"
         self.assertEqual(subject.exec_start(value), ("/venv/bin/uvicorn", ["/venv/bin/uvicorn", "app.main:app", "--port", "8001"]))

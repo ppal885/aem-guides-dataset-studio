@@ -1,7 +1,7 @@
 """Portable ownership regressions; no Chroma, services, VM, or network access.
 
-The optional Linux case opens only temporary ordinary files in this Python
-process and invokes lsof. It never opens a real database or starts a service.
+The optional Linux cases inspect kernel TCP tables or open temporary ordinary
+files and invoke lsof. They never open a real database or start a service.
 """
 from contextlib import ExitStack, redirect_stdout
 import importlib.util
@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -159,6 +160,8 @@ class ProcFixture:
             str(self.process_sqlite): self.file_info(),
             str(self.fds[0]): self.file_info(),
             str(self.fds[1]): SimpleNamespace(st_mode=stat.S_IFSOCK, st_dev=0, st_ino=4001),
+            "/proc/self/ns/net": self.file_info(device=4, inode=4026531840),
+            str(self.process / "ns/net"): self.file_info(device=4, inode=4026531840),
         }
         self.links = {str(self.fds[0]): str(self.sqlite), str(self.fds[1]): "socket:[4001]"}
         self.content = {
@@ -168,7 +171,7 @@ class ProcFixture:
                 [b"chroma", b"run", b"--path", str(self.run / "chroma_db").encode(),
                  b"--host", b"127.0.0.1", b""]),
             "/proc/net/tcp": self.listener_table(),
-            "/proc/net/tcp6": b"header\n",
+            "/proc/net/tcp6": self.listener_header(remote="remote_address"),
         }
         self.result = scan_result()
         self.wait_values = [self.pid, self.pid]
@@ -186,9 +189,19 @@ class ProcFixture:
         return ("321 (chroma (worker) name) " + " ".join(["S"] + ["0"] * 18 + [str(start)])).encode()
 
     @staticmethod
-    def listener_table(address="0100007F:1F40", inode="4001"):
-        return ("header\n0: " + address + " 00000000:0000 0A 00000000:00000000 "
-                "00:00000000 00000000 0 0 " + inode + "\n").encode()
+    def listener_header(remote="rem_address"):
+        return ("  sl  local_address " + remote + " st tx_queue rx_queue tr tm->when "
+                "retrnsmt uid timeout inode\n").encode()
+
+    @classmethod
+    def listener_table(cls, address="0100007F:1F40", inode="4001", state="0A"):
+        remote = "0" * len(address.split(":")[0]) + ":0000"
+        return cls.listener_header() + ("0: " + address + " " + remote + " " + state
+                + " 00000000:00000000 00:00000000 00000000 0 0 " + inode + "\n").encode()
+
+    def disable_ipv6(self):
+        self.content["/proc/net/tcp6"] = FileNotFoundError("private missing IPv6 table")
+        self.content["/sys/module/ipv6/parameters/disable"] = b"1\n"
 
     def bounded(self, path, *_args, **_kwargs):
         value = self.content[str(path)]
@@ -204,7 +217,7 @@ class ProcFixture:
         self.real_atomic_write(self.report, data)
 
     def path(self, value):
-        if str(value) in ("/proc", "/proc/net"):
+        if str(value).startswith(("/proc", "/sys")):
             return self.path_type(value)
         return Path(value)
 
@@ -248,7 +261,53 @@ class OwnershipTests(unittest.TestCase):
         self.assertTrue(result["copy_sqlite_fd_proven"])
         self.assertTrue(result["loopback_listener_owned"])
         self.assertTrue(result["process_identity_stable"])
+        self.assertTrue(result["network_namespace_matches"])
         self.assertEqual(json.loads(self.fixture.report.read_text()), result)
+
+    def test_ipv4_only_owner_passes_all_proofs_with_explicit_kernel_evidence(self):
+        self.fixture.disable_ipv6()
+        with self.fixture.patches():
+            result = subject.verify_owner(self.fixture.run)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["single_owner_pid"], 321)
+        self.assertEqual(result["lsof"]["pids"], [321])
+        self.assertTrue(result["copy_sqlite_fd_proven"])
+        self.assertTrue(result["process_view_sqlite_matches"])
+        self.assertTrue(result["loopback_listener_owned"])
+        self.assertTrue(result["network_namespace_matches"])
+        self.assertTrue(result["process_identity_stable"])
+        self.assertEqual(result["listener_inventory"]["tables"]["tcp6"], {
+            "status": "ABSENT_KERNEL_IPV6_DISABLED", "proof": "ipv6_module_disable=1"})
+        self.assertEqual(result["listener_inventory"]["port_8000_listener_count"], 1)
+        self.assertEqual(json.loads(self.fixture.report.read_text()), result)
+
+    def test_ipv4_only_does_not_bypass_other_owner_checks(self):
+        for stage, failure in (
+                ("pid", "CHROMA_NOT_SOLE_STORE_OWNER"),
+                ("cgroup", "CHROMA_CGROUP_MISMATCH"),
+                ("target", "CHROMA_PROCESS_TARGET_MISMATCH"),
+                ("sqlite_view", "CHROMA_PROCESS_VIEW_SQLITE_MISMATCH"),
+                ("sqlite_fd", "CHROMA_COPY_FD_NOT_PROVEN"),
+                ("socket_fd", "CHROMA_PORT_OWNED_BY_OTHER_PROCESS"),
+                ("pid_change", "CHROMA_PROCESS_CHANGED_DURING_CHECK")):
+            with self.subTest(stage=stage):
+                self.fixture = ProcFixture(Path(self.directory.name))
+                self.fixture.disable_ipv6()
+                if stage == "pid":
+                    self.fixture.result.stdout = b"321\n654\n"
+                elif stage == "cgroup":
+                    self.fixture.content[str(self.fixture.process / "cgroup")] = b"0::/other.service\n"
+                elif stage == "target":
+                    self.fixture.content[str(self.fixture.process / "cmdline")] = b"chroma\0/other/store\0"
+                elif stage == "sqlite_view":
+                    self.fixture.stats[str(self.fixture.process_sqlite)] = self.fixture.file_info(inode=43)
+                elif stage == "sqlite_fd":
+                    self.fixture.stats[str(self.fixture.fds[0])] = self.fixture.file_info(inode=43)
+                elif stage == "socket_fd":
+                    self.fixture.links[str(self.fixture.fds[1])] = "socket:[9999]"
+                else:
+                    self.fixture.wait_values[-1] = 654
+                self.verify_failure(failure)
 
     def test_exit_zero_owner_also_passes_all_proofs(self):
         self.fixture.result.returncode = 0
@@ -328,13 +387,65 @@ class OwnershipTests(unittest.TestCase):
         self.verify_failure("CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
 
     def test_no_listener_is_rejected(self):
-        self.fixture.content["/proc/net/tcp"] = b"header\n"
+        self.fixture.content["/proc/net/tcp"] = self.fixture.listener_header()
         self.verify_failure("CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
 
     def test_additional_ipv6_listener_is_rejected(self):
         self.fixture.content["/proc/net/tcp6"] = self.fixture.listener_table(
             address="00000000000000000000000000000000:1F40", inode="4002")
         self.verify_failure("CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
+
+    def test_ipv6_competitor_is_rejected_even_when_module_parameter_says_disabled(self):
+        self.fixture.content["/sys/module/ipv6/parameters/disable"] = b"1\n"
+        self.fixture.content["/proc/net/tcp6"] = self.fixture.listener_table(
+            address="00000000000000000000000000000000:1F40", inode="4002")
+        report = self.verify_failure("CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
+        self.assertEqual(report["listener_inventory"]["port_8000_listener_count"], 2)
+        self.assertEqual(report["listener_inventory"]["tables"]["tcp6"]["status"], "READABLE")
+
+    def test_missing_ipv6_without_proof_persists_redacted_failure(self):
+        self.fixture.disable_ipv6()
+        self.fixture.content["/sys/module/ipv6/parameters/disable"] = PermissionError("private proof detail")
+        report = self.verify_failure("IPV6_ABSENCE_NOT_PROVEN")
+        self.assertEqual(report["step"], "LOOPBACK_LISTENER")
+        self.assertEqual(report["listener_inventory"]["tables"]["tcp6"]["status"], "MISSING")
+        self.assertNotIn("private", self.fixture.report.read_text() + self.fixture.stdout.getvalue())
+
+    def test_network_namespace_device_or_inode_mismatch_fails(self):
+        for device, inode in ((5, 4026531840), (4, 4026531841)):
+            with self.subTest(device=device, inode=inode):
+                self.fixture = ProcFixture(Path(self.directory.name))
+                self.fixture.stats[str(self.fixture.process / "ns/net")] = self.fixture.file_info(
+                    device=device, inode=inode)
+                self.verify_failure("CHROMA_NETWORK_NAMESPACE_MISMATCH")
+
+    def test_network_namespace_unreadable_or_missing_at_either_phase_fails(self):
+        for path in ("/proc/self/ns/net", "/proc/321/ns/net"):
+            for failure in (PermissionError, FileNotFoundError, OSError):
+                for phase in ("initial", "revalidation"):
+                    with self.subTest(path=path, failure=failure, phase=phase):
+                        self.fixture = ProcFixture(Path(self.directory.name))
+                        error = failure("private namespace detail")
+                        self.fixture.stats[path] = error if phase == "initial" else [
+                            self.fixture.stats[path], error]
+                        self.verify_failure("CHROMA_NETWORK_NAMESPACE_UNREADABLE")
+                        self.assertNotIn("private", self.fixture.report.read_text()
+                                         + self.fixture.stdout.getvalue())
+
+    def test_matching_network_namespaces_changing_together_are_rejected(self):
+        for device, inode in ((5, 4026531840), (4, 4026531841)):
+            with self.subTest(device=device, inode=inode):
+                self.fixture = ProcFixture(Path(self.directory.name))
+                for path in ("/proc/self/ns/net", "/proc/321/ns/net"):
+                    self.fixture.stats[path] = [self.fixture.stats[path], self.fixture.file_info(
+                        device=device, inode=inode)]
+                self.verify_failure("CHROMA_NETWORK_NAMESPACE_CHANGED")
+
+    def test_service_network_namespace_changing_alone_is_rejected(self):
+        path = str(self.fixture.process / "ns/net")
+        self.fixture.stats[path] = [self.fixture.stats[path], self.fixture.file_info(
+            device=4, inode=4026531841)]
+        self.verify_failure("CHROMA_NETWORK_NAMESPACE_MISMATCH")
 
     def test_disappearing_sqlite_fd_is_not_accepted(self):
         self.fixture.stats[str(self.fixture.fds[0])] = FileNotFoundError("private fd detail")
@@ -386,6 +497,170 @@ class OwnershipTests(unittest.TestCase):
         self.assertIsNone(report["lsof"]["returncode"])
         self.assertEqual(report["lsof"]["pids"], [])
         self.assertNotIn(str(self.fixture.sqlite), self.fixture.report.read_text())
+
+
+class ListenerInventoryTests(unittest.TestCase):
+    def setUp(self):
+        self.content = {
+            "/proc/net/tcp": ProcFixture.listener_table(),
+            "/proc/net/tcp6": ProcFixture.listener_header(remote="remote_address"),
+        }
+        self.reads = []
+        self.diagnostic = {}
+
+    def bounded(self, path, *args, **kwargs):
+        self.reads.append(str(path))
+        value = self.content[str(path)]
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    def inventory(self):
+        with patch.object(subject, "Path", PurePosixPath), \
+                patch.object(subject, "bounded", side_effect=self.bounded), \
+                patch.object(subject, "command") as command, \
+                patch.object(socket, "socket") as create_socket:
+            result = subject.read_listener_inventory(self.diagnostic)
+        command.assert_not_called()
+        create_socket.assert_not_called()
+        return result
+
+    def verify_failure(self, code):
+        with self.assertRaisesRegex(subject.RepairError, "^" + code + "$") as raised:
+            self.inventory()
+        self.assertNotIn("private", str(raised.exception) + json.dumps(self.diagnostic))
+
+    def test_dual_stack_inventory_reports_counts_without_raw_rows(self):
+        self.content["/proc/net/tcp6"] = ProcFixture.listener_table(
+            address="00000000000000000000000001000000:1F40", inode="987654321")
+        self.assertEqual(self.inventory(), [
+            ("0100007F:1F40", "4001"), ("00000000000000000000000001000000:1F40", "987654321")])
+        self.assertEqual(self.reads, ["/proc/net/tcp", "/proc/net/tcp6"])
+        self.assertEqual(self.diagnostic, {"tables": {
+            "tcp": {"status": "READABLE", "rows_checked": 1},
+            "tcp6": {"status": "READABLE", "rows_checked": 1}}, "port_8000_listener_count": 2})
+        self.assertNotIn("987654321", json.dumps(self.diagnostic))
+        self.assertNotIn("0100007F", json.dumps(self.diagnostic))
+
+    def test_missing_ipv6_is_accepted_only_with_exact_stripped_disable_one(self):
+        self.content["/proc/net/tcp6"] = FileNotFoundError("private absent table")
+        for proof in (b"1", b"1\n", b" \t1\r\n"):
+            with self.subTest(proof=proof):
+                self.content["/sys/module/ipv6/parameters/disable"] = proof
+                self.assertEqual(self.inventory(), [("0100007F:1F40", "4001")])
+                self.assertEqual(self.diagnostic["tables"]["tcp6"], {
+                    "status": "ABSENT_KERNEL_IPV6_DISABLED", "proof": "ipv6_module_disable=1"})
+
+    def test_missing_ipv6_with_invalid_or_unreadable_proof_fails_closed(self):
+        self.content["/proc/net/tcp6"] = FileNotFoundError("private absent table")
+        for proof in (b"", b"0\n", b"01\n", b"true\n", b"Y\n", b"1\n0\n", b"1\x00", b"\xff",
+                      FileNotFoundError("private missing proof"), PermissionError("private denied proof"),
+                      OSError("private unreadable proof"), subject.RepairError("CONFIG_OR_REPORT_TOO_LARGE")):
+            with self.subTest(proof=type(proof).__name__ if isinstance(proof, BaseException) else proof):
+                self.content["/sys/module/ipv6/parameters/disable"] = proof
+                self.verify_failure("IPV6_ABSENCE_NOT_PROVEN")
+                self.assertEqual(self.diagnostic["tables"]["tcp6"]["status"], "MISSING")
+
+    def test_interface_ipv6_sysctl_is_not_evidence_of_module_absence(self):
+        self.content["/proc/net/tcp6"] = FileNotFoundError("private absent table")
+        self.content["/sys/module/ipv6/parameters/disable"] = FileNotFoundError("private missing proof")
+        self.content["/proc/sys/net/ipv6/conf/all/disable_ipv6"] = b"1\n"
+        self.verify_failure("IPV6_ABSENCE_NOT_PROVEN")
+        self.assertNotIn("/proc/sys/net/ipv6/conf/all/disable_ipv6", self.reads)
+
+    def test_missing_ipv4_is_never_accepted(self):
+        self.content["/proc/net/tcp"] = FileNotFoundError("private absent IPv4 table")
+        self.content["/sys/module/ipv6/parameters/disable"] = b"1\n"
+        self.verify_failure("IPV4_TCP_TABLE_MISSING")
+        self.assertEqual(self.diagnostic["tables"]["tcp"]["status"], "MISSING")
+        self.assertNotIn("/sys/module/ipv6/parameters/disable", self.reads)
+
+    def test_table_permission_and_other_read_errors_cannot_use_disabled_ipv6_exception(self):
+        for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+            for error_type in (PermissionError, IsADirectoryError, OSError):
+                with self.subTest(path=path, error=error_type.__name__):
+                    self.setUp()
+                    self.content[path] = error_type("private table read detail")
+                    self.content["/sys/module/ipv6/parameters/disable"] = b"1\n"
+                    self.verify_failure("TCP_TABLE_UNREADABLE")
+                    self.assertEqual(self.diagnostic["tables"][PurePosixPath(path).name]["status"], "UNREADABLE")
+                    self.assertNotIn("/sys/module/ipv6/parameters/disable", self.reads)
+
+    def test_existing_ipv6_table_is_read_without_consulting_disable_parameter(self):
+        self.content["/sys/module/ipv6/parameters/disable"] = b"1\n"
+        self.content["/proc/net/tcp6"] = ProcFixture.listener_table(
+            address="00000000000000000000000000000000:1F40", inode="4002")
+        self.assertEqual(len(self.inventory()), 2)
+        self.assertNotIn("/sys/module/ipv6/parameters/disable", self.reads)
+
+    def test_empty_readable_tables_and_both_kernel_header_spellings_are_valid(self):
+        for remote in ("rem_address", "remote_address"):
+            with self.subTest(remote=remote):
+                self.content = {"/proc/net/tcp": ProcFixture.listener_header(remote),
+                                "/proc/net/tcp6": ProcFixture.listener_header(remote)}
+                self.assertEqual(self.inventory(), [])
+                self.assertEqual(self.diagnostic["port_8000_listener_count"], 0)
+                self.assertEqual(self.diagnostic["tables"]["tcp"]["rows_checked"], 0)
+
+    def test_only_listen_state_and_port_8000_are_returned(self):
+        for table, address in (("tcp", "0100007F"), ("tcp6", "00000000000000000000000001000000")):
+            with self.subTest(table=table):
+                self.setUp()
+                self.content["/proc/net/tcp"] = ProcFixture.listener_header()
+                matching = ProcFixture.listener_table(address=address + ":1f40", state="0a")
+                established = ProcFixture.listener_table(address=address + ":1F40", state="01", inode="0")
+                other_port = ProcFixture.listener_table(address=address + ":1F41", inode="4003")
+                self.content["/proc/net/" + table] = matching + b"\n" + b"\n".join(
+                    data.splitlines()[1] for data in (established, other_port)) + b"\n"
+                self.assertEqual(self.inventory(), [(address.upper() + ":1F40", "4001")])
+                self.assertEqual(self.diagnostic["tables"][table]["rows_checked"], 3)
+
+    def test_corrupt_headers_fail_in_either_family(self):
+        headers = (b"", b"\n", b"header\n", b"sl local_address rem_address st\n",
+                   b"sl local_address rem_address inode st\n", b"sl local_address peer st inode\n",
+                   b"local_address sl rem_address st inode\n", b"sl local_address rem_address st inode\xff\n")
+        for table in ("tcp", "tcp6"):
+            for header in headers:
+                with self.subTest(table=table, header=header):
+                    self.setUp()
+                    self.content["/proc/net/" + table] = header
+                    self.verify_failure("TCP_TABLE_MALFORMED")
+
+    def test_corrupt_rows_fail_even_if_they_do_not_describe_port_8000(self):
+        for table, address in (("tcp", "0100007F"), ("tcp6", "00000000000000000000000001000000")):
+            valid = ProcFixture.listener_table(address=address + ":1F41").splitlines()[1].split()
+            corruptions = [(0, b"slot:"), (1, b"private-address:1F41"), (1, b"0100007F:XYZ1"),
+                           (1, address.encode() + b":1F4"), (2, b"private-remote:0000"),
+                           (3, b"GG"), (3, b"A"), (9, b"-1"), (9, b"+1"), (9, b"private-inode")]
+            wrong_width = b"00000000000000000000000001000000:1F41" if table == "tcp" else b"0100007F:1F41"
+            corruptions.append((1, wrong_width))
+            for index, replacement in corruptions:
+                with self.subTest(table=table, index=index, replacement=replacement):
+                    self.setUp()
+                    fields = valid.copy()
+                    fields[index] = replacement
+                    self.content["/proc/net/" + table] = ProcFixture.listener_header() + b" ".join(fields) + b"\n"
+                    self.verify_failure("TCP_TABLE_MALFORMED")
+            with self.subTest(table=table, row="truncated"):
+                self.setUp()
+                self.content["/proc/net/" + table] = ProcFixture.listener_header() + b" ".join(valid[:9]) + b"\n"
+                self.verify_failure("TCP_TABLE_MALFORMED")
+
+    def test_listening_sockets_require_positive_inode_even_on_other_ports(self):
+        for table, address in (("tcp", "0100007F"), ("tcp6", "00000000000000000000000001000000")):
+            for port in ("1F40", "1F41"):
+                with self.subTest(table=table, port=port):
+                    self.setUp()
+                    self.content["/proc/net/" + table] = ProcFixture.listener_table(
+                        address=address + ":" + port, inode="0")
+                    self.verify_failure("TCP_LISTENER_INODE_INVALID")
+
+    def test_bounded_table_read_failure_is_fatal(self):
+        for table in ("tcp", "tcp6"):
+            with self.subTest(table=table):
+                self.setUp()
+                self.content["/proc/net/" + table] = subject.RepairError("CONFIG_OR_REPORT_TOO_LARGE")
+                self.verify_failure("CONFIG_OR_REPORT_TOO_LARGE")
 
 
 class VisibilityFixture:
@@ -556,6 +831,20 @@ class ProcVisibilityTests(unittest.TestCase):
                 ticks = iter(times)
                 self.fixture.monotonic = lambda: next(ticks)
                 self.verify_failure("PROC_VISIBILITY_TIMEOUT")
+
+
+@unittest.skipUnless(sys.platform == "linux", "native TCP inventory regression requires Linux")
+class NativeListenerInventoryTests(unittest.TestCase):
+    def test_actual_kernel_tables_are_supported_without_network_or_service_operations(self):
+        diagnostic = {}
+        with patch.object(subject, "command") as command, patch.object(socket, "socket") as create_socket:
+            listeners = subject.read_listener_inventory(diagnostic)
+        command.assert_not_called()
+        create_socket.assert_not_called()
+        self.assertEqual(diagnostic["tables"]["tcp"]["status"], "READABLE")
+        self.assertIn(diagnostic["tables"]["tcp6"]["status"],
+                      {"READABLE", "ABSENT_KERNEL_IPV6_DISABLED"})
+        self.assertEqual(diagnostic["port_8000_listener_count"], len(listeners))
 
 
 @unittest.skipUnless(sys.platform == "linux", "native lsof regression requires Linux")

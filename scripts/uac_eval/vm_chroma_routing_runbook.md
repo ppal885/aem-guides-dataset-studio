@@ -168,6 +168,40 @@ No raw subprocess evidence can be recovered retroactively from an old
 `COMMAND_FAILED_LSOF` report. The stopped services also mean a post-rollback
 `lsof` check cannot reproduce the earlier live owner list.
 
+### IPv4-only VM: missing `/proc/net/tcp6`
+
+The next VM attempt passed global file ownership and copied-SQLite identity,
+then failed at `LOOPBACK_LISTENER`: the old reader unconditionally required both
+TCP proc tables. Read-only host checks confirmed `tcp6` and the IPv6 sysctl tree
+were absent and `/sys/module/ipv6/parameters/disable` contained `1`. This is the
+kernel's disabled-IPv6 mode, not missing Chroma data. The prior Linux-native
+test exercised `lsof`, while listener tests used fixtures containing both tables;
+they did not test the actual host's IPv4-only capability.
+
+The updated table reader is used in **preflight before copying/config changes**
+and in live ownership verification:
+
+- IPv4 `tcp` must exist, be readable and parse correctly.
+- IPv6 `tcp6`, when present, must also be readable and parse correctly. All
+  port8000 IPv6 listeners still prevent exclusive IPv4-loopback success.
+- Only an absent `tcp6` plus the exact read-only module `disable=1` evidence
+  permits the IPv4-only branch. Missing/unreadable evidence, any other value,
+  permission failures, malformed tables and a missing IPv4 table stop the run.
+  A system built without IPv6 but without that proof needs a separate review.
+- No IPv6 socket probe, module load, sysctl write or IPv6 enablement is performed.
+  The interface-level `disable_ipv6` sysctl is not substituted for module evidence.
+- Caller and service network namespace identities must agree and remain stable.
+  The host listener's inode must still be owned by the Chroma PID, and the
+  original SQLite/file-owner/PID checks remain required.
+
+Reports record each table's status and the IPv6-disable proof without publishing
+raw socket tables. The Linux test suite now reads the real host TCP tables without
+opening sockets or starting a service. A table-reader pass is platform evidence,
+not live service ownership or final routing-parity proof.
+
+[Kernel IPv6 parameters](https://kernel.org/doc/html/latest/networking/ipv6.html),
+[TCP proc-table format](https://docs.kernel.org/networking/proc_net_tcp.html).
+
 ## Success means routing parity, not a merged or fully revalidated corpus
 
 `PASS_ROUTING_ONLY_WRITERS_PAUSED` requires:

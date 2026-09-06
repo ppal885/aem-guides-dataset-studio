@@ -364,6 +364,8 @@ def preflight(repo, backup):
         no_open_files(path)
     for port in (8000, 8001):
         free_port(port)
+    listener_platform = {}
+    require(not read_listener_inventory(listener_platform), "CHROMA_PORT_ALREADY_LISTENING")
     command(["nginx", "-t"])
     for relative in CONTRACT_FILES:
         expected = command(["git", "-C", str(repo), "show", BASELINE + ":" + relative]).stdout
@@ -416,6 +418,7 @@ def preflight(repo, backup):
     return {"status": "PREFLIGHT_PASS_ONLY", "repo": str(repo), "backup": str(backup),
             "archives": archives, "originals": {k: str(v) for k, v in originals.items()},
             "original_snapshots": snapshots, "launcher": str(launcher),
+            "listener_platform": listener_platform,
             "automatic_writers_to_pause": list(WRITERS), "backend_contract_baseline": BASELINE}
 
 
@@ -556,6 +559,73 @@ def regular_file_identity(path):
     return info.st_dev, info.st_ino
 
 
+def read_listener_inventory(diagnostic):
+    """Read host-namespace TCP tables without binding sockets or loading modules.
+
+    Missing tcp6 is allowed ONLY with the kernel's read-only module disable=1
+    evidence. An interface disable_ipv6 sysctl is not equivalent. An existing
+    tcp6 table is always inspected, even if the module parameter says disabled.
+    """
+    listeners = []
+    diagnostic["tables"] = {}
+    for filename, width in (("tcp", 8), ("tcp6", 32)):
+        row = diagnostic["tables"][filename] = {"status": "READING"}
+        try:
+            data = bounded(Path("/proc/net") / filename)
+        except FileNotFoundError:
+            row["status"] = "MISSING"
+            require(filename == "tcp6", "IPV4_TCP_TABLE_MISSING")
+            try:
+                disabled = bounded(Path("/sys/module/ipv6/parameters/disable"), 32).strip()
+            except (OSError, RepairError):
+                raise RepairError("IPV6_ABSENCE_NOT_PROVEN") from None
+            require(disabled == b"1", "IPV6_ABSENCE_NOT_PROVEN")
+            row.update(status="ABSENT_KERNEL_IPV6_DISABLED", proof="ipv6_module_disable=1")
+            continue
+        except OSError:
+            row["status"] = "UNREADABLE"
+            raise RepairError("TCP_TABLE_UNREADABLE") from None
+        try:
+            lines = data.decode("ascii").splitlines()
+        except UnicodeError:
+            row["status"] = "INVALID_ENCODING"
+            raise RepairError("TCP_TABLE_MALFORMED") from None
+        row["status"] = "VALIDATING"
+        header = lines[0].split() if lines else []
+        require(len(header) >= 4 and header[:2] == ["sl", "local_address"]
+                and header[2] in {"rem_address", "remote_address"} and header[3] == "st"
+                and "inode" in header, "TCP_TABLE_MALFORMED")
+        count = 0
+        address_pattern = r"[0-9A-Fa-f]{" + str(width) + r"}:[0-9A-Fa-f]{4}"
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            fields = line.split()
+            require(len(fields) >= 10 and re.fullmatch(r"[0-9]+:", fields[0])
+                    and re.fullmatch(address_pattern, fields[1]) and re.fullmatch(address_pattern, fields[2])
+                    and re.fullmatch(r"[0-9A-Fa-f]{2}", fields[3])
+                    and re.fullmatch(r"[0-9]+", fields[9]), "TCP_TABLE_MALFORMED")
+            count += 1
+            if fields[3].upper() == "0A":
+                require(int(fields[9]) > 0, "TCP_LISTENER_INODE_INVALID")
+                if fields[1].upper().endswith(":1F40"):
+                    listeners.append((fields[1].upper(), fields[9]))
+        row.update(status="READABLE", rows_checked=count)
+    diagnostic["port_8000_listener_count"] = len(listeners)
+    return listeners
+
+
+def network_namespace_identity(process):
+    try:
+        own = (Path("/proc/self/ns/net")).stat()
+        service = (process / "ns/net").stat()
+    except OSError:
+        raise RepairError("CHROMA_NETWORK_NAMESPACE_UNREADABLE") from None
+    identity = own.st_dev, own.st_ino
+    require(identity == (service.st_dev, service.st_ino), "CHROMA_NETWORK_NAMESPACE_MISMATCH")
+    return identity
+
+
 def verify_owner_details(run, diagnostic):
     diagnostic["step"] = "SERVICE_IDENTITY"
     pid = wait_running("chroma.service", seconds=5)
@@ -577,12 +647,10 @@ def verify_owner_details(run, diagnostic):
         regular_file_identity(process / "root" / str(sqlite).lstrip("/")) == expected_identity)
     require(diagnostic["process_view_sqlite_matches"], "CHROMA_PROCESS_VIEW_SQLITE_MISMATCH")
     diagnostic["step"] = "LOOPBACK_LISTENER"
-    listeners = []
-    for filename in ("tcp", "tcp6"):
-        for line in bounded(Path("/proc/net") / filename).decode().splitlines()[1:]:
-            fields = line.split()
-            if fields[3] == "0A" and fields[1].endswith(":1F40"):
-                listeners.append((fields[1], fields[9]))
+    namespace = network_namespace_identity(process)
+    diagnostic["network_namespace_matches"] = True
+    diagnostic["listener_inventory"] = {}
+    listeners = read_listener_inventory(diagnostic["listener_inventory"])
     require(len(listeners) == 1 and listeners[0][0] == "0100007F:1F40", "CHROMA_LISTENER_NOT_EXCLUSIVE_LOOPBACK")
     diagnostic["step"] = "PROCESS_FILE_DESCRIPTORS"
     links = []
@@ -601,6 +669,7 @@ def verify_owner_details(run, diagnostic):
     require(wait_running("chroma.service", seconds=5) == pid and process_start_time(process) == started,
             "CHROMA_PROCESS_CHANGED_DURING_CHECK")
     require(regular_file_identity(sqlite) == expected_identity, "CHROMA_SQLITE_CHANGED_DURING_CHECK")
+    require(network_namespace_identity(process) == namespace, "CHROMA_NETWORK_NAMESPACE_CHANGED")
     diagnostic.update(single_owner_pid=pid, loopback_listener_owned=True, copy_sqlite_fd_proven=True,
                       process_identity_stable=True, step="COMPLETE")
 
