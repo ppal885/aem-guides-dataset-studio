@@ -811,6 +811,33 @@ def _validate_concurrency_isolation(manifest, plan_text: str) -> list[str]:
     ]
 
 
+# A vague collective surface reference ("both dashboards", "the dashboards", "both
+# panels") instead of the exact screen names. plain-language-ac-writing requires the exact
+# screen name; this makes it fail-closed so a plural collective cannot stand in for the
+# named surfaces (missed by writing "both dashboards" where the ticket named the Map
+# Dashboard Outputs tab and the Bulk Publish dashboard).
+_VAGUE_SURFACE_RE = re.compile(
+    r"\b(?:both|all|either|the)\s+(?:dashboards|panels|screens|views|tabs|surfaces|dialogs)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_vague_surface_reference(manifest, plan_text: str) -> list[str]:
+    """Fail an acceptance criterion that refers to a vague collective UI surface (e.g.
+    'both dashboards', 'the panels') instead of naming each exact screen. Singular named
+    surfaces such as 'the Map Dashboard Outputs tab' or 'the Bulk Publish dashboard' pass."""
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        match = _VAGUE_SURFACE_RE.search(line)
+        if match:
+            problems.append(
+                f"An acceptance criterion names a vague collective surface "
+                f"({match.group(0)!r}): name each exact screen instead (for example the Map "
+                f"Dashboard Outputs tab and the Bulk Publish dashboard). Line: {line[:70]!r}."
+            )
+    return problems
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -829,6 +856,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_error_surface_open_question(manifest, plan_text)
     problems += _validate_status_anti_overcorrection(manifest, plan_text)
     problems += _validate_concurrency_isolation(manifest, plan_text)
+    problems += _validate_vague_surface_reference(manifest, plan_text)
     return problems
 
 
@@ -1137,6 +1165,24 @@ def run_self_tests() -> None:
         "an isolation AC satisfies the gate"
     )
     assert _validate_concurrency_isolation({}, plain) == [], "no concurrency signal -> no forcing"
+
+    # --- vague collective surface reference ---
+    vague_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after a run completes, both dashboards show success.",
+        ""])
+    assert any("vague collective surface" in p for p in _validate_vague_surface_reference({}, vague_plan)), (
+        "'both dashboards' must fail"
+    )
+    named_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after a run completes, the Map Dashboard Outputs tab and the Bulk Publish "
+        "dashboard show success.",
+        ""])
+    assert _validate_vague_surface_reference({}, named_plan) == [], (
+        "named surfaces must pass"
+    )
+    assert _validate_vague_surface_reference({}, plain) == [], "no surface reference -> pass"
 
     print("coverage_forcing self-tests: PASS")
 
