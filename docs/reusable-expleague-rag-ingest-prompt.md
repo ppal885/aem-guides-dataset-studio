@@ -12,24 +12,25 @@ step genuinely fails (report the failure, do not fake success).
 
 URL: `<EXP_LEAGUE_URL>`
 
-Repo root: the aem-guides-dataset-studio checkout. The backend must be able to reach the
-local Chroma corpus (`backend/storage/chroma_db`). If the backend is not running you do
-NOT need it running for ingest/mine — the scripts open Chroma directly — but load
-`backend/.env` (the scripts do this themselves).
+Run every command FROM THE REPO ROOT (the aem-guides-dataset-studio checkout). All the
+scripts self-locate `backend/` and load `backend/.env` themselves - do NOT `cd backend`.
+The backend does NOT need to be running (the scripts open the local Chroma corpus at
+`backend/storage/chroma_db` directly). `ingest_urls.py` has no hard langchain dependency
+(it falls back to httpx), so it works on the VM without extra installs.
 
 1. INGEST (non-destructive — NEVER call crawl_service.crawl_and_index with one URL; it
-   does a full delete+replace that would wipe the corpus). Run:
+   does a full delete+replace that would wipe the corpus). From the repo root:
    ```bash
-   cd backend && python ../scripts/ingest_urls.py "<EXP_LEAGUE_URL>"
+   python scripts/ingest_urls.py "<EXP_LEAGUE_URL>"
    ```
    This chunks + embeds + upserts the page into the `aem_guides` collection and adds the
    URL to `backend/config/aem_guides_crawl_urls.json`. Confirm it printed "OK <n> chunks".
 
-2. LEARN THE BEHAVIOUR from RAG (do not invent — read what was ingested). Query the
-   collection for the page's key concepts and read the actual chunks, e.g.:
+2. LEARN THE BEHAVIOUR from RAG (do not invent — read what was ingested). From the repo root:
    ```bash
-   cd backend && python -c "
-   from dotenv import load_dotenv; load_dotenv('.env')
+   python -c "
+   import sys; sys.path.insert(0,'backend')
+   from dotenv import load_dotenv; load_dotenv('backend/.env')
    from app.services.vector_store_service import _get_client, CHROMA_COLLECTION_AEM_GUIDES
    import re
    c=_get_client(); coll=c.get_collection(CHROMA_COLLECTION_AEM_GUIDES)
@@ -41,9 +42,9 @@ NOT need it running for ingest/mine — the scripts open Chroma directly — but
    precedence / edge-case behaviour) grounded ONLY in the retrieved text.
 
 3. EXTRACT THE UI IMAGES (Experience League images are JS-loaded; the raw HTML lists
-   `media_<hash>.png`). Download and VIEW the key ones to understand the UI:
+   `media_<hash>.png`). Download and VIEW the key ones. From the repo root:
    ```bash
-   cd backend && python -c "
+   python -c "
    import httpx, re, os
    url='<EXP_LEAGUE_URL>'; base=url.rsplit('/',1)[0]+'/'
    h=httpx.get(url, timeout=30, follow_redirects=True).text
@@ -59,9 +60,9 @@ NOT need it running for ingest/mine — the scripts open Chroma directly — but
    surfaces/panels/controls they show.
 
 4. GROW THE VOCABULARY (this is the payoff of ingesting). Run the corpus miner and REVIEW
-   its candidates — it is a review aid, NOT an auto-adder:
+   its candidates — it is a review aid, NOT an auto-adder. From the repo root:
    ```bash
-   cd backend && python ../scripts/uac_eval/mine_guides_vocabulary.py --top 40 --min-freq 4
+   python scripts/uac_eval/mine_guides_vocabulary.py --top 40 --min-freq 4
    ```
    From the candidates AND the page you just read, add ONLY genuine AEM Guides product
    terms to `.codex/skills/test-plan-generation/data/guides_vocabulary.json`:

@@ -19,6 +19,45 @@ import sys
 from pathlib import Path
 
 
+def _fetch_text(url: str) -> tuple[str, str]:
+    """Fetch page text. Prefer langchain WebBaseLoader if present; otherwise plain
+    httpx + tag-strip (no langchain dependency needed on the VM)."""
+    try:
+        from langchain_community.document_loaders import WebBaseLoader  # noqa: PLC0415
+        docs = WebBaseLoader(url).load()
+        text = "\n".join(d.page_content for d in docs)
+        title = (docs[0].metadata.get("title") if docs else "") or url.rsplit("/", 1)[-1]
+        return text, title
+    except Exception:  # noqa: BLE001 - langchain missing or load failed; fall back
+        import re
+        import httpx
+        html = httpx.get(url, timeout=30, follow_redirects=True).text
+        m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+        title = (m.group(1).strip() if m else "") or url.rsplit("/", 1)[-1]
+        # strip script/style then tags, collapse whitespace
+        html = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.I | re.S)
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"&nbsp;", " ", text)
+        text = re.sub(r"[ \t\r\f]+", " ", text)
+        text = re.sub(r"\n\s*\n+", "\n", text)
+        return text.strip(), title
+
+
+def _split(text: str, size: int, overlap: int) -> list[str]:
+    """Character splitter. Prefer langchain's RecursiveCharacterTextSplitter; else a
+    simple fixed-window splitter with overlap."""
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: PLC0415
+        return RecursiveCharacterTextSplitter(chunk_size=size, chunk_overlap=overlap).split_text(text)
+    except Exception:  # noqa: BLE001
+        chunks, i, n = [], 0, len(text)
+        step = max(1, size - overlap)
+        while i < n:
+            chunks.append(text[i:i + size])
+            i += step
+        return chunks
+
+
 def _add_to_crawl_config(backend: Path, urls: list[str]) -> None:
     cfg = backend / "config" / "aem_guides_crawl_urls.json"
     try:
@@ -44,8 +83,6 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(backend))
     from dotenv import load_dotenv
     load_dotenv(str(backend / ".env"))
-    from langchain_community.document_loaders import WebBaseLoader
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
     from app.services.embedding_service import embed_texts, is_embedding_available
     from app.services.vector_store_service import (
         add_documents, is_chroma_available, CHROMA_COLLECTION_AEM_GUIDES,
@@ -55,14 +92,11 @@ def main(argv: list[str]) -> int:
         print("Chroma or embeddings unavailable.", file=sys.stderr)
         return 2
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     total = 0
     for url in argv:
         try:
-            docs = WebBaseLoader(url).load()
-            text = "\n".join(d.page_content for d in docs)
-            title = (docs[0].metadata.get("title") if docs else "") or url.rsplit("/", 1)[-1]
-            chunks = [c for c in splitter.split_text(text) if c.strip()]
+            text, title = _fetch_text(url)
+            chunks = [c for c in _split(text, 1000, 200) if c.strip()]
             if not chunks:
                 print(f"SKIP (no content): {url}", file=sys.stderr)
                 continue
