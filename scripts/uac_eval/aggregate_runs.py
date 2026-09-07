@@ -16,6 +16,7 @@ from typing import Any
 
 
 RUN_GLOB = "judge_pipeline*.json"
+GATE_EFFECT_GLOB = "gate_effect_report*.json"
 OUTPUT_NAME = "dashboard_data.json"
 METRIC_KEYS = (
     "coverage",
@@ -119,13 +120,55 @@ def collect_runs(directory: Path) -> list[dict[str, Any]]:
     return sorted(runs, key=lambda item: (item["ts"], item["run_id"]))
 
 
+def normalize_gate_effect(path: Path, value: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one gate-effect report (measure_gate_effect.py output) for the dashboard.
+
+    Presentation adapter only: copies the reported miss-rates and derives the reduction as
+    off_miss - on_miss without recomputing either side. Missing metrics stay null."""
+    if not isinstance(value, dict):
+        raise RunFormatError(f"{path.name}: top-level JSON value must be an object")
+    per = value.get("per")
+    if per is not None and not isinstance(per, list):
+        raise RunFormatError(f"{path.name}: per must be a list when present")
+    off_miss = value.get("off_miss")
+    on_miss = value.get("on_miss")
+    reduction = (
+        round(off_miss - on_miss, 3)
+        if isinstance(off_miss, (int, float)) and isinstance(on_miss, (int, float))
+        else None
+    )
+    return {
+        "run_id": path.name,
+        "ts": _timestamp(path),
+        "off_miss": off_miss,
+        "on_miss": on_miss,
+        "reduction": reduction,
+        "fixed": value.get("fixed"),
+        "n": len(per) if isinstance(per, list) else None,
+    }
+
+
+def collect_gate_effect(directory: Path) -> list[dict[str, Any]]:
+    """Read gate-effect report files in deterministic timestamp order."""
+    directory = directory.resolve()
+    records = []
+    for path in directory.glob(GATE_EFFECT_GLOB):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RunFormatError(f"Cannot read {path.name}: {exc}") from exc
+        records.append(normalize_gate_effect(path, value))
+    return sorted(records, key=lambda item: (item["ts"], item["run_id"]))
+
+
 def write_dashboard_data(directory: Path, output_path: Path | None = None) -> int:
     """Write the dashboard payload and return the number of included runs."""
     directory = directory.resolve()
     destination = (output_path or directory / OUTPUT_NAME).resolve()
     runs = collect_runs(directory)
+    gate_effect = collect_gate_effect(directory)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps({"runs": runs}, indent=2, ensure_ascii=False) + "\n"
+    payload = json.dumps({"runs": runs, "gate_effect": gate_effect}, indent=2, ensure_ascii=False) + "\n"
     destination.write_text(payload, encoding="utf-8")
     return len(runs)
 
@@ -249,6 +292,34 @@ def run_self_tests() -> None:
         _require(runs[1]["seed"] == 17 and runs[1]["vm"] == "fixture-vm", "JSON run context is copied")
         _require(runs[1]["agg_pipeline"]["det_precision"] == 75, "reported precision is preserved")
         _require(runs[1]["agg_baseline"]["no_ac_section"] == 1, "reported no-AC count is preserved")
+
+        # gate-effect series is collected from its own glob, sorted by mtime, reduction derived
+        _write_fixture(
+            directory / "gate_effect_report.json",
+            {"off_miss": 0.50, "on_miss": 0.35, "fixed": 1.9,
+             "per": [{"key": "A"}, {"key": "B"}]},
+            1_700_000_400,
+        )
+        _write_fixture(
+            directory / "gate_effect_report30.json",
+            {"off_miss": 0.46, "on_miss": 0.30, "fixed": 2.0, "per": [{"key": "C"}]},
+            1_700_000_500,
+        )
+        ge = collect_gate_effect(directory)
+        _require(len(ge) == 2, "both gate-effect reports are collected")
+        _require([r["run_id"] for r in ge]
+                 == ["gate_effect_report.json", "gate_effect_report30.json"],
+                 "gate-effect reports sorted by timestamp")
+        _require(ge[0]["reduction"] == 0.15, "reduction is off_miss - on_miss")
+        _require(ge[0]["n"] == 2 and ge[1]["n"] == 1, "n is the per-ticket count")
+        _require(ge[1]["reduction"] == 0.16, "second reduction derived independently")
+        payload2 = json.loads(
+            (directory / OUTPUT_NAME).read_text(encoding="utf-8")
+        ) if (directory / OUTPUT_NAME).exists() else {}
+        write_dashboard_data(directory, directory / OUTPUT_NAME)
+        payload2 = json.loads((directory / OUTPUT_NAME).read_text(encoding="utf-8"))
+        _require("gate_effect" in payload2 and len(payload2["gate_effect"]) == 2,
+                 "dashboard payload carries the gate_effect series")
 
         malformed_path = directory / "judge_pipeline_malformed.json"
         malformed = {
