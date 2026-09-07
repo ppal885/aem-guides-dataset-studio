@@ -59,6 +59,15 @@
       "governance": "HUMAN_APPROVED"
     },
     {
+      "id": "invented-locale-value-terms",
+      "pattern": "regional\\s+value|generic\\s+value|\\d\\s*-?\\s*character\\s+locale",
+      "wrong": "regional value / generic value / N-character locale",
+      "correct": "a language variable has a value per language (language code, e.g. pt vs pt_br); missing value falls back to the UI language",
+      "message": "Do not invent locale/value terminology. A language variable holds a value per LANGUAGE (language code such as pt or pt_br); when a value is not defined for the output language it falls back to the UI language (per the language-variables doc - query RAG). Use concrete language codes (pt, hi, pt_br), not 'regional value / generic value / N-character locale'.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "move-to-group",
       "pattern": "mov(e|ed|ing)\\s+to\\s+(the\\s+)?(wrong\\s+)?(condition\\s+)?group",
       "wrong": "moved to the wrong group / move to a group",
@@ -79,6 +88,9 @@
     "Translation Panel",
     "Metadata Reports",
     "Reports Panel",
+    "language variable",
+    "application variables",
+    "user variables",
     "Editor Preview",
     "Old Editor",
     "New Editor",
