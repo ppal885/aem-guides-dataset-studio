@@ -90,9 +90,52 @@ The backend does NOT need to be running (the scripts open the local Chroma corpu
 6. REPORT: the ingested chunk count, the behaviour summary, the UI surfaces seen, the
    terms you added (and any you left out for human review), and the final commit hash.
 
+## GUARDRAILS — do NOT do these (prevent wrong implementation)
+
+- **NEVER wipe the corpus.** Do not call `crawl_service.crawl_and_index` (or any full
+  re-crawl) to add one page — it does a full delete+replace of the whole `aem_guides`
+  collection. Only ever use `scripts/ingest_urls.py` (append/upsert). Re-running it on the
+  same URL is safe (idempotent: same ids), so never "clear and reload".
+- **Verify success; never fake it.** Confirm ingest printed `OK <n> chunks` with n>0. If it
+  printed 0 chunks, a FAIL, or an error, STOP and report — do not proceed as if it worked.
+- **Use the REAL full URL.** Never run with the literal placeholder `<EXP_LEAGUE_URL>` or a
+  `…` ellipsis; paste the complete Experience League URL.
+- **RAG drives terminology — never invent.** For every product concept the ingested doc
+  documents, use the doc's exact terms and behaviour (especially fallback/precedence). If
+  RAG lacks it, say so and mark it unverified. Do not write invented framing (e.g. no
+  "regional value / generic value / N-character locale" — a language variable has a value
+  per language; missing value falls back to the UI language).
+- **Human-verify EVERY mined term before adding.** The miner surfaces candidates only. Add
+  a term to `guides_vocabulary.json` ONLY if you can confirm it is a real AEM Guides UI
+  surface/feature. REJECT, and do not add:
+  - AEM platform / Forms / Sites terms that leaked into the corpus: Rule Editor, Visual
+    Rule Editor, Adaptive Forms/Form, Sites Editor, Page Editor, Component Image Editor,
+    Adobe Developer/Admin/Web Console, Offers Console, Universal Editor.
+  - Heading/sentence fragments (e.g. "Configure New Baseline", "Schematron Validation
+    Reports", "Utilize Metadata").
+  Known corrections already encoded (do not re-add the wrong side): Advanced Map Editor ==
+  Map console; Theme Editor -> Theme Page; there is no Rule Editor in Guides (the editor is
+  the Editor with Author View / Source View / Preview); Schematron -> Schematron Panel /
+  Schematron File / Content Health report (no "Validation Reports"); Baseline/Map/Translation/
+  Conditions/Subject Scheme are PANELS not dashboards; Editor Preview (not simple/conditional
+  preview); "generated file" -> the fmdita-outputs folder; no "stale preset"; no run "workflow"
+  (use output history). When unsure, LEAVE IT OUT and note it for human review.
+- **Gate before commit.** `guides_vocabulary.py --self-test` AND `test_skill_scripts.py` must
+  print PASS / `ALL SELF-TESTS PASSED`. If either fails, DO NOT commit — fix first. Keep all
+  skill copies byte-identical via `sync_test_plan_skill_copies.py --include-global` (the
+  `skill_bundle_fingerprint` test fails otherwise).
+- **Commit ONLY your two files.** `git add` exactly `*/test-plan-generation/data/guides_vocabulary.json`
+  and `backend/config/aem_guides_crawl_urls.json` — never `git add -A` (do not sweep unrelated
+  concurrent working-tree changes). Push to the working branch, never force-push, never commit
+  straight to main.
+- **Anti-hardcoding.** Do not put a Jira key, a customer name, or a fixture value inside
+  `guides_vocabulary.json` or any active skill script (the anti-hardcoding audit fails). Use
+  `"source": "human-correction"`.
+
 Notes:
-- The VM shared corpus is separate. After committing, on the VM run
-  `git pull --ff-only && cd backend && python ../scripts/ingest_urls.py "<EXP_LEAGUE_URL>"`
-  so the VM corpus matches. The VM's dataset-studio backend on :8001 must be reachable there.
-- Non-negotiable: RAG DRIVES the terminology — never invent a term/behaviour for a
-  concept the ingested doc documents.
+- The VM shared corpus is separate. After committing, on the VM run (from the repo root):
+  `git pull --ff-only && python scripts/ingest_urls.py "<EXP_LEAGUE_URL>"` so the VM corpus
+  matches. `ingest_urls.py` needs no langchain (httpx fallback); it only needs the local
+  Chroma corpus + the backend's embedding model, both already on the VM.
+- The learn-behaviour read (step 2) is OPTIONAL inspection; only ingest (1) + mine (4) change
+  anything. The skill queries RAG for behaviour automatically at UAC-authoring time.
