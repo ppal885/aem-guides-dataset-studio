@@ -42,22 +42,13 @@ The backend does NOT need to be running (the scripts open the local Chroma corpu
    precedence / edge-case behaviour) grounded ONLY in the retrieved text.
 
 3. EXTRACT THE UI IMAGES (Experience League images are JS-loaded; the raw HTML lists
-   `media_<hash>.png`). Download and VIEW the key ones. From the repo root:
+   `media_<hash>.png`). Use the script (dependency-light, httpx only). From the repo root:
    ```bash
-   python -c "
-   import httpx, re, os
-   url='<EXP_LEAGUE_URL>'; base=url.rsplit('/',1)[0]+'/'
-   h=httpx.get(url, timeout=30, follow_redirects=True).text
-   pngs=list(dict.fromkeys(re.findall(r'media_[0-9a-fA-F]+\.png', h)))
-   out=os.path.expanduser('~/expleague_img'); os.makedirs(out, exist_ok=True)
-   for i,m in enumerate(pngs):
-       r=httpx.get(base+m, timeout=30, follow_redirects=True)
-       if r.status_code==200 and len(r.content)>2000: open(os.path.join(out,f'{i:02d}_{m}'),'wb').write(r.content)
-   print('saved', out)
-   "
+   python scripts/extract_ui_images.py "<EXP_LEAGUE_URL>"
    ```
-   Then open the largest 2-3 saved PNGs with the image-reading tool and describe the UI
-   surfaces/panels/controls they show.
+   It saves the images to `~/expleague_img/<page-slug>/`, sorted largest first. Then open
+   the top 2-3 with the image-reading tool and describe the UI surfaces/panels/controls
+   they show (this is how you learn the UI behind a term).
 
 4. GROW THE VOCABULARY (this is the payoff of ingesting). Run the corpus miner and REVIEW
    its candidates — it is a review aid, NOT an auto-adder. From the repo root:
