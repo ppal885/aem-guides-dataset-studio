@@ -70,6 +70,11 @@ def _gate_correct(client, model, row, draft: str) -> tuple[str, int, int]:
     failures = initial
     while failures and rounds < MAX_CORRECTION_ROUNDS:
         rounds += 1
+        # NOTE: a more forceful itemized "add exact terms, 3 rounds, with ticket context"
+        # prompt was tried and measured WORSE (gates-ON miss-rate 0.35 -> 0.45): the model
+        # rewrote aggressively and dropped coverage of other axes, and some generations
+        # failed on the longer prompt. Reverted to this additive prompt (keep-or-revert
+        # discipline). Strengthening the correction step remains open work.
         fix_prompt = (
             "Here is a draft UAC:\n\n" + current + "\n\n"
             "A QA coverage gate found these missing dimensions. Revise the UAC to address "

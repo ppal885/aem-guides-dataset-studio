@@ -859,6 +859,37 @@ def _validate_vague_surface_reference(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+# A vague/underspecified qualifier in an acceptance criterion. The reviewer must spell out
+# WHAT and WHERE in plain words instead of leaning on a placeholder qualifier the reader
+# then has to decode. Example the user rejected: "the configured output folder" (spell it
+# out: "the output folder set in that preset"). Kept narrow on purpose so it fires on genuine
+# hand-waving, not on any use of the word "configured".
+_UNDERSPECIFIED_TERM_RE = re.compile(
+    r"\bthe\s+configured\s+(?:output\s+)?(?:folder|location|destination|path|directory)\b"
+    r"|\b(?:appropriate|relevant|corresponding|respective)\s+"
+    r"(?:folder|location|preset|dashboard|screen|status|value|setting|option)\b"
+    r"|\bas\s+(?:applicable|appropriate)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_underspecified_terms(manifest, plan_text: str) -> list[str]:
+    """Fail an acceptance criterion that uses a vague placeholder qualifier ('the configured
+    output folder', 'the appropriate preset', 'as applicable') instead of spelling out what
+    and where in plain words. plain-language-ac-writing requires the concrete thing named."""
+    problems: list[str] = []
+    for line in _ac_lines(plan_text):
+        match = _UNDERSPECIFIED_TERM_RE.search(line)
+        if match:
+            problems.append(
+                f"An acceptance criterion uses a vague placeholder term "
+                f"({match.group(0)!r}): spell out what and where in plain words instead "
+                f"(for example write 'the output folder set in that preset' rather than "
+                f"'the configured output folder'). Line: {line[:70]!r}."
+            )
+    return problems
+
+
 # ---------------------------------------------------------------------------
 # 7. Content-transformation (paste / import / convert) variant enumeration
 # ---------------------------------------------------------------------------
@@ -1040,6 +1071,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_status_anti_overcorrection(manifest, plan_text)
     problems += _validate_concurrency_isolation(manifest, plan_text)
     problems += _validate_vague_surface_reference(manifest, plan_text)
+    problems += _validate_underspecified_terms(manifest, plan_text)
     problems += _validate_transformation_variant_coverage(manifest, plan_text)
     problems += _validate_link_scheme_coverage(manifest, plan_text)
     problems += _validate_negative_boundary_present(manifest, plan_text)
@@ -1370,6 +1402,23 @@ def run_self_tests() -> None:
         "named surfaces must pass"
     )
     assert _validate_vague_surface_reference({}, plain) == [], "no surface reference -> pass"
+
+    # --- underspecified placeholder terms ---
+    underspec_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: the generated file appears in the configured output folder and opens.",
+        ""])
+    assert any("vague placeholder term" in p for p in _validate_underspecified_terms({}, underspec_plan)), (
+        "'the configured output folder' must fail"
+    )
+    spelled_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: the generated file appears in the output folder set in that preset and opens.",
+        ""])
+    assert _validate_underspecified_terms({}, spelled_plan) == [], (
+        "spelled-out folder must pass"
+    )
+    assert _validate_underspecified_terms({}, plain) == [], "no placeholder term -> pass"
 
     # --- performance: duration/concurrency signal + conditional-OQ disposition ---
     dur_missing = nl.join([

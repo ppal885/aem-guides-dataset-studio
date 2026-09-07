@@ -6,7 +6,7 @@
   <link rel="icon" href="data:,">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-CLP9y1ElrCwWiqoltxsf8iKvKo5NZ08yIG9+K5kZNiQ='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <meta name="referrer" content="no-referrer">
   <title>UAC Eval Observability</title>
@@ -1097,6 +1097,31 @@
         </article>
       </section>
 
+      <section id="gateEffectPanel" class="panel" aria-labelledby="gateEffectTitle" hidden>
+        <div class="panel-head">
+          <div>
+            <h2 id="gateEffectTitle">Gate-while-authoring effect</h2>
+            <p class="panel-copy">Dimension miss-rate with the coverage gates OFF vs ON during authoring (lower is better). Reported by measure_gate_effect.py; not recomputed here.</p>
+          </div>
+          <span id="gateEffectMeta" class="insight-count">Waiting for data</span>
+        </div>
+        <div class="secondary-cards" aria-label="Latest gate-effect run">
+          <article class="secondary-card">
+            <div><span class="secondary-label">Gates OFF</span><p class="secondary-copy">Blind-draft miss-rate</p></div>
+            <strong id="gateOffValue" class="secondary-value">n/a</strong>
+          </article>
+          <article class="secondary-card">
+            <div><span class="secondary-label">Gates ON</span><p class="secondary-copy">After gate-correct loop</p></div>
+            <strong id="gateOnValue" class="secondary-value">n/a</strong>
+          </article>
+          <article class="secondary-card">
+            <div><span class="secondary-label">Reduction</span><p class="secondary-copy">OFF − ON</p></div>
+            <strong id="gateReductionValue" class="secondary-value">n/a</strong>
+          </article>
+        </div>
+        <ul id="gateEffectHistory" class="change-list"></ul>
+      </section>
+
       <section class="panel what-changed" aria-labelledby="whatChangedTitle">
         <div class="panel-head">
           <div>
@@ -2056,7 +2081,37 @@
         }
       }
 
-      function render(runs) {
+      function renderGateEffect(gateEffect) {
+        const panel = byId("gateEffectPanel");
+        if (!panel) return;
+        const series = Array.isArray(gateEffect) ? gateEffect : [];
+        if (!series.length) {
+          panel.hidden = true;
+          return;
+        }
+        panel.hidden = false;
+        const latest = series[series.length - 1];
+        const pct = (v) => (typeof v === "number" ? (v * 100).toFixed(1) + "%" : "n/a");
+        const setText = (id, text) => { const el = byId(id); if (el) el.textContent = text; };
+        setText("gateOffValue", pct(latest.off_miss));
+        setText("gateOnValue", pct(latest.on_miss));
+        setText("gateReductionValue",
+          typeof latest.reduction === "number" ? (latest.reduction * 100).toFixed(1) + " pts" : "n/a");
+        setText("gateEffectMeta",
+          `${latest.run_id} · n=${latest.n == null ? "?" : latest.n} · avg gate-failures fixed/ticket ${typeof latest.fixed === "number" ? latest.fixed.toFixed(2) : "n/a"}`);
+        const list = byId("gateEffectHistory");
+        if (list) {
+          list.textContent = "";
+          series.slice(-6).reverse().forEach((r) => {
+            const li = document.createElement("li");
+            li.textContent = `${r.run_id}: miss-rate ${pct(r.off_miss)} → ${pct(r.on_miss)} (−${typeof r.reduction === "number" ? (r.reduction * 100).toFixed(1) : "?"} pts)`;
+            list.appendChild(li);
+          });
+        }
+      }
+
+      function render(runs, gateEffect) {
+        renderGateEffect(gateEffect);
         if (!runs.length) {
           state.runs = [];
           state.latestRows = [];
@@ -2100,7 +2155,10 @@
           if (!isObject(payload) || !Array.isArray(payload.runs)) {
             throw new Error("dashboard_data.json must contain a runs array");
           }
-          render(payload.runs.filter(isObject));
+          const gateEffect = Array.isArray(payload.gate_effect)
+            ? payload.gate_effect.filter(isObject)
+            : [];
+          render(payload.runs.filter(isObject), gateEffect);
         })
         .catch((_error) => {
           showDataState(
