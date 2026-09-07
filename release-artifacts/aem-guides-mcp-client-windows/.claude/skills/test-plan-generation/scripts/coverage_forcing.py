@@ -890,6 +890,46 @@ def _validate_underspecified_terms(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+# A translation/localization ticket names a specific reported language, but the fix is
+# language-agnostic - the AC set must generalize across every supported target language
+# (naming one language as the reported case only), or explicitly bound scope to one. This
+# catches the recurring "customer wrote German, so I only wrote German" miss.
+_LOCALIZATION_SIGNAL_RE = re.compile(
+    r"\b(translat(?:e|ion|ing|ed)|locali[sz]ation|locali[sz]ed|xliff|multilingual|"
+    r"target\s+language|source\s+language|translation\s+project)\b", re.IGNORECASE)
+_LANGUAGE_NAME_RE = re.compile(
+    r"\b(german|french|spanish|japanese|chinese|italian|portuguese|korean|russian|dutch|"
+    r"polish|swedish|danish|norwegian|finnish|czech|hungarian|turkish|arabic|hebrew|thai|"
+    r"vietnamese|hindi|greek|romanian|ukrainian)\b", re.IGNORECASE)
+_LANG_GENERALIZATION_RE = re.compile(
+    r"(all|every|each|any)\s+(supported\s+)?(target\s+)?languages?|"
+    r"regardless\s+of\s+(the\s+)?(target\s+)?language|not\s+only\s+\w+|language[-\s]agnostic|"
+    r"across\s+(all\s+)?languages|every\s+locale|all\s+locales|any\s+target\s+language", re.IGNORECASE)
+
+
+def _validate_language_generalization(manifest, plan_text: str) -> list[str]:
+    """On a translation/localization ticket, fail if the ACs name a specific language but
+    never generalize across all supported target languages (the reported language is only an
+    example). An explicit generalization phrase or a single-language scope bound satisfies it."""
+    issue = (manifest or {}).get("issue", {}) if isinstance(manifest, dict) else {}
+    ticket_text = " ".join(str(issue.get(k, "")) for k in ("summary", "description"))
+    if not _LOCALIZATION_SIGNAL_RE.search(ticket_text) and not _LOCALIZATION_SIGNAL_RE.search(plan_text):
+        return []
+    ac_block = "\n".join(_ac_lines(plan_text))
+    names_language = bool(_LANGUAGE_NAME_RE.search(ac_block) or _LANGUAGE_NAME_RE.search(ticket_text))
+    if not names_language:
+        return []
+    if _LANG_GENERALIZATION_RE.search(plan_text):
+        return []
+    return [
+        "This is a translation/localization ticket that cites a specific language, but no "
+        "acceptance criterion generalizes the behaviour across all supported target languages "
+        "(the reported language is only an example). Add an AC that the fix applies to every "
+        "supported target language - not only the reported one - or explicitly bound the scope "
+        "to a single language."
+    ]
+
+
 def _validate_guides_vocabulary(manifest, plan_text: str) -> list[str]:
     """Fail an acceptance criterion that names a non-existent AEM Guides product
     concept from the curated guides_vocabulary block list (e.g. 'stale preset').
@@ -1088,6 +1128,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_vague_surface_reference(manifest, plan_text)
     problems += _validate_underspecified_terms(manifest, plan_text)
     problems += _validate_guides_vocabulary(manifest, plan_text)
+    problems += _validate_language_generalization(manifest, plan_text)
     problems += _validate_transformation_variant_coverage(manifest, plan_text)
     problems += _validate_link_scheme_coverage(manifest, plan_text)
     problems += _validate_negative_boundary_present(manifest, plan_text)
@@ -1435,6 +1476,31 @@ def run_self_tests() -> None:
         "spelled-out folder must pass"
     )
     assert _validate_underspecified_terms({}, plain) == [], "no placeholder term -> pass"
+
+    # --- language generalization on translation tickets ---
+    xl_manifest = {"issue": {"summary": "310 files In Progress after German translation",
+                             "description": "map submitted for German translation stays in progress"}}
+    only_german = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after the German translation job finishes, no topic stays In Progress.",
+        ""])
+    assert _validate_language_generalization(xl_manifest, only_german), (
+        "translation ticket naming only German must fail without a generalization AC")
+    generalized = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after the translation job finishes, no topic stays In Progress.",
+        "- AC-02: the fix applies to every supported target language, not only German.",
+        ""])
+    assert _validate_language_generalization(xl_manifest, generalized) == [], (
+        "a generalization AC (every supported target language) must pass")
+    no_xl_plan = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01: after the German job finishes, no item stays In Progress.",
+        ""])
+    assert _validate_language_generalization({"issue": {"summary": "PDF status wrong",
+                                                        "description": "output failed"}},
+                                             no_xl_plan) == [], (
+        "non-translation ticket and plan -> gate does not activate")
 
     # --- performance: duration/concurrency signal + conditional-OQ disposition ---
     dur_missing = nl.join([
