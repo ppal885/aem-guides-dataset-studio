@@ -39,6 +39,24 @@
       "message": "'generated file' is vague. Name the concrete location: the generated output lands in the fmdita-outputs folder set for that preset.",
       "source": "human-correction",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "conditional-preview",
+      "pattern": "conditional\\s+preview",
+      "wrong": "conditional preview",
+      "correct": "Simple Preview",
+      "message": "There is no 'conditional preview' surface. The preview surface is called Simple Preview.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "move-to-group",
+      "pattern": "mov(e|ed|ing)\\s+to\\s+(the\\s+)?(wrong\\s+)?(condition\\s+)?group",
+      "wrong": "moved to the wrong group / move to a group",
+      "correct": "conditions are grouped automatically by their attribute; there is no move operation",
+      "message": "There is no 'move to a group' operation for conditions in Guides (grouping is automatic by attribute). Do not use invented operation verbs in ACs - verify every action verb is a real Guides operation, including in negative/boundary ACs.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "canonical_terms": [
@@ -48,6 +66,7 @@
     "Map console",
     "Presets",
     "Conditions panel",
+    "Simple Preview",
     "Old Editor",
     "New Editor",
     "Baseline"
