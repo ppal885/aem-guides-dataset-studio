@@ -40,5 +40,22 @@
       "source": "human-correction",
       "governance": "HUMAN_APPROVED"
     }
+  ],
+  "canonical_terms": [
+    "workspace settings",
+    "Subject Scheme Panel",
+    "Map Panel",
+    "Map console",
+    "Presets",
+    "Conditions panel",
+    "Old Editor",
+    "New Editor",
+    "Baseline"
+  ],
+  "synonyms": [
+    {
+      "terms": ["V2 Baseline", "New Baseline"],
+      "note": "V2 Baseline and New Baseline are the same thing - do not treat them as two different baselines."
+    }
   ]
 }
