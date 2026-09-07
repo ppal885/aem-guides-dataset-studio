@@ -1,0 +1,80 @@
+{
+  "schema_version": "aem-guides-vocabulary-v1",
+  "note": "Curated AEM Guides product vocabulary for acceptance criteria. Two lists: 'block' = phrases that name a product concept the product does NOT have (invented from support/ticket wording) - fail-closed when they appear in an AC line. 'advise' = correct-term nudges that are too broad to hard-fail (the wrong word can be legitimate elsewhere) - surfaced as advisory suggestions only. Patterns are case-insensitive regex over an AC line. Every entry is HUMAN_APPROVED; add new entries only from a real human correction with the source Jira. This encodes product vocabulary, NOT a code-identifier list - never put method/class names here.",
+  "governance": "HUMAN_APPROVED",
+  "block": [
+    {
+      "id": "stale-preset",
+      "pattern": "stale[-\\s]*(output\\s*)?preset|preset\\s+is\\s+stale|confirmed\\s+stale",
+      "wrong": "stale preset",
+      "message": "There is no 'stale preset' concept in AEM Guides. It is an existing preset; recreating it (delete + create again) was a support workaround, not a product mechanism. Do not assert stale-preset detection or advice - move any 'show the preset needs recreation' requirement to an Open Question.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    }
+  ],
+  "advise": [
+    {
+      "id": "run-workflow",
+      "pattern": "run'?s?\\s+workflow|workflow\\s+(state|node|record|details)",
+      "wrong": "run workflow / workflow state",
+      "correct": "output history",
+      "message": "AEM Guides has no per-run 'workflow' object. Use 'output history' (a run's output history). ('workflow' alone is a real AEM concept - only the run-workflow collocation is wrong.)",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "output-history-record",
+      "pattern": "output[-\\s]history\\s+(record|node|details)",
+      "wrong": "output-history record/details",
+      "correct": "output history",
+      "message": "It is the 'output history', not an 'output-history record/details'. Drop the trailing noun.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "generated-file-vague",
+      "pattern": "generated\\s+file",
+      "wrong": "generated file",
+      "correct": "the generated output in the fmdita-outputs folder set for that preset",
+      "message": "'generated file' is vague. Name the concrete location: the generated output lands in the fmdita-outputs folder set for that preset.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "conditional-preview",
+      "pattern": "conditional\\s+preview|simple\\s+preview",
+      "wrong": "conditional preview / simple preview",
+      "correct": "Editor Preview",
+      "message": "There is no 'conditional preview' or 'simple preview' surface. The preview surface is called Editor Preview.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "move-to-group",
+      "pattern": "mov(e|ed|ing)\\s+to\\s+(the\\s+)?(wrong\\s+)?(condition\\s+)?group",
+      "wrong": "moved to the wrong group / move to a group",
+      "correct": "conditions are grouped automatically by their attribute; there is no move operation",
+      "message": "There is no 'move to a group' operation for conditions in Guides (grouping is automatic by attribute). Do not use invented operation verbs in ACs - verify every action verb is a real Guides operation, including in negative/boundary ACs.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    }
+  ],
+  "canonical_terms": [
+    "workspace settings",
+    "Subject Scheme Panel",
+    "Map Panel",
+    "Map console",
+    "Presets",
+    "Conditions panel",
+    "Editor Preview",
+    "Old Editor",
+    "New Editor",
+    "Baseline"
+  ],
+  "synonyms": [
+    {
+      "terms": ["V2 Baseline", "New Baseline"],
+      "note": "V2 Baseline and New Baseline are the same thing - do not treat them as two different baselines."
+    }
+  ]
+}

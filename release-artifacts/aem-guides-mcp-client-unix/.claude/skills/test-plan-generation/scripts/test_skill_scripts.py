@@ -10369,6 +10369,18 @@ def test_clarification_gate() -> None:
     print("test_clarification_gate: OK")
 
 
+def test_guides_vocabulary() -> None:
+    import guides_vocabulary as gv
+    gv.run_self_tests()
+    # block list fires inside the coverage_forcing gate
+    import coverage_forcing as cf
+    bad = "## Acceptance Criteria\n- AC-01: advise recreation only when the preset is confirmed stale."
+    assert any("stale-preset" in p for p in cf.validate(
+        {"issue": {"summary": "x", "description": "stale preset failed status"}}, bad)), \
+        "stale-preset block must fire through coverage_forcing"
+    print("test_guides_vocabulary: OK")
+
+
 def test_customer_discovery() -> None:
     import copy
     import customer_discovery as profiles
@@ -10561,6 +10573,7 @@ def main() -> int:
     test_generated_artifact_delivery_regression()
     test_content_identity_lifecycle_regression()
     test_postability_semantic_reviews()
+    test_guides_vocabulary()
     print("\nALL SELF-TESTS PASSED")
     return 0
 

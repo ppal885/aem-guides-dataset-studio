@@ -62,6 +62,11 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=8)
     ap.add_argument("--holdout-frac", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=5)
+    ap.add_argument("--fixed-set", default=None,
+                    help="Path to a file listing ticket keys (one per line, or a JSON array) to "
+                         "score every run. When given, the test set is exactly these keys in order "
+                         "(random sampling, --seed and --holdout-frac are ignored for selection). "
+                         "Makes run-over-run comparison a true like-for-like trend.")
     ap.add_argument("--vm", default="http://10.42.46.78:4502")
     ap.add_argument("--token", default="dev-bypass")
     ap.add_argument("--out", default=str(HERE / "judge_pipeline_report.md"))
@@ -76,10 +81,27 @@ def main() -> int:
     _excluded = _before - len(rows)
     if _excluded:
         print(f"excluded {_excluded} rows with non-AC gold (pointer/resolution/conversational)")
-    random.seed(args.seed)
-    random.shuffle(rows)
-    cut = int(len(rows) * (1 - args.holdout_frac))
-    test = rows[cut:][: args.n]
+    if args.fixed_set:
+        raw = Path(args.fixed_set).read_text(encoding="utf-8").strip()
+        try:
+            wanted = json.loads(raw)
+            if not isinstance(wanted, list):
+                raise ValueError
+        except (json.JSONDecodeError, ValueError):
+            wanted = [ln.strip() for ln in raw.splitlines()
+                      if ln.strip() and not ln.strip().startswith("#")]
+        by_key = {r.get("key"): r for r in rows}
+        test = [by_key[k] for k in wanted if k in by_key]
+        missing = [k for k in wanted if k not in by_key]
+        if missing:
+            print(f"fixed-set: {len(missing)} key(s) not scorable/in corpus, skipped: "
+                  f"{', '.join(missing)}")
+        print(f"fixed-set: scoring {len(test)} of {len(wanted)} requested tickets (fixed, comparable)")
+    else:
+        random.seed(args.seed)
+        random.shuffle(rows)
+        cut = int(len(rows) * (1 - args.holdout_frac))
+        test = rows[cut:][: args.n]
 
     client, model = sc._client()
     agg = {"baseline": defaultdict(list), "pipeline": defaultdict(list)}
