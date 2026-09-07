@@ -890,6 +890,21 @@ def _validate_underspecified_terms(manifest, plan_text: str) -> list[str]:
     return problems
 
 
+def _validate_guides_vocabulary(manifest, plan_text: str) -> list[str]:
+    """Fail an acceptance criterion that names a non-existent AEM Guides product
+    concept from the curated guides_vocabulary block list (e.g. 'stale preset').
+    Advisories (correct-term nudges) are not returned here; run guides_vocabulary.py
+    --check for those. Fail-open if the library module/file is unavailable."""
+    try:
+        import guides_vocabulary as gv  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        return gv.validate(plan_text)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 # ---------------------------------------------------------------------------
 # 7. Content-transformation (paste / import / convert) variant enumeration
 # ---------------------------------------------------------------------------
@@ -1072,6 +1087,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_concurrency_isolation(manifest, plan_text)
     problems += _validate_vague_surface_reference(manifest, plan_text)
     problems += _validate_underspecified_terms(manifest, plan_text)
+    problems += _validate_guides_vocabulary(manifest, plan_text)
     problems += _validate_transformation_variant_coverage(manifest, plan_text)
     problems += _validate_link_scheme_coverage(manifest, plan_text)
     problems += _validate_negative_boundary_present(manifest, plan_text)
