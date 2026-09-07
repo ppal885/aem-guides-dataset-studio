@@ -50,6 +50,15 @@
       "governance": "HUMAN_APPROVED"
     },
     {
+      "id": "panel-not-dashboard",
+      "pattern": "(baseline|map|translation|conditions?|subject\\s+scheme)\\s+dashboard",
+      "wrong": "<X> dashboard for an authoring panel",
+      "correct": "Baseline Panel / Map Panel / Translation Panel / Conditions panel / Subject Scheme Panel",
+      "message": "The Baseline, Map, Translation, Conditions, and Subject Scheme surfaces are PANELS, not dashboards. Use 'Baseline Panel', 'Map Panel', 'Translation Panel', etc. 'dashboard' is only for publish/output surfaces (e.g. the Bulk Publish dashboard, the Map Dashboard Outputs tab).",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "move-to-group",
       "pattern": "mov(e|ed|ing)\\s+to\\s+(the\\s+)?(wrong\\s+)?(condition\\s+)?group",
       "wrong": "moved to the wrong group / move to a group",
@@ -66,6 +75,9 @@
     "Map console",
     "Presets",
     "Conditions panel",
+    "Baseline Panel",
+    "Translation Panel",
+    "Reports Metadata report",
     "Editor Preview",
     "Old Editor",
     "New Editor",
