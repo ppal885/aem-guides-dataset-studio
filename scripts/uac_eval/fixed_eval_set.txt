@@ -1,0 +1,35 @@
+# Frozen evaluation ticket set for judge_pipeline.py --fixed-set.
+# Scoring the SAME tickets every run makes the dashboard's run-over-run trend a
+# true like-for-like comparison (random sampling drifts as the corpus grows).
+# One ticket key per line; blank lines and #-comments are ignored.
+# 30 validated-scorable Publishing/Authoring/Review tickets.
+GUIDES-14786
+GUIDES-19701
+GUIDES-19703
+GUIDES-23128
+GUIDES-23965
+GUIDES-25017
+GUIDES-26516
+GUIDES-27789
+GUIDES-28104
+GUIDES-28171
+GUIDES-28214
+GUIDES-28237
+GUIDES-28355
+GUIDES-28748
+GUIDES-29093
+GUIDES-29815
+GUIDES-32872
+GUIDES-33515
+GUIDES-33605
+GUIDES-33731
+GUIDES-33794
+GUIDES-34084
+GUIDES-37733
+GUIDES-37843
+GUIDES-38412
+GUIDES-40399
+GUIDES-42582
+GUIDES-45983
+GUIDES-49386
+GUIDES-8979
