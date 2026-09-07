@@ -434,7 +434,8 @@
     "https://www.dita-ot.org/dev/topics/sample-pdf-theme",
     "https://www.dita-ot.org/dev/resources/theme/variables",
     "https://www.dita-ot.org/dev/resources/theme/extending-themes",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/administering/content-fragments/keyboard-shortcuts",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-language-variables"
   ],
   "recursive": {
     "enabled": false,
